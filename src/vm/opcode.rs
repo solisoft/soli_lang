@@ -445,6 +445,13 @@ pub enum Op {
     IsTruthyLocal(u16),
     /// Check if local is falsy (null, false, 0, ""), push bool
     IsFalsyLocal(u16),
+    /// `if local` / `while local`: jump `offset` when `local[slot]` is falsy.
+    /// The fused form of `GetLocal(slot), JumpIfFalse` — one dispatch, and
+    /// nothing pushed or popped. Peephole-only (not patched by `patch_jump`).
+    JumpIfLocalFalsy(u16, u16),
+    /// `unless local` / `if !local`: jump `offset` when `local[slot]` is
+    /// truthy. The fused form of `GetLocal(slot), Not, JumpIfFalse`.
+    JumpIfLocalTruthy(u16, u16),
     /// Get local and add int (optimized for small ints)
     ///
     /// Nothing emits it at the moment: `AddLocalConst` takes
@@ -555,6 +562,8 @@ pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::TestGreaterEqualJump(0),
     Op::TestNotEqualJump(0),
     Op::TestEqualJump(0),
+    Op::JumpIfLocalFalsy(0, 0),
+    Op::JumpIfLocalTruthy(0, 0),
     Op::MatchType(0, 0),
     // Two targets, and neither name says "jump".
     Op::TryBegin(0, 0),

@@ -422,6 +422,12 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::JumpIfNotNull(offset) => out.push_str(&format!("JUMP_IF_NOT_NULL {:>4}", offset)),
         Op::IsTruthyLocal(slot) => out.push_str(&format!("IS_TRUTHY_LOCAL {:>3}", slot)),
         Op::IsFalsyLocal(slot) => out.push_str(&format!("IS_FALSY_LOCAL {:>3}", slot)),
+        Op::JumpIfLocalFalsy(slot, offset) => {
+            out.push_str(&format!("JUMP_LOCAL_FALSY {:>3} {:>5}", slot, offset))
+        }
+        Op::JumpIfLocalTruthy(slot, offset) => {
+            out.push_str(&format!("JUMP_LOCAL_TRUTHY {:>3} {:>5}", slot, offset))
+        }
         Op::AddLocalInt(slot, n) => out.push_str(&format!("ADD_LOCAL_INT {:>3},{:>3}", slot, n)),
         Op::IncrLocalFast(slot) => out.push_str(&format!("INCR_LOCAL_FAST {:>2}", slot)),
         Op::GetAndNullLocal(slot) => out.push_str(&format!("GET_AND_NULL_LOCAL {:>2}", slot)),
@@ -713,12 +719,16 @@ mod tests {
             (Op::NotEqualLocalLocal(1, 2), 1),
             (Op::IsTruthyLocal(0), 1),
             (Op::IsFalsyLocal(0), 1),
+            (Op::JumpIfLocalFalsy(0, 2), 1),
+            (Op::JumpIfLocalTruthy(0, 2), 1),
         ]);
         assert!(body.contains("INCR_LOCAL_FAST"));
         assert!(body.contains("EQ_LL"));
         assert!(body.contains("NE_LL"));
         assert!(body.contains("IS_TRUTHY_LOCAL"));
         assert!(body.contains("IS_FALSY_LOCAL"));
+        assert!(body.contains("JUMP_LOCAL_FALSY"));
+        assert!(body.contains("JUMP_LOCAL_TRUTHY"));
     }
 
     #[test]

@@ -1410,6 +1410,19 @@ impl Vm {
                     let truthy = self.stack[base + slot as usize].is_truthy();
                     self.stack.push(Value::Bool(!truthy));
                 }
+                // `if local` / `unless local`: test the slot in place, no
+                // push and pop. A `Deferred` local is resolved by
+                // `is_truthy`, as `IsTruthyLocal` did.
+                Op::JumpIfLocalFalsy(slot, offset) => {
+                    if !self.stack[base + slot as usize].is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
+                Op::JumpIfLocalTruthy(slot, offset) => {
+                    if self.stack[base + slot as usize].is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
                 Op::IsZeroLocal(slot) | Op::NotZeroLocal(slot) => {
                     let zero = match &self.stack[base + slot as usize] {
                         Value::Int(x) => *x == 0,
@@ -4462,6 +4475,13 @@ impl Vm {
                     let base = self.frames.last().unwrap().stack_base;
                     let val = &self.stack[base + slot as usize];
                     self.stack.push(Value::Bool(!val.is_truthy()));
+                }
+                Op::JumpIfLocalFalsy(slot, offset) | Op::JumpIfLocalTruthy(slot, offset) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    let truthy = self.stack[frame.stack_base + slot as usize].is_truthy();
+                    if truthy == matches!(op, Op::JumpIfLocalTruthy(..)) {
+                        frame.ip += offset as usize;
+                    }
                 }
                 Op::AddLocalInt(slot, n) => {
                     let base = self.frames.last().unwrap().stack_base;

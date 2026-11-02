@@ -840,7 +840,27 @@ impl Value {
         }
     }
 
+    /// Soli truthiness: `false`, `nil`, `0`, `""`, `[]` and `{}` are falsy,
+    /// everything else (`0.0` included) is truthy.
+    ///
+    /// Inlined for the scalar tags, which is what nearly every condition
+    /// tests: the VM's conditional jumps call this once per branch, and as an
+    /// out-of-line function the `Bool` case paid a call, a stack frame and a
+    /// return around a one-byte read. Collections, strings and `Deferred`
+    /// (which may flush a query batch) go to `is_truthy_slow`, kept out of
+    /// line so the dispatch loop does not inline a batch flush at each site.
+    #[inline]
     pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Bool(b) => *b,
+            Value::Null => false,
+            Value::Int(i) => *i != 0,
+            _ => self.is_truthy_slow(),
+        }
+    }
+
+    #[inline(never)]
+    fn is_truthy_slow(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
             Value::Null => false,

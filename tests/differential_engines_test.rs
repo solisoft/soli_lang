@@ -2452,6 +2452,46 @@ def many(a, b = 1, c = 2, d = 3, e = 4, f = 5, g = 6, h = 7, i = 8, j = 9, k = 1
 end
 print(many(0, s: 100, r: 99, q: 1, p: 1, o: 1, n: 1, m: 1, l: 1, k: 1, i: 1, h: 1, g: 1, f: 1, e: 1, d: 1, c: 1, b: 7))"##,
     ),
+    (
+        // `if v`, `unless v`, `if !v` and `while k` on a local compile to the
+        // fused `JumpIfLocalFalsy` / `JumpIfLocalTruthy`, which test the slot
+        // in place; every truthiness class must branch as the tree-walker
+        // does (`0.0` truthy, `0`, `""`, `[]`, `{}` falsy). `&&`/`||` keep the
+        // tested value, so they stay unfused.
+        "local_condition_fused_branches",
+        r##"class Box
+  v: Int
+  new(v: Int)
+    @v = v
+  end
+end
+def branches(v)
+  out = []
+  out.push(1) if v
+  out.push(2) unless v
+  n = 0
+  if !v
+    out.push(3)
+  else
+    out.push(4)
+  end
+  k = v
+  n = 0
+  while k
+    n = n + 1
+    k = nil if n >= 2
+  end
+  out.push(n)
+  a = v && "and"
+  b = v || "or"
+  out.push(a)
+  out.push(b)
+  out
+end
+[true, false, nil, 0, 1, -7, 0.0, 2.5, "", "x", [], [nil], {}, {"k": 0}, :sym, Box.new(0), fn(x) { x }].each do |v|
+  print(branches(v))
+end"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

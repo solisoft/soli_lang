@@ -1084,7 +1084,9 @@ fn stack_effect(op: Op) -> i32 {
         | NullishJump(_)
         | JumpIfNull(_)
         | JumpIfNotNull(_)
-        | JumpIfParamSupplied(_, _) => 0,
+        | JumpIfParamSupplied(_, _)
+        | JumpIfLocalFalsy(_, _)
+        | JumpIfLocalTruthy(_, _) => 0,
         JumpIfFalse(_) => -1,
         // Calls: pop callee/receiver + argc args, push the result.
         Call(argc) | CallMethod(_, argc) | CallMethodById(_, argc, _) => -(argc as i32),
@@ -1248,6 +1250,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             | Op::JumpIfNotNull(offset)
             | Op::NullishJump(offset)
             | Op::JumpIfParamSupplied(_, offset)
+            | Op::JumpIfLocalFalsy(_, offset)
+            | Op::JumpIfLocalTruthy(_, offset)
             | Op::ForIter(offset)
             | Op::ForIterRange(offset)
             | Op::RescueJump(offset)
@@ -1972,30 +1976,38 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         // Pattern: Null, JumpIfFalse → JumpIfNull (but we don't have JumpIfFalse directly, it's an operand)
         // This needs special handling since JumpIfFalse has an operand
 
-        // Pattern: GetLocal, Not, JumpIfFalse → IsFalsyLocal + jump
+        // Pattern: GetLocal, Not, JumpIfFalse(offset)
+        //        → JumpIfLocalTruthy(slot, offset + 2)
+        //
+        // `unless flag` and `if !flag`: the branch is taken when the local is
+        // truthy. The fused op sits two instructions before the old jump, so
+        // its offset grows by two to reach the same target (`compact_nops`
+        // then drops the NOPs and remaps it). This used to be
+        // `IsFalsyLocal, NOP, JumpIfFalse`: two dispatches and a pushed Bool.
         if i + 2 < len {
             if let (Op::GetLocal(slot), Op::Not, Op::JumpIfFalse(offset)) =
                 (code[i], code[i + 1], code[i + 2])
             {
                 if !any_jump_target(&is_jump_target, i + 1, 3) {
-                    code[i] = Op::IsFalsyLocal(slot);
+                    code[i] = Op::JumpIfLocalTruthy(slot, offset + 2);
                     code[i + 1] = NOP;
-                    code[i + 2] = Op::JumpIfFalse(offset);
+                    code[i + 2] = NOP;
                     i += 3;
                     continue;
                 }
             }
         }
 
-        // Pattern: GetLocal, JumpIfFalse → IsTruthyLocal + JumpIfFalse.
-        // `JumpIfFalse` jumps when its operand is falsy, so to preserve "jump
-        // when the local is falsy" the fused op must push the local's
-        // *truthiness*. (Using IsFalsyLocal here would invert the branch.)
+        // Pattern: GetLocal, JumpIfFalse(offset) → JumpIfLocalFalsy(slot, offset + 1)
+        //
+        // `if flag`, `while flag`, `x = 1 if flag`: one dispatch that reads
+        // the slot in place, where `IsTruthyLocal, JumpIfFalse` pushed a Bool
+        // only for the next op to pop it.
         if i + 1 < len {
             if let (Op::GetLocal(slot), Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
                 if !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::IsTruthyLocal(slot);
-                    code[i + 1] = Op::JumpIfFalse(offset);
+                    code[i] = Op::JumpIfLocalFalsy(slot, offset + 1);
+                    code[i + 1] = NOP;
                     i += 2;
                     continue;
                 }
@@ -2166,6 +2178,12 @@ fn compact_nops(chunk: &mut Chunk) {
             Op::JumpIfParamSupplied(p, d) => {
                 Op::JumpIfParamSupplied(p, fwd(&old_to_new, old, d, here))
             }
+            Op::JumpIfLocalFalsy(slot, d) => {
+                Op::JumpIfLocalFalsy(slot, fwd(&old_to_new, old, d, here))
+            }
+            Op::JumpIfLocalTruthy(slot, d) => {
+                Op::JumpIfLocalTruthy(slot, fwd(&old_to_new, old, d, here))
+            }
             // These four do not have "jump" in their names and were missed on the
             // first pass; the differential harness caught it immediately. Any new
             // opcode that advances `ip` by an operand MUST be added here.
@@ -2273,6 +2291,8 @@ mod inplace_peephole_tests {
             Op::JumpIfNotNull(_) => Op::JumpIfNotNull(d),
             Op::NullishJump(_) => Op::NullishJump(d),
             Op::JumpIfParamSupplied(p, _) => Op::JumpIfParamSupplied(p, d),
+            Op::JumpIfLocalFalsy(slot, _) => Op::JumpIfLocalFalsy(slot, d),
+            Op::JumpIfLocalTruthy(slot, _) => Op::JumpIfLocalTruthy(slot, d),
             Op::ForIter(_) => Op::ForIter(d),
             Op::ForIterRange(_) => Op::ForIterRange(d),
             Op::RescueJump(_) => Op::RescueJump(d),
@@ -2299,6 +2319,8 @@ mod inplace_peephole_tests {
             | Op::JumpIfNotNull(d)
             | Op::NullishJump(d)
             | Op::JumpIfParamSupplied(_, d)
+            | Op::JumpIfLocalFalsy(_, d)
+            | Op::JumpIfLocalTruthy(_, d)
             | Op::ForIter(d)
             | Op::ForIterRange(d)
             | Op::RescueJump(d)
@@ -2599,6 +2621,53 @@ mod inplace_peephole_tests {
             Some(value) => value.to_string(),
             None => panic!("{program}\nset no `result`"),
         }
+    }
+
+    /// A branch on a bare local is one dispatch: `if flag` is
+    /// `JumpIfLocalFalsy`, `unless flag` and `if !flag` are
+    /// `JumpIfLocalTruthy`. They were `IsTruthyLocal, JumpIfFalse` and
+    /// `IsFalsyLocal, JumpIfFalse`, a Bool pushed only to be popped.
+    #[test]
+    fn local_condition_compiles_to_one_branch() {
+        // Slot 0 is the callee, so `flag` is slot 1.
+        let cases: [(&str, fn(&Op) -> bool); 4] = [
+            ("flag = true\nn = 0\nif flag { n = 1 }\nn", |op| {
+                matches!(op, Op::JumpIfLocalFalsy(1, _))
+            }),
+            ("flag = true\nn = 0\nn = 1 if flag\nn", |op| {
+                matches!(op, Op::JumpIfLocalFalsy(1, _))
+            }),
+            ("flag = true\nn = 0\nunless flag { n = 1 }\nn", |op| {
+                matches!(op, Op::JumpIfLocalTruthy(1, _))
+            }),
+            ("flag = true\nn = 0\nif !flag { n = 1 }\nn", |op| {
+                matches!(op, Op::JumpIfLocalTruthy(1, _))
+            }),
+        ];
+        for (body, fused) in cases {
+            let ops = fn_ops(body);
+            assert!(ops.iter().any(fused), "{body}\n{ops:?}");
+            assert!(
+                !ops.iter().any(|op| matches!(
+                    op,
+                    Op::IsTruthyLocal(_) | Op::IsFalsyLocal(_) | Op::Not | Op::JumpIfFalse(_)
+                )),
+                "{body}\n{ops:?}"
+            );
+        }
+
+        // Every truthiness class, through both fused branches, with the
+        // `else` target remapped past the NOPs the fusion left.
+        let program = "def t(v)\n  r = \"\"\n  if v\n    r = \"T\"\n  else\n    r = \"F\"\n  end\n  r\nend\n\
+                       def u(v)\n  r = \"\"\n  unless v\n    r = \"F\"\n  else\n    r = \"T\"\n  end\n  r\nend\n\
+                       def n(v)\n  r = \"\"\n  if !v\n    r = \"F\"\n  else\n    r = \"T\"\n  end\n  r\nend\n\
+                       vals = [true, false, nil, 0, 1, -1, 0.0, \"\", \"a\", [], [0], {}, {\"a\": 1}, :s, fn(x) { x }]\n\
+                       let result = [vals.map { |v| t(v) }.join(\"\"), vals.map { |v| u(v) }.join(\"\"), \
+                       vals.map { |v| n(v) }.join(\"\")]";
+        assert_eq!(
+            vm_result(program),
+            "[TFFFTTTFTFTFTTT, TFFFTTTFTFTFTTT, TFFFTTTFTFTFTTT]"
+        );
     }
 
     /// A self-assignment stays a plain read and store: `GetLocal(a)`, then
@@ -3164,6 +3233,8 @@ mod stack_effect_tests {
             (&[Null], JumpIfNull(0)),
             (&[Null], JumpIfNotNull(0)),
             (&[], JumpIfParamSupplied(0, 0)),
+            (&[], JumpIfLocalFalsy(N, 0)),
+            (&[], JumpIfLocalTruthy(N, 0)),
             (two_ints, TestLessJump(0)),
             (two_ints, TestLessEqualJump(0)),
             (two_ints, TestGreaterJump(0)),
