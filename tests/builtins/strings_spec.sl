@@ -289,6 +289,19 @@ describe("slicing") do
     end
   end
 
+  test("indexing counts characters, negative from the end") do
+    assert_eq("héllo"[1], "é")
+    assert_eq("héllo"[-1], "o")
+    assert_eq("héllo"[-4], "é")
+    assert_eq("😀ab日本"[-5], "😀")
+    assert_raises("Index out of bounds: -6 (length 5)") do
+      "héllo"[-6]
+    end
+    assert_raises("Index out of bounds: 5 (length 5)") do
+      "héllo"[5]
+    end
+  end
+
   test("chars, bytes and lines") do
     assert_eq("héllo".chars, ["h", "é", "l", "l", "o"])
     assert_eq("AB".bytes, [65, 66])

@@ -2414,8 +2414,8 @@ print("#{r5} #{ks}")"##,
         // GetLocalIndex and GetNestedIndex. The paren-form zero-arg string
         // methods share the receiver when nothing changes, split/lines
         // build their pieces directly, and a pad that adds nothing returns
-        // the receiver. Negative indexes stay on ASCII here: on multi-byte
-        // text the tree-walker still counts from the byte length (N5).
+        // the receiver. Negative indexes on multi-byte text are covered by
+        // `string_negative_index_counts_characters`.
         "string_index_and_shared_string_results",
         r##"def at(s, i)
   s[i]
@@ -2457,6 +2457,35 @@ print("line\n".chomp(), "line".chomp(), "a\r\n".chomp().length, "abc".join())
 print("a,b,,c".split(","), "a b".split(), "abc".split(""), "x".split(","))
 print("one\ntwo\n".lines(), "ab".ljust(1), "ab".ljust(5, "*"), "ab".rjust(4), "ab".center(6, "-"))
 print("ab".lpad(1), "ab".lpad(4, "0"), "ab".rpad(4, "."), "é".ljust(4, "é"))"##,
+    ),
+    (
+        // A negative `s[i]` counts characters from the end on both engines.
+        // The tree-walker offset it from the byte length, so on non-ASCII
+        // text `"héllo"[-1]` raised there (and `[-2]` read the wrong
+        // character), and its out-of-range message gave the byte length
+        // where the VM gave the character count. Error texts are printed:
+        // they must match too.
+        "string_negative_index_counts_characters",
+        r##"def at(s, i)
+  s[i]
+end
+def attempt(s, i)
+  try
+    print(at(s, i))
+  catch e
+    print(e)
+  end
+end
+m = "héllo"
+print(m[-1], m[-2], m[-4], m[-5], at(m, -1), at(m, -4))
+e = "😀ab日本"
+print(e[-1], e[-2], e[-3], e[-5], e[0], e[4])
+print("日本語"[-3], "aé"[-1], "éa"[-1], "éa"[-2])
+attempt(m, 5)
+attempt(m, -6)
+attempt(e, -6)
+attempt(e, 5)
+attempt("", -1)"##,
     ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in

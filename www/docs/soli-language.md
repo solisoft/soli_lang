@@ -417,6 +417,12 @@ print(s.starts_with("Hell"));  # true
 print(s.ends_with("!"));      # true
 print(s.casecmp?("hello, world!"));  # true (case-insensitive equality)
 
+# Indexing counts characters, never bytes; a negative index counts from the end
+print("héllo"[1]);         # "é"
+print("héllo"[-1]);        # "o"
+# Past either end it raises: Index out of bounds: 5 (length 5) — in characters
+print("héllo"[5] rescue "none");  # "none"
+
 # String transformation
 snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
