@@ -892,6 +892,83 @@ end"##,
         "enum_serialization_and_parse",
         "enum C { Red, Blue, Tag(name: String) }\nprint(json_stringify({\"c\": C.Red, \"t\": C.Tag(\"x\")}))\nprint(C.parse(\"Red\") == C.Red)\nprint(C.parse({\"variant\": \"Tag\", \"name\": \"y\"}) == C.Tag(\"y\"))",
     ),
+    (
+        // A condition ending in `!=` branches the way `a != b` evaluates.
+        // The VM fuses `NotEqual, JumpIfFalse` into `TestNotEqualJump`, whose
+        // general arm compared two instances by pointer: two equal enum values
+        // built apart (a payload variant, or one rebuilt by `parse` as an
+        // `enum_field` read is) took the "different" branch. `unless`, `&&`,
+        // a block's value and `a != b` itself are not fused and were right.
+        "enum_not_equal_in_a_condition",
+        r##"enum Shape
+  Circle(radius: Int)
+  Square(side: Int)
+end
+
+enum Status
+  Active
+  Inactive
+end
+
+def guard(a, b)
+  return "guard" if a != b
+
+  "-"
+end
+
+def loop_runs(a, b)
+  rounds = 0
+  while a != b
+    rounds += 1
+    break
+  end
+  rounds
+end
+
+def conditions(a, b)
+  out = []
+  if a != b
+    out.push("if")
+  else
+    out.push("-")
+  end
+  if a == Shape.Square(9)
+    out.push("square")
+  elsif a != b
+    out.push("elsif")
+  else
+    out.push("-")
+  end
+  out.push(a != b ? "ternary" : "-")
+  label = "-"
+  label = "postfix" if a != b
+  out.push(label)
+  out.push(guard(a, b))
+  out.push(loop_runs(a, b))
+  arm = match a {
+    x if x != b => "match-guard",
+    _ => "-"
+  }
+  out.push(arm)
+  out.push([x for x in [a] if x != b].length)
+  out.push([a].filter { |x| x != b }.length)
+  unless a != b
+    out.push("unless")
+  end
+  out.push(a != b && true)
+  out.push(a != b)
+  out
+end
+
+print(conditions(Shape.Circle(1), Shape.Circle(1)))
+print(conditions(Shape.Circle(1), Shape.Circle(2)))
+print(conditions(Shape.Circle(1), Shape.Square(1)))
+print(conditions(Status.parse("Active"), Status.Active))
+print(conditions(Status.parse("Inactive"), Status.Active))
+print(conditions(Shape.parse({"variant": "Circle", "radius": 1}), Shape.Circle(1)))
+# One shared unit-variant value: identity already answered this one.
+print(conditions(Status.Active, Status.Active))"##,
+    ),
     // --- functions stored in hash entries (dispatch tables) ---
     // The VM used to reject `handlers.on_create(rec)` outright: an unknown hash
     // method raised NoSuchProperty without ever checking whether the key held a

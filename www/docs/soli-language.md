@@ -3460,6 +3460,10 @@ Status.Pending(reason: "x") == Status.Pending(reason: "x")    # true  (structura
 Status.Pending(reason: "x") == Status.Pending(reason: "y")    # false
 ```
 
+`!=` is always the negation of `==`, in a condition too
+(`if order.status != Status.Paid`). A value rebuilt from storage, such as an
+`enum_field` read or `Status.parse(...)`, compares like one built in code.
+
 `variant()` returns the variant name as a String — useful for serializing to a
 database column or JSON.
 

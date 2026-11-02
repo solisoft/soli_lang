@@ -991,6 +991,52 @@ mod tests {
         assert_eq!(render_on_vm(ivar), tree, "{ivar}");
     }
 
+    /// `<% if order.status != paid %>` in a view runs on the VM, which fuses
+    /// the `!=` and its branch into `TestNotEqualJump`. That op compared two
+    /// instances by pointer, so a status read back from the database (an
+    /// `enum_field` is rebuilt as a new instance) was "not paid" next to an
+    /// equal `Paid`, while the tree-walker said paid.
+    #[test]
+    fn a_view_compares_enum_values_by_value_in_a_condition() {
+        use crate::interpreter::value::{build_enum_value, Class};
+
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let status = Rc::new(Class {
+            name: "Status".to_string(),
+            ..Default::default()
+        });
+        // What an `enum_field` read builds: a new instance on every call.
+        let stored = |tag: &str| build_enum_value(&status, &Value::String(tag.into()));
+        let data = hash(vec![
+            ("order", hash(vec![("status", stored("Paid"))])),
+            ("paid", stored("Paid")),
+            ("shipped", stored("Shipped")),
+        ]);
+        let source = "<% if order.status != paid %>unpaid<% else %>paid<% end %>|\
+                      <% if order.status != shipped %>not shipped<% end %>";
+        let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+        let tree = render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{source}: {e}"));
+        assert_eq!(tree, "paid|not shipped");
+        let compiled = VmTemplate::compile(&nodes)
+            .unwrap_or_else(|e| panic!("{source}: does not compile: {e}"));
+        let Value::VmClosure(closure) = &compiled.closure else {
+            panic!("a compiled view is a closure");
+        };
+        let fused = closure
+            .proto
+            .chunk
+            .code
+            .iter()
+            .filter(|op| matches!(op, crate::vm::opcode::Op::TestNotEqualJump(_)))
+            .count();
+        assert_eq!(fused, 2, "both conditions run the fused op");
+        let on_vm = compiled
+            .render(&mut Vm::new(), &data)
+            .unwrap_or_else(|e| panic!("{source}: {e}"))
+            .html;
+        assert_eq!(on_vm, tree);
+    }
+
     /// What a view assigns where its layout sees it on the tree-walker comes
     /// back with the page; a `for` body's assignments do not.
     #[test]

@@ -1630,21 +1630,11 @@ impl Vm {
                 // --- Comparison (inlined fast paths for Int) ---
                 Op::Equal => {
                     let (a, b) = self.pop2();
-                    let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => crate::interpreter::value::enum_aware_equal(&a, &b),
-                    };
-                    self.stack.push(Value::Bool(result));
+                    self.stack.push(Value::Bool(values_equal(&a, &b)));
                 }
                 Op::NotEqual => {
                     let (a, b) = self.pop2();
-                    let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => !crate::interpreter::value::enum_aware_equal(&a, &b),
-                    };
-                    self.stack.push(Value::Bool(result));
+                    self.stack.push(Value::Bool(!values_equal(&a, &b)));
                 }
                 Op::Less => {
                     let (a, b) = self.pop2();
@@ -4139,7 +4129,7 @@ impl Vm {
                         (Value::Int(x), Constant::Int(y)) => *x != *y,
                         (Value::Float(x), Constant::Float(y)) => *x != *y,
                         (Value::String(x), Constant::String(y)) => x != y,
-                        _ => local != &constant_to_value(constant),
+                        _ => !values_equal(local, &constant_to_value(constant)),
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -4152,7 +4142,7 @@ impl Vm {
                         (Value::Int(x), Constant::Int(y)) => *x == *y,
                         (Value::Float(x), Constant::Float(y)) => *x == *y,
                         (Value::String(x), Constant::String(y)) => x == y,
-                        _ => local == &constant_to_value(constant),
+                        _ => values_equal(local, &constant_to_value(constant)),
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -4210,12 +4200,7 @@ impl Vm {
                 }
                 Op::TestNotEqualJump(offset) => {
                     let (a, b) = self.pop2();
-                    let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => a != b,
-                    };
-                    if !result {
+                    if values_equal(&a, &b) {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
@@ -4371,25 +4356,19 @@ impl Vm {
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let a = &self.stack[base + slot_a as usize];
-                    let b = &self.stack[base + slot_b as usize];
-                    let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => a == b,
-                    };
-                    self.stack.push(Value::Bool(result));
+                    let equal = values_equal(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                    );
+                    self.stack.push(Value::Bool(equal));
                 }
                 Op::NotEqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let a = &self.stack[base + slot_a as usize];
-                    let b = &self.stack[base + slot_b as usize];
-                    let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => a != b,
-                    };
-                    self.stack.push(Value::Bool(result));
+                    let equal = values_equal(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                    );
+                    self.stack.push(Value::Bool(!equal));
                 }
                 Op::PopNull => {
                     self.stack.pop();
@@ -5478,6 +5457,26 @@ fn scalar_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
     }
 }
 
+/// `a == b` as the `==` and `!=` operators define it, on both engines: Ints
+/// and Bools inline, everything else through `enum_aware_equal`, which the
+/// tree-walker's operators call too. Every general arm that compares two
+/// values for `==` or `!=` decides with this, fused or not: `Equal`,
+/// `NotEqual`, `TestNotEqualJump`, `EqualLocalLocal`, `NotEqualLocalLocal`,
+/// and `EqualLocalConst`/`NotEqualLocalConst` past their inline pairs.
+///
+/// `PartialEq` on `Value` is not this equality. It compares two instances by
+/// pointer, so two equal enum values built apart (any payload variant, or an
+/// `enum_field` read rebuilt from storage) differ under it. `TestNotEqualJump`
+/// used it, and `if a != b` took the branch that `a != b` as a value did not.
+#[inline(always)]
+fn values_equal(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => x == y,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        _ => crate::interpreter::value::enum_aware_equal(a, b),
+    }
+}
+
 /// `value_matches_type`, without its allocation for the common primitive
 /// names: it lowercases the annotation on every call, and a typed function
 /// returns on every call.
@@ -5746,12 +5745,26 @@ mod tests {
         constants: Vec<Constant>,
         code: &[Op],
     ) -> Result<Value, crate::error::RuntimeError> {
+        run_bytecode_with_globals(constants, code, &[])
+    }
+
+    /// [`run_bytecode`] with `globals` defined first: `Op::GetGlobal` pushes
+    /// the values no constant can hold, such as instances.
+    fn run_bytecode_with_globals(
+        constants: Vec<Constant>,
+        code: &[Op],
+        globals: &[(&str, Value)],
+    ) -> Result<Value, crate::error::RuntimeError> {
         let mut proto = FunctionProto::new(String::new());
         proto.chunk.constants = constants;
         for op in code {
             proto.chunk.emit(*op, 1);
         }
-        Vm::new().execute(&Arc::new(proto))
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name.to_string(), value.clone());
+        }
+        vm.execute(&Arc::new(proto))
     }
 
     /// The fused local ops raise `Op::Add`'s overflow error where an Int
@@ -5917,6 +5930,273 @@ mod tests {
                 Err(err) => err,
             };
             assert!(err.to_string().contains(expected), "`{statement}`: {err}");
+        }
+    }
+
+    /// A class, as far as `==` is concerned: an enum value is an instance
+    /// carrying a `__variant` tag, so these tests need no enum declaration.
+    fn bare_class(name: &str) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            ..Default::default()
+        })
+    }
+
+    /// A unit variant read back from storage, as an `enum_field` read and
+    /// `Status.parse("Active")` build it: a new instance on every call.
+    fn stored_variant(class: &Rc<Class>, tag: &str) -> Value {
+        crate::interpreter::value::build_enum_value(class, &Value::String(tag.into()))
+    }
+
+    /// `Shape.Circle(radius)` as `__enum_construct` builds it: a new instance
+    /// on every call.
+    fn circle(shape: &Rc<Class>, radius: i64) -> Value {
+        let mut instance = crate::interpreter::value::Instance::new(shape.clone());
+        instance.set("__variant", Value::String("Circle".into()));
+        instance.set("radius", Value::Int(radius));
+        Value::Instance(Rc::new(RefCell::new(instance)))
+    }
+
+    /// Every op that decides `==` or `!=` compares enum values by value, as
+    /// the tree-walker does. `TestNotEqualJump` (the fused `if a != b`) and
+    /// the general arms of `EqualLocalLocal` and `NotEqualLocalLocal` used
+    /// `PartialEq`, which compares two instances by pointer: two equal enum
+    /// values built apart were "not equal" to them, and equal to `Equal`.
+    /// Built by hand, so the `*LocalLocal` and `*LocalConst` ops, which the
+    /// compiler does not emit yet, are covered too.
+    #[test]
+    fn enum_values_compare_by_value_in_every_equality_op() {
+        let status = bare_class("Status");
+        let shape = bare_class("Shape");
+        let shared = stored_variant(&status, "Active");
+        let point = || {
+            let mut instance = crate::interpreter::value::Instance::new(bare_class("Point"));
+            instance.set("x", Value::Int(1));
+            Value::Instance(Rc::new(RefCell::new(instance)))
+        };
+        // (pair, a, b, whether a == b)
+        let pairs = [
+            (
+                "two stored Status.Active",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Active"),
+                true,
+            ),
+            (
+                "Status.Active and Status.Inactive",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Inactive"),
+                false,
+            ),
+            ("two Circle(1)", circle(&shape, 1), circle(&shape, 1), true),
+            (
+                "Circle(1) and Circle(2)",
+                circle(&shape, 1),
+                circle(&shape, 2),
+                false,
+            ),
+            (
+                "Status.Active and Mode.Active",
+                stored_variant(&status, "Active"),
+                stored_variant(&bare_class("Mode"), "Active"),
+                false,
+            ),
+            ("one value twice", shared.clone(), shared, true),
+            // Not enums: an instance is still only equal to itself.
+            ("two plain instances, same fields", point(), point(), false),
+            ("two Ints", Value::Int(3), Value::Int(3), true),
+            (
+                "two Strings",
+                Value::String("a".into()),
+                Value::String("b".into()),
+                false,
+            ),
+        ];
+        const A: u16 = 0;
+        const B: u16 = 1;
+        const YES: u16 = 2;
+        const NO: u16 = 3;
+        let constants = || {
+            vec![
+                Constant::String("a".into()),
+                Constant::String("b".into()),
+                Constant::Bool(true),
+                Constant::Bool(false),
+            ]
+        };
+        // (op, the code after `a` and `b` are pushed as locals 1 and 2, and
+        // whether the Bool it returns answers "equal?" or "not equal?")
+        let shapes: [(&str, &[Op], bool); 5] = [
+            ("Equal", &[Op::Equal, Op::Return], true),
+            ("NotEqual", &[Op::NotEqual, Op::Return], false),
+            (
+                "EqualLocalLocal",
+                &[Op::EqualLocalLocal(1, 2), Op::Return],
+                true,
+            ),
+            (
+                "NotEqualLocalLocal",
+                &[Op::NotEqualLocalLocal(1, 2), Op::Return],
+                false,
+            ),
+            // `if a != b { true } else { false }`: equal operands jump over
+            // the `true` to the `false`.
+            (
+                "TestNotEqualJump",
+                &[
+                    Op::TestNotEqualJump(2),
+                    Op::Constant(YES),
+                    Op::Return,
+                    Op::Constant(NO),
+                    Op::Return,
+                ],
+                false,
+            ),
+        ];
+        for (pair, a, b, equal) in &pairs {
+            let globals = [("a", a.clone()), ("b", b.clone())];
+            for &(op, tail, answers_equal) in &shapes {
+                let code = [&[Op::GetGlobal(A), Op::GetGlobal(B)][..], tail].concat();
+                let answer = run_bytecode_with_globals(constants(), &code, &globals)
+                    .unwrap_or_else(|e| panic!("{op} on {pair}: {e}"));
+                assert_eq!(
+                    answer,
+                    Value::Bool(*equal == answers_equal),
+                    "{op} on {pair}"
+                );
+            }
+        }
+
+        // `EqualLocalConst` and `NotEqualLocalConst` take their right side
+        // from the constant pool, which holds no instances. Past their inline
+        // pairs they must still answer what `Equal` does: an enum is not its
+        // tag, and the Int 3 equals the Float 3.0.
+        let pool = vec![
+            Constant::String("a".into()),
+            Constant::String("Active".into()),
+            Constant::Int(3),
+            Constant::Float(3.0),
+        ];
+        let locals = [
+            ("a stored Status.Active", stored_variant(&status, "Active")),
+            ("the Int 3", Value::Int(3)),
+        ];
+        for (label, local) in &locals {
+            let globals = [("a", local.clone())];
+            for constant in 1..pool.len() as u16 {
+                let run = |tail: &[Op]| {
+                    let code = [&[Op::GetGlobal(A)][..], tail].concat();
+                    run_bytecode_with_globals(pool.clone(), &code, &globals)
+                        .unwrap_or_else(|e| panic!("{label}, constant {constant}: {e}"))
+                };
+                let Value::Bool(equal) = run(&[Op::Constant(constant), Op::Equal, Op::Return])
+                else {
+                    panic!("Equal answers a Bool: {label}, constant {constant}");
+                };
+                assert_eq!(
+                    run(&[Op::EqualLocalConst(1, constant), Op::Return]),
+                    Value::Bool(equal),
+                    "EqualLocalConst: {label}, constant {constant}"
+                );
+                assert_eq!(
+                    run(&[Op::NotEqualLocalConst(1, constant), Op::Return]),
+                    Value::Bool(!equal),
+                    "NotEqualLocalConst: {label}, constant {constant}"
+                );
+            }
+        }
+    }
+
+    /// The conditions the peephole fuses into `TestNotEqualJump` (an `if`,
+    /// an `elsif`, a `while`, a ternary, a postfix `if` and a guard clause on
+    /// `!=`) branch the way `!=` evaluates, on equal enum values built apart.
+    /// `status != WANTED` has the shape of `if order.status != Status.Paid`.
+    /// The values come in as globals, so no enum declaration is needed.
+    #[test]
+    fn not_equal_conditions_compare_enum_values_by_value() {
+        let source = r#"
+def guarded(status)
+  return "guard " if status != WANTED
+
+  ""
+end
+
+def conditions(status)
+  seen = ""
+  if status != WANTED
+    seen = seen + "if "
+  end
+  if status == nil
+    seen = seen + "nil "
+  elsif status != WANTED
+    seen = seen + "elsif "
+  end
+  rounds = 0
+  while status != WANTED
+    rounds += 1
+    break
+  end
+  seen = seen + "while " if rounds > 0
+  seen = seen + (status != WANTED ? "ternary " : "")
+  seen = seen + "postfix " if status != WANTED
+  seen + guarded(status)
+end
+
+let result = conditions(STATUS)
+"#;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        // The test is about the fused op: every `!=` condition must be one.
+        for (function, expected_fused) in [("guarded", 1), ("conditions", 5)] {
+            let code = module
+                .main
+                .chunk
+                .constants
+                .iter()
+                .find_map(|constant| match constant {
+                    Constant::Function(proto) if proto.name == function => {
+                        Some(proto.chunk.code.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("the function {function}"));
+            let fused = code
+                .iter()
+                .filter(|op| matches!(op, Op::TestNotEqualJump(_)))
+                .count();
+            assert_eq!(fused, expected_fused, "{function}: {code:?}");
+            assert!(!code.contains(&Op::NotEqual), "{function}: {code:?}");
+        }
+
+        let status = bare_class("Status");
+        let shape = bare_class("Shape");
+        let cases = [
+            (
+                "two stored Status.Active",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Active"),
+                "",
+            ),
+            ("two Circle(1)", circle(&shape, 1), circle(&shape, 1), ""),
+            (
+                "Status.Active and Status.Inactive",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Inactive"),
+                "if elsif while ternary postfix guard ",
+            ),
+        ];
+        for (pair, value, wanted, expected) in cases {
+            let mut vm = Vm::new();
+            vm.globals.insert("STATUS".to_string(), value);
+            vm.globals.insert("WANTED".to_string(), wanted);
+            vm.execute(&module.main)
+                .unwrap_or_else(|e| panic!("{pair}: {e}"));
+            assert_eq!(
+                vm.globals.get("result"),
+                Some(&Value::String(expected.into())),
+                "{pair}"
+            );
         }
     }
 
