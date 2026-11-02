@@ -38,6 +38,13 @@ pub struct Linter {
     /// rules to distinguish "truly undefined" from "defined elsewhere in
     /// this file". Populated at the start of `lint()`.
     pub(crate) program_names: std::collections::HashSet<String>,
+    /// `true` while linting code whose `this` is the class itself rather than
+    /// an instance: a `static { … }` block, a `static def`, and class-level
+    /// statements. A closure stored there (`this.before_action = fn(req) {…}`)
+    /// is held by the class, which lives for the whole process, so
+    /// `smell/closure-cycle` does not apply. A lambda body resets it: its
+    /// `this` is whatever the lambda is later called with.
+    pub(crate) class_level_this: bool,
 }
 
 impl Linter {
@@ -48,6 +55,7 @@ impl Linter {
             diagnostics: Vec::new(),
             depth: 0,
             program_names: std::collections::HashSet::new(),
+            class_level_this: false,
         }
     }
 

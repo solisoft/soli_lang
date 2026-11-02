@@ -189,6 +189,7 @@ this.on_save = fn(record) { this.log(record) }
 
 # Instead: keep the name, call the method when needed
 this.on_save = "log"</code></pre>
+                <p class="text-gray-400 mt-2">Only instance code is checked. Where <code>this</code> is the class &mdash; a <code>static { &hellip; }</code> block, a <code>static def</code>, class-level statements &mdash; the closure is held by a class that lives as long as the process, so the documented controller hooks (<code>this.before_action = fn(req) { &hellip; }</code>, <code>this.after_action = fn(req, response) { &hellip; }</code>) are not flagged. The body of such a lambda is instance code again: a closure it stores on <code>this</code> is flagged.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
