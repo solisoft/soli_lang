@@ -549,8 +549,9 @@ mod tests {
     /// `s[i]` through GetIndex, GetLocalIndex (a local indexed by a local)
     /// and GetNestedIndex (`h[s[i]]`), by character on ASCII and non-ASCII
     /// text, with negative indexes counted in characters; and `for ch in s`
-    /// yields one character per step. The tree-walker cannot iterate a
-    /// string at all, so this one is pinned on the VM alone.
+    /// yields one character per step. The tree-walker side of `for ch in s`
+    /// is pinned by the differential harness
+    /// (`for_in_string_iterates_characters`).
     #[test]
     fn string_index_and_iteration_on_the_vm() {
         let cases: &[(&str, &str)] = &[

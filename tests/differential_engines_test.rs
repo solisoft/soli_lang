@@ -2487,6 +2487,53 @@ attempt(e, -6)
 attempt(e, 5)
 attempt("", -1)"##,
     ),
+    (
+        // `for ch in s` yields one-character strings on both engines. The
+        // tree-walker raised `cannot iterate over string` while the VM
+        // iterated, so a string that reached the loop through an untyped
+        // parameter or return value worked on one engine only (and the
+        // checker refused a visible String). Covers non-ASCII text, the
+        // index variable, break/next, an empty string, a closure-capturing
+        // body (the tree-walker's per-iteration environment path), and
+        // reassigning the variable mid-loop (the loop keeps its own handle).
+        "for_in_string_iterates_characters",
+        r##"def get(x)
+  x
+end
+s = get("héllo 😀日")
+for ch in s
+  print(ch)
+end
+for ch, i in s
+  print("#{i}:#{ch}")
+end
+for ch in "abc"
+  print(ch.upcase)
+end
+out = []
+for ch in get("abcdef")
+  next if ch == "b"
+  break if ch == "e"
+
+  out.push(ch)
+end
+print(out)
+for ch in get("")
+  print("never")
+end
+fns = []
+for ch in get("xyz")
+  fns.push(fn() { ch })
+end
+print(fns.map { |f| f() })
+word = get("ab")
+seen = []
+for ch in word
+  word = "zzzz"
+  seen.push(ch)
+end
+print(seen, word)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

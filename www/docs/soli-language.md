@@ -685,6 +685,12 @@ end
 # 1: banana
 # 2: cherry
 
+# Iterate over a string: one character (a one-character String) at a time,
+# not one byte — "é" and "😀" are single steps
+for ch, i in "héllo"
+  print("#{i}: #{ch}")  # 0: h, 1: é, 2: l, 3: l, 4: o
+end
+
 # Iterate with range
 for i in range(0, 5)
   print(i);  # 0, 1, 2, 3, 4
