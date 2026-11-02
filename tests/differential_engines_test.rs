@@ -2175,6 +2175,61 @@ end
 print(total)
 print([h.x, h.keys, s.present?, s.class])"##,
     ),
+    (
+        // A static call resolves in one walk of the chain and is called from
+        // there: a subclass's static hides its superclass's (one reads
+        // `this`, the other does not), an inherited one, defaults, recursion,
+        // a method `extend` mixed in, a native static, and a wrong arity.
+        "static_calls_resolve_once",
+        r##"module Twice
+  def twice(n)
+    n * 2
+  end
+end
+
+class Base
+  static def who
+    this
+  end
+
+  static def label(n)
+    "base #{n}"
+  end
+end
+
+class Svc < Base
+  extend Twice
+
+  static def who
+    "svc"
+  end
+
+  static def compute(n, m = 10)
+    n + m
+  end
+
+  static def fact(n)
+    return 1 if n <= 1
+
+    n * Svc.fact(n - 1)
+  end
+end
+
+print(Base.who() == Base)
+print(Svc.who())
+print(Svc.compute(1))
+print(Svc.compute(1, 2))
+print(Svc.compute(3))
+print(Svc.fact(5))
+print(Svc.label(4))
+print(Svc.twice(21))
+print(Math.floor(2.7))
+try
+  Svc.compute()
+catch e
+  print("arity")
+end"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

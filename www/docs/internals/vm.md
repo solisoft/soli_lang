@@ -109,6 +109,14 @@ Everything else — a native or bound callee, a default parameter, a `[key, valu
 
 The memo is valid for one `RESTRICTED_MEMBERS_EPOCH`. **Code that adds a name to a class's `private_members` or `protected_members` after the class exists must call `note_restricted_methods_declared()`.** Where the flag must not change (a nested `private class`), call `note_restricted_members_changed()` instead. Skip both and every class below keeps a stale memo and stops refusing that name. A cloned `Class` starts with an empty memo. `restricted_member_tests` (`value.rs`) and `privacy_check_tests` (`vm_classes.rs`) count lookups, walks and frame scans, so a lost shortcut shows up as a test failure. The `privacy_*` differential cases pin the verdicts.
 
+### Static calls
+
+`Klass.name(args)` resolves in one walk up the chain (`resolve_static_callee`, `vm_calls.rs`) and is called from there. On each class, receiver first: its bytecode statics (`vm_static_methods`), its cached plain statics (`vm_plain_static_methods`), then the tree-walker's own `static_methods` and the methods `extend` mixed in. So a subclass's static hides its superclass's, whichever form either is in, as on the tree-walker.
+
+Under `soli serve` the app's classes come from the tree-walker, so most statics are tree-walker `static def`s. The first call compiles one. A static that reads `this` is compiled as a method and registered in the defining class's `vm_static_methods`; it runs with the class it was called on as `this`. Any other static is compiled as a plain function, the same bytecode `call_native_wrapper` would make, and runs with no class on the frame. When it is one of the class's own `static_methods`, its `VmClosure` is kept in `vm_plain_static_methods`, so the next call costs two ahash probes and allocates nothing. That map never changes once the class is built, and a cloned `Class` starts with an empty cache. An `extend`ed method is compiled but not cached, because reopening a module replaces those. A view VM (`tree_walk_functions`) leaves plain statics to the tree-walker, as it does other functions.
+
+When no class of the chain has the static, a native static of a non-model class (`Math.floor`, `DateTime.utc`) is called directly. Model natives, which take the class as their first argument, still go through `op_get_property`. So do static fields, the reflection surface, dynamic finders and, last of all, the class's `method_missing`.
+
 ## `Vm`
 
 ```rust

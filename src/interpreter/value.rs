@@ -1692,6 +1692,12 @@ pub struct Class {
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
     pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
+    /// Bytecode for this class's own tree-walker `static def`s that do not
+    /// read `this`, compiled by the VM as plain functions on their first call
+    /// so later calls skip the name lookups and the closure allocation. Only
+    /// entries of `static_methods` land here, and that map never changes once
+    /// the class is built; a clone starts empty (see [`PlainStaticCache`]).
+    pub vm_plain_static_methods: PlainStaticCache,
     /// Memoized result of [`Class::is_model_subclass`]. The superclass chain
     /// and class names are fixed at construction, so the walk's result can
     /// never change for a given `Class` value. Instance member access checks
@@ -1743,6 +1749,52 @@ pub struct Class {
     /// Memo for [`Class::restricted_method`]: always `Default::default()`
     /// outside this module.
     pub restricted_names_memo: RefCell<RestrictedNames>,
+}
+
+/// [`Class::vm_plain_static_methods`]: plain-function bytecode for a class's
+/// own `static def`s, by name.
+///
+/// Cloning gives an empty cache rather than a copy. A class is rebuilt by
+/// cloning it and replacing some of its maps (`op_add_method`, a reopened
+/// class), and the clone's `static_methods` may name a different function
+/// than the original's did; it compiles its own entries on first call. The
+/// map itself is created on the first insert, so a class nobody calls a
+/// static on never seeds an `ahash` state.
+#[derive(Default)]
+pub struct PlainStaticCache(RefCell<Option<HashMap<String, Rc<VmClosure>, AHasher>>>);
+
+impl PlainStaticCache {
+    /// The cached bytecode for `name`, if it was compiled.
+    #[inline]
+    pub fn get(&self, name: &str) -> Option<Rc<VmClosure>> {
+        self.0.borrow().as_ref()?.get(name).cloned()
+    }
+
+    /// Remember the bytecode compiled for `name`.
+    pub fn insert(&self, name: &str, closure: Rc<VmClosure>) {
+        self.0
+            .borrow_mut()
+            .get_or_insert_with(HashMap::default)
+            .insert(name.to_string(), closure);
+    }
+}
+
+impl Clone for PlainStaticCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl fmt::Debug for PlainStaticCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names: Vec<String> = self
+            .0
+            .borrow()
+            .as_ref()
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default();
+        f.debug_tuple("PlainStaticCache").field(&names).finish()
+    }
 }
 
 /// The names the classes of one chain declare private or protected, as
@@ -1881,6 +1933,7 @@ impl Default for Class {
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_defaults_memo: Cell::new(None),
@@ -1932,6 +1985,7 @@ impl Class {
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_defaults_memo: Cell::new(None),
