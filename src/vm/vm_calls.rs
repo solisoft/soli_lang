@@ -161,6 +161,20 @@ pub(crate) fn jit_compile_method_with_base(
     Ok(arc)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the `call_method_slow_path` entries on this thread.
+    static SLOW_PATH_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many times `call_method_slow_path` has run on this thread,
+/// for a test to tell a call that entered its method directly from one that
+/// dispatched by name.
+#[cfg(test)]
+fn slow_path_calls() -> usize {
+    SLOW_PATH_CALLS.with(std::cell::Cell::get)
+}
+
 // Whether a view helper's body can run on the view VM. Keyed by the body
 // allocation. Only consulted for a function whose closure is the shared
 // helper env, and dropped whenever helpers are reloaded — an address the
@@ -1984,6 +1998,8 @@ impl Vm {
         argc: usize,
         name: &str,
     ) -> Result<(), RuntimeError> {
+        #[cfg(test)]
+        SLOW_PATH_CALLS.with(|calls| calls.set(calls.get() + 1));
         if matches!(self.stack[receiver_idx], Value::QueryBuilder(_)) {
             let span = self.current_span();
             let args = self.stack.split_off(receiver_idx + 1);
@@ -2449,7 +2465,7 @@ impl Vm {
     /// defaults. `class` is the frame's class (`None` for a plain function).
     /// The span is computed only on the cold error branches.
     #[inline]
-    fn push_method_frame(
+    pub(super) fn push_method_frame(
         &mut self,
         closure: Rc<VmClosure>,
         argc: usize,
@@ -2830,6 +2846,175 @@ impl Vm {
 pub struct CallableBatch {
     saved_depth: usize,
     frames_before: usize,
+}
+
+#[cfg(test)]
+mod implicit_self_call_tests {
+    //! A bare call inside an instance method (`_step(i)`, no `@`) resolves
+    //! once, in `SelfOrGlobalCallee`, which leaves its decision on the stack:
+    //! `CallSelfOrGlobal` enters a compiled method directly instead of
+    //! dispatching by name, which probed globals and walked the class chain a
+    //! second time.
+    use super::slow_path_calls;
+    use crate::interpreter::value::Value;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src` on the VM; return its `result` global and how many times it
+    /// entered `call_method_slow_path`.
+    fn run(src: &str) -> (Value, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = slow_path_calls();
+        vm.execute(&module.main).expect("vm");
+        let spent = slow_path_calls() - start;
+        (vm.globals.get("result").cloned().expect("result"), spent)
+    }
+
+    const LOOP: &str = r#"
+class Base
+  def inherited(i)
+    i * 10
+  end
+end
+
+class Counter < Base
+  def run(n)
+    total = 0
+    i = 0
+    while i < n
+      total = total + _step(i) + inherited(1) + _add(_step(1), _step(2))
+      i = i + 1
+    end
+    total
+  end
+
+  private
+
+  def _step(i)
+    i
+  end
+
+  def _add(a, b)
+    a + b
+  end
+end
+result = new Counter().run(__N__)
+"#;
+
+    /// The bare calls in the loop never reach the slow path: only the outer
+    /// `counter.run(n)` does, whatever `n` is.
+    #[test]
+    fn bare_calls_to_compiled_methods_skip_the_slow_path() {
+        let (one, spent_one) = run(&LOOP.replace("__N__", "1"));
+        let (ten, spent_ten) = run(&LOOP.replace("__N__", "10"));
+        assert_eq!(one, Value::Int(13));
+        assert_eq!(ten, Value::Int(45 + 10 * 13));
+        assert_eq!(
+            spent_one, spent_ten,
+            "a bare call to a compiled method must not dispatch by name"
+        );
+        assert_eq!(spent_one, 1, "only `run` itself takes the slow path");
+    }
+
+    /// The marker `SelfOrGlobalCallee` pushes is dropped on every path: a
+    /// global callee, a method callee, and an error raised among the
+    /// arguments and rescued in the same method.
+    #[test]
+    fn the_marker_never_outlives_its_call() {
+        let src = r#"
+def twice(x)
+  x * 2
+end
+
+class Probe
+  def run(n)
+    out = []
+    i = 0
+    while i < n
+      out.push(twice(_id(i)))
+      boom = 0
+      try
+        boom = _id(_fail(i))
+      catch e
+        boom = -1
+      end
+      out.push(boom)
+      i = i + 1
+    end
+    out
+  end
+
+  def _id(x)
+    x
+  end
+
+  def _fail(x)
+    throw "no"
+  end
+end
+result = new Probe().run(3)
+"#;
+        let (result, _) = run(src);
+        let Value::Array(items) = result else {
+            panic!("expected an array, got {result:?}");
+        };
+        let items: Vec<Value> = items.borrow().clone();
+        assert_eq!(
+            items,
+            vec![
+                Value::Int(0),
+                Value::Int(-1),
+                Value::Int(2),
+                Value::Int(-1),
+                Value::Int(4),
+                Value::Int(-1),
+            ]
+        );
+    }
+
+    /// An unknown bare name raises "Undefined variable" before its arguments
+    /// run, as the tree-walker resolves the callee first.
+    #[test]
+    fn unknown_bare_name_raises_before_the_arguments_run() {
+        let src = r##"
+class Probe
+  ran: Int
+
+  def run
+    @ran = 0
+    msg = ""
+    try
+      nope(@_bump)
+    catch e
+      msg = "#{e}"
+    end
+    [msg, @ran]
+  end
+
+  def _bump
+    @ran = @ran + 1
+    1
+  end
+end
+result = new Probe().run
+"##;
+        let (result, _) = run(src);
+        let Value::Array(items) = result else {
+            panic!("expected an array, got {result:?}");
+        };
+        let items: Vec<Value> = items.borrow().clone();
+        let Value::String(msg) = &items[0] else {
+            panic!("expected a message, got {items:?}");
+        };
+        assert!(
+            msg.as_str().contains("Undefined variable") && msg.as_str().contains("nope"),
+            "unexpected message: {msg}"
+        );
+        assert_eq!(items[1], Value::Int(0), "the arguments must not run");
+    }
 }
 
 #[cfg(test)]

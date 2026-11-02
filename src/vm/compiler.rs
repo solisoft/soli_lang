@@ -1102,8 +1102,11 @@ fn stack_effect(op: Op) -> i32 {
         // [this, args…] collapse to the result: net -argc.
         CallSuperInit(argc) | CallSuperMethod(_, argc) => -(argc as i32),
         CallGlobal(_, argc) | GetGlobalCall(_, argc) => 1 - argc as i32,
-        SelfOrGlobal(_) | SelfOrGlobalCallee(_) | MarkPrivate(_) | MarkProtected(_) => 0,
-        CallSelfOrGlobal(_, argc) => -(argc as i32),
+        SelfOrGlobal(_) | MarkPrivate(_) | MarkProtected(_) => 0,
+        // `this` becomes the callee, and the resolution marker is pushed on
+        // top; the call collapses `[callee, marker, args…]` to the result.
+        SelfOrGlobalCallee(_) => 1,
+        CallSelfOrGlobal(_, argc) => -(argc as i32) - 1,
         Closure(_) => 1,
         Return => 0,
         // Collections.

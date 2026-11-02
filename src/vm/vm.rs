@@ -2043,16 +2043,22 @@ impl Vm {
                     }
                 }
                 Op::SelfOrGlobal(name_idx) => {
-                    let name = self.read_string_constant_owned(name_idx);
+                    // The pool's own `SoliStr`: inline for a short name, a
+                    // refcount bump for a long one — no allocation.
+                    let name = self.read_string_constant(name_idx);
+                    let name = name.as_str();
                     let this = self.pop();
-                    if let Some(value) = self.global_or_namespaced(&name) {
+                    if let Some(value) = self.global_or_namespaced(name) {
                         self.push(value);
-                    } else if Self::has_instance_method(&this, &name) {
+                    } else if Self::has_instance_method(&this, name) {
                         let span = self.current_span();
-                        let value = self.op_get_property_member(&this, &name, span)?;
+                        let value = self.op_get_property_member(&this, name, span)?;
                         self.push(value);
                     } else {
-                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                        return Err(RuntimeError::undefined_variable(
+                            name.to_string(),
+                            self.current_span(),
+                        ));
                     }
                 }
                 Op::MarkPrivate(name_idx) => {
@@ -2071,25 +2077,76 @@ impl Vm {
                     }
                 }
                 Op::SelfOrGlobalCallee(name_idx) => {
-                    let name = self.read_string_constant_owned(name_idx);
-                    if let Some(value) = self.global_or_namespaced(&name) {
+                    // Decide once, before the arguments run, and leave the
+                    // decision on the stack for `CallSelfOrGlobal`: it neither
+                    // probes globals nor walks the class chain again.
+                    let name = self.read_string_constant(name_idx);
+                    let name = name.as_str();
+                    if let Some(value) = self.global_or_namespaced(name) {
                         let top = self.stack.len() - 1;
                         self.stack[top] = value;
-                    } else if !Self::has_instance_method(self.stack.last().unwrap(), &name) {
-                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                        // `Null`: call the global.
+                        self.push(Value::Null);
+                    } else {
+                        let found = match self.stack.last() {
+                            Some(Value::Instance(inst)) => {
+                                let class = inst.borrow().class.clone();
+                                match class.find_vm_method_with_class(name) {
+                                    // The class that defines the compiled
+                                    // method: the call reads it from there.
+                                    Some((_, defining)) => Some(Value::Class(defining)),
+                                    None if class.find_method(name).is_some() => {
+                                        // `true`: a tree-walker method, dispatched by name.
+                                        Some(Value::Bool(true))
+                                    }
+                                    None => None,
+                                }
+                            }
+                            _ => None,
+                        };
+                        let Some(marker) = found else {
+                            return Err(RuntimeError::undefined_variable(
+                                name.to_string(),
+                                self.current_span(),
+                            ));
+                        };
+                        self.push(marker);
                     }
                 }
                 Op::CallSelfOrGlobal(name_idx, argc) => {
                     let argc = argc as usize;
-                    let name = self.read_string_constant_owned(name_idx);
-                    if self.globals.contains_key(&name) {
-                        let span = self.current_span();
-                        self.call_value(argc, span)?;
-                    } else {
-                        // `SelfOrGlobalCallee` left `this` as the receiver: a
-                        // call on self, so a private method is allowed.
-                        let receiver_idx = self.stack.len() - 1 - argc;
-                        self.call_method_slow_path(receiver_idx, argc, &name)?;
+                    // `[callee, marker, args…]`: drop the marker so the
+                    // callee sits right below the arguments.
+                    let marker = self.stack.remove(self.stack.len() - 1 - argc);
+                    match marker {
+                        Value::Null => {
+                            let span = self.current_span();
+                            self.call_value(argc, span)?;
+                        }
+                        marker => {
+                            // `this` is the receiver: a call on self, so a
+                            // private method is allowed.
+                            let name = self.read_string_constant(name_idx);
+                            let name = name.as_str();
+                            let compiled = match &marker {
+                                Value::Class(defining) => defining
+                                    .vm_methods
+                                    .borrow()
+                                    .get(name)
+                                    .cloned()
+                                    .map(|closure| (closure, defining.clone())),
+                                _ => None,
+                            };
+                            match compiled {
+                                Some((closure, defining)) => {
+                                    self.push_method_frame(closure, argc, Some(defining))?
+                                }
+                                None => {
+                                    let receiver_idx = self.stack.len() - 1 - argc;
+                                    self.call_method_slow_path(receiver_idx, argc, name)?;
+                                }
+                            }
+                        }
                     }
                 }
                 Op::CallMethod(name_idx, argc) => {

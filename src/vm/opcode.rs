@@ -335,11 +335,16 @@ pub enum Op {
     MarkProtected(u16),
     /// The callee half of a bare call inside an instance method (`_tax(2)`):
     /// `this` is on the stack; replaced by the global when one exists, left in
-    /// place as the receiver when `this` has the method.
+    /// place as the receiver when `this` has the method. Either way a marker
+    /// is pushed above it that records the decision, so the call half does not
+    /// redo it: `Null` for the global, the defining `Class` for a compiled
+    /// method, `true` for any other method. Neither: "Undefined variable",
+    /// before the arguments run.
     SelfOrGlobalCallee(u16),
-    /// The call half: calls the global, or dispatches the method on the
-    /// receiver `SelfOrGlobalCallee` left — a call on `self`, so a private
-    /// method is allowed.
+    /// The call half, on `[callee, marker, args…]`: drops the marker, then
+    /// calls the global, or enters the method on the receiver
+    /// `SelfOrGlobalCallee` left — a call on `self`, so a private method is
+    /// allowed.
     CallSelfOrGlobal(u16, u8),
     /// No-op: does nothing (placeholder after peephole optimization)
     Nop,

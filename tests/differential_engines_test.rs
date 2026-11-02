@@ -1781,6 +1781,16 @@ print(o)
         "def shared\n  \"global\"\nend\n\nclass C\n  def run\n    label = \"local\"\n    [label, shared()]\n  end\n\n  def label\n    \"method\"\n  end\n\n  def shared\n    \"method\"\n  end\nend\nprint(new C().run)",
     ),
     (
+        // A bare call resolves once, before its arguments run, and the VM's
+        // call op reuses that decision: a compiled method entered with its
+        // defining class (so `super` inside an inherited one climbs from
+        // there), defaults filled, globals still first, nested bare calls,
+        // bare calls in a block, and an error among the arguments rescued in
+        // the same method, after which bare calls still work.
+        "implicit_self_calls_resolve_once",
+        "def twice(x)\n  x * 2\nend\n\nclass Base\n  def greet(name, suffix = \"!\")\n    \"hi #{name}#{suffix}\"\n  end\n\n  def scale(x)\n    x * 10\n  end\n\n  def lineage\n    \"base\"\n  end\nend\n\nclass Mid < Base\n  def lineage\n    \"mid+\" + super.lineage()\n  end\nend\n\nclass Child < Mid\n  def scale(x)\n    super.scale(x) + 1\n  end\n\n  def run\n    out = []\n    out.push(greet(\"a\"))\n    out.push(greet(\"b\", \"?\"))\n    out.push(scale(2))\n    out.push(lineage())\n    out.push(_add(_add(1, 2), twice(_add(3, 4))))\n    out.push([1, 2, 3].map { |n| _add(n, twice(n)) })\n    caught = \"none\"\n    try\n      caught = _add(_fail(1), 2)\n    catch e\n      caught = \"caught #{e}\"\n    end\n    out.push(caught)\n    out.push(_add(5, 6))\n    out\n  end\n\n  private\n\n  def _add(a, b)\n    a + b\n  end\n\n  def _fail(x)\n    throw \"boom\"\n  end\nend\nprint(new Child().run)",
+    ),
+    (
         // `record[field] = value` with a computed name writes the field, as
         // `record.<field> = value` does; a model's `_` metadata stays
         // read-only. It used to be "invalid assignment target".
