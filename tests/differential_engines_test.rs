@@ -1633,6 +1633,15 @@ end"##,
         "sort_with_comparator",
         "names = [\"bb\", \"a\", \"ccc\"]\nlongest_first = names.sort do |a, b|\n  b.length() - a.length()\nend\nprint(longest_first)\nprint(names.sort(fn(a, b) a.length() - b.length()))\nprint([3, 1.5, 2].sort())\nprint([1, 2, 3].sort(fn(a, b) \"x\"))",
     ),
+    // `sort` without a comparator: homogeneous Int / String / non-NaN Float
+    // arrays take a std-sort fast path, everything else the tolerant merge
+    // sort (now over indices). Both engines share the helper; this pins that
+    // they agree on every shape, -0.0 vs 0.0 keeping input order, mixes,
+    // and a longer shuffled array that exercises many merge levels.
+    (
+        "sort_default_order_shapes",
+        "print([5, -3, 9, 0, 9, 2].sort())\nprint([\"pear\", \"Apple\", \"apple\", \"\", \"z\"].sort())\nprint([0.0, -0.0, 1.5, -2.25, -0.0, 0.0].sort())\nprint([3, 1.5, 2, -0.5].sort())\nprint([5, \"a\", 3, nil, 1].sort())\nprint([{\"k\": 2}, 1, {\"k\": 1}].sort())\nxs = (0..300).map { |k| (k * 7919) % 300 }\nsorted = xs.sort\nprint(sorted.length, sorted[0], sorted[299], sorted == (0..300).map { |k| k })\nprint(xs[0], xs[1])\nwords = (0..120).map { |k| \"w#{(k * 37) % 120}\" }\nprint(words.sort()[0], words.sort()[1], words.sort()[119])\nprint([].sort, [1].sort)",
+    ),
     // A function's value is its last statement's, and a trailing `if` /
     // `unless` yields its taken branch's. The VM returned null unless the last
     // statement was a plain expression — an action ending in

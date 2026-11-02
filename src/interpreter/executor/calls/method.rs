@@ -1335,24 +1335,10 @@ impl Interpreter {
                 }
             });
         } else {
-            // The default ordering answers `Equal` across types, which is not
-            // transitive, so this needs the tolerant sort too.
-            crate::interpreter::executor::calls::array_ops::stable_sort_by(&mut result, |a, b| {
-                match (a, b) {
-                    (Value::Int(a), Value::Int(b)) => a.cmp(b),
-                    (Value::Float(a), Value::Float(b)) => {
-                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                    }
-                    (Value::String(a), Value::String(b)) => a.cmp(b),
-                    (Value::Int(a), Value::Float(b)) => (*a as f64)
-                        .partial_cmp(b)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    (Value::Float(a), Value::Int(b)) => a
-                        .partial_cmp(&(*b as f64))
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    _ => std::cmp::Ordering::Equal,
-                }
-            });
+            // Same helper as the VM: a total-order fast path for homogeneous
+            // arrays, the tolerant merge sort otherwise (the default ordering
+            // answers `Equal` across types, which is not transitive).
+            crate::interpreter::executor::calls::array_ops::sort_values_default(&mut result);
         }
 
         Ok(Value::Array(Rc::new(RefCell::new(result))))

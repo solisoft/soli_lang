@@ -548,26 +548,11 @@ impl Vm {
                     );
                     return Ok(Value::Array(Rc::new(RefCell::new(sorted))));
                 }
-                // Tolerant sort: the default ordering answers `Equal` across
-                // types, which is not transitive, and `slice::sort_by` panics
-                // when it detects that.
-                crate::interpreter::executor::calls::array_ops::stable_sort_by(
-                    &mut sorted,
-                    |a, b| match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-                        (Value::Float(x), Value::Float(y)) => {
-                            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-                        }
-                        (Value::String(x), Value::String(y)) => x.cmp(y),
-                        (Value::Int(x), Value::Float(y)) => (*x as f64)
-                            .partial_cmp(y)
-                            .unwrap_or(std::cmp::Ordering::Equal),
-                        (Value::Float(x), Value::Int(y)) => x
-                            .partial_cmp(&(*y as f64))
-                            .unwrap_or(std::cmp::Ordering::Equal),
-                        _ => std::cmp::Ordering::Equal,
-                    },
-                );
+                // Total-order fast path for homogeneous Int/String/Float
+                // arrays, the tolerant merge sort otherwise: the default
+                // ordering answers `Equal` across types, which is not
+                // transitive, and `slice::sort_by` panics when it detects that.
+                crate::interpreter::executor::calls::array_ops::sort_values_default(&mut sorted);
                 Ok(Value::Array(Rc::new(RefCell::new(sorted))))
             }
             // ActiveRecord-style chainable query methods that also work on a
