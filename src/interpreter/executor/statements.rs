@@ -422,43 +422,28 @@ impl Interpreter {
         iterable: &Expr,
         body: &Stmt,
     ) -> RuntimeResult<ControlFlow> {
-        // Range fast path: `for i in a..b` iterates directly instead of
+        // Range fast path: `for i in a..b`, with or without parentheses around
+        // the range, counts from one bound to the other instead of
         // materializing the range into an array first (eval_range collects
-        // the whole range into a Vec, which is wasteful for large ranges).
+        // the whole range into a Vec, which is wasteful for large ranges and
+        // refused past SOLI_MAX_RANGE_LEN). The VM does the same.
+        let range = iterable.without_parens();
         if let ExprKind::Binary {
             left,
             operator: BinaryOp::Range,
             right,
-        } = &iterable.kind
+        } = &range.kind
         {
-            let left_val = self.evaluate(left)?;
-            let right_val = self.evaluate(right)?;
-            match (&left_val, &right_val) {
-                (Value::Int(start), Value::Int(end)) => {
-                    let mut current = *start;
-                    let end = *end;
-                    return self.run_for_loop(variable, index_variable, body, || {
-                        if current < end {
-                            let val = Value::Int(current);
-                            current += 1;
-                            Some(val)
-                        } else {
-                            None
-                        }
-                    });
+            let (mut current, end) = self.evaluate_range_bounds(left, right, range.span)?;
+            return self.run_for_loop(variable, index_variable, body, || {
+                if current < end {
+                    let val = Value::Int(current);
+                    current += 1;
+                    Some(val)
+                } else {
+                    None
                 }
-                _ => {
-                    // Same error eval_range would produce for non-int operands.
-                    return Err(RuntimeError::type_error(
-                        format!(
-                            "range (..) expects two integers, got {} and {}",
-                            left_val.type_name(),
-                            right_val.type_name()
-                        ),
-                        iterable.span,
-                    ));
-                }
-            }
+            });
         }
 
         let iter_value = self.evaluate(iterable)?;

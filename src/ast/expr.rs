@@ -15,6 +15,17 @@ impl Expr {
     pub fn new(kind: ExprKind, span: Span) -> Self {
         Self { kind, span }
     }
+
+    /// The expression inside any parentheses around this one: `((a..b))` is
+    /// `a..b`. A `Grouping` records the parentheses for the formatter, and
+    /// evaluating it evaluates what it holds.
+    pub fn without_parens(&self) -> &Expr {
+        let mut expr = self;
+        while let ExprKind::Grouping(inner) = &expr.kind {
+            expr = inner;
+        }
+        expr
+    }
 }
 
 /// A named argument in a function call: `name: value`

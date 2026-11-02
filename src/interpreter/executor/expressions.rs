@@ -678,6 +678,33 @@ impl Interpreter {
         ))
     }
 
+    /// The elements a comprehension walks: a copy of an array's, or for a
+    /// range `a..b`, with or without parentheses around it, its integers
+    /// counted one at a time as a `for` loop does, with no array built and
+    /// no `SOLI_MAX_RANGE_LEN` limit. The VM's comprehensions do the same.
+    fn comprehension_items(
+        &mut self,
+        iterable: &Expr,
+    ) -> RuntimeResult<Box<dyn Iterator<Item = Value>>> {
+        let range = iterable.without_parens();
+        if let ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &range.kind
+        {
+            let (start, end) = self.evaluate_range_bounds(left, right, range.span)?;
+            return Ok(Box::new((start..end).map(Value::Int)));
+        }
+        match self.evaluate(iterable)? {
+            Value::Array(arr) => {
+                let items: Vec<Value> = arr.borrow().iter().cloned().collect();
+                Ok(Box::new(items.into_iter()))
+            }
+            _ => Err(RuntimeError::type_error("expected array", iterable.span)),
+        }
+    }
+
     /// Evaluate list comprehension.
     fn evaluate_list_comprehension(
         &mut self,
@@ -686,13 +713,7 @@ impl Interpreter {
         iterable: &Expr,
         condition: Option<&Expr>,
     ) -> RuntimeResult<Value> {
-        let iter_value = self.evaluate(iterable)?;
-        let items: Vec<Value> = match iter_value {
-            Value::Array(arr) => arr.borrow().iter().cloned().collect(),
-            _ => {
-                return Err(RuntimeError::type_error("expected array", iterable.span));
-            }
-        };
+        let items = self.comprehension_items(iterable)?;
 
         let mut result = Vec::new();
         for item in items {
@@ -732,13 +753,7 @@ impl Interpreter {
         iterable: &Expr,
         condition: Option<&Expr>,
     ) -> RuntimeResult<Value> {
-        let iter_value = self.evaluate(iterable)?;
-        let items: Vec<Value> = match iter_value {
-            Value::Array(arr) => arr.borrow().iter().cloned().collect(),
-            _ => {
-                return Err(RuntimeError::type_error("expected array", iterable.span));
-            }
-        };
+        let items = self.comprehension_items(iterable)?;
 
         let mut result: crate::interpreter::value::HashPairs =
             crate::interpreter::value::HashPairs::default();

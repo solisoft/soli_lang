@@ -1556,27 +1556,8 @@ impl Compiler {
         self.emit(Op::Array(0), line); // empty result array, at result_slot
         self.add_local(String::new(), false); // anonymous result-array local
 
-        // Iterator setup (mirrors compile_for's range optimization).
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        // Iterator setup, as `compile_for`'s: a range is counted, not built.
+        let is_range = self.compile_iterable(iterable, line)?;
         // The iterable/range now lives on the iter_stack; value stack is back at
         // the result-array baseline.
         self.resync_stack_height();
@@ -1640,26 +1621,7 @@ impl Compiler {
         self.emit(Op::Hash(0), line); // empty result hash, at result_slot
         self.add_local(String::new(), false); // anonymous result-hash local
 
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        let is_range = self.compile_iterable(iterable, line)?;
         self.resync_stack_height();
 
         let loop_start = self.current_offset();

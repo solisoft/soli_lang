@@ -88,6 +88,45 @@ const CASES: &[(&str, &str)] = &[
         "for_range_empty",
         "let s = 0\nfor v in 5..5 { s = s + 1 }\nfor v in 5..2 { s = s + 1 }\nprint(s)",
     ),
+    (
+        // A range in parentheses is counted through, as a bare one is, by a
+        // `for` loop and by comprehensions: the same elements, index, closure
+        // captures, `next` and `break`. A range used as a value is an array.
+        "parenthesized_range_iterates_like_a_bare_one",
+        r##"def total(n)
+  sum = 0
+  for i in (0..n)
+    sum += i
+  end
+  sum
+end
+
+print(total(5), total(0), total(-3))
+for i in ((2..5))
+  print(i)
+end
+for value, index in (10..13)
+  print(value, index)
+end
+fns = []
+for i in (0..3)
+  fns.push(fn() { i * 10 })
+end
+print(fns.map { |f| f() })
+for i in (0..20)
+  next if i % 3 != 0
+  break if i > 10
+
+  print(i)
+end
+low = 3
+high = 7
+print([i * i for i in (low..high)], [i for i in ((0..10)) if i % 4 == 0])
+print({(i): i + 1 for i in (1..4)}, [i for i in (5..1)], {(i): i for i in (2..2)})
+print([[i, i * 2] for i in (0..2)], [j for j in (high..high + 2)])
+numbers = (1..4)
+print(numbers, numbers.length, (1..4).each { |x| x }, (0..3).map { |x| x * 2 })"##,
+    ),
     // --- closures capturing loop variables / locals ---
     (
         "while_closure_capture",
@@ -2140,5 +2179,126 @@ fn tree_walker_and_vm_agree_without_the_type_checker() {
         let vm = run_as(source, &tag, true, false);
         assert_ne!(tw, "<non-success>", "{name}: the tree-walker must run it");
         assert_eq!(tw, vm, "{name}: the tree-walker and the VM disagree");
+    }
+}
+
+/// Run `source` on one engine, as `run_as` does, with `env` added to its
+/// environment. Returns whether it exited successfully, its stdout and its
+/// stderr.
+fn run_with_env(source: &str, tag: &str, vm: bool, env: &[(&str, &str)]) -> (bool, String, String) {
+    let mut path = std::env::temp_dir();
+    path.push(format!("soli_diff_{}_{}.sl", std::process::id(), tag));
+    std::fs::write(&path, source).expect("write temp source");
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_soli"));
+    cmd.arg(&path).envs(env.iter().copied());
+    if vm {
+        cmd.arg("--vm").env("SOLI_VM_OPTIONAL_LET", "1");
+    } else {
+        cmd.arg("--tree");
+    }
+    let output = cmd.output().expect("run soli");
+    let _ = std::fs::remove_file(&path);
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+/// A range that a `for` loop or a comprehension counts through is never built,
+/// so `SOLI_MAX_RANGE_LEN` does not limit it, with or without parentheses
+/// around it, on either engine. Both engines used to build a parenthesized
+/// one as an array, and refuse it past the limit, and the tree-walker built a
+/// comprehension's bare one too. A range used as a value is still built, and
+/// still refused.
+#[test]
+fn ranges_that_loops_count_through_are_not_built() {
+    let limit = [("SOLI_MAX_RANGE_LEN", "100")];
+    let counted = r##"def walk(n)
+  sum = 0
+  for i in (0..n)
+    sum += i
+  end
+  for i in ((0..n))
+    sum += 1
+  end
+  for i, k in 0..n
+    sum += k
+  end
+  sum
+end
+
+print(walk(1000))
+print([i for i in (0..1000) if i % 250 == 0], [i for i in 0..1000 if i > 997])
+print({(i): i for i in (0..1000) if i % 400 == 0}.length, {(i): i for i in 0..1000 if i < 2})
+"##;
+    for vm in [false, true] {
+        let (ok, stdout, stderr) =
+            run_with_env(counted, &format!("range_counted_{vm}"), vm, &limit);
+        assert!(ok, "vm: {vm}: {stderr}");
+        assert_eq!(
+            stdout, "1000000\n[0, 250, 500, 750] [998, 999]\n3 {0 => 0, 1 => 1}\n",
+            "vm: {vm}"
+        );
+    }
+
+    let built = [
+        "numbers = (0..1000)\nprint(numbers.length)\n",
+        "print((0..1000).map { |i| i }.length)\n",
+        "for i in (0..1000).reverse()\n  print(i)\nend\n",
+        "print([...(0..1000)].length)\n",
+    ];
+    for (idx, source) in built.iter().enumerate() {
+        for vm in [false, true] {
+            let tag = format!("range_built_{idx}_{vm}");
+            let (ok, stdout, stderr) = run_with_env(source, &tag, vm, &limit);
+            assert!(
+                !ok && stdout.is_empty() && stderr.contains("over the 100 limit"),
+                "{source} (vm: {vm}) must still be refused: {stdout}{stderr}"
+            );
+        }
+    }
+}
+
+/// A bound that is not an integer is reported at the range itself, with or
+/// without parentheses around it, in a `for` loop or a comprehension, on both
+/// engines (the VM words it `Range requires integer operands`). The VM used
+/// to report a bare range at its `for` statement, and the range of a
+/// comprehension compiled as a lambda at column 0.
+#[test]
+fn a_bound_that_is_not_an_integer_is_reported_at_the_range() {
+    let cases = [
+        (
+            "def f(a, b)\n  for i in (a..b)\n  end\nend\nf(1.5, 3)\n",
+            "2:13",
+        ),
+        (
+            "def f(a, b)\n  for i in a..b\n  end\nend\nf(1.5, 3)\n",
+            "2:12",
+        ),
+        (
+            "def f(a, b)\n  [i for i in (a..b)]\nend\nf(1.5, 3)\n",
+            "2:16",
+        ),
+        ("def f(a, b)\n  [i for i in a..b]\nend\nf(1.5, 3)\n", "2:15"),
+        (
+            "def f(a, b)\n  print({(i): i for i in ((a..b))})\nend\nf(1, \"3\")\n",
+            "2:28",
+        ),
+    ];
+    for (idx, (source, at)) in cases.iter().enumerate() {
+        for vm in [false, true] {
+            let tag = format!("range_bound_{idx}_{vm}");
+            let (ok, _, stderr) = run_with_env(source, &tag, vm, &[]);
+            let error = stderr
+                .lines()
+                .find(|line| line.starts_with("Error:"))
+                .unwrap_or_default();
+            assert!(
+                !ok && error.contains("integer") && error.ends_with(&format!(" at {at}")),
+                "{source} (vm: {vm}) must fail at {at}: {stderr}"
+            );
+        }
     }
 }

@@ -684,6 +684,13 @@ for i in range(0, 5)
   print(i);  # 0, 1, 2, 3, 4
 end
 
+# Or with the range operator, which also stops before its end. A loop counts
+# through a..b, in parentheses or not, without building an array first
+# (range() builds one), so it has no SOLI_MAX_RANGE_LEN limit either.
+for i in 0..5
+  print(i)  # 0, 1, 2, 3, 4
+end
+
 # Range with step
 for i in range(0, 10, 2)
   print(i);  # 0, 2, 4, 6, 8
