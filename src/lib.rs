@@ -1442,6 +1442,7 @@ fn rebind_closure(
                 return_type: func.return_type.clone(),
                 cached_env: std::cell::RefCell::new(None),
                 jit_cache: std::cell::RefCell::new(None),
+                jit_closure: std::cell::RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };

@@ -746,6 +746,7 @@ impl Interpreter {
                 return_type: None,
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             })

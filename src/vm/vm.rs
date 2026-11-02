@@ -944,16 +944,31 @@ impl Vm {
                 // every one of those rules and their errors.
                 Op::Call(argc) => {
                     let argc = argc as usize;
-                    let closure = match &self.stack[self.stack.len() - 1 - argc] {
-                        Value::VmClosure(closure)
-                            if closure.proto.param_names.len() == argc
-                                && self.frames.len() < MAX_CALL_DEPTH
-                                && closure.proto.kernel.is_none() =>
-                        {
-                            closure.clone()
+                    let callee_idx = self.stack.len() - 1 - argc;
+                    // An app-level `def` under serve is a tree-walker
+                    // `Function` whose VM closure is cached on it after the
+                    // first call: it enters here as a `VmClosure` does, and
+                    // takes that closure's place in the callee slot, as the
+                    // general arm's `call_compiled_function` leaves it.
+                    let fits = |closure: &VmClosure| {
+                        closure.proto.param_names.len() == argc && closure.proto.kernel.is_none()
+                    };
+                    if self.frames.len() >= MAX_CALL_DEPTH {
+                        break Some(op);
+                    }
+                    let (closure, from_function) = match &self.stack[callee_idx] {
+                        Value::VmClosure(closure) if fits(closure) => (closure.clone(), false),
+                        Value::Function(func) if !self.tree_walk_functions => {
+                            match super::vm_calls::cached_function_closure(func) {
+                                Some(closure) if fits(&closure) => (closure, true),
+                                _ => break Some(op),
+                            }
                         }
                         _ => break Some(op),
                     };
+                    if from_function {
+                        self.stack[callee_idx] = Value::VmClosure(closure.clone());
+                    }
                     enter_closure!(closure, argc);
                 }
                 Op::CallGlobal(name_idx, argc) => {
@@ -1790,8 +1805,19 @@ impl Vm {
                     // needed on the cold arity-error branch) and no
                     // call_value double dispatch — this is the hot path for
                     // every compiled function call (e.g. recursion).
-                    if let Value::VmClosure(closure) = &self.stack[callee_idx] {
-                        let closure = closure.clone();
+                    // A `Function` with its VM closure cached (see the fast
+                    // tier's `Op::Call`) is called as that closure.
+                    let (closure, from_function) = match &self.stack[callee_idx] {
+                        Value::VmClosure(closure) => (Some(closure.clone()), false),
+                        Value::Function(func) if !self.tree_walk_functions => {
+                            (super::vm_calls::cached_function_closure(func), true)
+                        }
+                        _ => (None, false),
+                    };
+                    if let Some(closure) = closure {
+                        if from_function {
+                            self.stack[callee_idx] = Value::VmClosure(closure.clone());
+                        }
                         if closure.proto.kernel.is_some() && self.try_kernel(&closure, argc) {
                             continue;
                         }

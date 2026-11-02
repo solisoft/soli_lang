@@ -176,6 +176,36 @@ pub(crate) fn jit_compile_method_with_base(
     Ok(arc)
 }
 
+/// The closure a VM call to `func` runs: the one cached on `func` when its
+/// proto is still `func.jit_cache`'s, so a call allocates nothing. `None`
+/// before the first call has made one, or once the proto changed.
+#[inline]
+pub(crate) fn cached_function_closure(func: &Function) -> Option<Rc<VmClosure>> {
+    let closure = func.jit_closure.borrow();
+    let closure = closure.as_ref()?;
+    let proto = func.jit_cache.borrow();
+    if Arc::ptr_eq(&closure.proto, proto.as_ref()?) {
+        Some(closure.clone())
+    } else {
+        None
+    }
+}
+
+/// The closure over `proto` for `func`: the cached one when it wraps this
+/// very proto, otherwise a new one, kept for the next call. The closure has
+/// no upvalues and is never mutated, so one serves every call.
+fn function_closure(func: &Function, proto: Arc<FunctionProto>) -> Rc<VmClosure> {
+    let mut slot = func.jit_closure.borrow_mut();
+    if let Some(closure) = slot.as_ref() {
+        if Arc::ptr_eq(&closure.proto, &proto) {
+            return closure.clone();
+        }
+    }
+    let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+    *slot = Some(closure.clone());
+    closure
+}
+
 // Whether a view helper's body can run on the view VM. Keyed by the body
 // allocation. Only consulted for a function whose closure is the shared
 // helper env, and dropped whenever helpers are reloaded — an address the
@@ -1671,7 +1701,7 @@ impl Vm {
         // `EngineFallback` from a view helper would demote the whole view.
         if self.tree_walk_functions {
             if let Some(proto) = view_helper_proto(func) {
-                return self.call_compiled_function(proto, argc, span);
+                return self.call_compiled_function(func, proto, argc, span);
             }
             let callee_idx = self.stack.len() - 1 - argc;
             let args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
@@ -1687,16 +1717,17 @@ impl Vm {
         let proto = jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
         })?;
-        self.call_compiled_function(proto, argc, span)
+        self.call_compiled_function(func, proto, argc, span)
     }
 
     fn call_compiled_function(
         &mut self,
+        func: &Function,
         proto: Arc<FunctionProto>,
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+        let closure = function_closure(func, proto);
         // Replace the Function value on the stack with the compiled VmClosure.
         let callee_idx = self.stack.len() - 1 - argc;
         self.stack[callee_idx] = Value::VmClosure(closure.clone());
@@ -3216,6 +3247,109 @@ end
         assert!(Arc::ptr_eq(&proto.unwrap(), &again));
     }
 
+    /// An app-level `def` under serve is a tree-walker `Function` in the VM
+    /// globals. Its first VM call compiles it and keeps the closure; every
+    /// later call runs that same closure — in the fast tier, in the general
+    /// arm (an omitted default), recursively — instead of allocating one per
+    /// call, and returns what the tree-walker returns.
+    #[test]
+    fn a_tree_walker_def_is_called_through_its_cached_closure() {
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+        use crate::vm::Compiler;
+
+        let mut vm = vm_with_app_classes(
+            r#"
+def util_add(acc, i)
+  acc + i
+end
+
+def with_default(a, b = 10)
+  a + b
+end
+
+def fact(n)
+  return 1 if n < 2
+
+  n * fact(n - 1)
+end
+"#,
+        );
+        let function = |vm: &Vm, name: &str| match vm.globals.get(name) {
+            Some(Value::Function(func)) => Rc::clone(func),
+            other => panic!("{name} is a tree-walker function, got {other:?}"),
+        };
+        let run = |vm: &mut Vm, source: &str| -> Result<Value, RuntimeError> {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            vm.reset();
+            vm.execute(&module.main)?;
+            Ok(vm.globals.get("x").cloned().unwrap_or(Value::Null))
+        };
+        let loop_source = "let x = 0\nfor i in 0..1000\n  x = util_add(x, i)\nend\n\
+                           x = x + with_default(1) + with_default(1, 2) + fact(10)";
+        let expected = Value::Int(499_500 + 11 + 3 + 3_628_800);
+
+        assert_eq!(run(&mut vm, loop_source).unwrap(), expected);
+        let add = function(&vm, "util_add");
+        let closure = add
+            .jit_closure
+            .borrow()
+            .clone()
+            .expect("the closure is kept");
+        assert!(Arc::ptr_eq(
+            &closure.proto,
+            add.jit_cache.borrow().as_ref().unwrap()
+        ));
+        let defaults = function(&vm, "with_default");
+        let defaults_closure = cached_function_closure(&defaults).expect("kept");
+        let fact = function(&vm, "fact");
+        let fact_closure = cached_function_closure(&fact).expect("kept");
+
+        // A second run reuses each closure.
+        assert_eq!(run(&mut vm, loop_source).unwrap(), expected);
+        assert!(Rc::ptr_eq(
+            &closure,
+            &cached_function_closure(&add).unwrap()
+        ));
+        assert!(Rc::ptr_eq(
+            &defaults_closure,
+            &cached_function_closure(&defaults).unwrap()
+        ));
+        assert!(Rc::ptr_eq(
+            &fact_closure,
+            &cached_function_closure(&fact).unwrap()
+        ));
+
+        // The function itself is still what the globals hold: `type` and
+        // arity probes see a function, not the closure.
+        assert!(matches!(
+            vm.globals.get("util_add"),
+            Some(Value::Function(_))
+        ));
+
+        // A wrong argument count is the arity error it was.
+        let err = run(&mut vm, "let x = util_add(1)").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                RuntimeError::WrongArity {
+                    expected: 2,
+                    got: 1,
+                    ..
+                }
+            ),
+            "an arity error: {err}"
+        );
+
+        // A closure over a proto that is no longer the cached one is never
+        // trusted: the next call makes a new one over the current proto.
+        let fresh = jit_compile_function(&Function::default(), std::iter::empty()).unwrap();
+        *add.jit_cache.borrow_mut() = Some(fresh);
+        assert!(cached_function_closure(&add).is_none());
+    }
+
     #[test]
     fn jit_compile_failure_is_uncatchable_fallback() {
         // A tree-walker function the VM cannot compile (here: its body makes a
@@ -3370,8 +3504,14 @@ end
             .borrow()
             .clone()
             .expect("a helper with no free name is compiled");
+        let closure = double
+            .jit_closure
+            .borrow()
+            .clone()
+            .expect("the helper's closure is kept");
 
-        // The second call is the cache hit: same proto, still the VM.
+        // The second call is the cache hit: same proto, still the VM, and
+        // the same closure rather than a new one.
         assert_eq!(
             call_on_view_vm(&double, "let x = double(22)"),
             Value::Int(44)
@@ -3379,6 +3519,10 @@ end
         assert!(std::sync::Arc::ptr_eq(
             &cached,
             &double.jit_cache.borrow().clone().unwrap()
+        ));
+        assert!(Rc::ptr_eq(
+            &closure,
+            &double.jit_closure.borrow().clone().unwrap()
         ));
 
         // The bench witness: a method call on the argument, no free name.

@@ -1903,6 +1903,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };
@@ -2024,6 +2025,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             })));
@@ -2408,6 +2410,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };

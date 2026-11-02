@@ -1436,6 +1436,11 @@ pub struct Function {
     /// Cached JIT-compiled FunctionProto — compiled once on first call,
     /// reused on subsequent calls.
     pub jit_cache: RefCell<Option<std::sync::Arc<crate::vm::chunk::FunctionProto>>>,
+    /// The VM closure over `jit_cache`'s proto (it has no upvalues), made on
+    /// the first VM call and reused by the next ones instead of a fresh
+    /// `Rc<VmClosure>` per call. Only trusted while its proto is the one in
+    /// `jit_cache` (`crate::vm::vm_calls::cached_function_closure`).
+    pub jit_closure: RefCell<Option<Rc<VmClosure>>>,
     /// Machine code for this function, when it is a top-level def typed
     /// Int/Float/Bool end to end (see `crate::native`). Tried first on each
     /// call; a declined call runs the body as usual.
@@ -1460,6 +1465,7 @@ impl Default for Function {
             return_type: None,
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            jit_closure: RefCell::new(None),
             binds_this: false,
             kernel: None,
         }
@@ -1484,6 +1490,7 @@ impl Function {
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            jit_closure: RefCell::new(None),
             binds_this: false,
             kernel: None,
         }
@@ -1506,6 +1513,7 @@ impl Function {
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            jit_closure: RefCell::new(None),
             binds_this: false,
             kernel: None,
         }
