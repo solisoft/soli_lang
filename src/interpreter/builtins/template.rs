@@ -138,6 +138,12 @@ pub(crate) fn helper_env() -> Option<Rc<RefCell<Environment>>> {
     VIEW_HELPER_ENV.with(|cell| cell.borrow().clone())
 }
 
+/// The names [`set_helper_request_context`] rebinds on the helpers' closure
+/// for every request. A view helper the VM compiles reads them from there on
+/// each call (`vm::vm_view_helpers`).
+pub(crate) const HELPER_REQUEST_NAMES: [&str; 5] =
+    ["req", "params", "session", "cookies", "headers"];
+
 pub fn set_helper_request_context(
     req: &Value,
     params: &Value,
@@ -195,7 +201,7 @@ pub fn clear_view_helpers() {
     // The view VM's "this helper compiles" cache is keyed by the body
     // allocation. A reload frees those bodies; the next helper must not
     // inherit a decision made for a recycled address.
-    crate::vm::vm_calls::clear_view_helper_vm_cache();
+    crate::vm::vm_view_helpers::clear_view_helper_vm_cache();
 }
 
 /// Get all registered view helpers.
@@ -233,7 +239,7 @@ pub fn view_helpers_present(helpers_dir: &Path) -> bool {
 pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     // Same reason as `clear_view_helpers`: the functions about to be
     // registered replace the ones the view VM may have compiled.
-    crate::vm::vm_calls::clear_view_helper_vm_cache();
+    crate::vm::vm_view_helpers::clear_view_helper_vm_cache();
     if !view_helpers_present(helpers_dir) {
         return Ok(0);
     }

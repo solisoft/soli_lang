@@ -1095,6 +1095,10 @@ impl ViewVm {
                 .collect();
         let mut vm = Vm::new();
         vm.tree_walk_functions = true;
+        // As the tree-walker does: a function the view calls (a view helper
+        // compiled here, a model method) that returns a value its declared
+        // return type does not admit raises instead of handing it back.
+        vm.check_return_types = true;
         vm.globals = WORKER_GLOBALS
             .with(|g| g.borrow().clone())
             .unwrap_or_else(|| names.clone());
@@ -1375,6 +1379,7 @@ mod tests {
     fn view_vm() -> Vm {
         let mut vm = Vm::new();
         vm.tree_walk_functions = true;
+        vm.check_return_types = true;
         vm.globals = crate::template::core_eval::template_env_bindings()
             .into_iter()
             .collect();

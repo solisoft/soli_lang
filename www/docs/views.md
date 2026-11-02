@@ -1462,7 +1462,8 @@ The rules are the tree-walker's:
 - A bare `clock` is the time, as `clock()` is: `<%= ((clock - @started) * 1000).round(2) %>` stays on the VM. A render whose data has a `clock` of its own (a controller's `@clock`), or an app that defines `clock` itself (a helper or a top-level function), is rendered on the tree-walker instead, which resolves `clock` as it always has.
 - A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout.
 - A `for` over a hash yields `[key, value]` pairs.
-- A helper from `app/helpers` whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name — `req`, `params`, `session`, `cookies`, `headers`, `flash`, another helper, a builtin — or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.
+- A helper from `app/helpers` runs on the VM with the view. The names it reads from its closure — builtins, the other helpers, component classes, `req`, `params`, `session`, `cookies`, `headers` — are read from that closure on every call, so a helper still sees the current request. A helper stays on the interpreter when it assigns a name its closure holds (`req = …`), names something its closure does not hold (a model class), calls `respond_to`, `render_json`, `grouped`, `with_transaction`, `after_commit`, `with_tenant`, `assert_raises`, `event` or `Factory`, reads a zero-argument helper or builtin without parentheses (`site_name` rather than `site_name()`: the interpreter calls it), or declares a function or keeps a lambda anywhere but in a call's arguments. A call that passes a zero-argument function to a parameter the helper reads bare runs on the interpreter too.
+- A function the view calls that returns a value its declared return type does not admit (`def label(n) -> String` returning nil) raises, as it does on the interpreter.
 
 If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. A view that wrote a function by name, or that the tree-walker then rendered without an error, renders on the tree-walker from then on, in that worker: the two engines disagree about it, and trying the VM again would render the page twice on every request. An error both engines raise is the view's or its data's, and the view stays compiled. Under `--dev` every view renders on the tree-walker.
 
@@ -1473,7 +1474,7 @@ If a compiled view fails while it renders, or writes a function by name (`<%= cu
 ```text
 [soli engine] view 'posts/_post.html.slv' renders on the interpreter: too small to gain from the VM
 [soli engine] layout 'layouts/application.html.slv' renders on the interpreter: layouts are not compiled
-[soli engine] view helper 'link_to' runs on the interpreter: it names `_safe_link_url`, `html_escape`
+[soli engine] view helper 'title' runs on the interpreter: it reads `site_name` without parentheses, which the interpreter calls
 [soli engine] view 'posts/index.html.slv' failed on the VM and rendered on the interpreter, which renders it from now on: …
 ```
 

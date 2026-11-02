@@ -161,104 +161,6 @@ pub(crate) fn jit_compile_method_with_base(
     Ok(arc)
 }
 
-// Whether a view helper's body can run on the view VM. Keyed by the body
-// allocation. Only consulted for a function whose closure is the shared
-// helper env, and dropped whenever helpers are reloaded — an address the
-// allocator reused for some other function is never looked up.
-thread_local! {
-    #[allow(clippy::missing_const_for_thread_local)]
-    static VIEW_HELPER_VM: RefCell<std::collections::HashMap<usize, bool>> =
-        RefCell::new(std::collections::HashMap::new());
-}
-
-/// Drop every cached "this helper compiles" decision. Called when view
-/// helpers are cleared or loaded again.
-pub(crate) fn clear_view_helper_vm_cache() {
-    VIEW_HELPER_VM.with(|cache| cache.borrow_mut().clear());
-}
-
-/// Bytecode for a view helper this VM can run itself, or `None` when the
-/// call stays on the tree-walker.
-///
-/// A view runs with `tree_walk_functions` because a helper reads `req` and
-/// the other request bindings through its closure, which the VM's globals
-/// do not follow. A helper that names nothing outside its parameters needs
-/// none of that, so it compiles. A free name, an assignment to a name the
-/// closure already holds, a method, a function from anywhere else, or a
-/// body the compiler refuses: the tree-walker, and not an `EngineFallback`
-/// — that would demote the whole view. `SOLI_ENGINE_LOG=1` names a view
-/// helper kept there and what kept it.
-fn view_helper_proto(func: &Function) -> Option<Arc<FunctionProto>> {
-    if func.is_method
-        || !crate::interpreter::builtins::template::is_view_helper_closure(&func.closure)
-    {
-        return None;
-    }
-    // The data address of the shared statements identifies the body.
-    let key = func.body.as_ptr() as usize;
-    let cached = VIEW_HELPER_VM.with(|cache| cache.borrow().get(&key).copied());
-    if cached == Some(false) {
-        return None;
-    }
-    if cached == Some(true) {
-        if let Some(proto) = func.jit_cache.borrow().clone() {
-            return Some(proto);
-        }
-    }
-
-    // Names the closure already has, so an assignment to one resolves as a
-    // global and is recorded. The worker's globals are the wrong set: `req`
-    // is not one of them, and a helper assigning it must stay interpreted.
-    // The proto is stored only when nothing was recorded, so the known-global
-    // set never changes the bytecode that actually runs.
-    let seen = Rc::new(RefCell::new(std::collections::HashSet::new()));
-    let names = func.closure.borrow().get_all_bindings().into_keys();
-    let seen_for_compile = Rc::clone(&seen);
-    let compiled = compile_function_proto(func, move |program, source_path| {
-        Compiler::compile_with_globals_recording(program, names, source_path, seen_for_compile)
-    });
-    let accepted = match compiled {
-        Ok(proto) if seen.borrow().is_empty() => {
-            *func.jit_cache.borrow_mut() = Some(proto);
-            true
-        }
-        rejected => {
-            crate::template::vm_template::engine_log(|| {
-                let why = match rejected {
-                    Err(e) => format!("the compiler refused it: {e}"),
-                    Ok(_) => format!("it names {}", quoted_names(&seen.borrow())),
-                };
-                format!("view helper '{}' runs on the interpreter: {why}", func.name)
-            });
-            false
-        }
-    };
-    VIEW_HELPER_VM.with(|cache| cache.borrow_mut().insert(key, accepted));
-    if accepted {
-        func.jit_cache.borrow().clone()
-    } else {
-        None
-    }
-}
-
-/// `` `a`, `b`, `c` ``, sorted, the first eight of them: the names that keep
-/// a view helper on the tree-walker, for `SOLI_ENGINE_LOG`.
-fn quoted_names(names: &std::collections::HashSet<String>) -> String {
-    const SHOWN: usize = 8;
-    let mut sorted: Vec<&str> = names.iter().map(String::as_str).collect();
-    sorted.sort_unstable();
-    let shown = sorted
-        .iter()
-        .take(SHOWN)
-        .map(|name| format!("`{name}`"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    match sorted.len().saturating_sub(SHOWN) {
-        0 => shown,
-        more => format!("{shown} and {more} more"),
-    }
-}
-
 /// Lay labelled arguments out in parameter order for `proto`, returning the
 /// slot values and a mask of which parameters were actually supplied.
 ///
@@ -582,6 +484,45 @@ impl Vm {
                 let (slots, supplied) =
                     bind_named_arguments(&closure.proto, positional, named, span)?;
                 self.call_closure_with_slots(closure, slots, supplied, None)
+            }
+            // A view (`tree_walk_functions`): a view helper binds its labels
+            // and runs here, its closure's names refilled as for a positional
+            // call; anything else, or a call `bind` refuses, runs on the
+            // tree-walker with its labels, as the positional path does.
+            // Compiling it against the view VM's globals would lose what the
+            // function reads from its closure (`req`, the other helpers).
+            Value::Function(ref func) if self.tree_walk_functions => {
+                if let Some(helper) = super::vm_view_helpers::view_helper(func) {
+                    let (slots, supplied) = bind_named_arguments(
+                        helper.proto(),
+                        positional.clone(),
+                        named.clone(),
+                        span,
+                    )?;
+                    if let Some(closure) = helper.bind(func, &slots) {
+                        self.stack[callee_idx] = Value::VmClosure(Rc::clone(&closure));
+                        return self.call_closure_with_slots(closure, slots, supplied, None);
+                    }
+                }
+                let func = Rc::clone(func);
+                let named: std::collections::HashMap<String, Value> = named
+                    .into_iter()
+                    .map(|(name, value)| (name.to_string(), value))
+                    .collect();
+                let mut interpreter = match &self.tree_walk_env {
+                    Some(env) => crate::interpreter::Interpreter::with_environment(env.clone()),
+                    None => crate::interpreter::Interpreter::for_bound_body(),
+                };
+                let result = interpreter.call_value_with_named(
+                    Value::Function(func),
+                    positional,
+                    named,
+                    None,
+                    span,
+                )?;
+                self.stack.pop();
+                self.push(result);
+                Ok(())
             }
             // Tree-walking function reached from compiled code: compile it,
             // then bind exactly as above.
@@ -1665,15 +1606,19 @@ impl Vm {
         // the call would swallow the VM's internal limitation as if it were an
         // application error — returning a rescue value instead of demoting.
         //
-        // A view sets this flag. A helper that needs nothing from its closure
-        // compiles and runs here; every other function still takes the
-        // interpreter below, and a body the compiler refuses does too — an
+        // A view sets this flag. A view helper compiles and runs here, its
+        // closure's names bound for this call (`vm_view_helpers`); every other
+        // function still takes the interpreter below, and so does a helper the
+        // compiler refuses or a call its arguments keep there — an
         // `EngineFallback` from a view helper would demote the whole view.
         if self.tree_walk_functions {
-            if let Some(proto) = view_helper_proto(func) {
-                return self.call_compiled_function(proto, argc, span);
-            }
             let callee_idx = self.stack.len() - 1 - argc;
+            if let Some(helper) = super::vm_view_helpers::view_helper(func) {
+                if let Some(closure) = helper.bind(func, &self.stack[callee_idx + 1..]) {
+                    self.stack[callee_idx] = Value::VmClosure(Rc::clone(&closure));
+                    return self.call_closure(closure, argc, span);
+                }
+            }
             let args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
             self.stack.pop();
             let mut interpreter = match &self.tree_walk_env {
@@ -2821,173 +2766,5 @@ mod tests {
                 Ok(_) => panic!("{}: expected EngineFallback, got Ok", source),
             }
         }
-    }
-
-    /// Puts `env` in the view-helper slot for the test and puts the previous
-    /// one back, including when the test panics.
-    struct HelperEnvGuard {
-        prev: Option<Rc<RefCell<crate::interpreter::environment::Environment>>>,
-    }
-
-    impl HelperEnvGuard {
-        fn set(env: Option<Rc<RefCell<crate::interpreter::environment::Environment>>>) -> Self {
-            let prev = crate::interpreter::builtins::template::set_view_helper_env_for_test(env);
-            clear_view_helper_vm_cache();
-            Self { prev }
-        }
-    }
-
-    impl Drop for HelperEnvGuard {
-        fn drop(&mut self) {
-            crate::interpreter::builtins::template::set_view_helper_env_for_test(self.prev.take());
-            clear_view_helper_vm_cache();
-        }
-    }
-
-    fn helper_fn(
-        source: &str,
-        closure: Rc<RefCell<crate::interpreter::environment::Environment>>,
-    ) -> Rc<Function> {
-        use crate::ast::stmt::StmtKind;
-        use crate::lexer::Scanner;
-        use crate::parser::Parser;
-        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
-        let program = Parser::new(tokens).parse().expect("parser error");
-        let StmtKind::Function(decl) = &program.statements[0].kind else {
-            panic!("expected a function declaration");
-        };
-        Rc::new(Function::from_decl(decl, closure, None))
-    }
-
-    /// Run `source` (it binds `x`) on a view VM: tree-walker functions, except
-    /// a helper the VM can compile.
-    fn call_on_view_vm(func: &Rc<Function>, source: &str) -> Value {
-        use crate::lexer::Scanner;
-        use crate::parser::Parser;
-        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
-        let program = Parser::new(tokens).parse().expect("parser error");
-        let module = Compiler::compile(&program).expect("compile error");
-        let mut vm = Vm::new();
-        vm.tree_walk_functions = true;
-        vm.globals
-            .insert(func.name.clone(), Value::Function(Rc::clone(func)));
-        vm.execute(&module.main)
-            .unwrap_or_else(|err| panic!("{source}: {err}"));
-        vm.globals.get("x").cloned().unwrap_or(Value::Null)
-    }
-
-    #[test]
-    fn a_helper_with_no_free_name_runs_on_the_view_vm() {
-        let env = Rc::new(RefCell::new(
-            crate::interpreter::environment::Environment::new(),
-        ));
-        let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
-        let double = helper_fn("def double(n)\n  n * 2\nend\n", Rc::clone(&env));
-
-        assert_eq!(
-            call_on_view_vm(&double, "let x = double(21)"),
-            Value::Int(42)
-        );
-        let cached = double
-            .jit_cache
-            .borrow()
-            .clone()
-            .expect("a helper with no free name is compiled");
-
-        // The second call is the cache hit: same proto, still the VM.
-        assert_eq!(
-            call_on_view_vm(&double, "let x = double(22)"),
-            Value::Int(44)
-        );
-        assert!(std::sync::Arc::ptr_eq(
-            &cached,
-            &double.jit_cache.borrow().clone().unwrap()
-        ));
-
-        // The bench witness: a method call on the argument, no free name.
-        let label = helper_fn("def label(row)\n  row.title.upcase\nend\n", Rc::clone(&env));
-        assert_eq!(
-            call_on_view_vm(&label, "let row = {\"title\": \"hi\"}\nlet x = label(row)"),
-            Value::str("HI")
-        );
-        assert!(label.jit_cache.borrow().is_some());
-    }
-
-    #[test]
-    fn a_helper_that_reads_or_assigns_a_closure_name_stays_interpreted() {
-        let env = Rc::new(RefCell::new(
-            crate::interpreter::environment::Environment::new(),
-        ));
-        env.borrow_mut()
-            .define("req".to_string(), Value::str("Ada"));
-        let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
-
-        let who = helper_fn("def who()\n  req\nend\n", Rc::clone(&env));
-        assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
-        assert!(
-            who.jit_cache.borrow().is_none(),
-            "a helper that reads req stays on the tree-walker"
-        );
-
-        let clobber = helper_fn("def clobber()\n  req = \"no\"\nend\n", Rc::clone(&env));
-        call_on_view_vm(&clobber, "let x = clobber()");
-        assert_eq!(
-            env.borrow().get("req"),
-            Some(Value::str("no")),
-            "assigning req updates the helper closure"
-        );
-        assert!(clobber.jit_cache.borrow().is_none());
-
-        // A nested function's free name counts too. `inner` with no
-        // parentheses runs, so the value is what `req` holds.
-        env.borrow_mut()
-            .define("req".to_string(), Value::str("Ada"));
-        let outer = helper_fn(
-            "def outer()\n  def inner()\n    req\n  end\n  inner\nend\n",
-            Rc::clone(&env),
-        );
-        assert_eq!(
-            call_on_view_vm(&outer, "let x = outer()"),
-            Value::str("Ada")
-        );
-        assert!(outer.jit_cache.borrow().is_none());
-    }
-
-    #[test]
-    fn a_function_outside_the_helper_env_stays_interpreted() {
-        let closure = Rc::new(RefCell::new(
-            crate::interpreter::environment::Environment::new(),
-        ));
-        closure
-            .borrow_mut()
-            .define("req".to_string(), Value::str("Ada"));
-        // The helper slot points somewhere else, so `who` is not a view helper
-        // even though its own closure has `req`.
-        let other = Rc::new(RefCell::new(
-            crate::interpreter::environment::Environment::new(),
-        ));
-        let _guard = HelperEnvGuard::set(Some(other));
-        let who = helper_fn("def who()\n  req\nend\n", closure);
-        assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
-        assert!(who.jit_cache.borrow().is_none());
-    }
-
-    /// What `SOLI_ENGINE_LOG` says kept a view helper on the tree-walker:
-    /// the names, sorted and quoted, the first eight of them.
-    #[test]
-    fn the_names_that_keep_a_helper_interpreted_read_sorted_and_capped() {
-        fn names(list: &[&str]) -> std::collections::HashSet<String> {
-            list.iter().map(|name| name.to_string()).collect()
-        }
-        assert_eq!(
-            quoted_names(&names(&["html_escape", "_safe_link_url"])),
-            "`_safe_link_url`, `html_escape`"
-        );
-        let many: Vec<String> = (0..10).map(|i| format!("n{i}")).collect();
-        let many: Vec<&str> = many.iter().map(String::as_str).collect();
-        assert_eq!(
-            quoted_names(&names(&many)),
-            "`n0`, `n1`, `n2`, `n3`, `n4`, `n5`, `n6`, `n7` and 2 more"
-        );
     }
 }
