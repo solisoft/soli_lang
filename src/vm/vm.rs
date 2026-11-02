@@ -169,6 +169,9 @@ pub struct Vm {
     /// every evaluation of it — see `Op::Closure`. Direct-mapped by the
     /// prototype's address; each entry keeps its prototype alive.
     closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    /// What each `CallMethod` / `CallMethodById` site found on each receiver
+    /// class it saw, for the fast tier's method calls (`Vm::fast_method`).
+    method_cache: super::method_cache::MethodCache,
     /// Emptied arrays nothing else references, handed back by an iterator
     /// loop (a `map` callback's `[key, value]` pair once its entry is taken
     /// out) for `Op::Array` to fill instead of allocating. Bounded.
@@ -446,6 +449,58 @@ impl Vm {
         true
     }
 
+    /// The compiled method `receiver.name(args…)` runs, for the fast tier's
+    /// `CallMethod` and `CallMethodById` at `site` with `argc` arguments above
+    /// the receiver: the frame the general arms' compiled-method call
+    /// (`call_method_slow_path` → `push_method_frame`) opens, when it opens
+    /// one with nothing to pad or raise. The receiver is an instance whose
+    /// class chain has `name` compiled, the method takes exactly `argc`
+    /// parameters, the depth limit is not reached and the privacy check lets
+    /// the call through. `None` hands the op to the general arm, which raises
+    /// a refused call after checking it again.
+    ///
+    /// For an instance, the general path tries nothing before
+    /// `find_vm_method_with_class` that could answer differently: `send` is
+    /// re-dispatched only on a class with no `send` of its own, where the
+    /// lookup misses too. So a hit decides the call, before fields, natives,
+    /// `method_missing` and AST-only methods. A change there must be
+    /// mirrored here. The lookup goes through `method_cache`; a miss is
+    /// remembered too, so a native method's site hands off after one probe.
+    #[inline]
+    fn fast_method(
+        &mut self,
+        site: *const Op,
+        argc: usize,
+        name: &str,
+    ) -> Option<super::method_cache::FoundMethod> {
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            return None;
+        }
+        let receiver = &self.stack[self.stack.len() - 1 - argc];
+        let Value::Instance(inst) = receiver else {
+            return None;
+        };
+        let epoch = crate::interpreter::value::vm_methods_epoch();
+        let frames = &self.frames;
+        let found = {
+            let instance = inst.borrow();
+            self.method_cache
+                .lookup(site, &instance.class, name, epoch, || {
+                    frames.last().unwrap().closure.proto.clone()
+                })
+        };
+        let (method, defining) = found?;
+        if method.proto.param_names.len() != argc {
+            return None;
+        }
+        if crate::interpreter::value::restricted_methods_declared()
+            && self.check_private_value(receiver, name).is_err()
+        {
+            return None;
+        }
+        Some((method, defining))
+    }
+
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(256),
@@ -455,6 +510,7 @@ impl Vm {
             open_upvalue_top: 0,
             spare_callback_loop: None,
             closure_cache: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
+            method_cache: Default::default(),
             array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
@@ -725,16 +781,21 @@ impl Vm {
         /// Enter a compiled closure whose callee and exactly `argc` arguments
         /// are on top of the stack — the case the general `Call` arm handles
         /// with no default to fill and no error to raise — and switch the
-        /// cached state to it.
+        /// cached state to it. A method call passes the class defining the
+        /// method, the frame's class for `super`; its receiver, in the callee
+        /// slot, is the method's `this`.
         macro_rules! enter_closure {
-            ($closure:expr, $argc:expr) => {{
+            ($closure:expr, $argc:expr) => {
+                enter_closure!($closure, $argc, None)
+            };
+            ($closure:expr, $argc:expr, $class:expr) => {{
                 self.frames.last_mut().unwrap().ip = ip;
                 let stack_base = self.stack.len() - $argc - 1;
                 self.frames.push(CallFrame::new(
                     $closure,
                     stack_base,
                     self.iter_stack.len(),
-                    None,
+                    $class,
                     positional_supplied_mask($argc),
                 ));
                 (code, code_len, constants, base, ip) = load_frame!();
@@ -1211,6 +1272,27 @@ impl Vm {
                     self.stack
                         .insert(insert_at, Value::VmClosure(closure.clone()));
                     enter_closure!(closure, argc);
+                }
+                // `post.summary()`, `@helper(x)`, `this.total(a, b)` on an
+                // instance whose class chain has the method compiled: the
+                // general arms' compiled-method call (`Vm::fast_method`), the
+                // receiver staying below the arguments as `this`. A native or
+                // AST-only method, `method_missing`, `send`, omitted
+                // parameters, the depth limit and a refused call go to the
+                // general arm.
+                Op::CallMethod(name_idx, argc) | Op::CallMethodById(name_idx, argc, _) => {
+                    let argc = argc as usize;
+                    // SAFETY: as for `Op::Constant`.
+                    let name = match unsafe { &*constants.add(name_idx as usize) } {
+                        Constant::String(name) => name.as_ref(),
+                        _ => break Some(op),
+                    };
+                    // The op's own address: `ip` is already past it.
+                    let site = code.wrapping_add(ip - 1);
+                    let Some((method, defining)) = self.fast_method(site, argc, name) else {
+                        break Some(op);
+                    };
+                    enter_closure!(method, argc, Some(defining));
                 }
                 Op::Return => {
                     let depth_after = self.frames.len() - 1;
@@ -9481,5 +9563,406 @@ result = [g, local_writes(), o["inner"]]
             }
         }
         assert_eq!(seen, 5);
+    }
+}
+
+#[cfg(test)]
+mod method_fast_tier_tests {
+    //! `obj.m(args)`, `@m(args)` and `this.m(args)` on an instance complete
+    //! in the fast tier whenever the general arm would open the compiled
+    //! method's frame with nothing to pad or raise: the receiver's class
+    //! chain has the method compiled, it takes exactly the arguments given,
+    //! the depth limit is not reached and the privacy check lets the call
+    //! through. The method comes from the call site's entry in the VM's
+    //! method cache, which any change to some class's `vm_methods` stales.
+    //! Everything else — a native or AST-only method, `send`,
+    //! `method_missing`, omitted parameters, a refusal, the depth limit —
+    //! still reaches the general arm, which answers as before.
+    //!
+    //! "General" below counts `call_method_slow_path` entries: every
+    //! instance call the fast tier hands back enters it (a refused call
+    //! raises before it, a `send` enters it twice).
+    use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::vm_calls::slow_path_calls;
+    use crate::vm::Vm;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Run `src` with `__N__` replaced by `n` and `globals` bound; return its
+    /// `result` global and the general method calls it made.
+    fn run(src: &str, n: usize, globals: Vec<(String, Value)>) -> (Value, usize) {
+        let src = src.replace("__N__", &n.to_string());
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name, value);
+        }
+        let start = slow_path_calls();
+        vm.execute(&module.main).expect("vm");
+        let general = slow_path_calls() - start;
+        (vm.globals.get("result").cloned().expect("result"), general)
+    }
+
+    fn text(s: &str) -> Value {
+        Value::String(s.into())
+    }
+
+    fn array(values: Vec<Value>) -> Value {
+        Value::Array(Rc::new(RefCell::new(values)))
+    }
+
+    const SHAPES: &str = r##"
+module Greets
+  def hello(who)
+    "#{who} #{@name}"
+  end
+end
+
+class Shape
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  include Greets
+
+  def area
+    0
+  end
+
+  def scaled(k)
+    @area() * k
+  end
+
+  def label
+    "shape"
+  end
+
+  def describe(k)
+    "#{this.label()}:#{@scaled(k)}"
+  end
+
+  def fact(n)
+    return 1 if n <= 1
+
+    n * @fact(n - 1)
+  end
+
+  def length
+    7
+  end
+end
+
+class Square < Shape
+  side: Int
+
+  new(side: Int)
+    super("square")
+    @side = side
+  end
+
+  def area
+    @side * @side
+  end
+
+  def label
+    "square"
+  end
+
+  def describe(k)
+    "[#{super.describe(k)}]"
+  end
+end
+
+class Cube < Square
+end
+
+def total(shapes, n)
+  sum = 0
+  seen = []
+  i = 0
+  while i < n
+    shapes.each do |shape|
+      sum = sum + shape.scaled(i) + shape.length()
+    end
+    seen = [shapes[1].describe(2), shapes[2].describe(3), shapes[2].fact(5), shapes[2].hello("hi"), shapes[0]&.area()]
+    i = i + 1
+  end
+  [sum, seen]
+end
+
+result = total([new Shape("blob"), new Square(3), new Cube(2)], __N__)
+"##;
+
+    /// Every method call of `SHAPES`'s loop completes in the fast tier, so
+    /// the general calls do not grow with the loop: own, inherited and
+    /// overridden methods; `@area()` in `Shape#scaled`, one site seeing three
+    /// classes; `this.m()`, `@m(x)` and recursion; `length`, a name
+    /// `CallMethodById` carries; a method an included module brings;
+    /// `obj&.m()`; calls from a block. `cube.describe` runs
+    /// `Square#describe`, whose `super` reaches `Shape#describe` only
+    /// because the frame records the defining class, not the receiver's.
+    #[test]
+    fn method_calls_stay_in_the_fast_tier() {
+        let mut general = Vec::new();
+        for (n, sum) in [(3, 102), (30, 6285)] {
+            let (result, spent) = run(SHAPES, n, Vec::new());
+            assert_eq!(
+                result,
+                array(vec![
+                    Value::Int(sum),
+                    array(vec![
+                        text("[square:18]"),
+                        text("[square:12]"),
+                        Value::Int(120),
+                        text("hi square"),
+                        Value::Int(0),
+                    ]),
+                ]),
+                "n = {n}"
+            );
+            general.push(spent);
+        }
+        assert_eq!(
+            general[0], general[1],
+            "a call in the loop left the fast tier"
+        );
+    }
+
+    const ACCOUNT: &str = r#"
+class Account
+  owner: String
+
+  new(owner: String)
+    @owner = owner
+  end
+
+  def balance(cents)
+    cents / 100
+  end
+
+  def greet(who = "you")
+    "hi #{who}"
+  end
+
+  def method_missing(name, args)
+    "missing #{name}"
+  end
+
+  def dig(n)
+    @dig(n + 1)
+  end
+
+  private
+
+  def _secret
+    "s"
+  end
+end
+
+def calls(account, n)
+  out = nil
+  fast = 0
+  i = 0
+  while i < n
+    fast = fast + account.balance(100 * i)
+    out = __CALL__
+    i = i + 1
+  end
+  [fast, out]
+end
+
+result = calls(new Account("ada"), __N__)
+"#;
+
+    /// What the fast tier hands back gets the general arm's answer, once per
+    /// call: an omitted default, `send` on a class with none of its own
+    /// (two entries: the `send`, then the call it makes), `method_missing`,
+    /// too few arguments. A private method called from outside is refused
+    /// by the general arm's check, before the slow path. The fast `balance`
+    /// call beside each costs nothing.
+    #[test]
+    fn the_general_arm_answers_what_the_fast_tier_hands_back() {
+        let cases = [
+            ("account.greet()", text("hi you"), 1),
+            ("account.greet(\"bo\")", text("hi bo"), 0),
+            ("account.send(\"balance\", 500)", Value::Int(5), 2),
+            ("account.whatever(1)", text("missing whatever"), 1),
+            ("account.balance() rescue \"arity\"", text("arity"), 1),
+            ("account._secret() rescue \"refused\"", text("refused"), 0),
+        ];
+        for (call, answer, per_call) in cases {
+            let src = ACCOUNT.replace("__CALL__", call);
+            let (short, short_general) = run(&src, 3, Vec::new());
+            let (long, long_general) = run(&src, 30, Vec::new());
+            assert_eq!(short, array(vec![Value::Int(3), answer.clone()]), "{call}");
+            assert_eq!(long, array(vec![Value::Int(435), answer]), "{call}");
+            assert_eq!(long_general - short_general, 27 * per_call, "{call}");
+        }
+    }
+
+    /// The call at the depth limit goes to the general arm, which raises;
+    /// every call below it stays in the fast tier.
+    #[test]
+    fn the_depth_limit_is_the_general_arms() {
+        let src = ACCOUNT.replace("__CALL__", "1")
+            + "result = new Account(\"a\").dig(0) rescue \"deep\"\n";
+        let (result, general) = run(&src, 3, Vec::new());
+        assert_eq!(result, text("deep"));
+        assert_eq!(general, 1);
+    }
+
+    /// An instance of a class whose only `reading` is native.
+    fn meter() -> Value {
+        let reading = NativeFunction::new("reading", Some(1), |args: &[Value]| match args.get(1) {
+            Some(Value::Int(n)) => Ok(Value::Int(n * 2)),
+            _ => Err("reading expects an integer".to_string()),
+        });
+        let class = Rc::new(Class {
+            name: "Meter".to_string(),
+            native_methods: [("reading".to_string(), Rc::new(reading))]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        });
+        Value::Instance(Rc::new(RefCell::new(Instance::new(class))))
+    }
+
+    const READINGS: &str = r#"
+def readings(meter, n)
+  total = 0
+  i = 0
+  while i < n
+    total = total + meter.reading(i)
+    i = i + 1
+  end
+  total
+end
+
+result = readings(meter, __N__)
+"#;
+
+    /// A native instance method has no compiled frame to open: every call
+    /// goes to the general arm, which calls the native as before.
+    #[test]
+    fn a_native_method_is_called_by_the_general_arm() {
+        for (n, total) in [(3, 6), (30, 870)] {
+            let (result, general) = run(READINGS, n, vec![("meter".to_string(), meter())]);
+            assert_eq!(result, Value::Int(total), "n = {n}");
+            assert_eq!(general, n, "n = {n}");
+        }
+    }
+
+    const PRICING_CLASS: &str = r#"
+class Pricing
+  rate: Int
+
+  new(rate: Int)
+    @rate = rate
+  end
+
+  def total(n)
+    n * @rate
+  end
+end
+
+pricing = new Pricing(2)
+"#;
+
+    const PRICES: &str = r#"
+def sum(pricing, n)
+  acc = 0
+  i = 0
+  while i < n
+    acc = acc + pricing.total(i)
+    i = i + 1
+  end
+  acc
+end
+
+result = sum(pricing, __N__)
+"#;
+
+    /// A class the tree-walker defined, as serve loads an app's classes, has
+    /// its methods as AST only. The first call goes to the general arm,
+    /// which compiles `total` and registers it on the class; that change
+    /// stales the site's remembered miss, and every later call finds the
+    /// compiled method and stays in the fast tier.
+    #[test]
+    fn an_ast_method_stays_in_the_fast_tier_once_compiled() {
+        for (n, total) in [(3, 6), (30, 870)] {
+            let tokens = crate::lexer::Scanner::new(PRICING_CLASS)
+                .scan_tokens()
+                .expect("lex");
+            let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+            let mut interpreter = crate::interpreter::executor::Interpreter::new();
+            interpreter.interpret(&program).expect("interpret");
+            let globals = interpreter
+                .environment
+                .borrow()
+                .get_all_bindings()
+                .into_iter()
+                .collect();
+            let (result, general) = run(PRICES, n, globals);
+            assert_eq!(result, Value::Int(total), "n = {n}");
+            assert_eq!(general, 1, "n = {n}");
+        }
+    }
+
+    const REDEFINED: &str = r#"
+class A
+  def greet
+    "A"
+  end
+
+  def hi
+    "hi"
+  end
+
+  def yo
+    "yo"
+  end
+end
+
+class B < A
+end
+
+class C < B
+end
+
+def greet_of(x)
+  x.greet()
+end
+
+def hi_of(x)
+  x.hi()
+end
+
+b = new B()
+c = new C()
+first = [greet_of(b), greet_of(c), hi_of(c)]
+B.define_method("greet", fn() { "B" })
+A.alias_method("hi", "yo")
+result = [first, [greet_of(b), greet_of(c), hi_of(c)]]
+"#;
+
+    /// A method defined or aliased after a call site has run is what the
+    /// site calls next: `B.define_method` is seen on `B` and on its subclass
+    /// `C`, `A.alias_method` on a grandchild. Without the epoch the second
+    /// round would answer "A", "A", "hi" again from the cache.
+    #[test]
+    fn a_method_defined_after_a_call_is_seen_at_the_same_site() {
+        let (result, _) = run(REDEFINED, 0, Vec::new());
+        assert_eq!(
+            result,
+            array(vec![
+                array(vec![text("A"), text("A"), text("hi")]),
+                array(vec![text("B"), text("B"), text("yo")]),
+            ])
+        );
     }
 }

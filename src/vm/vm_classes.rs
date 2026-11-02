@@ -70,7 +70,7 @@ fn vm_define_method(class: Rc<Class>) -> Value {
                              function; run this file without --vm"
                             .to_string());
                     }
-                    class.vm_methods.borrow_mut().insert(method_name, c.clone());
+                    class.insert_vm_method(method_name, c.clone());
                 }
                 _ => return Err("define_method expects a function as second argument".to_string()),
             }
@@ -106,7 +106,7 @@ fn vm_alias_method(class: Rc<Class>) -> Value {
                     class.methods.borrow_mut().insert(new_name, f);
                 }
                 (None, Some(c)) => {
-                    class.vm_methods.borrow_mut().insert(new_name, c);
+                    class.insert_vm_method(new_name, c);
                 }
                 (None, None) => {
                     return Err(format!(
@@ -1091,10 +1091,7 @@ impl Vm {
                                 .borrow_mut()
                                 .insert(name.to_string(), closure);
                         } else {
-                            current
-                                .vm_methods
-                                .borrow_mut()
-                                .insert(name.to_string(), closure.clone());
+                            current.insert_vm_method(name.to_string(), closure.clone());
                             // Modules expose instance methods as module functions.
                             if current.is_module {
                                 current
@@ -1429,6 +1426,11 @@ mod privacy_check_tests {
         scans: 2,
     };
 
+    /// A method call refused from outside the class pays the same two
+    /// checks: the fast tier's method call runs one, the general arm the
+    /// other.
+    const REFUSED_METHOD_CALL: Cost = REFUSED_FIELD_READ;
+
     /// Run `src` with each `__NAME__` replaced by its value; return its
     /// `result` and `refused` globals, and what the run cost the check.
     fn run(src: &str, values: &[(&str, i64)]) -> (Value, Option<Value>, Cost) {
@@ -1603,7 +1605,7 @@ refused = post._slug() rescue "refused"
     /// outside: each access asks the class, which answers from its memo,
     /// with no walk and no frame scan. Two accesses per iteration and the
     /// final read, plus the refused `_slug` call, which alone walks the chain
-    /// and scans.
+    /// and scans (twice: `REFUSED_METHOD_CALL`).
     #[test]
     fn an_unrestricted_name_skips_the_walk() {
         let (short, refused_call, short_cost) = run(POSTS, &[("N", 3)]);
@@ -1611,8 +1613,14 @@ refused = post._slug() rescue "refused"
         assert_eq!(short, Value::String("a...".into()));
         assert_eq!(long, Value::String(format!("a{}", ".".repeat(30)).into()));
         assert_eq!(refused_call, refused());
-        assert_eq!(short_cost, cost(2 * 3 + 2, 1, 1));
-        assert_eq!(long_cost, cost(2 * 30 + 2, 1, 1));
+        let refused = REFUSED_METHOD_CALL;
+        for (n, spent) in [(3, short_cost), (30, long_cost)] {
+            assert_eq!(
+                spent,
+                cost(2 * n + 1 + refused.lookups, refused.walks, refused.scans),
+                "n = {n}"
+            );
+        }
     }
 
     const NODES: &str = r#"
@@ -1655,8 +1663,9 @@ refused = node._hidden() rescue "refused"
     /// `node.v` read from a plain function at the bottom of a recursion, and
     /// read and written from a block it runs: no frame on the stack is a
     /// method frame, so a scan for `this` would walk every one of them. An
-    /// unrestricted name never asks for it, so the scans stay at the one the
-    /// refused `_hidden` call makes, whatever the depth and the loop length.
+    /// unrestricted name never asks for it, so the scans stay at the ones the
+    /// refused `_hidden` call makes (`REFUSED_METHOD_CALL`), whatever the
+    /// depth and the loop length.
     #[test]
     fn an_unrestricted_name_scans_no_frames_at_any_depth() {
         let (shallow, refused_call, shallow_cost) = run(NODES, &[("DEPTH", 0), ("N", 3)]);
@@ -1664,7 +1673,13 @@ refused = node._hidden() rescue "refused"
         assert_eq!(shallow, Value::Int(3));
         assert_eq!(deep, Value::Int(30));
         assert_eq!(refused_call, refused());
-        assert_eq!(shallow_cost, cost(3 * 3 + 1, 1, 1));
-        assert_eq!(deep_cost, cost(3 * 30 + 1, 1, 1));
+        let refused = REFUSED_METHOD_CALL;
+        for (n, spent) in [(3, shallow_cost), (30, deep_cost)] {
+            assert_eq!(
+                spent,
+                cost(3 * n + refused.lookups, refused.walks, refused.scans),
+                "n = {n}"
+            );
+        }
     }
 }

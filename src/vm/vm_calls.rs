@@ -183,7 +183,7 @@ thread_local! {
 /// for a test to tell a call that entered its method directly from one that
 /// dispatched by name.
 #[cfg(test)]
-fn slow_path_calls() -> usize {
+pub(crate) fn slow_path_calls() -> usize {
     SLOW_PATH_CALLS.with(std::cell::Cell::get)
 }
 
@@ -563,7 +563,11 @@ impl Vm {
             self.push(value);
         }
         let stack_base = self.stack.len() - total_params - 1;
-        self.ensure_call_depth(&closure.proto, self.current_span())?;
+        // The span only on the cold branch: building it every call showed
+        // in profiles.
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
+        }
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
@@ -2460,7 +2464,11 @@ impl Vm {
             };
             self.stack.push(value);
         }
-        self.ensure_call_depth(&closure.proto, self.current_span())?;
+        // The span only on the cold branch: building it every call showed
+        // in profiles.
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
+        }
         self.frames.push(CallFrame::new(
             closure,
             receiver_idx,
@@ -2504,10 +2512,7 @@ impl Vm {
             )
         })?;
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-        defining
-            .vm_methods
-            .borrow_mut()
-            .insert(name.to_string(), closure.clone());
+        defining.insert_vm_method(name.to_string(), closure.clone());
         Ok(Some((closure, defining)))
     }
 
@@ -2536,7 +2541,11 @@ impl Vm {
             self.stack.push(Value::Null);
         }
         let stack_base = self.stack.len() - total_params - 1;
-        self.ensure_call_depth(&closure.proto, self.current_span())?;
+        // The span only on the cold branch: building it every call showed
+        // in profiles.
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
+        }
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
@@ -2956,8 +2965,7 @@ end
 result = new Counter().run(__N__)
 "#;
 
-    /// The bare calls in the loop never reach the slow path: only the outer
-    /// `counter.run(n)` does, whatever `n` is.
+    /// The bare calls in the loop never reach the slow path, whatever `n` is.
     #[test]
     fn bare_calls_to_compiled_methods_skip_the_slow_path() {
         let (one, spent_one) = run(&LOOP.replace("__N__", "1"));
@@ -2968,7 +2976,9 @@ result = new Counter().run(__N__)
             spent_one, spent_ten,
             "a bare call to a compiled method must not dispatch by name"
         );
-        assert_eq!(spent_one, 1, "only `run` itself takes the slow path");
+        // Not even `counter.run(n)`: a call on an instance whose compiled
+        // method takes exactly its arguments stays in the fast tier.
+        assert_eq!(spent_one, 0, "no call takes the slow path");
     }
 
     /// The marker `SelfOrGlobalCallee` pushes is dropped on every path: a

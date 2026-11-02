@@ -11,6 +11,7 @@ pub mod compiler_hoist;
 pub mod compiler_patterns;
 pub mod compiler_stmts;
 pub mod disassembler;
+pub mod method_cache;
 pub mod method_table;
 pub mod opcode;
 pub mod upvalue;

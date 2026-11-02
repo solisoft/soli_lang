@@ -1737,7 +1737,9 @@ pub struct Class {
     /// compiled in the VM (`compile_class_decl`). The constructor lands here
     /// under the name `"init"` (it returns `this`). `Rc` so the per-method
     /// class rebuilds in `op_add_method` share one map. ahash-keyed: the VM
-    /// probes this on every compiled instance-method call.
+    /// probes this on every compiled instance-method call. Write it through
+    /// [`Class::insert_vm_method`], or call [`note_vm_methods_changed`] after
+    /// writing: the VM's method cache trusts an entry until that epoch moves.
     pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
@@ -1935,6 +1937,25 @@ pub fn note_restricted_members_changed() {
 
 pub fn restricted_methods_declared() -> bool {
     RESTRICTED_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Bumped whenever some class's `vm_methods` map changes (see
+/// [`Class::insert_vm_method`]): the VM's method cache (`vm::method_cache`)
+/// answers a call only with what it found in the current epoch. Starts at 1,
+/// so an empty entry (epoch 0) is never current.
+static VM_METHODS_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Some class's `vm_methods` changed: stale every method-cache entry. A
+/// global, not per class: a class's answer also depends on its ancestors'
+/// maps, and changes happen at boot and warm-up, not per request.
+pub fn note_vm_methods_changed() {
+    VM_METHODS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The current `VM_METHODS_EPOCH`.
+#[inline]
+pub fn vm_methods_epoch() -> u64 {
+    VM_METHODS_EPOCH.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 #[cfg(test)]
@@ -2167,6 +2188,13 @@ impl Class {
         }
     }
 
+    /// Register bytecode instance method `name`, replacing any of that name,
+    /// and stale the VM's method cache ([`note_vm_methods_changed`]).
+    pub fn insert_vm_method(&self, name: String, method: Rc<VmClosure>) {
+        self.vm_methods.borrow_mut().insert(name, method);
+        note_vm_methods_changed();
+    }
+
     /// Find a bytecode static method in this class or its superclass chain.
     pub fn find_vm_static_method(&self, name: &str) -> Option<Rc<VmClosure>> {
         if let Some(closure) = self.vm_static_methods.borrow().get(name) {
@@ -2350,6 +2378,7 @@ impl Class {
                 mine.entry(name.clone()).or_insert_with(|| method.clone());
             }
         }
+        note_vm_methods_changed();
         {
             let mut mine = self.mixin_static_methods.borrow_mut();
             for (name, method) in module.concern_static_methods.borrow().iter() {

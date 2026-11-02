@@ -2527,6 +2527,170 @@ a = 1
 b = 2
 print([a, len("xyz"), b])"##,
     ),
+    (
+        // Instance method calls in and out of the fast tier (its
+        // `CallMethod` / `CallMethodById` arm and the per-site method
+        // cache): own, inherited and overridden methods, one site seeing
+        // several classes, `@m()` / `this.m()`, recursion, a module's
+        // method, `&.`, blocks; and what it hands to the general arm —
+        // an omitted default, too few / too many arguments, a private call
+        // from outside, `method_missing`, `send`, the depth limit — with
+        // each error's text and position.
+        "instance_method_calls_in_and_out_of_the_fast_tier",
+        r##"module Greets
+  def hello(who)
+    "hello #{who} from #{@name}"
+  end
+end
+
+class Shape
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  include Greets
+
+  def label
+    "shape #{@name}"
+  end
+
+  def area
+    0
+  end
+
+  def scaled(k)
+    @area * k
+  end
+
+  def sum3(a, b, c)
+    a + b + c + @area()
+  end
+
+  def twice
+    [@label(), this.label()]
+  end
+
+  def fact(n)
+    return 1 if n <= 1
+
+    n * @fact(n - 1)
+  end
+
+  def corners(block)
+    [1, 2].map { |i| block(i) + @area() }
+  end
+
+  def secret_twice
+    [1, 2].map { |k| "#{@_secret(k)}#{this._secret(k)}" }
+  end
+
+  def length
+    42
+  end
+
+  def to_s
+    "Shape(#{@name})"
+  end
+
+  def tagged(tag = "plain")
+    "#{tag}:#{@name}"
+  end
+
+  def deep(n)
+    @deep(n + 1)
+  end
+
+  def method_missing(name, args)
+    "missing #{name} #{args}"
+  end
+
+  private
+
+  def _secret(k)
+    "s#{k}"
+  end
+end
+
+class Square < Shape
+  side: Int
+
+  new(side: Int)
+    super("square")
+    @side = side
+  end
+
+  def area
+    @side * @side
+  end
+
+  def label
+    "square #{@side}"
+  end
+end
+
+class Cube < Square
+  def volume
+    @area() * @side
+  end
+end
+
+def describe(x)
+  x.label()
+end
+
+def total(shapes)
+  sum = 0
+  shapes.each do |s|
+    sum = sum + s.scaled(2) + s.length()
+  end
+  sum
+end
+
+def attempt(label, block)
+  try
+    print("#{label}: #{block()}")
+  catch error
+    print("#{label} raised: #{error}")
+  end
+end
+
+def hand_offs(x)
+  attempt("defaulted", fn() { x.tagged() })
+  attempt("too few", fn() { x.scaled() })
+  attempt("too many", fn() { x.scaled(1, 2) })
+  attempt("private", fn() { x._secret(1) })
+  attempt("missing", fn() { x.whatever(1, 2) })
+  attempt("send", fn() { x.send("scaled", 3) })
+  attempt("deep", fn() { x.deep(0) })
+end
+
+s = new Shape("blob")
+q = new Square(3)
+c = new Cube(2)
+print(s.label(), q.label(), c.label())
+print(describe(s), describe(q), describe(c), describe(s), describe(c))
+print(s.area(), q.area(), c.area(), c.volume())
+print(s.scaled(5), q.scaled(5), c.scaled(5))
+print(q.sum3(1, 2, 3), q.twice(), q.fact(10))
+print(c.corners(fn(i) { i * 10 }))
+print(q.secret_twice())
+print(q.length(), q.to_s(), q.hello("ada"))
+print(s.tagged("x"), q.tagged("y"))
+print(total([s, q, c, q, s]))
+i = 0
+acc = 0
+while i < 50
+  acc = acc + q.scaled(i) + c.area()
+  i = i + 1
+end
+print(acc)
+n = nil
+print(n&.label(), q&.label())
+hand_offs(c)
+print(c.volume(), describe(c))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
