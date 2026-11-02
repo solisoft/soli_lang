@@ -503,11 +503,10 @@ impl Vm {
         )
     }
 
-    /// Read a string constant as an owned String (for global-map keys).
-    #[inline]
     /// A string constant, shared rather than copied: a short name (`upcase`,
     /// `title`) is stored inline, a long one is reference-counted. Property
     /// reads use it on every access; `read_string_constant_owned` allocated.
+    #[inline]
     fn read_string_constant(&self, idx: u16) -> crate::interpreter::value::SoliStr {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
@@ -516,10 +515,15 @@ impl Vm {
         }
     }
 
+    /// A string constant as an owned `String`, for the ops that store it (a
+    /// global-map key, a class or method name). An op that only compares the
+    /// name or looks it up reads `read_string_constant` instead, which does not
+    /// allocate. The copy is a plain `String::from(&str)`: `EcoString`'s
+    /// `to_string()` went through `Display`, `Formatter::pad` and `write_str`.
     fn read_string_constant_owned(&self, idx: u16) -> String {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
-            Constant::String(s) => s.to_string(),
+            Constant::String(s) => String::from(s.as_str()),
             _ => String::new(),
         }
     }
@@ -3544,8 +3548,7 @@ impl Vm {
                     let this = self.stack[base].clone();
                     self.stack.push(this);
                 }
-                Op::GetSuper(idx) => {
-                    let _name = self.read_string_constant_owned(idx);
+                Op::GetSuper(_idx) => {
                     let _this = self.stack.pop().unwrap();
                     self.stack.push(Value::Null);
                 }
@@ -3558,7 +3561,9 @@ impl Vm {
                     let argc = argc as usize;
                     let span = self.current_span();
                     let receiver_idx = self.stack.len() - 1 - argc;
-                    let name = self.read_string_constant_owned(name_idx);
+                    // Shared, not copied: the name is only looked up, and
+                    // copied into the error on a miss.
+                    let name = self.read_string_constant(name_idx);
                     let superclass = self.frame_superclass(span)?;
                     if let Some((closure, defining_class)) =
                         superclass.find_vm_method_with_class(&name)
@@ -3610,7 +3615,7 @@ impl Vm {
                     } else {
                         return Err(RuntimeError::NoSuchProperty {
                             value_type: format!("super({})", superclass.name),
-                            property: name,
+                            property: String::from(name.as_str()),
                             span,
                         });
                     }
@@ -4046,7 +4051,7 @@ impl Vm {
                 Op::AppendGlobal(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let name = self.read_string_constant_owned(idx);
+                    let name = self.read_string_constant(idx);
                     self.append_named(&name, before, rhs)?;
                 }
                 Op::AppendGlobalConst(name_idx, cidx) => {
@@ -4054,8 +4059,8 @@ impl Vm {
                         let frame = self.frames.last().unwrap();
                         let constants = &frame.closure.proto.chunk.constants;
                         let name = match &constants[name_idx as usize] {
-                            Constant::String(text) => text.to_string(),
-                            _ => String::new(),
+                            Constant::String(text) => text.clone(),
+                            _ => crate::interpreter::value::SoliStr::default(),
                         };
                         let extra = match &constants[cidx as usize] {
                             Constant::String(text) => text.clone(),
@@ -4068,13 +4073,17 @@ impl Vm {
                         };
                         (name, extra)
                     };
-                    if let Some(Value::String(text)) = self.globals.get_mut(&name) {
+                    if let Some(Value::String(text)) = self.globals.get_mut(name.as_str()) {
                         text.push_str(&extra);
                     } else {
-                        let left = self.globals.get(&name).cloned().unwrap_or(Value::Null);
+                        let left = self
+                            .globals
+                            .get(name.as_str())
+                            .cloned()
+                            .unwrap_or(Value::Null);
                         let span = self.current_span();
                         let updated = self.op_add(left, Value::String(extra), span)?;
-                        self.globals.insert(name, updated);
+                        self.globals.insert(String::from(name.as_str()), updated);
                     }
                 }
                 Op::AppendLocalConst(slot, cidx) => {
@@ -4152,8 +4161,10 @@ impl Vm {
                 Op::AddAssignGlobal(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let name = self.read_string_constant_owned(idx);
-                    let appended = match self.globals.get_mut(&name) {
+                    // Shared, not copied: the key is built only when the
+                    // global does not exist yet.
+                    let name = self.read_string_constant(idx);
+                    let appended = match self.globals.get_mut(name.as_str()) {
                         Some(slot) => add_strings_into(slot, before, rhs),
                         None => Err((before, rhs)),
                     };
@@ -4161,7 +4172,15 @@ impl Vm {
                         Ok(updated) => updated,
                         Err((before, rhs)) => {
                             let sum = self.add_values(before, rhs)?;
-                            self.globals.insert(name, sum.clone());
+                            // An Int or Float sum overwrites the slot in
+                            // place; the key is copied only for a first write.
+                            match self.globals.get_mut(name.as_str()) {
+                                Some(slot) => *slot = sum.clone(),
+                                None => {
+                                    self.globals
+                                        .insert(String::from(name.as_str()), sum.clone());
+                                }
+                            }
                             sum
                         }
                     };

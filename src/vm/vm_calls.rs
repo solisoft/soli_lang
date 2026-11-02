@@ -2162,7 +2162,7 @@ impl Vm {
                     || class.find_native_method("send").is_some();
                 if !own_send {
                     let target = match &self.stack[receiver_idx + 1] {
-                        Value::String(s) | Value::Symbol(s) => Some(s.to_string()),
+                        Value::String(s) | Value::Symbol(s) => Some(s.clone()),
                         _ => None,
                     };
                     if let Some(target) = target {

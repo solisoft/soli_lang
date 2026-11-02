@@ -2701,6 +2701,50 @@ mod inplace_peephole_tests {
         }
     }
 
+    /// The global-update ops read their name by sharing the constant rather
+    /// than copying it (T33.20): a top-level `g = g + <expr>` is
+    /// `AddAssignGlobal`, `g << x` is `AppendGlobal`, `g = g + "lit"` is
+    /// `AppendGlobalConst`. Each still updates the global, whether the name is
+    /// short enough to sit inline or long enough to be reference-counted, and
+    /// so do `super.m(...)` and `send` with either kind of name.
+    #[test]
+    fn global_updates_super_and_send_share_their_names() {
+        let program = "total = 0\nan_accumulator_with_a_long_name = 0\n\
+                       for i in [1, 2, 3] {\n  total = total + i * 2\n  an_accumulator_with_a_long_name = an_accumulator_with_a_long_name + i * 3\n}\n\
+                       buf = \"a\"\nbuf << \"b\"\na_long_buffer_name_for_appends = \"c\"\na_long_buffer_name_for_appends << \"d\"\n\
+                       out = \"\"\nfor w in [1, 2] { out = out + \"x\" }\n\
+                       class Base\n  def greet(x)\n    \"base #{x}\"\n  end\n  def a_method_name_longer_than_fifteen\n    \"long\"\n  end\nend\n\
+                       class Kid < Base\n  def greet(x)\n    super.greet(x) + \"!\"\n  end\n  def a_method_name_longer_than_fifteen\n    super.a_method_name_longer_than_fifteen() + \"er\"\n  end\nend\n\
+                       k = Kid.new()\n\
+                       result = [total, an_accumulator_with_a_long_name, buf, a_long_buffer_name_for_appends, out, k.greet(1), k.a_method_name_longer_than_fifteen(), k.send(\"greet\", 2), k.send(\"a_method_name_longer_than_fifteen\")]";
+        let tokens = Scanner::new(program).scan_tokens().expect("lex");
+        let parsed = Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&parsed).expect("compile");
+        let ops = &module.main.chunk.code;
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, Op::AddAssignGlobal(_)))
+                .count(),
+            2,
+            "{ops:?}"
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, Op::AppendGlobal(_)))
+                .count(),
+            2,
+            "{ops:?}"
+        );
+        assert!(
+            ops.iter().any(|op| matches!(op, Op::AppendGlobalConst(..))),
+            "{ops:?}"
+        );
+        assert_eq!(
+            vm_result(program),
+            "[12, 18, ab, cd, xx, base 1!, longer, base 2!, longer]"
+        );
+    }
+
     /// An array pattern tests its shape in one `MatchArrayLen` (exact, or
     /// at-least with `...rest`) and builds the rest with `ArrayRestLocal`: no
     /// type-name test, no `length` member read, no `slice` call. Then the

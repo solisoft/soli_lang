@@ -2678,6 +2678,52 @@ print(until_like)
 print([1, 2, 3, 4].map { |x| x unless x > 2 })
 print((0..6).filter { |x| !(x % 3 == 0) })"##,
     ),
+    // The ops that read their name from the constant pool by sharing it
+    // rather than copying it (T33.20): AddAssignGlobal (hit and the insert of
+    // a first write), AppendGlobal, AppendGlobalConst, CallSuperMethod and
+    // `send`, each with a name short enough to sit inline and one long enough
+    // to be reference-counted.
+    (
+        "borrowed_constant_names_global_updates_super_and_send",
+        r##"total = 0
+an_accumulator_with_a_long_name = 0
+for i in [1, 2, 3] {
+  total = total + i * 2
+  an_accumulator_with_a_long_name = an_accumulator_with_a_long_name + i * 3
+}
+print(total)
+print(an_accumulator_with_a_long_name)
+buf = "a"
+buf << "b"
+list = []
+list << 1
+print(buf)
+print(list)
+out = ""
+for w in [1, 2] { out = out + "x" }
+print(out)
+class Base
+  def greet(x)
+    "base #{x}"
+  end
+  def a_method_name_longer_than_fifteen
+    "long"
+  end
+end
+class Kid < Base
+  def greet(x)
+    super.greet(x) + "!"
+  end
+  def a_method_name_longer_than_fifteen
+    super.a_method_name_longer_than_fifteen() + "er"
+  end
+end
+k = Kid.new()
+print(k.greet(1))
+print(k.a_method_name_longer_than_fifteen)
+print(k.send("greet", 2))
+print(k.send("a_method_name_longer_than_fifteen"))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
