@@ -432,7 +432,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
         model_subclass_memo: std::cell::Cell::new(None),
         value_object_memo: std::cell::Cell::new(None),
-        field_defaults_memo: std::cell::Cell::new(None),
+        field_init: RefCell::new(None),
         declared_fields: Rc::new(RefCell::new(Vec::new())),
         is_module: false,
         included_modules: Rc::new(RefCell::new(Vec::new())),

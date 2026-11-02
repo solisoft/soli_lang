@@ -127,9 +127,10 @@ impl Interpreter {
     /// `Klass.new(...)` on a plain class or a value object. With positional
     /// arguments (other than one hash) it runs the constructor exactly like
     /// `new Klass(...)`. No arguments, one hash, or named arguments only keep
-    /// the attribute form on a plain class — an instance with those fields,
-    /// no constructor, as it always was — and build a value object from
-    /// those fields, its constructor and invariants included.
+    /// the attribute form on a plain class without a constructor — its
+    /// fields started as `new Klass()` starts them, then those attributes
+    /// assigned — and build a value object from those fields, its
+    /// constructor and invariants included.
     pub(crate) fn class_new(
         &mut self,
         class: &Rc<crate::interpreter::value::Class>,
@@ -154,7 +155,7 @@ impl Interpreter {
             }
         }
         use crate::interpreter::executor::access::member::{
-            has_constructor, is_attribute_new, new_with_attributes,
+            assign_attributes, check_attribute_args, has_constructor, is_attribute_new,
         };
         if !is_attribute_new(&positional, !named.is_empty()) {
             return self.instantiate_class(class, positional, named, span);
@@ -186,7 +187,13 @@ impl Interpreter {
             }
             vec![Value::Hash(Rc::new(RefCell::new(pairs)))]
         };
-        new_with_attributes(class, &args).map_err(|e| RuntimeError::new(e, span))
+        // The fields start as `new Klass()` starts them — every default,
+        // `nil` without one — and then take the attributes.
+        check_attribute_args(class, &args).map_err(|e| RuntimeError::new(e, span))?;
+        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+        self.initialize_instance_fields(class, &instance)?;
+        assign_attributes(&instance, &args);
+        Ok(Value::Instance(instance))
     }
 
     /// `amount.with(cents: 600)` / `amount.with({"cents": 600})`: the value

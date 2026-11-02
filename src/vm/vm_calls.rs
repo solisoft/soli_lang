@@ -8,7 +8,7 @@ use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    Class, Function, HashKey, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
+    Class, FieldInit, Function, HashKey, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
 };
 use crate::span::Span;
 
@@ -603,12 +603,23 @@ impl Vm {
                     return self.build_value_object(class, positional, named, span);
                 }
                 if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
+                    let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                    self.init_fields(class, &instance, span)?;
                     let (slots, supplied) =
                         bind_named_arguments(&ctor.proto, positional, named, span)?;
-                    let instance =
-                        Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
-                    self.stack[callee_idx] = instance;
+                    self.stack[callee_idx] = Value::Instance(instance);
                     self.call_closure_with_slots(ctor, slots, supplied, Some(defining_class))
+                } else if class.find_constructor().is_none()
+                    && class.find_native_method(NATIVE_CONSTRUCTOR).is_none()
+                {
+                    // No constructor anywhere: the arguments go nowhere, as
+                    // on the tree-walker (`new Point(x: 1)` on a class that
+                    // only declares fields).
+                    let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                    self.init_fields(class, &instance, span)?;
+                    self.stack.truncate(callee_idx);
+                    self.push(Value::Instance(instance));
+                    Ok(())
                 } else {
                     // Tree-walking constructors need the interpreter's
                     // run-to-completion dance; punt rather than half-bind.
@@ -1693,7 +1704,9 @@ impl Vm {
         if crate::interpreter::domain::value_objects_declared() && class.is_value_object() {
             return self.construct_value_object(class, argc, span);
         }
-        let instance_val = Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
+        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+        self.init_fields(class, &instance, span)?;
+        let instance_val = Value::Instance(instance);
 
         // Bytecode constructor (classes compiled in the VM): registered as
         // "init" by compile_constructor and returns `this`, so the frame's
@@ -1701,19 +1714,6 @@ impl Vm {
         // callee slot → it becomes slot 0 (`this`) under the method calling
         // convention.
         if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
-            if ctor.proto.defaults_only && defining_class.superclass.is_some() {
-                return self.construct_past_defaults(class, argc, span);
-            }
-            // A constructor sets its own class's defaults; the ancestors'
-            // are set here, whether it calls `super` or not.
-            if let (Some(superclass), Value::Instance(instance)) =
-                (&defining_class.superclass, &instance_val)
-            {
-                if superclass.inherits_field_defaults() {
-                    let instance = instance.clone();
-                    self.apply_field_defaults(superclass, &instance, span)?;
-                }
-            }
             self.stack[callee_idx] = instance_val;
             return self.call_closure_in_class(ctor, argc, span, Some(defining_class));
         }
@@ -1769,7 +1769,8 @@ impl Vm {
 
     /// Run `class`'s constructor on the instance in the callee slot
     /// (`[this, args…]`), leaving `this` — or a frame that returns it — in
-    /// its place: `super(...)`, and construction past a `defaults_only` init.
+    /// its place: `super(...)`. The fields were set when the instance was
+    /// built (`init_fields`); a constructor only runs its body.
     pub(crate) fn call_init_of(
         &mut self,
         class: &Rc<Class>,
@@ -1804,83 +1805,128 @@ impl Vm {
         Ok(())
     }
 
-    /// `new C(args…)` where `C`'s `init` only sets field defaults: the
-    /// defaults of every class up the chain, then the nearest real
-    /// constructor with the arguments — as the tree-walker constructs.
-    /// `init` alone would refuse the arguments and skip the superclasses'
-    /// defaults.
-    fn construct_past_defaults(
-        &mut self,
-        class: &Rc<Class>,
-        argc: usize,
-        span: Span,
-    ) -> Result<(), RuntimeError> {
-        let callee_idx = self.stack.len() - 1 - argc;
-        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
-        self.apply_field_defaults(class, &instance, span)?;
-        let mut constructor_class = Some(class.clone());
-        while let Some(current) = constructor_class.take() {
-            match current.find_vm_method_with_class("init") {
-                Some((init, defining)) if init.proto.defaults_only => {
-                    constructor_class = defining.superclass.clone();
-                }
-                _ => {
-                    constructor_class = Some(current);
-                    break;
-                }
-            }
-        }
-        self.stack[callee_idx] = Value::Instance(instance.clone());
-        match constructor_class {
-            Some(rest) => {
-                self.run_to_completion(|vm| vm.call_init_of(&rest, argc, span))?;
-            }
-            None => self.stack.truncate(callee_idx),
-        }
-        self.push(Value::Instance(instance));
-        Ok(())
-    }
-
-    /// The field defaults of `class` and its ancestors, the farthest first,
-    /// on `instance`: each class's defaults-only `init`, or the literal
-    /// defaults of a class the tree-walker defined. The tree-walker sets
-    /// them all before any constructor runs, whether or not it calls `super`.
-    pub(crate) fn apply_field_defaults(
+    /// Every declared instance field of `class` and its ancestors on
+    /// `instance`, the farthest class first: its default, or `nil`. The
+    /// tree-walker sets them before any constructor runs
+    /// (`initialize_instance_fields`), whatever the constructor does and
+    /// whether it calls `super`. So a subclass's default wins, a field no
+    /// constructor assigns reads as `nil`, and `super(...)` never sets
+    /// them again.
+    ///
+    /// Each class starts its fields (a literal default, else `nil`), then
+    /// runs its defaults that are not literals, before the next class down
+    /// starts its own: a subclass that declares a field again without a
+    /// default resets it to `nil`, as on the tree-walker. Every write is
+    /// raw, as the tree-walker's: a `const`, `private` or frozen field takes
+    /// its default.
+    pub(crate) fn init_fields(
         &mut self,
         class: &Rc<Class>,
         instance: &Rc<RefCell<Instance>>,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        let mut chain = Vec::new();
-        let mut next = Some(class.clone());
-        while let Some(current) = next {
-            if !current.inherits_field_defaults() {
-                break;
-            }
-            next = current.superclass.clone();
-            chain.push(current);
+        if let Some(superclass) = &class.superclass {
+            self.init_fields(superclass, instance, span)?;
         }
-        for current in chain.into_iter().rev() {
-            let init = current
-                .vm_methods
-                .borrow()
-                .get("init")
-                .filter(|init| init.proto.defaults_only)
-                .cloned();
-            match init {
-                Some(init) => {
-                    self.push(Value::Instance(instance.clone()));
-                    self.run_to_completion(|vm| {
-                        vm.call_closure_in_class(init, 0, span, Some(current.clone()))
-                    })?;
+        let Some(init) = self.field_init_of(class, span)? else {
+            return Ok(());
+        };
+        init.start(&mut instance.borrow_mut());
+        if let Some(computed) = &init.computed {
+            self.push(Value::Instance(instance.clone()));
+            let values = self.run_to_completion(|vm| {
+                vm.call_closure_in_class(computed.clone(), 0, span, Some(class.clone()))
+            })?;
+            if let Value::Hash(values) = values {
+                let mut instance = instance.borrow_mut();
+                for (name, value) in values.borrow().iter() {
+                    if let HashKey::String(name) = name {
+                        instance.fields.insert(name.clone(), value.clone());
+                    }
                 }
-                None => crate::interpreter::executor::access::member::own_literal_field_defaults(
-                    &current,
-                    &mut instance.borrow_mut(),
-                ),
             }
         }
         Ok(())
+    }
+
+    /// `class`'s [`FieldInit`], or `None` when it declares no instance
+    /// field. The VM records it when it compiles a class; a class the
+    /// tree-walker defined (every class of a served app) gets one the first
+    /// time the VM builds an instance of it, from its AST: the literal
+    /// defaults, and one method compiled for the others.
+    fn field_init_of(
+        &mut self,
+        class: &Rc<Class>,
+        span: Span,
+    ) -> Result<Option<Rc<FieldInit>>, RuntimeError> {
+        if let Some(init) = class.field_init.borrow().as_ref() {
+            return Ok(Some(init.clone()));
+        }
+        if class.fields.is_empty() {
+            return Ok(None);
+        }
+        // Declaration order, then any field the declarations do not list.
+        let declared = class.declared_fields.borrow();
+        let mut names: Vec<&String> = declared
+            .iter()
+            .filter(|name| class.fields.contains_key(*name))
+            .collect();
+        let mut rest: Vec<&String> = class
+            .fields
+            .keys()
+            .filter(|name| !declared.contains(*name))
+            .collect();
+        rest.sort();
+        names.extend(rest);
+
+        let mut fields = Vec::with_capacity(names.len());
+        let mut computed = Vec::new();
+        for name in names {
+            let default = class.fields.get(name).and_then(Option::as_ref);
+            let start = match default {
+                None => Value::Null,
+                Some(expr) => {
+                    match crate::interpreter::executor::access::member::literal_value(expr) {
+                        Some(value) => value,
+                        None => {
+                            computed.push((name.clone(), expr.clone()));
+                            Value::Null
+                        }
+                    }
+                }
+            };
+            fields.push((name.as_str().into(), start));
+        }
+        drop(declared);
+
+        let computed = match super::compiler_classes::computed_defaults_method(&computed) {
+            None => None,
+            Some(method) => {
+                // Compiled as one of the class's methods: with their
+                // environment (its namespace) and their file.
+                let (closure, source_path) = class
+                    .constructor
+                    .clone()
+                    .or_else(|| class.methods.borrow().values().next().cloned())
+                    .map(|f| (f.closure.clone(), f.source_path.clone()))
+                    .unwrap_or_else(|| {
+                        let env = crate::interpreter::environment::Environment::new();
+                        (Rc::new(RefCell::new(env)), None)
+                    });
+                let func = Function::from_method(&method, closure, source_path);
+                let proto =
+                    jit_compile_method(&func, self.globals.keys().cloned()).map_err(|e| {
+                        RuntimeError::EngineFallback(
+                            format!("a field default the VM cannot compile ({})", e),
+                            span,
+                        )
+                    })?;
+                Some(Rc::new(VmClosure::new(proto, Vec::new())))
+            }
+        };
+        let init = Rc::new(FieldInit { fields, computed });
+        *class.field_init.borrow_mut() = Some(init.clone());
+        Ok(Some(init))
     }
 
     /// Resolve the superclass of the class defining the currently executing
@@ -2853,6 +2899,66 @@ end
             call_on_vm(&mut vm, "Probe", "tagged"),
             Value::str("k3>k1>k0")
         );
+    }
+
+    /// A class the tree-walker defined (a served app's) gets its fields on
+    /// the VM: a literal default copied per instance, one that is not a
+    /// literal run per instance, nil without one — by every spelling. The
+    /// plan is built from the AST on the first instance and kept. The VM set
+    /// none of them: the first read raised "Cannot access property".
+    #[test]
+    fn a_served_class_gets_literal_computed_and_nil_fields() {
+        let mut vm = vm_with_app_classes(
+            r##"
+calls = 0
+
+def tick()
+  calls = calls + 1
+  calls
+end
+
+class Ticket
+  n: Int = tick()
+  tags: Array = []
+  note: String
+  seen: Any
+
+  new()
+    @seen = @note.nil?
+  end
+end
+
+class Probe
+  def run
+    a = Ticket.new()
+    b = new Ticket()
+    a.tags.push(1)
+    "#{a.n} #{b.n} #{a.tags.length} #{b.tags.length} #{b.note.nil?} #{b.seen}"
+  end
+end
+"##,
+        );
+        assert_eq!(
+            call_on_vm(&mut vm, "Probe", "run"),
+            Value::str("1 2 1 0 true true")
+        );
+        let Some(Value::Class(ticket)) = vm.globals.get("Ticket").cloned() else {
+            panic!("Ticket is a class");
+        };
+        let init = ticket
+            .field_init
+            .borrow()
+            .clone()
+            .expect("built on the first instance");
+        let names: Vec<&str> = init.fields.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["n", "tags", "note", "seen"]);
+        assert!(init.computed.is_some(), "`n` is computed by one method");
+        assert_eq!(
+            call_on_vm(&mut vm, "Probe", "run"),
+            Value::str("3 4 1 0 true true")
+        );
+        let again = ticket.field_init.borrow().clone().expect("kept");
+        assert!(Rc::ptr_eq(&init, &again), "built once per class");
     }
 
     #[test]

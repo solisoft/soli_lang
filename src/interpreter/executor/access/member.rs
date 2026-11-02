@@ -3122,81 +3122,117 @@ impl Interpreter {
 /// hash's entries assigned to its fields — no constructor runs. Framework-
 /// internal `_`-prefixed keys are skipped. The shape `Klass.new(args)` with
 /// other arguments runs the constructor instead (`Interpreter::class_new`).
+///
+/// The fields start as [`start_declared_fields`] sets them: this path has no
+/// engine to evaluate a default that is not a literal. The engines' own
+/// `class_new` start them in full, as `new Klass()` does, then assign the
+/// attributes with [`assign_attributes`].
 pub fn new_with_attributes(
     class: &Rc<crate::interpreter::value::Class>,
     args: &[Value],
 ) -> Result<Value, String> {
-    if class.is_module {
-        return Err(format!("cannot instantiate module {}", class.name));
-    }
-    if args.len() > 1 {
-        return Err(format!(
-            "new() expects 0 or 1 arguments, got {}",
-            args.len()
-        ));
-    }
+    check_attribute_args(class, args)?;
     let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
         class.clone(),
     )));
-    // Declared fields with a literal default (`items: Array = []`), the
-    // superclass's first — as `new Klass()` sets them. Without this the
-    // attribute form left them unset on the tree-walker, so reading one
-    // raised, while the VM had them.
-    literal_field_defaults(class, &mut instance.borrow_mut());
-    match args.first() {
-        None | Some(Value::Null) => {}
-        Some(Value::Hash(pairs)) => {
-            use crate::interpreter::value::HashKey;
-            let mut inst_mut = instance.borrow_mut();
-            for (k, v) in pairs.borrow().iter() {
-                if let HashKey::String(field) = k {
-                    if field.starts_with('_') {
-                        continue;
-                    }
-                    inst_mut.set(field.clone().to_string(), v.clone());
-                }
-            }
-        }
-        Some(other) => {
-            return Err(format!(
-                "new() expects a Hash of attributes, got {}",
-                other.type_name()
-            ));
-        }
-    }
+    start_declared_fields(class, &mut instance.borrow_mut());
+    assign_attributes(&instance, args);
     Ok(Value::Instance(instance))
 }
 
-fn literal_field_defaults(
+/// The attribute form's arguments: none, `nil` or one hash, on a class.
+pub fn check_attribute_args(
+    class: &crate::interpreter::value::Class,
+    args: &[Value],
+) -> Result<(), String> {
+    if class.is_module {
+        return Err(format!("cannot instantiate module {}", class.name));
+    }
+    match args {
+        [] | [Value::Null] | [Value::Hash(_)] => Ok(()),
+        [other] => Err(format!(
+            "new() expects a Hash of attributes, got {}",
+            other.type_name()
+        )),
+        _ => Err(format!(
+            "new() expects 0 or 1 arguments, got {}",
+            args.len()
+        )),
+    }
+}
+
+/// The attribute hash, if `args` holds one, assigned to the instance's
+/// fields: string keys only, `_`-prefixed ones skipped. Checked first by
+/// [`check_attribute_args`].
+pub fn assign_attributes(
+    instance: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    args: &[Value],
+) {
+    use crate::interpreter::value::HashKey;
+    let Some(Value::Hash(pairs)) = args.first() else {
+        return;
+    };
+    let mut inst_mut = instance.borrow_mut();
+    for (k, v) in pairs.borrow().iter() {
+        if let HashKey::String(field) = k {
+            if field.starts_with('_') {
+                continue;
+            }
+            inst_mut.set(field.clone(), v.clone());
+        }
+    }
+}
+
+/// Every declared instance field of `class` and its ancestors — the farthest
+/// first, so a subclass's default wins — set to its literal default, or to
+/// `nil`. The part of field initialization that needs no engine: a default
+/// that is not a literal starts as `nil` here. The engines evaluate it
+/// (`Interpreter::initialize_instance_fields`, `Vm::init_fields`).
+pub(crate) fn start_declared_fields(
     class: &crate::interpreter::value::Class,
     instance: &mut crate::interpreter::value::Instance,
 ) {
     if let Some(superclass) = &class.superclass {
-        literal_field_defaults(superclass, instance);
+        start_declared_fields(superclass, instance);
     }
-    own_literal_field_defaults(class, instance);
-}
-
-/// `class`'s own literal field defaults, not its ancestors'.
-pub(crate) fn own_literal_field_defaults(
-    class: &crate::interpreter::value::Class,
-    instance: &mut crate::interpreter::value::Instance,
-) {
+    // A class the VM compiled keeps its literal defaults here.
+    if let Some(init) = class.field_init.borrow().as_ref() {
+        init.start(instance);
+        return;
+    }
     for (name, default) in &class.fields {
-        if let Some(value) = default.as_ref().and_then(literal_value) {
-            instance.set(name.clone(), value);
-        }
+        let value = default
+            .as_ref()
+            .and_then(literal_value)
+            .unwrap_or(Value::Null);
+        instance.set(name.clone(), value);
     }
 }
 
-/// The value of a literal expression — numbers, strings, booleans, `nil`,
-/// and arrays and hashes of literals — evaluated without an interpreter.
-fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
-    use crate::ast::ExprKind;
+/// Whether a field's default is a literal (see [`literal_value`]): a value
+/// computed once and copied into each instance, not an expression the
+/// engine evaluates for each one.
+pub(crate) fn is_literal_default(expr: &crate::ast::Expr) -> bool {
+    literal_value(expr).is_some()
+}
+
+/// The value of a literal expression — numbers (negative ones too),
+/// strings, booleans, `nil`, and arrays and hashes of literals — evaluated
+/// without an interpreter.
+pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
+    use crate::ast::{ExprKind, UnaryOp};
     use crate::interpreter::value::{HashKey, HashPairs};
     Some(match &expr.kind {
         ExprKind::IntLiteral(n) => Value::Int(*n),
         ExprKind::FloatLiteral(f) => Value::Float(*f),
+        ExprKind::Unary {
+            operator: UnaryOp::Negate,
+            operand,
+        } => match &operand.kind {
+            ExprKind::IntLiteral(n) => Value::Int(n.checked_neg()?),
+            ExprKind::FloatLiteral(f) => Value::Float(-*f),
+            _ => return None,
+        },
         ExprKind::StringLiteral(s) => Value::String(s.clone().into()),
         ExprKind::BoolLiteral(b) => Value::Bool(*b),
         ExprKind::Null => Value::Null,

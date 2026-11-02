@@ -47,10 +47,10 @@ impl Vm {
         self.build_value_object(class, positional, Vec::new(), span)
     }
 
-    /// Build a value object of `class` from the arguments and push it: the
-    /// class's constructor — or the arguments bound to the declared fields
-    /// when it has none — while the instance is writable, then the
-    /// invariants once it is frozen.
+    /// Build a value object of `class` from the arguments and push it: its
+    /// fields started with their defaults, then the class's constructor — or
+    /// the arguments bound to the declared fields when it has none — while
+    /// the instance is writable, then the invariants once it is frozen.
     pub(crate) fn build_value_object(
         &mut self,
         class: &Rc<Class>,
@@ -62,11 +62,11 @@ impl Vm {
         let instance_val = Value::Instance(instance.clone());
         {
             let _constructing = domain::begin_construction(&instance);
-            let no_arguments = positional.is_empty() && named.is_empty();
+            // A field left out takes its default (`Amount.new(500)` is in
+            // EUR), and the constructor and invariants see it.
+            self.init_fields(class, &instance, span)?;
             match class.find_vm_method_with_class("init") {
-                // A constructor with parameters — or any, called without
-                // arguments — gets the arguments.
-                Some((ctor, defining)) if !ctor.proto.param_names.is_empty() || no_arguments => {
+                Some((ctor, defining)) => {
                     let (slots, supplied) = super::vm_calls::bind_named_arguments(
                         &ctor.proto,
                         positional,
@@ -77,15 +77,6 @@ impl Vm {
                     self.run_to_completion(|vm| {
                         vm.call_closure_with_slots(ctor, slots, supplied, Some(defining))
                     })?;
-                }
-                // The parameterless `init` the compiler writes for field
-                // defaults: run it, then bind the arguments to the fields.
-                Some((ctor, defining)) => {
-                    self.push(instance_val.clone());
-                    self.run_to_completion(|vm| {
-                        vm.call_closure_in_class(ctor, 0, span, Some(defining))
-                    })?;
-                    bind_to_fields(&instance, positional, named, span)?;
                 }
                 None => match class.find_constructor_with_class() {
                     // A constructor the tree-walker defined (a class loaded
@@ -122,7 +113,7 @@ impl Vm {
         receiver_idx: usize,
     ) -> Result<(), RuntimeError> {
         use crate::interpreter::executor::access::member::{
-            has_constructor, is_attribute_new, new_with_attributes,
+            assign_attributes, check_attribute_args, has_constructor, is_attribute_new,
         };
         let span = self.current_span();
         let args: Vec<Value> = self.stack.drain(receiver_idx + 1..).collect();
@@ -156,8 +147,13 @@ impl Vm {
             }
             return self.call_class(class, argc, span);
         }
-        let instance = new_with_attributes(class, &args).map_err(|e| RuntimeError::new(e, span))?;
-        self.push(instance);
+        // No constructor: the fields start as `new Klass()` starts them —
+        // every default, `nil` without one — then take the attributes.
+        check_attribute_args(class, &args).map_err(|e| RuntimeError::new(e, span))?;
+        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+        self.init_fields(class, &instance, span)?;
+        assign_attributes(&instance, &args);
+        self.push(Value::Instance(instance));
         Ok(())
     }
 
@@ -171,10 +167,7 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         let class = instance.borrow().class.clone();
         let params: Option<Vec<String>> = match class.find_vm_method_with_class("init") {
-            Some((ctor, _)) if !ctor.proto.param_names.is_empty() => {
-                Some(ctor.proto.param_names.clone())
-            }
-            Some(_) => None,
+            Some((ctor, _)) => Some(ctor.proto.param_names.clone()),
             None => class
                 .find_constructor()
                 .map(|ctor| ctor.params.iter().map(|p| p.name.clone()).collect()),

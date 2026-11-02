@@ -70,10 +70,6 @@ pub struct FunctionProto {
     /// The qualified class its code is written in (`Billing::PayInvoice`), so
     /// a name it reads unqualified can be its namespace's (`Billing::Invoice`).
     pub namespace: Option<std::sync::Arc<str>>,
-    /// The `init` the compiler writes for a class with field defaults and no
-    /// `new`: it sets the defaults and nothing else, so construction carries
-    /// on to the superclass's constructor (`Vm::call_class`).
-    pub defaults_only: bool,
 }
 
 impl FunctionProto {
@@ -92,7 +88,6 @@ impl FunctionProto {
             return_type: None,
             decl_span: crate::span::Span::default(),
             namespace: None,
-            defaults_only: false,
         }
     }
 }

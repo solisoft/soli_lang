@@ -2159,8 +2159,48 @@ Counter.new().count   # 0 — the constructor ran
 - Keep the parentheses when there are no arguments: a bare `Counter.new` is
   not a call.
 - A class without a constructor takes its fields from a hash or from named
-  arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`.
+  arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`. The fields it is not given
+  keep their defaults.
 - A module is not instantiated: `Greetable.new()` raises.
+
+#### Fields start with their defaults
+
+Before any constructor runs, every field the class and its parents declare is
+set: to its default, or to `nil` when it has none. The parent's fields come
+first, so a subclass's default wins. Every way of building the instance sees
+them: `new Klass(...)`, `Klass(...)`, `Klass.new(...)`, and a hash or named
+arguments on a class without a constructor.
+
+```soli
+class Account
+  owner: String
+  nickname: String
+  balance: Int = 0
+  tags: Array = []
+  opened: Float = clock()     # evaluated for each new account
+
+  new(owner)
+    @owner = owner
+  end
+end
+
+a = Account.new("ann")
+a.balance                    # 0
+a.nickname                   # nil — declared, never assigned
+a.tags.push("vip")
+Account.new("bo").tags       # [] — each instance gets its own array
+
+class Savings < Account
+  balance: Int = 100
+end
+
+Savings.new("cy").balance    # 100 — the subclass's default wins
+```
+
+- A default is evaluated once per new instance, never when the class is
+  defined.
+- `super(...)` runs the parent's constructor body only. It does not set the
+  fields again, so what a constructor assigned before calling it stays.
 
 #### `this` and `self`
 

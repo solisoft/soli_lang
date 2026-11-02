@@ -1892,6 +1892,287 @@ o = new Own(3)
 print(o.x, o.list, o.a)"##,
     ),
     (
+        // A declared field without a default starts as nil, also inside the
+        // constructor, and whatever builds the instance. The VM set only
+        // the fields with a default: reading any other one raised
+        // "Cannot access property".
+        "declared_fields_start_as_nil",
+        r##"class Profile
+  name: String
+  bio: String
+  seen: Any
+
+  new(name)
+    @seen = @bio.nil?
+    @name = name
+  end
+end
+p = Profile.new("ann")
+print(p.bio, p.seen, new Profile("bob").bio, Profile("cy").bio)
+class Bare
+  title: String
+end
+print(new Bare().title, Bare().title)
+class Optional < Profile
+  extra: String
+
+  new(name)
+    super(name)
+  end
+end
+o = new Optional("x")
+print(o.name, o.bio, o.extra)
+class Hinted < Error
+  code: Int = 42
+  hint: String
+end
+h = Hinted.new("boom")
+print(h.message, h.code, h.hint)"##,
+    ),
+    (
+        // Every class's fields are set before any constructor runs, the
+        // farthest class first. The VM kept a class's defaults in its
+        // compiled constructor: a parent's were lost when the child's `new`
+        // did not call `super`, and re-applied by `super()` after the
+        // child's (`2` came out `1`, `7` came out `0`). A field declared
+        // again without a default is reset to nil; a literal array or hash
+        // default is never shared.
+        "field_defaults_reach_every_class_before_any_constructor",
+        r##"class P1
+  a: Int = 1
+  p: Bool
+
+  new()
+    @p = true
+  end
+end
+class K1 < P1
+  c: Int
+
+  new(c)
+    @c = c
+  end
+end
+k1 = new K1(3)
+print(k1.a, k1.p, k1.c)
+class P2
+  a: Int = 1
+
+  new()
+  end
+end
+class K2 < P2
+  a: Int = 2
+
+  new()
+    super()
+  end
+end
+print(new K2().a)
+class P3
+  count: Int = 0
+
+  new()
+  end
+end
+class K3 < P3
+  new(c)
+    @count = c
+    super()
+  end
+end
+print(new K3(7).count)
+class P5
+  a: Int = 1
+end
+class K5 < P5
+  b: Int = 2
+end
+class G5 < K5
+  a: Int
+  c: Int
+
+  new(c)
+    @c = c
+  end
+end
+g = G5.new(3)
+print(g.a, g.b, g.c)
+class Items
+  items: Array = []
+  meta: Hash = {"n": 0}
+
+  new()
+  end
+end
+i1 = new Items()
+i2 = new Items()
+i1.items.push(1)
+i1.meta["n"] = 5
+print(i1.items, i2.items, i2.meta["n"])"##,
+    ),
+    (
+        // A default that is not a literal runs once per instance, a
+        // parent's before a child's. The VM also ran it once when the class
+        // was defined, so every count was one ahead.
+        "a_computed_field_default_runs_once_per_instance",
+        r##"calls = 0
+def next_stamp()
+  calls = calls + 1
+  calls * 10
+end
+class Stamped
+  stamp: Int = next_stamp()
+  tag: String = "t"
+  offset: Int = -1
+end
+print("defined", calls)
+a = new Stamped()
+b = Stamped()
+print(a.stamp, b.stamp, a.tag, a.offset, calls)
+class Later < Stamped
+  label: String = "n#{calls}"
+end
+c = new Later()
+print(c.stamp, c.label, calls)"##,
+    ),
+    (
+        // Without a constructor, `Klass.new({..})` / `Klass.new(k: v)` take
+        // the attributes over fields started as `new Klass()` starts them,
+        // and constructor arguments go nowhere. The VM ran its defaults-only
+        // `init` as a constructor: "expected 0, got 1", "Undefined variable
+        // 'a'". The tree-walker's attribute form set literal defaults only:
+        // `x.b` and `t.n` raised there.
+        "field_defaults_without_a_constructor_keep_the_attribute_form",
+        r##"class D
+  a: Int = 1
+  b: Int
+  offset: Int = -1
+  list: Array = []
+end
+x = D.new({"a": 5})
+y = D.new(a: 6)
+z = D.new()
+print(x.a, x.b, x.offset, y.a, y.b, y.offset, z.a, z.list)
+print(new D(7).a, new D(a: 8).a, D(9).b, D(a: 9).a)
+z.list.push(1)
+print(D.new().list)
+calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class T
+  n: Int = tick()
+end
+print(T.new().n, T.new({}).n, new T().n, calls)"##,
+    ),
+    (
+        // Defaults on private and const fields, one reading a local of the
+        // function the class is declared in, one reading a static, nested
+        // containers copied per instance, a parent's computed default under
+        // a child's literal one. A default that throws is caught where the
+        // instance is built: the VM evaluated it when the class was defined,
+        // outside the `try`, and the script died.
+        "field_defaults_private_const_nested_and_throwing",
+        r##"class Vault
+  private secret: String = "s3"
+  const id: Int = 7
+  stamp: String = "v" + "1"
+
+  def reveal
+    "#{@secret} #{@id} #{@stamp}"
+  end
+end
+print(new Vault().reveal, Vault().reveal)
+def build(prefix)
+  class Tag
+    label: String = prefix + "!"
+  end
+  new Tag().label
+end
+print(build("hi"))
+class Cfg
+  static DEFAULT: Int = 5
+  size: Int = Cfg.DEFAULT * 2
+end
+print(new Cfg().size)
+class Nested
+  data: Hash = {"list": [1, [2, 3]], "n": nil}
+end
+n1 = new Nested()
+n2 = new Nested()
+n1.data["list"][1].push(4)
+print(n1.data, n2.data)
+def boom()
+  throw "boom"
+end
+class Risky
+  x: Int = boom()
+end
+r = "none"
+try
+  new Risky()
+catch e
+  r = "caught #{e}"
+end
+print(r)
+def compute()
+  41 + 1
+end
+class PA
+  x: Int = compute()
+  y: Int = 1
+end
+class CA < PA
+  x: Int = 2
+  y: Int = compute()
+end
+c = new CA()
+print(c.x, c.y)"##,
+    ),
+    (
+        // A value object's field left out takes its default, by every
+        // spelling, and its invariants and `with` see it. On the VM the
+        // defaults-only `init` ran before the arguments were bound, which
+        // held for one level only: a parent value object's defaults were
+        // nil.
+        "value_object_fields_take_their_defaults",
+        r##"class Amount < ValueObject
+  cents: Int
+  currency: String = "EUR"
+
+  invariant(:currency, "three letters") { @currency.length == 3 }
+end
+class Price < Amount
+  vat: Int = 20
+end
+a = Amount.new(500)
+b = Amount(600)
+c = Amount.new(cents: 700)
+d = Amount.new({"cents": 800})
+e = a.with(cents: 900)
+p = Price.new(100)
+print(a.currency, b.currency, c.currency, d.currency, e.currency, e.cents)
+print(p.cents, p.currency, p.vat, Price.new(cents: 5, vat: 7).vat)
+print(a == Amount.new(500, "EUR"), Amount.new(1, "USD").currency)"##,
+    ),
+    (
+        // Tracked in KNOWN_DIVERGENT.
+        "named_attribute_form_runs_a_computed_default",
+        r##"calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class Ticket
+  n: Int = tick()
+  label: String
+end
+t = Ticket.new(label: "x")
+print(t.n, t.label, calls)"##,
+    ),
+    (
         // `this` in a `static def` is the class it was called on, a
         // subclass's too. The tree-walker raised "'this' outside of class".
         "this_in_a_static_method",
@@ -1929,6 +2210,13 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // has nothing to resolve against on the VM. Needs the compiler to hand
     // the block the class it was written in.
     "super_in_a_block_of_a_method",
+    // `Klass.new(k: v)` compiles to a read of `Klass.new` and a named call.
+    // On a class without a constructor the read yields the engine-free
+    // attribute form (`member::new_with_attributes`), which starts a
+    // default that is not a literal as nil; the tree-walker evaluates it.
+    // Needs the VM to answer that read itself and build the instance with
+    // `init_fields` (see C571 / C583).
+    "named_attribute_form_runs_a_computed_default",
     // Sub-expression comprehensions and binding `match` as a call argument
     // now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
     // Binding patterns at a statement position already compiled — see
@@ -2301,6 +2589,127 @@ class Probe
       refused = err.message
     end
     "#{work.address} #{work.class} #{refused}"
+  end
+end"##,
+    ),
+    (
+        // A served app's classes get their fields like a script's: every
+        // default (inherited ones, and one that is not a literal, run per
+        // instance) and nil without one, whatever builds the instance. The VM
+        // set none of them on a class the tree-walker defined: the first read
+        // raised "Cannot access property" and demoted the handler.
+        "app_field_defaults_and_nil",
+        r##"calls = 0
+
+def next_stamp()
+  calls = calls + 1
+  calls
+end
+
+class WithDefaults
+  count: Int = 5
+  label: String = "dflt"
+  v: Int
+
+  new(v)
+    @v = v
+  end
+end
+
+class ZeroCtorDefaults
+  count: Int = 7
+  made: Bool
+
+  new()
+    @made = true
+  end
+end
+
+class ParentD
+  a: Int = 1
+  b: Int = -2
+end
+
+class KidD < ParentD
+  c: Int
+
+  new(c)
+    @c = c
+  end
+end
+
+class Profile
+  name: String
+  bio: String
+
+  new(name)
+    @name = name
+  end
+end
+
+class Stamped
+  stamp: Int = next_stamp()
+  tags: Array = []
+end
+
+class Hinted < Error
+  code: Int = 42
+  hint: String
+end
+
+class Probe
+  def run
+    d1 = WithDefaults.new(1)
+    d2 = new WithDefaults(2)
+    d3 = KidD.new(3)
+    d4 = new KidD(4)
+    d5 = ParentD.new()
+    d6 = new ParentD()
+    d8 = ZeroCtorDefaults.new()
+    u1 = Profile.new("ann")
+    s1 = new Stamped()
+    s2 = Stamped.new()
+    s1.tags.push(1)
+    h = Hinted.new("boom")
+    first = "#{d1.count} #{d1.label} #{d2.count} #{d3.a} #{d3.b} #{d4.a} #{d5.a} #{d6.b}"
+    second = "#{d8.count} #{d8.made} #{u1.bio.nil?} #{s1.stamp} #{s2.stamp} #{s2.tags.length}"
+    "#{first} #{second} #{h.message} #{h.code} #{h.hint.nil?} #{calls}"
+  end
+end"##,
+    ),
+    (
+        // The documented value object, built in a served app. A field left
+        // out takes its default; the VM gave it nil, silently — or, with the
+        // invariant reading it, "Cannot access property 'length' on null".
+        "app_value_object_field_defaults",
+        r##"class Amount < ValueObject
+  cents: Int
+  currency: String = "EUR"
+
+  invariant(:cents, "must not be negative") { @cents >= 0 }
+  invariant(:currency, "three letters") { @currency.length == 3 }
+
+  def to_display -> String
+    symbol = @currency == "EUR" ? "€" : @currency
+    "#{@cents / 100} #{symbol}"
+  end
+end
+
+class Probe
+  def run
+    v1 = Amount.new(500)
+    v2 = Amount(600)
+    v3 = Amount.new(cents: 700)
+    v4 = Amount.new(800, "USD")
+    v5 = v1.with(cents: 900)
+    shown = "none"
+    try
+      shown = Amount.new(1000).to_display
+    catch err
+      shown = "caught: #{err}"
+    end
+    currencies = "#{v1.currency} #{v2.currency} #{v3.currency} #{v4.currency} #{v5.currency}"
+    "#{currencies} #{v5.cents} #{shown} #{v1 == Amount.new(500, "EUR")}"
   end
 end"##,
     ),

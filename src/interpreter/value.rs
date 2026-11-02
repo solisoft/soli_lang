@@ -1651,6 +1651,59 @@ pub const PRIM_TYPE_COUNT: usize = 9;
 /// dropped and the instance came back empty.
 pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 
+/// The method that evaluates a class's field defaults that are not literals
+/// (`created: Int = clock()`) on a new instance and returns them as a hash,
+/// `{"created": …}`. The VM compiles one per class that has such defaults
+/// and keeps it in [`FieldInit::computed`], never among the class's methods.
+pub const FIELD_DEFAULTS_METHOD: &str = "__field_defaults__";
+
+/// How the VM starts one class's own declared instance fields on a new
+/// instance, before any constructor runs: what the tree-walker's
+/// `initialize_instance_fields` does for that class (each ancestor has its
+/// own). Built once per class: by `Op::Field` and the
+/// [`FIELD_DEFAULTS_METHOD`] when the VM compiles the class, from
+/// [`Class::fields`] for one the tree-walker defined.
+#[derive(Debug, Clone, Default)]
+pub struct FieldInit {
+    /// Every declared instance field, in declaration order, with the value it
+    /// starts with: its literal default (`count: Int = 0`, `tags: Array =
+    /// []`), else `nil`. That covers a field without a default, and one whose
+    /// default `computed` evaluates.
+    pub fields: Vec<(SoliStr, Value)>,
+    /// The defaults that are not literals, run on the new instance as the
+    /// class: a method returning them by field name.
+    pub computed: Option<Rc<VmClosure>>,
+}
+
+impl FieldInit {
+    /// Set every field to the value it starts with. An array or hash default
+    /// is copied, so two instances never share one.
+    pub fn start(&self, instance: &mut Instance) {
+        for (name, value) in &self.fields {
+            instance.fields.insert(name.clone(), fresh_copy(value));
+        }
+    }
+}
+
+/// `value` with each array and hash in it copied: a literal default handed to
+/// one more instance.
+fn fresh_copy(value: &Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(Rc::new(RefCell::new(
+            items.borrow().iter().map(fresh_copy).collect(),
+        ))),
+        Value::Hash(pairs) => {
+            let pairs = pairs.borrow();
+            let mut copy = HashPairs::with_capacity(pairs.len());
+            for (key, item) in pairs.iter() {
+                copy.insert(key.clone(), fresh_copy(item));
+            }
+            Value::Hash(Rc::new(RefCell::new(copy)))
+        }
+        other => other.clone(),
+    }
+}
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {
@@ -1704,9 +1757,11 @@ pub struct Class {
     /// Memoized [`Class::is_value_object`]. Same contract as
     /// `model_subclass_memo`: always `Cell::new(None)` outside this module.
     pub value_object_memo: Cell<Option<bool>>,
-    /// Memo for [`Class::inherits_field_defaults`]: always `Cell::new(None)`
-    /// outside this module.
-    pub field_defaults_memo: Cell<Option<bool>>,
+    /// How the VM starts this class's own declared instance fields (see
+    /// [`FieldInit`]). Set when the VM compiles the class, or the first time
+    /// it builds an instance of a class the tree-walker defined. `None` until
+    /// then, and for a class that declares no instance field.
+    pub field_init: RefCell<Option<Rc<FieldInit>>>,
     /// The instance fields this class declares (`cents: Int`), in order. A
     /// value object's implicit constructor binds positional arguments to
     /// them, and `to_h` lists them in this order. Inherited ones live on the
@@ -1815,7 +1870,7 @@ impl Default for Class {
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
-            field_defaults_memo: Cell::new(None),
+            field_init: RefCell::new(None),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
             included_modules: Rc::new(RefCell::new(Vec::new())),
@@ -1865,7 +1920,7 @@ impl Class {
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
-            field_defaults_memo: Cell::new(None),
+            field_init: RefCell::new(None),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
             included_modules: Rc::new(RefCell::new(Vec::new())),
@@ -2292,29 +2347,6 @@ impl Class {
                 .is_some_and(|superclass| superclass.is_model_subclass())
         };
         self.model_subclass_memo.set(Some(result));
-        result
-    }
-
-    /// Whether this class or one of its ancestors declares field defaults a
-    /// VM constructor does not set on its own: a defaults-only compiled
-    /// `init`, or a literal default on a class the tree-walker defined (see
-    /// `Vm::apply_field_defaults`).
-    pub fn inherits_field_defaults(&self) -> bool {
-        if let Some(cached) = self.field_defaults_memo.get() {
-            return cached;
-        }
-        let own = self
-            .vm_methods
-            .borrow()
-            .get("init")
-            .is_some_and(|init| init.proto.defaults_only)
-            || self.fields.values().any(Option::is_some);
-        let result = own
-            || self
-                .superclass
-                .as_ref()
-                .is_some_and(|superclass| superclass.inherits_field_defaults());
-        self.field_defaults_memo.set(Some(result));
         result
     }
 

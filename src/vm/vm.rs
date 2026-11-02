@@ -3344,13 +3344,19 @@ impl Vm {
                     }
                 }
                 Op::Field(idx) | Op::ConstField(idx) => {
-                    // The default itself is baked into the constructor; what
-                    // is kept here is the declaration order, which a value
-                    // object's implicit constructor binds arguments by.
+                    // A declared instance field: its name, in declaration
+                    // order (a value object's implicit constructor binds
+                    // arguments by it), and the value every new instance
+                    // starts it with before any constructor runs — its
+                    // literal default, or nil (`Vm::init_fields`).
                     let name = self.read_string_constant_owned(idx);
-                    self.stack.pop();
+                    let start = self.stack.pop().unwrap_or(Value::Null);
                     if let Some(Value::Class(class)) = self.stack.last() {
-                        class.declared_fields.borrow_mut().push(name);
+                        class.declared_fields.borrow_mut().push(name.clone());
+                        let mut field_init = class.field_init.borrow_mut();
+                        let field_init =
+                            Rc::make_mut(field_init.get_or_insert_with(Default::default));
+                        field_init.fields.push((name.into(), start));
                     }
                 }
                 Op::StaticField(idx) => {
@@ -5706,6 +5712,119 @@ mod tests {
         assert!(
             vm.execute(&module.main).is_err(),
             "omitting a required parameter must not silently bind null"
+        );
+    }
+
+    /// A field default that is not a literal runs once for each new instance,
+    /// as on the tree-walker — never when the class is defined. The compiler
+    /// evaluated every initializer in the class body as well (and threw the
+    /// value away), so a default with a side effect ran once too often.
+    #[test]
+    fn test_vm_computed_field_default_runs_per_instance_only() {
+        let source = r##"
+let calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class Stamped
+  stamp: Int = tick()
+  tag: String = "t"
+end
+let before = calls
+let a = new Stamped()
+let b = new Stamped()
+let result = "#{before} #{a.stamp} #{b.stamp} #{a.tag} #{calls}"
+"##;
+        assert_eq!(
+            compile_and_get_global(source, "result"),
+            Value::String("0 1 2 t 2".into())
+        );
+    }
+
+    /// The field defaults are not compiled into the constructor. `Op::Field`
+    /// keeps each field's starting value (its literal default, else nil),
+    /// and the defaults that are not literals compile into one method kept
+    /// out of the class's methods. Baked into `init`, a default ran again
+    /// whenever `super(...)` entered a parent's constructor, after the
+    /// child's own, and a field without a default was never set at all.
+    #[test]
+    fn test_vm_field_defaults_are_not_part_of_the_constructor() {
+        use crate::interpreter::value::FIELD_DEFAULTS_METHOD;
+        let source = r##"
+def tick()
+  1
+end
+class Account
+  balance: Int = 5
+  owner: String
+  opened: Int = tick()
+  tags: Array = ["a"]
+  floor: Int = -3
+
+  new(owner)
+    @owner = owner
+  end
+end
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        let Some(Value::Class(class)) = vm.globals.get("Account").cloned() else {
+            panic!("Account is a class");
+        };
+
+        let init = class
+            .field_init
+            .borrow()
+            .clone()
+            .expect("the class records its fields");
+        let names: Vec<&str> = init.fields.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["balance", "owner", "opened", "tags", "floor"]);
+        assert_eq!(init.fields[0].1, Value::Int(5));
+        assert_eq!(init.fields[1].1, Value::Null);
+        assert_eq!(init.fields[2].1, Value::Null, "evaluated per instance");
+        assert!(matches!(&init.fields[3].1, Value::Array(items) if items.borrow().len() == 1));
+        assert_eq!(
+            init.fields[4].1,
+            Value::Int(-3),
+            "a negative number is a literal"
+        );
+        assert!(init.computed.is_some(), "`opened` has its own method");
+        assert!(
+            class
+                .vm_methods
+                .borrow()
+                .get(FIELD_DEFAULTS_METHOD)
+                .is_none(),
+            "the defaults method is not a method of the class"
+        );
+
+        let ctor = class
+            .vm_methods
+            .borrow()
+            .get("init")
+            .cloned()
+            .expect("the constructor");
+        let assigned: Vec<String> = ctor
+            .proto
+            .chunk
+            .code
+            .iter()
+            .filter_map(|op| match op {
+                Op::SetProperty(idx) => match &ctor.proto.chunk.constants[*idx as usize] {
+                    Constant::String(name) => Some(name.to_string()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            assigned,
+            ["owner"],
+            "the constructor assigns what its body assigns, and no default"
         );
     }
 

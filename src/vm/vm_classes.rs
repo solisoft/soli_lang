@@ -973,6 +973,7 @@ impl Vm {
             new_class.included_modules = sub.included_modules.clone();
             new_class.mixin_static_methods = sub.mixin_static_methods.clone();
             new_class.declared_fields = sub.declared_fields.clone();
+            *new_class.field_init.get_mut() = sub.field_init.borrow().clone();
             crate::interpreter::domain::note_class(&new_class);
             // Replace the class on top of the stack
             let new_class = Rc::new(new_class);
@@ -1009,6 +1010,18 @@ impl Vm {
                 let mut static_methods = current.static_methods.clone();
 
                 match method {
+                    // The class's field defaults that are not literals: run
+                    // for each new instance (`Vm::init_fields`), never
+                    // dispatched as a method.
+                    Value::VmClosure(closure)
+                        if !is_static
+                            && name == crate::interpreter::value::FIELD_DEFAULTS_METHOD =>
+                    {
+                        let mut field_init = current.field_init.borrow_mut();
+                        Rc::make_mut(field_init.get_or_insert_with(Default::default)).computed =
+                            Some(closure);
+                        return Ok(());
+                    }
                     Value::VmClosure(closure) => {
                         // Bytecode methods from compile_class_decl. The maps
                         // are shared `Rc`s, so no class rebuild is needed —
@@ -1066,6 +1079,7 @@ impl Vm {
                 new_class.extended_hook_stmts = current.extended_hook_stmts.clone();
                 new_class.concern_static_methods = current.concern_static_methods.clone();
                 new_class.concern_method_names = current.concern_method_names.clone();
+                *new_class.field_init.get_mut() = current.field_init.borrow().clone();
                 self.stack[top] = Value::Class(Rc::new(new_class));
             }
             Ok(())

@@ -1131,6 +1131,27 @@ describe("Klass.new") do
     assert_eq(type(NewSpecBag.new()), "NewSpecBag")
   end
 
+  test("starts the fields as new Klass() does, then assigns the attributes") do
+    class NewSpecDefaults
+      count: Int = 3
+      note: String
+      offset: Int = -1
+      label: String = "n" + "1"
+      tags: Array = []
+    end
+
+    bag = NewSpecDefaults.new({"note": "n"})
+    assert_eq(bag.count, 3)
+    assert_eq(bag.note, "n")
+    assert_eq(bag.offset, -1)
+    assert_eq(bag.label, "n1")
+    assert_null(NewSpecDefaults.new().note)
+    assert_eq(NewSpecDefaults.new(count: 9).count, 9)
+    assert_eq(NewSpecDefaults.new(count: 9).label, "n1")
+    bag.tags.push(1)
+    assert_eq(NewSpecDefaults.new().tags, [])
+  end
+
   test("refuses a module") do
     module NewSpecGreetable
     end
