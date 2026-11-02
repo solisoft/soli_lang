@@ -58,6 +58,13 @@ let percent: Decimal(2) = 50.00D;   # Percentages (2 decimals)
 let amount: Decimal(2) = 0.00D;       # Zero with precision</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-4">
+            The <code class="text-amber-400">D</code> suffix needs at least one decimal place:
+            <code class="text-amber-400">100.00D</code>, not <code class="text-red-400">100D</code>.
+            A literal past Decimal's range (about 7.9 &times; 10<sup>28</sup>) raises
+            <code class="text-amber-400">Invalid decimal literal</code>; digits past the 28th
+            decimal place are rounded.
+        </p>
     </section>
 
     <!-- Precision -->
@@ -369,7 +376,7 @@ end</code></pre>
                     <span>Round final results, not intermediate calculations</span>
                 </li>
                 <li class="flex items-start gap-3">
-                    <span1">✓ class="text-green-400 mt-</span>
+                    <span class="text-green-400 mt-1">✓</span>
                     <span>Specify precision in literals: <code class="text-amber-400">100.00D</code>, not <code class="text-red-400">100D</code></span>
                 </li>
             </ul>

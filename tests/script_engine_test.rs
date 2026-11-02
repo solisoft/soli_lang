@@ -97,6 +97,26 @@ fn decimal_and_array_difference_scripts_stay_on_the_vm() {
 }
 
 #[test]
+fn an_invalid_decimal_literal_raises_as_on_the_tree_walker() {
+    // `%n[abcD]` reads as the decimal literal `abc.00`, and an integer part
+    // past Decimal's range does not parse either. The VM loaded a silent 0
+    // for both. The compiler now refuses them, so the tree-walker runs the
+    // script and raises "Invalid decimal literal" where one is evaluated.
+    let source = "x = %n[abcD] rescue \"invalid\"\nprint(x)\n";
+    assert_same(source);
+    let dir = script(source);
+    let run = soli(dir.path(), &["s.sl"], true);
+    assert_eq!(run.stdout, "invalid\n", "{}", run.stderr);
+    assert!(
+        run.stderr
+            .contains("the VM cannot compile it (Invalid decimal literal: abc.00"),
+        "{}",
+        run.stderr
+    );
+    assert_same("price = 99999999999999999999999999999999.5D\nprint(price)\n");
+}
+
+#[test]
 fn a_declared_return_type_is_checked_on_the_vm_too() {
     let source = "def f(n: Int) -> Int\n  if n > 0\n    n\n  end\nend\nprint(f(1))\nprint(f(-1))\n";
     assert_same(source);

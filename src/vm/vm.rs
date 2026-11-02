@@ -699,6 +699,8 @@ impl Vm {
                         Constant::Float(n) => Value::Float(*n),
                         Constant::Bool(b) => Value::Bool(*b),
                         Constant::Null => Value::Null,
+                        // Parsed at compile time; a Decimal owns no heap data.
+                        Constant::Decimal(decimal) => Value::Decimal(decimal.clone()),
                         _ => break Some(op),
                     };
                     self.stack.push(value);
@@ -5337,12 +5339,7 @@ fn constant_to_value(constant: &Constant) -> Value {
     match constant {
         Constant::Int(n) => Value::Int(*n),
         Constant::Float(n) => Value::Float(*n),
-        Constant::Decimal(s) => {
-            use crate::interpreter::value::DecimalValue;
-            let decimal: rust_decimal::Decimal = s.parse().unwrap_or_default();
-            let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-            Value::Decimal(DecimalValue(decimal, precision))
-        }
+        Constant::Decimal(decimal) => Value::Decimal(decimal.clone()),
         Constant::String(s) => Value::String(s.clone()),
         Constant::Bool(b) => Value::Bool(*b),
         Constant::Null => Value::Null,
@@ -7260,6 +7257,75 @@ let x = Mailer.welcome()
             compile_and_get_global("let d = 2.5D; let x = d.class;", "x"),
             Value::String("decimal".into())
         );
+    }
+
+    /// A Decimal literal is parsed when it is compiled: its constant holds
+    /// the value, with the precision the literal was written with, and the
+    /// literal's text is not read again at run time.
+    #[test]
+    fn a_decimal_literal_compiles_to_its_value() {
+        use crate::interpreter::value::DecimalValue;
+        let source = "price = 19.99D\nlong = 1.12345678901234567890123456789012D";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let decimals: Vec<&DecimalValue> = module
+            .main
+            .chunk
+            .constants
+            .iter()
+            .filter_map(|constant| match constant {
+                Constant::Decimal(decimal) => Some(decimal),
+                _ => None,
+            })
+            .collect();
+        let price = DecimalValue("19.99".parse().unwrap(), 2);
+        // 32 digits written, 28 kept: the precision counts what was written.
+        let long = DecimalValue("1.1234567890123456789012345679".parse().unwrap(), 32);
+        assert_eq!(decimals, [&price, &long]);
+        assert_eq!(
+            compile_and_get_global(source, "price"),
+            Value::Decimal(price)
+        );
+    }
+
+    /// Text that is no decimal does not compile, where the VM used to load
+    /// a silent 0. The tree-walker then runs the code, and raises "Invalid
+    /// decimal literal" where the literal is evaluated.
+    #[test]
+    fn an_invalid_decimal_literal_does_not_compile() {
+        for source in [
+            "x = %n[abcD]",
+            "big = 99999999999999999999999999999999.5D",
+            "h = {99999999999999999999999999999999.5D: 1}",
+        ] {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let err = Compiler::compile(&program).expect_err(source);
+            assert!(
+                err.to_string().contains("Invalid decimal literal: "),
+                "{source}: {err}"
+            );
+        }
+    }
+
+    /// The fast tier loads a Decimal constant itself. It used to hand the op
+    /// to the general arm, which parsed the literal's text on every load.
+    #[test]
+    fn a_decimal_constant_loads_in_the_fast_tier() {
+        use crate::interpreter::value::DecimalValue;
+        let decimal = DecimalValue::from_literal("19.99").unwrap();
+        let mut proto = FunctionProto::new(String::new());
+        let idx = proto.chunk.add_constant(Constant::Decimal(decimal.clone()));
+        proto.chunk.emit(Op::Constant(idx), 1);
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        let mut vm = Vm::new();
+        vm.push(Value::VmClosure(closure.clone()));
+        vm.frames
+            .push(CallFrame::new(closure, 0, vm.iter_stack.len(), None, 0));
+        // `None`: the chunk ran to its end without an op handed back.
+        assert_eq!(vm.run_fast().expect("no error"), None);
+        assert_eq!(vm.stack.last(), Some(&Value::Decimal(decimal)));
     }
 
     #[test]

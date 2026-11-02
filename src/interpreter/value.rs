@@ -45,6 +45,21 @@ impl DecimalValue {
         Ok(Self(decimal, precision))
     }
 
+    /// The value of a Decimal literal from its text, `"19.99"` for `19.99D`.
+    /// The precision is the number of digits written after the point, also
+    /// past the 28 places the value keeps. `None` when the text does not
+    /// parse: an integer part beyond Decimal's range, or a `%n[...]` word
+    /// that is not a number. Both engines read literals through this; the
+    /// VM does it once, when it compiles one.
+    pub fn from_literal(text: &str) -> Option<Self> {
+        let decimal: Decimal = text.parse().ok()?;
+        let precision = text
+            .split('.')
+            .nth(1)
+            .map_or(0, |digits| digits.len() as u32);
+        Some(Self(decimal, precision))
+    }
+
     /// Get the precision (number of decimal places)
     pub fn precision(&self) -> u32 {
         self.1
@@ -3115,6 +3130,35 @@ mod decimal_tests {
     fn test_decimal_value_from_str_invalid() {
         let result = DecimalValue::from_str("not_a_decimal", 2);
         assert!(result.is_err());
+    }
+
+    /// A literal's precision is the digits written after its point, also
+    /// past the 28 places the value keeps: the two literals below print
+    /// alike and compare unequal, on both engines.
+    #[test]
+    fn a_decimal_literal_keeps_the_precision_it_was_written_with() {
+        let price = DecimalValue::from_literal("19.99").expect("19.99");
+        assert_eq!(price, DecimalValue(Decimal::from_str("19.99").unwrap(), 2));
+        assert_eq!(DecimalValue::from_literal("1.00").unwrap().precision(), 2);
+        assert_eq!(DecimalValue::from_literal("-2.5").unwrap().precision(), 1);
+
+        let long = DecimalValue::from_literal("1.12345678901234567890123456789012").unwrap();
+        assert_eq!(long.precision(), 32);
+        assert_eq!(long.to_string(), "1.1234567890123456789012345679");
+        let rounded = DecimalValue::from_literal("1.1234567890123456789012345679").unwrap();
+        assert_eq!(long.value(), rounded.value());
+        assert_ne!(long, rounded);
+    }
+
+    #[test]
+    fn text_that_is_no_decimal_is_no_literal() {
+        // `%n[abcD]` reads as the literal `abc.00`.
+        assert_eq!(DecimalValue::from_literal("abc.00"), None);
+        // An integer part beyond Decimal's 96-bit range.
+        assert_eq!(
+            DecimalValue::from_literal("99999999999999999999999999999999.5"),
+            None
+        );
     }
 
     #[test]

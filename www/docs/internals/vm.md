@@ -65,6 +65,8 @@ Helpers you will call if you add a statement:
 
 `CompiledModule` holds function prototypes and the constant pool. `FunctionProto` is one callable: arity, bytecode, upvalue descriptors, name.
 
+A literal is converted once, when it is compiled, never at each load. A Decimal literal's `Constant::Decimal` holds its `DecimalValue`, built by `DecimalValue::from_literal`, which the tree-walker uses too; its precision is the number of digits written after the point. So loading it is a copy and stays in the fast tier. Text that does not parse is a compile error: an integer part past Decimal's range, or a `%n[...]` word that is not a number. The code then runs on the tree-walker, which raises *Invalid decimal literal* where the literal is evaluated. The VM used to re-parse the text on every load and read such a literal as 0.
+
 `compiled_cache.rs` (crate root) memoizes compile by source so workers don’t recompile identical files.
 
 ## `Op`

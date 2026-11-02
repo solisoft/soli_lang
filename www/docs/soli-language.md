@@ -131,7 +131,7 @@ let user: Hash = {"name": "Alice", "age": 30};
 
 ### Primitive Types
 
-Soli provides five primitive types:
+Soli provides six primitive types:
 
 ```soli
 # Int - 64-bit signed integer
@@ -143,6 +143,13 @@ large = 9_000_000;  # Underscores for readability
 pi = 3.14159;
 small = 0.001;
 # No exponent literal: `2.5e10` does not parse. Use "2.5e10".to_f
+
+# Decimal - exact decimal arithmetic, for money: a D suffix after at least
+# one decimal place (100.00D, not 100D)
+price = 19.99D
+rate = 0.0675D
+# Past Decimal's range (about 7.9e28) a literal raises "Invalid decimal
+# literal"; digits past the 28th decimal place are rounded.
 
 # String - UTF-8 text
 greeting = "Hello, World!";

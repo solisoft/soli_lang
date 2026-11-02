@@ -1052,6 +1052,49 @@ end
 print(line_total(line, 4), Money.format(Money.new(line_total(line, 2), "EUR")))"##,
     ),
     (
+        // A Decimal literal is parsed once, when the VM compiles it, and its
+        // load is a copy in the fast tier. Its value and its precision (the
+        // digits written after the point, which `==` compares) read as on
+        // the tree-walker wherever a literal stands: an array, `%n[...]`, a
+        // loop body run many times, a fused `local < literal`, a default
+        // argument, a hash, a block and a match arm.
+        "decimal_literals_keep_their_value_and_precision",
+        r##"prices = [19.99D, 1.50D, 1.0D, 0.10D, 1_000.25D, 7.000D, -2.50D]
+print(prices)
+print(%n[1.5D 2D -2.50D 3.250D 1_000.5D])
+long = 1.12345678901234567890123456789012D
+print(long, long == 1.1234567890123456789012345679D)
+print(1.25D + 0.25D == 1.5D, 1.0D == 1.00D, 19.99D == 19.99D)
+def total(count)
+  sum = 0.00D
+  i = 0
+  while i < count
+    sum += 19.99D
+    i += 1
+  end
+  sum
+end
+print(total(3))
+def is_cheap(price)
+  price < 20.00D
+end
+print(is_cheap(19.99D), is_cheap(25.00D))
+def tax(amount, rate = 0.20D)
+  amount * rate
+end
+print(tax(100.00D), tax(10.00D, 0.5D))
+x = 2.50D
+print(x >= 2.5D, x < 3.0D, x > 2.49D, x <= 2.50D)
+row = {"price": 4.50D, "qty": 2}
+print(row["price"] * row["qty"])
+print(["a", "b"].map { |name| "#{name}:#{0.5D}" })
+label = match 1 {
+  1 => 9.99D,
+  _ => 0.00D
+}
+print(label)"##,
+    ),
+    (
         // A zero divisor raises only between numbers, and a Float remainder by
         // zero is NaN, as the native kernels compute it. The VM checked the
         // divisor first: `1.5 % 0` raised, and Decimal, String and nil left

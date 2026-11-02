@@ -15,8 +15,9 @@ pub enum Constant {
     String(crate::interpreter::value::SoliStr),
     Bool(bool),
     Null,
-    /// Decimal value stored as string (parsed at runtime)
-    Decimal(String),
+    /// A Decimal literal, parsed when it was compiled: loading it is a copy,
+    /// in the fast tier, as for an `Int`.
+    Decimal(crate::interpreter::value::DecimalValue),
     /// A compiled function prototype.
     Function(Arc<FunctionProto>),
     /// Pre-computed HashKey list — used for hash literals with all-literal keys

@@ -44,7 +44,7 @@ impl Compiler {
                 self.emit_constant(Constant::Float(*n), line);
             }
             ExprKind::DecimalLiteral(s) => {
-                self.emit_constant(Constant::Decimal(s.clone()), line);
+                self.emit_constant(Constant::Decimal(decimal_literal(s, expr.span)?), line);
             }
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone().into()), line);
@@ -1057,11 +1057,7 @@ impl Compiler {
                 ExprKind::BoolLiteral(b) => HashKey::Bool(*b),
                 ExprKind::Null => HashKey::Null,
                 ExprKind::Symbol(s) => HashKey::Symbol(s.clone().into()),
-                ExprKind::DecimalLiteral(s) => {
-                    let d: rust_decimal::Decimal = s.parse().ok()?;
-                    let prec = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                    HashKey::Decimal(DecimalValue(d, prec))
-                }
+                ExprKind::DecimalLiteral(s) => HashKey::Decimal(DecimalValue::from_literal(s)?),
                 _ => return None,
             };
             keys.push(hk);
@@ -1674,6 +1670,18 @@ impl Compiler {
         self.stack_height = result_slot as usize + 1;
         Ok(())
     }
+}
+
+/// The value of a Decimal literal, parsed here once so that loading it is a
+/// copy. Text that does not parse is refused, which hands the code to the
+/// tree-walker: it raises "Invalid decimal literal" where the literal is
+/// evaluated. The VM used to load a silent 0.
+pub(super) fn decimal_literal(
+    text: &str,
+    span: crate::span::Span,
+) -> CompileResult<crate::interpreter::value::DecimalValue> {
+    crate::interpreter::value::DecimalValue::from_literal(text)
+        .ok_or_else(|| CompileError::new(format!("Invalid decimal literal: {text}"), span))
 }
 
 #[cfg(test)]

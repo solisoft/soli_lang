@@ -479,7 +479,7 @@ fn format_constant(val: Option<&Constant>) -> String {
     match val {
         Some(Constant::Int(n)) => format!("{}", n),
         Some(Constant::Float(n)) => format!("{}", n),
-        Some(Constant::Decimal(s)) => format!("{}D", s),
+        Some(Constant::Decimal(d)) => format!("{}D", d),
         Some(Constant::String(s)) => format!("\"{}\"", s),
         Some(Constant::Bool(b)) => format!("{}", b),
         Some(Constant::Null) => "null".to_string(),
@@ -623,7 +623,8 @@ mod tests {
         let mut p = proto("test");
         let i_b = p.chunk.add_constant(Constant::Bool(true));
         let i_n = p.chunk.add_constant(Constant::Null);
-        let i_d = p.chunk.add_constant(Constant::Decimal("19.99".into()));
+        let decimal = crate::interpreter::value::DecimalValue::from_literal("19.99").unwrap();
+        let i_d = p.chunk.add_constant(Constant::Decimal(decimal));
         p.chunk.emit(Op::Constant(i_b), 1);
         p.chunk.emit(Op::Constant(i_n), 1);
         p.chunk.emit(Op::Constant(i_d), 1);

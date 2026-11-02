@@ -96,6 +96,7 @@ Equality for `==` is **not** always `PartialEq` on instances — enum instances 
 | Method | Role |
 |---|---|
 | `from_str(s, precision)` | Parse |
+| `from_literal(text)` | A `19.99D` literal's value: precision = digits written after the point; `None` if the text does not parse |
 | `precision()` | Scale |
 | `value()` | `&Decimal` |
 | `to_f64()` | Lossy |

@@ -432,7 +432,9 @@ impl Compiler {
                 self.emit_constant(Constant::Float(*n), line);
             }
             ExprKind::DecimalLiteral(s) => {
-                self.emit_constant(Constant::Decimal(s.clone()), line);
+                let span = crate::span::Span::new(0, 0, line, 0);
+                let decimal = super::compiler_exprs::decimal_literal(s, span)?;
+                self.emit_constant(Constant::Decimal(decimal), line);
             }
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone().into()), line);
