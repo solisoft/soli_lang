@@ -554,13 +554,16 @@ Read by the [`ES` class](builtins.md#es-class), per application; `ES.configure` 
 `soli script.sl`, `soli -e "…"` and executables from `soli build tool.sl` run on the bytecode VM —
 the engine `soli serve` uses in production — unless the script needs the tree-walking interpreter.
 That is decided from the source before the first line runs. The interpreter takes a script that
-uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`,
-`inspect`, `to_s`, `to_string` on a class name), `method_missing`, model batch iteration
+uses class reflection (`class_eval`, `instance_eval`, `methods`, or `respond_to?`, `inspect`,
+`to_s`, `to_string` on a class name), `method_missing`, model batch iteration
 (`find_each`, `in_batches`, `find_in_batches`), a model
-lifecycle callback (`before_save`, `after_create`, …) or a state machine (`state_machine`,
-`before_transition`, `after_transition`); one that reads a function with no required parameter
-without parentheses (`x = helper`, `print(helper)`: the interpreter calls it, the VM would hand
-over the function); and one the VM cannot compile. `soli test`, the REPL and `soli serve --dev`
+lifecycle callback (`before_save`, `after_create`, …), a state machine (`state_machine`,
+`before_transition`, `after_transition`) or `subscribe` with a block; one that reads a function
+with no required parameter without parentheses (`x = helper`, `print(helper)`: the interpreter
+calls it, the VM would hand over the function); and one the VM cannot compile. `send` called on an
+instance or a class stays on the VM, and so does a bare `clock`, which both engines call. A name
+the script defines itself — a variable `methods`, a `def subscribe(topic)` — is the script's own
+and does not count. `soli test`, the REPL and `soli serve --dev`
 always use the interpreter. See [Running Soli Code](soli-language.md#running-soli-code).
 
 | Variable / flag | Purpose | Default |
@@ -568,7 +571,7 @@ always use the interpreter. See [Running Soli Code](soli-language.md#running-sol
 | `--tree` | Run the script on the tree-walking interpreter: `soli --tree script.sl`. | unset |
 | `--vm` | Run it on the VM with no fallback. A script that needs the interpreter stops with an error where the VM cannot go on (`Cannot access property 'send' on …`), and a bare function name gives the function itself, as under `soli serve`. | unset |
 | `SOLI_ENGINE` | `tree` (or `interpreter`), `vm` or `auto`: the engine `soli script.sl` and `soli -e` use when no flag is given. A flag wins; any other value means `auto`. An executable from `soli build` keeps the engine it was built with (`soli build tool.sl --tree` or `--vm`; `auto` by default) and ignores it. | `auto` |
-| `SOLI_ENGINE_LOG` | `1` prints to stderr which engine runs a script and why — `engine: vm`, `` engine: tree-walker — the script uses `send` ``, `` engine: tree-walker — the script calls `helper` without parentheses `` — when the choice is automatic (a forced engine prints nothing). Under `soli serve` it logs each action or middleware demoted from the VM to the interpreter (see [Observability](observability.md)). | unset |
+| `SOLI_ENGINE_LOG` | `1` prints to stderr which engine runs a script and why — `engine: vm`, `` engine: tree-walker — the script uses `class_eval` ``, `` engine: tree-walker — the script calls `helper` without parentheses `` — when the choice is automatic (a forced engine prints nothing). Under `soli serve` it logs each action or middleware demoted from the VM to the interpreter (see [Observability](observability.md)). | unset |
 | `SOLI_VM_VIEWS` | `0` / `off` renders every view on the tree-walking interpreter instead of compiling it to the VM (production only; `--dev` always uses the interpreter). See [Views](views.md#which-engine-renders-a-view). | on |
 | `SOLI_VM_VIEWS_CHECK` | A file path: each compiled view is also rendered on the interpreter, whose output is served, and every view whose two renders differ is appended to the file. A diagnostic; it doubles a render's cost. | unset |
 
