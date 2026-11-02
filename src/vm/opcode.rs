@@ -527,6 +527,20 @@ pub enum Op {
     /// primitives (`Int s`, `String s`), so this mirrors the tree-walker's
     /// pattern rules instead.
     MatchType(u16, u16),
+    /// Array-pattern shape test on a local: push `true` when the value in
+    /// `slot` is an Array whose length is exactly `len` (`at_least == 0`), or
+    /// at least `len` (`at_least != 0`, a pattern with `...rest`).
+    ///
+    /// One op for what was `MatchType("Array")`, `Pop`, a `length` property
+    /// read through the generic member path, a constant and a comparison. The
+    /// length is the native one, which is what the tree-walker reads too: a
+    /// user-defined `Array#length` is consulted by neither engine.
+    MatchArrayLen(u16, u16, u8),
+    /// Push `arr[start..]` of the Array in `slot`, as a new Array: the
+    /// `...rest` of an array pattern, once `MatchArrayLen` has proven the
+    /// length. Empty when the value is not an Array or is shorter. Native, as
+    /// in the tree-walker, rather than a `slice` method call.
+    ArrayRestLocal(u16, u16),
     /// Discard the innermost `for` iterator.
     ///
     /// `ForIter` pops it when the sequence is exhausted, which is the only way

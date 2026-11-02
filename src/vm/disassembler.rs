@@ -295,6 +295,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("ENUM_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))
         }
         Op::MatchType(n, off) => out.push_str(&format!("MATCH_TYPE {:>5} {:>5}", n, off)),
+        Op::MatchArrayLen(sl, n, at_least) => out.push_str(&format!(
+            "MATCH_ARRAY_LEN {:>4} {}{}",
+            sl,
+            if *at_least != 0 { ">=" } else { "==" },
+            n
+        )),
+        Op::ArrayRestLocal(sl, start) => {
+            out.push_str(&format!("ARRAY_REST_LOCAL {:>4} {:>4}", sl, start))
+        }
         Op::CallMethod(idx, argc) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));

@@ -39,7 +39,10 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         | MatchPattern::Typed { .. } => false,
         // Nested sub-patterns are compiled by recursion, so a composite is
         // supported exactly when its parts are.
-        MatchPattern::Array { elements, .. } => elements.iter().any(pattern_needs_interpreter),
+        // `MatchArrayLen` carries the element count in a u16.
+        MatchPattern::Array { elements, .. } => {
+            elements.len() > u16::MAX as usize || elements.iter().any(pattern_needs_interpreter)
+        }
         MatchPattern::Hash { fields, .. } => {
             fields.iter().any(|(_, p)| pattern_needs_interpreter(p))
         }
@@ -264,24 +267,13 @@ impl Compiler {
             }
 
             MatchPattern::Array { elements, rest } => {
-                self.emit(Op::GetLocal(slot), line);
-                let ty = self.add_string_constant("Array");
-                let f = self.emit_jump(Op::MatchType(ty, 0), line);
-                fails.push((f, live + 1));
-                self.emit(Op::Pop, line);
-
-                // Without `...rest` the length must match exactly; with it the
-                // named elements are a prefix. Same rule as the tree-walker.
-                self.emit(Op::GetLocal(slot), line);
-                let len_idx = self.add_string_constant("length");
-                self.emit(Op::GetProperty(len_idx), line);
-                self.emit_constant(Constant::Int(elements.len() as i64), line);
+                // One op tests "is an Array" and the length. Without `...rest`
+                // the length must match exactly; with it the named elements
+                // are a prefix. Same rule as the tree-walker. The count fits:
+                // `pattern_needs_interpreter` routes a longer pattern away.
+                let count = elements.len() as u16;
                 self.emit(
-                    if rest.is_some() {
-                        Op::GreaterEqual
-                    } else {
-                        Op::Equal
-                    },
+                    Op::MatchArrayLen(slot, count, u8::from(rest.is_some())),
                     line,
                 );
                 let f = self.emit_jump(Op::JumpIfFalse(0), line);
@@ -298,15 +290,7 @@ impl Compiler {
                 }
 
                 if let Some(rest_name) = rest {
-                    self.emit(Op::GetLocal(slot), line);
-                    self.emit_constant(Constant::Int(elements.len() as i64), line);
-                    let name_idx = self.add_string_constant("slice");
-                    let mid = super::method_table::resolve_method_id("slice");
-                    if mid != super::method_table::METHOD_UNKNOWN {
-                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
-                    } else {
-                        self.emit(Op::CallMethod(name_idx, 1), line);
-                    }
+                    self.emit(Op::ArrayRestLocal(slot, count), line);
                     self.add_local(rest_name.clone(), false);
                     live += 1;
                 }

@@ -718,6 +718,11 @@ impl Vm {
                     let value = clone_scalar_fast(&self.stack[base + slot as usize]);
                     self.stack.push(value);
                 }
+                // An array pattern's shape test: pure, never throws.
+                Op::MatchArrayLen(slot, len, at_least) => {
+                    let ok = array_len_matches(&self.stack[base + slot as usize], len, at_least);
+                    self.stack.push(Value::Bool(ok));
+                }
                 Op::GetLocal2(slot_a, slot_b) => {
                     let a = clone_scalar_fast(&self.stack[base + slot_a as usize]);
                     let b = clone_scalar_fast(&self.stack[base + slot_b as usize]);
@@ -3675,11 +3680,19 @@ impl Vm {
                     self.throw_exception(value, span)?;
                 }
                 Op::CatchMatch(name_idx, jump_offset) => {
-                    let type_name = self.read_string_constant_owned(name_idx);
+                    // The class name is borrowed from the constant pool: this
+                    // runs on every typed `catch` test, and copying the name
+                    // into a String only to compare it was the whole cost.
+                    let frame = self.frames.last().unwrap();
+                    let type_name: &str =
+                        match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
                     let matches = match self.stack.last().unwrap() {
                         Value::Instance(inst) => {
                             let inst = inst.borrow();
-                            class_name_matches(&inst.class, &type_name)
+                            class_name_matches(&inst.class, type_name)
                         }
                         _ => false,
                     };
@@ -3689,28 +3702,56 @@ impl Vm {
                     }
                 }
                 Op::EnumPayload(slot, variant_idx, index) => {
-                    let variant = self.read_string_constant_owned(variant_idx);
-                    let base = self.frames.last().unwrap().stack_base;
-                    let value = match &self.stack[base + slot as usize] {
-                        Value::Instance(inst) => {
-                            let inst = inst.borrow();
-                            let names =
-                                crate::interpreter::executor::pattern_matching::enum_variant_field_names(
-                                    &inst.class,
-                                    &variant,
-                                );
-                            names
-                                .get(index as usize)
-                                .and_then(|n| inst.fields.get(n.as_str()))
-                                .cloned()
+                    // Borrowed all the way down: the variant name from the
+                    // constant pool, the metadata and field name in place. It
+                    // used to build the variant String, a HashKey and a Vec of
+                    // every field name per bound field.
+                    let value = {
+                        let frame = self.frames.last().unwrap();
+                        let variant: &str =
+                            match &frame.closure.proto.chunk.constants[variant_idx as usize] {
+                                Constant::String(s) => s.as_str(),
+                                _ => "",
+                            };
+                        match &self.stack[frame.stack_base + slot as usize] {
+                            Value::Instance(inst) => {
+                                crate::interpreter::executor::pattern_matching::enum_variant_payload(
+                                    &inst.borrow(),
+                                    variant,
+                                    index as usize,
+                                )
                                 .unwrap_or(Value::Null)
+                            }
+                            _ => Value::Null,
                         }
-                        _ => Value::Null,
                     };
                     self.push(value);
                 }
+                Op::MatchArrayLen(slot, len, at_least) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let ok = array_len_matches(&self.stack[base + slot as usize], len, at_least);
+                    self.push(Value::Bool(ok));
+                }
+                Op::ArrayRestLocal(slot, start) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let rest = match &self.stack[base + slot as usize] {
+                        Value::Array(arr) => arr
+                            .borrow()
+                            .get(start as usize..)
+                            .map(<[Value]>::to_vec)
+                            .unwrap_or_default(),
+                        _ => Vec::new(),
+                    };
+                    self.push(Value::Array(Rc::new(RefCell::new(rest))));
+                }
                 Op::MatchType(name_idx, jump_offset) => {
-                    let type_name = self.read_string_constant_owned(name_idx);
+                    // Borrowed, not copied: see `CatchMatch`.
+                    let frame = self.frames.last().unwrap();
+                    let type_name: &str =
+                        match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
                     let matches = match self.stack.last().unwrap() {
                         Value::Int(_) => type_name == "Int",
                         Value::Float(_) => type_name == "Float",
@@ -5794,6 +5835,23 @@ impl Vm {
 impl Default for Vm {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// `MatchArrayLen`: an Array of exactly `len` elements, or of at least `len`
+/// when the pattern has a `...rest`. Native length, as in the tree-walker.
+#[inline]
+fn array_len_matches(value: &Value, len: u16, at_least: u8) -> bool {
+    match value {
+        Value::Array(arr) => {
+            let n = arr.borrow().len();
+            if at_least != 0 {
+                n >= len as usize
+            } else {
+                n == len as usize
+            }
+        }
+        _ => false,
     }
 }
 

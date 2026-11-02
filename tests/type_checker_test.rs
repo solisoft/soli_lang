@@ -1053,3 +1053,17 @@ end
         ));
     }
 }
+
+// ---------- match rest bindings ----------
+
+/// `...rest` in an array or hash pattern binds a name the arm can use. The
+/// checker used to skip it, so any read of `rest` was an "Undefined variable"
+/// and the program never ran on either engine.
+#[test]
+fn match_rest_bindings_are_defined_in_the_arm() {
+    check_ok(
+        "def head_tail(xs)\n  match xs {\n    [first, ...rest] => [first, rest.length, rest],\n    _ => nil\n  }\nend\n\
+         def others(h)\n  match h {\n    {name: n, ...rest} => rest,\n    _ => nil\n  }\nend\n\
+         print(head_tail([1, 2, 3]))\nprint(others({\"name\": \"a\", \"age\": 1}))",
+    );
+}

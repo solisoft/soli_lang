@@ -1645,6 +1645,31 @@ print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
         "match_array_rest_with_guard",
         "fn f(v) { return match v { [a, ...r] if r.length > 1 => \"long\", [a, ...r] => \"short\", _ => \"no\" } }\nprint([f([1, 2, 3]), f([1]), f([])])",
     ),
+    // `MatchArrayLen` tests "is an Array" and the length in one op, on the
+    // subject's slot or on a parked nested element; `ArrayRestLocal` builds
+    // `...rest` natively. Pinned: non-array subjects of every kind fall
+    // through, a nested element that is not an array fails only its arm, and
+    // the rest is a copy the subject does not share.
+    (
+        "match_array_shape_on_non_array_subjects",
+        "fn f(v) { return match v { [] => \"empty\", [a] => \"one\", [a, ...r] => \"many\", _ => \"not\" } }\nprint([f([]), f([1]), f([1, 2]), f(\"ab\"), f({\"a\": 1}), f(nil), f(0), f(1..3)])",
+    ),
+    (
+        "match_array_nested_shape",
+        "fn f(v) { return match v { [[x, y], z] => x * y + z, [[x, ...r], z] => r.length, [a, b] => a + b, _ => -1 } }\nprint([f([[2, 3], 4]), f([[1, 2, 3], 0]), f([1, 2]), f([[1], 2]), f([1])])",
+    ),
+    (
+        "match_array_rest_is_a_copy",
+        "xs = [1, 2, 3]\nr = match xs { [h, ...t] => t, _ => [] }\nr.push(9)\nprint([xs, r])",
+    ),
+    (
+        "match_enum_payload_skips_wildcards_by_position",
+        "enum Shape { Circle(radius: Int), Rect(w: Int, h: Int), Box(a: Int, b: Int, c: Int) }\nfn f(s) { return match s { Shape.Rect(_, h) => \"h=\" + str(h), Shape.Box(_, _, c) => \"c=\" + str(c), Shape.Circle(r) => \"r=\" + str(r), _ => \"?\" } }\nprint([f(Shape.Rect(3, 4)), f(Shape.Box(1, 2, 3)), f(Shape.Circle(5)), f(7)])",
+    ),
+    (
+        "match_typed_primitives_and_typed_catch",
+        "class Base { }\nclass Child < Base { }\nclass AppError < Error { }\nclass NotFound < AppError { }\nfn f(v) { return match v { Float: x => \"float\", String: s => \"string:\" + s, Bool: b => \"bool\", Void: z => \"nil\", Int: n => \"int\", _ => \"?\" } }\nprint([f(1.5), f(\"s\"), f(false), f(nil), f(1), f([1]), f(new Child())])\nfn g(e) { try { throw e } catch AppError err { return \"app\" } catch err { return \"other\" } }\nprint([g(new NotFound(\"x\")), g(new AppError(\"y\")), g(new ValueError(\"z\")), g(\"plain\")])",
+    ),
     // --- typed patterns (`Int: n`) compile, and a non-exhaustive match raises ---
     (
         "match_typed_primitive_arms",

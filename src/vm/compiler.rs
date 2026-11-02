@@ -1212,6 +1212,8 @@ fn stack_effect(op: Op) -> i32 {
         MatchType(_, _) => 0,
         // Reads a payload field out of a slot and pushes it.
         EnumPayload(_, _, _) => 1,
+        // Read a slot, push a Bool / the rest Array.
+        MatchArrayLen(_, _, _) | ArrayRestLocal(_, _) => 1,
     }
 }
 
@@ -2699,6 +2701,49 @@ mod inplace_peephole_tests {
         }
     }
 
+    /// An array pattern tests its shape in one `MatchArrayLen` (exact, or
+    /// at-least with `...rest`) and builds the rest with `ArrayRestLocal`: no
+    /// type-name test, no `length` member read, no `slice` call. Then the
+    /// shapes still answer as the tree-walker does, nested ones included.
+    #[test]
+    fn array_pattern_tests_its_shape_in_one_op() {
+        let ops = fn_ops(
+            "v = [1, 2, 3]\nmatch v {\n  [a, b] => a + b,\n  [[x], ...rest] => x,\n  [first, ...rest] => first,\n  _ => 0\n}",
+        );
+        // The first arm's test names the subject's slot.
+        let subject = match ops.iter().find(|op| matches!(op, Op::MatchArrayLen(..))) {
+            Some(Op::MatchArrayLen(slot, 2, 0)) => *slot,
+            other => panic!("first shape test is {other:?}: {ops:?}"),
+        };
+        assert!(ops.contains(&Op::MatchArrayLen(subject, 1, 1)), "{ops:?}");
+        assert!(ops.contains(&Op::ArrayRestLocal(subject, 1)), "{ops:?}");
+        // `[x]` runs on the element parked in its own slot.
+        assert!(
+            ops.iter()
+                .any(|op| matches!(op, Op::MatchArrayLen(slot, 1, 0) if *slot > subject)),
+            "{ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|op| matches!(
+                op,
+                Op::MatchType(..)
+                    | Op::GetProperty(_)
+                    | Op::GetLocalProperty(..)
+                    | Op::CallMethod(..)
+                    | Op::CallMethodById(..)
+                    | Op::GreaterEqual
+            )),
+            "{ops:?}"
+        );
+
+        let program = "def m(v)\n  match v {\n    [] => 0,\n    [[x, y], z] => x * y + z,\n    [a, b] => a + b,\n    [first, ...rest] => [first, rest],\n    _ => -1\n  }\nend\n\
+                       let result = [m([]), m([[2, 3], 4]), m([1, 2]), m([1, 2, 3]), m([9]), m(\"ab\"), m({\"a\": 1}), m(nil)]";
+        assert_eq!(
+            vm_result(program),
+            "[0, 10, 3, [1, [2, 3]], [9, []], -1, -1, -1]"
+        );
+    }
+
     /// A branch on a bare local is one dispatch: `if flag` is
     /// `JumpIfLocalFalsy`, `unless flag` and `if !flag` are
     /// `JumpIfLocalTruthy`. They were `IsTruthyLocal, JumpIfFalse` and
@@ -3501,6 +3546,11 @@ mod stack_effect_tests {
             (&[], RescueJump(0)),
             (&[Constant(INT)], CatchMatch(KEY, 0)),
             (&[Constant(INT)], MatchType(KEY, 0)),
+            (&[], MatchArrayLen(KEYS, 1, 0)),
+            (&[], MatchArrayLen(KEYS, 0, 1)),
+            (&[], MatchArrayLen(N, 1, 0)),
+            (&[], ArrayRestLocal(KEYS, 0)),
+            (&[], ArrayRestLocal(KEYS, 5)),
             // Fused reads of locals: each pushes its result.
             (&[], AddLocalLocal(N, N)),
             (&[], SubLocalLocal(N, N)),
