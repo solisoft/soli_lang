@@ -2484,6 +2484,49 @@ try { print(h.includes?("a")) } catch e { print(e) }
 try { print(h.contains("a")) } catch e { print(e) }
 try { print(5.includes?(1)) } catch e { print(e) }"##,
     ),
+    (
+        // Global natives run on the VM's stack slice (`call_plain_native_at`):
+        // arguments in order, through a global and through a local, nested,
+        // a native error and an arity error caught with the values around
+        // the call intact, and the natives the VM intercepts (`defined`,
+        // `const_get`) still answering from its globals.
+        "global_native_calls_on_the_stack_slice",
+        r##"class Widget
+  def label
+    "w"
+  end
+end
+def pick(v)
+  v
+end
+total = 0
+i = 0
+while i < 50
+  total = total + int(str(i)) + len([i, i])
+  i = i + 1
+end
+print(total)
+print(len(str(int("12")) + "ab"))
+f = int
+print(f("41") + 1)
+print(type(nil))
+print(Math.floor(3.7))
+print(JSON.stringify({"a": [1, 2]}))
+try { len(1, 2) } catch e { print("arity") }
+try { int(pick("abc")) } catch e { print("err #{e}") }
+acc = []
+[1, 2, 3].each do |x|
+  try { acc.push(int(pick(x == 2 ? "zz" : str(x)))) } catch e { acc.push(-1) }
+end
+print(acc)
+print(defined("Widget"))
+print(defined("NoSuchThing"))
+k = const_get("Widget")
+print(k == Widget)
+a = 1
+b = 2
+print([a, len("xyz"), b])"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

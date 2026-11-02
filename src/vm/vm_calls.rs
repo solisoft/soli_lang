@@ -8,7 +8,7 @@ use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    Class, Function, HashKey, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
+    Class, Function, HashKey, Instance, NativeFunction, NativeSpecial, Value, NATIVE_CONSTRUCTOR,
 };
 use crate::span::Span;
 
@@ -159,6 +159,18 @@ pub(crate) fn jit_compile_method_with_base(
     let arc = std::sync::Arc::new(proto);
     *func.jit_cache.borrow_mut() = Some(arc.clone());
     Ok(arc)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the natives `call_plain_native_at` ran on this thread.
+    static PLAIN_NATIVE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many natives this thread called on the stack slice.
+#[cfg(test)]
+pub(crate) fn plain_native_calls() -> usize {
+    PLAIN_NATIVE_CALLS.with(std::cell::Cell::get)
 }
 
 #[cfg(test)]
@@ -423,6 +435,14 @@ impl Vm {
         if let Value::VmClosure(closure) = &self.stack[callee_idx] {
             let closure = closure.clone(); // Rc clone (cheap counter increment)
             return self.call_closure(closure, argc, span);
+        }
+
+        // A plain native (anything but the few `call_native` intercepts) is
+        // called where it lies on the stack: no clone of the callee.
+        if let Value::NativeFunction(native) = &self.stack[callee_idx] {
+            if native.vm_special == NativeSpecial::None {
+                return self.call_plain_native_at(callee_idx, argc, span);
+            }
         }
 
         // Slow path: clone and dispatch other types
@@ -698,6 +718,12 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
+        // The callee sits below its arguments on every path that gets here.
+        let callee_idx = self.stack.len() - 1 - argc;
+        if native.vm_special == NativeSpecial::None {
+            return self.call_plain_native_at(callee_idx, argc, span);
+        }
+
         // Check arity
         if let Some(expected) = native.arity {
             if argc != expected {
@@ -705,34 +731,23 @@ impl Vm {
             }
         }
 
-        // Collect arguments from the stack
-        let mut args = Vec::with_capacity(argc);
-        for _ in 0..argc {
-            args.push(self.pop());
-        }
-        args.reverse();
+        // An intercepted native: take the arguments off the stack, owned.
+        let mut args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
+        self.stack.truncate(callee_idx);
 
-        // Pop the callee
-        self.pop();
-
-        if native.name == "grouped" {
-            return self.call_grouped_block(args, span);
-        }
-        if native.name == "with_transaction" {
-            return self.call_with_transaction_block(args, span);
-        }
-        if native.name == "after_commit" {
-            return self.call_after_commit_block(args, span);
-        }
-        if native.name == "with_tenant" {
-            return self.call_with_tenant_block(args, span);
+        match native.vm_special {
+            NativeSpecial::Grouped => return self.call_grouped_block(args, span),
+            NativeSpecial::WithTransaction => return self.call_with_transaction_block(args, span),
+            NativeSpecial::AfterCommit => return self.call_after_commit_block(args, span),
+            NativeSpecial::WithTenant => return self.call_with_tenant_block(args, span),
+            _ => {}
         }
         // SEC-013b: `render_json(record)` sends what the class's `as_json`
         // returns, as on the tree-walker (`try_evaluate_render_json_with_as_json`).
         // The native has no engine to call a user method with, so on the VM
         // `as_json` was skipped and every field went out — the very fields an
         // `as_json` is written to leave out (a password digest, a token).
-        if native.name == "render_json" {
+        if native.vm_special == NativeSpecial::RenderJson {
             if let Some(Value::Instance(inst)) = args.first() {
                 let class = inst.borrow().class.clone();
                 if class.find_vm_method_with_class("as_json").is_some()
@@ -743,7 +758,7 @@ impl Vm {
                 }
             }
         }
-        if native.name == "assert_raises" {
+        if native.vm_special == NativeSpecial::AssertRaises {
             if let Some((fragment, block)) =
                 crate::interpreter::builtins::assertions::assert_raises_args(args.clone())
             {
@@ -763,10 +778,13 @@ impl Vm {
         // false for a class the app had loaded, and an action took the branch
         // meant for an app without it. The VM's globals answer first; a name
         // they lack still goes to the native, as before.
-        if native.name == "defined" || native.name == "const_get" {
+        if matches!(
+            native.vm_special,
+            NativeSpecial::Defined | NativeSpecial::ConstGet
+        ) {
             if let Some(Value::String(name)) = args.first() {
                 if let Some(value) = self.globals.get(name.as_str()) {
-                    let result = if native.name == "defined" {
+                    let result = if native.vm_special == NativeSpecial::Defined {
                         Value::Bool(true)
                     } else {
                         value.clone()
@@ -777,14 +795,48 @@ impl Vm {
             }
         }
 
-        // Call the native function. Wrap in a flamegraph `Fn` span when
-        // the native is on the request-path whitelist (see
-        // `span_log::is_request_path_native`); cheap builtins are
-        // skipped to keep the chart readable.
+        // Call the native function, in a flamegraph span as above.
         let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
         let result = (native.func)(&args).map_err(|e| RuntimeError::new(e, span))?;
         drop(_native_span);
         self.push(result);
+        Ok(())
+    }
+
+    /// Call the plain native at `stack[callee_idx]` on the `argc` arguments
+    /// above it, straight on the stack slice: no argument `Vec`, no callee
+    /// clone. A native gets only `&[Value]` — it has no way back to this
+    /// VM's stack — so the slice cannot move under it. The callee and the
+    /// arguments leave the stack before an error propagates, as they did when
+    /// they were popped first.
+    #[inline]
+    fn call_plain_native_at(
+        &mut self,
+        callee_idx: usize,
+        argc: usize,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Value::NativeFunction(native) = &self.stack[callee_idx] else {
+            unreachable!("call_plain_native_at: callee is not a native");
+        };
+        debug_assert_eq!(native.vm_special, NativeSpecial::None);
+        debug_assert_eq!(self.stack.len(), callee_idx + 1 + argc);
+        if let Some(expected) = native.arity {
+            if argc != expected {
+                return Err(RuntimeError::wrong_arity(expected, argc, span));
+            }
+        }
+        // Wrap in a flamegraph `Fn` span when the native is on the
+        // request-path whitelist (see `span_log::is_request_path_native`);
+        // cheap builtins are skipped to keep the chart readable.
+        #[cfg(test)]
+        PLAIN_NATIVE_CALLS.with(|n| n.set(n.get() + 1));
+        let native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
+        let result = (native.func)(&self.stack[callee_idx + 1..]);
+        drop(native_span);
+        self.stack.truncate(callee_idx);
+        let value = result.map_err(|e| RuntimeError::new(e, span))?;
+        self.push(value);
         Ok(())
     }
 
@@ -3510,5 +3562,121 @@ end
         let (_interpreter, mut vm) = static_classes_vm();
         let value = run_probe(&mut vm, "str(Math.floor(2.7))").expect("runs");
         assert_eq!(value, Value::str("2"));
+    }
+}
+
+#[cfg(test)]
+mod plain_native_call_tests {
+    //! A global native call runs on the stack slice (`call_plain_native_at`):
+    //! no argument `Vec`, no callee clone, no name compares. The few natives
+    //! the VM intercepts (`grouped`, `defined`, …) are tagged once at
+    //! construction and still take their own path.
+    use super::plain_native_calls;
+    use crate::interpreter::value::{NativeFunction, NativeSpecial, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src` on a VM seeded with the builtins, as `soli --vm` seeds it;
+    /// return its `result` global and how many natives it called on the
+    /// stack slice.
+    fn run(src: &str) -> (Value, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let interpreter = crate::interpreter::Interpreter::new();
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.environment.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        let start = plain_native_calls();
+        vm.execute(&module.main).expect("vm");
+        let spent = plain_native_calls() - start;
+        let result = vm.globals.get("result").cloned().expect("result");
+        (result, spent)
+    }
+
+    #[test]
+    fn global_natives_run_on_the_stack_slice() {
+        let (result, calls) = run(r#"
+total = 0
+i = 0
+while i < 100
+  total = total + int(str(i)) + len([i, i, i])
+  i = i + 1
+end
+result = total
+"#);
+        assert_eq!(result, Value::Int(4950 + 300));
+        // `int`, `str` and `len` once per iteration, each on the slice.
+        assert!(calls >= 300, "only {calls} natives took the slice path");
+    }
+
+    #[test]
+    fn a_native_through_a_local_keeps_its_arguments_in_order() {
+        let (result, calls) = run(r#"
+f = int
+g = range
+result = [f("41") + 1, g(1, 4), g(4, 6), len(str(int("12")) + "ab")]
+"#);
+        assert_eq!(result.to_string(), "[42, [1, 2, 3], [4, 5], 4]");
+        assert!(calls >= 6, "only {calls} natives took the slice path");
+    }
+
+    #[test]
+    fn a_failing_native_leaves_the_stack_balanced() {
+        // The native errors (and the arity check fails) with the callee and
+        // its arguments on the stack: they must be gone before the error
+        // propagates, or the values around the call would read wrong slots.
+        let (result, _) = run(r#"
+def pick(v)
+  v
+end
+a = 1
+out = []
+[1, 2, 3].each do |x|
+  try
+    out.push(int(pick(x == 2 ? "zz" : str(x))))
+  catch e
+    out.push(-1)
+  end
+end
+try
+  len(1, 2)
+catch e
+  out.push(-2)
+end
+b = 2
+result = [a, out, b, len("xyz")]
+"#);
+        assert_eq!(result.to_string(), "[1, [1, -1, 3, -2], 2, 3]");
+    }
+
+    #[test]
+    fn intercepted_natives_are_tagged_once_and_still_intercepted() {
+        for (name, tag) in [
+            ("grouped", NativeSpecial::Grouped),
+            ("with_transaction", NativeSpecial::WithTransaction),
+            ("after_commit", NativeSpecial::AfterCommit),
+            ("with_tenant", NativeSpecial::WithTenant),
+            ("render_json", NativeSpecial::RenderJson),
+            ("assert_raises", NativeSpecial::AssertRaises),
+            ("defined", NativeSpecial::Defined),
+            ("const_get", NativeSpecial::ConstGet),
+            ("int", NativeSpecial::None),
+            ("json_encode", NativeSpecial::None),
+        ] {
+            let native = NativeFunction::new(name, None, |_| Ok(Value::Null));
+            assert_eq!(native.vm_special, tag, "{name}");
+        }
+
+        // `defined` answers from the VM's globals, which the native itself
+        // cannot see: it must not have gone down the plain path.
+        let (result, calls) = run(r#"
+class Widget
+end
+result = [defined("Widget"), const_get("Widget") == Widget]
+"#);
+        assert_eq!(result.to_string(), "[true, true]");
+        assert_eq!(calls, 0, "an intercepted native took the plain path");
     }
 }

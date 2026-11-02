@@ -1564,6 +1564,43 @@ pub struct NativeFunctionInner {
     /// allocation was pure overhead.
     pub func: NativeFn,
     pub is_auto_invocable: bool, // Can be called without parentheses
+    /// Which of the few natives the VM intercepts this one is, worked out
+    /// once from `name` at construction so a global native call branches on
+    /// a byte instead of comparing its name against every special.
+    pub vm_special: NativeSpecial,
+}
+
+/// The natives the VM handles itself before (or instead of) calling `func`:
+/// block-taking builtins that must run a closure on the calling VM, and the
+/// ones whose tree-walker behaviour needs VM state. `None` for every other
+/// native, which the VM calls straight on its stack slice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeSpecial {
+    None,
+    Grouped,
+    WithTransaction,
+    AfterCommit,
+    WithTenant,
+    RenderJson,
+    AssertRaises,
+    Defined,
+    ConstGet,
+}
+
+impl NativeSpecial {
+    pub fn of(name: &str) -> Self {
+        match name {
+            "grouped" => Self::Grouped,
+            "with_transaction" => Self::WithTransaction,
+            "after_commit" => Self::AfterCommit,
+            "with_tenant" => Self::WithTenant,
+            "render_json" => Self::RenderJson,
+            "assert_raises" => Self::AssertRaises,
+            "defined" => Self::Defined,
+            "const_get" => Self::ConstGet,
+            _ => Self::None,
+        }
+    }
 }
 
 impl std::ops::Deref for NativeFunction {
@@ -1600,11 +1637,14 @@ impl NativeFunction {
     where
         F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
+        let name = name.into();
+        let vm_special = NativeSpecial::of(&name);
         Self(Rc::new(NativeFunctionInner {
-            name: name.into(),
+            name,
             arity,
             func: Rc::new(func),
             is_auto_invocable,
+            vm_special,
         }))
     }
 }
