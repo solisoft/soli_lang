@@ -680,15 +680,34 @@ impl Value {
     /// generic object form, leaking the internal field as
     /// `<DateTime _ts: 1794744000000000000>`.
     pub fn render_datetime(ts: i64, use_utc: bool) -> String {
-        if use_utc {
-            chrono::DateTime::from_timestamp_nanos(ts)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
+        Self::datetime_text(ts, use_utc).as_str().to_string()
+    }
+
+    /// Append a `DateTime`'s string form to `out` without an intermediate
+    /// String. Byte-identical to `format("%Y-%m-%d %H:%M:%S")`.
+    #[inline]
+    pub fn write_datetime(ts: i64, use_utc: bool, out: &mut String) {
+        out.push_str(Self::datetime_text(ts, use_utc).as_str());
+    }
+
+    /// `YYYY-MM-DD HH:MM:SS` on the stack. This used to go through chrono's
+    /// `format(...)`, which parses the strftime pattern on every call, formats
+    /// through `core::fmt` and allocates a String the caller then copied —
+    /// about 190-235 ns more per date written into a view than a string of
+    /// the same length. Here: the view's UTC offset (0, or the cached zone's
+    /// offset at this instant — the same rule `with_timezone` applies), then
+    /// days-from-epoch to a civil date and two-digit writes.
+    ///
+    /// Always 19 bytes: an `i64` of nanoseconds spans 1677-09-21 to
+    /// 2262-04-11, and no zone moves that by more than a day, so `%Y` is
+    /// always the four-digit, unsigned form chrono prints for 0..=9999.
+    pub fn datetime_text(ts: i64, use_utc: bool) -> DateTimeText {
+        let offset = if use_utc {
+            0
         } else {
-            crate::interpreter::builtins::datetime::local_zone::local_from_nanos(ts)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
-        }
+            crate::interpreter::builtins::datetime::local_zone::local_offset_secs(ts)
+        };
+        DateTimeText::new(ts, offset)
     }
 
     /// How a `DateTime` serialises to JSON: RFC 3339, matching `to_iso()`.
@@ -866,7 +885,7 @@ impl Value {
     #[inline]
     pub fn display_len(&self) -> usize {
         match self {
-            Value::DateTime(ts, use_utc) => Self::render_datetime(*ts, *use_utc).len(),
+            Value::DateTime(_, _) => DateTimeText::LEN,
             // Count digits arithmetically. This used to be `n.to_string().len()`,
             // which heap-allocated a String purely to read its length and then
             // dropped it — and `join` calls this once per element to size its
@@ -946,7 +965,7 @@ impl Value {
     #[inline]
     pub fn write_to_string(&self, s: &mut String) {
         match self {
-            Value::DateTime(ts, use_utc) => s.push_str(&Self::render_datetime(*ts, *use_utc)),
+            Value::DateTime(ts, use_utc) => Self::write_datetime(*ts, *use_utc, s),
             // itoa writes into a stack buffer; `to_string()` allocated one
             // String per element. Integers have a single decimal form, so the
             // output is byte-identical.
@@ -1281,7 +1300,9 @@ impl fmt::Display for Value {
 impl Value {
     fn fmt_inner(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::DateTime(ts, use_utc) => write!(f, "{}", Value::render_datetime(*ts, *use_utc)),
+            Value::DateTime(ts, use_utc) => {
+                f.write_str(Value::datetime_text(*ts, *use_utc).as_str())
+            }
             Value::Int(n) => write!(f, "{}", n),
             Value::Float(n) => write!(f, "{}", n),
             Value::Decimal(d) => write!(f, "{}", d),
@@ -3087,6 +3108,66 @@ pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
     }
 }
 
+/// A `DateTime`'s `YYYY-MM-DD HH:MM:SS` form, formatted on the stack. See
+/// [`Value::datetime_text`].
+pub struct DateTimeText([u8; DateTimeText::LEN]);
+
+impl DateTimeText {
+    pub const LEN: usize = 19;
+
+    /// Format the instant `nanos` (UTC) shifted by `offset_secs` east of UTC.
+    pub fn new(nanos: i64, offset_secs: i32) -> Self {
+        // Floor to whole seconds, as `from_timestamp_nanos` does: the
+        // sub-second part is always non-negative, so -1ns is 23:59:59.
+        let secs = nanos.div_euclid(1_000_000_000) + offset_secs as i64;
+        let days = secs.div_euclid(86_400);
+        let second_of_day = secs.rem_euclid(86_400) as u32;
+        let (year, month, day) = civil_from_days(days);
+        let year = year as u32;
+        debug_assert!(
+            year <= 9999,
+            "DateTime year {year} out of the 4-digit range"
+        );
+        let hour = second_of_day / 3600;
+        let minute = second_of_day / 60 % 60;
+        let second = second_of_day % 60;
+        let mut buf = *b"0000-00-00 00:00:00";
+        let two = |buf: &mut [u8; 19], at: usize, n: u32| {
+            buf[at] = b'0' + (n / 10 % 10) as u8;
+            buf[at + 1] = b'0' + (n % 10) as u8;
+        };
+        two(&mut buf, 0, year / 100);
+        two(&mut buf, 2, year % 100);
+        two(&mut buf, 5, month);
+        two(&mut buf, 8, day);
+        two(&mut buf, 11, hour);
+        two(&mut buf, 14, minute);
+        two(&mut buf, 17, second);
+        DateTimeText(buf)
+    }
+
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        // Only ASCII digits, '-', ' ' and ':' are ever written.
+        std::str::from_utf8(&self.0).unwrap_or_default()
+    }
+}
+
+/// Days since 1970-01-01 to a proleptic Gregorian (year, month, day) —
+/// Howard Hinnant's `civil_from_days`, exact for negative days too.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097); // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11], March-based
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year, month, day)
+}
+
 #[cfg(test)]
 mod decimal_tests {
     use super::*;
@@ -4126,5 +4207,143 @@ mod interpolation_format_tests {
             build_interpolated(&long).as_str(),
             format!("{}{}", "x".repeat(40), 1e20)
         );
+    }
+}
+
+#[cfg(test)]
+mod datetime_text_tests {
+    use super::{DateTimeText, Value};
+    use crate::interpreter::builtins::datetime::local_zone::{local_from_nanos, offset_secs_in};
+    use chrono::{DateTime, TimeZone, Utc};
+    use chrono_tz::Tz;
+
+    const FMT: &str = "%Y-%m-%d %H:%M:%S";
+    const SEC: i64 = 1_000_000_000;
+
+    fn via_chrono_utc(ts: i64) -> String {
+        DateTime::from_timestamp_nanos(ts).format(FMT).to_string()
+    }
+
+    /// Edges chrono and a hand-rolled civil-date routine most often disagree
+    /// on: the epoch, a nanosecond either side of it, pre-1970 instants, the
+    /// i64 bounds, leap days and century years.
+    fn edge_instants() -> Vec<i64> {
+        let mut out = vec![0, -1, 1, -SEC, -SEC + 1, SEC - 1, i64::MIN, i64::MAX];
+        for (y, m, d) in [
+            (1677, 9, 22),
+            (1700, 2, 28),
+            (1700, 3, 1),
+            (1800, 12, 31),
+            (1900, 2, 28),
+            (1900, 3, 1),
+            (1969, 12, 31),
+            (2000, 2, 29),
+            (2000, 3, 1),
+            (2024, 2, 29),
+            (2100, 2, 28),
+            (2100, 3, 1),
+            (2262, 4, 10),
+        ] {
+            let midnight = Utc.with_ymd_and_hms(y, m, d, 0, 0, 0).unwrap().timestamp() * SEC;
+            for delta in [-SEC, -1, 0, 1, SEC, 86_399 * SEC + 999_999_999] {
+                out.push(midnight + delta);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn utc_view_matches_chrono_strftime() {
+        for ts in edge_instants() {
+            let text = DateTimeText::new(ts, 0);
+            assert_eq!(text.as_str(), via_chrono_utc(ts), "nanos {ts}");
+        }
+        // A sweep across the whole i64 range (~57k instants).
+        let step: i64 = 0x0001_2345_6789_abcd;
+        let mut ts = i64::MIN;
+        while ts <= i64::MAX - step {
+            assert_eq!(
+                DateTimeText::new(ts, 0).as_str(),
+                via_chrono_utc(ts),
+                "nanos {ts}"
+            );
+            ts += step;
+        }
+    }
+
+    /// The local view: the offset rule must match `with_timezone` at every
+    /// instant, DST transitions, half-hour and 45-minute zones included.
+    #[test]
+    fn zone_offsets_match_chrono_tz_across_transitions() {
+        let zones = [
+            "America/New_York",
+            "Europe/London",
+            "Australia/Lord_Howe", // 30-minute DST shift
+            "Asia/Kolkata",        // +05:30, no DST
+            "Pacific/Chatham",     // +12:45 / +13:45
+            "America/St_Johns",    // -03:30 / -02:30
+            "Pacific/Apia",        // skipped 2011-12-30 entirely
+            "America/Havana",      // DST at midnight
+        ];
+        let from = Utc
+            .with_ymd_and_hms(2011, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let to = Utc
+            .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        for name in zones {
+            let tz: Tz = name.parse().unwrap();
+            // Every 15 minutes for two years: each transition is hit exactly.
+            let mut secs = from;
+            while secs < to {
+                for ts in [secs * SEC, secs * SEC - 1] {
+                    let utc = DateTime::from_timestamp_nanos(ts);
+                    let expected = utc.with_timezone(&tz).format(FMT).to_string();
+                    let offset = offset_secs_in(&tz, &utc.naive_utc());
+                    assert_eq!(
+                        DateTimeText::new(ts, offset).as_str(),
+                        expected,
+                        "{name} at {utc}"
+                    );
+                }
+                secs += 900;
+            }
+        }
+        // Pre-1970 local mean time offsets have seconds in them (e.g.
+        // Europe/Amsterdam +00:19:32): the second digits must follow too.
+        let tz: Tz = "Europe/Amsterdam".parse().unwrap();
+        for ts in edge_instants() {
+            let utc = DateTime::from_timestamp_nanos(ts);
+            let offset = offset_secs_in(&tz, &utc.naive_utc());
+            assert_eq!(
+                DateTimeText::new(ts, offset).as_str(),
+                utc.with_timezone(&tz).format(FMT).to_string(),
+                "Amsterdam at {utc}"
+            );
+        }
+    }
+
+    /// Every caller — `str()`/Display, interpolation, `.to_string` — writes
+    /// the same 19 bytes, and `display_len` agrees with them, in both views.
+    #[test]
+    fn all_string_paths_agree_in_both_views() {
+        for ts in edge_instants() {
+            for use_utc in [true, false] {
+                let expected = if use_utc {
+                    via_chrono_utc(ts)
+                } else {
+                    local_from_nanos(ts).format(FMT).to_string()
+                };
+                let value = Value::DateTime(ts, use_utc);
+                let mut written = String::from(">");
+                value.write_to_string(&mut written);
+                assert_eq!(written, format!(">{expected}"));
+                assert_eq!(value.to_string(), expected);
+                assert_eq!(Value::render_datetime(ts, use_utc), expected);
+                assert_eq!(value.display_len(), expected.len());
+            }
+        }
     }
 }
