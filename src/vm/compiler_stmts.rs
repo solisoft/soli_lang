@@ -31,12 +31,13 @@ impl Compiler {
         self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
-                // A bare `name = value` that `hoist_locals` chose to declare
-                // `name` here: as for `let`, the value stays on the stack as
-                // the new local's slot, with no store and no `Pop`.
+                // A bare `name = value` that `hoist_locals` (or, at file
+                // scope, `compile_entry_script`) chose to declare `name` here:
+                // as for `let`, the value stays on the stack as the new
+                // local's slot, with no store and no `Pop`.
                 if let Some((name, value)) = self.take_in_place_decl(stmt)? {
                     self.compile_expr(value)?;
-                    self.add_local(name.to_string(), false);
+                    self.declare_in_place(name, false);
                     return Ok(());
                 }
                 // `next` is a zero-argument builtin returning a sentinel the
@@ -62,14 +63,32 @@ impl Compiler {
                 type_annotation: _,
                 initializer,
             } => {
-                self.compile_let(name, initializer.as_ref(), false, line, stmt.span)?;
+                // A top-level variable the entry script keeps in a frame slot
+                // (`compile_entry_script`): declared like a `let` in a
+                // function, its value left on the stack as the slot.
+                if self.take_in_place_binding(stmt)? {
+                    match initializer {
+                        Some(init) => self.compile_expr(init)?,
+                        None => {
+                            self.emit(Op::Null, line);
+                        }
+                    }
+                    self.declare_in_place(name, false);
+                } else {
+                    self.compile_let(name, initializer.as_ref(), false, line, stmt.span)?;
+                }
             }
             StmtKind::Const {
                 name,
                 type_annotation: _,
                 initializer,
             } => {
-                self.compile_let(name, Some(initializer), true, line, stmt.span)?;
+                if self.take_in_place_binding(stmt)? {
+                    self.compile_expr(initializer)?;
+                    self.declare_in_place(name, true);
+                } else {
+                    self.compile_let(name, Some(initializer), true, line, stmt.span)?;
+                }
             }
             StmtKind::Block(stmts) => {
                 self.begin_scope();
@@ -216,6 +235,12 @@ impl Compiler {
                     self.emit(Op::Pop, line);
                 }
             }
+        } else if let Some(slot) = self.promoted_slot(name) {
+            // A top-level variable the entry script keeps in a frame slot,
+            // declared a second time: the new value replaces the slot's, as
+            // `DefineGlobal` replaced the global's.
+            self.emit(Op::SetLocal(slot), line);
+            self.emit(Op::Pop, line);
         } else {
             // Global variable
             self.known_globals.borrow_mut().insert(name.to_string());
@@ -664,7 +689,7 @@ impl Compiler {
                     // both the new local and what the function returns.
                     Some((name, value)) => {
                         self.compile_expr(value)?;
-                        self.add_local(name.to_string(), false);
+                        self.declare_in_place(name, false);
                     }
                     None => self.compile_expr(expr)?,
                 }

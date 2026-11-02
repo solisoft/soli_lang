@@ -79,12 +79,14 @@ impl Compiler {
                 left,
                 operator,
                 right,
-            } => {
-                self.compile_binary(left, *operator, right, line)?;
-            }
-            ExprKind::Unary { operator, operand } => {
-                self.compile_unary(*operator, operand, line)?;
-            }
+            } => match self.folded(expr) {
+                Some(value) => self.emit_constant(value, line),
+                None => self.compile_binary(left, *operator, right, line)?,
+            },
+            ExprKind::Unary { operator, operand } => match self.folded(expr) {
+                Some(value) => self.emit_constant(value, line),
+                None => self.compile_unary(*operator, operand, line)?,
+            },
             ExprKind::Grouping(inner) => {
                 self.compile_expr(inner)?;
             }

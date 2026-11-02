@@ -308,7 +308,9 @@ impl Scan {
 
 /// A top-level `name = value` statement planned to declare `name` where it
 /// stands rather than assign a slot hoisted to function entry
-/// ([`Compiler::hoist_locals`]).
+/// ([`Compiler::hoist_locals`]). The entry script plans its top-level
+/// variables the same way, `let` and `const` included
+/// ([`Compiler::compile_entry_script`]).
 #[derive(Debug, Clone)]
 pub struct InPlaceDecl {
     /// The statement, matched by address: only the statement planned from
@@ -499,8 +501,9 @@ fn mentions<'c>(
     }
 }
 
-/// Every name a match pattern binds or names, for [`mentions`].
-fn pattern_names(pattern: &MatchPattern, note: &dyn Fn(&str)) {
+/// Every name a match pattern binds or names, for [`mentions`] (and the
+/// entry script's plan, `compiler_script_locals`).
+pub(super) fn pattern_names(pattern: &MatchPattern, note: &dyn Fn(&str)) {
     match pattern {
         MatchPattern::Wildcard => {}
         MatchPattern::Variable(name) => note(name),
@@ -541,6 +544,18 @@ fn pattern_names(pattern: &MatchPattern, note: &dyn Fn(&str)) {
     }
 }
 
+/// The refusal of a planned declaration whose name was reached before its
+/// statement.
+fn mentioned_early(decl: &InPlaceDecl, stmt: &Stmt) -> CompileError {
+    CompileError::new(
+        format!(
+            "`{}` was mentioned before the statement that declares it",
+            decl.name
+        ),
+        stmt.span,
+    )
+}
+
 impl Compiler {
     /// `stmt`'s name and value, when [`Compiler::hoist_locals`] planned it to
     /// declare its local in place. Taken once.
@@ -554,29 +569,43 @@ impl Compiler {
         &mut self,
         stmt: &'s Stmt,
     ) -> CompileResult<Option<(&'s str, &'s Expr)>> {
-        if self.in_place_decls.is_empty() {
-            return Ok(None);
-        }
-        let Some(at) = self
-            .in_place_decls
-            .iter()
-            .position(|decl| std::ptr::eq(decl.stmt, stmt))
-        else {
+        let Some(decl) = self.take_planned(stmt) else {
             return Ok(None);
         };
-        let decl = self.in_place_decls.swap_remove(at);
         match assignment_statement(stmt) {
             Some(found) if !decl.resolved_early && self.resolve_local(found.0).is_none() => {
                 Ok(Some(found))
             }
-            _ => Err(CompileError::new(
-                format!(
-                    "`{}` was mentioned before the statement that declares it",
-                    decl.name
-                ),
-                stmt.span,
-            )),
+            _ => Err(mentioned_early(&decl, stmt)),
         }
+    }
+
+    /// [`Self::take_in_place_decl`] for a `let` or `const` statement:
+    /// whether it is planned to declare its local in place, which only the
+    /// entry script's top-level variables are
+    /// ([`Compiler::compile_entry_script`]). Refused the same way.
+    pub(crate) fn take_in_place_binding(&mut self, stmt: &Stmt) -> CompileResult<bool> {
+        let Some(decl) = self.take_planned(stmt) else {
+            return Ok(false);
+        };
+        if !decl.resolved_early && self.resolve_local(&decl.name).is_none() {
+            Ok(true)
+        } else {
+            Err(mentioned_early(&decl, stmt))
+        }
+    }
+
+    /// The plan for `stmt`, matched by address, removed from the pending
+    /// ones.
+    fn take_planned(&mut self, stmt: &Stmt) -> Option<InPlaceDecl> {
+        if self.in_place_decls.is_empty() {
+            return None;
+        }
+        let at = self
+            .in_place_decls
+            .iter()
+            .position(|decl| std::ptr::eq(decl.stmt, stmt))?;
+        Some(self.in_place_decls.swap_remove(at))
     }
 
     /// Whether this function, or one enclosing it, plans to declare `name` in

@@ -1871,6 +1871,60 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    // --- top-level variables kept in frame slots (`compile_entry_script`) ---
+    (
+        // The loop of the audit: `i` and `sum` live in the main frame.
+        "toplevel_loop_accumulator",
+        "i = 0\nsum = 0\nwhile i < 10\n  sum = sum + i\n  i += 1\nend\nprint(sum)\nprint(i)",
+    ),
+    (
+        // `let`, `const`, a bare `let` filled later, and a block-scoped `let`
+        // that shadows a slot without touching it.
+        "toplevel_let_and_const_in_slots",
+        "let a = 1\nconst LIMIT = 10\nlet c\nc = a + LIMIT\nif c > 5\n  let c = 0\n  a = a + c + 1\nend\nprint(a)\nprint(c)\nprint(LIMIT)",
+    ),
+    (
+        // Names a `def` or a block reads or writes stay globals; the loop
+        // counter beside them is a slot.
+        "toplevel_names_shared_with_functions_stay_global",
+        "count = 0\ntotal = 0\ndef bump(n)\n  count = count + n\nend\n[1, 2, 3].each do |x|\n  total = total + x\nend\nbump(5)\nsteps = 0\nwhile steps < 3\n  steps += 1\nend\nprint(count, total, steps)",
+    ),
+    (
+        "toplevel_lambda_held_in_a_slot",
+        "double = fn(x) { x * 2 }\nacc = []\nfor v in [1, 2, 3]\n  acc.push(double(v))\nend\nprint(acc)",
+    ),
+    (
+        // A comprehension after another element runs in a lambda of its own
+        // that reads the slots; a binding `match` at a clean position does not.
+        "toplevel_slots_read_by_wrapped_comprehension_and_match",
+        "k = 3\nxs = [1, 2]\nrow = [k, [x * k for x in xs], match k { 3 => \"three\", _ => \"other\" }]\nprint(row)\nlabel = match k {\n  1 => \"one\",\n  n if n > 2 => \"big #{n}\",\n  _ => \"other\"\n}\nprint(label)",
+    ),
+    (
+        // A throw caught at top level keeps the slots below its handler; a
+        // string grows in a slot.
+        "toplevel_slots_survive_try_and_string_growth",
+        "log = \"\"\nn = 0\ntry\n  n = n + 1\n  throw \"boom\"\ncatch e\n  log = log + \"caught \"\nend\nwhile n < 4\n  log += \"#{n} \"\n  n += 1\nend\nprint(log)\nprint(n)",
+    ),
+    (
+        // `defined` asks for a global by name at run time: no slot then.
+        "toplevel_defined_sees_top_level_variables",
+        "x = 5\nprint(defined(\"x\"))\ny = x + 1\nprint(y)\nprint(defined(\"y\"))",
+    ),
+    (
+        "toplevel_slots_beside_a_class",
+        "class Counter\n  value: Int\n  new(start: Int)\n    @value = start\n  end\n  def bump\n    @value = @value + 1\n  end\nend\nc = new Counter(1)\ni = 0\nwhile i < 3\n  c.bump\n  i += 1\nend\nprint(c.value)\nprint(i)",
+    ),
+    (
+        "toplevel_compound_assignments_on_slots",
+        "total = 10\ntotal -= 3\ntotal *= 2\ntotal ||= 99\nflag = \"\"\nflag ||= \"set\"\nwords = []\nwords << \"a\"\nwords << \"b\"\nname = \"x\"\nname << \"y\"\nitems = [\"a\", \"b\"]\nout = \"\"\nfor item, idx in items\n  out = out + \"#{idx}:#{item} \"\nend\nprint(total, flag, words, name, out)",
+    ),
+    // --- constant folding ---
+    (
+        // Folded at compile time on the VM, computed at run time on the
+        // tree-walker; what raises is left to raise.
+        "literal_arithmetic_folds_as_it_runs",
+        "print(60 * 60 * 24)\nprint(-7 / 2)\nprint(-7 % 3)\nprint(7.5 / 2.5)\nprint(1 + 2.5)\nprint(0.1 + 0.2)\nprint(\"ab\" + \"cd\")\nprint(-5, -2.5, 2 * -3)\nprint((1 + 2) * 3)\nbig = (9223372036854775807 + 1) rescue \"overflow\"\nprint(big)\nzero = (1 / 0) rescue \"div0\"\nprint(zero)\ndef day_seconds()\n  60 * 60 * 24\nend\nprint(day_seconds())",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
@@ -1905,6 +1959,17 @@ const UNCHECKED_CASES: &[(&str, &str)] = &[
     (
         "bare_local_read_by_a_nested_def_made_before_its_assignment",
         "def outer\n  def inner\n    x + 1\n  end\n  x = 41\n  inner()\nend\nprint(outer())",
+    ),
+    // A top-level variable read before its first assignment is undefined
+    // there on both engines: it must stay a global, not a slot reading nil.
+    (
+        "toplevel_read_before_assignment_stays_undefined",
+        "seen = z rescue \"undefined\"\nprint(seen)\nz = 1\nprint(z)",
+    ),
+    // A second `let` of a top-level variable kept in a slot.
+    (
+        "toplevel_let_redeclared",
+        "let a = 1\nlet a = a + 100\nprint(a)",
     ),
 ];
 
