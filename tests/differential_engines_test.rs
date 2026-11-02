@@ -2126,6 +2126,66 @@ A.alias_method("hello2", "hello")
 print(b.hello2, c.hello2)
 print(b.methods.includes?("late"), c.methods.includes?("hello2"))"##,
     ),
+    (
+        // `"str" + x` renders `x` as interpolation does, both ways round and
+        // for every kind of operand, including the floats where ryu and
+        // Display disagree on notation or digits.
+        "string_plus_any_value_renders_like_display",
+        r##"print("n=" + 1, "n=" + -42, "n=" + 1.0, "n=" + -0.0, "n=" + (0.1 + 0.2))
+print("n=" + 10000000000000000.0, 1658206780088562.2 + "!", "nan:" + "nan".to_f)
+print("b" + true, false + "b", nil + "x", :sym + "x", "a" + [1, 2.5, "s"], "h" + {"k": 1})
+s = "a prefix longer than the inline limit: "
+print(s + 12345, 3.25 + s)
+t = "x"
+t += 7
+t += 1.5
+print(t)"##,
+    ),
+    (
+        // String orderings, on the unfused, fused-local and test-jump ops.
+        "string_orderings_on_every_comparison_op",
+        r##"a = "abc"
+b = "abd"
+print(a < b, a <= b, a > b, a >= b, b > a, a <= a, "é" > "z")
+print(a < "abd", a >= "abc", a > "ab")
+n = 0
+n += 1 if a < b
+n += 10 if a > b
+n += 100 if b >= a
+print(n)
+def lo(x, y)
+  x < y
+end
+def gt(x, y)
+  x > y
+end
+print(lo("a", "b"), gt("a", "b"))
+i = 0
+w = "a"
+while w < "aaaa"
+  w = w + "a"
+  i += 1
+end
+print(i, w)"##,
+    ),
+    (
+        // Instance `==`: identity for ordinary objects, structure for enum
+        // values, which compare field by field even against themselves.
+        "instance_equality_identity_and_enums",
+        r##"enum M { None, Some(v: Float) }
+class P
+  n: Int
+  new(n: Int)
+    @n = n
+  end
+end
+p1 = P.new(1)
+p2 = P.new(1)
+print(p1 == p1, p1 == p2, p1 != p2, p1 != p1)
+x = M.Some("nan".to_f)
+y = M.Some(1.5)
+print(x == x, y == y, y == M.Some(1.5), M.None == M.None, M.None == p1, p1 == M.None)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

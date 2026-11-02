@@ -536,18 +536,28 @@ pub struct DeferredCell {
 /// existing behaviour for ordinary objects.
 pub fn enum_aware_equal(a: &Value, b: &Value) -> bool {
     if let (Value::Instance(ia), Value::Instance(ib)) = (a, b) {
-        let a_is_enum = ia.borrow().fields.contains_key("__variant");
-        let b_is_enum = ib.borrow().fields.contains_key("__variant");
-        if a_is_enum && b_is_enum {
-            let ra = ia.borrow();
-            let rb = ib.borrow();
-            if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
-                return false;
+        // The left operand decides: an ordinary object never compares
+        // structurally, so the right one is probed only behind an enum.
+        let ra = ia.borrow();
+        if !ra.fields.contains_key("__variant") {
+            // `PartialEq`'s own first answer for one object, without its
+            // depth guard. Not taken for an enum, which compares field by
+            // field even against itself (a NaN payload is unequal to itself
+            // on both engines).
+            if Rc::ptr_eq(ia, ib) {
+                return true;
             }
-            return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
-                Some(vb) => enum_aware_equal(va, vb),
-                None => false,
-            });
+        } else {
+            let rb = ib.borrow();
+            if rb.fields.contains_key("__variant") {
+                if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
+                    return false;
+                }
+                return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
+                    Some(vb) => enum_aware_equal(va, vb),
+                    None => false,
+                });
+            }
         }
     }
     a == b
@@ -1200,8 +1210,28 @@ fn with_depth<T>(
 /// call.
 #[inline(never)]
 pub fn build_interpolated(parts: &[Value]) -> SoliStr {
+    build_display(parts.iter())
+}
+
+/// `a` followed by `b`, each as `Display` writes it: the `+` of a string and
+/// any other value, on both engines. Built like an interpolation (and through
+/// the same code), so `"n=" + 1.5` and `"n=#{1.5}"` are one string, made the
+/// same way; `eco_format!` went through `Display`'s formatter and depth guard
+/// for every number, 17 ns more per `"str" + int` than the interpolation.
+#[inline(never)]
+pub fn concat_display(a: &Value, b: &Value) -> SoliStr {
+    build_display([a, b].into_iter())
+}
+
+/// The body of [`build_interpolated`] and [`concat_display`]: two passes over
+/// the parts, one to size the result and one to write it.
+#[inline(always)]
+fn build_display<'a, I>(parts: I) -> SoliStr
+where
+    I: Iterator<Item = &'a Value> + Clone,
+{
     let mut len = 0;
-    for part in parts {
+    for part in parts.clone() {
         // Measured inline rather than through `display_len`, whose recursive
         // container arms keep it from inlining: a call per part cost the
         // multi-part case more than the build saves.
@@ -4281,5 +4311,108 @@ mod method_cache_tests {
         let second = class.find_method("a").unwrap();
         assert!(Rc::ptr_eq(&first, &second));
         assert_eq!(class.all_methods_cache_epoch.get(), epoch);
+    }
+}
+
+#[cfg(test)]
+mod concat_and_equality_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// `"str" + x` and `x + "str"` render `x` exactly as `Display` does (what
+    /// `eco_format!("{}{}")` produced before), on the inline and the heap
+    /// path, for every kind of value a string can be added to.
+    #[test]
+    fn concat_display_matches_display_for_every_operand_kind() {
+        let array = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Float(2.5),
+            Value::String("s".into()),
+        ])));
+        let decimal = Value::Decimal(DecimalValue(rust_decimal::Decimal::new(150, 2), 2));
+        let others = [
+            Value::Int(0),
+            Value::Int(-42),
+            Value::Int(i64::MIN),
+            Value::Int(i64::MAX),
+            Value::Float(1.0),
+            Value::Float(-0.0),
+            Value::Float(0.1 + 0.2),
+            Value::Float(1e16),
+            Value::Float(1e-7),
+            Value::Float(1658206780088562.2),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Null,
+            Value::Symbol("sym".into()),
+            decimal,
+            array,
+        ];
+        for prefix in ["", "n=", "a prefix longer than the inline limit: "] {
+            let text = Value::String(prefix.into());
+            for other in &others {
+                assert_eq!(
+                    concat_display(&text, other).as_str(),
+                    format!("{}{}", prefix, other),
+                    "{prefix:?} + {other:?}"
+                );
+                assert_eq!(
+                    concat_display(other, &text).as_str(),
+                    format!("{}{}", other, prefix),
+                    "{other:?} + {prefix:?}"
+                );
+            }
+        }
+    }
+
+    fn instance(class: &Rc<Class>, fields: &[(&str, Value)]) -> Value {
+        let mut inst = Instance::new(class.clone());
+        for (name, value) in fields {
+            inst.set(*name, value.clone());
+        }
+        Value::Instance(Rc::new(RefCell::new(inst)))
+    }
+
+    fn class(name: &str) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            ..Class::default()
+        })
+    }
+
+    /// The identity shortcut answers for ordinary objects only: an enum value
+    /// still compares field by field, even against itself.
+    #[test]
+    fn enum_aware_equal_identity_shortcut_keeps_enum_semantics() {
+        let point = class("Point");
+        let p1 = instance(&point, &[("x", Value::Int(1))]);
+        let p2 = instance(&point, &[("x", Value::Int(1))]);
+        assert!(enum_aware_equal(&p1, &p1.clone()));
+        assert!(!enum_aware_equal(&p1, &p2));
+
+        let maybe = class("Maybe");
+        let some = |v: Value| {
+            instance(
+                &maybe,
+                &[("__variant", Value::String("Some".into())), ("v", v)],
+            )
+        };
+        assert!(enum_aware_equal(&some(Value::Int(7)), &some(Value::Int(7))));
+        assert!(!enum_aware_equal(
+            &some(Value::Int(7)),
+            &some(Value::Int(8))
+        ));
+        let nan = some(Value::Float(f64::NAN));
+        assert!(!enum_aware_equal(&nan, &nan.clone()));
+        let same = some(Value::Float(1.5));
+        assert!(enum_aware_equal(&same, &same.clone()));
+
+        // An enum against an ordinary object, either way round, is identity.
+        let unit = instance(&maybe, &[("__variant", Value::String("None".into()))]);
+        assert!(!enum_aware_equal(&unit, &p1));
+        assert!(!enum_aware_equal(&p1, &unit));
     }
 }

@@ -1715,6 +1715,9 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x < *y,
                         (Value::Float(x), Value::Float(y)) => *x < *y,
+                        // Strings order by bytes, as `compare_ordered` does,
+                        // without the call or the span it is handed.
+                        (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(&a, &b, span)?
@@ -1727,6 +1730,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x <= *y,
                         (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less_equal(&a, &b, span)?
@@ -1739,6 +1743,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x > *y,
                         (Value::Float(x), Value::Float(y)) => *x > *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // `a > b` is evaluated as `b < a` to reuse one
@@ -1764,6 +1769,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x >= *y,
                         (Value::Float(x), Value::Float(y)) => *x >= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() >= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // Same swap as `>` above: report source order.
@@ -3636,6 +3642,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x <= *y,
                         (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less_equal(&a, &b, span)?
@@ -3650,6 +3657,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x < *y,
                         (Value::Float(x), Value::Float(y)) => *x < *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(&a, &b, span)?
@@ -3727,6 +3735,7 @@ impl Vm {
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => *x <= *y,
                         (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less_equal(a, b, span)?
@@ -4156,6 +4165,7 @@ impl Vm {
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => *x < *y,
                         (Value::Float(x), Value::Float(y)) => *x < *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(a, b, span)?
@@ -4170,6 +4180,7 @@ impl Vm {
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => *x > *y,
                         (Value::Float(x), Value::Float(y)) => *x > *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(b, a, span)?
@@ -4209,6 +4220,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x > *y,
                         (Value::Float(x), Value::Float(y)) => *x > *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // `a > b` is evaluated as `b < a` to reuse one
@@ -4236,6 +4248,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x >= *y,
                         (Value::Float(x), Value::Float(y)) => *x >= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() >= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // Same swap as `>` above: report source order.
@@ -4854,6 +4867,16 @@ impl Vm {
         // floats inline, where every comparison with NaN is false.
         if let (Value::Float(_), Value::Float(_)) = (a, b) {
             return Ok(false);
+        }
+        // Two strings are ordered inline by the unfused arms too.
+        if let (Value::String(x), Value::String(y)) = (a, b) {
+            let ordering = x.as_str().cmp(y.as_str());
+            return Ok(match op {
+                Op::LessLocalConst(..) => ordering.is_lt(),
+                Op::LessEqualLocalConst(..) => ordering.is_le(),
+                Op::GreaterLocalConst(..) => ordering.is_gt(),
+                _ => ordering.is_ge(),
+            });
         }
         let span = self.current_span();
         let source_order = |_| {

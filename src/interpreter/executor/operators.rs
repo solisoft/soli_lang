@@ -431,8 +431,11 @@ create the record first, or use {}.create({{...}})",
             (Value::String(a), Value::String(b)) => {
                 Ok(Value::String(ecow::eco_format!("{}{}", a, b)))
             }
-            (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
-            (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
+            // A string and anything else: the other side as `Display` writes
+            // it, built like an interpolation (itoa/ryu into a sized buffer).
+            (Value::String(_), _) | (_, Value::String(_)) => Ok(Value::String(
+                crate::interpreter::value::concat_display(left, right),
+            )),
             _ => Err(RuntimeError::type_error(
                 format!("Cannot add {} and {}", left.type_name(), right.type_name()),
                 span,
