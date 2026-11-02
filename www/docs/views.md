@@ -1080,6 +1080,11 @@ name, an inherited ivar wins over a helper of the same name (as it does in the
 view), and the framework internals (`req`, `params`, `session`, `headers`) are
 not inherited.
 
+Called from a helper, a service or an action rather than from a view,
+`partial()` / `render_partial()` also gives the partial `req`, `params` and
+`cookies`. Those go into a copy, so your hash keeps only your keys there too:
+a `json_script(opts)` after the call shows no request.
+
 ### The `locals` hash
 
 Partials expose their entire context hash as a `locals` variable, mirroring

@@ -1536,3 +1536,143 @@ fn includes_read_ivars_and_helpers_through_their_scope_on_both_engines() {
     assert!(!check.contains("differs"), "{check}");
     assert!(!check.contains("render failed"), "{check}");
 }
+
+/// Nothing a view or an action renders writes into the hash it is handed. A
+/// view's `opts` keeps its one key through `partial()`, `component()`, the
+/// render tag and an app helper's `partial()`, compiled or not. A `const`
+/// passed to `render()` or `render_partial()` keeps its keys too, so each
+/// request renders its own `req`, cookies and `@ivars`. The first request on
+/// the worker used to add its own to the const, and they won over every later
+/// request's: bob was shown alice's page.
+#[test]
+fn views_and_actions_leave_the_callers_hash_alone_across_requests() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"leak#ping\")\nget(\"/compiled\", \"leak#compiled\")\n\
+         get(\"/plain\", \"leak#plain\")\nget(\"/shared\", \"leak#shared\")\n\
+         get(\"/fragment\", \"leak#fragment\")\nget(\"/kept\", \"leak#kept\")\n",
+    );
+    write(
+        "app/controllers/leak_controller.sl",
+        "const SHARED = {\"title\": \"Home\"}\nconst FRAGMENT = {\"title\": \"Fragment\"}\n\n\
+         class LeakController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    {\"status\": 200, \"body\": \"pong\"}\n  end\n\n  \
+           # GET /compiled\n  \
+           def compiled(req)\n    @heading = \"H\"\n    render(\"leak/compiled\")\n  end\n\n  \
+           # GET /plain\n  \
+           def plain(req)\n    @heading = \"H\"\n    render(\"leak/plain\")\n  end\n\n  \
+           # GET /shared\n  \
+           def shared(req)\n    \
+             @who = req[\"query\"][\"who\"]\n    \
+             render(\"leak/shared\", SHARED)\n  \
+           end\n\n  \
+           # GET /fragment\n  \
+           def fragment(req)\n    \
+             {\"status\": 200, \"body\": render_partial(\"leak/fragment\", FRAGMENT)}\n  \
+           end\n\n  \
+           # GET /kept\n  \
+           def kept(req)\n    \
+             {\"status\": 200, \"body\": SHARED.keys.join(\",\") + \"|\" + FRAGMENT.keys.join(\",\")}\n  \
+           end\n\
+         end\n",
+    );
+    // An app helper closes over the global `partial()`, not the view's.
+    write(
+        "app/helpers/leak_helper.sl",
+        "def card(opts)\n  partial(\"leak/card\", opts)\nend\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    let includes = "<%- partial(\"leak/row\", opts) %><%- component(\"chip\", opts) %>\
+                    <%= render \"leak/row\", opts %><%- card(opts) %>";
+    // A loop: compiled, so the VM renders it.
+    write(
+        "app/views/leak/compiled.html.slv",
+        &format!(
+            "<% opts = {{\"x\": 1}} %><% for i in [1] %>{includes}<% end %>\
+             |<%= opts.keys.join(\",\") %>"
+        ),
+    );
+    // Small: the interpreter renders it.
+    write(
+        "app/views/leak/plain.html.slv",
+        &format!("<% opts = {{\"x\": 1}} %>{includes}|<%= opts.keys.join(\",\") %>"),
+    );
+    write("app/views/leak/_row.html.slv", "[<%= x %> <%= @heading %>]");
+    write("app/views/components/chip.html.slv", "(<%= x %>)");
+    write(
+        "app/views/leak/_card.html.slv",
+        "{<%= x %> <%= req[\"query\"][\"q\"] %>}",
+    );
+    write(
+        "app/views/leak/shared.html.slv",
+        "who=<%= who %> q=<%= req[\"query\"][\"q\"] %> sid=<%= cookies[\"sid\"] %>",
+    );
+    write(
+        "app/views/leak/_fragment.html.slv",
+        "q=<%= req[\"query\"][\"q\"] %> sid=<%= cookies[\"sid\"] %>",
+    );
+    let check_path = root.join("vm_views_check.log");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        // One worker: every request meets the consts the first one saw.
+        .arg("--workers")
+        .arg("1")
+        .env("SOLI_VM_VIEWS_CHECK", &check_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    let get = |path: &str, sid: &str| {
+        body_string(
+            ureq::get(&server.url(path))
+                .set("Cookie", &format!("sid={sid}"))
+                .call()
+                .unwrap_or_else(|e| panic!("GET {path}: {e}")),
+        )
+    };
+
+    for page in ["/compiled", "/plain"] {
+        let body = get(&format!("{page}?q=a"), "alice");
+        assert!(
+            body.contains("<main>[1 H](1)[1 H]{1 a}|x</main>"),
+            "{page}: {body}"
+        );
+    }
+    for (who, q) in [("alice", "a"), ("bob", "b")] {
+        let page = get(&format!("/shared?who={who}&q={q}"), who);
+        assert!(
+            page.contains(&format!("who={who} q={q} sid={who}")),
+            "{who}: {page}"
+        );
+        let fragment = get(&format!("/fragment?q={q}"), who);
+        assert!(
+            fragment.contains(&format!("q={q} sid={who}")),
+            "{who}: {fragment}"
+        );
+    }
+    assert_eq!(get("/kept", "carol"), "title|title");
+    drop(server);
+
+    let check = std::fs::read_to_string(&check_path).unwrap_or_default();
+    assert!(check.contains("leak/compiled.html.slv: same"), "{check}");
+    assert!(!check.contains("differs"), "{check}");
+    assert!(!check.contains("render failed"), "{check}");
+}

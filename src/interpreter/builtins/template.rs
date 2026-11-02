@@ -609,7 +609,26 @@ pub fn inject_template_helpers(data: &Value) {
     }
 }
 
+/// `data` as a hash a `render()` or `render_partial()` may add the request
+/// context and the `@ivars` to. While it is still `passed`, the very hash the
+/// call was handed, it is the caller's (a variable read again after the call,
+/// or a `const` that outlives the request), so the render gets a shallow copy.
+/// The injectors keep keys already there: written into, a `const` kept the
+/// first request's `req`, cookies and `@ivars` for every later request. A
+/// hash `resolve_futures_in_value` rebuilt, or the empty one made when nothing
+/// was passed, is the render's already.
+fn detached_from_caller(data: Value, passed: Option<&Value>) -> Value {
+    match (&data, passed) {
+        (Value::Hash(hash), Some(Value::Hash(callers))) if Rc::ptr_eq(hash, callers) => {
+            Value::Hash(Rc::new(RefCell::new(hash.borrow().clone())))
+        }
+        _ => data,
+    }
+}
+
 /// Inject req, params, and cookies from current request context into data hash.
+/// It writes into `data`, so `data` must be the render's own: see
+/// [`detached_from_caller`].
 pub fn inject_request_context(data: &Value) {
     if let Value::Hash(hash) = data {
         if let Some(req) = get_current_request() {
@@ -760,7 +779,8 @@ fn get_current_controller_registered_layout() -> Option<Value> {
 /// Expose the current controller's instance fields as view locals.
 /// Mirrors Rails' `@ivar → view local` behavior, scoped to the action currently running.
 /// Skips framework-injected fields already supplied by `inject_request_context` and
-/// never clobbers keys the action passed explicitly to `render(...)`.
+/// never clobbers keys the action passed explicitly to `render(...)`. It writes
+/// into `data`, so `data` must be the render's own: see [`detached_from_caller`].
 pub fn inject_controller_instance_vars(data: &Value) {
     let Value::Hash(hash) = data else { return };
     let Some(ctrl) = crate::interpreter::builtins::controller::registry::get_current_controller()
@@ -2512,6 +2532,11 @@ pub fn register_template_builtins(env: &mut Environment) {
                     _ => template_name,
                 };
 
+            // What is added below goes into a copy: the action's hash stays as
+            // it was, and a `const` passed here never keeps one request's `req`
+            // or `@ivars` for the next.
+            let data = detached_from_caller(data, args.get(1));
+
             // Inject req from current thread context into data (before helpers)
             // This allows views to access req.params, req.query, etc.
             inject_request_context(&data);
@@ -2608,7 +2633,9 @@ pub fn register_template_builtins(env: &mut Environment) {
         // Resolve any futures in the data before rendering
         let data = resolve_futures_in_value(data);
 
-        // Inject req and params from current request context into data
+        // `req`, `params` and `cookies` go into a copy: the hash is the
+        // caller's own, a helper's, a service's or an action's.
+        let data = detached_from_caller(data, args.get(1));
         inject_request_context(&data);
 
         // The app's helpers resolve in the template env: not copied. Inside
@@ -3528,5 +3555,101 @@ mod tests {
         assert!(html.contains("page=1"));
         assert!(html.contains("page=3"));
         assert!(html.contains(r#"class="page current""#));
+    }
+
+    /// The `body` of the response hash `render()` returns.
+    fn response_body(response: &Value) -> String {
+        let Value::Hash(response) = response else {
+            panic!("render() returned a {}", response.type_name());
+        };
+        match response.borrow().get(&HashKey::String("body".into())) {
+            Some(Value::String(body)) => body.to_string(),
+            other => panic!("render() response body: {other:?}"),
+        }
+    }
+
+    fn string_hash(pairs: &[(&str, &str)]) -> Value {
+        let mut map = HashPairs::default();
+        for (key, value) in pairs {
+            map.insert(
+                HashKey::String((*key).into()),
+                Value::String((*value).into()),
+            );
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    /// `render()` and `render_partial()` add the request context (and, for
+    /// `render()`, the controller's `@ivars`) to a copy of the hash they are
+    /// handed. They used to write into it, keeping keys already there: a hash
+    /// kept past the request, as a `const` of defaults is, kept alice's `req`,
+    /// cookies and `@who`, and bob was rendered alice's page.
+    #[test]
+    fn render_and_render_partial_leave_the_callers_hash_alone(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(views.join("leak"))?;
+        std::fs::write(
+            views.join("leak").join("shared.html.slv"),
+            "who=<%= who %> q=<%= req[\"query\"][\"q\"] %> sid=<%= cookies[\"sid\"] %>",
+        )?;
+        std::fs::write(
+            views.join("leak").join("_fragment.html.slv"),
+            "q=<%= req[\"query\"][\"q\"] %> sid=<%= cookies[\"sid\"] %>",
+        )?;
+        let shared = string_hash(&[("title", "Home")]);
+        let fragment = string_hash(&[("title", "Fragment")]);
+        let mut options = HashPairs::default();
+        options.insert(HashKey::String("layout".into()), Value::Bool(false));
+        let no_layout = Value::Hash(Rc::new(RefCell::new(options)));
+
+        // A tenant of its own, so its template cache serves these views only.
+        let tenant = crate::serve::tenant::register(dir.path().to_path_buf());
+        crate::serve::tenant::scoped(tenant, || -> Result<(), String> {
+            init_templates(views.clone());
+            for (who, q) in [("alice", "a"), ("bob", "b")] {
+                let request = || {
+                    make_request(&[
+                        ("query", string_hash(&[("q", q)])),
+                        ("cookies", string_hash(&[("sid", who)])),
+                    ])
+                };
+                set_current_controller(make_instance(&[("who", Value::String(who.into()))]));
+                set_current_request(request());
+                let page = call_builtin(
+                    "render",
+                    &[
+                        Value::String("leak/shared".into()),
+                        shared.clone(),
+                        no_layout.clone(),
+                    ],
+                )?;
+                let body = response_body(&page);
+                assert!(
+                    body.starts_with(&format!("who={who} q={q} sid={who}")),
+                    "{who}: {body}"
+                );
+                // `render()` lets go of the request once the page is rendered.
+                set_current_request(request());
+                let html = call_builtin(
+                    "render_partial",
+                    &[Value::String("leak/fragment".into()), fragment.clone()],
+                )?;
+                assert_eq!(html.to_string(), format!("q={q} sid={who}"), "{who}");
+                clear_current_request();
+                clear_current_controller();
+            }
+            Ok(())
+        })?;
+
+        for (name, hash) in [("render", &shared), ("render_partial", &fragment)] {
+            let Value::Hash(pairs) = hash else {
+                unreachable!()
+            };
+            let keys: Vec<String> = pairs.borrow().keys().map(|key| key.to_string()).collect();
+            assert_eq!(keys, ["title"], "{name}");
+        }
+        Ok(())
     }
 }

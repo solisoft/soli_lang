@@ -2957,6 +2957,60 @@ mod tests {
         Ok(())
     }
 
+    /// An app helper calls the global `partial()`, which gives the partial
+    /// `req`, `params` and `cookies` in a copy of the hash: the view's own
+    /// `opts` keeps its keys, on the interpreter and on the VM. It used to
+    /// gain `req` and `cookies`, so a `json_script(opts)` after the call
+    /// printed the request's cookies into the page.
+    #[test]
+    fn a_helpers_partial_leaves_the_callers_hash_alone() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::template::{
+            clear_current_request, clear_view_helpers, load_view_helpers, set_current_request,
+        };
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        let helpers = dir.path().join("helpers");
+        fs::create_dir_all(&views)?;
+        fs::create_dir_all(&helpers)?;
+        // Loaded as `soli serve` loads them: closed over the global builtins.
+        fs::write(
+            helpers.join("cards_helper.sl"),
+            "def card(opts)\n  partial(\"card\", opts)\nend\n",
+        )?;
+        fs::write(
+            views.join("_card.html.slv"),
+            "{<%= x %> <%= req[\"query\"][\"q\"] %>}",
+        )?;
+        let keys = "|<%= opts.keys.join(\",\") %>";
+        fs::write(
+            views.join("plain.html.slv"),
+            format!("<% opts = {{\"x\": 1}} %><%- card(opts) %>{keys}"),
+        )?;
+        fs::write(
+            views.join("looped.html.slv"),
+            format!("<% opts = {{\"x\": 1}} %><% for i in [1] %><%- card(opts) %><% end %>{keys}"),
+        )?;
+
+        clear_view_helpers();
+        load_view_helpers(&helpers)?;
+        crate::template::core_eval::reset_builtins_rc();
+        set_current_request(hash_of(&[
+            ("query", hash_of(&[("q", string("a"))])),
+            ("cookies", hash_of(&[("sid", string("s3cret"))])),
+        ]));
+
+        let cache = TemplateCache::new(&views);
+        for (page, n) in [("plain", 1), ("looped", 2)] {
+            let data = hash_of(&[("n", Value::Int(n))]);
+            assert_eq!(cache.render(page, &data, Some(None))?, "{1 a}|x", "{page}");
+        }
+
+        clear_current_request();
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        Ok(())
+    }
+
     #[test]
     fn test_locals_binding_exposes_partial_context() {
         // The template engine binds `locals` to the partial's hash so

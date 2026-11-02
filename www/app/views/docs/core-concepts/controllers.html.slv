@@ -344,6 +344,7 @@ theme = read_cookie("theme");                        # raw string or nil</code><
                     </svg>
                 </a>
                 <p class="text-gray-400 text-sm mb-3">Render an HTML view template with optional data.</p>
+                <p class="text-gray-400 text-sm mb-3">The view also gets <code>req</code>, <code>params</code>, <code>cookies</code> and the action's <code>@</code> fields. They are added to a copy of <code>data</code>, as <code>render_partial()</code> adds the request context to a copy: the hash you pass keeps only your keys, so one you read again after the call, or keep past the request (a <code>const</code> of defaults), never carries one request's values into the next.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">@title = "Welcome"
 render("home/index")   # @fields reach the view; bare `render` is implicit anyway</code></pre>
             </div>
