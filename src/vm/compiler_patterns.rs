@@ -232,13 +232,26 @@ impl Compiler {
                 live += 1;
             }
 
-            // `Equal` consumes the copy, `JumpIfFalse` the boolean.
-            MatchPattern::Literal(expr_kind) => {
-                self.emit(Op::GetLocal(slot), line);
-                for j in self.compile_literal_pattern(expr_kind, line)? {
-                    fails.push((j, live));
+            // `EqualLocalConst` compares the subject's slot with the literal
+            // in place and pushes the boolean `JumpIfFalse` consumes. Emitted
+            // here rather than left to the peephole, which skips the head of
+            // every arm after the first: each is the target of the previous
+            // arm's failure jump.
+            MatchPattern::Literal(expr_kind) => match literal_pattern_constant(expr_kind) {
+                Some(constant) => {
+                    let idx = self.add_constant(constant);
+                    self.emit(Op::EqualLocalConst(slot, idx), line);
+                    let fail = self.emit_jump(Op::JumpIfFalse(0), line);
+                    fails.push((fail, live));
                 }
-            }
+                // `Equal` consumes the copy, `JumpIfFalse` the boolean.
+                None => {
+                    self.emit(Op::GetLocal(slot), line);
+                    for j in self.compile_literal_pattern(expr_kind, line)? {
+                        fails.push((j, live));
+                    }
+                }
+            },
 
             // `MatchType` peeks, so on failure its copy is still there; on
             // success that same copy is the binding.
@@ -575,4 +588,19 @@ impl Compiler {
             )),
         }
     }
+}
+
+/// The constant a literal match arm compares the subject with, as
+/// `compile_literal_pattern` would push it: `None` for a kind it does not
+/// compile to a single constant.
+fn literal_pattern_constant(expr_kind: &ExprKind) -> Option<Constant> {
+    Some(match expr_kind {
+        ExprKind::IntLiteral(n) => Constant::Int(*n),
+        ExprKind::FloatLiteral(n) => Constant::Float(*n),
+        ExprKind::DecimalLiteral(s) => Constant::Decimal(s.clone()),
+        ExprKind::StringLiteral(s) => Constant::String(s.clone().into()),
+        ExprKind::BoolLiteral(b) => Constant::Bool(*b),
+        ExprKind::Null => Constant::Null,
+        _ => return None,
+    })
 }

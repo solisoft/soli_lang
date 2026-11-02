@@ -1194,7 +1194,8 @@ fn stack_effect(op: Op) -> i32 {
         | TestLessJump(_)
         | TestGreaterJump(_)
         | TestGreaterEqualJump(_)
-        | TestNotEqualJump(_) => -2,
+        | TestNotEqualJump(_)
+        | TestEqualJump(_) => -2,
         GetLocalProperty(_, _) | GetLocalIndex(_, _) | GetNestedIndex(_, _, _) => 1,
         AddNestedIndex(_, _, _, _) | SetNestedIndex(_, _, _, _) => 0,
         // Touches `iter_stack`, not the value stack.
@@ -1255,6 +1256,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             | Op::TestGreaterJump(offset)
             | Op::TestGreaterEqualJump(offset)
             | Op::TestNotEqualJump(offset)
+            | Op::TestEqualJump(offset)
             | Op::TestLessJump(offset) => {
                 let target = i + 1 + *offset as usize;
                 if target < len {
@@ -1688,6 +1690,22 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
+        // Pattern: Equal, JumpIfFalse(offset) → TestEqualJump(offset+1)
+        //
+        // `if x.status == "paid"`, `if a == LIMIT`: a condition whose left
+        // side is not a bare local. Against a local, the `*LocalConst` and
+        // `*LocalLocal` rules below take the comparison first.
+        if i + 1 < len {
+            if let (Op::Equal, Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::TestEqualJump(offset + 1);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
         // Pattern: GetLocal(a), GetLocal(b), Subtract → SubLocalLocal(a, b)
         //
         // `a = a - b` as a statement (and `* b`, `/ b` below) becomes
@@ -1758,6 +1776,13 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         // `x < 10`, `v > 100` — the most common comparison, and the whole body
         // of a predicate callback. `if` then pairs it with one `JumpIfFalse`
         // (2 ops) where it used to be `GetLocal, Constant, TestLessJump` (3).
+        //
+        // `role == "admin"`, `status != 200`, `x == 0` too, for any constant:
+        // the fused op compares a string local with a string constant in
+        // place, without copying either onto the stack, and its general arm
+        // decides the rest with `values_equal`, as `Equal` does. This takes
+        // `x == 0` / `x != 0` from `IsZeroLocal` / `NotZeroLocal`, whose
+        // arms answered "not zero" for a `grouped` read without forcing it.
         if i + 2 < len {
             if let (Op::GetLocal(slot), Op::Constant(cidx)) = (code[i], code[i + 1]) {
                 let fused = match code[i + 2] {
@@ -1765,6 +1790,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                     Op::LessEqual => Some(Op::LessEqualLocalConst(slot, cidx)),
                     Op::Greater => Some(Op::GreaterLocalConst(slot, cidx)),
                     Op::GreaterEqual => Some(Op::GreaterEqualLocalConst(slot, cidx)),
+                    Op::Equal => Some(Op::EqualLocalConst(slot, cidx)),
+                    Op::NotEqual => Some(Op::NotEqualLocalConst(slot, cidx)),
                     _ => None,
                 };
                 if let Some(fused) = fused {
@@ -1805,6 +1832,28 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                     code[i + 2] = NOP;
                     i += 3;
                     continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(a), GetLocal(b), Equal|NotEqual →
+        // EqualLocalLocal(a, b) | NotEqualLocalLocal(a, b): `i == n`,
+        // `name != previous`, compared in place.
+        if i + 2 < len {
+            if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b)) = (code[i], code[i + 1]) {
+                let fused = match code[i + 2] {
+                    Op::Equal => Some(Op::EqualLocalLocal(slot_a, slot_b)),
+                    Op::NotEqual => Some(Op::NotEqualLocalLocal(slot_a, slot_b)),
+                    _ => None,
+                };
+                if let Some(fused) = fused {
+                    if !any_jump_target(&is_jump_target, i + 1, 3) {
+                        code[i] = fused;
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
                 }
             }
         }
@@ -1939,41 +1988,9 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
 
         // Pattern: NullishJump (??) - could optimize but it's already specialized
 
-        // Pattern: GetLocal, GetLocal, NotEqual → NotEqualLocalLocal (if we had it, but we don't have this yet)
-
-        // Pattern: GetLocal(a), Constant(0), NotEqual → NotZeroLocal
-        if i + 2 < len {
-            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::NotEqual) =
-                (code[i], code[i + 1], code[i + 2])
-            {
-                if !any_jump_target(&is_jump_target, i + 1, 3) {
-                    if let Some(Constant::Int(0)) = constants.get(cidx as usize) {
-                        code[i] = Op::NotZeroLocal(slot);
-                        code[i + 1] = NOP;
-                        code[i + 2] = NOP;
-                        i += 3;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        // Pattern: GetLocal(a), Constant(0), Equal → IsZeroLocal (inverted logic)
-        if i + 2 < len {
-            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Equal) =
-                (code[i], code[i + 1], code[i + 2])
-            {
-                if !any_jump_target(&is_jump_target, i + 1, 3) {
-                    if let Some(Constant::Int(0)) = constants.get(cidx as usize) {
-                        code[i] = Op::IsZeroLocal(slot);
-                        code[i + 1] = NOP;
-                        code[i + 2] = NOP;
-                        i += 3;
-                        continue;
-                    }
-                }
-            }
-        }
+        // `x == 0` and `x != 0` are `EqualLocalConst` / `NotEqualLocalConst`
+        // (the `<Cmp>LocalConst` rule above); `IsZeroLocal` / `NotZeroLocal`
+        // are no longer emitted.
 
         // NB: `GetLocal(s), SetLocal(s)` (`x = x`, a same-scope `let x = x`,
         // `@x = @x` in a view) is deliberately NOT fused. It used to become
@@ -2124,6 +2141,7 @@ fn compact_nops(chunk: &mut Chunk) {
             Op::TestGreaterJump(d) => Op::TestGreaterJump(fwd(&old_to_new, old, d, here)),
             Op::TestGreaterEqualJump(d) => Op::TestGreaterEqualJump(fwd(&old_to_new, old, d, here)),
             Op::TestNotEqualJump(d) => Op::TestNotEqualJump(fwd(&old_to_new, old, d, here)),
+            Op::TestEqualJump(d) => Op::TestEqualJump(fwd(&old_to_new, old, d, here)),
             Op::JumpIfParamSupplied(p, d) => {
                 Op::JumpIfParamSupplied(p, fwd(&old_to_new, old, d, here))
             }
@@ -2243,6 +2261,7 @@ mod inplace_peephole_tests {
             Op::TestGreaterJump(_) => Op::TestGreaterJump(d),
             Op::TestGreaterEqualJump(_) => Op::TestGreaterEqualJump(d),
             Op::TestNotEqualJump(_) => Op::TestNotEqualJump(d),
+            Op::TestEqualJump(_) => Op::TestEqualJump(d),
             Op::TryBegin(_, f) => Op::TryBegin(d, f),
             Op::MatchType(n, _) => Op::MatchType(n, d),
             other => panic!("FORWARD_BRANCH_OPS holds a non-branch opcode: {other:?}"),
@@ -2268,6 +2287,7 @@ mod inplace_peephole_tests {
             | Op::TestGreaterJump(d)
             | Op::TestGreaterEqualJump(d)
             | Op::TestNotEqualJump(d)
+            | Op::TestEqualJump(d)
             | Op::MatchType(_, d)
             | Op::TryBegin(d, _) => d,
             _ => return None,
@@ -2690,6 +2710,78 @@ mod inplace_peephole_tests {
         );
     }
 
+    /// `==` and `!=` against a constant or between two locals compile to one
+    /// fused op, as `<` does: `role == "admin"` was `GetLocal, Constant,
+    /// Equal`, and its fused form, which compares a string in place, was
+    /// never emitted. `x == 0` takes the same op. A condition whose left side
+    /// is not a local is `TestEqualJump`, and every literal arm of a `match`
+    /// compares the subject's slot with `EqualLocalConst`, the arms after the
+    /// first included (the peephole skips them: each is a branch target).
+    #[test]
+    fn equality_compiles_to_fused_ops() {
+        // `s` and `t` are hoisted into slots 1 and 2; slot 0 is the callee.
+        let ops = fn_ops(
+            "s = \"user\"\nt = \"x\"\na = s == \"admin\"\nb = s != \"admin\"\nc = s == t\nd = s != t\ne = s == 0\nk = s != 0\n[a, b, c, d, e, k]",
+        );
+        let fused_ops: [fn(&Op) -> bool; 4] = [
+            |op| matches!(op, Op::EqualLocalConst(1, _)),
+            |op| matches!(op, Op::NotEqualLocalConst(1, _)),
+            |op| matches!(op, Op::EqualLocalLocal(1, 2)),
+            |op| matches!(op, Op::NotEqualLocalLocal(1, 2)),
+        ];
+        for fused in fused_ops {
+            assert!(ops.iter().any(fused), "{ops:?}");
+        }
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, Op::EqualLocalConst(..) | Op::NotEqualLocalConst(..)))
+                .count(),
+            4,
+            "{ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|op| matches!(
+                op,
+                Op::Equal | Op::NotEqual | Op::IsZeroLocal(_) | Op::NotZeroLocal(_)
+            )),
+            "{ops:?}"
+        );
+
+        let condition = fn_ops("h = {\"k\": \"z\"}\nn = 0\nif h.k == \"z\" { n = 1 }\nn");
+        assert!(
+            condition
+                .iter()
+                .any(|op| matches!(op, Op::TestEqualJump(_))),
+            "{condition:?}"
+        );
+        assert!(!condition.contains(&Op::Equal), "{condition:?}");
+
+        let arms = fn_ops(
+            "s = \"c\"\nmatch s {\n  \"a\" => 1,\n  \"b\" => 2,\n  nil => 3,\n  true => 4,\n  _ => 0\n}\ns",
+        );
+        assert_eq!(
+            arms.iter()
+                .filter(|op| matches!(op, Op::EqualLocalConst(..) | Op::TestEqualJump(_)))
+                .count(),
+            4,
+            "{arms:?}"
+        );
+        assert!(!arms.contains(&Op::Equal), "{arms:?}");
+
+        let program = "def g(s)\n  match s {\n    \"a\" => 1,\n    \"b\" => 2,\n    nil => 3,\n    true => 4,\n    1.5 => 5,\n    0 => 6,\n    _ => 0\n  }\nend\n\
+                       def f(s, t)\n  [s == \"admin\", s != \"admin\", s == t, s != t, s == nil, s == 0, s != 0]\nend\n\
+                       let result = [[g(\"a\"), g(\"b\"), g(nil), g(true), g(1.5), g(\"z\"), g(1), g(0), g(false)], \
+                       f(\"admin\", \"admin\"), f(nil, 0), f(0.0, 0), f(:admin, \"admin\")]";
+        assert_eq!(
+            vm_result(program),
+            "[[1, 2, 3, 4, 5, 0, 0, 6, 0], \
+             [true, false, true, false, false, false, true], \
+             [false, true, false, true, true, false, true], \
+             [false, true, true, false, false, true, false], \
+             [false, true, false, true, false, false, true]]"
+        );
+    }
+
     /// A value that branches merges on the `SetLocal`: `||`, `&&`, `??`, a
     /// ternary, a `match`, `rescue` and `||=` all jump to the instruction
     /// after the value. The main scan skips a head that a branch lands on,
@@ -3027,6 +3119,8 @@ mod stack_effect_tests {
             (two_ints, TestGreaterJump(0)),
             (two_ints, TestGreaterEqualJump(0)),
             (two_ints, TestNotEqualJump(0)),
+            (two_ints, TestEqualJump(0)),
+            (&[Constant(STR), Constant(STR)], TestEqualJump(0)),
             (&[], RescueJump(0)),
             (&[Constant(INT)], CatchMatch(KEY, 0)),
             (&[Constant(INT)], MatchType(KEY, 0)),

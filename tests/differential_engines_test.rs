@@ -2175,6 +2175,88 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    (
+        // `==`/`!=` against a literal or another local compile to the fused
+        // `EqualLocalConst`/`EqualLocalLocal` (and their `!=` twins), a
+        // condition on any other left side to `TestEqualJump`, and literal
+        // `match` arms to `EqualLocalConst`; string literals and primitive
+        // equality are answered in the VM's fast tier. Every kind pair must
+        // still answer as `==` does: nil against a value, Int against Float,
+        // a symbol against its string, a class against its name, enums.
+        "equality_fused_and_fast_paths",
+        r##"def g(s)
+  match s {
+    "a" => 1,
+    "b" => 2,
+    nil => 3,
+    true => 4,
+    1.5 => 5,
+    0 => 6,
+    _ => 0
+  }
+end
+print([g("a"), g("b"), g(nil), g(true), g(1.5), g("z"), g(1), g(0), g(false)])
+def f(s, t)
+  [s == "admin", s != "admin", s == t, s != t, s == nil, s != nil, s == 0, s != 0, s == 1.5, s == true]
+end
+print(f("admin", "admin"))
+print(f("user", "admin"))
+print(f(nil, nil))
+print(f(nil, 0))
+print(f(0.0, 0))
+print(f(0, 0.0))
+print(f(1.5, 1.5))
+print(f(true, false))
+print(f(:admin, "admin"))
+print(f(:admin, :admin))
+def branch(s, t)
+  out = []
+  out.push("eq") if s == "admin"
+  out.push("ne") if s != "admin"
+  out.push("ll") if s == t
+  if s == nil
+    out.push("nil")
+  elsif s == 0
+    out.push("zero")
+  end
+  while out.length < 3 && s != t
+    out.push("loop")
+  end
+  out
+end
+print(branch("admin", "admin"))
+print(branch(nil, 0))
+print(branch(0.0, 0))
+h = {"k": "z", "n": nil}
+print(h["k"] == "z", h["k"] != "z", h["n"] == nil, h["k"] == :z)
+if h["k"] == "z"
+  print("hash condition")
+end
+print([1, 5, 2, 5].filter { |x| x == 5 })
+print([1, 5.0, 2, 5].filter { |x| x != 5 })
+print(["a", "b", nil].filter { |x| x == "b" })
+print({"a": 1, "b": 5}.filter { |k, v| v == 5 })
+class Account
+end
+klass = Account
+print(klass == "Account", klass != "Account")
+def same_class(c)
+  c == "Account"
+end
+print(same_class(Account))
+enum Status
+  Active
+  Inactive
+end
+def active(st)
+  [st == Status.Active, st != Status.Active]
+end
+print(active(Status.parse("Active")))
+print(active(Status.Inactive))
+s = "x"
+y = "#{s}" == "x"
+print(y, "lit" == "lit", :a == :a, "a" == :a)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

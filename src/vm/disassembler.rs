@@ -412,6 +412,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::TestGreaterJump(offset) => out.push_str(&format!("TEST_GT_JUMP {:>5}", offset)),
         Op::TestGreaterEqualJump(offset) => out.push_str(&format!("TEST_GE_JUMP {:>5}", offset)),
         Op::TestNotEqualJump(offset) => out.push_str(&format!("TEST_NE_JUMP {:>5}", offset)),
+        Op::TestEqualJump(offset) => out.push_str(&format!("TEST_EQ_JUMP {:>5}", offset)),
         Op::IsNull => out.push_str("IS_NULL"),
         Op::NotNull => out.push_str("NOT_NULL"),
         Op::JumpIfNull(offset) => out.push_str(&format!("JUMP_IF_NULL {:>5}", offset)),

@@ -614,8 +614,8 @@ impl Vm {
         macro_rules! replace_top_two {
             ($len:expr, $result:expr) => {{
                 let result = $result;
-                // SAFETY: both operands were just matched as Int/Float/Bool,
-                // which own no heap data, so overwriting the lower one
+                // SAFETY: both operands were just matched as Int/Float/Bool
+                // (or nil), which own no heap data, so overwriting the lower one
                 // without dropping it and forgetting the upper one leaks
                 // nothing; `len >= 2` held for the peek.
                 unsafe {
@@ -640,6 +640,29 @@ impl Vm {
                 // data), and `len >= 2` held for the peek.
                 unsafe { self.stack.set_len($len - 2) }
             };
+        }
+
+        /// Pop the two operands `primitive_equal` just answered for, and
+        /// push `$result` in their place when there is one. Scalars go the
+        /// way of `replace_top_two!`/`drop_top_two!`; a string or a symbol
+        /// owns a reference count, so it is popped and dropped.
+        macro_rules! settle_equality_operands {
+            ($len:expr, $scalars:expr) => {{
+                if $scalars {
+                    drop_top_two!($len);
+                } else {
+                    discard(self.stack.pop().unwrap());
+                    discard(self.stack.pop().unwrap());
+                }
+            }};
+            ($len:expr, $scalars:expr, $result:expr) => {{
+                if $scalars {
+                    replace_top_two!($len, $result);
+                } else {
+                    settle_equality_operands!($len, false);
+                    self.stack.push($result);
+                }
+            }};
         }
 
         let next = loop {
@@ -699,9 +722,20 @@ impl Vm {
                         Constant::Float(n) => Value::Float(*n),
                         Constant::Bool(b) => Value::Bool(*b),
                         Constant::Null => Value::Null,
+                        // An `EcoString` clone: an inline copy or a reference
+                        // count bump, never an allocation.
+                        Constant::String(s) => Value::String(s.clone()),
                         _ => break Some(op),
                     };
                     self.stack.push(value);
+                }
+                Op::Symbol(idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(idx as usize) };
+                    let Constant::String(name) = constant else {
+                        break Some(op);
+                    };
+                    self.stack.push(Value::Symbol(name.clone()));
                 }
                 Op::Jump(offset) => ip += offset as usize,
                 Op::JumpIfFalse(offset) => {
@@ -893,12 +927,12 @@ impl Vm {
                 }
                 Op::Equal | Op::NotEqual => {
                     let (len, a, b) = peek_two!();
-                    let equal = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => break Some(op),
+                    let Some(equal) = primitive_equal(a, b) else {
+                        break Some(op);
                     };
-                    replace_top_two!(len, Value::Bool(equal == matches!(op, Op::Equal)));
+                    let scalars = owns_no_heap(a) && owns_no_heap(b);
+                    let result = Value::Bool(equal == matches!(op, Op::Equal));
+                    settle_equality_operands!(len, scalars, result);
                 }
                 Op::TestLessJump(offset)
                 | Op::TestLessEqualJump(offset)
@@ -1206,13 +1240,11 @@ impl Vm {
                     self.stack.push(Value::Bool(result));
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) | Op::NotEqualLocalLocal(slot_a, slot_b) => {
-                    let equal = match (
+                    let Some(equal) = primitive_equal(
                         &self.stack[base + slot_a as usize],
                         &self.stack[base + slot_b as usize],
-                    ) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => break Some(op),
+                    ) else {
+                        break Some(op);
                     };
                     let want_equal = matches!(op, Op::EqualLocalLocal(..));
                     self.stack.push(Value::Bool(equal == want_equal));
@@ -1220,23 +1252,24 @@ impl Vm {
                 Op::EqualLocalConst(slot, const_idx) | Op::NotEqualLocalConst(slot, const_idx) => {
                     // SAFETY: as for `Op::Constant`.
                     let constant = unsafe { &*constants.add(const_idx as usize) };
-                    let equal = match (&self.stack[base + slot as usize], constant) {
-                        (Value::Int(x), Constant::Int(y)) => x == y,
-                        (Value::String(x), Constant::String(y)) => x == y,
-                        _ => break Some(op),
+                    let Some(equal) =
+                        primitive_equal_constant(&self.stack[base + slot as usize], constant)
+                    else {
+                        break Some(op);
                     };
                     let want_equal = matches!(op, Op::EqualLocalConst(..));
                     self.stack.push(Value::Bool(equal == want_equal));
                 }
-                Op::TestNotEqualJump(offset) => {
+                // `if a == b` / `if a != b`: pop both, and branch past the
+                // body when the condition is false.
+                Op::TestEqualJump(offset) | Op::TestNotEqualJump(offset) => {
                     let (len, a, b) = peek_two!();
-                    let not_equal = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => break Some(op),
+                    let Some(equal) = primitive_equal(a, b) else {
+                        break Some(op);
                     };
-                    drop_top_two!(len);
-                    if !not_equal {
+                    let scalars = owns_no_heap(a) && owns_no_heap(b);
+                    settle_equality_operands!(len, scalars);
+                    if equal != matches!(op, Op::TestEqualJump(_)) {
                         ip += offset as usize;
                     }
                 }
@@ -4204,6 +4237,12 @@ impl Vm {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
+                Op::TestEqualJump(offset) => {
+                    let (a, b) = self.pop2();
+                    if !values_equal(&a, &b) {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
 
                 // --- Null/boolean checks ---
                 Op::IsNull => {
@@ -5461,8 +5500,10 @@ fn scalar_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
 /// and Bools inline, everything else through `enum_aware_equal`, which the
 /// tree-walker's operators call too. Every general arm that compares two
 /// values for `==` or `!=` decides with this, fused or not: `Equal`,
-/// `NotEqual`, `TestNotEqualJump`, `EqualLocalLocal`, `NotEqualLocalLocal`,
-/// and `EqualLocalConst`/`NotEqualLocalConst` past their inline pairs.
+/// `NotEqual`, `TestEqualJump`, `TestNotEqualJump`, `EqualLocalLocal`,
+/// `NotEqualLocalLocal`, and `EqualLocalConst`/`NotEqualLocalConst` past
+/// their inline pairs. The fast tier answers the primitive pairs itself with
+/// [`primitive_equal`], which agrees with this on every pair it answers.
 ///
 /// `PartialEq` on `Value` is not this equality. It compares two instances by
 /// pointer, so two equal enum values built apart (any payload variant, or an
@@ -5475,6 +5516,80 @@ fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Bool(x), Value::Bool(y)) => x == y,
         _ => crate::interpreter::value::enum_aware_equal(a, b),
     }
+}
+
+/// Whether `value` is one of the kinds `primitive_equal` answers for.
+#[inline(always)]
+fn is_primitive(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::String(_)
+            | Value::Symbol(_)
+    )
+}
+
+/// Whether dropping `value` is a no-op: the scalars `replace_top_two!`
+/// may overwrite without running drop glue.
+#[inline(always)]
+fn owns_no_heap(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Null
+    )
+}
+
+/// [`values_equal`] for two primitives (Int, Float, Bool, nil, String,
+/// Symbol), answered inline by the fast tier; `None` for anything else.
+///
+/// It is `eq_inner` restricted to those kinds: the same kind compares by
+/// value (a Float NaN equals nothing), two different kinds are never equal,
+/// except an Int and a Float, which compare as numbers and are left to the
+/// general arm. Everything that is not a primitive declines: a `Deferred`
+/// must be forced, an enum compares structurally, a class equals its name.
+#[inline(always)]
+fn primitive_equal(a: &Value, b: &Value) -> Option<bool> {
+    Some(match (a, b) {
+        (Value::Int(x), Value::Int(y)) => x == y,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::Float(x), Value::Float(y)) => x == y,
+        (Value::String(x), Value::String(y)) => x == y,
+        (Value::Symbol(x), Value::Symbol(y)) => x == y,
+        (Value::Null, Value::Null) => true,
+        (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_)) => return None,
+        _ if is_primitive(a) && is_primitive(b) => false,
+        _ => return None,
+    })
+}
+
+/// [`primitive_equal`] against a constant-pool entry, without building a
+/// `Value` for it. A `Decimal` or a function constant declines.
+#[inline(always)]
+fn primitive_equal_constant(value: &Value, constant: &Constant) -> Option<bool> {
+    Some(match (value, constant) {
+        (Value::Int(x), Constant::Int(y)) => x == y,
+        (Value::Bool(x), Constant::Bool(y)) => x == y,
+        (Value::Float(x), Constant::Float(y)) => x == y,
+        (Value::String(x), Constant::String(y)) => x == y,
+        (Value::Null, Constant::Null) => true,
+        (Value::Int(_), Constant::Float(_)) | (Value::Float(_), Constant::Int(_)) => return None,
+        _ if is_primitive(value)
+            && matches!(
+                constant,
+                Constant::Int(_)
+                    | Constant::Float(_)
+                    | Constant::Bool(_)
+                    | Constant::Null
+                    | Constant::String(_)
+            ) =>
+        {
+            false
+        }
+        _ => return None,
+    })
 }
 
 /// `value_matches_type`, without its allocation for the common primitive
@@ -5962,8 +6077,8 @@ mod tests {
     /// the general arms of `EqualLocalLocal` and `NotEqualLocalLocal` used
     /// `PartialEq`, which compares two instances by pointer: two equal enum
     /// values built apart were "not equal" to them, and equal to `Equal`.
-    /// Built by hand, so the `*LocalLocal` and `*LocalConst` ops, which the
-    /// compiler does not emit yet, are covered too.
+    /// Built by hand, so every fused shape is covered whatever the
+    /// peephole picks for a given source.
     #[test]
     fn enum_values_compare_by_value_in_every_equality_op() {
         let status = bare_class("Status");
@@ -6026,7 +6141,7 @@ mod tests {
         };
         // (op, the code after `a` and `b` are pushed as locals 1 and 2, and
         // whether the Bool it returns answers "equal?" or "not equal?")
-        let shapes: [(&str, &[Op], bool); 5] = [
+        let shapes: [(&str, &[Op], bool); 6] = [
             ("Equal", &[Op::Equal, Op::Return], true),
             ("NotEqual", &[Op::NotEqual, Op::Return], false),
             (
@@ -6051,6 +6166,18 @@ mod tests {
                     Op::Return,
                 ],
                 false,
+            ),
+            // `if a == b { true } else { false }`.
+            (
+                "TestEqualJump",
+                &[
+                    Op::TestEqualJump(2),
+                    Op::Constant(YES),
+                    Op::Return,
+                    Op::Constant(NO),
+                    Op::Return,
+                ],
+                true,
             ),
         ];
         for (pair, a, b, equal) in &pairs {
@@ -9022,5 +9149,248 @@ let x = Mailer.welcome()
             compile_and_get_global("let x = [1, 2, 3, 4, 5].filter(fn(n) n > 2).first();", "x"),
             Value::Int(3)
         );
+    }
+
+    /// Run `code` in the fast tier alone, with `locals` in slots 1.., and
+    /// return the op it handed back (`None`: it ran every op itself) and
+    /// what it left on the stack above the locals.
+    fn run_fast_tier(
+        constants: Vec<Constant>,
+        locals: &[Value],
+        code: &[Op],
+    ) -> (Option<Op>, Vec<Value>) {
+        let mut proto = FunctionProto::new(String::new());
+        proto.chunk.constants = constants;
+        for op in code {
+            proto.chunk.emit(*op, 1);
+        }
+        let mut vm = Vm::new();
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        vm.push(Value::VmClosure(closure.clone()));
+        for local in locals {
+            vm.push(local.clone());
+        }
+        vm.frames
+            .push(CallFrame::new(closure, 0, vm.iter_stack.len(), None, 0));
+        let declined = vm.run_fast().expect("the fast tier raised");
+        let above_locals = vm.stack.split_off(1 + locals.len());
+        (declined, above_locals)
+    }
+
+    /// String literals, symbols and `==`/`!=` between primitives stay in the
+    /// fast tier, each comparison shape included: `Equal`/`NotEqual`, the
+    /// `*LocalConst` and `*LocalLocal` fused ops and both test-and-jump ops.
+    /// Each used to hand a string, a nil or a float back to `run_dispatch`.
+    #[test]
+    fn string_literals_and_primitive_equality_stay_in_the_fast_tier() {
+        const ADMIN: u16 = 0;
+        const USER: u16 = 1;
+        const NINE: u16 = 2;
+        const HALF: u16 = 3;
+        const YES: u16 = 4;
+        const NIL: u16 = 5;
+        const SYM: u16 = 6;
+        let constants = || {
+            vec![
+                Constant::String("admin".into()),
+                Constant::String("user".into()),
+                Constant::Int(9),
+                Constant::Float(1.5),
+                Constant::Bool(true),
+                Constant::Null,
+                Constant::String("sym".into()),
+            ]
+        };
+        let string = |s: &str| Value::String(s.into());
+        let locals = [string("admin"), string("user"), Value::Null];
+        let t = Value::Bool(true);
+        let f = Value::Bool(false);
+        let cases: Vec<(&[Op], Vec<Value>)> = vec![
+            (&[Op::Constant(ADMIN)], vec![string("admin")]),
+            (&[Op::Symbol(SYM)], vec![Value::Symbol("sym".into())]),
+            (
+                &[Op::Constant(ADMIN), Op::Constant(ADMIN), Op::Equal],
+                vec![t.clone()],
+            ),
+            (
+                &[Op::Constant(ADMIN), Op::Constant(USER), Op::NotEqual],
+                vec![t.clone()],
+            ),
+            (&[Op::Null, Op::Constant(ADMIN), Op::Equal], vec![f.clone()]),
+            (&[Op::Null, Op::Null, Op::Equal], vec![t.clone()]),
+            (
+                &[Op::Null, Op::Constant(NINE), Op::NotEqual],
+                vec![t.clone()],
+            ),
+            (
+                &[Op::Constant(HALF), Op::Constant(HALF), Op::Equal],
+                vec![t.clone()],
+            ),
+            (
+                &[Op::Constant(NINE), Op::Constant(ADMIN), Op::Equal],
+                vec![f.clone()],
+            ),
+            (
+                &[Op::Symbol(SYM), Op::Constant(SYM), Op::Equal],
+                vec![f.clone()],
+            ),
+            (
+                &[Op::Symbol(SYM), Op::Symbol(SYM), Op::Equal],
+                vec![t.clone()],
+            ),
+            (&[Op::EqualLocalConst(1, ADMIN)], vec![t.clone()]),
+            (&[Op::NotEqualLocalConst(2, ADMIN)], vec![t.clone()]),
+            (&[Op::EqualLocalConst(1, NIL)], vec![f.clone()]),
+            (&[Op::EqualLocalConst(3, NIL)], vec![t.clone()]),
+            (&[Op::EqualLocalConst(3, YES)], vec![f.clone()]),
+            (&[Op::EqualLocalLocal(1, 2)], vec![f.clone()]),
+            (&[Op::NotEqualLocalLocal(1, 2)], vec![t.clone()]),
+            (&[Op::EqualLocalLocal(1, 1)], vec![t.clone()]),
+            // `if a == b { true }`: equal falls through to the `True`,
+            // different jumps over it.
+            (
+                &[
+                    Op::Constant(ADMIN),
+                    Op::Constant(ADMIN),
+                    Op::TestEqualJump(1),
+                    Op::True,
+                ],
+                vec![t.clone()],
+            ),
+            (
+                &[
+                    Op::Constant(ADMIN),
+                    Op::Constant(USER),
+                    Op::TestEqualJump(1),
+                    Op::True,
+                ],
+                vec![],
+            ),
+            (
+                &[
+                    Op::Constant(ADMIN),
+                    Op::Constant(ADMIN),
+                    Op::TestNotEqualJump(1),
+                    Op::True,
+                ],
+                vec![],
+            ),
+            (
+                &[
+                    Op::Null,
+                    Op::Constant(USER),
+                    Op::TestNotEqualJump(1),
+                    Op::True,
+                ],
+                vec![t.clone()],
+            ),
+        ];
+        for (code, expected) in cases {
+            let (declined, stack) = run_fast_tier(constants(), &locals, code);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?}");
+        }
+
+        // What still needs the general arm declines, untouched: an Int and a
+        // Float compare as numbers there, an instance may be an enum, a
+        // Decimal constant is parsed.
+        let status = bare_class("Status");
+        let enum_locals = [
+            stored_variant(&status, "Active"),
+            stored_variant(&status, "Active"),
+        ];
+        let declined: Vec<(&[Op], &[Value], Op)> = vec![
+            (
+                &[Op::Constant(NINE), Op::Constant(HALF), Op::Equal],
+                &locals,
+                Op::Equal,
+            ),
+            (
+                &[Op::EqualLocalLocal(1, 2)],
+                &enum_locals,
+                Op::EqualLocalLocal(1, 2),
+            ),
+            (
+                &[Op::GetLocal(1), Op::GetLocal(2), Op::TestEqualJump(0)],
+                &enum_locals,
+                Op::TestEqualJump(0),
+            ),
+            (
+                &[Op::EqualLocalConst(1, ADMIN)],
+                &enum_locals,
+                Op::EqualLocalConst(1, ADMIN),
+            ),
+        ];
+        for (code, locals, op) in declined {
+            let (handed_back, _) = run_fast_tier(constants(), locals, code);
+            assert_eq!(handed_back, Some(op), "{code:?}");
+        }
+    }
+
+    /// The fast tier's inline equality is `values_equal`, restricted: on
+    /// every pair it answers, it answers the same, and it declines the pairs
+    /// whose rules live in the general arm (an Int and a Float, a class and
+    /// its name, an enum, a Decimal).
+    #[test]
+    fn primitive_equal_agrees_with_values_equal() {
+        let status = bare_class("Status");
+        let values = [
+            Value::Int(1),
+            Value::Int(2),
+            Value::Float(1.0),
+            Value::Float(f64::NAN),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Null,
+            Value::String("a".into()),
+            Value::String("1".into()),
+            Value::String("Status".into()),
+            Value::Symbol("a".into()),
+            Value::Class(status.clone()),
+            stored_variant(&status, "Active"),
+        ];
+        for a in &values {
+            for b in &values {
+                let answered = primitive_equal(a, b);
+                if let Some(equal) = answered {
+                    assert_eq!(equal, values_equal(a, b), "{a:?} == {b:?}");
+                }
+                let numbers = matches!(
+                    (a, b),
+                    (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_))
+                );
+                let inline = is_primitive(a) && is_primitive(b) && !numbers;
+                assert_eq!(answered.is_some(), inline, "{a:?} == {b:?}");
+            }
+        }
+        let constants = [
+            Constant::Int(1),
+            Constant::Float(1.0),
+            Constant::Float(f64::NAN),
+            Constant::Bool(true),
+            Constant::Null,
+            Constant::String("a".into()),
+            Constant::String("Status".into()),
+            Constant::Decimal("1.0".into()),
+        ];
+        for value in &values {
+            for constant in &constants {
+                let answered = primitive_equal_constant(value, constant);
+                if let Some(equal) = answered {
+                    assert_eq!(
+                        equal,
+                        values_equal(value, &constant_to_value(constant)),
+                        "{value:?} == {constant:?}"
+                    );
+                }
+                let numbers = matches!(
+                    (value, constant),
+                    (Value::Int(_), Constant::Float(_)) | (Value::Float(_), Constant::Int(_))
+                );
+                let inline =
+                    is_primitive(value) && !matches!(constant, Constant::Decimal(_)) && !numbers;
+                assert_eq!(answered.is_some(), inline, "{value:?} == {constant:?}");
+            }
+        }
     }
 }

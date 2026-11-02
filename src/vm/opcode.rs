@@ -412,6 +412,8 @@ pub enum Op {
     TestGreaterEqualJump(u16),
     /// Combined NotEqual + JumpIfFalse: pop two, compare !=, jump if false.
     TestNotEqualJump(u16),
+    /// Combined Equal + JumpIfFalse: pop two, compare ==, jump if false.
+    TestEqualJump(u16),
     /// Compare locals: push(local[a] < local[b])
     LessLocalLocal(u16, u16),
     /// Compare locals: push(local[a] > local[b])
@@ -550,6 +552,7 @@ pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::TestGreaterJump(0),
     Op::TestGreaterEqualJump(0),
     Op::TestNotEqualJump(0),
+    Op::TestEqualJump(0),
     Op::MatchType(0, 0),
     // Two targets, and neither name says "jump".
     Op::TryBegin(0, 0),
