@@ -2103,6 +2103,29 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    (
+        // A method defined on a parent after a subclass has already looked
+        // one up reaches the subclass. The tree-walker's flattened method
+        // cache kept the subclass's old copy of the parent's methods.
+        "define_method_on_a_parent_after_a_subclass_lookup",
+        r##"class A
+  def hello
+    "hi"
+  end
+end
+class B < A
+end
+class C < B
+end
+b = B.new()
+c = C.new()
+print(b.hello, c.hello, b.respond_to?("late"))
+A.define_method("late", fn() { "late!" })
+print(b.respond_to?("late"), b.late, c.late)
+A.alias_method("hello2", "hello")
+print(b.hello2, c.hello2)
+print(b.methods.includes?("late"), c.methods.includes?("hello2"))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

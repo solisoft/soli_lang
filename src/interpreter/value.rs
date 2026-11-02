@@ -1666,6 +1666,27 @@ pub const PRIM_TYPE_COUNT: usize = 9;
 /// dropped and the instance came back empty.
 pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 
+thread_local! {
+    /// Bumped whenever a class's instance methods change after it was built
+    /// (`define_method`, `alias_method`, `include`, a module body). Each
+    /// class's flattened method cache records the epoch it was built at and
+    /// is rebuilt on a mismatch. Classes are `Rc` and never cross threads, so
+    /// a per-thread counter is enough.
+    static METHOD_EPOCH: Cell<u64> = const { Cell::new(1) };
+}
+
+/// The current method-definition epoch (see `METHOD_EPOCH`).
+#[inline]
+pub fn method_epoch() -> u64 {
+    METHOD_EPOCH.with(|epoch| epoch.get())
+}
+
+/// Mark every flattened method cache stale: a class's methods changed, and
+/// its subclasses copied the old set into their own caches.
+pub fn bump_method_epoch() {
+    METHOD_EPOCH.with(|epoch| epoch.set(epoch.get().wrapping_add(1)));
+}
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {
@@ -1690,6 +1711,12 @@ pub struct Class {
     /// ahash-keyed: `find_method` probes this once per method call.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_methods_cache: RefCell<Option<HashMap<String, Rc<Function>, AHasher>>>,
+    /// The [`method_epoch`] `all_methods_cache` was built at. The cache copies
+    /// the superclass's flattened map, so a method added to an ancestor later
+    /// (`A.define_method`, `alias_method`, `include`) must rebuild it too —
+    /// the epoch is global and a mismatch means "rebuild". `pub` only for
+    /// struct-literal construction: always `Cell::new(0)` outside this module.
+    pub all_methods_cache_epoch: Cell<u64>,
     /// Flattened native method cache for O(1) lookups.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>, AHasher>>>,
@@ -1824,6 +1851,7 @@ impl Default for Class {
             const_fields: HashSet::new(),
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
+            all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
@@ -1874,6 +1902,7 @@ impl Class {
             const_fields: HashSet::new(),
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
+            all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
@@ -1985,10 +2014,15 @@ impl Class {
         None
     }
 
-    /// Build the flattened method cache if not already built.
+    /// Build the flattened method cache if not already built, or rebuild it
+    /// when a method was defined on any class since it was built (see
+    /// [`bump_method_epoch`]): the map holds the ancestors' methods too, so a
+    /// change to a parent leaves every subclass's copy stale.
     fn ensure_methods_cached(&self) {
+        let epoch = method_epoch();
         // Fast path: check if already cached without borrowing mutably
-        if self.all_methods_cache.borrow().is_some() {
+        if self.all_methods_cache_epoch.get() == epoch && self.all_methods_cache.borrow().is_some()
+        {
             return;
         }
 
@@ -2010,6 +2044,7 @@ impl Class {
 
         // Store in cache
         *self.all_methods_cache.borrow_mut() = Some(all_methods);
+        self.all_methods_cache_epoch.set(epoch);
     }
 
     /// Build the flattened native method cache if not already built.
@@ -2103,9 +2138,14 @@ impl Class {
         None
     }
 
+    /// Call after changing `methods` (or `vm_methods`) of a class that may
+    /// already be in use. Drops this class's flattened caches and bumps the
+    /// global [`method_epoch`], so every subclass rebuilds its own copy on its
+    /// next lookup instead of keeping the parent's old method set.
     pub fn invalidate_method_cache(&self) {
         *self.all_methods_cache.borrow_mut() = None;
         *self.all_native_methods_cache.borrow_mut() = None;
+        bump_method_epoch();
     }
 
     /// Mix `module`'s instance methods into this class (Ruby `include`).
@@ -4170,5 +4210,76 @@ mod interpolation_format_tests {
             build_interpolated(&long).as_str(),
             format!("{}{}", "x".repeat(40), 1e20)
         );
+    }
+}
+
+#[cfg(test)]
+mod method_cache_tests {
+    use super::{Class, Function};
+    use std::rc::Rc;
+
+    fn method(name: &str) -> Rc<Function> {
+        Rc::new(Function {
+            name: name.to_string(),
+            ..Function::default()
+        })
+    }
+
+    /// A subclass's flattened cache copies its parent's methods. A method
+    /// added to the parent after that copy was made must still be found
+    /// through the subclass (and the grandchild), not only through the parent.
+    #[test]
+    fn method_added_to_a_parent_reaches_cached_subclasses() {
+        let parent = Rc::new(Class {
+            name: "A".to_string(),
+            ..Default::default()
+        });
+        parent
+            .methods
+            .borrow_mut()
+            .insert("hello".to_string(), method("hello"));
+        let child = Rc::new(Class {
+            name: "B".to_string(),
+            superclass: Some(parent.clone()),
+            ..Default::default()
+        });
+        let grandchild = Class {
+            name: "C".to_string(),
+            superclass: Some(child.clone()),
+            ..Default::default()
+        };
+
+        // Build every cache along the chain.
+        assert!(grandchild.find_method("hello").is_some());
+        assert!(grandchild.find_method("late").is_none());
+        assert!(child.find_method("late").is_none());
+
+        parent
+            .methods
+            .borrow_mut()
+            .insert("late".to_string(), method("late"));
+        parent.invalidate_method_cache();
+
+        assert_eq!(child.find_method("late").unwrap().name, "late");
+        assert_eq!(grandchild.find_method("late").unwrap().name, "late");
+        assert!(grandchild.find_method("hello").is_some());
+    }
+
+    /// With no definition in between, the cache is reused, not rebuilt.
+    #[test]
+    fn cache_is_kept_while_no_method_changes() {
+        let class = Class {
+            name: "Kept".to_string(),
+            ..Default::default()
+        };
+        class
+            .methods
+            .borrow_mut()
+            .insert("a".to_string(), method("a"));
+        let first = class.find_method("a").unwrap();
+        let epoch = class.all_methods_cache_epoch.get();
+        let second = class.find_method("a").unwrap();
+        assert!(Rc::ptr_eq(&first, &second));
+        assert_eq!(class.all_methods_cache_epoch.get(), epoch);
     }
 }

@@ -18,9 +18,21 @@ end
 Greeter.define_method("shout", fn() { "HELLO!" })
 Greeter.alias_method("yell", "shout")
 
-let g = Greeter.new
+g = Greeter.new()
 g.shout    # => "HELLO!"
 g.yell     # => "HELLO!"
+```
+
+A method added this way reaches every instance at once, existing ones included, and every subclass, even one whose instances already called methods:
+
+```soli
+class Loud < Greeter
+end
+
+loud = Loud.new()
+loud.say                                    # => "hello"
+Greeter.define_method("whisper", fn() { "psst" })
+loud.whisper                                # => "psst"
 ```
 
 `class_eval` runs a block with `self` and `this` bound to the class. Inside, `define_method` writes to that class:

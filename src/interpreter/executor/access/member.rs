@@ -1176,7 +1176,7 @@ impl Interpreter {
                             .methods
                             .borrow_mut()
                             .insert(method_name.to_string(), func);
-                        class.all_methods_cache.borrow_mut().take();
+                        class.invalidate_method_cache();
 
                         Ok(Value::Null)
                     },
@@ -1218,7 +1218,7 @@ impl Interpreter {
                                 .methods
                                 .borrow_mut()
                                 .insert(new_name.to_string(), method);
-                            class.all_methods_cache.borrow_mut().take();
+                            class.invalidate_method_cache();
                             Ok(Value::Null)
                         } else {
                             Ok(Value::String(
@@ -2164,7 +2164,7 @@ impl Interpreter {
                                 .methods
                                 .borrow_mut()
                                 .insert(method_name.to_string(), func);
-                            class_clone.all_methods_cache.borrow_mut().take();
+                            class_clone.invalidate_method_cache();
                         }
                         let _ = class_name;
                         Ok(Value::Null)
@@ -2216,7 +2216,7 @@ impl Interpreter {
                                     .methods
                                     .borrow_mut()
                                     .insert(new_name.to_string(), method);
-                                class_clone.all_methods_cache.borrow_mut().take();
+                                class_clone.invalidate_method_cache();
                                 Ok(Value::Null)
                             } else {
                                 Err(format!("alias_method: method '{}' not found", old_name))

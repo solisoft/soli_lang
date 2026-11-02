@@ -426,6 +426,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         const_fields: HashSet::new(),
         static_const_fields: HashSet::new(),
         all_methods_cache: RefCell::new(None),
+        all_methods_cache_epoch: std::cell::Cell::new(0),
         all_native_methods_cache: RefCell::new(None),
         primitive: None,
         vm_methods: Rc::new(RefCell::new(HashMap::default())),

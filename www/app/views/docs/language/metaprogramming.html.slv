@@ -221,7 +221,15 @@ foo.add(1, 2)  # => 3
 
 # Methods are defined on the class, so all instances see it:
 foo2 = Foo.new()
-foo2.greet()  # => "Hello!"</code></pre>
+foo2.greet()  # => "Hello!"
+
+# Subclasses see it too, even after their instances ran methods:
+class Bar < Foo
+end
+bar = Bar.new()
+bar.greet()                                 # => "Hello!"
+Foo.define_method("wave", fn() { "bye" })
+bar.wave                                    # => "bye"</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -236,7 +244,12 @@ foo2.greet()  # => "Hello!"</code></pre>
 // For primitive-tagged classes (Int, Float, String, Array, Hash, etc.)
 // writes are routed to a per-type user-method overlay instead, since
 // primitive dispatch in member.rs / vm.rs does not consult Class.methods.
-// See `src/interpreter/executor/calls/user_methods.rs`.</code></pre>
+// See `src/interpreter/executor/calls/user_methods.rs`.
+//
+// Each class keeps a flattened method cache that copies its ancestors'
+// methods. define_method, alias_method and include bump a global method
+// epoch, and a cache built at an older epoch is rebuilt on its next lookup,
+// so subclasses never keep a parent's old method set.</code></pre>
         </div>
     </section>
 
