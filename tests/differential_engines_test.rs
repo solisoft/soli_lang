@@ -73,6 +73,13 @@ const CASES: &[(&str, &str)] = &[
         "print([[1, [2]], 3].flatten())\nprint([1, [2, [3, [4]]]].flatten(1))",
     ),
     (
+        // `print`/`puts`/`println` resolve a Future (here a command
+        // substitution) before printing it, as the tree-walker's builtins do;
+        // the VM's `Op::Print` printed `<pending future>`.
+        "print_resolves_a_future",
+        "r = `printf hi`\nprint(r)\nputs(r, 1)\nprintln(`printf yo`)",
+    ),
+    (
         // The VM's `count` only took a `Function`, so a block (a VmClosure)
         // fell through to the equality count and gave 0; the tree-walker's
         // reject/none?/one?/count dropped a `throw` raised in the block.

@@ -177,8 +177,6 @@ pub struct Vm {
     pub exception_handlers: Vec<ExceptionHandler>,
     /// Iterator state stack (for for-in loops).
     pub iter_stack: Vec<IterState>,
-    /// Output buffer for print statements (for testing/capture).
-    pub output: Vec<String>,
     /// The page a compiled template writes into (`Op::TemplateWrite`).
     pub template_out: String,
     /// Pages set aside by `Op::TemplateCaptureStart`, innermost last.
@@ -352,7 +350,6 @@ impl Vm {
             array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
-            output: Vec::new(),
             template_out: String::new(),
             template_captures: Vec::new(),
             template_content_before: None,
@@ -3529,16 +3526,35 @@ impl Vm {
 
                 // --- I/O ---
                 Op::Print(n) => {
-                    let len = self.stack.len();
-                    let start = len - n as usize;
-                    let output: String = self.stack[start..len]
-                        .iter()
-                        .map(|v| format!("{}", v))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    self.stack.truncate(start);
-                    println!("{}", output);
-                    self.output.push(output);
+                    // `print`/`puts`/`println`, as the tree-walker's builtins
+                    // do them: Futures are resolved first, and the line goes
+                    // through `write_captured_or_stdout`, so a
+                    // `StdoutCaptureGuard` (test runner, graph builder) sees
+                    // it. Nothing is retained: a serve worker keeps its VM for
+                    // life, and a copy of every printed line was a leak.
+                    use std::fmt::Write as _;
+                    let start = self.stack.len() - n as usize;
+                    let mut line = String::new();
+                    let mut failed = None;
+                    for (i, value) in self.stack.drain(start..).enumerate() {
+                        if i > 0 {
+                            line.push(' ');
+                        }
+                        match value.resolve() {
+                            Ok(value) => {
+                                let _ = write!(line, "{}", value);
+                            }
+                            Err(e) => {
+                                failed = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = failed {
+                        return Err(RuntimeError::new(e, self.current_span()));
+                    }
+                    line.push('\n');
+                    crate::interpreter::builtins::write_captured_or_stdout(&line);
                     self.stack.push(Value::Null);
                 }
 
@@ -5471,6 +5487,27 @@ mod tests {
             Value::NativeFunction(NativeFunction::new("puts", None, |_| Ok(Value::Null))),
         );
         vm.execute(&module.main)
+    }
+
+    /// `print`/`puts`/`println` compile to `Op::Print`, which must write
+    /// through `write_captured_or_stdout` like the tree-walker's builtins:
+    /// while a `StdoutCaptureGuard` is alive (test runner, graph builder) the
+    /// line lands in the capture buffer, not on the process stdout. It used to
+    /// `println!` straight to stdout and also keep a copy of every line in a
+    /// `Vm.output` buffer nothing read, which grew a serve worker's memory
+    /// without bound.
+    #[test]
+    fn test_vm_print_op_writes_through_stdout_capture() {
+        let tokens = Scanner::new("print(\"a\", 1)\nputs(\"b\")\nprintln([2, nil])\nprint()")
+            .scan_tokens()
+            .expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        let capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+        vm.execute(&module.main).expect("print must run");
+        let captured = String::from_utf8(capture.finish()).expect("utf-8");
+        assert_eq!(captured, "a 1\nb\n[2, null]\n\n");
     }
 
     /// A match expression must leave the value stack balanced.

@@ -244,7 +244,7 @@ impl Drop for StdoutCaptureGuard {
     }
 }
 
-fn write_captured_or_stdout(s: &str) {
+pub(crate) fn write_captured_or_stdout(s: &str) {
     let captured = STDOUT_CAPTURE.with(|c| {
         if let Some(ref mut buf) = *c.borrow_mut() {
             buf.extend_from_slice(s.as_bytes());
