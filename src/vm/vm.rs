@@ -370,6 +370,38 @@ impl Vm {
         Some(value)
     }
 
+    /// `Klass.NAME` for the fast tier's `GetProperty` and `GetLocalProperty`:
+    /// a static field (a class constant, an enum's unit variant) whose read in
+    /// the general arm ends at `op_get_property`'s `val.clone()` with nothing
+    /// done after it. That is a field holding plain data — a scalar, a
+    /// string, a collection, an instance, a DateTime. Everything else keeps
+    /// the general arm: a nested class (its `check_nested_access`), a
+    /// callable (`op_get_property_member` auto-invokes a zero-arity one), a
+    /// `grouped {}` placeholder or a future, and a model class's scope of the
+    /// same name, which outranks the field. The privacy check is no concern:
+    /// it only ever refuses an instance receiver.
+    #[inline]
+    fn fast_static_read(class: &crate::interpreter::value::Class, name: &str) -> Option<Value> {
+        let value = match class.static_fields.borrow().get(name)? {
+            value @ (Value::Int(_)
+            | Value::Float(_)
+            | Value::Decimal(_)
+            | Value::String(_)
+            | Value::Symbol(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Array(_)
+            | Value::Hash(_)
+            | Value::Instance(_)
+            | Value::DateTime(_, _)) => clone_scalar_fast(value),
+            _ => return None,
+        };
+        if Self::is_model_class_scope(class, name) {
+            return None;
+        }
+        Some(value)
+    }
+
     /// `receiver.name = value` for the fast tier's `SetProperty`: the general
     /// arm's instance-field write — an existing field overwritten in place, a
     /// new one inserted — when it completes with no error. The receiver is an
@@ -900,6 +932,13 @@ impl Vm {
                                 _ => None,
                             }
                         }
+                        Some(Value::Class(class)) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => Self::fast_static_read(class, name),
+                                _ => None,
+                            }
+                        }
                         Some(receiver) if mask != 0 => {
                             super::method_table::bare_zero_arg(receiver, mid, mask)
                         }
@@ -943,6 +982,13 @@ impl Vm {
                                 Constant::String(name) => {
                                     self.fast_field_read(receiver, name, slot == 0)
                                 }
+                                _ => None,
+                            }
+                        }
+                        Value::Class(class) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => Self::fast_static_read(class, name),
                                 _ => None,
                             }
                         }
@@ -9326,6 +9372,62 @@ mod bare_builtin_fast_tier_tests {
              result = [h.length, h.keys, h.size, {\"a\": 1}.len, 2.5.round, (-3).abs, \"zz\".length]\n",
         );
         assert_eq!(shown(&value), "[99, k, 2, <method hash.len>, 3, 3, 2]");
+    }
+}
+
+#[cfg(test)]
+mod static_read_fast_tier_tests {
+    //! `Conf.per_page` and `Conf.active` — a static field holding plain
+    //! data, as an enum's unit variant is an instance in one — are read in
+    //! the fast tier, from a global class (`GetProperty`)
+    //! and from a local one (`GetLocalProperty`). A static field the general
+    //! arm does more with (a callable it auto-invokes) still goes there.
+    use super::general_member_ops;
+    use crate::interpreter::value::Value;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    fn run(src: &str) -> (String, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = general_member_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_member_ops() - start;
+        let result: Value = vm.globals.get("result").cloned().expect("result");
+        (format!("{}", result), general)
+    }
+
+    fn reads(n: usize) -> String {
+        format!(
+            "class Marker\nend\n\
+             class Conf\n  static per_page: Int = 20\n  static active: Any = Marker.new()\n  static tags: Array = [\"a\"]\n\
+             \x20 static label: String = \"c\"\n  static make: Any = fn() {{ 42 }}\nend\n\
+             def go\n  klass = Conf\n  total = 0\n  hits = 0\n  i = 0\n  while i < {n}\n\
+             \x20   total += Conf.per_page + klass.per_page + klass.tags.length\n\
+             \x20   hits += 1 if Conf.active == klass.active\n\
+             \x20   i += 1\n  end\n  [total, hits, Conf.label]\nend\n\
+             def calls\n  total = 0\n  i = 0\n  while i < {n}\n    total += Conf.make\n\
+             \x20   i += 1\n  end\n  total\nend\n\
+             result = [go(), calls()]\n"
+        )
+    }
+
+    /// The plain-data reads cost the general arms nothing per iteration, so
+    /// 3 and 40 iterations run the same number of general member ops; the
+    /// callable static field still runs one per iteration (37 more).
+    #[test]
+    fn static_field_reads_stay_in_the_fast_tier() {
+        let (short, short_general) = run(&reads(3));
+        let (long, long_general) = run(&reads(40));
+        assert_eq!(short, "[[123, 3, c], 126]");
+        assert_eq!(long, "[[1640, 40, c], 1680]");
+        assert_eq!(
+            long_general - short_general,
+            37,
+            "{short_general} vs {long_general}"
+        );
     }
 }
 

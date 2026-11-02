@@ -858,6 +858,67 @@ print(o)
         "enum_serialization_and_parse",
         "enum C { Red, Blue, Tag(name: String) }\nprint(json_stringify({\"c\": C.Red, \"t\": C.Tag(\"x\")}))\nprint(C.parse(\"Red\") == C.Red)\nprint(C.parse({\"variant\": \"Tag\", \"name\": \"y\"}) == C.Tag(\"y\"))",
     ),
+    // A static field holding plain data (`Conf.per_page`, an enum's unit
+    // variant) is read in the VM's fast tier; a static method, a nested class
+    // and a write followed by a read keep the answer they had.
+    (
+        "static_field_reads",
+        r##"enum Level { Low, High }
+class Conf
+  static per_page: Int = 20
+  static rate: Float = 1.5
+  static label: String = "conf"
+  static tags: Array = ["a", "b"]
+  static opts: Hash = {"k": 1}
+  static nothing: Any = nil
+  static level: Any = Level.High
+  static def doubled
+    @per_page * 2
+  end
+end
+module Shop
+  class Item
+    static def kind
+      "item"
+    end
+  end
+end
+def read_from_local
+  klass = Conf
+  total = 0
+  i = 0
+  while i < 3
+    total += klass.per_page
+    i += 1
+  end
+  [total, klass.tags.length, klass.label, klass.level == Level.High]
+end
+print(Conf.per_page, Conf.rate, Conf.label, Conf.tags, Conf.opts, Conf.nothing)
+print(Conf.level == Level.High, Conf.level.variant())
+print(read_from_local())
+print(Conf.doubled)
+Conf.per_page = 30
+print(Conf.per_page, Conf.doubled)
+print(Shop.Item.kind, Shop::Item.kind)"##,
+    ),
+    // `==` answers a unit variant compared with itself by identity; a payload
+    // variant compared with itself still goes field by field, so a NaN in the
+    // payload keeps it unequal to itself, as for two equal copies.
+    (
+        "enum_equality_identity",
+        r##"enum Box { Empty, Full(x: Float) }
+class Plain
+end
+nan = "NaN".to_f
+empty = Box.Empty
+print(empty == empty, empty == Box.Empty, empty != Box.Empty)
+full = Box.Full(nan)
+print(full == full, full != full)
+one = Box.Full(1.0)
+print(one == one, one == Box.Full(1.0), one == Box.Full(2.0), one == empty)
+plain = Plain.new()
+print(plain == plain, plain == Plain.new())"##,
+    ),
     // --- functions stored in hash entries (dispatch tables) ---
     // The VM used to reject `handlers.on_create(rec)` outright: an unknown hash
     // method raised NoSuchProperty without ever checking whether the key held a

@@ -515,11 +515,25 @@ pub struct DeferredCell {
 /// structurally — class name + `__variant` tag + payload fields (recursively) —
 /// and defers to the default `PartialEq` for everything else, preserving
 /// existing behaviour for ordinary objects.
+///
+/// A unit variant is a shared singleton, so `status == Status.Active` is
+/// usually one instance compared with itself, and identity answers it before
+/// any field is looked at. That holds for any instance that is no payload
+/// variant: an ordinary object's `PartialEq` is identity first, and a unit
+/// variant's only field is its tag. A payload variant compared with itself
+/// still goes field by field, so `v == v` stays false when its payload holds
+/// a NaN, exactly as for two equal copies.
 pub fn enum_aware_equal(a: &Value, b: &Value) -> bool {
     if let (Value::Instance(ia), Value::Instance(ib)) = (a, b) {
-        let a_is_enum = ia.borrow().fields.contains_key("__variant");
-        let b_is_enum = ib.borrow().fields.contains_key("__variant");
-        if a_is_enum && b_is_enum {
+        if Rc::ptr_eq(ia, ib) {
+            let instance = ia.borrow();
+            if instance.fields.len() <= 1 || !instance.fields.contains_key("__variant") {
+                return true;
+            }
+        }
+        if ia.borrow().fields.contains_key("__variant")
+            && ib.borrow().fields.contains_key("__variant")
+        {
             let ra = ia.borrow();
             let rb = ib.borrow();
             if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
