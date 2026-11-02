@@ -2408,6 +2408,39 @@ mod inplace_peephole_tests {
         panic!("no function proto found");
     }
 
+    /// `o.x ||= v`, `&&=` and `??=`: the jump taken when the read decides
+    /// the result lands after the `SetProperty`, so a short-circuit writes
+    /// nothing (the tree-walker's order), and the receiver is loaded once
+    /// before the read — the second load belongs to the assigning path.
+    #[test]
+    fn member_short_circuit_assign_jumps_over_the_write() {
+        for op in ["||=", "&&=", "??="] {
+            let ops = fn_ops(&format!("o = nil\no.x {op} 1"));
+            let read = ops
+                .iter()
+                .position(|o| matches!(o, Op::GetPropertyOrNull(_)))
+                .unwrap_or_else(|| panic!("{op}: no GetPropertyOrNull in {ops:?}"));
+            let target = match ops[read + 1] {
+                Op::JumpIfTrueNoPop(d) | Op::JumpIfFalseNoPop(d) | Op::JumpIfNotNull(d) => {
+                    read + 2 + d as usize
+                }
+                ref other => panic!("{op}: expected a no-pop jump, got {other:?}"),
+            };
+            assert!(
+                matches!(ops[target - 1], Op::SetProperty(_)),
+                "{op}: the short-circuit must jump over SetProperty: {ops:?}"
+            );
+            assert_eq!(
+                ops[..read]
+                    .iter()
+                    .filter(|o| matches!(o, Op::GetLocal(_)))
+                    .count(),
+                1,
+                "{op}: one receiver load before the read: {ops:?}"
+            );
+        }
+    }
+
     /// The whole point of the in-place opcodes is that the canonical loop body
     /// actually compiles to them. Without this, the peephole can silently stop
     /// matching and the only symptom is a benchmark that quietly gets slower.

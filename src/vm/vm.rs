@@ -956,6 +956,28 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
+                // `@total ||= 0`'s read: the instance-field hit of
+                // `GetProperty` above, so a set field short-circuits without
+                // leaving the tier. A miss (Null), a model relation or
+                // translated field, a deferred or refused field goes to the
+                // general arm.
+                Op::GetPropertyOrNull(idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let hit = match (self.stack.last(), unsafe { &*constants.add(idx as usize) }) {
+                        (Some(receiver @ Value::Instance(inst)), Constant::String(name))
+                            if !field_needs_model_resolution(inst, name) =>
+                        {
+                            self.fast_field_read(receiver, name, false)
+                        }
+                        _ => None,
+                    };
+                    match hit {
+                        Some(value) => {
+                            discard(std::mem::replace(self.stack.last_mut().unwrap(), value));
+                        }
+                        None => break Some(op),
+                    }
+                }
                 // `@title = t` or `post.title = t` on an instance, `h.key = v`
                 // on a hash: the general arm's in-place write, here when it
                 // completes with no error (`Vm::fast_field_write`). The value
@@ -3233,6 +3255,33 @@ impl Vm {
                 }
                 Op::GetPropertyOrNull(idx) => {
                     let object = self.stack.pop().unwrap();
+                    #[cfg(test)]
+                    tally_general_field_op(&object);
+                    // Fast path: an instance-field hit decides the read, as in
+                    // `Op::GetProperty` — only a miss differs (Null here). A
+                    // model's relation or translated field still goes to the
+                    // resolver below, as it did before this path existed.
+                    if let Value::Instance(inst) = &object {
+                        let hit = {
+                            let frame = self.frames.last().unwrap();
+                            match &frame.closure.proto.chunk.constants[idx as usize] {
+                                Constant::String(name)
+                                    if !field_needs_model_resolution(inst, name) =>
+                                {
+                                    inst.borrow().fields.get(name.as_ref()).cloned()
+                                }
+                                _ => None,
+                            }
+                        };
+                        if let Some(val) = hit {
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                self.check_private_value(&object, self.string_constant(idx))?;
+                            }
+                            let val = self.force_field_hit(val)?;
+                            self.stack.push(val);
+                            continue;
+                        }
+                    }
                     let name = self.read_string_constant(idx);
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
@@ -5667,6 +5716,23 @@ pub(crate) fn clone_scalar_fast(value: &Value) -> Value {
         Value::Null => Value::Null,
         other => other.clone(),
     }
+}
+
+/// Whether reading `name` on `inst` means more than its stored field: a
+/// model's declared relation or translated field, which `op_get_property`
+/// hands to the tree-walker's resolver. `GetPropertyOrNull`'s field fast
+/// path leaves those to it. One memoised flag for any other class.
+#[inline]
+fn field_needs_model_resolution(
+    inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    name: &str,
+) -> bool {
+    let inst = inst.borrow();
+    inst.class.is_model_subclass()
+        && crate::interpreter::builtins::model::member_needs_model_resolution(
+            &inst.class.name,
+            name,
+        )
 }
 
 #[inline(always)]
@@ -9047,6 +9113,54 @@ result = [amount.cents, frozen, email.address]
             ])))
         );
         assert_eq!(general, 1);
+    }
+
+    const MEMO: &str = r#"
+class Tally
+  def bump(n)
+    i = 0
+    while i < n
+      @total ||= 0
+      @total = @total + 1
+      @seen &&= @seen + 1
+      @label ??= "t"
+      i = i + 1
+    end
+    @total
+  end
+end
+
+tally = new Tally()
+tally.seen = 1
+total = tally.bump(__N__)
+tally.total ||= 99
+result = [total, tally.total, tally.seen, tally.label]
+"#;
+
+    /// `@total ||= 0` (and `&&=`, `??=`) on a set field is one fast-tier
+    /// read and a jump, with no write: only the first `||=` and `??=`,
+    /// which find nothing and assign, reach the general arm — two ops
+    /// whatever the loop length. Before, every read left the tier.
+    #[test]
+    fn a_short_circuit_field_assign_stays_in_the_fast_tier() {
+        let (short, short_general) = run(MEMO, 3, Vec::new());
+        let (long, long_general) = run(MEMO, 40, Vec::new());
+        assert_eq!(
+            short,
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(3),
+                Value::Int(3),
+                Value::Int(4),
+                Value::String("t".into()),
+            ])))
+        );
+        let Value::Array(long) = long else {
+            panic!("expected an array, got {long:?}");
+        };
+        assert_eq!(long.borrow()[0], Value::Int(40));
+        assert_eq!(long.borrow()[2], Value::Int(41));
+        assert_eq!(short_general, 2);
+        assert_eq!(long_general, 2);
     }
 }
 

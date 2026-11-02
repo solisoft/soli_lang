@@ -2268,6 +2268,105 @@ catch e
   print("arity")
 end"##,
     ),
+    (
+        // `obj.x ||= v` (and `&&=`, `??=`) that short-circuits writes
+        // nothing and evaluates the receiver once, as on the tree-walker: a
+        // frozen value object is not refused, a getter is not copied into a
+        // field, and only an assigning `pick(...).x ||= v` calls `pick` twice.
+        "member_compound_assign_short_circuit_writes_nothing",
+        r##"class Amount < ValueObject
+  cents: Int
+end
+
+class Box
+  x: Int
+  count: Int
+
+  new()
+    @count = 0
+  end
+
+  def label
+    "computed"
+  end
+
+  def fill(v)
+    @x ||= v
+  end
+end
+
+def pick(log, box)
+  log.push("pick")
+  box
+end
+
+a = Amount.new(500)
+print(a.cents ||= 7) rescue print("frozen")
+print(a.cents &&= nil) rescue print("frozen")
+b = Box.new()
+print(b.label ||= "x")
+print(b.instance_variables.includes?("@label"))
+print(b.fill(3), b.fill(9), b.x)
+log = []
+print(pick(log, b).x ||= 4)
+print(log.length)
+print(pick(log, b).count ||= 4)
+print(log.length)
+print(pick(log, b).count &&= 8)
+print(log.length)
+print(pick(log, b).x ??= 1)
+print(log.length)
+print(b.fresh ??= 2)
+print(log.length)
+print(b.fresh, b.count, b.x)
+r = (b.count &&= 0)
+print(r, b.count)"##,
+    ),
+    (
+        // `is_a?` / `respond_to?` on a plain instance, answered by a walk of
+        // the class on the VM: inherited classes and methods, a symbol name,
+        // a field (not a method), the universal members, and a wrong argument.
+        "instance_is_a_and_respond_to",
+        r##"class Animal
+  def speak
+    "..."
+  end
+end
+
+class Dog < Animal
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  def bark(times)
+    "woof" * times
+  end
+end
+
+d = Dog.new("rex")
+print(d.is_a?("Dog"), d.is_a?("Animal"), d.is_a?("Cat"), d.is_a?("Object"))
+print(d.respond_to?("bark"), d.respond_to?("speak"), d.respond_to?(:name), d.respond_to?("name"))
+print(d.respond_to?("inspect"), d.respond_to?("nope"), d.respond_to?("method_missing"))
+i = 0
+hits = 0
+while i < 20
+  hits += 1 if d.is_a?("Animal") && d.respond_to?("speak")
+  i += 1
+end
+print(hits)
+try
+  d.is_a?(42)
+catch e
+  print("bad is_a? argument")
+end
+try
+  d.respond_to?(42)
+catch e
+  print("bad respond_to? argument")
+end"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

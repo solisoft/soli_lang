@@ -352,7 +352,7 @@ msg += " World"   # msg is now "Hello World"</code></pre>
             </span>
             Conditional Assignment
         </h2>
-        <p class="text-gray-400 mb-4">Conditional assignment operators only assign the right-hand side when the target meets a condition. The right-hand side is <strong class="text-white">not evaluated</strong> when the assignment is skipped.</p>
+        <p class="text-gray-400 mb-4">Conditional assignment operators only assign the right-hand side when the target meets a condition. The right-hand side is <strong class="text-white">not evaluated</strong> when the assignment is skipped, and nothing is written: on a set field <code class="text-amber-400">@total ||= 0</code> is a single read, a value object's field can be tested this way without tripping its immutability, and <code class="text-amber-400">obj.label ||= v</code> on a getter does not copy its result into a field.</p>
         <div class="overflow-x-auto mb-6">
             <table class="w-full text-left text-sm">
                 <thead>

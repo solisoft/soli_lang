@@ -318,26 +318,36 @@ impl Compiler {
 
                 // `obj.x ||= v` on a property nothing has set yet: the read
                 // answers Null instead of raising, or `@items ||= []` could
-                // never initialise an instance variable. Same shape as the
-                // desugaring below — `obj.x = (obj.x || v)` — with only the
-                // read swapped for its lenient form.
+                // never initialise an instance variable.
+                //
+                // A short-circuit leaves the read value as the result and
+                // writes nothing, as on the tree-walker: `@total ||= 0` with
+                // `@total` set is one read, and a frozen value object or a
+                // getter (`b.label ||= "x"`) is not written back. Only the
+                // assigning path evaluates the receiver a second time, as
+                // `assign_to_target` does there:
+                //
+                //   obj; GetPropertyOrNull; jump-if-decided END;
+                //   Pop; obj; value; SetProperty; END:
                 if let ExprKind::Member { object, name } = &target.kind {
+                    // `JumpIfNotNull` rather than `NullishJump` for `??=`:
+                    // the same test, and the fast tier runs it.
                     let jump_op = match operator {
                         CompoundOp::Or => Some(Op::JumpIfTrueNoPop(0)),
                         CompoundOp::And => Some(Op::JumpIfFalseNoPop(0)),
-                        CompoundOp::Coalesce => Some(Op::NullishJump(0)),
+                        CompoundOp::Coalesce => Some(Op::JumpIfNotNull(0)),
                         _ => None,
                     };
                     if let Some(jump_op) = jump_op {
                         let idx = self.add_string_constant(name);
                         self.compile_expr(object)?;
-                        self.compile_expr(object)?;
                         self.emit(Op::GetPropertyOrNull(idx), line);
                         let jump = self.emit_jump(jump_op, line);
                         self.emit(Op::Pop, line);
+                        self.compile_expr(object)?;
                         self.compile_expr(value)?;
-                        self.patch_jump(jump);
                         self.emit(Op::SetProperty(idx), line);
+                        self.patch_jump(jump);
                         return Ok(());
                     }
                 }

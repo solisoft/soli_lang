@@ -319,7 +319,10 @@ cache["key"] ||= expensive_lookup();   # compute once, reuse on repeat
 | `a ??= b` | `a = a ?? b`            | You want a default only for `null` (keeps `false`/`0`) |
 
 The right-hand side is **not evaluated** when the condition fails, so it's
-safe to use expensive expressions on the right.
+safe to use expensive expressions on the right. Nothing is written either: on a
+set field `@total ||= 0` is a single read, a value object's field can be tested
+this way without tripping its immutability, and `obj.label ||= v` on a getter
+does not copy the getter's result into a field.
 
 ### Comparison Operators
 

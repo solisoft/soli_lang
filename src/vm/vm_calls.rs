@@ -2247,6 +2247,18 @@ impl Vm {
             return Ok(());
         }
 
+        if argc == 1 {
+            if let Some(answer) = Self::instance_reflection_answer(
+                &self.stack[receiver_idx],
+                name,
+                &self.stack[receiver_idx + 1],
+            ) {
+                self.stack.truncate(receiver_idx);
+                self.stack.push(Value::Bool(answer));
+                return Ok(());
+            }
+        }
+
         let span = self.current_span();
         if argc == 0 {
             if let Value::Instance(inst) = &self.stack[receiver_idx] {
@@ -2290,6 +2302,70 @@ impl Vm {
             self.call_value(argc, span)?;
         }
         Ok(())
+    }
+
+    /// `obj.is_a?("Base")` and `obj.respond_to?("m")` on a plain (non-model)
+    /// instance, answered by walking the class: the result the universal
+    /// members of `op_get_property` and the tree-walker's
+    /// `instance_member_access` give, without the `NativeFunction` closure
+    /// built per access for `is_a?` or the tree-walker `Interpreter` built
+    /// per access for `respond_to?`.
+    ///
+    /// Called by `call_method_slow_path` once no compiled, tree-walker or
+    /// native method of that name exists; a field of that name, a model
+    /// instance (whose reads go to the model resolver) or an argument of
+    /// another type returns `None`, and the general path answers — or raises
+    /// the same error as before.
+    fn instance_reflection_answer(receiver: &Value, name: &str, arg: &Value) -> Option<bool> {
+        let Value::Instance(inst) = receiver else {
+            return None;
+        };
+        if !matches!(name, "is_a?" | "respond_to?") {
+            return None;
+        }
+        let inst = inst.borrow();
+        if inst.class.is_model_subclass() || inst.fields.contains_key(name) {
+            return None;
+        }
+        if name == "is_a?" {
+            let Value::String(class_name) = arg else {
+                return None;
+            };
+            let mut current = Some(&inst.class);
+            while let Some(class) = current {
+                if class.name == class_name.as_str() {
+                    return Some(true);
+                }
+                current = class.superclass.as_ref();
+            }
+            return Some(false);
+        }
+        let method = match arg {
+            Value::String(method) | Value::Symbol(method) => method.as_str(),
+            _ => return None,
+        };
+        // The tree-walker's `respond_to?` list, kept in the same order.
+        let class = &inst.class;
+        Some(
+            class.find_method(method).is_some()
+                || class.find_vm_method(method).is_some()
+                || class.find_native_method(method).is_some()
+                || matches!(
+                    method,
+                    "inspect"
+                        | "class"
+                        | "nil?"
+                        | "blank?"
+                        | "present?"
+                        | "respond_to?"
+                        | "send"
+                        | "instance_variables"
+                        | "instance_variable_get"
+                        | "instance_variable_set"
+                        | "methods"
+                        | "method_missing"
+                ),
+        )
     }
 
     /// `obj.name(args…)` answered by the instance's `method_missing`, the
