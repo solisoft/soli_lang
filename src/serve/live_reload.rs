@@ -125,34 +125,6 @@ pub async fn handle_live_reload_sse(
     }
 }
 
-/// Find the last occurrence of an ASCII pattern in a string, case-insensitive.
-/// Does NOT allocate any intermediate strings - works directly on bytes.
-/// Only valid for ASCII needles (like HTML tags).
-#[inline]
-pub(crate) fn rfind_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> Option<usize> {
-    let haystack_bytes = haystack.as_bytes();
-    let needle_len = needle.len();
-
-    if haystack_bytes.len() < needle_len {
-        return None;
-    }
-
-    // Search from the end
-    for i in (0..=(haystack_bytes.len() - needle_len)).rev() {
-        let mut matches = true;
-        for j in 0..needle_len {
-            if haystack_bytes[i + j].to_ascii_lowercase() != needle[j] {
-                matches = false;
-                break;
-            }
-        }
-        if matches {
-            return Some(i);
-        }
-    }
-    None
-}
-
 /// Inject the live reload script into HTML content.
 ///
 /// Inserts the script before the closing `</body>` tag if present,
@@ -169,25 +141,13 @@ pub fn inject_live_reload_script(html: &str) -> String {
     // Use the re-exported script constant
     let script = LIVE_RELOAD_SCRIPT;
 
-    // Try to find </body> (case-insensitive) without allocating a lowercase copy
-    // Using byte slices for ASCII HTML tags
-    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut result = String::with_capacity(html.len() + script.len());
-        result.push_str(&html[..pos]);
-        result.push_str(script);
-        result.push_str(&html[pos..]);
-        result
-    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        // Fallback: insert before </html>
-        let mut result = String::with_capacity(html.len() + script.len());
-        result.push_str(&html[..pos]);
-        result.push_str(script);
-        result.push_str(&html[pos..]);
-        result
-    } else {
-        // Last resort: append at the end
-        format!("{}{}", html, script)
-    }
+    // Before the last `</body>`, else the last `</html>`, else at the end.
+    let pos = crate::serve::inject::body_close_position(html);
+    let mut result = String::with_capacity(html.len() + script.len());
+    result.push_str(&html[..pos]);
+    result.push_str(script);
+    result.push_str(&html[pos..]);
+    result
 }
 /// The edge build serves no live-reload socket (that lives in `live_reload_ws`,
 /// on hyper), and runs in production anyway: pages go out as rendered.

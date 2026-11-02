@@ -27,10 +27,13 @@
 //! with `SOLI_NAV=morph`, which stamps `data-mode="morph"` on the script tag
 //! (a page can still ask for `content="swap"`).
 
+use std::borrow::Cow;
+
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
+use crate::serve::inject::{self, Probe};
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary so there's no filesystem dependency.
@@ -38,7 +41,7 @@ pub const NAV_SCRIPT: &str = include_str!("nav.js");
 
 /// Marker used to make injection idempotent when the same body is rewrapped
 /// (e.g. by a middleware that re-enters `html_response`).
-const INJECTED_MARKER: &str = "__soli_nav_injected";
+pub(crate) const INJECTED_MARKER: &str = "__soli_nav_injected";
 
 /// Content-derived version hash for the `?v=` cache-buster. Old binaries
 /// served their old JS under `?v=OLD`; the new binary hands out `?v=NEW` URLs
@@ -82,8 +85,8 @@ fn morph_by_default() -> bool {
 
 /// The `<script>` tag to inject. It embeds the `SOLI_PREFETCH` /
 /// `SOLI_PREFETCH_TTL` state as data attributes the client script reads; both
-/// are fixed for the process, so [`inject_nav_tag`] caches the result (tests,
-/// which toggle them, rebuild it per call).
+/// are fixed for the process, so [`tag_for`] caches the result (tests, which
+/// toggle them, rebuild it per call).
 fn nav_tag() -> String {
     let prefetch_attr = if prefetch::is_enabled() {
         ""
@@ -104,6 +107,19 @@ fn nav_tag() -> String {
     )
 }
 
+/// The nav `<script>` tag a page still needs: every page, unless it carries
+/// the tag already.
+pub(crate) fn tag_for(page: &Probe<'_>) -> Option<Cow<'static, str>> {
+    if page.contains(INJECTED_MARKER) {
+        return None;
+    }
+    if cfg!(test) {
+        return Some(Cow::Owned(nav_tag()));
+    }
+    static TAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    Some(Cow::Borrowed(TAG.get_or_init(nav_tag)))
+}
+
 /// Insert the nav `<script>` tag into an HTML body. Idempotent — calling it
 /// twice on the same string is a no-op, and a no-op hands the buffer back
 /// without copying it.
@@ -113,15 +129,7 @@ fn nav_tag() -> String {
 ///   2. Fallback: before `</html>`.
 ///   3. Last resort: appended at the end.
 pub fn inject_nav_tag(html: impl Into<String>) -> String {
-    let html: String = html.into();
-    if html.contains(INJECTED_MARKER) {
-        return html;
-    }
-    if cfg!(test) {
-        return prefetch::insert_before_body_close(html, &nav_tag());
-    }
-    static TAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    prefetch::insert_before_body_close(html, TAG.get_or_init(nav_tag))
+    inject::inject_with(html.into(), tag_for)
 }
 
 /// HTTP handler for `GET /__soli/nav.js`. Returns the bundled script with

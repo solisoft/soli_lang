@@ -11,33 +11,31 @@
 //! single shared listener per event, normalized units, and — like the camera
 //! script — stopping the listener when instant navigation replaces the page.
 
+use std::borrow::Cow;
+
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
+use crate::serve::inject::{self, Probe};
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary, like `camera.js`.
 pub const SENSORS_SCRIPT: &str = include_str!("sensors.js");
 
 /// Makes injection idempotent when a body is rewrapped.
-const INJECTED_MARKER: &str = "__soli_sensors_injected";
+pub(crate) const INJECTED_MARKER: &str = "__soli_sensors_injected";
 
 /// The `motion_sensors()` meta marker that turns the feature on for a page.
-const SENSORS_META: &str = "soli-sensors";
+pub(crate) const SENSORS_META: &str = "soli-sensors";
 /// A bare inline use of the API also opts a page in, so a page that just calls
 /// `soli.sensors.gyroscope(...)` needs no separate enabling helper.
-const SENSORS_USAGE: &str = "soli.sensors";
+pub(crate) const SENSORS_USAGE: &str = "soli.sensors";
 
 fn sensors_hash() -> u64 {
     use std::sync::OnceLock;
     static HASH: OnceLock<u64> = OnceLock::new();
     *HASH.get_or_init(|| prefetch::fnv1a_64(SENSORS_SCRIPT.as_bytes()))
-}
-
-/// Does this page use motion sensors? A page that does not gets no script.
-pub fn page_uses_sensors(html: &str) -> bool {
-    html.contains(SENSORS_META) || html.contains(SENSORS_USAGE)
 }
 
 fn sensors_tag() -> String {
@@ -48,14 +46,17 @@ fn sensors_tag() -> String {
     )
 }
 
+/// The sensors `<script>` tag a page needs: only a page that enabled the
+/// sensors or uses the API asks for it, and only until the tag is in.
+pub(crate) fn tag_for(page: &Probe<'_>) -> Option<Cow<'static, str>> {
+    ((page.contains(SENSORS_META) || page.contains(SENSORS_USAGE))
+        && !page.contains(INJECTED_MARKER))
+    .then(|| Cow::Owned(sensors_tag()))
+}
+
 /// Insert the sensors `<script>` before `</body>` — or `</html>`, or at the end.
 pub fn inject_sensors_tag(html: impl Into<String>) -> String {
-    let html: String = html.into();
-    // Opt-in probe first: fewer body scans for pages that do not use it.
-    if !page_uses_sensors(&html) || html.contains(INJECTED_MARKER) {
-        return html;
-    }
-    prefetch::insert_before_body_close(html, &sensors_tag())
+    inject::inject_with(html.into(), tag_for)
 }
 
 /// `GET /__soli/sensors.js`.

@@ -993,39 +993,15 @@ fn finish_html(body: String) -> (String, String) {
         body
     };
 
-    // Inject the instant-navigation script (body swap + pushState) unless
-    // disabled via `SOLI_NAV=off`. Nav subsumes hover prefetching with its own
-    // in-memory cache (a fetch() can't consume `<link rel="prefetch">`
-    // entries), so the two scripts are mutually exclusive: prefetch.js is only
-    // injected when nav is off, restoring the previous behavior unchanged.
-    let nav_on = crate::serve::nav::is_enabled();
-    let body = if nav_on {
-        crate::serve::nav::inject_nav_tag(body)
-    } else {
-        body
-    };
-    let body = if !nav_on && crate::serve::prefetch::is_enabled() {
-        crate::serve::prefetch::inject_prefetch_tag(body)
-    } else {
-        body
-    };
-
-    // Native bridge: injected only for pages that called `native_channel(...)`,
-    // which is what puts the `soli-native` meta tag in the HTML. Pages that
-    // want nothing from the shell get no script and open no stream.
-    let body = crate::serve::native::inject_native_tag(body);
-
-    // Camera preview + scan loop, for pages carrying a `data-soli-camera`
-    // element. Independent of the native bridge: a page can show a camera
-    // without wanting notifications, and vice versa.
-    let body = crate::serve::camera::inject_camera_tag(body);
-
-    // Motion sensors (gyroscope / accelerometer / orientation), for pages that
-    // enabled them with `motion_sensors()` or reference `soli.sensors`.
-    let body = crate::serve::sensors::inject_sensors_tag(body);
-
-    // Proof of work, for pages carrying a `pow_field()` challenge.
-    let body = crate::serve::pow::inject_pow_tag(body);
+    // The instant-navigation script (body swap + pushState) on every page, or
+    // hover prefetching with `SOLI_NAV=off`; then the native bridge, camera,
+    // motion sensors and proof of work, each only for the pages whose markup
+    // asks for it. One forward pass over the page answers what each script
+    // asks, one backward pass finds where the tags go: see `serve::inject`.
+    let body = crate::serve::inject::add_framework_scripts(
+        body,
+        crate::serve::inject::Navigation::from_env(),
+    );
 
     // Compute a content-derived ETag so the shipped hover-prefetch feature
     // actually delivers "instant navigation": Chrome reuses the prefetched
@@ -2727,6 +2703,33 @@ mod tests {
 
         assert_eq!(etag_of(&a), etag_of(&b), "same body must produce same ETag");
         assert_ne!(etag_of(&a), etag_of(&c), "different body must change ETag");
+    }
+
+    /// A fragment (an htmx swap, a `layout: false` render) has no `</body>`:
+    /// its scripts go at the end, in the order the injectors always used.
+    #[test]
+    fn a_fragment_gets_its_scripts_at_the_end_in_order() {
+        let fragment = "<div data-soli-camera></div><input data-soli-pow=\"x\">";
+        let response = html_response(fragment.to_string(), 200);
+        let Value::Hash(map) = &response else {
+            panic!("html_response must return a Hash, got {response:?}");
+        };
+        let body = match map.borrow().get(&HashKey::String("body".into())) {
+            Some(Value::String(body)) => body.to_string(),
+            other => panic!("the response has no body: {other:?}"),
+        };
+        assert!(body.starts_with(fragment), "{body}");
+        assert!(body.ends_with("</script>"), "{body}");
+        let camera = body.find("/__soli/camera.js").expect("camera.js");
+        let pow = body.find("/__soli/pow.js").expect("pow.js");
+        assert!(camera < pow, "{body}");
+        // nav.js, or prefetch.js with `SOLI_NAV=off`, whichever this test
+        // run's environment selects, goes first.
+        for navigation in ["/__soli/nav.js", "/__soli/prefetch.js"] {
+            if let Some(at) = body.find(navigation) {
+                assert!(at < camera, "{body}");
+            }
+        }
     }
 
     /// A page rendered from an object is rendered again for the next object.

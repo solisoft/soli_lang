@@ -84,6 +84,7 @@ pub mod files;
 mod finalize;
 mod framework_assets;
 pub mod global_names;
+pub(crate) mod inject;
 pub mod live_reload;
 #[cfg(not(target_arch = "wasm32"))]
 mod live_reload_ws; // WebSocket-based live reload

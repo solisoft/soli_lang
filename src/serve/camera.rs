@@ -12,10 +12,13 @@
 //! camera indicator stays lit. That, plus a scan loop that is throttled rather
 //! than running at frame rate, is the whole justification for its existence.
 
+use std::borrow::Cow;
+
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
+use crate::serve::inject::{self, Probe};
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary, like `nav.js`.
@@ -25,20 +28,15 @@ pub const CAMERA_SCRIPT: &str = include_str!("camera.js");
 pub const BARCODE_DECODER_SCRIPT: &str = include_str!("barcode_decoder.js");
 
 /// Makes injection idempotent when a body is rewrapped.
-const INJECTED_MARKER: &str = "__soli_camera_injected";
+pub(crate) const INJECTED_MARKER: &str = "__soli_camera_injected";
 
 /// The attribute that turns the feature on for a page.
-const CAMERA_ATTR: &str = "data-soli-camera";
+pub(crate) const CAMERA_ATTR: &str = "data-soli-camera";
 
 fn camera_hash() -> u64 {
     use std::sync::OnceLock;
     static HASH: OnceLock<u64> = OnceLock::new();
     *HASH.get_or_init(|| prefetch::fnv1a_64(CAMERA_SCRIPT.as_bytes()))
-}
-
-/// Does this page use a camera? A page that does not gets no script.
-pub fn page_uses_camera(html: &str) -> bool {
-    html.contains(CAMERA_ATTR)
 }
 
 fn camera_tag() -> String {
@@ -49,14 +47,17 @@ fn camera_tag() -> String {
     )
 }
 
+/// The camera `<script>` tag a page needs: only a page with a camera element
+/// asks for it, and only until the tag is in. A page that uses no camera
+/// downloads no camera script.
+pub(crate) fn tag_for(page: &Probe<'_>) -> Option<Cow<'static, str>> {
+    (page.contains(CAMERA_ATTR) && !page.contains(INJECTED_MARKER))
+        .then(|| Cow::Owned(camera_tag()))
+}
+
 /// Insert the camera `<script>` before `</body>` — or `</html>`, or at the end.
 pub fn inject_camera_tag(html: impl Into<String>) -> String {
-    let html: String = html.into();
-    // Opt-in probe first: one body scan instead of two for most pages.
-    if !page_uses_camera(&html) || html.contains(INJECTED_MARKER) {
-        return html;
-    }
-    prefetch::insert_before_body_close(html, &camera_tag())
+    inject::inject_with(html.into(), tag_for)
 }
 
 /// `GET /__soli/camera.js`.

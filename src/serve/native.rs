@@ -14,34 +14,31 @@
 //! is deliberately not echoed back, since "expired" versus "bad signature" is
 //! information an attacker probing tokens would enjoy having.
 
+use std::borrow::Cow;
+
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
 use crate::interpreter::builtins::native::{topic_for, verify_channel};
+use crate::serve::inject::{self, Probe};
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary so there is no filesystem dependency.
 pub const NATIVE_SCRIPT: &str = include_str!("native.js");
 
 /// Marker making injection idempotent when a body is rewrapped.
-const INJECTED_MARKER: &str = "__soli_native_injected";
+pub(crate) const INJECTED_MARKER: &str = "__soli_native_injected";
 
 /// The meta tag `native_channel(...)` emits. Its presence is what turns the
 /// bridge on for a page.
-const CHANNEL_META: &str = "name=\"soli-native\"";
+pub(crate) const CHANNEL_META: &str = "name=\"soli-native\"";
 
 /// Content-derived `?v=` cache-buster, so a new binary hands out a new URL.
 fn native_hash() -> u64 {
     use std::sync::OnceLock;
     static HASH: OnceLock<u64> = OnceLock::new();
     *HASH.get_or_init(|| prefetch::fnv1a_64(NATIVE_SCRIPT.as_bytes()))
-}
-
-/// Does this page ask for the bridge? Cheap substring check on the rendered
-/// HTML, once per response.
-pub fn page_wants_bridge(html: &str) -> bool {
-    html.contains(CHANNEL_META)
 }
 
 fn native_tag() -> String {
@@ -52,16 +49,17 @@ fn native_tag() -> String {
     )
 }
 
+/// The bridge `<script>` tag a page needs: only a page carrying the channel
+/// meta tag asks for the bridge, and only until the tag is in.
+pub(crate) fn tag_for(page: &Probe<'_>) -> Option<Cow<'static, str>> {
+    (page.contains(CHANNEL_META) && !page.contains(INJECTED_MARKER))
+        .then(|| Cow::Owned(native_tag()))
+}
+
 /// Insert the bridge `<script>` before `</body>` — or `</html>`, or at the end.
 /// Idempotent, and a no-op for pages with no channel meta tag.
 pub fn inject_native_tag(html: impl Into<String>) -> String {
-    let html: String = html.into();
-    // The opt-in probe goes first: most pages lack it, which settles the
-    // question in one scan of the body instead of two.
-    if !page_wants_bridge(&html) || html.contains(INJECTED_MARKER) {
-        return html;
-    }
-    prefetch::insert_before_body_close(html, &native_tag())
+    inject::inject_with(html.into(), tag_for)
 }
 
 /// `GET /__soli/native.js`.

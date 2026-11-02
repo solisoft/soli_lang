@@ -4,30 +4,28 @@
 //!
 //! What the challenge is and how a solution is verified: `serve::spam`.
 
+use std::borrow::Cow;
+
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
+use crate::serve::inject::{self, Probe};
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary, like `nav.js`.
 pub const POW_SCRIPT: &str = include_str!("pow.js");
 
 /// Makes injection idempotent when a body is rewrapped.
-const INJECTED_MARKER: &str = "__soli_pow_injected";
+pub(crate) const INJECTED_MARKER: &str = "__soli_pow_injected";
 
 /// The attribute that turns the script on for a page.
-const POW_ATTR: &str = "data-soli-pow";
+pub(crate) const POW_ATTR: &str = "data-soli-pow";
 
 fn pow_hash() -> u64 {
     use std::sync::OnceLock;
     static HASH: OnceLock<u64> = OnceLock::new();
     *HASH.get_or_init(|| prefetch::fnv1a_64(POW_SCRIPT.as_bytes()))
-}
-
-/// Does this page carry a proof-of-work challenge?
-pub fn page_uses_pow(html: &str) -> bool {
-    html.contains(POW_ATTR)
 }
 
 fn pow_tag() -> String {
@@ -38,14 +36,16 @@ fn pow_tag() -> String {
     )
 }
 
+/// The proof-of-work `<script>` tag a page needs: only a page carrying a
+/// challenge asks for it, and only until the tag is in.
+pub(crate) fn tag_for(page: &Probe<'_>) -> Option<Cow<'static, str>> {
+    (page.contains(POW_ATTR) && !page.contains(INJECTED_MARKER)).then(|| Cow::Owned(pow_tag()))
+}
+
 /// Insert the proof-of-work `<script>` before `</body>` — or `</html>`, or at
 /// the end — when the page needs it.
 pub fn inject_pow_tag(html: impl Into<String>) -> String {
-    let html: String = html.into();
-    if !page_uses_pow(&html) || html.contains(INJECTED_MARKER) {
-        return html;
-    }
-    prefetch::insert_before_body_close(html, &pow_tag())
+    inject::inject_with(html.into(), tag_for)
 }
 
 /// `GET /__soli/pow.js`.
