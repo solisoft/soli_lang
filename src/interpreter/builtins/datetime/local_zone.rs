@@ -33,7 +33,7 @@
 //! back to `chrono::Local` and keep correctness at the old cost rather than
 //! guess at a zone.
 
-use chrono::{DateTime, FixedOffset, Local, LocalResult, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, Local, LocalResult, NaiveDateTime, Offset, TimeZone, Utc};
 use chrono_tz::Tz;
 use std::sync::OnceLock;
 
@@ -83,6 +83,23 @@ pub fn to_local(dt: DateTime<Utc>) -> DateTime<FixedOffset> {
 /// Convert a nanosecond UTC timestamp to local time.
 pub fn local_from_nanos(nanos: i64) -> DateTime<FixedOffset> {
     to_local(DateTime::from_timestamp_nanos(nanos))
+}
+
+/// Seconds east of UTC that the local view applies at this instant: the
+/// offset `local_from_nanos` would carry, without building the `DateTime`.
+/// `with_timezone` resolves its offset through `offset_from_utc_datetime`
+/// too, so the two cannot disagree — DST transitions included.
+pub fn local_offset_secs(nanos: i64) -> i32 {
+    let utc = DateTime::from_timestamp_nanos(nanos).naive_utc();
+    match zone() {
+        Zone::Iana(tz) => offset_secs_in(tz, &utc),
+        Zone::System => Local.offset_from_utc_datetime(&utc).fix().local_minus_utc(),
+    }
+}
+
+/// The offset `tz` applies at the UTC instant `utc`, in seconds east of UTC.
+pub(crate) fn offset_secs_in(tz: &Tz, utc: &NaiveDateTime) -> i32 {
+    tz.offset_from_utc_datetime(utc).fix().local_minus_utc()
 }
 
 /// Current instant, in local time.

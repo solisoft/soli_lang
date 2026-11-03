@@ -8,7 +8,8 @@
             Soli supports both modern class-based controllers and simple function-based handlers.
             The request hash is automatically available as <code>req</code> — no parameter declaration needed.
             When no explicit <code>render</code> is called, the matching view template is auto-rendered
-            with all <code>@</code> instance variables exposed as view locals.
+            with all <code>@</code> instance variables exposed as view locals, and to the partials and
+            components it renders, after the locals passed to them.
         </p>
     </div>
 
@@ -343,6 +344,7 @@ theme = read_cookie("theme");                        # raw string or nil</code><
                     </svg>
                 </a>
                 <p class="text-gray-400 text-sm mb-3">Render an HTML view template with optional data.</p>
+                <p class="text-gray-400 text-sm mb-3">The view also gets <code>req</code>, <code>params</code>, <code>cookies</code> and the action's <code>@</code> fields. They are added to a copy of <code>data</code>, as <code>render_partial()</code> adds the request context to a copy: the hash you pass keeps only your keys, so one you read again after the call, or keep past the request (a <code>const</code> of defaults), never carries one request's values into the next.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">@title = "Welcome"
 render("home/index")   # @fields reach the view; bare `render` is implicit anyway</code></pre>
             </div>
@@ -359,6 +361,7 @@ render("home/index")   # @fields reach the view; bare `render` is implicit anywa
                 <p class="text-gray-400 text-sm mb-3">Render a JSON response with automatic <code class="text-amber-400">Content-Type: application/json</code> header. Data is automatically serialized to JSON.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">render_json({ "users": users })
 render_json({ "error": "Not found" }, 404)</code></pre>
+                <p class="text-gray-400 text-sm mb-3">The call is the response: an action that ends with <code class="text-amber-400">render_json</code>, <code class="text-amber-400">render_text</code> or <code class="text-amber-400">render_jsonp</code> never auto-renders a view of the same name, even when <code class="text-amber-400">app/views/&lt;controller&gt;/&lt;action&gt;.html.slv</code> exists.</p>
                 <div class="my-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
                     <p class="text-rose-200/80 text-sm">
                         <strong>Security — instance serialisation.</strong>

@@ -1151,6 +1151,13 @@ pub fn set_fast_path_response(resp: FastPathResponse) {
     });
 }
 
+/// Whether `render_json` / `render_text` / `render_jsonp` already answered
+/// this request. The action's return value is then not a response: the
+/// auto-render of the action's default view is skipped.
+pub fn has_fast_path_response() -> bool {
+    FAST_PATH_RESPONSE.with(|cell| cell.borrow().is_some())
+}
+
 /// Take the fast-path response if set (called from extract_response).
 pub fn take_fast_path_response() -> Option<FastPathResponse> {
     FAST_PATH_RESPONSE.with(|cell| cell.borrow_mut().take())

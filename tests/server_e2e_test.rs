@@ -1335,3 +1335,423 @@ fn metrics_endpoint_serves_prometheus_text_to_loopback() {
         .unwrap_or_else(|| panic!("no soli_http_requests_total sample in: {body}"));
     assert!(requests >= 1, "the /ping above was not counted: {body}");
 }
+
+/// A page whose footer reads `clock` bare renders on the VM in production,
+/// and `SOLI_ENGINE_LOG=1` names, once, each template the interpreter renders
+/// and why. In a compiled view the bare `clock` used to be the function
+/// itself: `clock - started` raised, every request rendered the page a second
+/// time on the tree-walker, and the log said nothing about any of it.
+#[test]
+fn a_bare_clock_view_renders_on_the_vm_and_the_engine_log_names_the_rest() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"home#ping\")\nget(\"/timing\", \"home#timing\")\n",
+    );
+    write(
+        "app/controllers/home_controller.sl",
+        "class HomeController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    {\"status\": 200, \"body\": \"pong\"}\n  end\n\n  \
+           # GET /timing\n  \
+           def timing(req)\n    @rows = [1, 2, 3]\n    @started = clock()\n    render(\"home/timing\")\n  end\n\
+         end\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    write(
+        "app/views/home/timing.html.slv",
+        "<% for row in rows %><%= render \"home/row\", {\"row\": row} %><% end %>|<%= (clock - started) >= 0 %>",
+    );
+    write("app/views/home/_row.html.slv", "[<%= row %>]");
+    let check_path = root.join("vm_views_check.log");
+    let stderr_path = root.join("stderr.log");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        .env("SOLI_ENGINE_LOG", "1")
+        // Each compiled render is checked against the tree-walker's.
+        .env("SOLI_VM_VIEWS_CHECK", &check_path)
+        .stdout(Stdio::null())
+        .stderr(std::fs::File::create(&stderr_path).expect("stderr file"))
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    for _ in 0..2 {
+        let body = body_string(
+            ureq::get(&server.url("/timing"))
+                .call()
+                .expect("GET /timing"),
+        );
+        assert!(body.contains("<main>[1][2][3]|true</main>"), "{body}");
+    }
+    drop(server);
+
+    let check = std::fs::read_to_string(&check_path).unwrap_or_default();
+    assert!(check.contains("home/timing.html.slv: same"), "{check}");
+    assert!(!check.contains("render failed"), "{check}");
+    let log = std::fs::read_to_string(&stderr_path).expect("server stderr");
+    assert!(
+        log.contains(
+            "[soli engine] view 'home/_row.html.slv' renders on the interpreter: \
+             too small to gain from the VM"
+        ),
+        "{log}"
+    );
+    assert!(
+        log.contains(
+            "[soli engine] layout 'layouts/application.html.slv' renders on the interpreter: \
+             layouts are not compiled"
+        ),
+        "{log}"
+    );
+    // Once, for two requests; and nothing about the view the VM renders.
+    assert_eq!(
+        log.matches("layouts/application.html.slv").count(),
+        1,
+        "{log}"
+    );
+    assert!(!log.contains("home/timing.html.slv"), "{log}");
+}
+
+/// A list page whose rows are includes, served in production. Each include
+/// reads the controller's `@ivars` and the app's helpers — one named like the
+/// form builder's `button_to`, as once-campfire's is — on the interpreter and
+/// on the VM alike (`SOLI_VM_VIEWS_CHECK` renders every compiled view and
+/// partial on both and compares), and the hash a view passes is left as it
+/// was. `partial()` used to copy every helper and every controller field into
+/// that hash, and the render tag called the framework's `button_to`.
+#[test]
+fn includes_read_ivars_and_helpers_through_their_scope_on_both_engines() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"rows#ping\")\nget(\"/list\", \"rows#list\")\n",
+    );
+    write(
+        "app/controllers/rows_controller.sl",
+        "class RowsController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    {\"status\": 200, \"body\": \"pong\"}\n  end\n\n  \
+           # GET /list\n  \
+           def list(req)\n    \
+             @rows = [{\"id\": 1, \"title\": \"a\"}, {\"id\": 2, \"title\": \"b\"}]\n    \
+             @heading = \"Rows\"\n    \
+             @nonce = clock()\n    \
+             render(\"rows/list\")\n  \
+           end\n\
+         end\n",
+    );
+    write(
+        "app/helpers/rows_helper.sl",
+        "def button_to(url, options, inner_html)\n  \"USER-button_to\"\nend\n\n\
+         def shout(text)\n  text.upcase + \"!\"\nend\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    write(
+        "app/views/rows/list.html.slv",
+        "<% opts = {\"x\": 1} %>\
+         <% for row in rows %>\
+         <%- partial(\"rows/row\", {\"row\": row}) %>\
+         <%= render \"rows/row\", {\"row\": row} %>\
+         <%- component(\"badge\", {\"label\": row.title}) %>\
+         <% end %>|<%- partial(\"rows/wide\", opts) %>|<%- partial(\"rows/whole\", opts) %>\
+         |<%= opts.length %>",
+    );
+    // Small: the interpreter renders it.
+    write(
+        "app/views/rows/_row.html.slv",
+        "[<%= row.id %> <%= @heading %> <%= shout(row.title) %> <%= button_to(\"/r\", {}, \"r\") %>]",
+    );
+    // A loop: compiled, so the VM binds the `@ivar` and the helpers.
+    write(
+        "app/views/rows/_wide.html.slv",
+        "<% for i in [1] %>(<%= @heading %> <%= x %> <%= shout(\"w\") %> \
+         <%= button_to(\"/w\", {}, \"w\") %>)<% end %>",
+    );
+    // Reads its data whole: the `@ivars` are among `locals`, the helpers not.
+    write(
+        "app/views/rows/_whole.html.slv",
+        "{<%= locals[\"heading\"] %> <%= locals[\"shout\"].nil? %> <%= locals.has_key(\"rows\") %>}",
+    );
+    write(
+        "app/views/components/badge.html.slv",
+        "(<%= label %>:<%= @heading %>)",
+    );
+    let check_path = root.join("vm_views_check.log");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        // Each compiled render is checked against the tree-walker's.
+        .env("SOLI_VM_VIEWS_CHECK", &check_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    let expected = "<main>\
+        [1 Rows A! USER-button_to][1 Rows A! USER-button_to](a:Rows)\
+        [2 Rows B! USER-button_to][2 Rows B! USER-button_to](b:Rows)\
+        |(Rows 1 W! USER-button_to)|{Rows true true}|1</main>";
+    for _ in 0..2 {
+        let body = body_string(ureq::get(&server.url("/list")).call().expect("GET /list"));
+        assert!(body.contains(expected), "{body}");
+    }
+    drop(server);
+
+    let check = std::fs::read_to_string(&check_path).unwrap_or_default();
+    assert!(check.contains("rows/list.html.slv: same"), "{check}");
+    assert!(check.contains("rows/_wide.html.slv: same"), "{check}");
+    assert!(!check.contains("differs"), "{check}");
+    assert!(!check.contains("render failed"), "{check}");
+}
+
+/// Nothing a view or an action renders writes into the hash it is handed. A
+/// view's `opts` keeps its one key through `partial()`, `component()`, the
+/// render tag and an app helper's `partial()`, compiled or not. A `const`
+/// passed to `render()` or `render_partial()` keeps its keys too, so each
+/// request renders its own `req`, cookies and `@ivars`. The first request on
+/// the worker used to add its own to the const, and they won over every later
+/// request's: bob was shown alice's page.
+#[test]
+fn views_and_actions_leave_the_callers_hash_alone_across_requests() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"leak#ping\")\nget(\"/compiled\", \"leak#compiled\")\n\
+         get(\"/plain\", \"leak#plain\")\nget(\"/shared\", \"leak#shared\")\n\
+         get(\"/fragment\", \"leak#fragment\")\nget(\"/kept\", \"leak#kept\")\n",
+    );
+    write(
+        "app/controllers/leak_controller.sl",
+        "const SHARED = {\"title\": \"Home\"}\nconst FRAGMENT = {\"title\": \"Fragment\"}\n\n\
+         class LeakController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    {\"status\": 200, \"body\": \"pong\"}\n  end\n\n  \
+           # GET /compiled\n  \
+           def compiled(req)\n    @heading = \"H\"\n    render(\"leak/compiled\")\n  end\n\n  \
+           # GET /plain\n  \
+           def plain(req)\n    @heading = \"H\"\n    render(\"leak/plain\")\n  end\n\n  \
+           # GET /shared\n  \
+           def shared(req)\n    \
+             @who = req[\"query\"][\"who\"]\n    \
+             render(\"leak/shared\", SHARED)\n  \
+           end\n\n  \
+           # GET /fragment\n  \
+           def fragment(req)\n    \
+             {\"status\": 200, \"body\": render_partial(\"leak/fragment\", FRAGMENT)}\n  \
+           end\n\n  \
+           # GET /kept\n  \
+           def kept(req)\n    \
+             {\"status\": 200, \"body\": SHARED.keys.join(\",\") + \"|\" + FRAGMENT.keys.join(\",\")}\n  \
+           end\n\
+         end\n",
+    );
+    // An app helper closes over the global `partial()`, not the view's.
+    write(
+        "app/helpers/leak_helper.sl",
+        "def card(opts)\n  partial(\"leak/card\", opts)\nend\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    let includes = "<%- partial(\"leak/row\", opts) %><%- component(\"chip\", opts) %>\
+                    <%= render \"leak/row\", opts %><%- card(opts) %>";
+    // A loop: compiled, so the VM renders it.
+    write(
+        "app/views/leak/compiled.html.slv",
+        &format!(
+            "<% opts = {{\"x\": 1}} %><% for i in [1] %>{includes}<% end %>\
+             |<%= opts.keys.join(\",\") %>"
+        ),
+    );
+    // Small: the interpreter renders it.
+    write(
+        "app/views/leak/plain.html.slv",
+        &format!("<% opts = {{\"x\": 1}} %>{includes}|<%= opts.keys.join(\",\") %>"),
+    );
+    write("app/views/leak/_row.html.slv", "[<%= x %> <%= @heading %>]");
+    write("app/views/components/chip.html.slv", "(<%= x %>)");
+    write(
+        "app/views/leak/_card.html.slv",
+        "{<%= x %> <%= req[\"query\"][\"q\"] %>}",
+    );
+    write(
+        "app/views/leak/shared.html.slv",
+        "who=<%= who %> q=<%= req[\"query\"][\"q\"] %> sid=<%= cookies[\"sid\"] %>",
+    );
+    write(
+        "app/views/leak/_fragment.html.slv",
+        "q=<%= req[\"query\"][\"q\"] %> sid=<%= cookies[\"sid\"] %>",
+    );
+    let check_path = root.join("vm_views_check.log");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        // One worker: every request meets the consts the first one saw.
+        .arg("--workers")
+        .arg("1")
+        .env("SOLI_VM_VIEWS_CHECK", &check_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    let get = |path: &str, sid: &str| {
+        body_string(
+            ureq::get(&server.url(path))
+                .set("Cookie", &format!("sid={sid}"))
+                .call()
+                .unwrap_or_else(|e| panic!("GET {path}: {e}")),
+        )
+    };
+
+    for page in ["/compiled", "/plain"] {
+        let body = get(&format!("{page}?q=a"), "alice");
+        assert!(
+            body.contains("<main>[1 H](1)[1 H]{1 a}|x</main>"),
+            "{page}: {body}"
+        );
+    }
+    for (who, q) in [("alice", "a"), ("bob", "b")] {
+        let page = get(&format!("/shared?who={who}&q={q}"), who);
+        assert!(
+            page.contains(&format!("who={who} q={q} sid={who}")),
+            "{who}: {page}"
+        );
+        let fragment = get(&format!("/fragment?q={q}"), who);
+        assert!(
+            fragment.contains(&format!("q={q} sid={who}")),
+            "{who}: {fragment}"
+        );
+    }
+    assert_eq!(get("/kept", "carol"), "title|title");
+    drop(server);
+
+    let check = std::fs::read_to_string(&check_path).unwrap_or_default();
+    assert!(check.contains("leak/compiled.html.slv: same"), "{check}");
+    assert!(!check.contains("differs"), "{check}");
+    assert!(!check.contains("render failed"), "{check}");
+}
+
+#[test]
+fn render_json_and_render_text_skip_the_actions_default_view() {
+    // `render_json` / `render_text` answer through the fast-path slot and
+    // return nil, which the controller took for "render the default view": a
+    // JSON action whose name matched a view rendered that view for nothing,
+    // and answered 500 when it raised. An action that returns nothing still
+    // gets its view.
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"api#ping\")\nget(\"/json\", \"api#json\")\n\
+         get(\"/text\", \"api#text\")\nget(\"/page\", \"api#page\")\n",
+    );
+    write(
+        "app/controllers/api_controller.sl",
+        "class ApiController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    render_text(\"pong\")\n  end\n\n  \
+           # GET /json\n  \
+           def json(req)\n    @who = \"json\"\n    render_json({\"ok\": true}, 201)\n  end\n\n  \
+           # GET /text\n  \
+           def text(req)\n    render_text(\"plain\")\n  end\n\n  \
+           # GET /page\n  \
+           def page(req)\n    @who = \"view\"\n  end\n\
+         end\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    write("app/views/api/json.html.slv", "<%= 3 / 0 %>");
+    write("app/views/api/text.html.slv", "<%= 3 / 0 %>");
+    write("app/views/api/page.html.slv", "hello <%= who %>");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    let get = |path: &str| match ureq::get(&server.url(path)).call() {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(_, resp)) => resp,
+        Err(e) => panic!("GET {path}: {e}"),
+    };
+
+    let json = get("/json");
+    assert_eq!(json.status(), 201, "/json answered with its view");
+    assert!(
+        json.content_type().starts_with("application/json"),
+        "{}",
+        json.content_type()
+    );
+    assert_eq!(body_string(json), "{\"ok\":true}");
+
+    let text = get("/text");
+    assert_eq!(text.status(), 200, "/text answered with its view");
+    assert!(text.content_type().starts_with("text/plain"));
+    assert_eq!(body_string(text), "plain");
+
+    let page = get("/page");
+    assert_eq!(page.status(), 200);
+    assert!(body_string(page).contains("<main>hello view</main>"));
+}

@@ -1286,7 +1286,6 @@ impl Vm {
                     if let Constant::String(text) = unsafe { &*constants.add(idx as usize) } {
                         self.template_out.push_str(text);
                     }
-                    self.stack.push(Value::Null);
                 }
                 Op::TemplateWrite(escaped) => {
                     // A function value goes to the general arm, which hands
@@ -1309,7 +1308,6 @@ impl Vm {
                         &mut self.template_out,
                     );
                     discard(value);
-                    self.stack.push(Value::Null);
                 }
                 Op::Add | Op::Subtract | Op::Multiply => {
                     let (len, a, b) = peek_two!();
@@ -5387,6 +5385,7 @@ impl Vm {
                     )
                     .map_err(|e| RuntimeError::new(e, span))?;
                     self.template_out.push_str(&html);
+                    crate::template::renderer::recycle_include_page(html);
                     self.stack.push(Value::Null);
                 }
                 Op::TemplatePartial => {
@@ -5396,6 +5395,9 @@ impl Vm {
                     let html = crate::template::vm_template::render_partial_block(&name, &data)
                         .map_err(|e| RuntimeError::new(e, span))?;
                     self.template_out.push_str(&html);
+                    // A page-sized include's buffer goes back to the pool for
+                    // the next one.
+                    crate::template::renderer::recycle_include_page(html);
                     self.stack.push(Value::Null);
                 }
                 // The renderer's `YieldMode::View`: a compiled template is never
@@ -5486,7 +5488,6 @@ impl Vm {
                     {
                         self.template_out.push_str(text);
                     }
-                    self.stack.push(Value::Null);
                 }
                 Op::TemplateWrite(escaped) => {
                     let value = self.stack.pop().unwrap();
@@ -5509,7 +5510,6 @@ impl Vm {
                         escaped,
                         &mut self.template_out,
                     );
-                    self.stack.push(Value::Null);
                 }
 
                 // --- JSON ---

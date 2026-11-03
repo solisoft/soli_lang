@@ -352,7 +352,11 @@ impl Interpreter {
             return Ok(Err(before));
         }
         drop(before);
-        match self.environment.borrow_mut().append_string(name, extra) {
+        // Its own statement: a `borrow_mut()` in the `match` would live through
+        // the arms, and the fallback's `borrow()` below panicked on it ("RefCell
+        // already mutably borrowed") for `<% title = title + "!" %>` in a view.
+        let appended = self.environment.borrow_mut().append_string(name, extra);
+        match appended {
             AppendString::Done(updated) => Ok(Ok(updated)),
             AppendString::IsConst => Err(RuntimeError::type_error(
                 format!("cannot reassign constant '{name}'"),

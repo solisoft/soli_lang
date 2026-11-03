@@ -4599,6 +4599,12 @@ end
 
 print(Util.shout("a"), Util.shout(s: "b"), Util.shout("c", bang: "?"))"##,
     ),
+    (
+        // DateTime's string form is formatted by hand (no strftime); both
+        // engines must print the same text in interpolation, str, to_s, join.
+        "datetime_string_forms",
+        "d = DateTime.from_unix(-1).utc\nprint(\"at #{d} ok\")\nprint(str(DateTime.from_unix(951782400).utc))\nprint(DateTime.from_unix(4107542399).utc.to_s)\nprint([DateTime.from_unix(0).utc, DateTime.from_unix(86399).utc].join(\" | \"))",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

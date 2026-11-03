@@ -5208,8 +5208,16 @@ fn call_oop_controller_action(
     // a real render error (e.g. `<%= 3 / 0 %>` in the view or layout) gets promoted
     // into the same RuntimeError pipeline as an action that itself raised — so the
     // user sees a 500/dev error page instead of a blank 200.
+    //
+    // An action that answered with `render_json` / `render_text` returns nil
+    // and leaves its response in the fast-path slot, which `extract_response`
+    // sends whatever the action returned. Auto-rendering then would only cost
+    // the view lookup — or render a same-named view, and answer 500 when it raises.
     let action_result = match action_result {
-        Ok(result) if !is_response_hash(&result) => {
+        Ok(result)
+            if !is_response_hash(&result)
+                && !crate::interpreter::builtins::server::has_fast_path_response() =>
+        {
             let (controller_key, _) = handler_name.split_once('#').unwrap_or((handler_name, ""));
             let default_template = format!("{}/{}", controller_key, action_name);
             match try_render_template(interpreter, &controller_instance, &default_template) {
@@ -5886,10 +5894,10 @@ fn try_render_template(
             None
         };
 
-    // Inject req context, controller vars, helpers (same as render() builtin)
+    // Inject req context and controller vars (same as render() builtin). The
+    // app's helpers resolve in the template env, so they are not copied in.
     crate::interpreter::builtins::template::inject_request_context(&data);
     crate::interpreter::builtins::template::inject_controller_instance_vars(&data);
-    crate::interpreter::builtins::template::inject_template_helpers(&data);
 
     // Resolve the controller's registered layout for the in-flight action
     // (`static { this.layout = ... }`, including per-action rules and those

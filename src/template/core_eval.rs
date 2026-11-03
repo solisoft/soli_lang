@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::Interpreter;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{Instance, Value};
 
 // ---------------------------------------------------------------------------
 // Thread-local shared builtins environment (Rc, not cloned)
@@ -39,7 +39,6 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             // precisely because leaking them into a served app is a hazard.
             crate::interpreter::builtins::register_builtins(&mut env, false);
             crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
-            crate::interpreter::builtins::template::inject_helpers_into_env(&mut env);
             // Mirror the worker's main env: views need `<name>_path` /
             // `<name>_url` helpers too. Without this, calls like
             // `admin_path()` in a `.html.slv` template fall through to the
@@ -60,6 +59,15 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&env_rc) {
                 eprintln!("[WARN] Retry stdlib failed to load: {}", e);
             }
+            // The app's helpers last, so one named like a route helper, the
+            // form builder's `button_to` or `Retry` is the app's in every
+            // template: a view, a `partial()` and a `<%= render %>` alike.
+            // Views and `partial()` used to get them from a copy into each
+            // render's data, which beat this scope; the render tag got none
+            // and called the framework's.
+            crate::interpreter::builtins::template::inject_helpers_into_env(
+                &mut env_rc.borrow_mut(),
+            );
             *opt = Some(env_rc);
         }
         opt.as_ref().unwrap().clone()
@@ -112,8 +120,12 @@ thread_local! {
 /// mirroring Rails' `local_assigns`. Bare-identifier access keeps working
 /// for non-reserved keys; `locals` is the escape hatch for the rest.
 pub fn create_template_interpreter(data: &Value) -> Interpreter {
+    create_bound_interpreter(data, None)
+}
+
+fn create_bound_interpreter(data: &Value, inherited: Option<Rc<RefCell<Instance>>>) -> Interpreter {
     let mut data_env = Environment::with_enclosing(get_builtins_rc());
-    bind_template_data(&mut data_env, data);
+    bind_template_data(&mut data_env, data, inherited);
     Interpreter::with_environment(Rc::new(RefCell::new(data_env)))
 }
 
@@ -159,6 +171,9 @@ impl Drop for PooledInterpreter {
         if self.generation != INTERPRETER_POOL_GEN.with(Cell::get) || !recyclable(&interp) {
             return;
         }
+        if let Ok(mut env) = interp.environment.try_borrow_mut() {
+            env.release_inherited();
+        }
         INTERPRETER_POOL.with(|pool| {
             let mut pool = pool.borrow_mut();
             if pool.len() < INTERPRETER_POOL_LIMIT {
@@ -168,15 +183,21 @@ impl Drop for PooledInterpreter {
     }
 }
 
-/// Take a pooled interpreter, or build one, bound to `data`.
-pub(crate) fn template_interpreter(data: &Value) -> PooledInterpreter {
+/// Take a pooled interpreter, or build one, bound to `data`. An include
+/// passes its controller as `inherited`: a name its data lacks then reads
+/// that controller's `@ivar` before the builtins and helpers (see
+/// [`crate::interpreter::environment::inherited_field`]).
+pub(crate) fn template_interpreter(
+    data: &Value,
+    inherited: Option<Rc<RefCell<Instance>>>,
+) -> PooledInterpreter {
     let generation = INTERPRETER_POOL_GEN.with(Cell::get);
     let interp = match INTERPRETER_POOL.with(|pool| pool.borrow_mut().pop()) {
         Some(mut interp) => {
-            rebind_interpreter(&mut interp, data);
+            rebind_interpreter(&mut interp, data, inherited);
             interp
         }
-        None => create_template_interpreter(data),
+        None => create_bound_interpreter(data, inherited),
     };
     PooledInterpreter {
         inner: Some(interp),
@@ -184,7 +205,11 @@ pub(crate) fn template_interpreter(data: &Value) -> PooledInterpreter {
     }
 }
 
-fn bind_template_data(env: &mut Environment, data: &Value) {
+fn bind_template_data(
+    env: &mut Environment,
+    data: &Value,
+    inherited: Option<Rc<RefCell<Instance>>>,
+) {
     use crate::interpreter::value::HashPairs;
 
     let (data_hash, locals) = if let Value::Hash(map) = data {
@@ -195,17 +220,21 @@ fn bind_template_data(env: &mut Environment, data: &Value) {
             Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
         )
     };
-    env.reuse_for_template(data_hash, locals);
+    env.reuse_for_template(data_hash, inherited, locals);
 }
 
-fn rebind_interpreter(interp: &mut Interpreter, data: &Value) {
+fn rebind_interpreter(
+    interp: &mut Interpreter,
+    data: &Value,
+    inherited: Option<Rc<RefCell<Instance>>>,
+) {
     interp.call_stack.clear();
     interp.assertion_count = 0;
     interp.current_source_path = None;
     interp.vm_globals = None;
     interp.kernels = None;
     interp.coverage_tracker = None;
-    bind_template_data(&mut interp.environment.borrow_mut(), data);
+    bind_template_data(&mut interp.environment.borrow_mut(), data, inherited);
 }
 
 /// The data scope, with nothing else still pointing at it. A child scope's
@@ -358,12 +387,12 @@ mod tests {
         let ada = make_hash(vec![("name", Value::String("Ada".into()))]);
         let bea = make_hash(vec![("other", Value::String("Bea".into()))]);
 
-        let mut first = template_interpreter(&ada);
+        let mut first = template_interpreter(&ada, None);
         define_var(&mut first, "extra", Value::Int(1));
         drop(first);
         assert_eq!(pooled_interpreters(), before + 1);
 
-        let mut second = template_interpreter(&bea);
+        let mut second = template_interpreter(&bea, None);
         assert_eq!(pooled_interpreters(), before);
         assert_eq!(eval("other", &mut second)?, Value::String("Bea".into()));
         assert_eq!(eval("name", &mut second)?, Value::Null);
@@ -373,23 +402,84 @@ mod tests {
 
         // A scope left open is not recycled: clearing it would wipe the child
         // and leave the previous render's data hash one frame up.
-        let mut poisoned = template_interpreter(&ada);
+        let mut poisoned = template_interpreter(&ada, None);
         assert_eq!(pooled_interpreters(), before);
         push_scope(&mut poisoned);
         drop(poisoned);
         assert_eq!(pooled_interpreters(), before);
 
-        let mut third = template_interpreter(&bea);
+        let mut third = template_interpreter(&bea, None);
         assert_eq!(eval("name", &mut third)?, Value::Null);
         assert_eq!(eval("other", &mut third)?, Value::String("Bea".into()));
         Ok(())
     }
 
+    /// An include's scope reads its controller's `@ivars` past its data, and
+    /// lets go of the controller when it goes back to the pool: a scope
+    /// waiting there must not keep a finished request alive.
+    #[test]
+    fn a_pooled_include_scope_reads_and_then_releases_its_controller(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::value::Class;
+        let class = Rc::new(Class {
+            name: "PostsController".to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        instance
+            .fields
+            .insert("title".into(), Value::String("Posts".into()));
+        let controller = Rc::new(RefCell::new(instance));
+        let data = make_hash(vec![("post", Value::Int(1))]);
+
+        let mut include = template_interpreter(&data, Some(controller.clone()));
+        assert_eq!(eval("title", &mut include)?, Value::String("Posts".into()));
+        assert_eq!(eval("post", &mut include)?, Value::Int(1));
+        drop(include);
+        assert_eq!(Rc::strong_count(&controller), 1);
+
+        let mut next = template_interpreter(&data, None);
+        assert_eq!(eval("title", &mut next)?, Value::Null);
+        Ok(())
+    }
+
+    /// An app helper named like a name the framework defines in the template
+    /// env — the form builder's `button_to`, `Retry` — is the one a template
+    /// resolves: the helpers are defined last.
+    #[test]
+    fn an_app_helper_shadows_the_framework_names_in_the_template_env() {
+        use crate::interpreter::builtins::template::{clear_view_helpers, register_view_helper};
+        use crate::interpreter::value::NativeFunction;
+
+        clear_view_helpers();
+        register_view_helper(
+            "button_to".to_string(),
+            Value::NativeFunction(NativeFunction::new("app_button_to", None, |_| {
+                Ok(Value::Null)
+            })),
+        );
+        register_view_helper("Retry".to_string(), Value::Int(7));
+        reset_builtins_rc();
+
+        let mut interp = create_template_interpreter(&make_hash(vec![]));
+        assert!(
+            matches!(
+                eval("button_to", &mut interp),
+                Ok(Value::NativeFunction(native)) if native.name == "app_button_to"
+            ),
+            "the form builder's button_to shadowed the app's"
+        );
+        assert_eq!(eval("Retry", &mut interp), Ok(Value::Int(7)));
+
+        clear_view_helpers();
+        reset_builtins_rc();
+    }
+
     #[test]
     fn hot_reload_drops_pooled_interpreters() {
         let data = make_hash(vec![("name", Value::String("Ada".into()))]);
-        let held = template_interpreter(&data);
-        drop(template_interpreter(&data));
+        let held = template_interpreter(&data, None);
+        drop(template_interpreter(&data, None));
         assert!(pooled_interpreters() >= 1);
 
         reset_builtins_rc();

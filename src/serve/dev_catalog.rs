@@ -56,6 +56,9 @@ fn load_app_helpers_for_preview(views_dir: &std::path::Path) {
     if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
         eprintln!("preview: could not load view helpers: {}", e);
     }
+    // A partial or component the preview renders resolves helpers in the
+    // template env, built once per thread: rebuild it with these.
+    crate::template::core_eval::reset_builtins_rc();
 }
 
 /// Extract example preview data from a leading `<%# preview: {json} %>` header;

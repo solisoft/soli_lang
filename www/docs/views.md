@@ -893,6 +893,15 @@ def mail_to(email, text = null)
 end
 ```
 
+A helper you define wins over a framework function of the same name — a
+route helper (`posts_path`), the form builder's `form_with`, `button_to` or
+`csrf_field`, `Retry`, a builtin — in every view, partial and component,
+`<%= render "x" %>` partials included. A local, or a controller `@ivar`, of
+the same name wins over the helper. Helpers are looked up where the view
+looks names up; nothing copies them into a partial's data. The framework's
+own code keeps its own: a `csrf_field` helper of yours changes what
+`<%- csrf_field() %>` prints, not the token `form_with` and `button_to` embed.
+
 ---
 
 ## Layouts
@@ -1066,8 +1075,17 @@ variables, just like the main view — so a partial can read `@current_user` or
 <%= partial("shared/avatar") %>   <%# the partial reads @current_user directly %>
 ```
 
-An explicit local always wins over an inherited ivar of the same name, and
-framework internals (`req`, `params`, `session`, `headers`) are never injected.
+A partial reads them as names in its scope, after its own locals: nothing is
+copied into the hash you pass, and `partial()` / `component()` leave that hash
+as it was. An explicit local always wins over an inherited ivar of the same
+name, an inherited ivar wins over a helper of the same name (as it does in the
+view), and the framework internals (`req`, `params`, `session`, `headers`) are
+not inherited.
+
+Called from a helper, a service or an action rather than from a view,
+`partial()` / `render_partial()` also gives the partial `req`, `params` and
+`cookies`. Those go into a copy, so your hash keeps only your keys there too:
+a `json_script(opts)` after the call shows no request.
 
 ### The `locals` hash
 
@@ -1109,6 +1127,10 @@ guards:
 `locals` is always defined, even when the partial is rendered without a
 data hash — in that case it's an empty hash, so `locals[anything]` is safe
 and returns `null`.
+
+Besides the keys you passed, `locals` holds the controller's inherited
+`@ivars` (your keys win over them), so `locals["current_user_id"]` reads an
+`@current_user_id` the caller did not pass. View helpers are not in it.
 
 ## Components
 
@@ -1436,14 +1458,25 @@ A template too small to gain from it stays on the interpreter as well: one with 
 
 The rules are the tree-walker's:
 
-- A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a builtin or a helper, and nil when it is neither. `@title` reads `title`.
+- A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a helper or a builtin (a helper wins over a builtin of the same name), and nil when it is neither. In a partial or component it is the locals passed, then the controller's `@ivars`, then a helper or a builtin. `@title` reads `title`.
+- A bare `clock` is the time, as `clock()` is: `<%= ((clock - @started) * 1000).round(2) %>` stays on the VM. A render whose data has a `clock` of its own (a controller's `@clock`), or an app that defines `clock` itself (a helper or a top-level function), is rendered on the tree-walker instead, which resolves `clock` as it always has.
 - A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout.
 - A `for` over a hash yields `[key, value]` pairs.
-- A helper from `app/helpers` whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name — `req`, `params`, `session`, `cookies`, `headers`, `flash`, another helper, a builtin — or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.
+- A helper from `app/helpers` runs on the VM with the view. The names it reads from its closure — builtins, the other helpers, component classes, `req`, `params`, `session`, `cookies`, `headers` — are read from that closure on every call, so a helper still sees the current request. A helper stays on the interpreter when it assigns a name its closure holds (`req = …`), names something its closure does not hold (a model class), calls `respond_to`, `render_json`, `grouped`, `with_transaction`, `after_commit`, `with_tenant`, `assert_raises`, `event` or `Factory`, reads a zero-argument helper or builtin without parentheses (`site_name` rather than `site_name()`: the interpreter calls it), or declares a function or keeps a lambda anywhere but in a call's arguments. A call that passes a zero-argument function to a parameter the helper reads bare runs on the interpreter too.
+- A function the view calls that returns a value its declared return type does not admit (`def label(n) -> String` returning nil) raises, as it does on the interpreter.
 
-If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
+If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. A view that wrote a function by name, or that the tree-walker then rendered without an error, renders on the tree-walker from then on, in that worker: the two engines disagree about it, and trying the VM again would render the page twice on every request. An error both engines raise is the view's or its data's, and the view stays compiled. Under `--dev` every view renders on the tree-walker.
 
 `SOLI_VM_VIEWS=0` renders every view on the tree-walker. `SOLI_VM_VIEWS_CHECK=<file>` renders each compiled view on both engines, serves the tree-walker's output and appends to `<file>` every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.
+
+`SOLI_ENGINE_LOG=1` says on stderr, once each, which views, partials, components and layouts the interpreter renders in production, and which view helpers it runs, with the reason:
+
+```text
+[soli engine] view 'posts/_post.html.slv' renders on the interpreter: too small to gain from the VM
+[soli engine] layout 'layouts/application.html.slv' renders on the interpreter: layouts are not compiled
+[soli engine] view helper 'title' runs on the interpreter: it reads `site_name` without parentheses, which the interpreter calls
+[soli engine] view 'posts/index.html.slv' failed on the VM and rendered on the interpreter, which renders it from now on: …
+```
 
 ## View Best Practices
 
