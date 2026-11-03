@@ -772,6 +772,10 @@ impl Vm {
                     self.stack.push(value);
                 }
                 Op::Null => self.stack.push(Value::Null),
+                // The nils of the locals hoisted to function entry, in one
+                // dispatch. Built in place: `resize` would call `Value::clone`
+                // for each slot.
+                Op::PushNulls(count) => self.stack.extend((0..count).map(|_| Value::Null)),
                 Op::True => self.stack.push(Value::Bool(true)),
                 Op::False => self.stack.push(Value::Bool(false)),
                 Op::Nop => {}
@@ -1432,6 +1436,40 @@ impl Vm {
                     let array = self.array_from_stack(n as usize);
                     self.stack.push(array);
                 }
+                // An array literal made of literals (`literal_list.rs`).
+                Op::LiteralArray(list_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let list = match unsafe { &*constants.add(list_idx as usize) } {
+                        Constant::LiteralList(list) => list,
+                        _ => break Some(op),
+                    };
+                    let array = self.literal_array(list);
+                    self.stack.push(array);
+                }
+                // `[<literals>].includes?(x)` for a scalar `x` when no user
+                // method can take the call: the general arm's answer, without
+                // its by-value comparison. Anything else goes to that arm.
+                Op::LiteralListIncludes(list_idx, user_method) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let list = match unsafe { &*constants.add(list_idx as usize) } {
+                        Constant::LiteralList(list) => list,
+                        _ => break Some(op),
+                    };
+                    if user_method != super::opcode::NO_USER_METHOD
+                        && crate::interpreter::executor::calls::user_methods::has_user_methods(
+                            crate::interpreter::executor::calls::user_methods::PrimType::Array,
+                        )
+                    {
+                        break Some(op);
+                    }
+                    let Some(found) = list.contains_scalar(self.stack.last().unwrap()) else {
+                        break Some(op);
+                    };
+                    discard(std::mem::replace(
+                        self.stack.last_mut().unwrap(),
+                        Value::Bool(found),
+                    ));
+                }
                 Op::LessLocalConst(slot, const_idx)
                 | Op::LessEqualLocalConst(slot, const_idx)
                 | Op::GreaterLocalConst(slot, const_idx)
@@ -1639,6 +1677,7 @@ impl Vm {
                     }
                 }
                 Op::Null => self.stack.push(Value::Null),
+                Op::PushNulls(count) => self.stack.extend((0..count).map(|_| Value::Null)),
                 Op::True => self.stack.push(Value::Bool(true)),
                 Op::False => self.stack.push(Value::Bool(false)),
 
@@ -3232,6 +3271,10 @@ impl Vm {
                     // keys, so the entries go in without a duplicate search.
                     let map = HashPairs::from_distinct(keys, self.stack.drain(base..));
                     self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
+                }
+                Op::LiteralArray(list_idx) => self.op_literal_array(list_idx),
+                Op::LiteralListIncludes(list_idx, user_method) => {
+                    self.op_literal_list_includes(list_idx, user_method)?;
                 }
                 Op::Range => {
                     let (start, end) = self.pop2();
@@ -5915,6 +5958,11 @@ fn constant_to_value(constant: &Constant) -> Value {
         Constant::ArgNames(_) => {
             // Never loaded as a Value — only consumed by Op::CallNamed/NewNamed.
             unreachable!("ArgNames constant should not be loaded as a Value")
+        }
+        Constant::LiteralList(_) => {
+            // Never loaded as a Value — only read by Op::LiteralArray and
+            // Op::LiteralListIncludes.
+            unreachable!("LiteralList constant should not be loaded as a Value")
         }
     }
 }

@@ -83,6 +83,18 @@ pub(crate) fn int_negate_overflow(n: i64, span: Span) -> RuntimeError {
     }
 }
 
+/// `a..b` whose bounds are not both integers, built or counted through.
+fn range_operands_error(left: &Value, right: &Value, span: Span) -> RuntimeError {
+    RuntimeError::type_error(
+        format!(
+            "range (..) expects two integers, got {} and {}",
+            left.type_name(),
+            right.type_name()
+        ),
+        span,
+    )
+}
+
 impl Interpreter {
     pub(crate) fn evaluate_binary(
         &mut self,
@@ -107,6 +119,30 @@ impl Interpreter {
             .map_err(|e| RuntimeError::new(e, span))?;
 
         self.evaluate_binary_values(&left_val, op, &right_val, span)
+    }
+
+    /// The bounds of a range `left..right` that a `for` loop or a
+    /// comprehension counts through rather than builds: evaluated and checked
+    /// as [`Self::evaluate_binary`] does for `..` (Futures resolved, then two
+    /// integers required, with `eval_range`'s error), but with no
+    /// `SOLI_MAX_RANGE_LEN` limit, since no array is made. `span` is the
+    /// range's own, without any parentheses around it.
+    pub(crate) fn evaluate_range_bounds(
+        &mut self,
+        left: &Expr,
+        right: &Expr,
+        span: Span,
+    ) -> RuntimeResult<(i64, i64)> {
+        let left_val = self.evaluate(left)?;
+        let right_val = self.evaluate(right)?;
+        let left_val = left_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
+        let right_val = right_val
+            .resolve()
+            .map_err(|e| RuntimeError::new(e, span))?;
+        match (&left_val, &right_val) {
+            (Value::Int(start), Value::Int(end)) => Ok((*start, *end)),
+            _ => Err(range_operands_error(&left_val, &right_val, span)),
+        }
     }
 
     fn eval_shovel(&mut self, left: &Expr, right: &Expr, span: Span) -> RuntimeResult<Value> {
@@ -380,14 +416,7 @@ create the record first, or use {}.create({{...}})",
                 let arr: Vec<Value> = (*start..*end).map(Value::Int).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(arr))))
             }
-            _ => Err(RuntimeError::type_error(
-                format!(
-                    "range (..) expects two integers, got {} and {}",
-                    left.type_name(),
-                    right.type_name()
-                ),
-                span,
-            )),
+            _ => Err(range_operands_error(left, right, span)),
         }
     }
 

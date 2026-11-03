@@ -79,12 +79,14 @@ impl Compiler {
                 left,
                 operator,
                 right,
-            } => {
-                self.compile_binary(left, *operator, right, line)?;
-            }
-            ExprKind::Unary { operator, operand } => {
-                self.compile_unary(*operator, operand, line)?;
-            }
+            } => match self.folded(expr) {
+                Some(value) => self.emit_constant(value, line),
+                None => self.compile_binary(left, *operator, right, line)?,
+            },
+            ExprKind::Unary { operator, operand } => match self.folded(expr) {
+                Some(value) => self.emit_constant(value, line),
+                None => self.compile_unary(*operator, operand, line)?,
+            },
             ExprKind::Grouping(inner) => {
                 self.compile_expr(inner)?;
             }
@@ -721,6 +723,12 @@ impl Compiler {
                 .iter()
                 .all(|a| matches!(a, Argument::Positional(_) | Argument::Block(_)));
             if all_positional && arguments.len() <= 255 {
+                // `["up", "late"].includes?(status)`: the argument tested
+                // against a constant list, with no array built
+                // (`compiler_literal_arrays.rs`).
+                if self.try_compile_literal_membership(object, name, arguments, line)? {
+                    return Ok(());
+                }
                 if let Some(op) =
                     self.try_compile_hash_const_string_call(object, name, arguments, line)?
                 {
@@ -991,6 +999,11 @@ impl Compiler {
     }
 
     fn compile_array(&mut self, elements: &[Expr], line: usize) -> CompileResult<()> {
+        // `["draft", "sent"]`: one op builds it from a constant list
+        // (`compiler_literal_arrays.rs`).
+        if self.try_compile_literal_array(elements, line) {
+            return Ok(());
+        }
         // `[a, ...xs, b]`: the elements before the first spread build the
         // array, then each later one is pushed onto it — or, spread, has its
         // elements appended (`Op::Spread`), as the tree-walker does.
@@ -1159,12 +1172,26 @@ impl Compiler {
                     VariableAccess::Global(name) => {
                         // A bare assignment to a name that is neither a local nor
                         // an upvalue. New in-function locals are hoisted to
-                        // function entry by `hoist_function_locals` before the
-                        // body is compiled, so by the time we get here the name
-                        // is either a real global (top level, or one we know
-                        // exists) — define-or-update it. `SetGlobal` upserts.
-                        // At top level it is the program's own binding, as a
-                        // `let` would be: `clock = 7` shadows the builtin.
+                        // function entry by `hoist_locals` before the body is
+                        // compiled, or declared by their first assignment, so by
+                        // the time we get here the name is either a real global
+                        // (top level, or one we know exists) — define-or-update
+                        // it. `SetGlobal` upserts. At top level it is the
+                        // program's own binding, as a `let` would be: `clock = 7`
+                        // shadows the builtin.
+                        //
+                        // A name still waiting for its in-place declaration is
+                        // not a global: storing to one here means that statement
+                        // was compiled some other way, and the function is
+                        // refused rather than leak the local into the globals.
+                        if self.in_place_pending(&name) {
+                            return Err(CompileError::new(
+                                format!(
+                                    "`{name}` is assigned before the statement that declares it"
+                                ),
+                                target.span,
+                            ));
+                        }
                         if self.scope_depth == 0 {
                             self.known_globals.borrow_mut().insert(name.clone());
                             self.program_globals.borrow_mut().insert(name.clone());
@@ -1528,27 +1555,8 @@ impl Compiler {
         self.emit(Op::Array(0), line); // empty result array, at result_slot
         self.add_local(String::new(), false); // anonymous result-array local
 
-        // Iterator setup (mirrors compile_for's range optimization).
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        // Iterator setup, as `compile_for`'s: a range is counted, not built.
+        let is_range = self.compile_iterable(iterable, line)?;
         // The iterable/range now lives on the iter_stack; value stack is back at
         // the result-array baseline.
         self.resync_stack_height();
@@ -1611,26 +1619,7 @@ impl Compiler {
         self.emit(Op::Hash(0), line); // empty result hash, at result_slot
         self.add_local(String::new(), false); // anonymous result-hash local
 
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        let is_range = self.compile_iterable(iterable, line)?;
         self.resync_stack_height();
 
         let loop_start = self.current_offset();

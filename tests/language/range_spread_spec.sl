@@ -51,6 +51,17 @@ describe("Range literal") do
     assert_eq(sum, 6)
   end
 
+  test("drives a for loop in parentheses as well") do
+    seen = []
+    for i in (1..4)
+      seen.push(i)
+    end
+    for i, index in ((10..12))
+      seen.push([i, index])
+    end
+    assert_eq(seen, [1, 2, 3, [10, 0], [11, 1]])
+  end
+
   test("refuses non-integer bounds") do
     assert_raises("range (..) expects two integers, got float and int") do
       1.0..3

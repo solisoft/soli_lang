@@ -88,6 +88,45 @@ const CASES: &[(&str, &str)] = &[
         "for_range_empty",
         "let s = 0\nfor v in 5..5 { s = s + 1 }\nfor v in 5..2 { s = s + 1 }\nprint(s)",
     ),
+    (
+        // A range in parentheses is counted through, as a bare one is, by a
+        // `for` loop and by comprehensions: the same elements, index, closure
+        // captures, `next` and `break`. A range used as a value is an array.
+        "parenthesized_range_iterates_like_a_bare_one",
+        r##"def total(n)
+  sum = 0
+  for i in (0..n)
+    sum += i
+  end
+  sum
+end
+
+print(total(5), total(0), total(-3))
+for i in ((2..5))
+  print(i)
+end
+for value, index in (10..13)
+  print(value, index)
+end
+fns = []
+for i in (0..3)
+  fns.push(fn() { i * 10 })
+end
+print(fns.map { |f| f() })
+for i in (0..20)
+  next if i % 3 != 0
+  break if i > 10
+
+  print(i)
+end
+low = 3
+high = 7
+print([i * i for i in (low..high)], [i for i in ((0..10)) if i % 4 == 0])
+print({(i): i + 1 for i in (1..4)}, [i for i in (5..1)], {(i): i for i in (2..2)})
+print([[i, i * 2] for i in (0..2)], [j for j in (high..high + 2)])
+numbers = (1..4)
+print(numbers, numbers.length, (1..4).each { |x| x }, (0..3).map { |x| x * 2 })"##,
+    ),
     // --- closures capturing loop variables / locals ---
     (
         "while_closure_capture",
@@ -377,6 +416,26 @@ print(r)"##,
     (
         "in_fn_assign_global",
         "g = 1\nfn f() { g = 99 }\nf()\nprint(g)",
+    ),
+    // A bare local whose first mention is its own top-level assignment is
+    // declared there, as `let` is, instead of hoisted to function entry. The
+    // later reads and writes — in branches, loops, blocks, closures — must
+    // reach the same binding.
+    (
+        "bare_locals_declared_in_place_captured_by_a_block",
+        "def summarize(items)\n  count = items.length\n  total = 0\n  items.each do |item|\n    total += item\n  end\n  average = total / count\n  label = \"avg\"\n  \"#{label}=#{average} n=#{count}\"\nend\nprint(summarize([2, 4, 6]))",
+    ),
+    (
+        "bare_locals_declared_in_place_reassigned_in_branches_and_loops",
+        "def classify(n)\n  label = \"small\"\n  if n > 10\n    label = \"big\"\n  end\n  i = 0\n  while i < n\n    i += 1\n  end\n  steps = i\n  \"#{label}:#{steps}\"\nend\nprint(classify(3))\nprint(classify(12))",
+    ),
+    (
+        "bare_locals_declared_in_place_in_methods_constructors_and_blocks",
+        "class Invoice\n  total: Int\n  new(amount)\n    tax = amount / 10\n    @total = amount + tax\n  end\n  def summary(rate)\n    base = @total\n    extra = base * rate\n    discounted = base + extra - 1\n    \"#{base}/#{extra}/#{discounted}\"\n  end\nend\ninv = new Invoice(100)\nprint(inv.summary(2))\nresult = [1, 2, 3].map do |x|\n  doubled = x * 2\n  doubled + 1\nend\nprint(result)",
+    ),
+    (
+        "bare_locals_declared_in_place_tail_chained_and_closed_over",
+        "def tail(v)\n  y = v * 3\nend\nprint(tail(4))\ndef shadow\n  sq = fn(x) { x * x }\n  x = 3\n  sq(x)\nend\nprint(shadow())\ndef counter\n  count = 0\n  bump = fn() { count = count + 1 }\n  bump()\n  bump()\n  count\nend\nprint(counter())\ndef chained(v)\n  a = b = v + 1\n  a + b\nend\nprint(chained(1))",
     ),
     // --- try / catch / finally ---
     // --- value objects and domain errors ---
@@ -2859,6 +2918,128 @@ catch e
   print("caught type")
 end"##,
     ),
+    // --- top-level variables kept in frame slots (`compile_entry_script`) ---
+    (
+        // The loop of the audit: `i` and `sum` live in the main frame.
+        "toplevel_loop_accumulator",
+        "i = 0\nsum = 0\nwhile i < 10\n  sum = sum + i\n  i += 1\nend\nprint(sum)\nprint(i)",
+    ),
+    (
+        // `let`, `const`, a bare `let` filled later, and a block-scoped `let`
+        // that shadows a slot without touching it.
+        "toplevel_let_and_const_in_slots",
+        "let a = 1\nconst LIMIT = 10\nlet c\nc = a + LIMIT\nif c > 5\n  let c = 0\n  a = a + c + 1\nend\nprint(a)\nprint(c)\nprint(LIMIT)",
+    ),
+    (
+        // Names a `def` or a block reads or writes stay globals; the loop
+        // counter beside them is a slot.
+        "toplevel_names_shared_with_functions_stay_global",
+        "count = 0\ntotal = 0\ndef bump(n)\n  count = count + n\nend\n[1, 2, 3].each do |x|\n  total = total + x\nend\nbump(5)\nsteps = 0\nwhile steps < 3\n  steps += 1\nend\nprint(count, total, steps)",
+    ),
+    (
+        "toplevel_lambda_held_in_a_slot",
+        "double = fn(x) { x * 2 }\nacc = []\nfor v in [1, 2, 3]\n  acc.push(double(v))\nend\nprint(acc)",
+    ),
+    (
+        // A comprehension after another element runs in a lambda of its own
+        // that reads the slots; a binding `match` at a clean position does not.
+        "toplevel_slots_read_by_wrapped_comprehension_and_match",
+        "k = 3\nxs = [1, 2]\nrow = [k, [x * k for x in xs], match k { 3 => \"three\", _ => \"other\" }]\nprint(row)\nlabel = match k {\n  1 => \"one\",\n  n if n > 2 => \"big #{n}\",\n  _ => \"other\"\n}\nprint(label)",
+    ),
+    (
+        // A throw caught at top level keeps the slots below its handler; a
+        // string grows in a slot.
+        "toplevel_slots_survive_try_and_string_growth",
+        "log = \"\"\nn = 0\ntry\n  n = n + 1\n  throw \"boom\"\ncatch e\n  log = log + \"caught \"\nend\nwhile n < 4\n  log += \"#{n} \"\n  n += 1\nend\nprint(log)\nprint(n)",
+    ),
+    (
+        // `defined` asks for a global by name at run time: no slot then.
+        "toplevel_defined_sees_top_level_variables",
+        "x = 5\nprint(defined(\"x\"))\ny = x + 1\nprint(y)\nprint(defined(\"y\"))",
+    ),
+    (
+        "toplevel_slots_beside_a_class",
+        "class Counter\n  value: Int\n  new(start: Int)\n    @value = start\n  end\n  def bump\n    @value = @value + 1\n  end\nend\nc = new Counter(1)\ni = 0\nwhile i < 3\n  c.bump\n  i += 1\nend\nprint(c.value)\nprint(i)",
+    ),
+    (
+        "toplevel_compound_assignments_on_slots",
+        "total = 10\ntotal -= 3\ntotal *= 2\ntotal ||= 99\nflag = \"\"\nflag ||= \"set\"\nwords = []\nwords << \"a\"\nwords << \"b\"\nname = \"x\"\nname << \"y\"\nitems = [\"a\", \"b\"]\nout = \"\"\nfor item, idx in items\n  out = out + \"#{idx}:#{item} \"\nend\nprint(total, flag, words, name, out)",
+    ),
+    // --- constant folding ---
+    (
+        // Folded at compile time on the VM, computed at run time on the
+        // tree-walker; what raises is left to raise.
+        "literal_arithmetic_folds_as_it_runs",
+        "print(60 * 60 * 24)\nprint(-7 / 2)\nprint(-7 % 3)\nprint(7.5 / 2.5)\nprint(1 + 2.5)\nprint(0.1 + 0.2)\nprint(\"ab\" + \"cd\")\nprint(-5, -2.5, 2 * -3)\nprint((1 + 2) * 3)\nbig = (9223372036854775807 + 1) rescue \"overflow\"\nprint(big)\nzero = (1 / 0) rescue \"div0\"\nprint(zero)\ndef day_seconds()\n  60 * 60 * 24\nend\nprint(day_seconds())",
+    ),
+    // --- array literals made of literals (`compiler_literal_arrays.rs`) ---
+    (
+        // `[<literals>].includes?(x)` is one op against a constant list on
+        // the VM: the four spellings, each kind of literal, the guard shapes
+        // the style guide uses, a method reading `@status`, a literal over
+        // several lines.
+        "literal_list_membership",
+        r##"class Ticket
+  status: String
+
+  new(status: String)
+    @status = status
+  end
+
+  def open?
+    ["up", "late", "overdue"].includes?(@status)
+  end
+end
+
+def label(s)
+  return "open" if ["up", "late"].includes?(s)
+  return "symbol" if [:up, :late].include?(s)
+  return "small" if [1, 2, 3].contains(s)
+  return "flag" if [true, nil].contains?(s)
+
+  "other"
+end
+
+print(label("up"), label("closed"), label(:late), label(2), label(nil), label(false), label(9))
+print(Ticket.new("late").open?, Ticket.new("closed").open?)
+print(%w[draft sent].includes?("sent"), [].includes?("x"), [-1, 60 * 60].includes?(3600))
+allowed = [
+  "inline",
+  "inline-block",
+  "table"
+].includes?("table")
+print(allowed)
+kept = "kept"
+kept = "dropped" unless ["b", "c"].includes?("a")
+print(kept)"##,
+    ),
+    (
+        // An array literal of literals is one op on the VM, and still a new
+        // array on every evaluation: changing one leaves the next alone.
+        "literal_array_is_new_on_each_evaluation",
+        r##"def make()
+  ["a", :b, 1, 2.5, true, nil]
+end
+
+first = make()
+first.push("x")
+first[0] = "changed"
+print(first, make())
+rows = []
+for i in [0, 1, 2]
+  row = [0, 0]
+  row[1] = i
+  rows.push(row)
+end
+print(rows)
+grid = [[1, 2], [3]]
+grid[0].push(9)
+print(grid, [[1, 2], [3]])
+print(["px-4", "py-2"].join(" "), [3, 1, 2].sort(), ["b", "a"].map { |s| s.upcase })
+h = {"tags": ["a", "b"]}
+h["tags"].push("c")
+print(h, {"tags": ["a", "b"]})"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
@@ -2880,13 +3061,58 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //        receiver in the callee slot as `this`
 ];
 
+/// Programs the type checker refuses but both engines run. It rejects a read
+/// that comes before the variable's assignment in the source, even inside a
+/// closure that is only called afterwards — the shapes where the VM must keep
+/// hoisting a bare local rather than declare it at its first assignment. Run
+/// with `--no-type-check`, the engines must still agree.
+const UNCHECKED_CASES: &[(&str, &str)] = &[
+    (
+        "bare_local_read_by_a_closure_made_before_its_assignment",
+        "def later\n  get = fn() { x }\n  x = 5\n  get()\nend\nprint(later())",
+    ),
+    (
+        "bare_local_read_by_a_nested_def_made_before_its_assignment",
+        "def outer\n  def inner\n    x + 1\n  end\n  x = 41\n  inner()\nend\nprint(outer())",
+    ),
+    // A top-level variable read before its first assignment is undefined
+    // there on both engines: it must stay a global, not a slot reading nil.
+    (
+        "toplevel_read_before_assignment_stays_undefined",
+        "seen = z rescue \"undefined\"\nprint(seen)\nz = 1\nprint(z)",
+    ),
+    // A second `let` of a top-level variable kept in a slot.
+    (
+        "toplevel_let_redeclared",
+        "let a = 1\nlet a = a + 100\nprint(a)",
+    ),
+    // Membership in a list of literals across types, which the type checker
+    // refuses: `==` as `Array#includes?` has it — `Int` and `Float` by value,
+    // a class equal to the string of its name, arrays by value.
+    (
+        "literal_list_membership_across_types",
+        r##"class Account
+end
+print([1, 2, 3].includes?(2.0), [1.5, 2.0].includes?(2), [1, "1"].includes?("1"))
+print(["1"].includes?(1), [nil].includes?(false), [true].includes?(1), [0].includes?(false))
+print(["up"].includes?(:up), [:up].includes?("up"), ["Account", "User"].includes?(Account))
+print([1, 2].includes?([1]), [[1], 2].includes?([1]), [{"a": 1}].includes?({"a": 1}))"##,
+    ),
+];
+
 /// Run `source` through the soli binary; `vm` selects the bytecode VM with
 /// optional-`let` enabled. Returns the observable outcome: stdout on success,
 /// or a sentinel on any non-success (error/panic) so error *text* differences
 /// don't count as behavioral divergence.
 fn run(source: &str, idx: usize, vm: bool) -> String {
+    run_as(source, &idx.to_string(), vm, true)
+}
+
+/// `run`, with the temp file named after `tag` (tests run in parallel, so
+/// each needs its own names) and `--no-type-check` unless `type_check`.
+fn run_as(source: &str, tag: &str, vm: bool, type_check: bool) -> String {
     let mut path = std::env::temp_dir();
-    path.push(format!("soli_diff_{}_{}.sl", std::process::id(), idx));
+    path.push(format!("soli_diff_{}_{}.sl", std::process::id(), tag));
     std::fs::write(&path, source).expect("write temp source");
 
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_soli"));
@@ -2897,6 +3123,9 @@ fn run(source: &str, idx: usize, vm: bool) -> String {
         // Scripts run on the VM by default now; the reference is the
         // tree-walker, by name.
         cmd.arg("--tree");
+    }
+    if !type_check {
+        cmd.arg("--no-type-check");
     }
     let output = cmd.output().expect("run soli");
     let _ = std::fs::remove_file(&path);
@@ -2948,4 +3177,136 @@ fn tree_walker_and_vm_agree() {
         ));
     }
     assert!(msg.is_empty(), "\n{msg}");
+}
+
+#[test]
+fn tree_walker_and_vm_agree_without_the_type_checker() {
+    for (idx, (name, source)) in UNCHECKED_CASES.iter().enumerate() {
+        let tag = format!("unchecked_{idx}");
+        let tw = run_as(source, &tag, false, false);
+        let vm = run_as(source, &tag, true, false);
+        assert_ne!(tw, "<non-success>", "{name}: the tree-walker must run it");
+        assert_eq!(tw, vm, "{name}: the tree-walker and the VM disagree");
+    }
+}
+
+/// Run `source` on one engine, as `run_as` does, with `env` added to its
+/// environment. Returns whether it exited successfully, its stdout and its
+/// stderr.
+fn run_with_env(source: &str, tag: &str, vm: bool, env: &[(&str, &str)]) -> (bool, String, String) {
+    let mut path = std::env::temp_dir();
+    path.push(format!("soli_diff_{}_{}.sl", std::process::id(), tag));
+    std::fs::write(&path, source).expect("write temp source");
+
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_soli"));
+    cmd.arg(&path).envs(env.iter().copied());
+    if vm {
+        cmd.arg("--vm").env("SOLI_VM_OPTIONAL_LET", "1");
+    } else {
+        cmd.arg("--tree");
+    }
+    let output = cmd.output().expect("run soli");
+    let _ = std::fs::remove_file(&path);
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+/// A range that a `for` loop or a comprehension counts through is never built,
+/// so `SOLI_MAX_RANGE_LEN` does not limit it, with or without parentheses
+/// around it, on either engine. Both engines used to build a parenthesized
+/// one as an array, and refuse it past the limit, and the tree-walker built a
+/// comprehension's bare one too. A range used as a value is still built, and
+/// still refused.
+#[test]
+fn ranges_that_loops_count_through_are_not_built() {
+    let limit = [("SOLI_MAX_RANGE_LEN", "100")];
+    let counted = r##"def walk(n)
+  sum = 0
+  for i in (0..n)
+    sum += i
+  end
+  for i in ((0..n))
+    sum += 1
+  end
+  for i, k in 0..n
+    sum += k
+  end
+  sum
+end
+
+print(walk(1000))
+print([i for i in (0..1000) if i % 250 == 0], [i for i in 0..1000 if i > 997])
+print({(i): i for i in (0..1000) if i % 400 == 0}.length, {(i): i for i in 0..1000 if i < 2})
+"##;
+    for vm in [false, true] {
+        let (ok, stdout, stderr) =
+            run_with_env(counted, &format!("range_counted_{vm}"), vm, &limit);
+        assert!(ok, "vm: {vm}: {stderr}");
+        assert_eq!(
+            stdout, "1000000\n[0, 250, 500, 750] [998, 999]\n3 {0 => 0, 1 => 1}\n",
+            "vm: {vm}"
+        );
+    }
+
+    let built = [
+        "numbers = (0..1000)\nprint(numbers.length)\n",
+        "print((0..1000).map { |i| i }.length)\n",
+        "for i in (0..1000).reverse()\n  print(i)\nend\n",
+        "print([...(0..1000)].length)\n",
+    ];
+    for (idx, source) in built.iter().enumerate() {
+        for vm in [false, true] {
+            let tag = format!("range_built_{idx}_{vm}");
+            let (ok, stdout, stderr) = run_with_env(source, &tag, vm, &limit);
+            assert!(
+                !ok && stdout.is_empty() && stderr.contains("over the 100 limit"),
+                "{source} (vm: {vm}) must still be refused: {stdout}{stderr}"
+            );
+        }
+    }
+}
+
+/// A bound that is not an integer is reported at the range itself, with or
+/// without parentheses around it, in a `for` loop or a comprehension, on both
+/// engines (the VM words it `Range requires integer operands`). The VM used
+/// to report a bare range at its `for` statement, and the range of a
+/// comprehension compiled as a lambda at column 0.
+#[test]
+fn a_bound_that_is_not_an_integer_is_reported_at_the_range() {
+    let cases = [
+        (
+            "def f(a, b)\n  for i in (a..b)\n  end\nend\nf(1.5, 3)\n",
+            "2:13",
+        ),
+        (
+            "def f(a, b)\n  for i in a..b\n  end\nend\nf(1.5, 3)\n",
+            "2:12",
+        ),
+        (
+            "def f(a, b)\n  [i for i in (a..b)]\nend\nf(1.5, 3)\n",
+            "2:16",
+        ),
+        ("def f(a, b)\n  [i for i in a..b]\nend\nf(1.5, 3)\n", "2:15"),
+        (
+            "def f(a, b)\n  print({(i): i for i in ((a..b))})\nend\nf(1, \"3\")\n",
+            "2:28",
+        ),
+    ];
+    for (idx, (source, at)) in cases.iter().enumerate() {
+        for vm in [false, true] {
+            let tag = format!("range_bound_{idx}_{vm}");
+            let (ok, _, stderr) = run_with_env(source, &tag, vm, &[]);
+            let error = stderr
+                .lines()
+                .find(|line| line.starts_with("Error:"))
+                .unwrap_or_default();
+            assert!(
+                !ok && error.contains("integer") && error.ends_with(&format!(" at {at}")),
+                "{source} (vm: {vm}) must fail at {at}: {stderr}"
+            );
+        }
+    }
 }

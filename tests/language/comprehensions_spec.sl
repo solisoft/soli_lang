@@ -15,6 +15,20 @@ describe("Array comprehensions") do
     assert_eq([x + 1 for x in 1..4], [2, 3, 4])
   end
 
+  test("iterate over a range in parentheses, as over a bare one") do
+    low = 2
+    assert_eq([x * 10 for x in (low..5)], [20, 30, 40])
+    assert_eq([x for x in ((0..10)) if x % 5 == 0], [0, 5])
+    assert_eq([x for x in (3..1)], [])
+  end
+
+  test("refuse a range whose bounds are not integers") do
+    high = 3.5
+    assert_raises("range (..) expects two integers, got int and float") do
+      [x for x in (0..high)]
+    end
+  end
+
   test("filter with if") do
     assert_eq([x for x in range(1, 10) if x % 2 == 0], [2, 4, 6, 8])
   end
@@ -115,5 +129,10 @@ describe("Hash comprehensions") do
     by_parity = {n % 2: n for n in 1..5}
     assert_eq(by_parity[1], 3)
     assert_eq(by_parity[0], 4)
+  end
+
+  test("iterate over a range, in parentheses or not") do
+    assert_eq({(n): n * n for n in (1..4)}, {1: 1, 2: 4, 3: 9})
+    assert_eq({(n): n for n in 0..3 if n > 0}, {1: 1, 2: 2})
   end
 end

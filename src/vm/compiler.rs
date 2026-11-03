@@ -3,7 +3,7 @@
 //! Single-pass compilation: walks the AST once, emitting bytecode into a `Chunk`.
 //! Variable resolution happens at compile time — locals become stack slot indices.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -45,6 +45,10 @@ pub struct Local {
     pub depth: i32,
     pub is_captured: bool,
     pub is_const: bool,
+    /// A top-level variable of the entry script kept in a frame slot instead
+    /// of a global ([`Compiler::compile_entry_script`]). Nothing but the
+    /// script's top-level code may reach it.
+    pub promoted: bool,
 }
 
 /// Tracks what kind of function is being compiled.
@@ -154,6 +158,19 @@ pub struct Compiler {
     /// Source column of the expression or statement being compiled, recorded
     /// with each instruction for error spans.
     pub column: u32,
+    /// Top-level `name = value` statements of the function being compiled
+    /// that declare `name` where they stand instead of assigning a slot
+    /// hoisted to function entry (`hoist_locals`). Each is taken when its
+    /// statement is compiled (`take_in_place_decl`).
+    pub in_place_decls: Vec<super::compiler_hoist::InPlaceDecl>,
+    /// A lambda the compiler made up to run an expression at a clean frame
+    /// (`wrap_in_lambda`), called once, right where it is created.
+    pub expr_wrapper: bool,
+    /// Set while compiling an entry script whose top-level variables live in
+    /// frame slots, shared by every function compiled inside it: raised when
+    /// one of those functions captures such a slot, which refuses the plan
+    /// ([`Compiler::compile_entry_script`]).
+    pub promotion_guard: Option<Rc<Cell<bool>>>,
 }
 
 /// One enclosing `try`, as the compiler sees it at the current emit point.
@@ -237,6 +254,9 @@ impl Compiler {
             template_mode: false,
             kernels: None,
             column: 0,
+            in_place_decls: Vec::new(),
+            expr_wrapper: false,
+            promotion_guard: None,
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -252,6 +272,7 @@ impl Compiler {
             depth: 0,
             is_captured: false,
             is_const: false,
+            promoted: false,
         });
 
         compiler
@@ -314,6 +335,55 @@ impl Compiler {
         Self::compile_full(program, std::iter::empty(), None, kernels)
     }
 
+    /// Compile the program `soli script.sl` runs (and `soli -e`, and a script
+    /// executable): [`Self::compile_with_kernels`], with the script's own
+    /// top-level variables kept in frame slots wherever nothing but its
+    /// top-level code can reach them, so a loop at file scope runs on locals
+    /// as it would in a `def` (`compiler_script_locals::plan`). `is_builtin`
+    /// names the globals the VM starts with; a variable named like one stays
+    /// a global.
+    ///
+    /// This only ever changes how fast the script runs. If the compile that
+    /// keeps them in slots fails, or finds a function reaching one, the
+    /// program is compiled again with every top-level variable a global.
+    pub fn compile_entry_script(
+        program: &Program,
+        kernels: Option<crate::native::KernelSet>,
+        is_builtin: &dyn Fn(&str) -> bool,
+    ) -> CompileResult<CompiledModule> {
+        if optional_let_enabled() {
+            let plan = super::compiler_script_locals::plan(&program.statements, is_builtin);
+            if !plan.is_empty() {
+                if let Ok(module) = Self::compile_promoted(program, kernels.clone(), &plan) {
+                    return Ok(module);
+                }
+            }
+        }
+        Self::compile_with_kernels(program, kernels)
+    }
+
+    /// [`Self::compile_with_kernels`], each `(index, name)` of `plan` declaring
+    /// `name` in a frame slot at top-level statement `index`. An error when a
+    /// function captures one of those slots, or a planned statement is not
+    /// reached as planned.
+    pub(crate) fn compile_promoted(
+        program: &Program,
+        kernels: Option<crate::native::KernelSet>,
+        plan: &[(usize, String)],
+    ) -> CompileResult<CompiledModule> {
+        let mut compiler = Compiler::new(FunctionType::Script, String::new());
+        compiler.promotion_guard = Some(Rc::new(Cell::new(false)));
+        compiler.in_place_decls = plan
+            .iter()
+            .map(|(index, name)| super::compiler_hoist::InPlaceDecl {
+                stmt: &program.statements[*index],
+                name: name.clone(),
+                resolved_early: false,
+            })
+            .collect();
+        Self::compile_script(compiler, program, None, kernels)
+    }
+
     /// `compile_with_globals_from`, with the known globals given as a shared
     /// set instead of an iterator copied into this compiler.
     pub fn compile_with_base_globals_from(
@@ -360,6 +430,19 @@ impl Compiler {
         compiler.proto.source_path = source_path;
         for stmt in &program.statements {
             compiler.compile_stmt(stmt)?;
+        }
+        // Top-level variables kept in frame slots (`compile_entry_script`):
+        // a function captured one, or a planned declaration was never
+        // reached. The plan was wrong, so this bytecode must not run.
+        let breached = compiler
+            .promotion_guard
+            .as_ref()
+            .is_some_and(|breach| breach.get());
+        if breached || !compiler.in_place_decls.is_empty() {
+            return Err(CompileError::new(
+                "a top-level variable kept in a frame slot is reached from outside the top level",
+                Span::default(),
+            ));
         }
         // Implicit return null for scripts
         compiler.emit(Op::Null, 0);
@@ -561,15 +644,48 @@ impl Compiler {
             depth: self.scope_depth,
             is_captured: false,
             is_const,
+            promoted: false,
         });
     }
 
-    /// Declare, at the start of a function body, the locals introduced by bare
-    /// assignment (Soli's optional-`let`). Must be called inside the body scope
-    /// after parameters have been added. A candidate is skipped when it is
-    /// already a parameter/local, is captured from an enclosing scope (so it
-    /// stays an upvalue), or is a known global (so the assignment targets the
-    /// existing global) — matching the tree-walking interpreter.
+    /// Declare `name` as a local whose value is already on top of the stack:
+    /// a statement planned to declare it in place (`take_in_place_decl`). At
+    /// the top level of a script that is a top-level variable kept in a frame
+    /// slot ([`Compiler::compile_entry_script`]), marked as such.
+    pub(crate) fn declare_in_place(&mut self, name: &str, is_const: bool) {
+        self.add_local(name.to_string(), is_const);
+        if self.function_type == FunctionType::Script {
+            if let Some(local) = self.locals.last_mut() {
+                local.promoted = true;
+            }
+        }
+    }
+
+    /// The slot of `name` when it is a top-level variable this script keeps
+    /// in a frame slot ([`Compiler::compile_entry_script`]).
+    pub(crate) fn promoted_slot(&self, name: &str) -> Option<u16> {
+        self.resolve_local(name)
+            .filter(|&slot| self.locals[slot as usize].promoted)
+    }
+
+    /// Whether `name`, just resolved here as an upvalue, is a top-level
+    /// variable kept in a frame slot, reached through a function written in
+    /// the source: the plan says none of those names it. A lambda the
+    /// compiler made up around an expression (`expr_wrapper`) does not count,
+    /// since it is called on the spot, while the slot is live.
+    fn captures_promoted_local(&self, name: &str) -> bool {
+        let mut through_function = !self.expr_wrapper;
+        let mut current = self.enclosing.as_deref();
+        while let Some(compiler) = current {
+            if let Some(slot) = compiler.resolve_local(name) {
+                return through_function && compiler.locals[slot as usize].promoted;
+            }
+            through_function |= !compiler.expr_wrapper;
+            current = compiler.enclosing.as_deref();
+        }
+        false
+    }
+
     /// Whether `name` is a global this compiler knows of: declared so far, or
     /// in the shared base set it was handed.
     pub(crate) fn is_known_global(&self, name: &str) -> bool {
@@ -580,22 +696,66 @@ impl Compiler {
                 .is_some_and(|base| base.contains(name))
     }
 
+    /// Declare the locals introduced by bare assignment (Soli's optional-`let`)
+    /// in `body`, a function body about to be compiled. Must be called inside
+    /// the body scope after parameters have been added. A candidate is skipped
+    /// when it is already a parameter/local, is captured from an enclosing
+    /// scope (so it stays an upvalue), or is a known global (so the assignment
+    /// targets the existing global) — matching the tree-walking interpreter.
+    ///
+    /// A candidate whose first mention is a top-level `name = value` is
+    /// declared by that statement, the way `let name = value` declares it
+    /// (`in_place_declarations` says when that cannot be told apart): its
+    /// statement is recorded in `in_place_decls` for `compile_stmt` to find.
+    /// The rest are declared here, as nils pushed at function entry.
     pub fn hoist_locals(&mut self, body: &[Stmt], line: usize) {
         if !optional_let_enabled() {
             return;
         }
-        for name in super::compiler_hoist::collect_hoisted_locals(body) {
-            if self.resolve_local(&name).is_some() {
-                continue;
-            }
-            if self.is_known_global(&name) {
-                continue;
-            }
-            if self.enclosing_has_local(&name) {
-                continue;
-            }
-            self.emit(Op::Null, line);
+        let candidates: Vec<String> = super::compiler_hoist::collect_hoisted_locals(body)
+            .into_iter()
+            .filter(|name| {
+                self.resolve_local(name).is_none()
+                    && !self.is_known_global(name)
+                    && !self.enclosing_has_local(name)
+            })
+            .collect();
+        let in_place =
+            super::compiler_hoist::in_place_declarations(body, &candidates, self.template_mode);
+        for &(index, name) in &in_place {
+            self.in_place_decls
+                .push(super::compiler_hoist::InPlaceDecl {
+                    stmt: &body[index],
+                    name: name.to_string(),
+                    resolved_early: false,
+                });
+        }
+        let hoisted: Vec<String> = candidates
+            .into_iter()
+            .filter(|name| {
+                !in_place
+                    .iter()
+                    .any(|&(_, declared)| declared == name.as_str())
+            })
+            .collect();
+        self.emit_nulls(hoisted.len(), line);
+        for name in hoisted {
             self.add_local(name, false);
+        }
+    }
+
+    /// Push `count` nils: a plain `Null` for one, one `PushNulls` for more.
+    fn emit_nulls(&mut self, count: usize, line: usize) {
+        let mut left = count;
+        while left > 0 {
+            let chunk = left.min(u16::MAX as usize);
+            let op = if chunk == 1 {
+                Op::Null
+            } else {
+                Op::PushNulls(chunk as u16)
+            };
+            self.emit(op, line);
+            left -= chunk;
         }
     }
 
@@ -691,8 +851,16 @@ impl Compiler {
         if let Some(slot) = self.resolve_local(name) {
             VariableAccess::Local(slot)
         } else if let Some(idx) = self.resolve_upvalue(name) {
+            // A function capturing a top-level variable the script keeps in
+            // a frame slot: the plan missed a mention, so it is refused.
+            if let Some(breach) = &self.promotion_guard {
+                if self.captures_promoted_local(name) {
+                    breach.set(true);
+                }
+            }
             VariableAccess::Upvalue(idx)
         } else {
+            self.note_global_resolution(name);
             if let Some(seen) = &self.referenced_globals {
                 seen.borrow_mut().insert(name.to_string());
             }
@@ -719,6 +887,7 @@ impl Compiler {
         new_compiler.base_globals = self.base_globals.clone();
         new_compiler.program_globals = self.program_globals.clone();
         new_compiler.referenced_globals = self.referenced_globals.clone();
+        new_compiler.promotion_guard = self.promotion_guard.clone();
         new_compiler.template_mode = self.template_mode;
         // A closure reads names in the namespace of the code around it.
         new_compiler.proto.namespace = self.proto.namespace.clone();
@@ -811,6 +980,7 @@ impl Compiler {
         F: FnOnce(&mut Compiler) -> CompileResult<()>,
     {
         let _dummy = self.start_function(FunctionType::Lambda, "<expr>".to_string(), &[]);
+        self.expr_wrapper = true;
         self.resync_stack_height();
         body(self)?;
         self.emit(Op::Return, line);
@@ -1064,6 +1234,7 @@ fn stack_effect(op: Op) -> i32 {
     match op {
         // Constants / literals push one value.
         Constant(_) | Null | True | False | Symbol(_) => 1,
+        PushNulls(n) => n as i32,
         Dup => 1,
         Pop => -1,
         // Reads push; stores leave the value in place (net 0).
@@ -1102,6 +1273,9 @@ fn stack_effect(op: Op) -> i32 {
         // Collections.
         Array(n) | BuildString(n) | HashWithKeys(_, n) => 1 - n as i32,
         Hash(n) => 1 - 2 * n as i32,
+        // The array pushed; the argument replaced by the answer.
+        LiteralArray(_) => 1,
+        LiteralListIncludes(_, _) => 0,
         ArrayPush | Spread => -1,
         Range | GetIndex => -1,
         SetIndex => -2,

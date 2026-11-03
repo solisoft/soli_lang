@@ -31,6 +31,15 @@ impl Compiler {
         self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
+                // A bare `name = value` that `hoist_locals` (or, at file
+                // scope, `compile_entry_script`) chose to declare `name` here:
+                // as for `let`, the value stays on the stack as the new
+                // local's slot, with no store and no `Pop`.
+                if let Some((name, value)) = self.take_in_place_decl(stmt)? {
+                    self.compile_expr(value)?;
+                    self.declare_in_place(name, false);
+                    return Ok(());
+                }
                 // `next` is a zero-argument builtin returning a sentinel the
                 // tree-walker recognises in this exact position. Compile it as
                 // the jump it means, in either of the two spellings the parser
@@ -54,14 +63,32 @@ impl Compiler {
                 type_annotation: _,
                 initializer,
             } => {
-                self.compile_let(name, initializer.as_ref(), false, line, stmt.span)?;
+                // A top-level variable the entry script keeps in a frame slot
+                // (`compile_entry_script`): declared like a `let` in a
+                // function, its value left on the stack as the slot.
+                if self.take_in_place_binding(stmt)? {
+                    match initializer {
+                        Some(init) => self.compile_expr(init)?,
+                        None => {
+                            self.emit(Op::Null, line);
+                        }
+                    }
+                    self.declare_in_place(name, false);
+                } else {
+                    self.compile_let(name, initializer.as_ref(), false, line, stmt.span)?;
+                }
             }
             StmtKind::Const {
                 name,
                 type_annotation: _,
                 initializer,
             } => {
-                self.compile_let(name, Some(initializer), true, line, stmt.span)?;
+                if self.take_in_place_binding(stmt)? {
+                    self.compile_expr(initializer)?;
+                    self.declare_in_place(name, true);
+                } else {
+                    self.compile_let(name, Some(initializer), true, line, stmt.span)?;
+                }
             }
             StmtKind::Block(stmts) => {
                 self.begin_scope();
@@ -208,6 +235,12 @@ impl Compiler {
                     self.emit(Op::Pop, line);
                 }
             }
+        } else if let Some(slot) = self.promoted_slot(name) {
+            // A top-level variable the entry script keeps in a frame slot,
+            // declared a second time: the new value replaces the slot's, as
+            // `DefineGlobal` replaced the global's.
+            self.emit(Op::SetLocal(slot), line);
+            self.emit(Op::Pop, line);
         } else {
             // Global variable
             self.known_globals.borrow_mut().insert(name.to_string());
@@ -335,27 +368,7 @@ impl Compiler {
             None
         };
 
-        // Optimize: for x in a..b => GetIterRange + ForIterRange (zero allocation, inlined)
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        let is_range = self.compile_iterable(iterable, line)?;
 
         let loop_start = self.current_offset();
         // `GetIter`/`GetIterRange` above parked an iterator for this loop.
@@ -406,6 +419,41 @@ impl Compiler {
 
         self.end_scope(line);
         Ok(())
+    }
+
+    /// Park the iterator of a `for` loop or a comprehension on `iter_stack`,
+    /// and say whether it is a range, which the loop then steps with
+    /// `ForIterRange` instead of `ForIter`.
+    ///
+    /// A range `a..b`, with or without parentheses around it, compiles to its
+    /// two bounds and `GetIterRange`, which counts from one to the other: no
+    /// array is built, so there is no allocation and no `SOLI_MAX_RANGE_LEN`
+    /// limit. `for i in (0..n)` used to compile `Op::Range` and walk the
+    /// array it built, 24 bytes an element. `GetIterRange` records the
+    /// range's own line and column, so a bound that is not an integer is
+    /// reported at the range, where `Op::Range` and the tree-walker report it.
+    pub(super) fn compile_iterable(
+        &mut self,
+        iterable: &crate::ast::Expr,
+        line: usize,
+    ) -> CompileResult<bool> {
+        let range = iterable.without_parens();
+        let crate::ast::ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &range.kind
+        else {
+            self.compile_expr(iterable)?;
+            self.emit(Op::GetIter, line);
+            return Ok(false);
+        };
+        self.compile_expr(left)?;
+        self.compile_expr(right)?;
+        let outer = std::mem::replace(&mut self.column, range.span.column);
+        self.emit(Op::GetIterRange, range.span.line as usize);
+        self.column = outer;
+        Ok(true)
     }
 
     /// Emit every enclosing `finally`, innermost first.
@@ -688,7 +736,15 @@ impl Compiler {
         self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
-                self.compile_expr(expr)?;
+                match self.take_in_place_decl(stmt)? {
+                    // Declared in place (see `compile_stmt_at`): the value is
+                    // both the new local and what the function returns.
+                    Some((name, value)) => {
+                        self.compile_expr(value)?;
+                        self.declare_in_place(name, false);
+                    }
+                    None => self.compile_expr(expr)?,
+                }
                 self.emit(Op::Return, line);
             }
             StmtKind::Block(stmts) => {
@@ -746,5 +802,115 @@ impl Compiler {
         let idx = self.add_string_constant(&decl.path);
         self.emit(Op::Import(idx), line);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod range_iteration_tests {
+    //! A `for` loop or a comprehension over a range counts through it with
+    //! `GetIterRange`/`ForIterRange`, with or without parentheses around the
+    //! range. Only a range used as a value builds its array (`Op::Range`).
+    use std::sync::Arc;
+
+    use crate::vm::chunk::{Constant, FunctionProto};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    /// The compiled `def f(n) <body> end`.
+    fn proto_of(body: &str) -> Arc<FunctionProto> {
+        let source = format!("def f(n)\n  {body}\nend\n");
+        let tokens = crate::lexer::Scanner::new(&source)
+            .scan_tokens()
+            .expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        module
+            .main
+            .chunk
+            .constants
+            .iter()
+            .find_map(|constant| match constant {
+                Constant::Function(inner) if inner.name == "f" => Some(inner.clone()),
+                _ => None,
+            })
+            .expect("the proto of f")
+    }
+
+    /// Every op of `proto` and of the functions compiled inside it: a
+    /// comprehension in the middle of an expression is compiled as a lambda.
+    fn all_ops(proto: &FunctionProto) -> Vec<Op> {
+        let mut ops = proto.chunk.code.clone();
+        for constant in &proto.chunk.constants {
+            if let Constant::Function(inner) = constant {
+                ops.extend(all_ops(inner));
+            }
+        }
+        ops
+    }
+
+    fn count(ops: &[Op], wanted: impl Fn(&Op) -> bool) -> usize {
+        ops.iter().filter(|op| wanted(op)).count()
+    }
+
+    #[test]
+    fn a_range_in_parentheses_is_counted_not_built() {
+        for body in [
+            "total = 0\n  for i in (0..n)\n    total += i\n  end\n  total",
+            "total = 0\n  for i in ((1..n + 1))\n    total += i\n  end\n  total",
+            "total = 0\n  for i, k in (0..n)\n    total += i * k\n  end\n  total",
+            "[i * 2 for i in (0..n)]",
+            "[i for i in (0..n) if i > 1]",
+            "squares = {(i): i * i for i in (0..n)}\n  squares",
+            "[[i for i in (0..n)], n]",
+            // The bare forms already were.
+            "total = 0\n  for i in 0..n\n    total += i\n  end\n  total",
+            "[i * 2 for i in 0..n]",
+            "squares = {(i): i * i for i in 0..n}\n  squares",
+        ] {
+            let ops = all_ops(&proto_of(body));
+            assert_eq!(
+                count(&ops, |op| matches!(op, Op::GetIterRange)),
+                1,
+                "{body}: {ops:?}"
+            );
+            assert_eq!(
+                count(&ops, |op| matches!(op, Op::ForIterRange(_))),
+                1,
+                "{body}: {ops:?}"
+            );
+            assert_eq!(
+                count(&ops, |op| matches!(
+                    op,
+                    Op::Range | Op::GetIter | Op::ForIter(_)
+                )),
+                0,
+                "{body} builds the range or iterates an array: {ops:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_range_used_as_a_value_is_still_built() {
+        for body in [
+            "numbers = (0..n)\n  numbers",
+            "(0..n).map { |i| i * 2 }",
+            "for i in (0..n).reverse()\n    print(i)\n  end",
+            "[i for i in (0..n) + [n]]",
+        ] {
+            let ops = all_ops(&proto_of(body));
+            assert_eq!(
+                count(&ops, |op| matches!(op, Op::Range)),
+                1,
+                "{body}: {ops:?}"
+            );
+            assert_eq!(
+                count(&ops, |op| matches!(
+                    op,
+                    Op::GetIterRange | Op::ForIterRange(_)
+                )),
+                0,
+                "{body}: {ops:?}"
+            );
+        }
     }
 }

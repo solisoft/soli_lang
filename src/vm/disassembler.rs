@@ -54,6 +54,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("SYMBOL       {:>5} (:{})", idx, name));
         }
         Op::Null => out.push_str("NULL"),
+        Op::PushNulls(count) => out.push_str(&format!("PUSH_NULLS       {count:>3}")),
         Op::True => out.push_str("TRUE"),
         Op::False => out.push_str("FALSE"),
         Op::Pop => out.push_str("POP"),
@@ -127,6 +128,19 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
         Op::HashWithKeys(idx, n) => out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n)),
+        Op::LiteralArray(idx) => out.push_str(&format!(
+            "LITERAL_ARRAY {:>4} ({})",
+            idx,
+            format_constant(chunk.constants.get(*idx as usize))
+        )),
+        Op::LiteralListIncludes(idx, user_method) => {
+            let list = format_constant(chunk.constants.get(*idx as usize));
+            out.push_str(&format!("LIST_INCLUDES {:>4} ({})", idx, list));
+            if *user_method != super::opcode::NO_USER_METHOD {
+                let name = constant_string(chunk, *user_method);
+                out.push_str(&format!(" user_method={}", name));
+            }
+        }
         Op::Range => out.push_str("RANGE"),
         Op::GetIndex => out.push_str("GET_INDEX"),
         Op::SetIndex => out.push_str("SET_INDEX"),
@@ -520,6 +534,22 @@ fn format_constant(val: Option<&Constant>) -> String {
                 .collect();
             format!("ArgNames[{}]", rendered.join(", "))
         }
+        Some(Constant::LiteralList(list)) => {
+            use super::literal_list::ListLiteral;
+            let rendered: Vec<String> = list
+                .items
+                .iter()
+                .map(|item| match item {
+                    ListLiteral::Int(n) => n.to_string(),
+                    ListLiteral::Float(f) => f.to_string(),
+                    ListLiteral::String(s) => format!("\"{}\"", s),
+                    ListLiteral::Symbol(s) => format!(":{}", s),
+                    ListLiteral::Bool(b) => b.to_string(),
+                    ListLiteral::Null => "null".to_string(),
+                })
+                .collect();
+            format!("[{}]", rendered.join(", "))
+        }
         None => "???".to_string(),
     }
 }
@@ -711,6 +741,13 @@ mod tests {
     }
 
     #[test]
+    fn push_nulls_renders_its_count() {
+        let body = body_for(vec![(Op::PushNulls(6), 1)]);
+        assert!(body.contains("PUSH_NULLS"), "got: {body}");
+        assert!(body.trim_end().ends_with('6'), "got: {body}");
+    }
+
+    #[test]
     fn jump_ops_render_offset() {
         let body = body_for(vec![
             (Op::Jump(10), 1),
@@ -810,5 +847,43 @@ mod tests {
         p.chunk.emit(Op::Constant(idx), 1);
         let out = disassemble(&p);
         assert!(out.contains("(HashKeys[2])"), "got: {out}");
+    }
+
+    // ---------- literal lists ----------
+
+    #[test]
+    fn literal_list_ops_render_their_elements() {
+        use crate::vm::literal_list::{ListLiteral, LiteralList};
+        let mut p = proto("test");
+        let list = Arc::new(LiteralList {
+            items: vec![
+                ListLiteral::String("up".into()),
+                ListLiteral::Symbol("late".into()),
+                ListLiteral::Int(3),
+                ListLiteral::Null,
+            ],
+        });
+        let idx = p.chunk.add_constant(Constant::LiteralList(list));
+        let name = p.chunk.add_constant(Constant::String("includes?".into()));
+        p.chunk.emit(Op::LiteralArray(idx), 1);
+        p.chunk.emit(Op::LiteralListIncludes(idx, name), 1);
+        p.chunk.emit(
+            Op::LiteralListIncludes(idx, crate::vm::opcode::NO_USER_METHOD),
+            1,
+        );
+        let out = disassemble(&p);
+        assert!(
+            out.contains("LITERAL_ARRAY    0 ([\"up\", :late, 3, null])"),
+            "got: {out}"
+        );
+        assert!(
+            out.contains("LIST_INCLUDES    0 ([\"up\", :late, 3, null]) user_method=includes?"),
+            "got: {out}"
+        );
+        assert!(
+            out.lines()
+                .any(|line| line.ends_with("LIST_INCLUDES    0 ([\"up\", :late, 3, null])")),
+            "got: {out}"
+        );
     }
 }

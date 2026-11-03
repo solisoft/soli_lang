@@ -337,7 +337,8 @@ pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), Sol
                 return execute_program_tree(program);
             }
             let kernels = script_kernels(program, &interpreter);
-            match vm::Compiler::compile_with_kernels(program, kernels) {
+            let is_builtin = |name: &str| env.borrow().get(name).is_some();
+            match vm::Compiler::compile_entry_script(program, kernels, &is_builtin) {
                 Ok(module) => {
                     log_engine("vm");
                     run_compiled_on_vm(&module, &interpreter)
@@ -557,12 +558,15 @@ pub fn execute_program_vm(program: &ast::Program) -> Result<(), SolilangError> {
     serve::eui::script::remember_script(program);
     let interpreter = script_interpreter();
     let kernels = script_kernels(program, &interpreter);
-    let module = vm::Compiler::compile_with_kernels(program, kernels).map_err(|e| {
-        error::RuntimeError::General {
-            message: format!("Compile error: {}", e),
-            span: span::Span::new(0, 0, 1, 1),
-        }
-    })?;
+    let env = interpreter.environment.clone();
+    let is_builtin = |name: &str| env.borrow().get(name).is_some();
+    let module =
+        vm::Compiler::compile_entry_script(program, kernels, &is_builtin).map_err(|e| {
+            error::RuntimeError::General {
+                message: format!("Compile error: {}", e),
+                span: span::Span::new(0, 0, 1, 1),
+            }
+        })?;
     run_compiled_on_vm(&module, &interpreter)
 }
 
