@@ -2,6 +2,630 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Inside `partial()` and `component()` a controller `@ivar` now wins over a
+  view helper of the same name, as it already did in views and render-tag
+  partials; `locals` lists the passed keys and the inherited `@ivars`, no
+  longer the view helpers. (C568)
+
+### Performance
+
+- Partials and components read the app's view helpers and the controller's
+  `@ivars` through their scope instead of copying every helper and every field
+  into their data on each call, and `partial()` / `component()` render through
+  the template cache already rendering instead of taking the process-wide
+  template-cache lock: on a 50-row list a `partial()` row now costs about what
+  a `<%= render %>` row does, and every include got cheaper (C568).
+- View helpers (`app/helpers`) that call a builtin or another helper, or read
+  `req`/`params`/`session`/`cookies`/`headers`, now compile onto the view's VM
+  instead of running on the interpreter for every call: their closure names
+  become upvalues filled from the helpers' closure on each call. Helpers that
+  assign a closure name, name something the closure lacks, call an
+  interpreter-intercepted builtin (`grouped`, `respond_to`, …), read a
+  zero-argument function without parentheses, or keep a lambda outside a call
+  stay on the interpreter. A named-argument call to a helper from a view, or
+  from a compiled helper, binds on the VM too, and otherwise runs on the
+  interpreter with its labels instead of being compiled against the view's
+  globals (where `req` and the other helpers are missing). The view VM now
+  checks declared return types, as the interpreter does (#569).
+- Declaring `private` or `protected` no longer slows every instance access in
+  the process. On the VM, a method's accesses to its own members (`@x`, `@x =
+  v`, `@helper()`) pass on one comparison with the running frame's `this`. A
+  name that no class of the receiver's chain restricts is answered from a
+  per-class memo (`Class::restricted_method`), with no class-chain walk and no
+  scan of the call frames, at any call depth. Only a restricted name still
+  walks the chain and looks for the caller's `this`. The check also stops
+  allocating the member name, and hash dot-writes skip it. Verdicts and
+  messages are unchanged (#570).
+- VM: `Model.new()` / `Model.new(attrs)`, a class value's `nil?` / `class` /
+  `present?` / `blank?`, and model uploader and HABTM helpers (`photo_url()`,
+  `attach_photo(f)`, `add_tag(t)`) now run on the VM. Each of these calls used
+  to build a tree-walker seeded with a copy of every global, which cost ~35-47
+  µs plus ~90 ns per app global; they now take well under a microsecond. Every
+  `authorize(record)` of the auth scaffold gains this, because its
+  `policy_for` tests `policy_class.nil?`. (C571)
+- VM: object construction does less work per `new`. A served app's class (a
+  tree-walker constructor) has its constructor compiled once per class, in
+  constructor mode, and entered as an ordinary frame. Before, every `new`
+  compiled-cache-hit the constructor as a method, wrapped it in a fresh
+  closure and ran it in a nested `run()` only to discard its value;
+  `super(...)` into such a constructor and value objects did the same.
+  `Klass.new(args)` calls the constructor with its arguments where they are,
+  instead of draining them into a `Vec` and pushing them back. The "does this
+  class have its own static `new`" check (three superclass-chain walks, on
+  both engines) is memoized per class until a static method joins a class. A
+  new instance's field map is sized for every field its class and their
+  ancestors declare (a class the VM compiled started at 0 and regrew at its
+  4th and 8th field), and a model row's for its column count. (C572)
+- Maps of Soli values (object fields, model rows and their dirty snapshots,
+  computed-key and large hashes, request params/headers, tree-walker scopes)
+  now share one per-process hasher seed instead of each drawing one from
+  ahash's process-wide atomic counter, which multi-worker `soli serve`
+  contended on: object construction and computed-key hashes under 4 busy
+  workers drop from ~2.6x to ~1x their single-worker cost. (C573)
+- VM: `==`/`!=` against a literal or between two locals compile to one fused
+  op (`EqualLocalConst`, `EqualLocalLocal` and their `!=` twins, never emitted
+  before), a condition ending in `==` to the new `TestEqualJump`, and each
+  literal `match` arm to `EqualLocalConst`; string literals, symbols and
+  equality between Int/Float/Bool/nil/String/Symbol values now stay in the
+  fast tier, and `filter { |x| x == 5 }` runs as a frameless kernel. A
+  `grouped` read compared with `0` (`x == 0`) is now forced like any other
+  comparison instead of answering "not zero" (Bonfire #585).
+- VM: paren-less zero-argument builtins (`h.length`, `h.keys`, `s.blank?`,
+  `a.first`, `n.to_s`, `nil.to_s`) are now answered in the fast tier by method
+  id, as their `()` forms are. A bare hash builtin no longer allocates a
+  throwaway method value. `Int#to_s` and `Float`/`Decimal#round` with no
+  arguments, bare or with `()`, skip a discarded method value, and `Int#to_s`
+  formats through itoa. A hash key still outranks a builtin on the VM, a user
+  method on the type still wins, and `h.len` is still a method. (C586)
+- VM: the peephole now fuses a pattern whose first instruction is a jump
+  target. Before, it skipped any instruction a branch landed on before trying
+  a single rule, though every fused op is written at the head's own index and
+  only a target inside the pattern's tail is unsafe. Every `while` header and
+  the statement after each `if`/`elsif`/`else`/`unless`, loop, guard clause,
+  `catch` and match arm (and the first statement of a function with a
+  defaulted parameter) ran unfused. `while i < n` is now `LessLocalLocal,
+  JumpIfFalse` instead of `GetLocal, GetLocal, TestLessJump`, and `i += 1`
+  after an `if` is one `IncrLocal` instead of five ops. Phase-2 A/B: −13.4
+  ns/iter (−25%) for `i += 1` after a branch, −9.7 ns for `t = t + m`, −7.5 ns
+  for `y = h.a`, −4.3 ns for `y = k < m`. (C587)
+- VM: an assignment statement stores with one `SetLocalPop` instead of
+  `SetLocal` + `Pop`. `SetLocal` copied the value into the slot and left it on
+  the stack for the `Pop` to drop. `SetLocalPop` moves it, which saves a
+  dispatch and, for a String, Array, Hash or instance, a reference-count
+  increment and decrement. A new last step of the peephole pass
+  (`fuse_set_local_pop`) also covers a re-`let`, each `match` arm, `k += 2`
+  after its fused read, and stores whose value branches (`x = a || b`, a
+  ternary, `match`, `rescue`, `||=`). A branch onto the `Pop` itself (`ok &&
+  (x = 1)` as a statement) keeps the pair. Dead peephole rules are removed:
+  five-op `a = a - b`/`* b`/`/ b` rules behind the three-op ones (that shape
+  is now `SubLocalLocal, SetLocalPop` by the new step), a copy of
+  `AddLocalsInPlace`, and two `AddLocalInt` rules behind `AddLocalConst`.
+  Phase-2 A/B: −3.4 ns per Int store, −6.8 ns per String store, −7.4 ns per
+  Array store (about 40% of a simple assignment). Tests: `compiler.rs`
+  peephole tests (`assignment_statements_store_with_set_local_pop`,
+  `a_store_whose_pop_a_branch_lands_on_keeps_it`, …),
+  `differential_engines_test`
+  (`assignment_statements_move_the_value_into_the_slot`). (C588)
+- VM: `k -= 1`, Int `/` and `%` (and Float `/`), `??` / `??=`, `h["k"]` on a
+  hash and `xs[i]` in range now run in the VM's fast tier instead of costing a
+  round trip through the general dispatch loop (about 4.5 ns per op), and `k %
+  7` compiles to one fused `ModLocalConst` op. (#589)
+- Instance field reads and writes stay in the VM's fast tier. `@x`, `this.x`,
+  `post.title`, `@x = v` and `post.title = t` used to leave `run_fast` on
+  every execution, because its property arms answered only hashes and it had
+  no `SetProperty` arm. Now a field read completes there when the field is
+  present and is no `grouped {}` placeholder, and a write completes there when
+  it overwrites or adds a field of an instance that is no constructed value
+  object, in both cases after a privacy check that passes. Anything else goes
+  to the general arm, which answers as before: a miss (a method), a deferred
+  field, a refused private/protected access (checked a second time there, then
+  raised with the same message and span), a frozen value object, a hash write.
+  Results, errors and engine parity are unchanged (#590).
+- VM: instance method calls (`post.summary()`, `@helper(x)`, `this.total(a,
+  b)`) stay in the fast tier and find their method through a per-call-site
+  cache, validated by a global method-definition epoch, instead of walking the
+  class chain by name on every call. Omitted defaults, `send`,
+  `method_missing`, native methods and refused private calls still take the
+  general path. Method frames no longer build a span for the depth check on
+  every call. (#591)
+- VM: a static call (`Svc.compute(x)`, `Math.floor(f)`, `DateTime.utc()`)
+  resolves the method in one walk of the class chain instead of three, and a
+  tree-walker `static def` that does not read `this` (most app statics under
+  `soli serve`) is compiled once and kept on its class instead of being looked
+  up through the property path and wrapped in a new closure on every call
+  (Bonfire #592).
+- VM: `each_with_index`, `reject`, `find`, `any?`/`all?`/`none?`/`one?`,
+  `count`, `reduce`/`fold` and `sort_by` with a block,
+  `Int#times`/`upto`/`downto`, and blocks that destructure array elements
+  (`pairs.map { |a, b| … }`) now run inside the dispatch loop instead of
+  re-entering the interpreter for every element. Each now costs about what
+  `each`/`map` cost, where it used to cost about twice as much. A typed `def`
+  compiled to machine code that is passed to an iterator (`xs.map(score)`)
+  runs as machine code again instead of bytecode. (C593)
+- VM: blocks and lambdas that capture variables (`xs.map { |x| x * k }`,
+  `@items.map { |i| i * @rate }`) no longer allocate a closure, an upvalue
+  list and a cell on every evaluation: once warm they allocate nothing. The
+  method returns on the fast path, and a block nested in another block that
+  reads the outer block's variables keeps the in-loop frame reuse. `total +=
+  x` into a captured variable runs in the fast tier, and a captured string
+  accumulator (`out = out + piece`) now grows in place (linear instead of
+  quadratic). The closure cache spreads lambdas over all 64 of its slots
+  instead of 16. (C594)
+- VM: an array literal made only of literals is kept as one constant. `["up",
+  "late"].includes?(status)` (and `include?`, `contains`, `contains?`)
+  compiles to one operation against that list, with no array built and no
+  method dispatched: the test itself drops from about 100 ns to about 12 ns,
+  so the form `idiom/prefer-includes` recommends is now faster than the `==`
+  chain it replaces (59 vs 129 ns per loop iteration) and than a list hoisted
+  into a local (84 ns). Any other all-literal array (`["draft", "sent"]`, `[1,
+  2, 3]`) is built in one dispatch. Results are unchanged on both engines
+  (C595, Bonfire #595).
+- Loops at file scope run as fast as in a `def` on the VM. A script's
+  top-level variables (`n = 0`, `let n = 0`, `const N = 0`) used to be VM
+  globals, so every access hashed the name and none of the local
+  super-instructions applied: a `while` loop at file scope ran 4.7x (empty) to
+  6.5x (with an accumulator) slower than the same loop in a function. `soli
+  script.sl`, `soli -e` and script executables now keep a top-level variable
+  in a frame slot whenever nothing but the script's own top-level code can
+  reach it (`Compiler::compile_entry_script`). A name that a `def`, a block, a
+  lambda or a class mentions, a builtin the script assigns, a name read before
+  its first assignment, and every name in a program that calls `defined` or
+  `const_get` stay globals, so nothing a script can observe changes.
+  Arithmetic on literals is now folded at compile time: `60 * 60 * 24` is one
+  constant and `-1` needs no `Negate`; an overflow or a division by zero is
+  still raised at run time. (C597)
+- A bare local now costs what `let` costs on the VM. `name = value` with no
+  `let`, when it is the first mention of `name` as a statement at the top of a
+  function, method, constructor, block or view body, declares the local where
+  it stands, as `let name = value` does. It used to fill a slot with nil at
+  entry and then store into it (`Null`, `SetLocal`, `Pop`): three dispatches
+  per local per call. A helper with four such locals goes from 98 to about 71
+  ns per call. A local first assigned in a branch, a loop or a block, or read
+  or captured before its first assignment, is still hoisted, with the same
+  function-wide slot, and one `PushNulls(n)` now fills all of them. Nothing a
+  program can observe changes. (C598)
+- Scripts stay on the VM when they read `clock` bare (`elapsed = clock -
+  start`), call `send` on an instance or a class, or merely define their own
+  `methods`, `send` or `subscribe`; auto engine selection used to send them
+  whole to the tree-walker (up to 7.7× slower on loop-bound code). A `serve`
+  middleware reading `clock` bare is no longer demoted. `Klass.send("static",
+  …)` now runs on the VM. (#600)
+- serve: finishing an HTML response is cheaper, and the bytes are the same.
+  Placing the framework's script tags before the last `</body>` used to search
+  a page backwards byte by byte, lowercasing each byte. A page without
+  `</body>` was searched end to end twice, once for `</body>` and once for
+  `</html>`: an htmx fragment, a `render(..., {"layout": false})`, a
+  `_partial` view. Each page-gated script (native bridge, camera, motion
+  sensors, proof of work) also ran its own full-page searches for its gate and
+  its marker, six forward scans per page. Now one SIMD pass over the page's
+  `soli` substrings answers every gate and marker, and one SIMD backward pass
+  over its `<` bytes places every tag. Measured on an M1 Pro with 2.29.3: a 1
+  MB fragment cost 4.48 ms per request against 1.19 ms for the same body with
+  `</body>`, and 5 KB cost 0.137 against 0.115 ms. On the fixed build (build
+  server, x86) the 5 KB pair is 0.068 against 0.070 ms. (C601)
+- `Array#sort` without a comparator sorts all-Int, all-String and all-Float
+  (no NaN) arrays with the standard library's sort, and the tolerant merge
+  sort behind `sort { |a, b| … }`, `sort_by("key")` and mixed-type `sort` now
+  merges indices and moves each element once instead of cloning every element
+  at each merge level; results are unchanged (N11).
+- Per-request environment reads are gone from the hot path: the handler budget
+  and the range/string/page ceilings are read once, `getenv`/`hasenv` answer
+  from a per-worker cache under `soli serve`, and `public_path()` caches its
+  versioned URLs per worker (production) (N32).
+- A bare call to a method of `this` inside an instance method (`_step(i)`
+  rather than `@_step(i)`) resolves once: the VM no longer allocates the name
+  twice, probes the globals twice and walks the class chain twice per call,
+  and enters a compiled method directly. A bare call to a global from a method
+  (a builtin or a later `def` in scripts) also skips the second probe (T10).
+- VM: global builtin calls (`int`, `len`, `h`, `link_to`, `render`, …) run on
+  the VM stack slice with no argument `Vec`, no callee clone and no per-call
+  name compares, and a span log that is off costs one atomic load instead of a
+  thread-local read (about 10-14 ns per call). (T12)
+- A `for` loop or a list/hash comprehension over a range in parentheses, `for
+  i in (0..n)`, counts through it as the bare form does, on both engines,
+  instead of building the whole range as an array first (24 bytes per element,
+  and refused past `SOLI_MAX_RANGE_LEN`). Tree-walker comprehensions no longer
+  build a bare range either. The VM now reports a non-integer range bound at
+  the range, as the tree-walker does, instead of at the `for` statement. (VM
+  audit T13)
+- `match` on the VM: array patterns test type and length with one
+  `MatchArrayLen` op and build `...rest` natively (`ArrayRestLocal`); typed
+  patterns, typed `catch` and enum payload bindings no longer allocate the
+  type/variant name, a hash key and a field-name list on every test. (T14)
+- VM: calls to functions with defaulted parameters no longer leave the fast
+  tier, whether the argument is supplied or omitted (about 6 ns saved per
+  default per call). Named-argument calls to compiled functions and
+  constructors bind in place on the stack instead of building three or four
+  vectors per call. (T18)
+- `<%= %>` escapes straight into the page buffer: clean runs are copied whole
+  and 16-byte blocks are scanned at once, so text with an apostrophe or quote
+  no longer goes through a byte-by-byte temporary buffer; floats print through
+  ryu, and Decimal/DateTime values skip the escape pass. Output is unchanged.
+  (T27#112)
+- A `DateTime` turns into text (`"#{d}"`, `str(d)`, `d.to_s`, `<%= d %>`,
+  `join`) without chrono's runtime-parsed strftime or a temporary String: the
+  fixed `YYYY-MM-DD HH:MM:SS` form is written on the stack, byte-identical in
+  both the UTC and local views (#113).
+- A view's partial or component rendered on the VM borrows its page buffer
+  from the renderer's pool instead of allocating 4 KB per include, and
+  `partial()`, `component()` and the render tag hand a page-sized include's
+  buffer back once copied; the include's name is no longer copied into a new
+  string. (T27#129)
+- A view compiled to the VM no longer pushes and pops a throwaway nil around
+  each text chunk and `<%= %>` / `<%- %>` write: one VM dispatch less per
+  write (~2 ns, about 40% of a literal-text write). (T27#30)
+- String indexing `s[i]` no longer decodes the whole string on each access: it
+  reads an ASCII byte directly or walks to the character, so loops over a
+  string's indexes are linear instead of quadratic.
+  `s.to_s()`/`s.trim()`/`s.chomp()`/an already-cased `s.upcase()` share the
+  receiver instead of copying it twice. The `upcase`/`downcase` no-op check is
+  vectorized. `split`/`lines` pieces and padded strings are built without an
+  intermediate copy, a pad that adds nothing returns the receiver, and `for ch
+  in s` no longer allocates per character. (#607, T28)
+- The VM answers one-argument array calls (`xs.includes?(v)`,
+  `xs.include?(v)`, `xs.contains(v)`, `xs.index_of(v)`, `xs.get(i)`,
+  `xs.take(n)`, `xs.drop(n)`, `tags.join(", ")`) by method id, reading the
+  argument off the stack instead of cloning the receiver, building an argument
+  list and matching the name; `includes?` and `contains?` (the spellings the
+  style guide uses) get the ids of `include?`/`contains` on strings and
+  arrays; a hash method the borrowed tier cannot answer (`h.clear()`,
+  `h.set(k, v)` by name) walks that tier once instead of twice; dead inline
+  name matches in `CallMethod` are gone (T30).
+- VM: `h.key = v` on a hash stays in the fast tier (about half the cost it
+  had), and constant-key hash writes (`h.key = v`, `h["key"] = v`) add a new
+  key by sharing the constant pool's string instead of copying it, with one
+  probe instead of two, and `h["key"] = value` on a hash without that key
+  shares the literal key instead of copying it twice (a `String`, then an
+  `EcoString`) (#607 / T31, T33.32).
+- VM: a Decimal literal (`19.99D`) is parsed once, when it is compiled,
+  instead of on every evaluation. Loading one is now a copy in the fast tier:
+  about 14 ns less per evaluation (`price = 19.99D` now costs what `price =
+  cost` costs). `price < 20.00D` also saves the parse. (T33.102)
+- `"str" + x` with a non-string `x` is built like an interpolation (no
+  `Display` formatter), instance `==` answers identity before probing for enum
+  variants, and the VM orders two strings inline. (T33.116)
+- VM: a `try` block or `expr rescue x` that does not throw no longer leaves
+  the fast dispatch tier (`TryBegin`, `TryEnd`, `PopHandler`, `RescueJump` and
+  a `ForceFuture` on a non-Future now run there), saving roughly 15-30 ns per
+  protected expression. (T33.119)
+- Model scope lookups no longer allocate: the VM's probe on every model-class
+  call and query-builder method (`Post.where(...).order(...).limit(...)`)
+  borrows its keys from a class -> scope registry hashed with ahash, and
+  returns at once when no scope exists (VM audit T33.130, #607).
+- VM: a branch on a bare local (`if flag`, `unless flag`, `if !flag`, `x = 1
+  if flag`) is one fused instruction (`JumpIfLocalFalsy` /
+  `JumpIfLocalTruthy`) instead of a truthiness push and a conditional jump,
+  and `Value::is_truthy` is inlined for `Bool`, `nil` and `Int` (both
+  engines). (T33.19)
+- VM: `super.m(...)`, `send`, and top-level `g = g + expr`, `g << x` and `g =
+  g + "lit"` no longer copy the name out of the constant pool on every
+  execution; the remaining name copies skip the `fmt` machinery (T33.20).
+- `RuntimeError` shrinks from 88 to 48 bytes: the dev-error-page payloads
+  (`WithEnv`, `Breakpoint`) and `NoSuchProperty` live behind a `Box`, so every
+  `Result` a VM or interpreter helper returns is smaller and `run_dispatch`'s
+  stack frame narrows; error messages are unchanged. (T33.33)
+- VM fast tier: branches, `!`, `dup`, null tests, arithmetic, comparisons,
+  equality and index reads read the top of the operand stack without a bounds
+  check, as the general tier already does. Local slot reads stay
+  bounds-checked (T33.34).
+- With `SOLI_METRICS=1` the VM times only its outermost run: blocks driven by
+  `reduce`/`each_with_index`/`find`/`sort_by`, paren-less method calls and
+  constructors no longer pay a clock pair and two shared atomic adds each (~30
+  ns), and `soli_vm_execution_seconds` no longer counts nested time twice;
+  `_count` now counts VM entries (handler, middleware, view, script), not
+  activations. (T33.35)
+- Script-mode return-type checks no longer allocate. A function's declared
+  return type is lowered once when it is compiled, and `value_matches_type`
+  compares type names without lowercasing them (both engines). (T33.36)
+- VM: a call to a function compiled to a native kernel stays in the fast
+  dispatch tier; a kernel that declines (an argument of another type, an
+  overflow) no longer makes the call slower than with no kernel at all.
+  (T33.52)
+- VM: a static field holding plain data (`Conf.per_page`, `Post.STATUSES`, an
+  enum's unit variant `Status.Active`) is read in the fast tier instead of the
+  generic class-member path, and `==` between an enum value and itself
+  (`status == Status.Active` on a unit variant) is answered by identity before
+  any field compare (T33.66).
+- VM: `@x ||= v` on a set field is a fast-tier read and a jump (no general-arm
+  read, no write-back). `obj.is_a?("C")` and `obj.respond_to?("m")` on a plain
+  instance are answered by a class walk, with no closure or tree-walker
+  interpreter built per call. (T33.67)
+- VM: `filter`/`select`/`reject`, `find` and `sort_by` blocks keep the element
+  they hand the block in a plain slot instead of a key/value pair, saving a
+  clone call and drop glue per element on the frame path (T33.85).
+- `unless <expr>`, `x unless <expr>`, `return x unless <expr>` and `if
+  !<expr>` branch with one `JumpIfTrue` on the VM instead of `Not,
+  JumpIfFalse` (one dispatch fewer, about 4 ns per guard). (VM audit T33.95,
+  #607)
+- VM: `k += c`, `k -= c` and `k *= c` on a local with an Int or Float constant
+  other than `+= 1`/`-= 1` run as one in-place op (`AddLocalConstInPlace`,
+  `SubLocalConstInPlace`, `MulLocalConstInPlace`) instead of a pushed read and
+  a store; a Float local no longer leaves the fast tier. (T33.99)
+- Under `soli serve`, calling an app-level `def` (an app/helpers function, a
+  def in a model, service or policy file, the auth scaffold's
+  `authorize`/`current_user`) from a controller, middleware or view no longer
+  allocates a VM closure per call: the closure is kept on the function after
+  its first call, and controller/middleware calls enter it through the VM's
+  fast call path (#607). (T9)
+
+### Fixed
+
+- An app helper named like a framework function (a route helper, the form
+  builder's `button_to` / `csrf_field`, `Retry`) is the app's in `<%= render
+  "x" %>` partials too, as it already was in views and `partial()`: the render
+  tag called the framework's (a 500 for once-campfire's `button_to`). A form's
+  own CSRF field stays the framework's on the VM when the app defines
+  `csrf_field`. `partial()`, `component()` and the render tag no longer write
+  helpers and controller fields into the hash the view passed. (C568, N21)
+- `<% title = title + "!" %>` (or `title += "!"`) in a view, on a name from
+  the render data or a controller `@ivar`, no longer panics with "RefCell
+  already mutably borrowed" (a 500). (C568)
+- VM: `Model.new(...)` on a model class that defines a static `method_missing`
+  builds the record with its attributes, as on the tree-walker, instead of
+  dispatching to `method_missing`. (C571)
+- VM: a `return` in a constructor (a guard such as `return if x.nil?`, or one
+  inside `try`/`finally`) no longer makes `new K(..)`, `K.new(..)` or `K(..)`
+  evaluate to `nil` in a script. `new` is the instance however the constructor
+  ends, as on the tree-walker. A `break`/`next` outside a loop in a
+  constructor does the same. (C572)
+- serve: an error a handler raises on both engines no longer moves it off the
+  VM. Examples are a `throw`, a nil read from a missing parameter, or a
+  `JSON.parse` of a bad body. In production, one such request used to demote
+  the action, controller hook or middleware to the tree-walker for the rest of
+  the worker's life: 242 to 767 µs a request on a compute-heavy action, and
+  162 to 321 µs on a middleware with a loop. Any client could trigger it with
+  one bad request. A handler now leaves the VM only when the VM was at fault:
+  it refused the handler (`EngineFallback`), or the tree-walker's re-run
+  succeeded where the VM failed (an engine divergence, still logged, counted,
+  and a hard stop under `SOLI_FAIL_ON_VM_DEMOTION=1`). A handler that fails
+  after a database write is not re-run, and is demoted as before. A failing
+  request is still re-run on the tree-walker, which answers it. So side
+  effects before the error that are not database writes (print, outbound HTTP,
+  mail, cache) now run twice on every such request, not only on the first per
+  worker. `soli_vm_handler_demotions_total` counts only real demotions now.
+  (C574)
+- Views: a bare `clock` is the time in a VM-compiled view, as in an action. It
+  used to be the function itself, so `clock - start` raised and serve rendered
+  every such page twice, the second time on the tree-walker (−45% req/s on a
+  50-row list page). A view the VM fails on while the tree-walker renders it
+  stays on the tree-walker instead of being rendered twice on every request,
+  and `SOLI_ENGINE_LOG=1` now names, once each, the views, partials, layouts
+  and view helpers the interpreter renders, with the reason. (C575)
+- **VM: a block may declare fewer parameters than its iterator passes.** On
+  the bytecode VM, the default for scripts and for `soli serve` handlers,
+  `3.times do … end`, `1.upto(n) { … }`, `xs.each { … }`, `xs.map { 5 }`,
+  `xs.any? { … }`, `xs.sort_by { … }`, `h.each { … }`, `h.transform_values { …
+  }`, `xs.each_with_index { |x| … }` and the other iterators raised "Wrong
+  number of arguments: expected 0, got 1". In `serve` the action was then
+  demoted and replayed on the interpreter. These blocks now bind only the
+  parameters they declare, as on the tree-walker. A one-parameter `reduce`
+  callback receives `[acc, x]`, and direct calls (`f(5)` on `fn() { … }`)
+  still check arity. 0-param `each`/`map`/`filter` and hash iterators run on
+  the in-VM callback loop. This also fixes a VM panic (`capacity overflow`)
+  when a destructuring callback declared more defaulted than required
+  parameters. (C576)
+- VM: declared fields are initialized as on the tree-walker. Every field a
+  class and its parents declare is set before any constructor runs, the
+  farthest class first: its default, or `nil` without one. On the VM, reading
+  a field that a constructor never assigned (`bio: String` with `new(name)`)
+  raised "Cannot access property". A served app's classes got none of their
+  field defaults: the handler was demoted, and a value object got `nil` in
+  place of its default (`Amount.new(500).currency`). A parent's defaults were
+  lost when a child's `new` skipped `super`, and `super()` re-applied them
+  over the child's. A default that is not a literal also ran once when the
+  class was defined. On a class with defaults and no `new`, `Klass.new({..})`,
+  `Klass.new(k: v)` and `new Klass(x)` raised. The attribute form
+  (`Klass.new()`, `Klass.new({..})`, `Klass.new(k: v)` on a class without a
+  constructor) now starts the fields like `new Klass()` on both engines:
+  before, the tree-walker left a field without a literal default unset there.
+  (C577)
+- The response cache no longer answers a render whose data holds an object (a
+  model record from `Post.all` or `Post.find`, any class instance) or a query
+  not yet run with the page of an earlier request. The data signature hashed
+  an object by the length of its class name, so a list of records kept its
+  first page after an edit, and a mailer view on a worker sent one user's mail
+  to the next (`UserMailer.welcome(user)`: Bob got "Welcome, Alice!"). Such
+  data now makes the render uncacheable, for that render only. Other changes
+  to the signature: `Decimal` and `DateTime` values are hashed by value
+  (`6.25D` was answered with the `3.25D` page), strings are hashed with their
+  length (`?qS=x` and `?q=Sx` no longer share a page), and render data that
+  contains itself is refused instead of overflowing the stack. A component's
+  `"cache": true` key now hashes a record by its class and fields, so two
+  records no longer share one KV entry (C578).
+- VM: `super` in the classes of a served application now runs on the VM. Under
+  `soli serve`, a constructor's `super(...)` (the documented custom error
+  `super("overdrawn by #{amount}", {...})`, a subclass handing its arguments
+  up), a `super.m()` reached through another `super`, and `super.show(req)` in
+  an action raised "super used outside of a subclass method". The handler was
+  demoted to the interpreter, and inside a `try` or behind `rescue` the VM
+  answered with its own error instead. Every frame that runs a tree-walker
+  constructor or method (an inherited one included) now records the class that
+  declares it: `call_class`, `call_init_of`, `super.m()`, value-object
+  constructors, invariants, model callbacks and the action itself. (C579)
+- VM: `x = x` (also `p = p` on a parameter, a same-scope `let x = x`, `y = (x
+  = x)` and `@x = @x` in a view) no longer swaps two locals or panics with
+  "index out of bounds". The cause was the `SwapSetLocal` peephole, which is
+  now removed. An index assignment with a literal key (`h["k"] = v`,
+  `h.set("k", v)`) in the middle of an expression no longer sends a later
+  comprehension or binding `match` into an occupied slot (`stack_effect`
+  counted `HashSetLocalConst`/`HashSetGlobalConst` at -1 instead of 0). (C580)
+- VM: a condition ending in `!=` (`if`, `elsif`, `while`, a ternary, a postfix
+  `if`, a guard clause, a match guard, a comprehension filter) compares enum
+  values by value, as `a != b` as a value and the tree-walker always did. The
+  fused `TestNotEqualJump` op compared two instances by pointer. So two equal
+  enum values built apart took the "different" branch: any payload variant,
+  and every enum rebuilt from storage (an `enum_field` read,
+  `Status.parse(...)`, a state-machine transition). `if order.status !=
+  Status.Paid` was true for a paid order read from the database, in
+  controllers and views. The dormant `EqualLocalLocal`/`NotEqualLocalLocal`
+  general arms had the same bug and are fixed too. Every VM op that compares
+  two values for `==`/`!=` now decides through one helper, `values_equal`.
+  (C581)
+- VM: Decimal arithmetic and comparisons no longer raise a type error. This
+  covers `19.99D * 3`, `a + b`, `a / 0.00D`, Decimal `%`, `a > b`, `a < 20`,
+  `total += line_price` and `Money` amounts. `Array - Array` no longer raises
+  "Cannot subtract array from array". The VM's slow operator arms now call the
+  tree-walker's own definitions (`Interpreter::eval_add` … `eval_modulo`,
+  `compare_ordered`) instead of a partial copy. Scripts using these no longer
+  stop with exit 70 in auto mode, and `soli serve` no longer demotes such
+  actions to the interpreter or renders such views twice per request. The same
+  change fixes four smaller divergences:
+  - On the VM, `1.5 % 0` is NaN.
+  - On the VM, a non-numeric `x / 0` or `x % 0` names its type error instead
+    of "Division by zero".
+  - The tree-walker orders DateTimes exactly to the nanosecond. It rounded
+    through f64 to 256 ns, so `a < b`, `a == b` and `a > b` could all be
+    false.
+  - A Decimal `%` overflow raises `decimal overflow` instead of panicking.
+    (C582)
+- VM: labelled arguments on a method call keep the receiver. `obj.m(k: v)`,
+  `this.m(k: v)`, `@m(k: v)`, `obj&.m(k: v)` and the bare `m(k: v)` inside a
+  class used to compile to a read of `m` plus a named call, so the method ran
+  without its receiver. Under the default engine a script failed with "Cannot
+  access property 'm'". In `soli serve`, `this` was silently the function
+  itself, or the handler was demoted and run twice. A method whose parameters
+  all have defaults also ran once on that read, without the labels. A `static
+  def` that reads `this` lost it the same way, and `nil&.m(k: f())` evaluated
+  `f()`. These calls now compile to `CallMethodNamed` /
+  `CallSelfOrGlobalNamed`, which bind the labels as the tree-walker does: a
+  block goes to a `&blk` parameter (or is dropped), natives get an options
+  hash, and `method_missing` gets the labels as one hash. (C583)
+- `soli new`: the starter helpers `truncate_text` and `capitalize` in
+  `app/helpers/application_helper.sl` no longer raise in views. They called
+  `substring(...)`, a function only templates have, and `upcase(...)`, which
+  exists nowhere. A helper sees neither, so in production and with
+  `SOLI_VM_VIEWS=0` a page that truncated text longer than the limit, or
+  capitalized anything, answered 500 ("Cannot call non-function value"). Both
+  now use string methods and count characters, not bytes. `capitalize` still
+  upper-cases only the first letter. An app made before this fix can paste the
+  two new definitions: `return text if len(text) <= length` then
+  `text.substring(0, length - len(suffix)) + suffix`, and `text.substring(0,
+  1).upcase + text.substring(1, len(text))` (C584).
+- VM: once a superclass `static def` that reads `this` had run, a subclass's
+  own `static def` of the same name was skipped and the superclass's ran
+  instead (under `soli serve`, where app classes are loaded by the
+  tree-walker). (C592)
+- VM: after a `throw` caught in the same function, a closure over a local
+  declared in the `try` body read and wrote whatever variable came to occupy
+  that local's slot. `fns[0]()` returned a later `let`'s value and changed it.
+  `captured = captured + x` now reports an overflow or type error at the
+  assignment, as the tree-walker does, instead of at the `+`. (C594)
+- VM: a `map` or `transform_keys` block whose result cannot be a hash key
+  (`h.map { |k, v| [[1], v] }`, `h.transform_keys { |k| [k] }`) now reports
+  "hash key must be hashable" / "transformed key must be hashable" at the
+  method call, as the tree-walker does. It was reported at some op inside the
+  block. (C594)
+- JSON of class instances and model records (`render_json`, `JSON.stringify`,
+  `to_json`) now writes keys sorted by name instead of in a random per-object,
+  per-request order, so identical data gives identical bytes; the
+  sensitive-field filter no longer allocates a lowercased copy of every field
+  name (~12 ns per field) (C596).
+- VM: `print`/`puts`/`println` no longer keep a copy of every printed line in
+  an unread buffer (an unbounded per-worker memory leak under `soli serve`);
+  they now resolve Futures and honour per-thread stdout capture like the
+  tree-walker (#602).
+- A hash read with dot notation now gives the same answer on both engines.
+  - **A key named like a hash method reads as the key** when the hash has it:
+    `size`, `key`, `values`, `length`, `select`, `class` and so on. `{"size":
+    2048}.size` is 2048. This was already the case in `soli serve` (the VM),
+    and is now the case in `soli test`, `soli serve --dev` and `soli --tree`
+    too. Before, those answered the method: `row.size` was the entry count and
+    `row.key` a method object.
+  - **Without the key, the method answers**, as before: `{"a": 1}.size` is 1.
+  - **Parentheses always call the method**: `row.size()`, `row.key("abc")`.
+  - **The VM no longer overwrites the field in `||=` / `??=`.** `row.size ||=
+    0` used to write the entry count over a `size` field, and `row.map ??= v`
+    a method object over a nil `map`.
+  - **A Hash user method no longer flips such reads on the VM.** Once any Hash
+    user method existed, these reads started answering the method.
+  - The shared `Interpreter::hash_member_value` now probes the key before the
+    builtin names, and `Interpreter::hash_callee_value` keeps a call
+    method-first. (C603)
+- `render(view, data)`, and `partial()` / `render_partial()` called from a
+  helper, a service or an action, no longer write `req`, `params`, `cookies`
+  and the controller's `@ivars` into the hash you pass: they go into a copy. A
+  hash kept past the request (a `const` of defaults) kept the first request's
+  values, which won over every later request's on that worker, so one visitor
+  was rendered another's `req`, cookies and `@ivars`. A view's hash passed
+  through a helper's `partial()` also gained `req` and `cookies`, which a
+  later `json_script` printed into the page. (C604)
+- `String#truncate` counts length and suffix in characters and cuts on a
+  character boundary: `"ééééé".truncate(3, "")` no longer panics the process
+  (a 500 under `soli serve`) on either engine, and accented, CJK and emoji
+  text keeps as many characters as ASCII. (C605)
+- VM: `+=`, `-=`, `++`, `--`, `a = a + b` and `acc = acc + h[names[k]]` on Int
+  locals raise `integer overflow: … does not fit in an Int` past the Int
+  range, as the tree-walker and the plain `+`/`-` operators already did. The
+  fused `IncrLocal`, `DecrLocal`, `AddLocalsInPlace`, `AddLocalInt` and
+  `AddNestedIndex` ops used an unchecked `+`/`-` (or `wrapping_add`) in their
+  general arm, so `i += 1` on 9223372036854775807 gave -9223372036854775808 in
+  a release build. A caught overflow leaves the variable unchanged. (C606)
+- Tree-walker: a method added at run time with `define_method` or
+  `alias_method` now reaches subclasses (and, for the class-level form, the
+  class's own instances) that had already looked up a method; the flattened
+  method cache is validated against a global method-definition epoch (parity
+  with the VM). (N2)
+- `for ch in s` iterates a string's characters on the tree-walker too (it
+  raised `cannot iterate over string` there while the VM iterated), and the
+  type checker accepts it on a visible `String`, binding `ch` as a `String`.
+  (N22)
+- An OOP controller action that ends with `render_json`, `render_text` or
+  `render_jsonp` no longer auto-renders the view of the same name: the view
+  was rendered for nothing, and a view that raised turned the JSON answer into
+  a 500. JSON actions also skip the view lookup, data-hash build and layout
+  resolution they paid on every request (~3% of a small JSON request). (N28)
+- `soli lint`: `smell/closure-cycle` no longer flags closures stored on the
+  class — the documented `this.before_action = fn(req) { … }` /
+  `this.after_action` hooks in `static { … }`, `static def` bodies and
+  class-level statements; instance code and lambda bodies are still checked.
+  (N35)
+- `s[-i]` on non-ASCII text counts characters from the end on the tree-walker
+  too (it offset from the byte length, so `"héllo"[-1]` raised), and an
+  out-of-range string index reports the length in characters on both engines.
+  (N5)
+- VM: a method `define_method` gives a primitive type
+  (`Array.define_method("includes?", …)`) now outranks the builtin on exactly
+  the calls where the tree-walker lets it. A block-less paren call on a
+  String, Array or Hash to a directly-dispatched builtin (`includes?`,
+  `select`, `sum`, `upcase`, …) runs the builtin. Block calls, other names and
+  other primitives (`5.to_s()`) run the override. Before this, the VM decided
+  by whether the method name had an internal method id. (N6)
+- **docs:** The controller agent guide that `soli new` writes into
+  `app/controllers/CLAUDE.md`, the testing guide and the metaprogramming page
+  now call `Klass.new()`. A bare `Post.new` is a member read that returns the
+  class or the native `new`, not an instance. A test
+  (`tests/docs_bare_new_test.rs`) now fails if a bare `Klass.new` reappears in
+  the docs' or scaffold's code blocks. (N9)
+- The type checker defines the `...rest` name of an array or hash `match`
+  pattern: `[first, ...rest] => rest` (or any other read of `rest`) used to
+  stop the program with `Type error: Undefined variable 'rest'` before either
+  engine ran it. (T14)
+- On the VM, a non-string argument to
+  `contains`/`contains?`/`include?`/`includes?`/`starts_with?`/`ends_with?` on
+  a string, and a non-string separator to `Array#join`, raise the
+  interpreter's message (`includes? expects a string argument`, `join expects
+  a string delimiter`) instead of `expected string argument` / `join expects a
+  string separator`. (T30)
+- VM: a Decimal literal that does not parse no longer reads as 0. This covers
+  an integer part past Decimal's range, such as
+  `99999999999999999999999999999999.5D`, and a `%n[...]` word that is not a
+  number, such as `%n[abcD]`. The compiler now refuses the literal, so
+  scripts, `soli serve` handlers and views run it on the interpreter. The
+  interpreter raises `Invalid decimal literal: …` where the literal is
+  evaluated, as `--tree` always did, and `--vm` reports it before the script
+  starts. Both engines now read a literal through one function
+  (`DecimalValue::from_literal`). (T33.102)
+- On the VM, `-> Function` and function-typed returns (`-> (Int) -> Int`)
+  accept the VM's own closures instead of raising "expected to return
+  Function, got Function". (T33.36)
+- VM: `obj.x ||= v`, `&&=` and `??=` that short-circuit no longer write the
+  field back, as on the tree-walker. A value object's field can be tested this
+  way without raising "value objects are immutable", `obj.getter ||= v` no
+  longer copies the getter's result into a field, and the receiver is
+  evaluated once. (T33.67)
+
 ## [2.29.3] - 2026-11-01
 
 ### Changed
