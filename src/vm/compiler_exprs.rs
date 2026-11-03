@@ -1884,7 +1884,7 @@ mod block_call_flag_tests {
         );
         assert_eq!(
             first_method_call("xs = [1]\nxs.includes?(1)"),
-            (false, false)
+            (false, true)
         );
         assert_eq!(first_method_call("xs = [1]\nxs.sum()"), (false, true));
         assert_eq!(first_method_call("xs = [1]\nxs&.first()"), (false, true));
