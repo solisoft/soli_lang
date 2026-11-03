@@ -245,10 +245,10 @@ impl Metrics {
         self.parsing_count.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Record one outermost VM activation. The caller has checked
+    /// [`metrics_enabled`]: a VM reads it once, when it is made, and times
+    /// only its outermost `run` (see `Vm::run`).
     pub fn record_vm_execution(&self, elapsed: Duration) {
-        if !metrics_enabled() {
-            return;
-        }
         self.vm_execution_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.vm_execution_count.fetch_add(1, Ordering::Relaxed);
@@ -282,36 +282,6 @@ impl Metrics {
         self.db_query_duration_ns_total
             .fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
         self.db_query_count.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-pub struct VmTimingGuard {
-    /// `None` when metrics are disabled — avoids the `Instant::now()` syscall
-    /// on every `vm.run()`, which is on the hot path of every request handler.
-    start: Option<Instant>,
-}
-
-impl VmTimingGuard {
-    #[inline]
-    pub fn new() -> Self {
-        Self {
-            start: metrics_enabled().then(Instant::now),
-        }
-    }
-}
-
-impl Default for VmTimingGuard {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Drop for VmTimingGuard {
-    #[inline]
-    fn drop(&mut self) {
-        if let Some(start) = self.start {
-            Metrics::global().record_vm_execution(start.elapsed());
-        }
     }
 }
 

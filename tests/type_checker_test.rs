@@ -436,6 +436,27 @@ end
     );
 }
 
+// A string iterates by character on both engines, so `for ch in s` with a
+// visible String is accepted and binds `ch` as a String.
+#[test]
+fn for_over_a_string_typechecks_and_binds_a_string() {
+    check_ok(
+        "
+let word: String = \"héllo\"
+for ch, i in word
+  let c: String = ch
+  let n: Int = i
+end
+",
+    );
+    let errors = check_err("for ch in \"abc\" { let n: Int = ch; }");
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch: the loop variable is a String",
+    );
+}
+
 #[test]
 fn for_over_int_errors() {
     let errors = check_err("for x in 5 { let y = x; }");

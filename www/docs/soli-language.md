@@ -431,6 +431,12 @@ print(s.starts_with("Hell"));  # true
 print(s.ends_with("!"));      # true
 print(s.casecmp?("hello, world!"));  # true (case-insensitive equality)
 
+# Indexing counts characters, never bytes; a negative index counts from the end
+print("héllo"[1]);         # "é"
+print("héllo"[-1]);        # "o"
+# Past either end it raises: Index out of bounds: 5 (length 5) — in characters
+print("héllo"[5] rescue "none");  # "none"
+
 # String transformation
 snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
@@ -700,6 +706,12 @@ end
 # 0: apple
 # 1: banana
 # 2: cherry
+
+# Iterate over a string: one character (a one-character String) at a time,
+# not one byte — "é" and "😀" are single steps
+for ch, i in "héllo"
+  print("#{i}: #{ch}")  # 0: h, 1: é, 2: l, 3: l, 4: o
+end
 
 # Iterate with range
 for i in range(0, 5)
@@ -1743,6 +1755,15 @@ labels = ["a", "b"].each_with_index.map { |letter, i| "#{i}:#{letter}" }  # ["0:
 
 # A block with two or more parameters destructures an array element, as in Ruby
 [["Ann", 31], ["Bob", 42]].map { |name, age| "#{name} (#{age})" }  # ["Ann (31)", "Bob (42)"]
+
+# A block may declare fewer parameters than the iterator passes and gets only those.
+# This holds for every iterator (times/upto/downto, the array and hash methods).
+3.times { print("hi") }                                # no index
+["a", "b"].each_with_index { |letter| print(letter) }  # the element, without its index
+numbers.each { print("tick") }                         # once per element
+# One exception: a one-parameter `reduce` callback gets the [acc, x] pair, just as
+# a one-parameter hash block gets [key, value]. A direct call still checks arity:
+# `f = fn() { 1 }` and then `f(5)` raises "expected 0, got 1".
 
 # reduce - accumulate to single value
 sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55

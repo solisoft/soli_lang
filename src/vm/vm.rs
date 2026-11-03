@@ -9,9 +9,9 @@ use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
     build_interpolated, hash_get_value, hash_set_value, same_string, Class, HashKey, HashPairs,
-    SoliStr, StrKey, Value,
+    StrKey, Value,
 };
-use crate::metrics::VmTimingGuard;
+use crate::metrics::{metrics_enabled, Metrics};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -151,8 +151,8 @@ pub enum IterState {
     Callback(Box<super::vm_callback_loop::CallbackLoop>),
 }
 
-/// Slots in `Vm::closure_cache`.
-const CLOSURE_CACHE_SLOTS: usize = 64;
+/// Slots in `Vm::closure_cache` and `Vm::closure_spares`.
+pub(crate) const CLOSURE_CACHE_SLOTS: usize = 64;
 
 /// The bytecode VM.
 pub struct Vm {
@@ -162,8 +162,10 @@ pub struct Vm {
     pub frames: Vec<CallFrame>,
     /// Global variables.
     pub globals: HashMap<String, Value>,
-    /// Open upvalues (pointing to stack slots that are still live).
-    pub open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
+    /// Open upvalues — cells pointing at stack slots that are still live —
+    /// each with the slot it points at, sorted by slot. A returning frame's
+    /// cells are then the tail (see `vm_upvalues.rs`).
+    pub open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
     /// One past the highest stack slot an open upvalue points at (0 when
     /// none is open), so a return can tell in one comparison whether its
     /// frame has anything to close. Kept by `capture_upvalue`,
@@ -175,10 +177,19 @@ pub struct Vm {
     /// Closures that capture nothing, one per `fn` expression, shared by
     /// every evaluation of it — see `Op::Closure`. Direct-mapped by the
     /// prototype's address; each entry keeps its prototype alive.
-    closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    pub(crate) closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
     /// What each `CallMethod` / `CallMethodById` site found on each receiver
     /// class it saw, for the fast tier's method calls (`Vm::fast_method`).
     method_cache: super::method_cache::MethodCache,
+    /// Closures that capture, each kept by the iterator loop that held the
+    /// last reference to it, with its upvalues emptied: the next evaluation
+    /// of the same `fn` expression refills it instead of allocating.
+    /// Mapped like `closure_cache`; each holds only its prototype.
+    pub(crate) closure_spares: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    /// Upvalue cells nothing referenced any more when their variable went
+    /// out of scope, kept for `capture_upvalue` to reuse. They hold no
+    /// value. Bounded.
+    pub(crate) upvalue_pool: Vec<Rc<RefCell<Upvalue>>>,
     /// Emptied arrays nothing else references, handed back by an iterator
     /// loop (a `map` callback's `[key, value]` pair once its entry is taken
     /// out) for `Op::Array` to fill instead of allocating. Bounded.
@@ -219,6 +230,42 @@ pub struct Vm {
     /// what the tree-walker raises. On for scripts; off under `soli serve`,
     /// where applications have always run without the check.
     pub check_return_types: bool,
+    /// `SOLI_METRICS` is on: time this VM's outermost `run` for
+    /// `soli_vm_execution_seconds`. Read once, when the VM is made.
+    pub(crate) time_runs: bool,
+    /// An outermost `run` is being timed. The `run`s it re-enters — a block
+    /// called by `reduce` or `each_with_index`, a paren-less method call, a
+    /// constructor — see it set and are not timed again: their time is
+    /// already inside the outer one.
+    pub(crate) timed_run_open: bool,
+}
+
+/// Times one outermost `Vm::run` while `SOLI_METRICS` is on, and records it
+/// when dropped — on an early return and on a panic unwinding through the
+/// run too, so `timed_run_open` can never stay set and switch the timing off
+/// for the rest of the VM's life.
+struct TimedRun<'a> {
+    vm: &'a mut Vm,
+    start: web_time::Instant,
+}
+
+impl<'a> TimedRun<'a> {
+    #[inline]
+    fn open(vm: &'a mut Vm) -> Self {
+        vm.timed_run_open = true;
+        Self {
+            vm,
+            start: web_time::Instant::now(),
+        }
+    }
+}
+
+impl Drop for TimedRun<'_> {
+    #[inline]
+    fn drop(&mut self) {
+        self.vm.timed_run_open = false;
+        Metrics::global().record_vm_execution(self.start.elapsed());
+    }
 }
 
 /// `stack[ia] = stack[ia] + stack[ib]` when both are strings.
@@ -519,6 +566,8 @@ impl Vm {
             spare_callback_loop: None,
             closure_cache: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
             method_cache: Default::default(),
+            closure_spares: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
+            upvalue_pool: Vec::new(),
             array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
@@ -530,6 +579,8 @@ impl Vm {
             failed_handlers: ahash::AHashSet::new(),
             return_depth: 0,
             check_return_types: false,
+            time_runs: metrics_enabled(),
+            timed_run_open: false,
         }
     }
 
@@ -790,7 +841,22 @@ impl Vm {
     /// handler — matching the tree-walker, where `catch (e)` binds the
     /// error text. Without an active handler the error propagates (which
     /// is what serve-mode's interpreter fallback relies on).
+    ///
+    /// With `SOLI_METRICS` on, only the outermost activation is timed: one
+    /// clock pair and one pair of atomic adds per handler, view or script,
+    /// however many times a block or a paren-less call re-enters `run`.
+    #[inline]
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
+        if !self.time_runs || self.timed_run_open {
+            return self.run_catching();
+        }
+        let timed = TimedRun::open(self);
+        timed.vm.run_catching()
+    }
+
+    /// `run`'s body: dispatch, and resume at the innermost handler when an
+    /// error is catchable. A resumed `catch` stays in the same activation.
+    fn run_catching(&mut self) -> Result<Value, RuntimeError> {
         loop {
             let err = match self.run_dispatch() {
                 Ok(value) => return Ok(value),
@@ -1641,15 +1707,18 @@ impl Vm {
                 }
                 Op::Return => {
                     let depth_after = self.frames.len() - 1;
-                    // Only upvalues still open on *this* frame's slots need
-                    // closing (the general arm's job); captures of an outer
-                    // frame's locals — a callback inside a closure over the
-                    // caller's variables — do not stop the fast return.
                     if depth_after <= self.return_depth
-                        || self.has_open_upvalues_from(base)
                         || (self.check_return_types && !self.return_value_admitted())
                     {
                         break Some(op);
+                    }
+                    // The frame's own variables go out of scope: close the
+                    // cells that closures made here hold on them, while the
+                    // slots still have their values — what the general arm
+                    // does. Cells on an outer frame's locals (a callback's
+                    // captures of its caller's variables) stay open.
+                    if self.has_open_upvalues_from(base) {
+                        self.close_upvalues(base);
                     }
                     let (drives_loop, params, iter_base) = {
                         let frame = self.frames.last().unwrap();
@@ -1665,8 +1734,9 @@ impl Vm {
                         // would — the callback's temporaries and locals above
                         // its arguments, its `for` loops, its `try` handlers —
                         // then let the loop record the result and refill the
-                        // argument slots. (No upvalue is open on this frame:
-                        // checked above.)
+                        // argument slots. Its cells were closed above: what a
+                        // closure made in this pass captured keeps this pass's
+                        // values, and the next pass's closures get new cells.
                         let result = self.pop();
                         self.stack.truncate(base + 1 + params);
                         self.iter_stack.truncate(iter_base);
@@ -1713,13 +1783,53 @@ impl Vm {
                 }
                 Op::SetUpvalue(idx) => {
                     let value = self.peek(0).clone();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
-                    let mut cell = upvalue.borrow_mut();
-                    match &mut *cell {
+                    // `frames` and `stack` are borrowed apart, so the cell is
+                    // reached without a reference-count round trip.
+                    let frame = self.frames.last().unwrap();
+                    match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                         Upvalue::Open(slot) => self.stack[*slot] = value,
                         Upvalue::Closed(closed) => *closed = value,
                     }
+                }
+                // `captured = captured + value` (and `captured += value`) on
+                // numbers, as `AddAssignLocal` here: a string, anything else
+                // and an overflowing add are the general arm's.
+                Op::AddAssignUpvalue(idx) => {
+                    let (len, a, b) = peek_two!();
+                    let sum = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
+                            Some(n) => Value::Int(n),
+                            None => break Some(op),
+                        },
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                        (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
+                        (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
+                        _ => break Some(op),
+                    };
+                    let frame = self.frames.last().unwrap();
+                    match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
+                        Upvalue::Open(slot) => self.stack[*slot] = sum.clone(),
+                        Upvalue::Closed(value) => *value = sum.clone(),
+                    }
+                    replace_top_two!(len, sum);
+                }
+                Op::Closure(idx) => {
+                    // SAFETY: as for `Op::Constant`. `make_closure` pushes and
+                    // pops no frame, so the chunk holding the prototype stays
+                    // alive while it runs.
+                    let proto = match unsafe { &*constants.add(idx as usize) } {
+                        Constant::Function(proto) => proto,
+                        _ => break Some(op),
+                    };
+                    let closure = self.make_closure(proto);
+                    self.stack.push(Value::VmClosure(closure));
+                }
+                // A captured block-scoped local goes out of scope (a loop
+                // variable at the end of its pass, a block's `let`).
+                Op::CloseUpvalue => {
+                    let slot = self.stack.len() - 1;
+                    self.close_upvalues(slot);
+                    discard(self.pop());
                 }
                 Op::GetGlobal(idx) => {
                     // SAFETY: as for `Op::Constant`.
@@ -2032,7 +2142,6 @@ impl Vm {
     }
 
     fn run_dispatch(&mut self) -> Result<Value, RuntimeError> {
-        let _guard = VmTimingGuard::new();
         loop {
             // Run the simple ops in `run_fast`, which keeps the frame's state
             // in registers; it returns the first op it does not handle, with
@@ -2184,16 +2293,10 @@ impl Vm {
                 }
                 Op::SetUpvalue(idx) => {
                     let val = self.stack.last().unwrap().clone();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
-                    let mut uv = upvalue.borrow_mut();
-                    match &mut *uv {
-                        Upvalue::Open(slot) => {
-                            self.stack[*slot] = val;
-                        }
-                        Upvalue::Closed(v) => {
-                            *v = val;
-                        }
+                    let frame = self.frames.last().unwrap();
+                    match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
+                        Upvalue::Open(slot) => self.stack[*slot] = val,
+                        Upvalue::Closed(v) => *v = val,
                     }
                 }
                 Op::CloseUpvalue => {
@@ -2765,8 +2868,9 @@ impl Vm {
                         Value::Array(_) => {
                             // An iterator method with a compiled callback runs
                             // its loop in this dispatch loop; checked first so
-                            // it skips the name matching below.
-                            if argc == 1
+                            // it skips the name matching below. The callback
+                            // comes first: `reduce`'s seed follows it.
+                            if (argc == 1 || argc == 2)
                                 && matches!(self.stack[receiver_idx + 1], Value::VmClosure(_))
                                 && self.try_start_callback_loop(receiver_idx, argc, name)?
                             {
@@ -2820,6 +2924,16 @@ impl Vm {
                         | Value::Null
                         | Value::Decimal(_)
                         | Value::DateTime(_, _) => {
+                            // `n.times { … }`, `n.upto(m) { … }`: a compiled
+                            // callback, the last argument, runs its loop in
+                            // this dispatch loop too.
+                            if matches!(self.stack[receiver_idx], Value::Int(_))
+                                && (argc == 1 || argc == 2)
+                                && matches!(self.stack[receiver_idx + argc], Value::VmClosure(_))
+                                && self.try_start_callback_loop(receiver_idx, argc, name)?
+                            {
+                                continue;
+                            }
                             let receiver = self.stack[receiver_idx].clone();
                             let args: Vec<Value> =
                                 self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
@@ -2867,7 +2981,7 @@ impl Vm {
                     if argc == 0 {
                         let result = match &self.stack[receiver_idx] {
                             Value::String(s) => {
-                                super::method_table::string_method_zero_arg(s.as_ref(), method_id)
+                                super::method_table::string_method_zero_arg(s, method_id)
                             }
                             Value::Array(a) => {
                                 super::method_table::array_method_zero_arg(a, method_id)
@@ -2964,6 +3078,14 @@ impl Vm {
                             self.stack.push(result);
                         }
                         Value::Array(_) => {
+                            // `xs.count { … }`, the block method with an id,
+                            // takes the in-VM loop as `CallMethod` does.
+                            if argc == 1
+                                && matches!(self.stack[receiver_idx + 1], Value::VmClosure(_))
+                                && self.try_start_callback_loop(receiver_idx, argc, name)?
+                            {
+                                continue;
+                            }
                             let arr = match &self.stack[receiver_idx] {
                                 Value::Array(a) => a.clone(),
                                 _ => unreachable!(),
@@ -3490,48 +3612,15 @@ impl Vm {
                     // tree-walker and the other three hash-set opcodes.
                     self.push(value);
                 }
+                // `run_fast` makes closures; this is the same, for a frame
+                // that reaches it here. See `vm_upvalues.rs`.
                 Op::Closure(idx) => {
                     let frame = self.frames.last().unwrap();
                     let constant = &frame.closure.proto.chunk.constants[idx as usize];
                     if let Constant::Function(proto) = constant {
-                        // A closure that captures nothing is immutable, and a
-                        // closure's identity is never observable (two closures
-                        // are never `==`), so one instance per `fn` expression
-                        // serves every evaluation: a callback literal inside a
-                        // loop — `h.each(fn(k, v) …)` — no longer allocates on
-                        // each pass.
-                        if proto.upvalue_descriptors.is_empty() {
-                            let slot = (Arc::as_ptr(proto) as usize >> 4) % CLOSURE_CACHE_SLOTS;
-                            let closure = match &self.closure_cache[slot] {
-                                Some(cached) if Arc::ptr_eq(&cached.proto, proto) => cached.clone(),
-                                _ => {
-                                    let fresh = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
-                                    self.closure_cache[slot] = Some(fresh.clone());
-                                    fresh
-                                }
-                            };
-                            self.stack.push(Value::VmClosure(closure));
-                            continue;
-                        }
                         let proto = proto.clone();
-                        let mut upvalues = Vec::with_capacity(proto.upvalue_descriptors.len());
-
-                        for desc in &proto.upvalue_descriptors {
-                            if desc.is_local {
-                                let base = self.frames.last().unwrap().stack_base;
-                                let slot = base + desc.index as usize;
-                                let upvalue = self.capture_upvalue(slot);
-                                upvalues.push(upvalue);
-                            } else {
-                                let upvalue = self.frames.last().unwrap().closure.upvalues
-                                    [desc.index as usize]
-                                    .clone();
-                                upvalues.push(upvalue);
-                            }
-                        }
-
-                        let closure = VmClosure::new(proto, upvalues);
-                        self.stack.push(Value::VmClosure(Rc::new(closure)));
+                        let closure = self.make_closure(&proto);
+                        self.stack.push(Value::VmClosure(closure));
                     }
                 }
                 Op::Return => {
@@ -3541,8 +3630,9 @@ impl Vm {
                     }
                     let frame = self.frames.pop().unwrap();
 
-                    // Close upvalues only if there are any open ones in this frame's range
-                    if !self.open_upvalues.is_empty() {
+                    // Close the cells on this frame's slots — one comparison
+                    // when none is open there, however many are open below.
+                    if self.has_open_upvalues_from(frame.stack_base) {
                         self.close_upvalues(frame.stack_base);
                     }
 
@@ -4646,11 +4736,11 @@ impl Vm {
                 Op::AddAssignUpvalue(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
+                    // `frames` and `stack` are borrowed apart: no reference
+                    // count moves to reach the cell.
                     let appended = {
-                        let mut cell = upvalue.borrow_mut();
-                        match &mut *cell {
+                        let frame = self.frames.last().unwrap();
+                        match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                             Upvalue::Open(slot) => {
                                 add_strings_into(&mut self.stack[*slot], before, rhs)
                             }
@@ -4661,7 +4751,8 @@ impl Vm {
                         Ok(updated) => updated,
                         Err((before, rhs)) => {
                             let sum = self.add_values(before, rhs)?;
-                            match &mut *upvalue.borrow_mut() {
+                            let frame = self.frames.last().unwrap();
+                            match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                                 Upvalue::Open(slot) => self.stack[*slot] = sum.clone(),
                                 Upvalue::Closed(value) => *value = sum.clone(),
                             }
@@ -4701,11 +4792,9 @@ impl Vm {
                 Op::AppendUpvalue(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
                     let outcome = {
-                        let mut cell = upvalue.borrow_mut();
-                        match &mut *cell {
+                        let frame = self.frames.last().unwrap();
+                        match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                             Upvalue::Open(slot) => shovel_into(&mut self.stack[*slot], before, rhs),
                             Upvalue::Closed(value) => shovel_into(value, before, rhs),
                         }
@@ -5688,22 +5777,6 @@ impl Vm {
         }
     }
 
-    fn capture_upvalue(&mut self, slot: usize) -> Rc<RefCell<Upvalue>> {
-        // Check if we already have an open upvalue for this slot
-        for uv in &self.open_upvalues {
-            if let Upvalue::Open(s) = &*uv.borrow() {
-                if *s == slot {
-                    return uv.clone();
-                }
-            }
-        }
-        // Create a new open upvalue
-        let upvalue = Rc::new(RefCell::new(Upvalue::Open(slot)));
-        self.open_upvalues.push(upvalue.clone());
-        self.open_upvalue_top = self.open_upvalue_top.max(slot + 1);
-        upvalue
-    }
-
     /// Build an array of the top `n` stack values, in order — taking an
     /// emptied array from `array_pool` when there is one.
     #[inline]
@@ -5781,52 +5854,6 @@ impl Vm {
         }
     }
 
-    /// Whether any upvalue is still open on a stack slot at or above
-    /// `from_slot` — what `close_upvalues(from_slot)` would close.
-    #[inline]
-    pub(crate) fn has_open_upvalues_from(&self, from_slot: usize) -> bool {
-        self.open_upvalue_top > from_slot
-    }
-
-    pub fn close_upvalues(&mut self, from_slot: usize) {
-        let mut i = 0;
-        while i < self.open_upvalues.len() {
-            let should_close = {
-                let uv = self.open_upvalues[i].borrow();
-                if let Upvalue::Open(slot) = &*uv {
-                    *slot >= from_slot
-                } else {
-                    false
-                }
-            };
-
-            if should_close {
-                let upvalue = self.open_upvalues.remove(i);
-                let value = {
-                    let uv = upvalue.borrow();
-                    if let Upvalue::Open(slot) = &*uv {
-                        self.stack[*slot].clone()
-                    } else {
-                        Value::Null
-                    }
-                };
-                *upvalue.borrow_mut() = Upvalue::Closed(value);
-            } else {
-                i += 1;
-            }
-        }
-        // Everything still open points below `from_slot`.
-        self.open_upvalue_top = self
-            .open_upvalues
-            .iter()
-            .filter_map(|upvalue| match *upvalue.borrow() {
-                Upvalue::Open(slot) => Some(slot + 1),
-                Upvalue::Closed(_) => None,
-            })
-            .max()
-            .unwrap_or(0);
-    }
-
     /// Advance the current iterator, returning the next value or None if exhausted.
     fn iter_next(&mut self) -> Option<Value> {
         let state = self.iter_stack.last_mut()?;
@@ -5871,11 +5898,8 @@ impl Vm {
                 // Iterate by byte offset instead of pre-collecting a Vec<char>.
                 if let Some(ch) = s[*byte_offset..].chars().next() {
                     *byte_offset += ch.len_utf8();
-                    // A char is at most 4 bytes, so it is stored inline: no
-                    // heap `String` per character.
-                    Some(Value::String(SoliStr::from(
-                        &*ch.encode_utf8(&mut [0u8; 4]),
-                    )))
+                    // Stack-buffer encode: no heap String per character.
+                    Some(crate::interpreter::executor::calls::string_methods::char_to_value(ch))
                 } else {
                     None
                 }
@@ -6051,6 +6075,10 @@ impl Vm {
                 };
                 arr.get(idx).cloned()
             }
+            // `s[i]` — a miss falls through to op_get_index for the error.
+            (Value::String(s), Value::Int(i)) => {
+                crate::interpreter::executor::calls::string_methods::string_char_at(s, *i)
+            }
             _ => None,
         }
     }
@@ -6182,18 +6210,11 @@ impl Vm {
                 }
             }
             (Value::String(s), Value::Int(i)) => {
-                let chars: Vec<char> = s.chars().collect();
-                let idx = if *i < 0 {
-                    (chars.len() as i64 + i) as usize
-                } else {
-                    *i as usize
-                };
-                chars
-                    .get(idx)
-                    .map(|c| crate::interpreter::executor::calls::string_methods::char_to_value(*c))
-                    .ok_or(RuntimeError::IndexOutOfBounds {
+                crate::interpreter::executor::calls::string_methods::string_char_at(s, *i)
+                    .ok_or_else(|| RuntimeError::IndexOutOfBounds {
                         index: *i,
-                        length: chars.len(),
+                        // Counted only on a miss: the hit path never needs it.
+                        length: s.chars().count(),
                         span,
                     })
             }
@@ -7198,7 +7219,7 @@ let result = "#{g.x} #{h.x} #{l.n}"
         const KEY: u16 = 0;
         const ONE: u16 = 1;
         const GLOBAL: u16 = 2;
-        let key: SoliStr = "content_type_header_value".into();
+        let key: crate::interpreter::value::SoliStr = "content_type_header_value".into();
         assert!(key.len() > 15, "the key must not fit inline");
         let constants = || {
             vec![
@@ -7961,6 +7982,228 @@ let result = conditions(STATUS)
     fn test_vm_array_each_with_index() {
         let r = compile_and_run("let a = [1, 2, 3]; a.each_with_index(fn(v, i) v + i);");
         assert!(r.is_ok());
+    }
+
+    /// A block that declares no parameter ignores the element, as on the
+    /// tree-walker: `3.times do … end`, `xs.each { log("x") }`. The VM passed
+    /// the element anyway, and the block's frame refused it ("Wrong number of
+    /// arguments: expected 0, got 1"). A script stopped there, and a `serve`
+    /// handler was demoted after its side effects had already run.
+    #[test]
+    fn test_vm_block_with_no_parameters_ignores_the_element() {
+        // Int iterators drop the index. `times` still returns its receiver.
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let n = 0
+let r = 3.times do
+  n = n + 1
+end
+1.upto(3) { n = n + 10 }
+3.downto(1) { n = n + 100 }
+let x = "#{n} #{r}"
+"##,
+                "x"
+            ),
+            Value::String("333 3".into())
+        );
+        // Array iterators, through the in-VM loop (each, map, filter, select)
+        // and through the native drivers (the rest).
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let xs = [3, 1, 2]
+let n = 0
+let back = xs.each { n = n + 1 }
+let mapped = xs.map { 5 }
+let kept = xs.filter { true }
+let dropped = xs.select { false }
+let rejected = xs.reject { false }
+let found = xs.find { true }
+let counted = xs.count { true }
+let any_true = xs.any? { true }
+let all_false = xs.all? { false }
+let none_false = xs.none? { false }
+let one_true = xs.one? { true }
+let sorted = xs.sort_by { 1 }
+let x = "#{n} #{back} #{mapped} #{kept} #{dropped} #{rejected} #{found} #{counted} #{any_true} #{all_false} #{none_false} #{one_true} #{sorted}"
+"##,
+                "x"
+            ),
+            Value::String(
+                "3 [3, 1, 2] [5, 5, 5] [3, 1, 2] [] [3, 1, 2] 3 3 true false true false [3, 1, 2]"
+                    .into()
+            )
+        );
+        // Hash iterators get no `[key, value]` pair, and no key or value.
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let h = {"a": 1, "b": 2}
+let n = 0
+let back = h.each { n = n + 1 }
+h.each_key { n = n + 10 }
+h.each_value { n = n + 100 }
+let mapped = h.map { ["k", 9] }
+let kept = h.filter { true }
+let dropped = h.select { false }
+let rejected = h.reject { true }
+let kept_if = h.keep_if { true }
+let deleted_if = h.delete_if { false }
+let any_true = h.any? { true }
+let all_false = h.all? { false }
+let revalued = h.transform_values { 0 }
+let renamed = h.transform_keys { "z" }
+let x = "#{n} #{back} #{mapped} #{kept} #{dropped} #{rejected} #{kept_if} #{deleted_if} #{any_true} #{all_false} #{revalued} #{renamed}"
+"##,
+                "x"
+            ),
+            Value::String(
+                "222 {a => 1, b => 2} {k => 9} {a => 1, b => 2} {} {} {a => 1, b => 2} \
+                 {a => 1, b => 2} true false {a => 0, b => 0} {z => 2}"
+                    .into()
+            )
+        );
+    }
+
+    /// The in-VM callback loop takes a block with no parameter instead of
+    /// handing it to the native driver. Its frame gets no argument slot, and
+    /// refilling it writes none. Only a loop that ran in the dispatch loop
+    /// leaves `spare_callback_loop` behind.
+    #[test]
+    fn test_vm_zero_parameter_block_takes_the_in_vm_loop() {
+        let run = |source: &str| {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.execute(&module.main).expect("vm error");
+            let x = vm.globals.get("x").cloned().unwrap_or(Value::Null);
+            (x, vm.spare_callback_loop.is_some())
+        };
+        // One frame per element, rerun in place.
+        assert_eq!(
+            run("let n = 0\n[1, 2, 3].each { n = n + 1 }\nlet x = n"),
+            (Value::Int(3), true)
+        );
+        assert_eq!(
+            run("let x = [1, 2, 3].map { 5 }.join(\",\")"),
+            (Value::String("5,5,5".into()), true)
+        );
+        // `filter` keeps the element it did not pass.
+        assert_eq!(
+            run("let x = [1, 2, 3].filter { true }.join(\",\")"),
+            (Value::String("1,2,3".into()), true)
+        );
+        // Hash loops: no pair is built and no slot is written.
+        assert_eq!(
+            run("let n = 0\nlet h = {\"a\": 1, \"b\": 2}\nh.each { n = n + 1 }\nlet x = n"),
+            (Value::Int(2), true)
+        );
+        assert_eq!(
+            run("let t = {\"a\": 1, \"b\": 2}.transform_values { 0 }\nlet x = \"#{t}\""),
+            (Value::String("{a => 0, b => 0}".into()), true)
+        );
+        assert_eq!(
+            run("let t = {\"a\": 1, \"b\": 2}.reject { false }\nlet x = \"#{t}\""),
+            (Value::String("{a => 1, b => 2}".into()), true)
+        );
+        // `{ count += 1 }` on a captured local is the accumulator template:
+        // no frame at all.
+        assert_eq!(
+            run(r##"
+def tally(xs)
+  let count = 0
+  xs.each { count += 1 }
+  count
+end
+let x = tally([1, 2, 3])
+"##),
+            (Value::Int(3), true)
+        );
+        // A block whose local is captured returns through the general
+        // `Return`, and the next element's frame is opened afresh.
+        assert_eq!(
+            run(r##"
+def keep(xs)
+  let fns = []
+  xs.each do
+    let y = 7
+    fns.push(fn() { y })
+  end
+  fns[0]() + fns[1]()
+end
+let x = keep([1, 2])
+"##),
+            (Value::Int(14), true)
+        );
+    }
+
+    /// A block takes as many of two arguments as it declares:
+    /// `each_with_index { |x| }` gets the element alone, and `{ }` gets
+    /// neither. A one-parameter `reduce` callback gets the `[acc, item]`
+    /// pair, as on the tree-walker. All of these raised "Wrong number of
+    /// arguments" on the VM.
+    #[test]
+    fn test_vm_block_takes_a_prefix_of_two_arguments() {
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let seen = []
+[10, 20].each_with_index { |x| seen.push(x) }
+[10, 20].each_with_index { seen.push(0) }
+let sum = [1, 2, 3].reduce(fn(pair) { pair[0] + pair[1] }, 0)
+let product = [1, 2, 3].reduce(fn(pair) { pair[0] * pair[1] })
+let constant = [1, 2, 3].reduce(fn() { 7 }, 0)
+let both = [1, 2, 3].reduce(fn(acc, x) { acc + x }, 0)
+let x = "#{seen} #{sum} #{product} #{constant} #{both}"
+"##,
+                "x"
+            ),
+            Value::String("[10, 20, 0, 0] 6 6 7 6".into())
+        );
+    }
+
+    /// A destructuring callback with more defaulted than required parameters
+    /// computed `arity - defaults`, but `arity` counts only the required
+    /// parameters. That underflowed, and the VM panicked with "capacity
+    /// overflow". Now a defaulted parameter takes its part of the element when
+    /// the element has one and keeps its default otherwise. A missing required
+    /// part reads as nil.
+    #[test]
+    fn test_vm_destructuring_callback_with_defaults_does_not_underflow() {
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+def tri(a, b, c = 1, d = 2, e = 3)
+  [a, b, c, d, e]
+end
+let x = "#{[[1, 2], [1, 2, 3], [1, 2, 3, 4, 5, 6], [1]].map(tri)}"
+"##,
+                "x"
+            ),
+            Value::String(
+                "[[1, 2, 1, 2, 3], [1, 2, 3, 2, 3], [1, 2, 3, 4, 5], [1, null, 1, 2, 3]]".into()
+            )
+        );
+    }
+
+    /// Blocks bind loosely, but direct calls stay strict, as on the
+    /// tree-walker.
+    #[test]
+    fn test_vm_direct_calls_stay_strict() {
+        let err = compile_and_run("let f = fn() { 1 }\nf(5)")
+            .expect_err("a direct call checks its arity");
+        assert!(
+            err.to_string().contains("Wrong number of arguments"),
+            "{err}"
+        );
+        let err = compile_and_run("let h = {\"f\": fn() { 1 }}\nh.f(5)")
+            .expect_err("a call through a hash entry checks its arity");
+        assert!(
+            err.to_string().contains("Wrong number of arguments"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -11521,6 +11764,81 @@ let x = Mailer.welcome()
                 .unwrap(),
             Value::Int(2048)
         );
+    }
+
+    /// With metrics on, a VM times only its outermost `run`: the runs that
+    /// paren-less method calls, a `reduce` block and a resumed `catch`
+    /// re-enter are inside it, and timing them again cost a clock pair and
+    /// two shared atomic adds each, and counted their time twice.
+    #[test]
+    fn metrics_time_only_the_outermost_run() {
+        use std::sync::atomic::Ordering;
+        let source = r##"
+class Widget
+  def one
+    1
+  end
+
+  def boom
+    throw "nope"
+  end
+end
+
+widget = Widget.new()
+x = 0
+i = 0
+while i < 10
+  x = x + widget.one
+  i = i + 1
+end
+caught = ""
+try
+  widget.boom
+catch error
+  caught = "#{error}"
+end
+total = [1, 2, 3].reduce(fn(acc, v) acc + v + widget.one, 0)
+
+def explode
+  widget.boom
+end
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let metrics = Metrics::global();
+
+        let mut vm = Vm::new();
+        vm.time_runs = true;
+        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        vm.execute(&module.main).expect("script runs");
+        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        assert_eq!(after - before, 1, "one outermost run, one record");
+        assert!(!vm.timed_run_open);
+        assert!(matches!(vm.globals.get("x"), Some(Value::Int(10))));
+        assert!(matches!(vm.globals.get("total"), Some(Value::Int(9))));
+        match vm.globals.get("caught") {
+            Some(Value::String(s)) => assert_eq!(s.as_str(), "nope"),
+            other => panic!("caught = {other:?}"),
+        }
+
+        // A call into the VM from outside is an outermost run of its own,
+        // and an error escaping it still closes the timing.
+        let explode = vm.globals.get("explode").cloned().expect("explode");
+        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let err = vm.call_value_direct(explode, &[], Span::default());
+        assert!(err.is_err(), "an uncaught throw escapes");
+        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        assert_eq!(after - before, 1);
+        assert!(!vm.timed_run_open, "an escaping error closes the timing");
+
+        // Metrics off: nothing is recorded.
+        let mut quiet = Vm::new();
+        quiet.time_runs = false;
+        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        quiet.execute(&module.main).expect("script runs");
+        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        assert_eq!(after, before);
     }
 }
 

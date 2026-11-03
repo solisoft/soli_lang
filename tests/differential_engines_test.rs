@@ -2637,6 +2637,15 @@ print(before(early, late), before(late, early))"##,
         "sort_with_comparator",
         "names = [\"bb\", \"a\", \"ccc\"]\nlongest_first = names.sort do |a, b|\n  b.length() - a.length()\nend\nprint(longest_first)\nprint(names.sort(fn(a, b) a.length() - b.length()))\nprint([3, 1.5, 2].sort())\nprint([1, 2, 3].sort(fn(a, b) \"x\"))",
     ),
+    // `sort` without a comparator: homogeneous Int / String / non-NaN Float
+    // arrays take a std-sort fast path, everything else the tolerant merge
+    // sort (now over indices). Both engines share the helper; this pins that
+    // they agree on every shape, -0.0 vs 0.0 keeping input order, mixes,
+    // and a longer shuffled array that exercises many merge levels.
+    (
+        "sort_default_order_shapes",
+        "print([5, -3, 9, 0, 9, 2].sort())\nprint([\"pear\", \"Apple\", \"apple\", \"\", \"z\"].sort())\nprint([0.0, -0.0, 1.5, -2.25, -0.0, 0.0].sort())\nprint([3, 1.5, 2, -0.5].sort())\nprint([5, \"a\", 3, nil, 1].sort())\nprint([{\"k\": 2}, 1, {\"k\": 1}].sort())\nxs = (0..300).map { |k| (k * 7919) % 300 }\nsorted = xs.sort\nprint(sorted.length, sorted[0], sorted[299], sorted == (0..300).map { |k| k })\nprint(xs[0], xs[1])\nwords = (0..120).map { |k| \"w#{(k * 37) % 120}\" }\nprint(words.sort()[0], words.sort()[1], words.sort()[119])\nprint([].sort, [1].sort)",
+    ),
     // A function's value is its last statement's, and a trailing `if` /
     // `unless` yields its taken branch's. The VM returned null unless the last
     // statement was a plain expression — an action ending in
@@ -5042,6 +5051,680 @@ print(p1 == p1, p1 == p2, p1 != p2, p1 != p1)
 x = M.Some("nan".to_f)
 y = M.Some(1.5)
 print(x == x, y == y, y == M.Some(1.5), M.None == M.None, M.None == p1, p1 == M.None)"##,
+    ),
+    // A block may declare fewer parameters than its iterator passes, and it
+    // binds only those. The VM passed every argument, so each of these raised
+    // "Wrong number of arguments: expected 0, got 1" (or "expected 1, got 2"),
+    // a script stopped, and a `serve` handler was demoted after its side
+    // effects had run.
+    (
+        "int_iterators_with_blocks_that_ignore_the_index",
+        r##"def tally()
+  count = 0
+  3.times do
+    count = count + 1
+  end
+  1.upto(3) { count = count + 10 }
+  3.downto(1) { count = count + 100 }
+  count
+end
+print(tally())
+print(2.times { print("t") })
+print(1.upto(2) { print("u") })
+print(2.downto(1) { print("d") })"##,
+    ),
+    (
+        "array_iterators_with_blocks_that_ignore_the_element",
+        r##"xs = [3, 1, 2]
+print(xs.each { print("e") })
+print(xs.map { 5 })
+print(xs.filter { true })
+print(xs.select { false })
+print(xs.reject { false })
+print(xs.find { true })
+print(xs.count { true })
+print(xs.any? { true }, xs.all? { false }, xs.none? { false }, xs.one? { true })
+print(xs.sort_by { 1 })
+print((1..3).map { 0 })
+def visits(list)
+  seen = 0
+  list.each { seen = seen + 1 }
+  list.map { seen = seen + 1 }
+  list.filter { seen = seen + 1 }
+  seen
+end
+print(visits([7, 8]))"##,
+    ),
+    (
+        "hash_iterators_with_blocks_that_ignore_the_entry",
+        r##"h = {"a": 1, "b": 2}
+print(h.each { print("h") })
+h.each_key { print("k") }
+h.each_value { print("v") }
+print(h.map { ["k", 9] })
+print(h.filter { true }, h.select { false }, h.reject { true })
+print(h.keep_if { true }, h.delete_if { false })
+print(h.any? { true }, h.all? { false })
+print(h.transform_values { 0 }, h.transform_keys { "z" })"##,
+    ),
+    (
+        // `each_with_index { |x| }` gets the element alone and `{ }` gets
+        // nothing. A one-parameter `reduce` callback gets the `[acc, item]`
+        // pair, seeded or not.
+        "blocks_take_a_prefix_of_two_arguments",
+        r##"[10, 20].each_with_index { |x| print(x) }
+[10, 20].each_with_index { print("i") }
+print([[1, 2], [3, 4]].each_with_index { |pair| print(pair) })
+print([1, 2, 3].reduce(fn(pair) { pair[0] + pair[1] }, 0))
+print([1, 2, 3].reduce(fn(pair) { pair[0] * pair[1] }))
+print([1, 2, 3].reduce(fn() { 7 }, 0))
+print([1, 2, 3].reduce(fn(acc, x) { acc + x }, 0))"##,
+    ),
+    (
+        // Blocks bind loosely, but a direct call still checks its arity on
+        // both engines. Destructuring is unchanged.
+        "direct_calls_stay_strict_while_blocks_bind_loosely",
+        r##"def call_with(fun, args)
+  return fun(args[0]) if args.length == 1
+
+  fun(args[0], args[1])
+end
+try
+  call_with(fn() { 1 }, [5])
+  print("not strict")
+catch e
+  print("a direct call stays strict")
+end
+try
+  call_with(fn(a) { a }, [1, 2])
+  print("not strict")
+catch e
+  print("too many stays strict")
+end
+table = {"f": fn() { 1 }}
+try
+  table.f(5)
+  print("not strict")
+catch e
+  print("a hash entry call stays strict")
+end
+print([1, 2].map { |x| x * 2 })
+print([[1, 2], [3, 4]].map { |a, b| a + b })"##,
+    ),
+    // The block iterators that run their callback inside the VM's dispatch
+    // loop instead of a nested `run()` per element: each_with_index, reject,
+    // find, any?/all?/none?/one?, count, sort_by, reduce/fold, Int#times/
+    // upto/downto, and blocks that destructure array elements. Templates
+    // (`x > 4`), the frame path (`x % 2 == 0`) and a template handing a
+    // float to the frame path (`v > 1` on 2.5) must all agree.
+    (
+        "array_block_methods_in_the_dispatch_loop",
+        r##"xs = [5, 3, 8, 1]
+print(xs.each_with_index { |x, i| print("#{i}:#{x}") })
+print(xs.reject { |x| x > 4 }, xs.reject { |x| x % 2 == 0 })
+print(xs.find { |x| x > 4 }, xs.find { |x| x > 100 }, xs.find { |x| x % 4 == 0 })
+print(xs.any? { |x| x > 7 }, xs.all? { |x| x > 0 }, xs.none? { |x| x > 7 }, xs.one? { |x| x > 7 })
+print(xs.any? { |x| x > 70 }, xs.all? { |x| x > 1 }, xs.none? { |x| x > 70 }, xs.one? { |x| x > 2 })
+print(xs.count { |x| x > 2 }, xs.count { |x| x % 2 == 1 })
+print(xs.sort_by { |x| x }, xs.sort_by { |x| x * -1 }, ["bb", "a", "ccc"].sort_by { |s| s.length })
+print([[2, "b"], [1, "a"], [2, "a"], [1, "b"]].sort_by { |p| p[0] })
+print([1, 2.5, 3].count { |v| v > 1 }, [1, 2.5, 3].find { |v| v > 2 }, [0.5, 1, 2].any? { |v| v > 1 })
+print([3, 1.5, 2].sort_by { |v| v * 2 }, [1, 2.5, 3].reject { |v| v > 2 })
+def probe(list)
+  calls = 0
+  found = list.find do |x|
+    calls = calls + 1
+    x > 2
+  end
+  any = list.any? do |x|
+    calls = calls + 1
+    x > 1
+  end
+  none = list.none? do |x|
+    calls = calls + 1
+    x > 2
+  end
+  one = list.one? do |x|
+    calls = calls + 1
+    x > 1
+  end
+  all = list.all? do |x|
+    calls = calls + 1
+    x < 2
+  end
+  "#{found} #{any} #{none} #{one} #{all} #{calls}"
+end
+print(probe([1, 2, 3, 4]))"##,
+    ),
+    (
+        "reduce_in_the_dispatch_loop",
+        r##"print([1, 2, 3].reduce(fn(acc, x) { acc + x }, 10))
+print([1, 2, 3].reduce(fn(acc, x) { acc * x }))
+print([7].reduce(fn(acc, x) { acc + x }), [].reduce(fn(acc, x) { acc + x }, 5))
+print([1, 2].fold(fn(acc, x) { acc - x }, 0))
+print(["a", "b"].reduce(fn(acc, s) { acc + s }, ""))
+print([[1, 2], [3, 4]].reduce(fn(acc, row) { acc + row.find { |v| v > 1 } }, 0))
+try
+  [].reduce(fn(acc, x) { acc + x })
+  print("no error")
+catch e
+  print("reduce of an empty array raises")
+end
+vs = [1, 2, 3]
+total = vs.reduce(fn(acc, v) {
+  vs.push(v) if acc < 3
+  acc + v
+}, 0)
+print(total, vs)"##,
+    ),
+    (
+        "int_iterators_in_the_dispatch_loop",
+        r##"def tally(n)
+  total = 0
+  n.times { |i| total += i }
+  total
+end
+print(tally(5))
+print(3.times { |i| print("t#{i}") })
+print(2.upto(4) { |i| print("u#{i}") })
+print(4.downto(2) { |i| print("d#{i}") })
+print(0.times { |i| print("never") }, (0 - 3).times { |i| print("never") })
+print(5.upto(3) { |i| print("never") }, 1.downto(3) { |i| print("never") })
+seen = []
+3.times { |i| 2.times { |j| seen.push(i * 10 + j) } }
+print(seen)
+print([1, 2, 3].count { |v| [2, 3, 4].any? { |w| w == v } })
+fns = []
+3.times do |i|
+  fns.push(fn() { i })
+end
+print(fns[0](), fns[2]())"##,
+    ),
+    (
+        "destructuring_blocks_in_the_dispatch_loop",
+        r##"pairs = [[1, 2], [3, 4], [5]]
+print(pairs.map { |a, b| [b, a] })
+print(pairs.filter { |a, b| b.nil? }, pairs.reject { |a, b| a > 2 })
+print(pairs.find { |a, b| a > 2 }, pairs.count { |a, b| a > 2 }, pairs.any? { |a, b| b.nil? })
+print(pairs.sort_by { |a, b| a * -1 })
+pairs.each { |a, b| print("#{a}-#{b}") }
+print([[1, 2, 3]].map { |a, b| a + b }, [[1, 2, 3], [4, 5, 6]].map { |a, b, c| a + b + c })
+print([5, 6].each_with_index.map { |v, i| v * i })
+print({"a": 1, "b": 2}.entries.map { |k, v| "#{k}=#{v}" })
+ps = [[1, 2], [3, 4], [5, 6]]
+sums = ps.map do |a, b|
+  ps.pop()
+  a + b
+end
+print(sums, ps.length)"##,
+    ),
+    (
+        // A throw out of each kind of loop reaches the caller's catch with its
+        // value, and the next loop starts clean. A block that changes the
+        // array it walks sees the live array, up to the length it started
+        // with.
+        "block_loops_throw_and_see_their_receiver_change",
+        r##"try
+  [1, 2].find { |v| throw "f#{v}" }
+catch e
+  print(e)
+end
+try
+  3.times { |i| throw "t#{i}" if i == 1 }
+catch e
+  print(e)
+end
+try
+  [[1, 2]].map { |a, b| throw "p#{a}#{b}" }
+catch e
+  print(e)
+end
+try
+  [1, 2].reduce(fn(a, v) { throw "r#{v}" }, 0)
+catch e
+  print(e)
+end
+try
+  [7, 8].each_with_index { |v, i| throw "e#{v}#{i}" if i == 1 }
+catch e
+  print(e)
+end
+try
+  [1, 2].sort_by { |v| throw "s#{v}" }
+catch e
+  print(e)
+end
+try
+  [1, 2].count { |v| throw "c#{v}" }
+catch e
+  print(e)
+end
+print([1, 2].map { |v| v * 2 })
+ys = [1, 2, 3, 4]
+seen = []
+ys.each_with_index do |y, i|
+  seen.push(y)
+  ys.pop() if i == 0
+end
+print(seen, ys)
+zs = [1, 2, 3]
+found = zs.find do |z|
+  zs.push(z + 10)
+  z > 5
+end
+print(found, zs)
+ss = [3, 1, 2, 4]
+sorted = ss.sort_by do |s|
+  ss.pop()
+  s
+end
+print(sorted, ss)"##,
+    ),
+    // Closures over a `try` body's locals, after a throw caught in the same
+    // function. The VM closed only the cells of the frames it unwound, so
+    // these stayed open on slots the unwinding gave back: they read, and
+    // wrote, whatever came to live there next (`y` became 101).
+    (
+        "closures_over_try_body_locals_survive_the_unwind",
+        r##"def caught_here(fns)
+  try
+    let x = 5
+    fns.push(fn() { x })
+    fns.push(fn() { x = x + 1
+      x })
+    throw "e"
+  catch e
+    print("caught #{e}")
+  end
+  let y = 99
+  let z = 100
+  print(fns[1](), fns[1](), y, z)
+  fns[0]()
+end
+print(caught_here([]))
+def boom
+  throw "b"
+end
+def caught_below(fns)
+  try
+    let x = 6
+    fns.push(fn() { x })
+    boom()
+  catch e
+    print("caught #{e}")
+  end
+  let y = 98
+  [fns[0](), y]
+end
+print(caught_below([]))
+def rescued(fns)
+  value = (fn() {
+    let w = 7
+    fns.push(fn() { w })
+    boom()
+  })() rescue 1
+  let q = 77
+  [value, fns[0](), q]
+end
+print(rescued([]))"##,
+    ),
+    // `total += x`, `count += 1`, `text = text + s` into variables a block
+    // captures: one `AddAssignUpvalue` each, numbers in the fast tier,
+    // strings appended in place, mixed int/float, `<<`. An overflow raises
+    // the same error at the same place as the tree-walker — the assignment,
+    // which `big = big + one` reported at its `+` before.
+    (
+        "captured_accumulators_add_like_the_tree_walker",
+        r##"def sums(xs)
+  total = 0
+  count = 0
+  ratio = 0.5
+  mixed = 1
+  text = ""
+  parts = []
+  xs.each do |x|
+    total += x
+    count += 1
+    ratio = ratio + x * 0.25
+    mixed += 0.5
+    text = text + "#{x},"
+    text += "|"
+    parts << x
+  end
+  [total, count, ratio, mixed, text, parts]
+end
+print(sums([1, 2, 3]))
+def overflow
+  big = 9223372036854775807
+  one = 1
+  [1].each do |v|
+    try
+      big = big + one
+    catch e
+      print(e)
+    end
+    try
+      big += 1
+    catch e
+      print(e)
+    end
+    try
+      big = big + one * 2
+    catch e
+      print(e)
+    end
+  end
+  big
+end
+print(overflow())
+def shared
+  n = 0
+  bump = fn() { n += 1 }
+  [1, 2, 3].each { |x| n = n + x }
+  bump()
+  bump()
+  n
+end
+print(shared())
+def strings(words)
+  out = ""
+  words.each { |w| out = out + w }
+  copy = out
+  words.each { |w| out += "-" }
+  [out, copy]
+end
+print(strings(["a", "b"]))"##,
+    ),
+    // Inner blocks over an outer block's parameter or local (the outer
+    // frame is rerun with its cells closed), a block reused across calls of
+    // its method while closures over the method's variables escape, and
+    // recursion through a capturing block.
+    (
+        "nested_and_reused_capturing_blocks",
+        r##"def grid(rows)
+  out = []
+  rows.each do |row|
+    k = row.length
+    row.each { |c| out.push(c * 10 + k) }
+  end
+  out
+end
+print(grid([[1, 2], [3], [4, 5, 6]]))
+def pairs(xs)
+  xs.map { |a| xs.map { |b| a * b } }
+end
+print(pairs([1, 2, 3]))
+kept = []
+def scale(xs, k, kept)
+  xs.map do |x|
+    kept.push(fn() { k }) if x > 2
+    x * k
+  end
+end
+print(scale([1, 2], 10, kept))
+print(scale([3, 4], 100, kept))
+print(scale([5], 1000, kept))
+print(kept.map { |f| f() })
+def walk(node, depth, seen)
+  node["kids"].each { |kid| walk(kid, depth + 1, seen) }
+  seen.push("#{node["name"]}@#{depth}")
+  seen
+end
+tree = {"name": "a", "kids": [{"name": "b", "kids": [{"name": "c", "kids": []}]}, {"name": "d", "kids": []}]}
+print(walk(tree, 0, []))
+def tally_by(words)
+  counts = {}
+  words.each do |w|
+    counts[w] = (counts[w] || 0) + 1
+  end
+  total = 0
+  counts.each { |k, v| total += v }
+  [counts, total]
+end
+print(tally_by(["x", "y", "x"]))
+def deep_capture(xs, m)
+  xs.map { |x| [x].map { |y| [y].map { |z| x + y + z + m } } }
+end
+print(deep_capture([1, 2], 100))"##,
+    ),
+    // A block result that fails the method — a `map` pair or a transformed
+    // key that cannot be a hash key — is reported at the method's call, as
+    // the native driver does: with or without a capture, from a pass that
+    // reruns the block's frame, from the template that runs after one, at
+    // the top level. The VM reported the op the block last left the fast
+    // tier for (`3:21`, `53:24`); once capturing blocks reran their frame,
+    // those diverged too.
+    (
+        "loop_block_result_errors_point_at_the_call",
+        r##"def plain_map(h)
+  try
+    h.map { |k, v| [{"z": 1}, v] }
+  catch e
+    print("plain map: #{e}")
+  end
+end
+plain_map({"a": 1})
+def capturing_map(h, fns)
+  try
+    h.map do |k, v|
+      fns.push(fn() { k })
+      [{"z": 1}, v]
+    end
+  catch e
+    print("capturing map: #{e}")
+  end
+end
+capturing_map({"a": 1}, [])
+def capturing_local_map(h, fns)
+  try
+    h.map do |k, v|
+      x = v + 1
+      fns.push(fn() { x })
+      [{"z": x}, v]
+    end
+  catch e
+    print("capturing local map: #{e}")
+  end
+end
+capturing_local_map({"a": 1}, [])
+def plain_keys(h)
+  try
+    h.transform_keys { |k| [1.5] }
+  catch e
+    print("plain keys: #{e}")
+  end
+end
+plain_keys({"a": 1})
+def capturing_keys(h, fns)
+  try
+    h.transform_keys do |k|
+      fns.push(fn() { k })
+      [1.5]
+    end
+  catch e
+    print("capturing keys: #{e}")
+  end
+end
+capturing_keys({"a": 1}, [])
+def template_after_a_pass(h)
+  try
+    h.map { |k, v| [v, k * 2] }
+  catch e
+    print("template: #{e}")
+  end
+end
+template_after_a_pass({"a": 1, 2: [1]})
+top = {"a": 1}
+try
+  top.map { |k, v| [{"z": 1}, v] }
+catch e
+  print("top level: #{e}")
+end
+print("after", capturing_map({"b": 2}, []), [1, 2].map { |n| n * 2 })"##,
+    ),    (
+        // `filter` / `select` / `reject`, `find` and `sort_by` return the
+        // element they handed the block — not what the receiver holds at
+        // that index once the block has replaced it, nor what the block
+        // reassigned its parameter to. The VM's loop keeps that element in
+        // a slot of its own.
+        "array_block_kept_element_is_the_one_handed_in",
+        r##"fs = [1, 2, 3, 4]
+r1 = fs.filter do |v|
+  fs[0] = 9 if v == 1
+  v = 100
+  true
+end
+print("#{r1} #{fs}")
+hs = [{"v": 1}, {"v": 2}, {"v": 3}]
+r2 = hs.select do |h|
+  hs[1] = {"v": 0} if h["v"] == 2
+  h["v"] > 1
+end
+print("#{r2} #{hs}")
+ss = ["a", "bb", "ccc"]
+r3 = ss.reject do |s|
+  ss[2] = "z" if s == "ccc"
+  s.length == 2
+end
+print("#{r3} #{ss}")
+ds = [5, 6, 7]
+r4 = ds.find do |d|
+  ds[1] = 60 if d == 6
+  d > 5
+end
+print("#{r4} #{ds}")
+ks = [3, 1, 2]
+r5 = ks.sort_by do |k|
+  ks[0] = 30 if k == 3
+  k
+end
+print("#{r5} #{ks}")"##,
+    ),
+    (
+        // `s[i]` reads one character without decoding the whole string
+        // (an ASCII byte read, else a `chars().nth` walk), on GetIndex,
+        // GetLocalIndex and GetNestedIndex. The paren-form zero-arg string
+        // methods share the receiver when nothing changes, split/lines
+        // build their pieces directly, and a pad that adds nothing returns
+        // the receiver. Negative indexes on multi-byte text are covered by
+        // `string_negative_index_counts_characters`.
+        "string_index_and_shared_string_results",
+        r##"def at(s, i)
+  s[i]
+end
+def scan(s)
+  out = []
+  i = 0
+  while i < 5
+    out.push(s[i])
+    i += 1
+  end
+  out
+end
+a = "hello"
+m = "héllo wörld😀"
+print(at(a, 0), at(a, 4), at(a, -1), at(a, -5))
+print(at(m, 0), at(m, 1), at(m, 2), at(m, 7), at(m, 11))
+print(scan(m))
+print(m[1] + m[11])
+counts = {"h": 0}
+counts[a[0]] = counts[a[0]] + 1
+print(counts)
+try
+  at(a, 5)
+catch e
+  print("oob")
+end
+try
+  at(m, 11)
+  print("ok11")
+  at(m, 12)
+catch e
+  print("oob2")
+end
+long = "  " + "x" * 40 + "  "
+print(long.trim().length, long.lstrip().length, long.rstrip().length, long.to_s() == long)
+print("ABC".upcase(), "abc".upcase(), "ÉcOLE".downcase(), "école".upcase(), "MiXeD".downcase())
+print("line\n".chomp(), "line".chomp(), "a\r\n".chomp().length, "abc".join())
+print("a,b,,c".split(","), "a b".split(), "abc".split(""), "x".split(","))
+print("one\ntwo\n".lines(), "ab".ljust(1), "ab".ljust(5, "*"), "ab".rjust(4), "ab".center(6, "-"))
+print("ab".lpad(1), "ab".lpad(4, "0"), "ab".rpad(4, "."), "é".ljust(4, "é"))"##,
+    ),
+    (
+        // A negative `s[i]` counts characters from the end on both engines.
+        // The tree-walker offset it from the byte length, so on non-ASCII
+        // text `"héllo"[-1]` raised there (and `[-2]` read the wrong
+        // character), and its out-of-range message gave the byte length
+        // where the VM gave the character count. Error texts are printed:
+        // they must match too.
+        "string_negative_index_counts_characters",
+        r##"def at(s, i)
+  s[i]
+end
+def attempt(s, i)
+  try
+    print(at(s, i))
+  catch e
+    print(e)
+  end
+end
+m = "héllo"
+print(m[-1], m[-2], m[-4], m[-5], at(m, -1), at(m, -4))
+e = "😀ab日本"
+print(e[-1], e[-2], e[-3], e[-5], e[0], e[4])
+print("日本語"[-3], "aé"[-1], "éa"[-1], "éa"[-2])
+attempt(m, 5)
+attempt(m, -6)
+attempt(e, -6)
+attempt(e, 5)
+attempt("", -1)"##,
+    ),
+    (
+        // `for ch in s` yields one-character strings on both engines. The
+        // tree-walker raised `cannot iterate over string` while the VM
+        // iterated, so a string that reached the loop through an untyped
+        // parameter or return value worked on one engine only (and the
+        // checker refused a visible String). Covers non-ASCII text, the
+        // index variable, break/next, an empty string, a closure-capturing
+        // body (the tree-walker's per-iteration environment path), and
+        // reassigning the variable mid-loop (the loop keeps its own handle).
+        "for_in_string_iterates_characters",
+        r##"def get(x)
+  x
+end
+s = get("héllo 😀日")
+for ch in s
+  print(ch)
+end
+for ch, i in s
+  print("#{i}:#{ch}")
+end
+for ch in "abc"
+  print(ch.upcase)
+end
+out = []
+for ch in get("abcdef")
+  next if ch == "b"
+  break if ch == "e"
+
+  out.push(ch)
+end
+print(out)
+for ch in get("")
+  print("never")
+end
+fns = []
+for ch in get("xyz")
+  fns.push(fn() { ch })
+end
+print(fns.map { |f| f() })
+word = get("ab")
+seen = []
+for ch in word
+  word = "zzzz"
+  seen.push(ch)
+end
+print(seen, word)"##,
     ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in

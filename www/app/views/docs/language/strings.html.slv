@@ -225,19 +225,23 @@ end</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Access individual characters using zero-based indexing. Negative indices count from the end.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">str = "Hello, World!"
+                    <p class="text-gray-400 mb-3">Access individual characters using zero-based indexing. Negative indices count from the end. Indexes count characters, never bytes, so accented letters and emoji are one position each. An index past either end raises <code class="text-amber-300">Index out of bounds</code>, with the length in characters.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">text = "Hello, World!"
 
 # Zero-based indexing
-print(str[0]);    # "H" (first character)
-print(str[7]);    # "W"
+print(text[0]);    # "H" (first character)
+print(text[7]);    # "W"
 
 # Negative indexing
-print(str[-1]);   # "!" (last character)
-print(str[-2]);   # "d" (second to last)
+print(text[-1]);   # "!" (last character)
+print(text[-2]);   # "d" (second to last)
 
-# Out of bounds returns null
-print(str[100]);  # null</code></pre>
+# By character, not by byte
+print("héllo"[1]);   # "é"
+print("héllo"[-1]);  # "o"
+
+# Out of bounds raises
+text[100] rescue "none"  # "none" — Index out of bounds: 100 (length 13)</code></pre>
                 </div>
             </section>
 

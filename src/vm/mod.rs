@@ -31,6 +31,7 @@ pub mod vm_hash_methods;
 pub mod vm_int_methods;
 pub mod vm_primitive_methods;
 pub mod vm_string_methods;
+pub mod vm_upvalues;
 pub mod vm_view_helpers;
 
 pub use chunk::{CompiledModule, FunctionProto};

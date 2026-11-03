@@ -1211,9 +1211,12 @@ impl Compiler {
             ExprKind::Variable(name) => {
                 // `name = name + <expr>` (and `name += <expr>`, desugared to
                 // it): one op reads, adds and stores, so a string grows in
-                // place instead of being copied per iteration. A variable or
-                // literal right-hand side is left to the peepholes
-                // (`AddLocalsInPlace`, `AppendLocalConst`, `IncrLocal`, …).
+                // place instead of being copied per iteration. For a local or
+                // a global, a variable or literal right-hand side is left to
+                // the peepholes (`AddLocalsInPlace`, `AppendLocalConst`,
+                // `IncrLocal`, …). A captured variable has none: `total += x`
+                // and `count += 1` in a block take the fused op too, which
+                // the fast tier runs on numbers.
                 if let ExprKind::Binary {
                     left,
                     operator: BinaryOp::Add,
@@ -1229,7 +1232,9 @@ impl Compiler {
                             | ExprKind::FloatLiteral(_)
                             | ExprKind::StringLiteral(_)
                     );
-                    // `acc = acc + h[keys[k]]` over locals is `AddNestedIndex`'s.
+                    // `acc = acc + h[keys[k]]` over locals is `AddNestedIndex`'s
+                    // (whatever `acc` is: a captured one keeps `Add` and
+                    // `SetUpvalue` too).
                     let nested_index_of_variables = matches!(
                         &right.kind,
                         ExprKind::Index { object, index }
@@ -1238,7 +1243,11 @@ impl Compiler {
                                     if matches!(object.kind, ExprKind::Variable(_))
                                         && matches!(index.kind, ExprKind::Variable(_)))
                     );
-                    if self_add && !simple_rhs && !nested_index_of_variables {
+                    let fused = self_add
+                        && !nested_index_of_variables
+                        && (!simple_rhs
+                            || matches!(self.resolve_variable(name), VariableAccess::Upvalue(_)));
+                    if fused {
                         let add_assign = match self.resolve_variable(name) {
                             VariableAccess::Local(slot) => Op::AddAssignLocal(slot),
                             VariableAccess::Upvalue(idx) => Op::AddAssignUpvalue(idx),
@@ -2065,6 +2074,93 @@ mod named_args_compile_tests {
             compiles("def scale(x, factor) { return x * factor }\nprint(5 |> scale(3))"),
             "positional pipeline calls must still compile"
         );
+    }
+}
+
+#[cfg(test)]
+mod captured_add_assign_compile_tests {
+    //! `captured = captured + value` in a block compiles to one
+    //! `AddAssignUpvalue`, a variable or literal right-hand side included: a
+    //! captured variable has no peephole to fall back on, and the fused op
+    //! appends a string in place and runs numbers in the fast tier. Locals
+    //! keep their peepholes. The one exception is `acc = acc + h[keys[k]]`,
+    //! left to `AddNestedIndex` whatever `acc` is.
+    use crate::vm::chunk::Constant;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    /// The ops of the first function found inside function `f` of
+    /// `def f … end` with `body`: the block.
+    fn block_ops(body: &str) -> Vec<Op> {
+        let src = format!("def f\n{body}\nend\n");
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let nested = |constants: &[Constant]| {
+            constants.iter().find_map(|constant| match constant {
+                Constant::Function(proto) => Some(proto.clone()),
+                _ => None,
+            })
+        };
+        let f = nested(module.main.chunk.constants.as_slice()).expect("f");
+        nested(f.chunk.constants.as_slice())
+            .expect("the block")
+            .chunk
+            .code
+            .clone()
+    }
+
+    #[test]
+    fn a_captured_accumulator_compiles_to_add_assign_upvalue() {
+        for statement in [
+            "total += x",
+            "total = total + x",
+            "total += 1",
+            "total = total + 2.5",
+            "total += \"s\"",
+            "total += x * 2",
+            "total = total + x.abs",
+        ] {
+            let ops = block_ops(&format!(
+                "  total = 0\n  [1].each do |x|\n    {statement}\n    nil\n  end\n  total"
+            ));
+            let fused = ops
+                .iter()
+                .filter(|op| matches!(op, Op::AddAssignUpvalue(_)))
+                .count();
+            assert_eq!(fused, 1, "{statement}: {ops:?}");
+            assert!(
+                !ops.iter()
+                    .any(|op| matches!(op, Op::SetUpvalue(_) | Op::Add)),
+                "{statement}: {ops:?}"
+            );
+        }
+    }
+
+    /// Only the self-add is fused: anything else still assigns through
+    /// `SetUpvalue`. So does `total = total + h[keys[x]]`, the shape kept for
+    /// the locals-only `AddNestedIndex` peephole (`www/docs/internals/vm.md`
+    /// says so).
+    #[test]
+    fn other_captured_assignments_keep_set_upvalue() {
+        for statement in [
+            "total = x + total",
+            "total = x",
+            "total = total - x",
+            "total = total + h[keys[x]]",
+        ] {
+            let ops = block_ops(&format!(
+                "  total = 0\n  [1].each do |x|\n    {statement}\n    nil\n  end\n  total"
+            ));
+            assert!(
+                ops.iter().any(|op| matches!(op, Op::SetUpvalue(_))),
+                "{statement}: {ops:?}"
+            );
+            assert!(
+                !ops.iter().any(|op| matches!(op, Op::AddAssignUpvalue(_))),
+                "{statement}: {ops:?}"
+            );
+        }
     }
 }
 

@@ -238,13 +238,19 @@ count += 1   # integer overflow: 9223372036854775807 + 1 does not fit in an Int
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Execute a block n times, passing the index (0 to n-1).</p>
+                    <p class="text-gray-400 mb-3">Execute a block n times, passing the index (0 to n-1). A block that has no use for the index can leave it out. The same goes for <code>upto</code> and <code>downto</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">3.times |i|
   println(i)
 end
 # 0
 # 1
-# 2</code></pre>
+# 2
+
+attempts = 0
+3.times do
+  attempts += 1
+end
+# attempts == 3</code></pre>
                 </div>
             </section>
 

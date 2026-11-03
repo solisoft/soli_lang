@@ -481,24 +481,24 @@ impl Interpreter {
                     }
                 })
             }
+            // `for ch in s` yields each character as a one-character string,
+            // as the VM's `IterState::String` does: walk a byte offset instead
+            // of collecting a `Vec<char>`, and encode each character on the
+            // stack. `s` is the loop's own handle, so reassigning the variable
+            // inside the body does not change what is iterated (same on both
+            // engines).
+            Value::String(s) => {
+                let mut byte_offset = 0usize;
+                self.run_for_loop(variable, index_variable, body, || {
+                    let ch = s[byte_offset..].chars().next()?;
+                    byte_offset += ch.len_utf8();
+                    Some(crate::interpreter::executor::calls::string_methods::char_to_value(ch))
+                })
+            }
             _ => {
                 // Include the offending value in the message so the user can
-                // see *which* string (or scalar) snuck into the iterable slot.
-                // Strings get truncated to keep the page readable; longer
-                // ones drop a trailing `…`. Other scalars are short enough
-                // to inline verbatim.
+                // see *which* scalar snuck into the iterable slot.
                 let message = match &iter_value {
-                    Value::String(s) => {
-                        const MAX: usize = 120;
-                        let preview: String = if s.chars().count() > MAX {
-                            let mut p: String = s.chars().take(MAX).collect();
-                            p.push('…');
-                            p
-                        } else {
-                            s.clone().to_string()
-                        };
-                        format!("cannot iterate over string {:?}", preview)
-                    }
                     Value::Null => "cannot iterate over null".to_string(),
                     Value::Int(n) => format!("cannot iterate over int {}", n),
                     Value::Float(n) => format!("cannot iterate over float {}", n),
