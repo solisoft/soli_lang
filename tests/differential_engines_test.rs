@@ -2724,6 +2724,141 @@ print(k.a_method_name_longer_than_fifteen)
 print(k.send("greet", 2))
 print(k.send("a_method_name_longer_than_fifteen"))"##,
     ),
+    (
+        // Each `while` condition is the `Loop` target. It fuses to a `*LocalLocal` / `*LocalConst` compare (C587): Int, Float and String operands, a loop that runs and one that does not.
+        "fused_head_at_while_headers",
+        r##"def headers(n, lim)
+  i = 0
+  f = 0.0
+  s = "a"
+  hits = 0
+  while i < n
+    i += 1
+  end
+  while f < lim
+    f = f + 0.5
+  end
+  while s < "aaaa"
+    s = s + "a"
+  end
+  while hits <= 3
+    hits += 1
+  end
+  [i, f, s, hits]
+end
+print(headers(4, 2.0))
+print(headers(0, 0.0))"##,
+    ),
+    (
+        // The statement after an `if` or a postfix guard is the branch's merge, and fuses (C587): `IncrLocal`, `AddLocalsInPlace`, `GetLocalProperty`, `LessLocalLocal`, `AppendLocalConst` and a method call, with Int, Float, String and Array operands.
+        "fused_head_after_if_and_guard",
+        r##"class Box
+  v: Int
+  new(v)
+    @v = v
+  end
+  def twice
+    @v * 2
+  end
+end
+def merges(k, m, h, b)
+  t = 0
+  y = nil
+  c = 0
+  buf = ""
+  i = 0
+  while i < 4
+    c += 1 if i % 2 == 0
+    i += 1
+    if i > 2
+      buf = buf + "x"
+    end
+    t = t + m
+    y = h.a
+    z = k < m
+    buf = buf + "y"
+    w = b.twice
+    i += 0
+    print([t, y, z, buf, w])
+  end
+  [c, t]
+end
+print(merges(1, 2, {"a": 5}, Box.new(3)))
+print(merges(1.5, 2.25, {"a": "s"}, Box.new(1)))
+print(merges("a", "b", {"a": [1]}, Box.new(0)))"##,
+    ),
+    (
+        // `elsif` and `else` heads, the statement after a `match`, a defaulted function's first statement and a `catch` body's are branch targets that fuse (C587).
+        "fused_head_at_elsif_match_default_catch",
+        r##"def classify(v)
+  r = 0
+  if v < 0
+    r = 1
+  elsif v < 3
+    r = r + v
+  elsif v == 3
+    r = v * 10
+  else
+    r = v - 1
+  end
+  r
+end
+def arms(v)
+  n = 1
+  out = match v {
+    1 => n + 1,
+    2 => n * 5,
+    "s" => n - 3,
+    _ => v
+  }
+  n += 1
+  [out, n]
+end
+def defaults(a, b = 2, c = "z")
+  a += 1
+  [a, b, c]
+end
+def caught(x)
+  n = 0
+  try
+    throw "boom" if x
+    n += 5
+  catch e
+    n += 1
+    n = n * 3
+  end
+  n += 10
+  n
+end
+print([classify(-2), classify(2), classify(3), classify(9), classify(2.5)])
+print([arms(1), arms(2), arms("s"), arms(7)])
+print([defaults(1), defaults(1.5, 3), defaults(0, 0, "q")])
+print([caught(true), caught(false)])"##,
+    ),
+    (
+        // `x += 1` after an `if` is `IncrLocal` (C587): Float and String operands take the general arm, and an Int overflow raises with the statement's location.
+        "fused_head_after_if_raises_like_unfused",
+        r##"def bump(flag, x)
+  r = 0
+  if flag
+    r = 1
+  end
+  x += 1
+  x
+end
+print(bump(true, 1))
+print(bump(false, 2.5))
+try
+  print(bump(true, 9223372036854775807))
+catch e
+  print("caught: #{e}")
+end
+try
+  print(bump(false, "s"))
+catch e
+  print("caught type")
+end"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -1229,7 +1229,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
 
     let constants = &chunk.constants;
 
-    // Track which offsets are jump targets (can't optimize across them)
+    // Track which offsets are jump targets: a pattern may start at one, but
+    // never have one in its tail (see the scan below).
     let mut is_jump_target = vec![false; len];
     for (i, op) in code.iter().enumerate() {
         match op {
@@ -1246,9 +1247,9 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             // and +0.1% on `String|chars` (medians of 8 interleaved runs of
             // bench/cross-language), with the median across all 67 cases
             // unmoved. That is the price of not mis-compiling a branch, so it
-            // is the right trade — but if a future pass wants those cycles
-            // back, the way to get them is a peephole that can fuse *around* a
-            // target rather than a shorter list here.
+            // is the right trade. (Part of it came back once the scan stopped
+            // refusing a pattern whose head is a target: only a target in the
+            // tail blocks a fusion now.)
             Op::Jump(offset)
             | Op::JumpIfFalse(offset)
             | Op::JumpIfTrue(offset)
@@ -1295,15 +1296,25 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         }
     }
 
-    // Pattern matching: scan for optimizable sequences
+    // Pattern matching: scan for optimizable sequences.
+    //
+    // A pattern may start at a jump target. Every rule writes its result at
+    // the head's own index `i` and blanks only the tail, and `compact_nops`
+    // maps a branch to `i` onto that fused op, which does on its own what the
+    // whole sequence did. What would be unsafe is a branch landing *inside*
+    // the pattern, past the fused op: each rule refuses that with
+    // `any_jump_target(&is_jump_target, i + 1, n)`. No rule reads an
+    // instruction before `i`, and the fused jumps keep their absolute targets,
+    // so `is_jump_target` stays valid through the scan.
+    //
+    // The scan used to skip a head that a branch landed on, before trying a
+    // single rule. That left every `while` condition (the `Loop` target), the
+    // statement after each `if`/`else`/loop/guard/`catch`, every `elsif` and
+    // `else` head, match arms 2..n and the first statement of a function with
+    // a defaulted parameter unfused: `i += 1` right after an `if` ran as five
+    // ops instead of `IncrLocal`, about 25% slower than one line earlier.
     let mut i = 0;
     while i + 4 < len {
-        // Don't optimize if current position is a jump target
-        if is_jump_target[i] {
-            i += 1;
-            continue;
-        }
-
         // `total = total + h[keys[k]]` — acc += obj[arr[idx]]
         // GetLocal(acc), GetLocal(obj), GetLocal(arr), GetLocal(idx),
         // GetIndex, GetIndex, Add, SetLocal(acc), Pop
@@ -2136,8 +2147,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
 /// pair have already taken theirs. What is left is a plain store, often after a
 /// fused read: `y = k + 2` is `AddLocalConst, SetLocal, Pop`.
 ///
-/// Being a pass of its own, it also takes a store whose `SetLocal` a branch
-/// lands on, which the main scan skips as a head. `x = a || b`,
+/// Like every rule of the main scan, it takes a store whose `SetLocal` a
+/// branch lands on. `x = a || b`,
 /// `x = c ? a : b`, `x = match …`, `x = f() rescue nil` and `x ||= y` all
 /// merge on the `SetLocal`. The fused op takes the `SetLocal`'s index,
 /// `compact_nops` maps the branch onto it, and it does what the pair did. A
@@ -3247,9 +3258,8 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
 
     /// A value that branches merges on the `SetLocal`: `||`, `&&`, `??`, a
     /// ternary, a `match`, `rescue` and `||=` all jump to the instruction
-    /// after the value. The main scan skips a head that a branch lands on,
-    /// but the store is still fused, because the fused op keeps the
-    /// `SetLocal`'s index and the branch lands on it.
+    /// after the value. The store is still fused, because the fused op keeps
+    /// the `SetLocal`'s index and the branch lands on it.
     #[test]
     fn a_store_a_branch_lands_on_still_fuses() {
         let cases = [
@@ -3361,6 +3371,179 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
                 Op::Null,
                 Op::SetLocal(1),
                 Op::Pop,
+                Op::Null,
+                Op::Return,
+            ]
+        );
+    }
+
+    /// The ops of the first function `src` defines.
+    fn first_fn_ops(src: &str) -> Vec<Op> {
+        let tokens = Scanner::new(src).scan_tokens().expect("lex");
+        let program = Parser::new(tokens).parse().expect("parse");
+        let m = Compiler::compile(&program).expect("compile");
+        for c in m.main.chunk.constants.iter() {
+            if let Constant::Function(proto) = c {
+                return proto.chunk.code.clone();
+            }
+        }
+        panic!("no function proto found");
+    }
+
+    /// A pattern whose first instruction a branch lands on fuses like any
+    /// other (C587). The scan used to skip such a head, so every `while`
+    /// condition, the statement after an `if`/`elsif`/`else`/loop/guard and
+    /// the first statement of a function with a defaulted parameter ran
+    /// unfused. Slot 0 is the callee, so the first local is slot 1.
+    #[test]
+    fn a_pattern_a_branch_lands_on_still_fuses() {
+        // (body, the fused op expected, how many of it)
+        type Case = (&'static str, fn(&Op) -> bool, usize);
+        let cases: [Case; 7] = [
+            // The `Loop` target: the header compare.
+            ("i = 0\nn = 5\nwhile i < n { i += 1 }\ni", |op| {
+                matches!(op, Op::LessLocalLocal(1, 2))
+            }, 1),
+            ("i = 0\nwhile i < 10 { i += 1 }\ni", |op| {
+                matches!(op, Op::LessLocalConst(1, _))
+            }, 1),
+            // The `if`'s merge.
+            ("c = true\ni = 0\nif c { c = false }\ni += 1\ni", |op| {
+                matches!(op, Op::IncrLocal(2))
+            }, 1),
+            // A postfix guard's merge: both counters.
+            ("n = 0\ni = 0\nn += 1 if i > 3\ni += 1\ni", |op| {
+                matches!(op, Op::IncrLocal(_))
+            }, 2),
+            // The `elsif` condition, and the `else` head.
+            (
+                "k = 2\nr = 0\nif k < 0 { r = 1 } elsif k < 3 { r = 2 } else { r = r + k }\nr",
+                |op| matches!(op, Op::LessLocalConst(1, _)),
+                2,
+            ),
+            (
+                "k = 2\nr = 0\nif k < 0 { r = 1 } elsif k < 3 { r = 2 } else { r = r + k }\nr",
+                |op| matches!(op, Op::AddLocalsInPlace(2, 1)),
+                1,
+            ),
+            // The loop's exit, and a property read after an `if`.
+            (
+                "s = 0\ni = 0\nh = {\"a\": 1}\nwhile i < 3 { i += 1 }\ns = s + i\nif s { s = 0 }\ns = h.a\ns",
+                |op| matches!(op, Op::AddLocalsInPlace(1, 2) | Op::GetLocalProperty(3, _)),
+                2,
+            ),
+        ];
+        for (body, fused, count) in cases {
+            let ops = fn_ops(body);
+            assert_eq!(
+                ops.iter().filter(|op| fused(op)).count(),
+                count,
+                "{body}\n{ops:?}"
+            );
+            assert!(
+                !ops.iter()
+                    .any(|op| matches!(op, Op::TestLessJump(_) | Op::Add | Op::Less)),
+                "{body}\nan unfused head is left: {ops:?}"
+            );
+        }
+
+        // The `JumpIfParamSupplied` target: the body's first statement.
+        let ops = first_fn_ops("def f(a, b = 1) {\n  a += 1\n  a + b\n}\n");
+        assert!(
+            ops.iter().any(|op| matches!(op, Op::IncrLocal(1))),
+            "{ops:?}"
+        );
+
+        // The same shapes run, through each target, with the right values.
+        let program = "def count(n)\n  i = 0\n  hits = 0\n  while i < n\n    hits += 1 if i % 3 == 0\n    i += 1\n  end\n  hits\nend\n\
+                       def grade(k)\n  r = 0\n  if k < 0\n    r = 1\n  elsif k < 3\n    r = 2\n  else\n    r = r + k\n  end\n  r\nend\n\
+                       def step_from(a, b = 10)\n  a += 1\n  a + b\nend\n\
+                       def after_loop(n)\n  s = 0\n  i = 0\n  while i < n\n    i += 1\n  end\n  s = s + i\n  s\nend\n\
+                       let result = [count(10), grade(-1), grade(1), grade(7), step_from(1), step_from(1, 2), after_loop(4)]";
+        assert_eq!(vm_result(program), "[4, 1, 2, 7, 12, 4, 4]");
+    }
+
+    /// The canonical counting loop, op for op: the header is the fused
+    /// compare and its branch, and the back-edge lands on the compare.
+    #[test]
+    fn a_counting_while_loop_is_four_ops() {
+        let ops = fn_ops("i = 0\nn = 5\nwhile i < n { i += 1 }\ni");
+        let head = ops
+            .windows(4)
+            .position(|w| {
+                matches!(
+                    w,
+                    [
+                        Op::LessLocalLocal(1, 2),
+                        Op::JumpIfFalse(_),
+                        Op::IncrLocal(1),
+                        Op::Loop(_)
+                    ]
+                )
+            })
+            .unwrap_or_else(|| panic!("no fused loop: {ops:?}"));
+        let Op::Loop(back) = ops[head + 3] else {
+            unreachable!()
+        };
+        assert_eq!(head + 4 - back as usize, head, "{ops:?}");
+        let Op::JumpIfFalse(exit) = ops[head + 1] else {
+            unreachable!()
+        };
+        assert_eq!(head + 2 + exit as usize, head + 4, "{ops:?}");
+    }
+
+    /// The tail check is what guards a fusion. Two hand-built chunks differ
+    /// only in where one branch lands: on the head of `x = x + 1` the five
+    /// ops become `IncrLocal` and the branch is remapped onto it; on the
+    /// `Add` they stay (only the trailing store fuses).
+    #[test]
+    fn a_branch_into_the_tail_still_blocks_the_fusion() {
+        let optimized = |offset: u16| {
+            let mut chunk = Chunk::default();
+            let one = chunk.add_constant(Constant::Int(1));
+            // The branch at 1 lands on 2 + offset: 4 is the `GetLocal`, 6 the `Add`.
+            for op in [
+                Op::True,
+                Op::JumpIfFalse(offset),
+                Op::Null,
+                Op::Pop,
+                Op::GetLocal(1),
+                Op::Constant(one),
+                Op::Add,
+                Op::SetLocal(1),
+                Op::Pop,
+                Op::Null,
+                Op::Return,
+            ] {
+                chunk.emit(op, 1);
+            }
+            peephole_optimize_chunk(&mut chunk);
+            chunk.code
+        };
+
+        assert_eq!(
+            optimized(2),
+            [
+                Op::True,
+                Op::JumpIfFalse(2),
+                Op::Null,
+                Op::Pop,
+                Op::IncrLocal(1),
+                Op::Null,
+                Op::Return,
+            ]
+        );
+        assert_eq!(
+            optimized(4),
+            [
+                Op::True,
+                Op::JumpIfFalse(4),
+                Op::Null,
+                Op::Pop,
+                Op::GetLocal(1),
+                Op::Constant(0),
+                Op::Add,
+                Op::SetLocalPop(1),
                 Op::Null,
                 Op::Return,
             ]
