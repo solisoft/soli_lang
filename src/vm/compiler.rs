@@ -600,6 +600,20 @@ impl Compiler {
             .add_constant(Constant::String(s.to_string().into()))
     }
 
+    /// `GetProperty` of `name`, with the method id and zero-arg mask that let
+    /// the fast tier answer a paren-less `h.length`, `s.blank?` or `n.to_s`
+    /// by id (see `Op::GetProperty`).
+    pub fn get_property_op(&mut self, name: &str) -> Op {
+        let idx = self.add_string_constant(name);
+        let mid = super::method_table::resolve_method_id(name);
+        let mask = if mid == super::method_table::METHOD_UNKNOWN {
+            0
+        } else {
+            crate::interpreter::executor::calls::method_registry::zero_arg_receiver_mask(name)
+        };
+        Op::GetProperty(idx, mid, mask)
+    }
+
     // --- Scope management ---
 
     pub fn begin_scope(&mut self) {
@@ -1266,8 +1280,11 @@ fn stack_effect(op: Op) -> i32 {
         // [this, args…] collapse to the result: net -argc.
         CallSuperInit(argc) | CallSuperMethod(_, argc) => -(argc as i32),
         CallGlobal(_, argc) | GetGlobalCall(_, argc) => 1 - argc as i32,
-        SelfOrGlobal(_) | SelfOrGlobalCallee(_) | MarkPrivate(_) | MarkProtected(_) => 0,
-        CallSelfOrGlobal(_, argc) => -(argc as i32),
+        SelfOrGlobal(_) | MarkPrivate(_) | MarkProtected(_) => 0,
+        // `this` becomes the callee, and the resolution marker is pushed on
+        // top; the call collapses `[callee, marker, args…]` to the result.
+        SelfOrGlobalCallee(_) => 1,
+        CallSelfOrGlobal(_, argc) => -(argc as i32) - 1,
         Closure(_) => 1,
         Return => 0,
         // Collections.
@@ -1280,7 +1297,7 @@ fn stack_effect(op: Op) -> i32 {
         Range | GetIndex => -1,
         SetIndex => -2,
         // Objects.
-        GetProperty(_) | GetPropertyOrNull(_) => 0,
+        GetProperty(_, _, _) | GetPropertyOrNull(_) => 0,
         SetProperty(_) => -1,
         // Classes (class value stays on the stack; method/field defs pop one).
         Class(_) | Module(_) => 1,
@@ -1378,7 +1395,7 @@ fn stack_effect(op: Op) -> i32 {
         | TestGreaterEqualJump(_)
         | TestNotEqualJump(_)
         | TestEqualJump(_) => -2,
-        GetLocalProperty(_, _) | GetLocalIndex(_, _) | GetNestedIndex(_, _, _) => 1,
+        GetLocalProperty(_, _, _, _) | GetLocalIndex(_, _) | GetNestedIndex(_, _, _) => 1,
         AddNestedIndex(_, _, _, _) | SetNestedIndex(_, _, _, _) => 0,
         // Touches `iter_stack`, not the value stack.
         PopIter => 0,
@@ -1865,7 +1882,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal(s), GetProperty(c) → GetLocalProperty(s, c)
+        // Pattern: GetLocal(s), GetProperty(c, m, z) → GetLocalProperty(s, c, m, z)
         //
         // `this.field` and `obj.field` are the most common shape in Soli's OO
         // code — every model attribute read, every controller `this.` — and the
@@ -1873,9 +1890,9 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         // The fused opcode already existed and was already implemented; nothing
         // ever emitted it.
         if i + 1 < len {
-            if let (Op::GetLocal(slot), Op::GetProperty(cidx)) = (code[i], code[i + 1]) {
+            if let (Op::GetLocal(slot), Op::GetProperty(cidx, mid, mask)) = (code[i], code[i + 1]) {
                 if !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::GetLocalProperty(slot, cidx);
+                    code[i] = Op::GetLocalProperty(slot, cidx, mid, mask);
                     code[i + 1] = NOP;
                     i += 2;
                     continue;
@@ -2654,6 +2671,39 @@ mod inplace_peephole_tests {
         panic!("no function proto found");
     }
 
+    /// `o.x ||= v`, `&&=` and `??=`: the jump taken when the read decides
+    /// the result lands after the `SetProperty`, so a short-circuit writes
+    /// nothing (the tree-walker's order), and the receiver is loaded once
+    /// before the read — the second load belongs to the assigning path.
+    #[test]
+    fn member_short_circuit_assign_jumps_over_the_write() {
+        for op in ["||=", "&&=", "??="] {
+            let ops = fn_ops(&format!("o = nil\no.x {op} 1"));
+            let read = ops
+                .iter()
+                .position(|o| matches!(o, Op::GetPropertyOrNull(_)))
+                .unwrap_or_else(|| panic!("{op}: no GetPropertyOrNull in {ops:?}"));
+            let target = match ops[read + 1] {
+                Op::JumpIfTrueNoPop(d) | Op::JumpIfFalseNoPop(d) | Op::JumpIfNotNull(d) => {
+                    read + 2 + d as usize
+                }
+                ref other => panic!("{op}: expected a no-pop jump, got {other:?}"),
+            };
+            assert!(
+                matches!(ops[target - 1], Op::SetProperty(_)),
+                "{op}: the short-circuit must jump over SetProperty: {ops:?}"
+            );
+            assert_eq!(
+                ops[..read]
+                    .iter()
+                    .filter(|o| matches!(o, Op::GetLocal(_)))
+                    .count(),
+                1,
+                "{op}: one receiver load before the read: {ops:?}"
+            );
+        }
+    }
+
     /// The whole point of the in-place opcodes is that the canonical loop body
     /// actually compiles to them. Without this, the peephole can silently stop
     /// matching and the only symptom is a benchmark that quietly gets slower.
@@ -2956,7 +3006,7 @@ mod inplace_peephole_tests {
             !ops.iter().any(|op| matches!(
                 op,
                 Op::MatchType(..)
-                    | Op::GetProperty(_)
+                    | Op::GetProperty(..)
                     | Op::GetLocalProperty(..)
                     | Op::CallMethod(..)
                     | Op::CallMethodById(..)
@@ -3604,7 +3654,7 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
             // The loop's exit, and a property read after an `if`.
             (
                 "s = 0\ni = 0\nh = {\"a\": 1}\nwhile i < 3 { i += 1 }\ns = s + i\nif s { s = 0 }\ns = h.a\ns",
-                |op| matches!(op, Op::AddLocalsInPlace(1, 2) | Op::GetLocalProperty(3, _)),
+                |op| matches!(op, Op::AddLocalsInPlace(1, 2) | Op::GetLocalProperty(3, ..)),
                 2,
             ),
         ];
@@ -3982,7 +4032,7 @@ mod stack_effect_tests {
             (&[], NotZeroLocal(N)),
             (&[], NotLocal(N)),
             (&[], NegateLocal(N)),
-            (&[], GetLocalProperty(FLAT, KEY)),
+            (&[], GetLocalProperty(FLAT, KEY, 0, 0)),
             (&[], GetLocalIndex(KEYS, IDX)),
             (&[], GetNestedIndex(FLAT, KEYS, IDX)),
             // In place: no stack traffic.
@@ -4036,7 +4086,7 @@ mod stack_effect_tests {
             (&[GetLocal(KEYS), Constant(ZERO), Constant(INT)], SetIndex),
             (&[Constant(STR), Constant(INT)], BuildString(2)),
             (&[Constant(STR)], BuildString(1)),
-            (&[GetLocal(FLAT)], GetProperty(KEY)),
+            (&[GetLocal(FLAT)], GetProperty(KEY, 0, 0)),
             (&[GetLocal(FLAT)], GetPropertyOrNull(KEY)),
             (&[GetLocal(FLAT), Constant(INT)], SetProperty(KEY)),
             // Iterators (the iterator itself lives on `iter_stack`).

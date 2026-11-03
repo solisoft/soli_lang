@@ -372,18 +372,14 @@ pub fn hash_contains_value(hash: &HashPairs, key: &Value) -> bool {
 pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
     match key {
         Value::String(s) => {
-            if let Some((_, _, existing)) = hash.get_full_mut(&StrKey(s)) {
-                *existing = value;
-            } else {
-                hash.insert(HashKey::String(s.clone()), value);
-            }
+            hash.set_str(s, value);
             true
         }
         Value::Symbol(s) => {
             if let Some((_, _, existing)) = hash.get_full_mut(&SymKey(s)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Symbol(s.clone()), value);
+                hash.insert_absent(HashKey::Symbol(s.clone()), value);
             }
             true
         }
@@ -391,7 +387,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Int(*n)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Int(*n), value);
+                hash.insert_absent(HashKey::Int(*n), value);
             }
             true
         }
@@ -399,7 +395,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Bool(*b)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Bool(*b), value);
+                hash.insert_absent(HashKey::Bool(*b), value);
             }
             true
         }
@@ -407,7 +403,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Null) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Null, value);
+                hash.insert_absent(HashKey::Null, value);
             }
             true
         }
@@ -415,7 +411,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Decimal(d.clone())) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Decimal(d.clone()), value);
+                hash.insert_absent(HashKey::Decimal(d.clone()), value);
             }
             true
         }
@@ -519,11 +515,25 @@ pub struct DeferredCell {
 /// structurally — class name + `__variant` tag + payload fields (recursively) —
 /// and defers to the default `PartialEq` for everything else, preserving
 /// existing behaviour for ordinary objects.
+///
+/// A unit variant is a shared singleton, so `status == Status.Active` is
+/// usually one instance compared with itself, and identity answers it before
+/// any field is looked at. That holds for any instance that is no payload
+/// variant: an ordinary object's `PartialEq` is identity first, and a unit
+/// variant's only field is its tag. A payload variant compared with itself
+/// still goes field by field, so `v == v` stays false when its payload holds
+/// a NaN, exactly as for two equal copies.
 pub fn enum_aware_equal(a: &Value, b: &Value) -> bool {
     if let (Value::Instance(ia), Value::Instance(ib)) = (a, b) {
-        let a_is_enum = ia.borrow().fields.contains_key("__variant");
-        let b_is_enum = ib.borrow().fields.contains_key("__variant");
-        if a_is_enum && b_is_enum {
+        if Rc::ptr_eq(ia, ib) {
+            let instance = ia.borrow();
+            if instance.fields.len() <= 1 || !instance.fields.contains_key("__variant") {
+                return true;
+            }
+        }
+        if ia.borrow().fields.contains_key("__variant")
+            && ib.borrow().fields.contains_key("__variant")
+        {
             let ra = ia.borrow();
             let rb = ib.borrow();
             if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
@@ -1574,6 +1584,43 @@ pub struct NativeFunctionInner {
     /// allocation was pure overhead.
     pub func: NativeFn,
     pub is_auto_invocable: bool, // Can be called without parentheses
+    /// Which of the few natives the VM intercepts this one is, worked out
+    /// once from `name` at construction so a global native call branches on
+    /// a byte instead of comparing its name against every special.
+    pub vm_special: NativeSpecial,
+}
+
+/// The natives the VM handles itself before (or instead of) calling `func`:
+/// block-taking builtins that must run a closure on the calling VM, and the
+/// ones whose tree-walker behaviour needs VM state. `None` for every other
+/// native, which the VM calls straight on its stack slice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeSpecial {
+    None,
+    Grouped,
+    WithTransaction,
+    AfterCommit,
+    WithTenant,
+    RenderJson,
+    AssertRaises,
+    Defined,
+    ConstGet,
+}
+
+impl NativeSpecial {
+    pub fn of(name: &str) -> Self {
+        match name {
+            "grouped" => Self::Grouped,
+            "with_transaction" => Self::WithTransaction,
+            "after_commit" => Self::AfterCommit,
+            "with_tenant" => Self::WithTenant,
+            "render_json" => Self::RenderJson,
+            "assert_raises" => Self::AssertRaises,
+            "defined" => Self::Defined,
+            "const_get" => Self::ConstGet,
+            _ => Self::None,
+        }
+    }
 }
 
 impl std::ops::Deref for NativeFunction {
@@ -1610,11 +1657,14 @@ impl NativeFunction {
     where
         F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
+        let name = name.into();
+        let vm_special = NativeSpecial::of(&name);
         Self(Rc::new(NativeFunctionInner {
-            name: name.into(),
+            name,
             arity,
             func: Rc::new(func),
             is_auto_invocable,
+            vm_special,
         }))
     }
 }
@@ -1707,11 +1757,19 @@ pub struct Class {
     /// compiled in the VM (`compile_class_decl`). The constructor lands here
     /// under the name `"init"` (it returns `this`). `Rc` so the per-method
     /// class rebuilds in `op_add_method` share one map. ahash-keyed: the VM
-    /// probes this on every compiled instance-method call.
+    /// probes this on every compiled instance-method call. Write it through
+    /// [`Class::insert_vm_method`], or call [`note_vm_methods_changed`] after
+    /// writing: the VM's method cache trusts an entry until that epoch moves.
     pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
     pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
+    /// Bytecode for this class's own tree-walker `static def`s that do not
+    /// read `this`, compiled by the VM as plain functions on their first call
+    /// so later calls skip the name lookups and the closure allocation. Only
+    /// entries of `static_methods` land here, and that map never changes once
+    /// the class is built; a clone starts empty (see [`PlainStaticCache`]).
+    pub vm_plain_static_methods: PlainStaticCache,
     /// Memoized result of [`Class::is_model_subclass`]. The superclass chain
     /// and class names are fixed at construction, so the walk's result can
     /// never change for a given `Class` value. Instance member access checks
@@ -1754,7 +1812,81 @@ pub struct Class {
     /// Instance methods and fields declared `protected` on this class:
     /// reachable from code running in an instance of the declaring class or a
     /// subclass, on that instance or another one. `Rc` as above.
+    ///
+    /// A name added to either set after the class exists must be followed by
+    /// [`note_restricted_methods_declared`] (or
+    /// [`note_restricted_members_changed`]), which stales
+    /// `restricted_names_memo` on every class.
     pub protected_members: Rc<RefCell<HashSet<String>>>,
+    /// Memo for [`Class::restricted_method`]: always `Default::default()`
+    /// outside this module.
+    pub restricted_names_memo: RefCell<RestrictedNames>,
+}
+
+/// [`Class::vm_plain_static_methods`]: plain-function bytecode for a class's
+/// own `static def`s, by name.
+///
+/// Cloning gives an empty cache rather than a copy. A class is rebuilt by
+/// cloning it and replacing some of its maps (`op_add_method`, a reopened
+/// class), and the clone's `static_methods` may name a different function
+/// than the original's did; it compiles its own entries on first call. The
+/// map itself is created on the first insert, so a class nobody calls a
+/// static on never seeds an `ahash` state.
+#[derive(Default)]
+pub struct PlainStaticCache(RefCell<Option<HashMap<String, Rc<VmClosure>, AHasher>>>);
+
+impl PlainStaticCache {
+    /// The cached bytecode for `name`, if it was compiled.
+    #[inline]
+    pub fn get(&self, name: &str) -> Option<Rc<VmClosure>> {
+        self.0.borrow().as_ref()?.get(name).cloned()
+    }
+
+    /// Remember the bytecode compiled for `name`.
+    pub fn insert(&self, name: &str, closure: Rc<VmClosure>) {
+        self.0
+            .borrow_mut()
+            .get_or_insert_with(HashMap::default)
+            .insert(name.to_string(), closure);
+    }
+}
+
+impl Clone for PlainStaticCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl fmt::Debug for PlainStaticCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names: Vec<String> = self
+            .0
+            .borrow()
+            .as_ref()
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default();
+        f.debug_tuple("PlainStaticCache").field(&names).finish()
+    }
+}
+
+/// The names the classes of one chain declare private or protected, as
+/// [`Class::restricted_method`] last collected them.
+#[derive(Debug, Default)]
+pub struct RestrictedNames {
+    /// The `RESTRICTED_MEMBERS_EPOCH` they were collected in; 0 before the
+    /// first collection, which no epoch equals.
+    epoch: u64,
+    /// `None` when no class of the chain declares one.
+    names: Option<HashSet<String, AHasher>>,
+}
+
+/// A copy starts uncollected. A cloned [`Class`] can be given another
+/// superclass or other private sets before its first lookup, and must not
+/// answer from the original's chain. The cost is one collection per clone.
+impl Clone for RestrictedNames {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
 }
 
 /// How far a restricted instance method reaches (see [`Class::restricted_method`]).
@@ -1805,12 +1937,71 @@ impl MethodAccess {
 static RESTRICTED_METHODS_DECLARED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Bumped whenever a name joins some class's `private_members` or
+/// `protected_members`: a [`RestrictedNames`] memo collected in an earlier
+/// epoch is collected again. Starts at 1, so a fresh memo is never current.
+static RESTRICTED_MEMBERS_EPOCH: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
 pub fn note_restricted_methods_declared() {
     RESTRICTED_METHODS_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
+    note_restricted_members_changed();
+}
+
+/// A name joined a class's private or protected set where the flag stays as
+/// it is (a `private class` nested in a class): stale every
+/// [`RestrictedNames`] memo. [`note_restricted_methods_declared`] does it too.
+pub fn note_restricted_members_changed() {
+    RESTRICTED_MEMBERS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub fn restricted_methods_declared() -> bool {
     RESTRICTED_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Bumped whenever some class's `vm_methods` map changes (see
+/// [`Class::insert_vm_method`]): the VM's method cache (`vm::method_cache`)
+/// answers a call only with what it found in the current epoch. Starts at 1,
+/// so an empty entry (epoch 0) is never current.
+static VM_METHODS_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Some class's `vm_methods` changed: stale every method-cache entry. A
+/// global, not per class: a class's answer also depends on its ancestors'
+/// maps, and changes happen at boot and warm-up, not per request.
+pub fn note_vm_methods_changed() {
+    VM_METHODS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The current `VM_METHODS_EPOCH`.
+#[inline]
+pub fn vm_methods_epoch() -> u64 {
+    VM_METHODS_EPOCH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the [`Class::restricted_method`] calls this thread made past
+    /// the flag, and how many of them walked the chain.
+    static RESTRICTED_LOOKUPS: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+}
+
+#[cfg(test)]
+fn tally_restricted_lookup(walked: bool) {
+    RESTRICTED_LOOKUPS.with(|tally| {
+        let (lookups, walks) = tally.get();
+        tally.set(if walked {
+            (lookups, walks + 1)
+        } else {
+            (lookups + 1, walks)
+        });
+    });
+}
+
+/// Test-only: `(lookups past the flag, chain walks)` made on this thread so
+/// far, for a test to tell a skipped privacy check from one that ran.
+#[cfg(test)]
+pub(crate) fn restricted_lookups() -> (usize, usize) {
+    RESTRICTED_LOOKUPS.with(Cell::get)
 }
 
 impl Default for Class {
@@ -1833,6 +2024,7 @@ impl Default for Class {
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_defaults_memo: Cell::new(None),
@@ -1846,6 +2038,7 @@ impl Default for Class {
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_members: Rc::new(RefCell::new(HashSet::new())),
             protected_members: Rc::new(RefCell::new(HashSet::new())),
+            restricted_names_memo: RefCell::default(),
         }
     }
 }
@@ -1883,6 +2076,7 @@ impl Class {
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_defaults_memo: Cell::new(None),
@@ -1896,6 +2090,7 @@ impl Class {
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_members: Rc::new(RefCell::new(HashSet::new())),
             protected_members: Rc::new(RefCell::new(HashSet::new())),
+            restricted_names_memo: RefCell::default(),
         }
     }
 
@@ -1909,23 +2104,32 @@ impl Class {
             .and_then(|superclass| superclass.find_vm_method(name))
     }
 
-    /// The restriction on instance method `name`, and the class that defines
-    /// it: `None` for a public method. The nearest class in the chain that
-    /// defines the method decides, so a subclass that redefines it without a
-    /// modifier makes it public again. Answers `None` without a lookup until
-    /// some class declares a private or protected method, so an application
-    /// with none pays one relaxed load.
-    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, String)> {
+    /// The restriction on instance member `name`, and the name of the class
+    /// that defines it: `None` for a public one. The nearest class in the
+    /// chain that defines the member decides, so a subclass that redefines it
+    /// without a modifier makes it public again. Answers `None` without a
+    /// lookup until some class declares a private or protected member, so an
+    /// application with none pays one relaxed load; after that, a name no
+    /// class of the chain restricts — a field read, or any member of a class
+    /// with no restricted ancestor — costs one probe of the chain's memo.
+    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, &str)> {
         if !restricted_methods_declared() {
             return None;
         }
+        #[cfg(test)]
+        tally_restricted_lookup(false);
+        if !self.chain_restricts(name) {
+            return None;
+        }
+        #[cfg(test)]
+        tally_restricted_lookup(true);
         let mut cursor: Option<&Class> = Some(self);
         while let Some(class) = cursor {
             if class.private_members.borrow().contains(name) {
-                return Some((MethodAccess::Private, class.name.clone()));
+                return Some((MethodAccess::Private, class.name.as_str()));
             }
             if class.protected_members.borrow().contains(name) {
-                return Some((MethodAccess::Protected, class.name.clone()));
+                return Some((MethodAccess::Protected, class.name.as_str()));
             }
             if class.methods.borrow().contains_key(name)
                 || class.vm_methods.borrow().contains_key(name)
@@ -1936,6 +2140,41 @@ impl Class {
             cursor = class.superclass.as_deref();
         }
         None
+    }
+
+    /// Does some class of this chain declare `name` private or protected?
+    /// Only then can [`Self::restricted_method`]'s walk find a restriction,
+    /// so every other name skips it. Which members a class *defines* — what
+    /// `include` and `define_method` change — is left to the walk: the memo
+    /// holds only the declared names, collected once per
+    /// `RESTRICTED_MEMBERS_EPOCH`. The chain itself is fixed per `Class`.
+    fn chain_restricts(&self, name: &str) -> bool {
+        let epoch = RESTRICTED_MEMBERS_EPOCH.load(std::sync::atomic::Ordering::Relaxed);
+        {
+            let memo = self.restricted_names_memo.borrow();
+            if memo.epoch == epoch {
+                return memo
+                    .names
+                    .as_ref()
+                    .is_some_and(|names| names.contains(name));
+            }
+        }
+        let mut names: Option<HashSet<String, AHasher>> = None;
+        let mut cursor: Option<&Class> = Some(self);
+        while let Some(class) = cursor {
+            for declared in [&class.private_members, &class.protected_members] {
+                let declared = declared.borrow();
+                if !declared.is_empty() {
+                    names
+                        .get_or_insert_with(HashSet::default)
+                        .extend(declared.iter().cloned());
+                }
+            }
+            cursor = class.superclass.as_deref();
+        }
+        let restricts = names.as_ref().is_some_and(|names| names.contains(name));
+        *self.restricted_names_memo.borrow_mut() = RestrictedNames { epoch, names };
+        restricts
     }
 
     /// Is this class `name`, or does it inherit from it?
@@ -1967,6 +2206,13 @@ impl Class {
             let next = current.superclass.clone()?;
             current = next;
         }
+    }
+
+    /// Register bytecode instance method `name`, replacing any of that name,
+    /// and stale the VM's method cache ([`note_vm_methods_changed`]).
+    pub fn insert_vm_method(&self, name: String, method: Rc<VmClosure>) {
+        self.vm_methods.borrow_mut().insert(name, method);
+        note_vm_methods_changed();
     }
 
     /// Find a bytecode static method in this class or its superclass chain.
@@ -2152,6 +2398,7 @@ impl Class {
                 mine.entry(name.clone()).or_insert_with(|| method.clone());
             }
         }
+        note_vm_methods_changed();
         {
             let mut mine = self.mixin_static_methods.borrow_mut();
             for (name, method) in module.concern_static_methods.borrow().iter() {
@@ -4146,5 +4393,123 @@ mod interpolation_format_tests {
             build_interpolated(&long).as_str(),
             format!("{}{}", "x".repeat(40), 1e20)
         );
+    }
+}
+
+#[cfg(test)]
+mod restricted_member_tests {
+    //! `Class::restricted_method` answers a name no class of the chain
+    //! declares private or protected from a memo, without its walk — and every
+    //! answer it gives is still the walk's.
+    use super::*;
+
+    fn class(name: &str, superclass: Option<&Rc<Class>>) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            superclass: superclass.cloned(),
+            ..Default::default()
+        })
+    }
+
+    fn declare_private(class: &Class, name: &str) {
+        class.private_members.borrow_mut().insert(name.to_string());
+        note_restricted_methods_declared();
+    }
+
+    fn walks() -> usize {
+        restricted_lookups().1
+    }
+
+    #[test]
+    fn a_name_no_class_of_the_chain_restricts_skips_the_walk() {
+        let base = class("Base", None);
+        declare_private(&base, "token");
+        let child = class("Child", Some(&base));
+        let plain = class("Plain", None);
+
+        let (lookups, walked) = restricted_lookups();
+        for _ in 0..3 {
+            assert_eq!(child.restricted_method("title"), None);
+            assert_eq!(plain.restricted_method("title"), None);
+        }
+        assert_eq!(restricted_lookups(), (lookups + 6, walked));
+
+        assert_eq!(
+            child.restricted_method("token"),
+            Some((MethodAccess::Private, "Base"))
+        );
+        assert_eq!(walks(), walked + 1);
+    }
+
+    #[test]
+    fn the_nearest_definition_still_decides() {
+        let base = class("Base", None);
+        declare_private(&base, "reveal");
+        base.protected_members
+            .borrow_mut()
+            .insert("rank".to_string());
+        note_restricted_methods_declared();
+        let open = class("Open", Some(&base));
+        open.methods
+            .borrow_mut()
+            .insert("reveal".to_string(), Rc::new(Function::default()));
+        let below = class("Below", Some(&open));
+
+        assert_eq!(
+            base.restricted_method("reveal"),
+            Some((MethodAccess::Private, "Base"))
+        );
+        assert_eq!(open.restricted_method("reveal"), None);
+        assert_eq!(below.restricted_method("reveal"), None);
+        assert_eq!(
+            below.restricted_method("rank"),
+            Some((MethodAccess::Protected, "Base"))
+        );
+    }
+
+    /// A member restricted after a subclass's memo was collected — a
+    /// `private` reaching a class again, a `private class` nested in it — is
+    /// seen: each addition moves the epoch.
+    #[test]
+    fn a_member_restricted_after_the_memo_is_seen() {
+        let base = class("Base", None);
+        let child = class("Child", Some(&base));
+        declare_private(&base, "first");
+        assert_eq!(child.restricted_method("late"), None);
+        assert_eq!(child.restricted_method("Ledger"), None);
+
+        declare_private(&base, "late");
+        assert_eq!(
+            child.restricted_method("late"),
+            Some((MethodAccess::Private, "Base"))
+        );
+
+        base.private_members
+            .borrow_mut()
+            .insert("Ledger".to_string());
+        note_restricted_members_changed();
+        assert_eq!(
+            child.restricted_method("Ledger"),
+            Some((MethodAccess::Private, "Base"))
+        );
+    }
+
+    /// A clone of a class whose memo is collected, given a superclass that
+    /// restricts a name: the clone answers for its own chain. A copied memo
+    /// would still say that no class of the chain restricts anything.
+    #[test]
+    fn a_cloned_class_collects_its_own_memo() {
+        let guarded = class("Guarded", None);
+        declare_private(&guarded, "token");
+        let plain = class("Plain", None);
+        assert_eq!(plain.restricted_method("token"), None);
+
+        let mut reparented = (*plain).clone();
+        reparented.superclass = Some(guarded);
+        assert_eq!(
+            reparented.restricted_method("token"),
+            Some((MethodAccess::Private, "Guarded"))
+        );
+        assert_eq!(plain.restricted_method("token"), None);
     }
 }

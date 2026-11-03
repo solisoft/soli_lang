@@ -430,6 +430,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         primitive: None,
         vm_methods: Rc::new(RefCell::new(HashMap::default())),
         vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+        vm_plain_static_methods: Default::default(),
         model_subclass_memo: std::cell::Cell::new(None),
         value_object_memo: std::cell::Cell::new(None),
         field_defaults_memo: std::cell::Cell::new(None),
@@ -443,6 +444,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         concern_method_names: Rc::new(RefCell::new(Vec::new())),
         private_members: Rc::new(RefCell::new(HashSet::new())),
         protected_members: Rc::new(RefCell::new(HashSet::new())),
+        restricted_names_memo: Default::default(),
     };
 
     let expectation_class_rc = Rc::new(expectation_class);

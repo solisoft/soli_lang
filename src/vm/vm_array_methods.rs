@@ -596,7 +596,7 @@ impl Vm {
                     Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
-                            "join expects a string separator",
+                            "join expects a string delimiter",
                             span,
                         ))
                     }

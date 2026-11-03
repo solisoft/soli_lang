@@ -942,6 +942,44 @@ end"##,
         "let h = {\"n\": 1}\nh[\"n\"] = h[\"n\"] + 10\nprint(h)",
     ),
     (
+        // `h.key = v` and constant-key `h["key"] = v` writes: overwrites keep
+        // their position, new keys (short, and longer than an inline
+        // `SoliStr`) append, on a global, a local, a block's upvalue and a
+        // nested hash, across the promotion past eight keys. The VM's hash
+        // dot write moved into the fast tier, keyed by the pool's `SoliStr`.
+        "hash_constant_key_writes",
+        r##"h = {"a": 1}
+h.a = 2
+h.b = 3
+h.a_key_longer_than_fifteen = 4
+h["c"] = 5
+h["a"] = 6
+h["another_key_longer_than_15"] = 7
+print(h)
+def build(n)
+  out = {}
+  out.first = n
+  out["second"] = n + 1
+  out.first = out.first + 10
+  [1, 2].each { |k| out.from_block_key_long_name = k }
+  i = 0
+  while i < 10
+    out["k#{i}"] = i
+    i = i + 1
+  end
+  out.after_promotion = true
+  out.first = 0
+  out
+end
+print(build(5))
+o = {"inner": {"x": 1}}
+o.inner.y = 2
+o["inner"]["z"] = 3
+o["inner"]["x"] = 9
+print(o)
+"##,
+    ),
+    (
         "early_return_in_loop",
         "fn first_even(a) { for v in a { if v % 2 == 0 { return v } }\n  return -1 }\nprint(first_even([1, 3, 4, 7]))",
     ),
@@ -1148,6 +1186,67 @@ print(conditions(Status.parse("Inactive"), Status.Active))
 print(conditions(Shape.parse({"variant": "Circle", "radius": 1}), Shape.Circle(1)))
 # One shared unit-variant value: identity already answered this one.
 print(conditions(Status.Active, Status.Active))"##,
+    ),
+    // A static field holding plain data (`Conf.per_page`, an enum's unit
+    // variant) is read in the VM's fast tier; a static method, a nested class
+    // and a write followed by a read keep the answer they had.
+    (
+        "static_field_reads",
+        r##"enum Level { Low, High }
+class Conf
+  static per_page: Int = 20
+  static rate: Float = 1.5
+  static label: String = "conf"
+  static tags: Array = ["a", "b"]
+  static opts: Hash = {"k": 1}
+  static nothing: Any = nil
+  static level: Any = Level.High
+  static def doubled
+    @per_page * 2
+  end
+end
+module Shop
+  class Item
+    static def kind
+      "item"
+    end
+  end
+end
+def read_from_local
+  klass = Conf
+  total = 0
+  i = 0
+  while i < 3
+    total += klass.per_page
+    i += 1
+  end
+  [total, klass.tags.length, klass.label, klass.level == Level.High]
+end
+print(Conf.per_page, Conf.rate, Conf.label, Conf.tags, Conf.opts, Conf.nothing)
+print(Conf.level == Level.High, Conf.level.variant())
+print(read_from_local())
+print(Conf.doubled)
+Conf.per_page = 30
+print(Conf.per_page, Conf.doubled)
+print(Shop.Item.kind, Shop::Item.kind)"##,
+    ),
+    // `==` answers a unit variant compared with itself by identity; a payload
+    // variant compared with itself still goes field by field, so a NaN in the
+    // payload keeps it unequal to itself, as for two equal copies.
+    (
+        "enum_equality_identity",
+        r##"enum Box { Empty, Full(x: Float) }
+class Plain
+end
+nan = "NaN".to_f
+empty = Box.Empty
+print(empty == empty, empty == Box.Empty, empty != Box.Empty)
+full = Box.Full(nan)
+print(full == full, full != full)
+one = Box.Full(1.0)
+print(one == one, one == Box.Full(1.0), one == Box.Full(2.0), one == empty)
+plain = Plain.new()
+print(plain == plain, plain == Plain.new())"##,
     ),
     // --- functions stored in hash entries (dispatch tables) ---
     // The VM used to reject `handlers.on_create(rec)` outright: an unknown hash
@@ -2291,6 +2390,16 @@ print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
         "def shared\n  \"global\"\nend\n\nclass C\n  def run\n    label = \"local\"\n    [label, shared()]\n  end\n\n  def label\n    \"method\"\n  end\n\n  def shared\n    \"method\"\n  end\nend\nprint(new C().run)",
     ),
     (
+        // A bare call resolves once, before its arguments run, and the VM's
+        // call op reuses that decision: a compiled method entered with its
+        // defining class (so `super` inside an inherited one climbs from
+        // there), defaults filled, globals still first, nested bare calls,
+        // bare calls in a block, and an error among the arguments rescued in
+        // the same method, after which bare calls still work.
+        "implicit_self_calls_resolve_once",
+        "def twice(x)\n  x * 2\nend\n\nclass Base\n  def greet(name, suffix = \"!\")\n    \"hi #{name}#{suffix}\"\n  end\n\n  def scale(x)\n    x * 10\n  end\n\n  def lineage\n    \"base\"\n  end\nend\n\nclass Mid < Base\n  def lineage\n    \"mid+\" + super.lineage()\n  end\nend\n\nclass Child < Mid\n  def scale(x)\n    super.scale(x) + 1\n  end\n\n  def run\n    out = []\n    out.push(greet(\"a\"))\n    out.push(greet(\"b\", \"?\"))\n    out.push(scale(2))\n    out.push(lineage())\n    out.push(_add(_add(1, 2), twice(_add(3, 4))))\n    out.push([1, 2, 3].map { |n| _add(n, twice(n)) })\n    caught = \"none\"\n    try\n      caught = _add(_fail(1), 2)\n    catch e\n      caught = \"caught #{e}\"\n    end\n    out.push(caught)\n    out.push(_add(5, 6))\n    out\n  end\n\n  private\n\n  def _add(a, b)\n    a + b\n  end\n\n  def _fail(x)\n    throw \"boom\"\n  end\nend\nprint(new Child().run)",
+    ),
+    (
         // `record[field] = value` with a computed name writes the field, as
         // `record.<field> = value` does; a model's `_` metadata stays
         // read-only. It used to be "invalid assignment target".
@@ -3039,6 +3148,737 @@ print(["px-4", "py-2"].join(" "), [3, 1, 2].sort(), ["b", "a"].map { |s| s.upcas
 h = {"tags": ["a", "b"]}
 h["tags"].push("c")
 print(h, {"tags": ["a", "b"]})"##,
+    ),
+    (
+        // Once a class declares a private member, the VM lets a member of
+        // `self` through before any class lookup and answers an unrestricted
+        // name from a per-class memo. Every verdict stays the walk's: on self
+        // (`@x`, `this.x`, `@x = v`, `@m()`, in a block), off self (a field
+        // read, written and indexed, a private call, a protected read from a
+        // subclass and from outside), a hash dot-write.
+        "privacy_verdicts_on_and_off_self",
+        r##"class Base
+  private token: String
+  protected rank: Int
+  label: String
+
+  new(token: String, rank: Int)
+    @token = token
+    @rank = rank
+    @label = "base"
+  end
+
+  def name
+    "base-name"
+  end
+
+  def describe
+    "#{@label}:#{@token}:#{@rank}:#{@_secret()}:#{this._secret()}"
+  end
+
+  def bump
+    @rank = @rank + 1
+    @token = @token + "!"
+    this.label = "bumped"
+    [1, 2].map { |n| "#{@token}#{n}#{_secret()}" }
+  end
+
+  def outranks?(other)
+    @rank > other.rank
+  end
+
+  private
+
+  def _secret
+    "s"
+  end
+end
+
+class Child < Base
+  def name
+    "child-name"
+  end
+
+  def rank_of(other)
+    other.rank
+  end
+end
+
+class Plain
+  title: String
+
+  new(title: String)
+    @title = title
+  end
+end
+
+def read_token(x)
+  x.token rescue "refused"
+end
+
+def read_rank(x)
+  x.rank rescue "refused"
+end
+
+def call_secret(x)
+  x._secret() rescue "refused"
+end
+
+def write_token(x)
+  try
+    x.token = "forged"
+    return "written"
+  catch error
+    return "refused"
+  end
+end
+
+b = new Base("t", 1)
+c = new Child("u", 5)
+p = new Plain("hello")
+print(b.describe)
+print(b.bump)
+print(b.describe)
+print(b.label)
+b.label = "outside"
+print(b.label)
+print(read_token(b))
+print(read_token(c))
+print(read_rank(c))
+print(call_secret(c))
+print(write_token(c))
+print(c.rank_of(b))
+print(b.outranks?(c))
+print(c.name)
+print(b.name)
+print(p.title)
+p.title = "changed"
+print(p.title)
+h = {"k": 1}
+h.k = 2
+print(h.k)
+print(c["label"])
+print(c["token"] rescue "index refused")"##,
+    ),
+    (
+        // The memo only says which names a chain declares; which class
+        // *defines* a name nearest still decides, so a subclass that redefines
+        // a private method without `private` makes it public again. A block
+        // calling a peer's private method is refused like the method itself.
+        "privacy_nearest_definition_and_blocks",
+        r##"class Base
+  def shout
+    "#{@_whisper}!"
+  end
+
+  def peer_whisper(other)
+    other._whisper() rescue "refused"
+  end
+
+  def peers_in_block(others)
+    others.map { |o| o._whisper() rescue "refused" }
+  end
+
+  private
+
+  def _whisper
+    "psst"
+  end
+
+  def reveal
+    "hidden"
+  end
+end
+
+class Open < Base
+  def reveal
+    "open"
+  end
+end
+
+class Later
+  def ping
+    "pong"
+  end
+end
+
+def reveal_of(x)
+  x.reveal rescue "refused"
+end
+
+b = new Base()
+o = new Open()
+print(b.shout)
+print(b.peer_whisper(new Base()))
+print(b.peers_in_block([new Base(), new Open()]))
+print(reveal_of(o))
+print(reveal_of(b))
+print(new Later().ping)"##,
+    ),
+    (
+        // Instance field reads and writes complete in the VM's fast tier
+        // when the general arm's field hit would: on self (`@x`, `this.y`),
+        // a local, a block's upvalue, a global and a call's result; a field
+        // added after construction, one holding nil or a closure, one
+        // shadowing a method. A miss (`p.area`, the method), a frozen value
+        // object and a refused private field are handed back and answered
+        // as before, the refusals at the same line and column. `Vault` comes
+        // last, so the same reads run before and after a class declares a
+        // private member.
+        "instance_fields_in_and_out_of_the_fast_tier",
+        r##"class Point
+  x: Int
+  y: Int
+  label: String
+
+  new(x: Int, y: Int)
+    @x = x
+    @y = y
+    @label = "field"
+  end
+
+  def label
+    "method"
+  end
+
+  def area
+    @x * @y
+  end
+
+  def walk(n)
+    i = 0
+    while i < n
+      @x = @x + 1
+      this.y = this.y + @x
+      i = i + 1
+    end
+    [1, 2].map { |k| @x * k + this.y }
+  end
+end
+
+class Amount < ValueObject
+  cents: Int
+end
+
+class Email < ValueObject
+  address: String
+
+  new(address: String)
+    @address = address.trim.downcase
+  end
+end
+
+def make
+  new Point(7, 8)
+end
+
+def poke(point, n)
+  i = 0
+  while i < n
+    point.x = point.x + point.y
+    [1].each { |k| point.y = point.y + k }
+    i = i + 1
+  end
+  point.x
+end
+
+p = new Point(1, 2)
+print(p.walk(3))
+print(poke(p, 2))
+print(p.x, p.y, make().x)
+print(p.label)
+print(p.area)
+y = (p.x = 5)
+print(y)
+print(p.x = 9)
+p.extra = "dyn"
+print(p.extra)
+p.extra = nil
+print(p.extra)
+print(p.extra.nil?)
+p.cb = fn(v) { v * 2 }
+f = p.cb
+print(f(21))
+a = Amount.new(5)
+try
+  a.cents = 6
+catch error
+  print("frozen: #{error}")
+end
+print(a.cents)
+print(Email.new("  Ada@Example.COM ").address)
+
+class Vault
+  private code: Int
+
+  new(code: Int)
+    @code = code
+  end
+
+  def turn
+    [1, 2].each { |k| @code = @code + k }
+    @code
+  end
+end
+
+def forge(vault)
+  try
+    vault.code = 7
+    return "written"
+  catch error
+    return "refused: #{error}"
+  end
+end
+
+def peek(vault)
+  vault.code rescue "refused"
+end
+
+v = new Vault(1)
+print(v.turn)
+print(forge(v))
+print(peek(v))
+print(p.walk(1))
+print(poke(p, 1))
+print(p.label, p.area)"##,
+    ),
+    (
+        // Paren-less zero-argument builtins: the VM's fast tier answers them
+        // by method id (`method_table::bare_zero_arg`) instead of by name, and
+        // `Int#to_s` / `Float#round` skip a throwaway method value. Every
+        // read must still match the tree-walker's, bare and with `()`, from a
+        // local and from a global, including a mutating `a.pop` and the
+        // `h.len` that stays a method on a hash.
+        "bare_zero_arg_builtins_match_parens",
+        r##"def reads(h, s, a, n, f, d, nothing)
+  print([h.length, h.size, h.empty?, h.keys, h.values, h.present?, h.blank?, h.nil?, h.class])
+  print([s.length, s.upcase, s.downcase, s.trim, s.blank?, s.present?, s.to_s, s.reverse, s.chars, s.empty?])
+  print([a.length, a.first, a.last, a.empty?, a.sum, a.present?, a.blank?, a.class])
+  print([n.to_s, n.to_i, n.to_f, n.nil?, n.class, n.abs, f.to_s, f.to_i, f.round, f.floor, d.to_s, d.round])
+  print([nothing.to_s, nothing.nil?, nothing.blank?, nothing.to_i, nothing.class, true.to_s, false.blank?])
+  print([h.length(), s.upcase(), a.first(), n.to_s(), f.round(), d.round(), nothing.to_s()])
+  print(h.len)
+  print([a.pop, a, [].first, {}.empty?, "".blank?, (-7).to_s, 255.to_s(16), 2.567.round(2)])
+end
+
+reads({"a": 1, "b": [2]}, "  Hi There ", [3, 1, 2], 42, 2.5, 1.25D, nil)
+h = {"x": nil}
+s = ""
+total = 0
+i = 0
+while i < 50
+  total = total + i.to_s.length + s.length + h.length
+  i = i + 1
+end
+print(total)
+print([h.x, h.keys, s.present?, s.class])"##,
+    ),
+    (
+        // A static call resolves in one walk of the chain and is called from
+        // there: a subclass's static hides its superclass's (one reads
+        // `this`, the other does not), an inherited one, defaults, recursion,
+        // a method `extend` mixed in, a native static, and a wrong arity.
+        "static_calls_resolve_once",
+        r##"module Twice
+  def twice(n)
+    n * 2
+  end
+end
+
+class Base
+  static def who
+    this
+  end
+
+  static def label(n)
+    "base #{n}"
+  end
+end
+
+class Svc < Base
+  extend Twice
+
+  static def who
+    "svc"
+  end
+
+  static def compute(n, m = 10)
+    n + m
+  end
+
+  static def fact(n)
+    return 1 if n <= 1
+
+    n * Svc.fact(n - 1)
+  end
+end
+
+print(Base.who() == Base)
+print(Svc.who())
+print(Svc.compute(1))
+print(Svc.compute(1, 2))
+print(Svc.compute(3))
+print(Svc.fact(5))
+print(Svc.label(4))
+print(Svc.twice(21))
+print(Math.floor(2.7))
+try
+  Svc.compute()
+catch e
+  print("arity")
+end"##,
+    ),
+    (
+        // `obj.x ||= v` (and `&&=`, `??=`) that short-circuits writes
+        // nothing and evaluates the receiver once, as on the tree-walker: a
+        // frozen value object is not refused, a getter is not copied into a
+        // field, and only an assigning `pick(...).x ||= v` calls `pick` twice.
+        "member_compound_assign_short_circuit_writes_nothing",
+        r##"class Amount < ValueObject
+  cents: Int
+end
+
+class Box
+  x: Int
+  count: Int
+
+  new()
+    @count = 0
+  end
+
+  def label
+    "computed"
+  end
+
+  def fill(v)
+    @x ||= v
+  end
+end
+
+def pick(log, box)
+  log.push("pick")
+  box
+end
+
+a = Amount.new(500)
+print(a.cents ||= 7) rescue print("frozen")
+print(a.cents &&= nil) rescue print("frozen")
+b = Box.new()
+print(b.label ||= "x")
+print(b.instance_variables.includes?("@label"))
+print(b.fill(3), b.fill(9), b.x)
+log = []
+print(pick(log, b).x ||= 4)
+print(log.length)
+print(pick(log, b).count ||= 4)
+print(log.length)
+print(pick(log, b).count &&= 8)
+print(log.length)
+print(pick(log, b).x ??= 1)
+print(log.length)
+print(b.fresh ??= 2)
+print(log.length)
+print(b.fresh, b.count, b.x)
+r = (b.count &&= 0)
+print(r, b.count)"##,
+    ),
+    (
+        // `is_a?` / `respond_to?` on a plain instance, answered by a walk of
+        // the class on the VM: inherited classes and methods, a symbol name,
+        // a field (not a method), the universal members, and a wrong argument.
+        "instance_is_a_and_respond_to",
+        r##"class Animal
+  def speak
+    "..."
+  end
+end
+
+class Dog < Animal
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  def bark(times)
+    "woof" * times
+  end
+end
+
+d = Dog.new("rex")
+print(d.is_a?("Dog"), d.is_a?("Animal"), d.is_a?("Cat"), d.is_a?("Object"))
+print(d.respond_to?("bark"), d.respond_to?("speak"), d.respond_to?(:name), d.respond_to?("name"))
+print(d.respond_to?("inspect"), d.respond_to?("nope"), d.respond_to?("method_missing"))
+i = 0
+hits = 0
+while i < 20
+  hits += 1 if d.is_a?("Animal") && d.respond_to?("speak")
+  i += 1
+end
+print(hits)
+try
+  d.is_a?(42)
+catch e
+  print("bad is_a? argument")
+end
+try
+  d.respond_to?(42)
+catch e
+  print("bad respond_to? argument")
+end"##,
+    ),
+    (
+        // The one-argument array calls the VM answers by method id
+        // (`array_method_one_arg`), the `includes?`/`contains?` spellings
+        // that now have ids, and the errors a declined argument still raises
+        // by name: each must be what the interpreter says, message included.
+        "array_and_string_one_arg_calls_by_id",
+        r##"def dyn(v)
+  v
+end
+xs = [1, 2, 3, "a", nil, 2.0]
+print(xs.includes?(2))
+print(xs.includes?(9))
+print(xs.contains?(nil))
+print(xs.include?("a"))
+print(xs.contains(2.0))
+print(xs.index_of(3))
+print(xs.index_of(42))
+print(xs.get(1))
+print(xs.get(-1))
+print(xs.get(-99))
+print(xs.get(99))
+print(xs.take(2))
+print(xs.take(0))
+print(xs.take(99))
+print(xs.drop(4))
+print(xs.drop(99))
+print([1, "b", nil, 2.5].join("-"))
+print([].join(","))
+s = "hello world"
+print(s.includes?("wor"))
+print(s.contains?("xyz"))
+print(s.include?("o w"))
+print(s.contains("h"))
+try { xs.get(dyn("1")) } catch e { print(e) }
+try { xs.take(dyn(-1)) } catch e { print(e) }
+try { xs.drop(dyn("x")) } catch e { print(e) }
+try { xs.join(dyn(1)) } catch e { print(e) }
+try { s.includes?(dyn(1)) } catch e { print(e) }
+try { s.include?(dyn(1)) } catch e { print(e) }
+try { s.contains?(dyn(1)) } catch e { print(e) }
+try { s.contains(dyn(1)) } catch e { print(e) }
+h = {"a": 1}
+try { print(h.includes?("a")) } catch e { print(e) }
+try { print(h.contains("a")) } catch e { print(e) }
+try { print(5.includes?(1)) } catch e { print(e) }"##,
+    ),
+    (
+        // Global natives run on the VM's stack slice (`call_plain_native_at`):
+        // arguments in order, through a global and through a local, nested,
+        // a native error and an arity error caught with the values around
+        // the call intact, and the natives the VM intercepts (`defined`,
+        // `const_get`) still answering from its globals.
+        "global_native_calls_on_the_stack_slice",
+        r##"class Widget
+  def label
+    "w"
+  end
+end
+def pick(v)
+  v
+end
+total = 0
+i = 0
+while i < 50
+  total = total + int(str(i)) + len([i, i])
+  i = i + 1
+end
+print(total)
+print(len(str(int("12")) + "ab"))
+f = int
+print(f("41") + 1)
+print(type(nil))
+print(Math.floor(3.7))
+print(JSON.stringify({"a": [1, 2]}))
+try { len(1, 2) } catch e { print("arity") }
+try { int(pick("abc")) } catch e { print("err #{e}") }
+acc = []
+[1, 2, 3].each do |x|
+  try { acc.push(int(pick(x == 2 ? "zz" : str(x)))) } catch e { acc.push(-1) }
+end
+print(acc)
+print(defined("Widget"))
+print(defined("NoSuchThing"))
+k = const_get("Widget")
+print(k == Widget)
+a = 1
+b = 2
+print([a, len("xyz"), b])"##,
+    ),
+    (
+        // Instance method calls in and out of the fast tier (its
+        // `CallMethod` / `CallMethodById` arm and the per-site method
+        // cache): own, inherited and overridden methods, one site seeing
+        // several classes, `@m()` / `this.m()`, recursion, a module's
+        // method, `&.`, blocks; and what it hands to the general arm —
+        // an omitted default, too few / too many arguments, a private call
+        // from outside, `method_missing`, `send`, the depth limit — with
+        // each error's text and position.
+        "instance_method_calls_in_and_out_of_the_fast_tier",
+        r##"module Greets
+  def hello(who)
+    "hello #{who} from #{@name}"
+  end
+end
+
+class Shape
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  include Greets
+
+  def label
+    "shape #{@name}"
+  end
+
+  def area
+    0
+  end
+
+  def scaled(k)
+    @area * k
+  end
+
+  def sum3(a, b, c)
+    a + b + c + @area()
+  end
+
+  def twice
+    [@label(), this.label()]
+  end
+
+  def fact(n)
+    return 1 if n <= 1
+
+    n * @fact(n - 1)
+  end
+
+  def corners(block)
+    [1, 2].map { |i| block(i) + @area() }
+  end
+
+  def secret_twice
+    [1, 2].map { |k| "#{@_secret(k)}#{this._secret(k)}" }
+  end
+
+  def length
+    42
+  end
+
+  def to_s
+    "Shape(#{@name})"
+  end
+
+  def tagged(tag = "plain")
+    "#{tag}:#{@name}"
+  end
+
+  def deep(n)
+    @deep(n + 1)
+  end
+
+  def method_missing(name, args)
+    "missing #{name} #{args}"
+  end
+
+  private
+
+  def _secret(k)
+    "s#{k}"
+  end
+end
+
+class Square < Shape
+  side: Int
+
+  new(side: Int)
+    super("square")
+    @side = side
+  end
+
+  def area
+    @side * @side
+  end
+
+  def label
+    "square #{@side}"
+  end
+end
+
+class Cube < Square
+  def volume
+    @area() * @side
+  end
+end
+
+def describe(x)
+  x.label()
+end
+
+def total(shapes)
+  sum = 0
+  shapes.each do |s|
+    sum = sum + s.scaled(2) + s.length()
+  end
+  sum
+end
+
+def attempt(label, block)
+  try
+    print("#{label}: #{block()}")
+  catch error
+    print("#{label} raised: #{error}")
+  end
+end
+
+def hand_offs(x)
+  attempt("defaulted", fn() { x.tagged() })
+  attempt("too few", fn() { x.scaled() })
+  attempt("too many", fn() { x.scaled(1, 2) })
+  attempt("private", fn() { x._secret(1) })
+  attempt("missing", fn() { x.whatever(1, 2) })
+  attempt("send", fn() { x.send("scaled", 3) })
+  attempt("deep", fn() { x.deep(0) })
+end
+
+s = new Shape("blob")
+q = new Square(3)
+c = new Cube(2)
+print(s.label(), q.label(), c.label())
+print(describe(s), describe(q), describe(c), describe(s), describe(c))
+print(s.area(), q.area(), c.area(), c.volume())
+print(s.scaled(5), q.scaled(5), c.scaled(5))
+print(q.sum3(1, 2, 3), q.twice(), q.fact(10))
+print(c.corners(fn(i) { i * 10 }))
+print(q.secret_twice())
+print(q.length(), q.to_s(), q.hello("ada"))
+print(s.tagged("x"), q.tagged("y"))
+print(total([s, q, c, q, s]))
+i = 0
+acc = 0
+while i < 50
+  acc = acc + q.scaled(i) + c.area()
+  i = i + 1
+end
+print(acc)
+n = nil
+print(n&.label(), q&.label())
+hand_offs(c)
+print(c.volume(), describe(c))"##,
     ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in

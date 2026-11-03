@@ -446,7 +446,7 @@ impl Interpreter {
                     Some(Value::Instance(this)) => Some(this.borrow().class.clone()),
                     _ => None,
                 };
-                if !access.allows(&defining, false, caller.as_deref()) {
+                if !access.allows(defining, false, caller.as_deref()) {
                     let is_field = inst.fields.contains_key(name);
                     return Err(RuntimeError::General {
                         message: access.refusal(name, &inst.class.name, is_field),

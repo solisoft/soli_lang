@@ -27,6 +27,17 @@ impl Vm {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         if args.is_empty() {
+            // `n.to_s()` / `n.to_s`: the member table answers these with a
+            // method value, built only to be dropped here before the call
+            // below. Without a user method on Int to outrank it, go
+            // straight to the digits.
+            if matches!(name, "to_s" | "to_string")
+                && !crate::interpreter::executor::calls::user_methods::has_user_methods(
+                    crate::interpreter::executor::calls::user_methods::PrimType::Int,
+                )
+            {
+                return Ok(crate::interpreter::executor::calls::int_methods::int_to_s_value(n));
+            }
             // `n.abs()` — empty parens behave like the bare form (the
             // tree-walker accepts this too, see evaluate_call). With-args
             // methods come back as a ValueMethod; fall through so explicit

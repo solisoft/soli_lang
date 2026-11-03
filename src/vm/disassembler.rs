@@ -146,7 +146,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::SetIndex => out.push_str("SET_INDEX"),
         Op::BuildString(n) => out.push_str(&format!("BUILD_STRING {:>5}", n)),
         Op::Spread => out.push_str("SPREAD"),
-        Op::GetProperty(idx) => {
+        Op::GetProperty(idx, _, _) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("GET_PROPERTY {:>5} ({})", idx, name));
         }
@@ -485,7 +485,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::PopNull => out.push_str("POP_NULL"),
         Op::DupN(n) => out.push_str(&format!("DUP_N            {:>3}", n)),
-        Op::GetLocalProperty(slot, idx) => {
+        Op::GetLocalProperty(slot, idx, _, _) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(
                 "GET_LOCAL_PROP   {:>3},{:>3} ({})",
@@ -793,7 +793,7 @@ mod tests {
     fn get_local_property_includes_property_name() {
         let mut p = proto("test");
         let idx = p.chunk.add_constant(Constant::String("foo".into()));
-        p.chunk.emit(Op::GetLocalProperty(2, idx), 1);
+        p.chunk.emit(Op::GetLocalProperty(2, idx, 0, 0), 1);
         let out = disassemble(&p);
         assert!(out.contains("GET_LOCAL_PROP"));
         assert!(out.contains("(foo)"));

@@ -18,7 +18,7 @@ use std::hash::Hash;
 
 use indexmap::{Equivalent, IndexMap};
 
-use super::value::{HashKey, Value};
+use super::value::{HashKey, SoliStr, StrKey, Value};
 
 type Hasher = ahash::RandomState;
 
@@ -288,6 +288,39 @@ impl SmallMap {
             }
             Repr::Large(map) => map.insert_full(key, value),
         }
+    }
+
+    /// Append `key`, which the caller has just probed for and not found,
+    /// and return its position. The linear representation pushes without
+    /// scanning the entries a second time, as `insert_full` would; the
+    /// `IndexMap` one inserts as usual.
+    #[inline]
+    pub fn insert_absent(&mut self, key: HashKey, value: Value) -> usize {
+        debug_assert!(
+            self.get_index_of(&key).is_none(),
+            "insert_absent: key already present"
+        );
+        match &mut self.repr {
+            Repr::Small(entries) if entries.len() < SMALL_MAX => {
+                entries.push((key, value));
+                entries.len() - 1
+            }
+            Repr::Large(map) => map.insert_full(key, value).0,
+            Repr::Small(_) => self.insert_full(key, value).0,
+        }
+    }
+
+    /// `map[key] = value` for a string key the caller already holds as a
+    /// `SoliStr` (a constant-pool key, a named-argument label): one borrowed
+    /// probe, an in-place overwrite on a hit, and on a miss the key appended
+    /// as a refcount clone of `key` rather than a fresh copy of its bytes.
+    #[inline]
+    pub fn set_str(&mut self, key: &SoliStr, value: Value) {
+        if let Some((_, _, existing)) = self.get_full_mut(&StrKey(key.as_str())) {
+            *existing = value;
+            return;
+        }
+        self.insert_absent(HashKey::String(key.clone()), value);
     }
 
     pub fn shift_remove<Q>(&mut self, key: &Q) -> Option<Value>
@@ -672,7 +705,8 @@ impl<'a> VacantEntry<'a> {
     }
 
     pub fn insert(self, value: Value) -> &'a mut Value {
-        let (index, _) = self.map.insert_full(self.key, value);
+        // `SmallMap::entry` probed and missed: append without a second scan.
+        let index = self.map.insert_absent(self.key, value);
         self.map.get_index_mut(index).unwrap().1
     }
 }
@@ -738,5 +772,44 @@ mod tests {
             map.get(&crate::interpreter::value::StrKey("k2")),
             Some(&Value::Int(2))
         );
+    }
+
+    /// `set_str` overwrites in place and appends a missing key, and
+    /// `insert_absent` returns the new key's position, on both sides of the
+    /// promotion (the ninth key promotes from inside `insert_absent`). The
+    /// map ends up as `insert` would leave it.
+    #[test]
+    fn set_str_and_insert_absent_match_insert_across_the_promotion() {
+        for n in [0, 3, SMALL_MAX - 1, SMALL_MAX, SMALL_MAX + 1, 20] {
+            let mut fast = filled(n);
+            let mut reference = filled(n);
+            for i in 0..n + 2 {
+                let name: SoliStr = format!("k{i}").into();
+                fast.set_str(&name, Value::Int(100 + i as i64));
+                reference.insert(HashKey::String(name), Value::Int(100 + i as i64));
+            }
+            let index = fast.insert_absent(key("fresh"), Value::Int(7));
+            reference.insert(key("fresh"), Value::Int(7));
+            assert_eq!(index, n + 2, "n = {n}");
+            assert_eq!(fast.get_index_of(&key("fresh")), Some(n + 2), "n = {n}");
+            let fast_keys: Vec<_> = fast.keys().cloned().collect();
+            let reference_keys: Vec<_> = reference.keys().cloned().collect();
+            assert_eq!(fast_keys, reference_keys, "n = {n}");
+            assert_eq!(fast, reference, "n = {n}");
+        }
+    }
+
+    /// A key `set_str` appends shares the caller's buffer: a long key is a
+    /// refcount clone, not a copy.
+    #[test]
+    fn set_str_appends_the_callers_buffer() {
+        let name: SoliStr = "a key longer than fifteen bytes".into();
+        let mut map = SmallMap::default();
+        map.set_str(&name, Value::Int(1));
+        let (stored, _) = map.get_index(0).unwrap();
+        let HashKey::String(stored) = stored else {
+            panic!("expected a string key");
+        };
+        assert_eq!(stored.as_str().as_ptr(), name.as_str().as_ptr());
     }
 }

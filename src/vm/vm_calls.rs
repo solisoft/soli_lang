@@ -8,7 +8,7 @@ use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    Class, Function, HashKey, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
+    Class, Function, HashKey, Instance, NativeFunction, NativeSpecial, Value, NATIVE_CONSTRUCTOR,
 };
 use crate::span::Span;
 
@@ -159,6 +159,32 @@ pub(crate) fn jit_compile_method_with_base(
     let arc = std::sync::Arc::new(proto);
     *func.jit_cache.borrow_mut() = Some(arc.clone());
     Ok(arc)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the natives `call_plain_native_at` ran on this thread.
+    static PLAIN_NATIVE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many natives this thread called on the stack slice.
+#[cfg(test)]
+pub(crate) fn plain_native_calls() -> usize {
+    PLAIN_NATIVE_CALLS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the `call_method_slow_path` entries on this thread.
+    static SLOW_PATH_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many times `call_method_slow_path` has run on this thread,
+/// for a test to tell a call that entered its method directly from one that
+/// dispatched by name.
+#[cfg(test)]
+pub(crate) fn slow_path_calls() -> usize {
+    SLOW_PATH_CALLS.with(std::cell::Cell::get)
 }
 
 // Whether a view helper's body can run on the view VM. Keyed by the body
@@ -343,6 +369,62 @@ pub(crate) fn bind_named_arguments(
     Ok((slots, supplied))
 }
 
+/// What a static call on a class resolves to; see [`resolve_static_callee`].
+enum StaticCallee {
+    /// Bytecode registered on a class of the chain (`vm_static_methods`):
+    /// a static compiled by the VM, or a tree-walker one that reads `this`.
+    /// It runs with the class it was called on as its frame's class.
+    Compiled(Rc<VmClosure>),
+    /// A tree-walker `static def` that does not read `this`, already
+    /// compiled as a plain function (`vm_plain_static_methods`).
+    Plain(Rc<VmClosure>),
+    /// A tree-walker `static def` not compiled yet, the class that defines
+    /// it, and whether it is one of that class's own `static_methods`
+    /// rather than a method mixed in by `extend`.
+    TreeWalker {
+        func: Rc<Function>,
+        defining: Rc<Class>,
+        own: bool,
+    },
+}
+
+/// Resolve the static `name` of `class` in one walk up the chain. On each
+/// class, from the receiver up: the bytecode statics, then the cached plain
+/// ones (skipped when `plain` is false, in a view), then the tree-walker's
+/// own statics and the ones `extend` mixed in — the order
+/// `Class::find_static_method` keeps — so a static of a subclass hides
+/// its superclass's static of the same name, whichever form either is in.
+/// `None` when no class of the chain has one: natives and the rest are the
+/// caller's business.
+fn resolve_static_callee(class: &Rc<Class>, name: &str, plain: bool) -> Option<StaticCallee> {
+    let mut level = class;
+    loop {
+        if let Some(closure) = level.vm_static_methods.borrow().get(name) {
+            return Some(StaticCallee::Compiled(closure.clone()));
+        }
+        if plain {
+            if let Some(closure) = level.vm_plain_static_methods.get(name) {
+                return Some(StaticCallee::Plain(closure));
+            }
+        }
+        if let Some(func) = level.static_methods.get(name) {
+            return Some(StaticCallee::TreeWalker {
+                func: func.clone(),
+                defining: level.clone(),
+                own: true,
+            });
+        }
+        if let Some(func) = level.mixin_static_methods.borrow().get(name) {
+            return Some(StaticCallee::TreeWalker {
+                func: func.clone(),
+                defining: level.clone(),
+                own: false,
+            });
+        }
+        level = level.superclass.as_ref()?;
+    }
+}
+
 impl Vm {
     /// Refuse calls past [`MAX_CALL_DEPTH`]. The bytecode loop itself is
     /// iterative (deep recursion grows `frames` on the heap), but builtins
@@ -384,6 +466,14 @@ impl Vm {
         if let Value::VmClosure(closure) = &self.stack[callee_idx] {
             let closure = closure.clone(); // Rc clone (cheap counter increment)
             return self.call_closure(closure, argc, span);
+        }
+
+        // A plain native (anything but the few `call_native` intercepts) is
+        // called where it lies on the stack: no clone of the callee.
+        if let Value::NativeFunction(native) = &self.stack[callee_idx] {
+            if native.vm_special == NativeSpecial::None {
+                return self.call_plain_native_at(callee_idx, argc, span);
+            }
         }
 
         // Slow path: clone and dispatch other types
@@ -512,7 +602,11 @@ impl Vm {
             self.push(value);
         }
         let stack_base = self.stack.len() - total_params - 1;
-        self.ensure_call_depth(&closure.proto, self.current_span())?;
+        // The span only on the cold branch: building it every call showed
+        // in profiles.
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
+        }
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
@@ -613,10 +707,7 @@ impl Vm {
                 let hash = {
                     let mut pairs = crate::interpreter::value::HashPairs::default();
                     for (name, value) in named {
-                        pairs.insert(
-                            crate::interpreter::value::HashKey::String(name.to_string().into()),
-                            value,
-                        );
+                        pairs.insert(crate::interpreter::value::HashKey::String(name), value);
                     }
                     Value::Hash(Rc::new(RefCell::new(pairs)))
                 };
@@ -751,6 +842,12 @@ impl Vm {
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
+        // The callee sits below its arguments on every path that gets here.
+        let callee_idx = self.stack.len() - 1 - argc;
+        if native.vm_special == NativeSpecial::None {
+            return self.call_plain_native_at(callee_idx, argc, span);
+        }
+
         // Check arity
         if let Some(expected) = native.arity {
             if argc != expected {
@@ -758,34 +855,23 @@ impl Vm {
             }
         }
 
-        // Collect arguments from the stack
-        let mut args = Vec::with_capacity(argc);
-        for _ in 0..argc {
-            args.push(self.pop());
-        }
-        args.reverse();
+        // An intercepted native: take the arguments off the stack, owned.
+        let mut args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
+        self.stack.truncate(callee_idx);
 
-        // Pop the callee
-        self.pop();
-
-        if native.name == "grouped" {
-            return self.call_grouped_block(args, span);
-        }
-        if native.name == "with_transaction" {
-            return self.call_with_transaction_block(args, span);
-        }
-        if native.name == "after_commit" {
-            return self.call_after_commit_block(args, span);
-        }
-        if native.name == "with_tenant" {
-            return self.call_with_tenant_block(args, span);
+        match native.vm_special {
+            NativeSpecial::Grouped => return self.call_grouped_block(args, span),
+            NativeSpecial::WithTransaction => return self.call_with_transaction_block(args, span),
+            NativeSpecial::AfterCommit => return self.call_after_commit_block(args, span),
+            NativeSpecial::WithTenant => return self.call_with_tenant_block(args, span),
+            _ => {}
         }
         // SEC-013b: `render_json(record)` sends what the class's `as_json`
         // returns, as on the tree-walker (`try_evaluate_render_json_with_as_json`).
         // The native has no engine to call a user method with, so on the VM
         // `as_json` was skipped and every field went out — the very fields an
         // `as_json` is written to leave out (a password digest, a token).
-        if native.name == "render_json" {
+        if native.vm_special == NativeSpecial::RenderJson {
             if let Some(Value::Instance(inst)) = args.first() {
                 let class = inst.borrow().class.clone();
                 if class.find_vm_method_with_class("as_json").is_some()
@@ -796,7 +882,7 @@ impl Vm {
                 }
             }
         }
-        if native.name == "assert_raises" {
+        if native.vm_special == NativeSpecial::AssertRaises {
             if let Some((fragment, block)) =
                 crate::interpreter::builtins::assertions::assert_raises_args(args.clone())
             {
@@ -816,10 +902,13 @@ impl Vm {
         // false for a class the app had loaded, and an action took the branch
         // meant for an app without it. The VM's globals answer first; a name
         // they lack still goes to the native, as before.
-        if native.name == "defined" || native.name == "const_get" {
+        if matches!(
+            native.vm_special,
+            NativeSpecial::Defined | NativeSpecial::ConstGet
+        ) {
             if let Some(Value::String(name)) = args.first() {
                 if let Some(value) = self.globals.get(name.as_str()) {
-                    let result = if native.name == "defined" {
+                    let result = if native.vm_special == NativeSpecial::Defined {
                         Value::Bool(true)
                     } else {
                         value.clone()
@@ -830,14 +919,48 @@ impl Vm {
             }
         }
 
-        // Call the native function. Wrap in a flamegraph `Fn` span when
-        // the native is on the request-path whitelist (see
-        // `span_log::is_request_path_native`); cheap builtins are
-        // skipped to keep the chart readable.
+        // Call the native function, in a flamegraph span as above.
         let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
         let result = (native.func)(&args).map_err(|e| RuntimeError::new(e, span))?;
         drop(_native_span);
         self.push(result);
+        Ok(())
+    }
+
+    /// Call the plain native at `stack[callee_idx]` on the `argc` arguments
+    /// above it, straight on the stack slice: no argument `Vec`, no callee
+    /// clone. A native gets only `&[Value]` — it has no way back to this
+    /// VM's stack — so the slice cannot move under it. The callee and the
+    /// arguments leave the stack before an error propagates, as they did when
+    /// they were popped first.
+    #[inline]
+    fn call_plain_native_at(
+        &mut self,
+        callee_idx: usize,
+        argc: usize,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Value::NativeFunction(native) = &self.stack[callee_idx] else {
+            unreachable!("call_plain_native_at: callee is not a native");
+        };
+        debug_assert_eq!(native.vm_special, NativeSpecial::None);
+        debug_assert_eq!(self.stack.len(), callee_idx + 1 + argc);
+        if let Some(expected) = native.arity {
+            if argc != expected {
+                return Err(RuntimeError::wrong_arity(expected, argc, span));
+            }
+        }
+        // Wrap in a flamegraph `Fn` span when the native is on the
+        // request-path whitelist (see `span_log::is_request_path_native`);
+        // cheap builtins are skipped to keep the chart readable.
+        #[cfg(test)]
+        PLAIN_NATIVE_CALLS.with(|n| n.set(n.get() + 1));
+        let native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
+        let result = (native.func)(&self.stack[callee_idx + 1..]);
+        drop(native_span);
+        self.stack.truncate(callee_idx);
+        let value = result.map_err(|e| RuntimeError::new(e, span))?;
+        self.push(value);
         Ok(())
     }
 
@@ -2051,6 +2174,8 @@ impl Vm {
         argc: usize,
         name: &str,
     ) -> Result<(), RuntimeError> {
+        #[cfg(test)]
+        SLOW_PATH_CALLS.with(|calls| calls.set(calls.get() + 1));
         if matches!(self.stack[receiver_idx], Value::QueryBuilder(_)) {
             let span = self.current_span();
             let args = self.stack.split_off(receiver_idx + 1);
@@ -2117,35 +2242,82 @@ impl Vm {
                     }
                 }
             }
-            // Class-level `method_missing` is the LAST resort, matching
-            // `class_member_access`: statics, then the reflection surface
-            // (`send`, `methods`, `define_method`, …), then dynamic finders.
-            // Consulting it first meant that on any class defining a static
-            // `method_missing` — the `Mailer` prelude shape — `Foo.send("bar")`
-            // and `User.find_by_email("x")` dispatched into `method_missing`
-            // and returned a wrong value instead of the reflection result.
-            //
-            // `known` short-circuits, and `method_missing` is looked up only
-            // when nothing else matched, so a resolved static (`User.where`)
-            // costs one superclass walk rather than the five this used to do on
-            // every class-receiver call.
-            // A parsed dynamic finder (`find_by_email`) is known, so
-            // `method_missing` does not take it. `find_by_` parses as nothing
-            // and stays free for `method_missing`; `find_by_sql` is a native
-            // static, matched above.
-            let known = class.find_vm_static_method(name).is_some()
-                || class.find_static_method(name).is_some()
-                || class.find_native_static_method(name).is_some()
-                || crate::vm::vm_classes::is_class_reflection_member(name)
-                || (is_model
-                    && crate::interpreter::executor::access::member::parse_dynamic_finder(name)
-                        .is_ok());
-            if !known
-                && (class.find_static_method("method_missing").is_some()
-                    || class.find_vm_static_method("method_missing").is_some())
-            {
-                let span = self.current_span();
-                return self.call_class_method_missing(receiver_idx, argc, name, span);
+            // A static resolves once, in one walk of the chain, and is called
+            // from here: the compiled form, or a tree-walker `static def`
+            // compiled on its first call. Only what this cannot call directly
+            // (a static run by the tree-walker in a view, a model native, a
+            // static field, reflection, a finder) takes the property path
+            // below, which looks the name up again.
+            match resolve_static_callee(&class, name, !self.tree_walk_functions) {
+                Some(StaticCallee::Compiled(closure)) => {
+                    return self.push_method_frame(closure, argc, Some(class));
+                }
+                Some(StaticCallee::Plain(closure)) => {
+                    self.stack[receiver_idx] = Value::VmClosure(closure.clone());
+                    return self.push_method_frame(closure, argc, None);
+                }
+                Some(StaticCallee::TreeWalker {
+                    func,
+                    defining,
+                    own,
+                }) => {
+                    if func.binds_this {
+                        let closure = self.compile_tree_walking_static(&func, &defining, name)?;
+                        return self.push_method_frame(closure, argc, Some(class));
+                    }
+                    if !self.tree_walk_functions {
+                        let closure = self.compile_plain_static(&func, &defining, name, own)?;
+                        self.stack[receiver_idx] = Value::VmClosure(closure.clone());
+                        return self.push_method_frame(closure, argc, None);
+                    }
+                    // A view runs the other functions on the tree-walker
+                    // (`call_native_wrapper`): the property path hands it
+                    // the `Function`.
+                }
+                None => {
+                    // A native static: `Math.floor(x)`, `DateTime.utc()`. A
+                    // model's natives take the class as their first argument
+                    // (`bind_native_static_to_model_class`), and a static
+                    // field of the same name is read first, as
+                    // `op_get_property` orders them: both stay on that path.
+                    let native = class.find_native_static_method(name);
+                    if let Some(native) = &native {
+                        if !is_model && !class.static_fields.borrow().contains_key(name) {
+                            let native = (**native).clone();
+                            let span = self.current_span();
+                            self.stack[receiver_idx] = Value::NativeFunction(native.clone());
+                            return self.call_native(&native, argc, span);
+                        }
+                    }
+                    // Class-level `method_missing` is the LAST resort,
+                    // matching `class_member_access`: statics, then the
+                    // reflection surface (`send`, `methods`,
+                    // `define_method`, …), then dynamic finders. Consulting
+                    // it first meant that on any class defining a static
+                    // `method_missing` — the `Mailer` prelude shape —
+                    // `Foo.send("bar")` and `User.find_by_email("x")`
+                    // dispatched into `method_missing` and returned a wrong
+                    // value instead of the reflection result.
+                    //
+                    // A parsed dynamic finder (`find_by_email`) is known, so
+                    // `method_missing` does not take it. `find_by_` parses as
+                    // nothing and stays free for `method_missing`;
+                    // `find_by_sql` is a native static, matched above.
+                    let known = native.is_some()
+                        || crate::vm::vm_classes::is_class_reflection_member(name)
+                        || (is_model
+                            && crate::interpreter::executor::access::member::parse_dynamic_finder(
+                                name,
+                            )
+                            .is_ok());
+                    if !known
+                        && (class.find_static_method("method_missing").is_some()
+                            || class.find_vm_static_method("method_missing").is_some())
+                    {
+                        let span = self.current_span();
+                        return self.call_class_method_missing(receiver_idx, argc, name, span);
+                    }
+                }
             }
         }
         // `obj.send("name", args…)` calls `name` with the rest of the
@@ -2187,41 +2359,11 @@ impl Vm {
                     }
                 }
             }
-            // Statics compile as plain functions; the class value left in
-            // the callee slot is ignored by the bytecode — except by a
-            // tree-walker `static def` that reads `this`, compiled as a
-            // method of the class it is called on.
-            Value::Class(class) => match class.find_vm_static_method(name) {
-                Some(closure) => Some((closure, class.clone())),
-                None => self.compile_tree_walking_static(class, name)?,
-            },
+            // A class receiver's statics were resolved above.
             _ => None,
         };
         if let Some((closure, defining_class)) = compiled {
-            // Hot path for compiled method calls — span is computed only on
-            // the cold arity-error branch.
-            let arity = closure.proto.arity as usize;
-            let total_params = closure.proto.param_names.len();
-            if argc < arity || argc > total_params {
-                return Err(RuntimeError::wrong_arity(
-                    total_params,
-                    argc,
-                    self.current_span(),
-                ));
-            }
-            for _ in argc..total_params {
-                self.stack.push(Value::Null);
-            }
-            let stack_base = self.stack.len() - total_params - 1;
-            self.ensure_call_depth(&closure.proto, self.current_span())?;
-            self.frames.push(CallFrame::new(
-                closure,
-                stack_base,
-                self.iter_stack.len(),
-                Some(defining_class),
-                crate::vm::vm::positional_supplied_mask(argc),
-            ));
-            return Ok(());
+            return self.push_method_frame(closure, argc, Some(defining_class));
         }
 
         // `amount.with(...)` on a value object with no `with` of its own.
@@ -2297,6 +2439,18 @@ impl Vm {
             return Ok(());
         }
 
+        if argc == 1 {
+            if let Some(answer) = Self::instance_reflection_answer(
+                &self.stack[receiver_idx],
+                name,
+                &self.stack[receiver_idx + 1],
+            ) {
+                self.stack.truncate(receiver_idx);
+                self.stack.push(Value::Bool(answer));
+                return Ok(());
+            }
+        }
+
         let span = self.current_span();
         if argc == 0 {
             if let Value::Instance(inst) = &self.stack[receiver_idx] {
@@ -2342,6 +2496,70 @@ impl Vm {
         Ok(())
     }
 
+    /// `obj.is_a?("Base")` and `obj.respond_to?("m")` on a plain (non-model)
+    /// instance, answered by walking the class: the result the universal
+    /// members of `op_get_property` and the tree-walker's
+    /// `instance_member_access` give, without the `NativeFunction` closure
+    /// built per access for `is_a?` or the tree-walker `Interpreter` built
+    /// per access for `respond_to?`.
+    ///
+    /// Called by `call_method_slow_path` once no compiled, tree-walker or
+    /// native method of that name exists; a field of that name, a model
+    /// instance (whose reads go to the model resolver) or an argument of
+    /// another type returns `None`, and the general path answers — or raises
+    /// the same error as before.
+    fn instance_reflection_answer(receiver: &Value, name: &str, arg: &Value) -> Option<bool> {
+        let Value::Instance(inst) = receiver else {
+            return None;
+        };
+        if !matches!(name, "is_a?" | "respond_to?") {
+            return None;
+        }
+        let inst = inst.borrow();
+        if inst.class.is_model_subclass() || inst.fields.contains_key(name) {
+            return None;
+        }
+        if name == "is_a?" {
+            let Value::String(class_name) = arg else {
+                return None;
+            };
+            let mut current = Some(&inst.class);
+            while let Some(class) = current {
+                if class.name == class_name.as_str() {
+                    return Some(true);
+                }
+                current = class.superclass.as_ref();
+            }
+            return Some(false);
+        }
+        let method = match arg {
+            Value::String(method) | Value::Symbol(method) => method.as_str(),
+            _ => return None,
+        };
+        // The tree-walker's `respond_to?` list, kept in the same order.
+        let class = &inst.class;
+        Some(
+            class.find_method(method).is_some()
+                || class.find_vm_method(method).is_some()
+                || class.find_native_method(method).is_some()
+                || matches!(
+                    method,
+                    "inspect"
+                        | "class"
+                        | "nil?"
+                        | "blank?"
+                        | "present?"
+                        | "respond_to?"
+                        | "send"
+                        | "instance_variables"
+                        | "instance_variable_get"
+                        | "instance_variable_set"
+                        | "methods"
+                        | "method_missing"
+                ),
+        )
+    }
+
     /// `obj.name(args…)` answered by the instance's `method_missing`, the
     /// receiver at `receiver_idx` and the arguments above it. Its parameters
     /// bind as on the tree-walker (`bind_instance_method_missing_params`):
@@ -2366,7 +2584,11 @@ impl Vm {
             };
             self.stack.push(value);
         }
-        self.ensure_call_depth(&closure.proto, self.current_span())?;
+        // The span only on the cold branch: building it every call showed
+        // in profiles.
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
+        }
         self.frames.push(CallFrame::new(
             closure,
             receiver_idx,
@@ -2410,35 +2632,60 @@ impl Vm {
             )
         })?;
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-        defining
-            .vm_methods
-            .borrow_mut()
-            .insert(name.to_string(), closure.clone());
+        defining.insert_vm_method(name.to_string(), closure.clone());
         Ok(Some((closure, defining)))
     }
 
-    /// A tree-walker `static def` that reads `this`, compiled as a method:
-    /// the class it is called on, in the callee slot, is its `this`. The
-    /// other tree-walker statics keep the plain-function path.
+    /// Open the frame for a compiled method or static whose callee slot and
+    /// `argc` arguments are on the stack: missing optional parameters are
+    /// padded with `nil`, which the callee's prologue replaces with their
+    /// defaults. `class` is the frame's class (`None` for a plain function).
+    /// The span is computed only on the cold error branches.
+    #[inline]
+    pub(super) fn push_method_frame(
+        &mut self,
+        closure: Rc<VmClosure>,
+        argc: usize,
+        class: Option<Rc<Class>>,
+    ) -> Result<(), RuntimeError> {
+        let arity = closure.proto.arity as usize;
+        let total_params = closure.proto.param_names.len();
+        if argc < arity || argc > total_params {
+            return Err(RuntimeError::wrong_arity(
+                total_params,
+                argc,
+                self.current_span(),
+            ));
+        }
+        for _ in argc..total_params {
+            self.stack.push(Value::Null);
+        }
+        let stack_base = self.stack.len() - total_params - 1;
+        // The span only on the cold branch: building it every call showed
+        // in profiles.
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
+        }
+        self.frames.push(CallFrame::new(
+            closure,
+            stack_base,
+            self.iter_stack.len(),
+            class,
+            crate::vm::vm::positional_supplied_mask(argc),
+        ));
+        Ok(())
+    }
+
+    /// A tree-walker `static def` that reads `this`, compiled as a method
+    /// and registered on the class that defines it: the class it is called
+    /// on, in the callee slot, is its `this`.
     fn compile_tree_walking_static(
         &self,
-        class: &Rc<Class>,
+        func: &Function,
+        defining: &Rc<Class>,
         name: &str,
-    ) -> Result<Option<MethodWithClass>, RuntimeError> {
-        let mut defining = class.clone();
-        let method = loop {
-            if let Some(method) = defining.static_methods.get(name) {
-                break method.clone();
-            }
-            match defining.superclass.clone() {
-                Some(superclass) => defining = superclass,
-                None => return Ok(None),
-            }
-        };
-        if !method.binds_this {
-            return Ok(None);
-        }
-        let proto = jit_compile_method(&method, self.globals.keys().cloned()).map_err(|e| {
+    ) -> Result<Rc<VmClosure>, RuntimeError> {
+        let proto = jit_compile_method(func, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(
                 format!("a method the VM cannot compile ({})", e),
                 self.current_span(),
@@ -2449,7 +2696,35 @@ impl Vm {
             .vm_static_methods
             .borrow_mut()
             .insert(name.to_string(), closure.clone());
-        Ok(Some((closure, class.clone())))
+        Ok(closure)
+    }
+
+    /// Any other tree-walker `static def`, compiled as the plain function
+    /// `call_native_wrapper` makes of it (the same bytecode, cached on the
+    /// `Function`). One of the class's own `static_methods` is remembered
+    /// on it (`own`), so the next call finds the closure in one probe and
+    /// allocates nothing. A method mixed in by `extend` is not: a reopened
+    /// module replaces those, and nothing would tell the cache.
+    fn compile_plain_static(
+        &self,
+        func: &Function,
+        defining: &Rc<Class>,
+        name: &str,
+        own: bool,
+    ) -> Result<Rc<VmClosure>, RuntimeError> {
+        let proto = jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
+            RuntimeError::EngineFallback(
+                format!("a function the VM cannot compile ({})", e),
+                self.current_span(),
+            )
+        })?;
+        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+        if own {
+            defining
+                .vm_plain_static_methods
+                .insert(name, closure.clone());
+        }
+        Ok(closure)
     }
 
     fn call_builtin_method(
@@ -2752,6 +3027,176 @@ impl Vm {
 pub struct CallableBatch {
     saved_depth: usize,
     frames_before: usize,
+}
+
+#[cfg(test)]
+mod implicit_self_call_tests {
+    //! A bare call inside an instance method (`_step(i)`, no `@`) resolves
+    //! once, in `SelfOrGlobalCallee`, which leaves its decision on the stack:
+    //! `CallSelfOrGlobal` enters a compiled method directly instead of
+    //! dispatching by name, which probed globals and walked the class chain a
+    //! second time.
+    use super::slow_path_calls;
+    use crate::interpreter::value::Value;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src` on the VM; return its `result` global and how many times it
+    /// entered `call_method_slow_path`.
+    fn run(src: &str) -> (Value, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = slow_path_calls();
+        vm.execute(&module.main).expect("vm");
+        let spent = slow_path_calls() - start;
+        (vm.globals.get("result").cloned().expect("result"), spent)
+    }
+
+    const LOOP: &str = r#"
+class Base
+  def inherited(i)
+    i * 10
+  end
+end
+
+class Counter < Base
+  def run(n)
+    total = 0
+    i = 0
+    while i < n
+      total = total + _step(i) + inherited(1) + _add(_step(1), _step(2))
+      i = i + 1
+    end
+    total
+  end
+
+  private
+
+  def _step(i)
+    i
+  end
+
+  def _add(a, b)
+    a + b
+  end
+end
+result = new Counter().run(__N__)
+"#;
+
+    /// The bare calls in the loop never reach the slow path, whatever `n` is.
+    #[test]
+    fn bare_calls_to_compiled_methods_skip_the_slow_path() {
+        let (one, spent_one) = run(&LOOP.replace("__N__", "1"));
+        let (ten, spent_ten) = run(&LOOP.replace("__N__", "10"));
+        assert_eq!(one, Value::Int(13));
+        assert_eq!(ten, Value::Int(45 + 10 * 13));
+        assert_eq!(
+            spent_one, spent_ten,
+            "a bare call to a compiled method must not dispatch by name"
+        );
+        // Not even `counter.run(n)`: a call on an instance whose compiled
+        // method takes exactly its arguments stays in the fast tier.
+        assert_eq!(spent_one, 0, "no call takes the slow path");
+    }
+
+    /// The marker `SelfOrGlobalCallee` pushes is dropped on every path: a
+    /// global callee, a method callee, and an error raised among the
+    /// arguments and rescued in the same method.
+    #[test]
+    fn the_marker_never_outlives_its_call() {
+        let src = r#"
+def twice(x)
+  x * 2
+end
+
+class Probe
+  def run(n)
+    out = []
+    i = 0
+    while i < n
+      out.push(twice(_id(i)))
+      boom = 0
+      try
+        boom = _id(_fail(i))
+      catch e
+        boom = -1
+      end
+      out.push(boom)
+      i = i + 1
+    end
+    out
+  end
+
+  def _id(x)
+    x
+  end
+
+  def _fail(x)
+    throw "no"
+  end
+end
+result = new Probe().run(3)
+"#;
+        let (result, _) = run(src);
+        let Value::Array(items) = result else {
+            panic!("expected an array, got {result:?}");
+        };
+        let items: Vec<Value> = items.borrow().clone();
+        assert_eq!(
+            items,
+            vec![
+                Value::Int(0),
+                Value::Int(-1),
+                Value::Int(2),
+                Value::Int(-1),
+                Value::Int(4),
+                Value::Int(-1),
+            ]
+        );
+    }
+
+    /// An unknown bare name raises "Undefined variable" before its arguments
+    /// run, as the tree-walker resolves the callee first.
+    #[test]
+    fn unknown_bare_name_raises_before_the_arguments_run() {
+        let src = r##"
+class Probe
+  ran: Int
+
+  def run
+    @ran = 0
+    msg = ""
+    try
+      nope(@_bump)
+    catch e
+      msg = "#{e}"
+    end
+    [msg, @ran]
+  end
+
+  def _bump
+    @ran = @ran + 1
+    1
+  end
+end
+result = new Probe().run
+"##;
+        let (result, _) = run(src);
+        let Value::Array(items) = result else {
+            panic!("expected an array, got {result:?}");
+        };
+        let items: Vec<Value> = items.borrow().clone();
+        let Value::String(msg) = &items[0] else {
+            panic!("expected a message, got {items:?}");
+        };
+        assert!(
+            msg.as_str().contains("Undefined variable") && msg.as_str().contains("nope"),
+            "unexpected message: {msg}"
+        );
+        assert_eq!(items[1], Value::Int(0), "the arguments must not run");
+    }
 }
 
 #[cfg(test)]
@@ -3062,5 +3507,306 @@ mod tests {
         let who = helper_fn("def who()\n  req\nend\n", closure);
         assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
         assert!(who.jit_cache.borrow().is_none());
+    }
+
+    // --- Static calls on classes the tree-walker loaded (`soli serve`) ---
+
+    const STATIC_CLASSES: &str = r#"
+module Twice
+  def twice(n)
+    n * 2
+  end
+end
+
+class Base
+  static def who
+    this
+  end
+
+  static def label(n)
+    "base #{n}"
+  end
+end
+
+class Svc < Base
+  extend Twice
+
+  static def who
+    "svc"
+  end
+
+  static def compute(n, m = 10)
+    n + m
+  end
+
+  static def fact(n)
+    return 1 if n <= 1
+
+    n * Svc.fact(n - 1)
+  end
+end
+"#;
+
+    /// Load `STATIC_CLASSES` on the tree-walker and seed a VM with its
+    /// globals, as a serve worker loads an app.
+    fn static_classes_vm() -> (crate::interpreter::Interpreter, Vm) {
+        let tokens = crate::lexer::Scanner::new(STATIC_CLASSES)
+            .scan_tokens()
+            .expect("lexer error");
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .expect("parser error");
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).expect("classes load");
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.environment.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        (interpreter, vm)
+    }
+
+    fn loaded_class(interpreter: &crate::interpreter::Interpreter, name: &str) -> Rc<Class> {
+        match interpreter.environment.borrow().get(name) {
+            Some(Value::Class(class)) => class,
+            other => panic!("{name} is not a class: {other:?}"),
+        }
+    }
+
+    /// Run `body` as a function compiled by this VM.
+    fn run_probe(vm: &mut Vm, body: &str) -> Result<Value, RuntimeError> {
+        let source = format!("def probe()\n{body}\nend\n");
+        let tokens = crate::lexer::Scanner::new(&source)
+            .scan_tokens()
+            .expect("lexer error");
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .expect("parser error");
+        let module = Compiler::compile_with_globals(&program, vm.globals.keys().cloned())
+            .expect("probe compiles");
+        let proto = module
+            .main
+            .chunk
+            .constants
+            .iter()
+            .find_map(|c| match c {
+                Constant::Function(p) => Some(p.clone()),
+                _ => None,
+            })
+            .expect("probe proto");
+        vm.execute(&proto)
+    }
+
+    /// A `static def` that does not read `this` is compiled once and kept on
+    /// its class: the next call reuses that closure instead of resolving the
+    /// name through the property path and allocating a new one. It is not a
+    /// bytecode static, which runs under another calling convention.
+    #[test]
+    fn plain_tree_walker_static_is_compiled_once_and_cached() {
+        let (interpreter, mut vm) = static_classes_vm();
+        let svc = loaded_class(&interpreter, "Svc");
+        assert!(svc.vm_plain_static_methods.get("compute").is_none());
+
+        let value = run_probe(&mut vm, "Svc.compute(1) + Svc.compute(2, 3)").expect("runs");
+        assert_eq!(value, Value::Int(16));
+        let cached = svc
+            .vm_plain_static_methods
+            .get("compute")
+            .expect("compute is cached on Svc");
+        assert!(!svc.vm_static_methods.borrow().contains_key("compute"));
+
+        let again = run_probe(&mut vm, "Svc.compute(4)").expect("runs");
+        assert_eq!(again, Value::Int(14));
+        let still = svc.vm_plain_static_methods.get("compute").expect("cached");
+        assert!(Rc::ptr_eq(&cached, &still), "the closure is reused");
+
+        assert_eq!(
+            run_probe(&mut vm, "Svc.fact(5)").expect("runs"),
+            Value::Int(120)
+        );
+    }
+
+    /// `Base.who` reads `this`, so its first call registers it as a bytecode
+    /// static of `Base`. `Svc.who` hides it. The bytecode lookup used to walk
+    /// the whole chain before any tree-walker static, so once `Base.who` had
+    /// run, `Svc.who()` ran Base's with `Svc` as `this`.
+    #[test]
+    fn subclass_static_hides_a_compiled_superclass_static() {
+        let (interpreter, mut vm) = static_classes_vm();
+        let base = loaded_class(&interpreter, "Base");
+
+        let first = run_probe(&mut vm, "Base.who()").expect("runs");
+        assert_eq!(first, Value::Class(base.clone()));
+        assert!(base.vm_static_methods.borrow().contains_key("who"));
+
+        let value = run_probe(&mut vm, "Svc.who()").expect("runs");
+        assert_eq!(value, Value::str("svc"));
+    }
+
+    /// An inherited static is cached on the class that defines it.
+    #[test]
+    fn inherited_plain_static_is_cached_on_its_defining_class() {
+        let (interpreter, mut vm) = static_classes_vm();
+        let value = run_probe(&mut vm, "Svc.label(4)").expect("runs");
+        assert_eq!(value, Value::str("base 4"));
+        let base = loaded_class(&interpreter, "Base");
+        let svc = loaded_class(&interpreter, "Svc");
+        assert!(base.vm_plain_static_methods.get("label").is_some());
+        assert!(svc.vm_plain_static_methods.get("label").is_none());
+    }
+
+    /// A method `extend` mixed in runs, but is not cached: a reopened module
+    /// replaces those entries, and nothing would tell the cache.
+    #[test]
+    fn extended_module_method_runs_without_being_cached() {
+        let (interpreter, mut vm) = static_classes_vm();
+        let value = run_probe(&mut vm, "Svc.twice(21)").expect("runs");
+        assert_eq!(value, Value::Int(42));
+        let svc = loaded_class(&interpreter, "Svc");
+        assert!(svc.vm_plain_static_methods.get("twice").is_none());
+    }
+
+    /// A view runs plain functions on the tree-walker; a static is no
+    /// exception, and is neither compiled nor cached there.
+    #[test]
+    fn view_vm_leaves_plain_statics_to_the_tree_walker() {
+        let (interpreter, mut vm) = static_classes_vm();
+        vm.tree_walk_functions = true;
+        let value = run_probe(&mut vm, "Svc.compute(1, 2)").expect("runs");
+        assert_eq!(value, Value::Int(3));
+        let svc = loaded_class(&interpreter, "Svc");
+        assert!(svc.vm_plain_static_methods.get("compute").is_none());
+    }
+
+    /// Arity is checked on the cached path as on the first call.
+    #[test]
+    fn plain_static_arity_is_checked() {
+        let (_interpreter, mut vm) = static_classes_vm();
+        assert!(run_probe(&mut vm, "Svc.compute(1)").is_ok());
+        let err = run_probe(&mut vm, "Svc.compute()").expect_err("too few arguments");
+        assert!(matches!(err, RuntimeError::WrongArity { .. }), "{err}");
+    }
+
+    /// A native static is called straight from the resolution.
+    #[test]
+    fn native_static_is_called_directly() {
+        let (_interpreter, mut vm) = static_classes_vm();
+        let value = run_probe(&mut vm, "str(Math.floor(2.7))").expect("runs");
+        assert_eq!(value, Value::str("2"));
+    }
+}
+
+#[cfg(test)]
+mod plain_native_call_tests {
+    //! A global native call runs on the stack slice (`call_plain_native_at`):
+    //! no argument `Vec`, no callee clone, no name compares. The few natives
+    //! the VM intercepts (`grouped`, `defined`, …) are tagged once at
+    //! construction and still take their own path.
+    use super::plain_native_calls;
+    use crate::interpreter::value::{NativeFunction, NativeSpecial, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src` on a VM seeded with the builtins, as `soli --vm` seeds it;
+    /// return its `result` global and how many natives it called on the
+    /// stack slice.
+    fn run(src: &str) -> (Value, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let interpreter = crate::interpreter::Interpreter::new();
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.environment.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        let start = plain_native_calls();
+        vm.execute(&module.main).expect("vm");
+        let spent = plain_native_calls() - start;
+        let result = vm.globals.get("result").cloned().expect("result");
+        (result, spent)
+    }
+
+    #[test]
+    fn global_natives_run_on_the_stack_slice() {
+        let (result, calls) = run(r#"
+total = 0
+i = 0
+while i < 100
+  total = total + int(str(i)) + len([i, i, i])
+  i = i + 1
+end
+result = total
+"#);
+        assert_eq!(result, Value::Int(4950 + 300));
+        // `int`, `str` and `len` once per iteration, each on the slice.
+        assert!(calls >= 300, "only {calls} natives took the slice path");
+    }
+
+    #[test]
+    fn a_native_through_a_local_keeps_its_arguments_in_order() {
+        let (result, calls) = run(r#"
+f = int
+g = range
+result = [f("41") + 1, g(1, 4), g(4, 6), len(str(int("12")) + "ab")]
+"#);
+        assert_eq!(result.to_string(), "[42, [1, 2, 3], [4, 5], 4]");
+        assert!(calls >= 6, "only {calls} natives took the slice path");
+    }
+
+    #[test]
+    fn a_failing_native_leaves_the_stack_balanced() {
+        // The native errors (and the arity check fails) with the callee and
+        // its arguments on the stack: they must be gone before the error
+        // propagates, or the values around the call would read wrong slots.
+        let (result, _) = run(r#"
+def pick(v)
+  v
+end
+a = 1
+out = []
+[1, 2, 3].each do |x|
+  try
+    out.push(int(pick(x == 2 ? "zz" : str(x))))
+  catch e
+    out.push(-1)
+  end
+end
+try
+  len(1, 2)
+catch e
+  out.push(-2)
+end
+b = 2
+result = [a, out, b, len("xyz")]
+"#);
+        assert_eq!(result.to_string(), "[1, [1, -1, 3, -2], 2, 3]");
+    }
+
+    #[test]
+    fn intercepted_natives_are_tagged_once_and_still_intercepted() {
+        for (name, tag) in [
+            ("grouped", NativeSpecial::Grouped),
+            ("with_transaction", NativeSpecial::WithTransaction),
+            ("after_commit", NativeSpecial::AfterCommit),
+            ("with_tenant", NativeSpecial::WithTenant),
+            ("render_json", NativeSpecial::RenderJson),
+            ("assert_raises", NativeSpecial::AssertRaises),
+            ("defined", NativeSpecial::Defined),
+            ("const_get", NativeSpecial::ConstGet),
+            ("int", NativeSpecial::None),
+            ("json_encode", NativeSpecial::None),
+        ] {
+            let native = NativeFunction::new(name, None, |_| Ok(Value::Null));
+            assert_eq!(native.vm_special, tag, "{name}");
+        }
+
+        // `defined` answers from the VM's globals, which the native itself
+        // cannot see: it must not have gone down the plain path.
+        let (result, calls) = run(r#"
+class Widget
+end
+result = [defined("Widget"), const_get("Widget") == Widget]
+"#);
+        assert_eq!(result.to_string(), "[true, true]");
+        assert_eq!(calls, 0, "an intercepted native took the plain path");
     }
 }

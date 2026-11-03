@@ -177,6 +177,9 @@ pub struct Vm {
     /// every evaluation of it — see `Op::Closure`. Direct-mapped by the
     /// prototype's address; each entry keeps its prototype alive.
     closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    /// What each `CallMethod` / `CallMethodById` site found on each receiver
+    /// class it saw, for the fast tier's method calls (`Vm::fast_method`).
+    method_cache: super::method_cache::MethodCache,
     /// Emptied arrays nothing else references, handed back by an iterator
     /// loop (a `map` callback's `[key, value]` pair once its entry is taken
     /// out) for `Op::Array` to fill instead of allocating. Bounded.
@@ -348,6 +351,164 @@ impl Vm {
         Ok(val)
     }
 
+    /// `receiver.name` for the fast tier's `GetProperty` and
+    /// `GetLocalProperty`: the value the general arms' instance-field hit
+    /// pushes, when that hit completes with no error and no side effect.
+    /// The receiver is an instance holding the field (a field shadows a
+    /// method, so a present key decides the read), the value is no
+    /// `grouped {}` placeholder still to force, and the privacy check lets
+    /// the read through. `None` hands the op to the general arm, which
+    /// raises a refused read after checking it again.
+    ///
+    /// `slot_zero`: the receiver is the running frame's slot 0. In a method
+    /// frame that is `this`, whose members the check never refuses, so `@x`
+    /// skips the call, as in the general `GetLocalProperty` arm.
+    #[inline]
+    fn fast_field_read(&self, receiver: &Value, name: &str, slot_zero: bool) -> Option<Value> {
+        let Value::Instance(inst) = receiver else {
+            return None;
+        };
+        let value = match inst.borrow().fields.get(name) {
+            None | Some(Value::Deferred(_)) => return None,
+            Some(value) => clone_scalar_fast(value),
+        };
+        if crate::interpreter::value::restricted_methods_declared()
+            && !(slot_zero && self.slot_zero_is_this())
+            && self.check_private_value(receiver, name).is_err()
+        {
+            return None;
+        }
+        Some(value)
+    }
+
+    /// `Klass.NAME` for the fast tier's `GetProperty` and `GetLocalProperty`:
+    /// a static field (a class constant, an enum's unit variant) whose read in
+    /// the general arm ends at `op_get_property`'s `val.clone()` with nothing
+    /// done after it. That is a field holding plain data — a scalar, a
+    /// string, a collection, an instance, a DateTime. Everything else keeps
+    /// the general arm: a nested class (its `check_nested_access`), a
+    /// callable (`op_get_property_member` auto-invokes a zero-arity one), a
+    /// `grouped {}` placeholder or a future, and a model class's scope of the
+    /// same name, which outranks the field. The privacy check is no concern:
+    /// it only ever refuses an instance receiver.
+    #[inline]
+    fn fast_static_read(class: &crate::interpreter::value::Class, name: &str) -> Option<Value> {
+        let value = match class.static_fields.borrow().get(name)? {
+            value @ (Value::Int(_)
+            | Value::Float(_)
+            | Value::Decimal(_)
+            | Value::String(_)
+            | Value::Symbol(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Array(_)
+            | Value::Hash(_)
+            | Value::Instance(_)
+            | Value::DateTime(_, _)) => clone_scalar_fast(value),
+            _ => return None,
+        };
+        if Self::is_model_class_scope(class, name) {
+            return None;
+        }
+        Some(value)
+    }
+
+    /// `receiver.name = value` for the fast tier's `SetProperty`: the general
+    /// arm's instance-field write — an existing field overwritten in place, a
+    /// new one inserted — when it completes with no error. The receiver is an
+    /// instance, the privacy check lets the write through and the instance
+    /// is no constructed value object. A hash's `h.key = v` always sets the
+    /// key (no method precedence, no privacy, nothing frozen), so it is done
+    /// here too, keyed by the pool's own `SoliStr`. `false` touches nothing
+    /// and hands the op to the general arm, which raises the refusal.
+    #[inline]
+    fn fast_field_write(
+        &self,
+        receiver: &Value,
+        name: &crate::interpreter::value::SoliStr,
+        value: &Value,
+    ) -> bool {
+        let inst = match receiver {
+            Value::Instance(inst) => inst,
+            Value::Hash(hash) => {
+                hash.borrow_mut().set_str(name, clone_scalar_fast(value));
+                return true;
+            }
+            _ => return false,
+        };
+        if crate::interpreter::value::restricted_methods_declared()
+            && self.check_private_value(receiver, name).is_err()
+        {
+            return false;
+        }
+        if crate::interpreter::domain::value_objects_declared()
+            && crate::interpreter::domain::is_frozen(inst, &inst.borrow().class)
+        {
+            return false;
+        }
+        let value = clone_scalar_fast(value);
+        let mut instance = inst.borrow_mut();
+        match instance.fields.get_mut(name.as_str()) {
+            Some(field) => *field = value,
+            None => {
+                instance.fields.insert(name.clone(), value);
+            }
+        }
+        true
+    }
+
+    /// The compiled method `receiver.name(args…)` runs, for the fast tier's
+    /// `CallMethod` and `CallMethodById` at `site` with `argc` arguments above
+    /// the receiver: the frame the general arms' compiled-method call
+    /// (`call_method_slow_path` → `push_method_frame`) opens, when it opens
+    /// one with nothing to pad or raise. The receiver is an instance whose
+    /// class chain has `name` compiled, the method takes exactly `argc`
+    /// parameters, the depth limit is not reached and the privacy check lets
+    /// the call through. `None` hands the op to the general arm, which raises
+    /// a refused call after checking it again.
+    ///
+    /// For an instance, the general path tries nothing before
+    /// `find_vm_method_with_class` that could answer differently: `send` is
+    /// re-dispatched only on a class with no `send` of its own, where the
+    /// lookup misses too. So a hit decides the call, before fields, natives,
+    /// `method_missing` and AST-only methods. A change there must be
+    /// mirrored here. The lookup goes through `method_cache`; a miss is
+    /// remembered too, so a native method's site hands off after one probe.
+    #[inline]
+    fn fast_method(
+        &mut self,
+        site: *const Op,
+        argc: usize,
+        name: &str,
+    ) -> Option<super::method_cache::FoundMethod> {
+        if self.frames.len() >= MAX_CALL_DEPTH {
+            return None;
+        }
+        let receiver = &self.stack[self.stack.len() - 1 - argc];
+        let Value::Instance(inst) = receiver else {
+            return None;
+        };
+        let epoch = crate::interpreter::value::vm_methods_epoch();
+        let frames = &self.frames;
+        let found = {
+            let instance = inst.borrow();
+            self.method_cache
+                .lookup(site, &instance.class, name, epoch, || {
+                    frames.last().unwrap().closure.proto.clone()
+                })
+        };
+        let (method, defining) = found?;
+        if method.proto.param_names.len() != argc {
+            return None;
+        }
+        if crate::interpreter::value::restricted_methods_declared()
+            && self.check_private_value(receiver, name).is_err()
+        {
+            return None;
+        }
+        Some((method, defining))
+    }
+
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(256),
@@ -357,6 +518,7 @@ impl Vm {
             open_upvalue_top: 0,
             spare_callback_loop: None,
             closure_cache: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
+            method_cache: Default::default(),
             array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
@@ -515,21 +677,6 @@ impl Vm {
         }
     }
 
-    /// A string constant by address, for the ops that keep it borrowed while
-    /// they mutate the VM (the hash-set ops). The constant pool lives in the
-    /// running frame's `Arc<FunctionProto>`, which outlives the op, so the
-    /// pointer stays valid for the op's duration. A non-string constant reads
-    /// as the empty string, like `read_string_constant`.
-    #[inline]
-    fn string_constant_ptr(&self, idx: u16) -> *const SoliStr {
-        static EMPTY: SoliStr = SoliStr::new();
-        let frame = self.frames.last().unwrap();
-        match &frame.closure.proto.chunk.constants[idx as usize] {
-            Constant::String(s) => s as *const SoliStr,
-            _ => &EMPTY as *const SoliStr,
-        }
-    }
-
     /// A string constant as an owned `String`, for the ops that store it (a
     /// global-map key, a class or method name). An op that only compares the
     /// name or looks it up reads `read_string_constant` instead, which does not
@@ -540,6 +687,31 @@ impl Vm {
         match &frame.closure.proto.chunk.constants[idx as usize] {
             Constant::String(s) => String::from(s.as_str()),
             _ => String::new(),
+        }
+    }
+
+    /// A string constant as the pool's own `SoliStr` (an empty one for any
+    /// other constant): a hash write keyed by it appends the key as a
+    /// refcount clone instead of copying its bytes. A raw pointer, like the
+    /// arms' `*const str` keys, so the arm can go on using `self`; the
+    /// constant lives as long as the frame's prototype.
+    #[inline(always)]
+    fn string_constant_key(&self, idx: u16) -> *const crate::interpreter::value::SoliStr {
+        static EMPTY: crate::interpreter::value::SoliStr =
+            crate::interpreter::value::SoliStr::new();
+        match &self.frames.last().unwrap().closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s as *const _,
+            _ => &EMPTY as *const _,
+        }
+    }
+
+    /// A string constant, borrowed: for a name that is only looked at, like
+    /// the one a privacy check reads (`""` for any other constant).
+    #[inline]
+    fn string_constant(&self, idx: u16) -> &str {
+        match &self.frames.last().unwrap().closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s.as_str(),
+            _ => "",
         }
     }
 
@@ -635,9 +807,14 @@ impl Vm {
         /// the general `Call` arm raises nothing — and switch the cached state
         /// to it. As there, each omitted parameter gets a null slot that the
         /// callee's default-value prologue fills, and the supplied mask
-        /// covers only the `argc` given.
+        /// covers only the `argc` given. A method call passes the class
+        /// defining the method, the frame's class for `super`; its receiver,
+        /// in the callee slot, is the method's `this`.
         macro_rules! enter_closure {
-            ($closure:expr, $argc:expr, $params:expr) => {{
+            ($closure:expr, $argc:expr, $params:expr) => {
+                enter_closure!($closure, $argc, $params, None)
+            };
+            ($closure:expr, $argc:expr, $params:expr, $class:expr) => {{
                 self.frames.last_mut().unwrap().ip = ip;
                 for _ in $argc..$params {
                     self.stack.push(Value::Null);
@@ -647,7 +824,7 @@ impl Vm {
                     $closure,
                     stack_base,
                     self.iter_stack.len(),
-                    None,
+                    $class,
                     positional_supplied_mask($argc),
                 ));
                 (code, code_len, constants, base, ip) = load_frame!();
@@ -879,23 +1056,54 @@ impl Vm {
                     }
                 }
                 // `hash.key` that finds the key, when no user method on Hash
-                // could outrank it: the general arm's first fast path, here
-                // so a `row.title` does not leave this tier. Anything else
-                // (a miss, an instance, a method) goes to the general arm.
-                Op::GetProperty(idx) => {
+                // could outrank it, and `post.title` on an instance that has
+                // the field (`Vm::fast_field_read`): the general arm's fast
+                // paths, here so a field read does not leave this tier.
+                // A paren-less zero-argument builtin (`h.length` after the key
+                // misses, `s.blank?`, `a.first`, `n.to_s`) is answered by id
+                // from the tables `CallMethodById` uses for `h.length()`
+                // (`method_table::bare_zero_arg`). Anything else (a miss, a
+                // method, a deferred or refused field) goes to the general
+                // arm.
+                Op::GetProperty(idx, mid, mask) => {
                     let hit = match self.stack.last() {
-                        Some(Value::Hash(hash))
+                        Some(receiver @ Value::Hash(hash))
                             if !crate::interpreter::executor::calls::user_methods::has_user_methods(
                                 crate::interpreter::executor::calls::user_methods::PrimType::Hash,
                             ) =>
                         {
                             // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
+                            let key = match unsafe { &*constants.add(idx as usize) } {
                                 Constant::String(name) => {
                                     hash.borrow().get(&StrKey(name.as_ref())).cloned()
                                 }
                                 _ => None,
+                            };
+                            match key {
+                                None if mask != 0 => {
+                                    super::method_table::bare_zero_arg(receiver, mid, mask)
+                                }
+                                key => key,
                             }
+                        }
+                        Some(receiver @ Value::Instance(_)) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => {
+                                    self.fast_field_read(receiver, name, false)
+                                }
+                                _ => None,
+                            }
+                        }
+                        Some(Value::Class(class)) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => Self::fast_static_read(class, name),
+                                _ => None,
+                            }
+                        }
+                        Some(receiver) if mask != 0 => {
+                            super::method_table::bare_zero_arg(receiver, mid, mask)
                         }
                         _ => None,
                     };
@@ -906,22 +1114,49 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
-                // `row.title` with `row` a local hash that has the key — the
-                // fused form of the arm above.
-                Op::GetLocalProperty(slot, idx) => {
+                // `row.title` with `row` a local hash that has the key, and
+                // `@title` or `post.title` with the receiver a local instance
+                // that has the field — the fused form of the arm above, which
+                // also answers a paren-less zero-argument builtin by id.
+                Op::GetLocalProperty(slot, idx, mid, mask) => {
                     let hit = match &self.stack[base + slot as usize] {
-                        Value::Hash(hash)
+                        receiver @ Value::Hash(hash)
                             if !crate::interpreter::executor::calls::user_methods::has_user_methods(
                                 crate::interpreter::executor::calls::user_methods::PrimType::Hash,
                             ) =>
                         {
                             // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
+                            let key = match unsafe { &*constants.add(idx as usize) } {
                                 Constant::String(name) => {
                                     hash.borrow().get(&StrKey(name.as_ref())).cloned()
                                 }
                                 _ => None,
+                            };
+                            match key {
+                                None if mask != 0 => {
+                                    super::method_table::bare_zero_arg(receiver, mid, mask)
+                                }
+                                key => key,
                             }
+                        }
+                        receiver @ Value::Instance(_) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => {
+                                    self.fast_field_read(receiver, name, slot == 0)
+                                }
+                                _ => None,
+                            }
+                        }
+                        Value::Class(class) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => Self::fast_static_read(class, name),
+                                _ => None,
+                            }
+                        }
+                        receiver if mask != 0 => {
+                            super::method_table::bare_zero_arg(receiver, mid, mask)
                         }
                         _ => None,
                     };
@@ -991,6 +1226,49 @@ impl Vm {
                         break Some(op);
                     };
                     self.stack.push(value);
+                }
+                // `@total ||= 0`'s read: the instance-field hit of
+                // `GetProperty` above, so a set field short-circuits without
+                // leaving the tier. A miss (Null), a model relation or
+                // translated field, a deferred or refused field goes to the
+                // general arm.
+                Op::GetPropertyOrNull(idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let hit = match (self.stack.last(), unsafe { &*constants.add(idx as usize) }) {
+                        (Some(receiver @ Value::Instance(inst)), Constant::String(name))
+                            if !field_needs_model_resolution(inst, name) =>
+                        {
+                            self.fast_field_read(receiver, name, false)
+                        }
+                        _ => None,
+                    };
+                    match hit {
+                        Some(value) => {
+                            discard(std::mem::replace(self.stack.last_mut().unwrap(), value));
+                        }
+                        None => break Some(op),
+                    }
+                }
+                // `@title = t` or `post.title = t` on an instance, `h.key = v`
+                // on a hash: the general arm's in-place write, here when it
+                // completes with no error (`Vm::fast_field_write`). The value
+                // takes the receiver's place on the stack, as the assignment's
+                // result. A class, a refused or frozen write goes to the
+                // general arm.
+                Op::SetProperty(idx) => {
+                    let len = self.stack.len();
+                    // SAFETY: as for `Op::Constant` above.
+                    let written = match unsafe { &*constants.add(idx as usize) } {
+                        Constant::String(name) => {
+                            self.fast_field_write(&self.stack[len - 2], name, &self.stack[len - 1])
+                        }
+                        _ => false,
+                    };
+                    if !written {
+                        break Some(op);
+                    }
+                    let value = self.pop();
+                    discard(std::mem::replace(self.stack.last_mut().unwrap(), value));
                 }
                 Op::TemplateWriteConst(idx) => {
                     // SAFETY: as for `Op::Constant` above.
@@ -1249,6 +1527,27 @@ impl Vm {
                         .insert(insert_at, Value::VmClosure(closure.clone()));
                     let params = closure.proto.param_names.len();
                     enter_closure!(closure, argc, params);
+                }
+                // `post.summary()`, `@helper(x)`, `this.total(a, b)` on an
+                // instance whose class chain has the method compiled: the
+                // general arms' compiled-method call (`Vm::fast_method`), the
+                // receiver staying below the arguments as `this`. A native or
+                // AST-only method, `method_missing`, `send`, omitted
+                // parameters, the depth limit and a refused call go to the
+                // general arm.
+                Op::CallMethod(name_idx, argc) | Op::CallMethodById(name_idx, argc, _) => {
+                    let argc = argc as usize;
+                    // SAFETY: as for `Op::Constant`.
+                    let name = match unsafe { &*constants.add(name_idx as usize) } {
+                        Constant::String(name) => name.as_ref(),
+                        _ => break Some(op),
+                    };
+                    // The op's own address: `ip` is already past it.
+                    let site = code.wrapping_add(ip - 1);
+                    let Some((method, defining)) = self.fast_method(site, argc, name) else {
+                        break Some(op);
+                    };
+                    enter_closure!(method, argc, argc, Some(defining));
                 }
                 Op::Return => {
                     let depth_after = self.frames.len() - 1;
@@ -2192,16 +2491,22 @@ impl Vm {
                     }
                 }
                 Op::SelfOrGlobal(name_idx) => {
-                    let name = self.read_string_constant_owned(name_idx);
+                    // The pool's own `SoliStr`: inline for a short name, a
+                    // refcount bump for a long one — no allocation.
+                    let name = self.read_string_constant(name_idx);
+                    let name = name.as_str();
                     let this = self.pop();
-                    if let Some(value) = self.global_or_namespaced(&name) {
+                    if let Some(value) = self.global_or_namespaced(name) {
                         self.push(value);
-                    } else if Self::has_instance_method(&this, &name) {
+                    } else if Self::has_instance_method(&this, name) {
                         let span = self.current_span();
-                        let value = self.op_get_property_member(&this, &name, span)?;
+                        let value = self.op_get_property_member(&this, name, span)?;
                         self.push(value);
                     } else {
-                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                        return Err(RuntimeError::undefined_variable(
+                            name.to_string(),
+                            self.current_span(),
+                        ));
                     }
                 }
                 Op::MarkPrivate(name_idx) => {
@@ -2220,25 +2525,76 @@ impl Vm {
                     }
                 }
                 Op::SelfOrGlobalCallee(name_idx) => {
-                    let name = self.read_string_constant_owned(name_idx);
-                    if let Some(value) = self.global_or_namespaced(&name) {
+                    // Decide once, before the arguments run, and leave the
+                    // decision on the stack for `CallSelfOrGlobal`: it neither
+                    // probes globals nor walks the class chain again.
+                    let name = self.read_string_constant(name_idx);
+                    let name = name.as_str();
+                    if let Some(value) = self.global_or_namespaced(name) {
                         let top = self.stack.len() - 1;
                         self.stack[top] = value;
-                    } else if !Self::has_instance_method(self.stack.last().unwrap(), &name) {
-                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                        // `Null`: call the global.
+                        self.push(Value::Null);
+                    } else {
+                        let found = match self.stack.last() {
+                            Some(Value::Instance(inst)) => {
+                                let class = inst.borrow().class.clone();
+                                match class.find_vm_method_with_class(name) {
+                                    // The class that defines the compiled
+                                    // method: the call reads it from there.
+                                    Some((_, defining)) => Some(Value::Class(defining)),
+                                    None if class.find_method(name).is_some() => {
+                                        // `true`: a tree-walker method, dispatched by name.
+                                        Some(Value::Bool(true))
+                                    }
+                                    None => None,
+                                }
+                            }
+                            _ => None,
+                        };
+                        let Some(marker) = found else {
+                            return Err(RuntimeError::undefined_variable(
+                                name.to_string(),
+                                self.current_span(),
+                            ));
+                        };
+                        self.push(marker);
                     }
                 }
                 Op::CallSelfOrGlobal(name_idx, argc) => {
                     let argc = argc as usize;
-                    let name = self.read_string_constant_owned(name_idx);
-                    if self.globals.contains_key(&name) {
-                        let span = self.current_span();
-                        self.call_value(argc, span)?;
-                    } else {
-                        // `SelfOrGlobalCallee` left `this` as the receiver: a
-                        // call on self, so a private method is allowed.
-                        let receiver_idx = self.stack.len() - 1 - argc;
-                        self.call_method_slow_path(receiver_idx, argc, &name)?;
+                    // `[callee, marker, args…]`: drop the marker so the
+                    // callee sits right below the arguments.
+                    let marker = self.stack.remove(self.stack.len() - 1 - argc);
+                    match marker {
+                        Value::Null => {
+                            let span = self.current_span();
+                            self.call_value(argc, span)?;
+                        }
+                        marker => {
+                            // `this` is the receiver: a call on self, so a
+                            // private method is allowed.
+                            let name = self.read_string_constant(name_idx);
+                            let name = name.as_str();
+                            let compiled = match &marker {
+                                Value::Class(defining) => defining
+                                    .vm_methods
+                                    .borrow()
+                                    .get(name)
+                                    .cloned()
+                                    .map(|closure| (closure, defining.clone())),
+                                _ => None,
+                            };
+                            match compiled {
+                                Some((closure, defining)) => {
+                                    self.push_method_frame(closure, argc, Some(defining))?
+                                }
+                                None => {
+                                    let receiver_idx = self.stack.len() - 1 - argc;
+                                    self.call_method_slow_path(receiver_idx, argc, name)?;
+                                }
+                            }
+                        }
                     }
                 }
                 Op::CallMethod(name_idx, argc) => {
@@ -2305,56 +2661,28 @@ impl Vm {
 
                     // Fast path: dispatch on receiver type without cloning
                     match &self.stack[receiver_idx] {
+                        // No inline name matches here: every name that had one
+                        // (`len`, `upcase`, `first`, `blank?`, …) has a method
+                        // id, so the compiler emits `CallMethodById` for it and
+                        // this arm only ever sees names without one.
                         Value::String(_) => {
-                            // Ultra-fast path: inline common zero-arg string methods
-                            let result = if argc == 0 {
-                                let s: &str = match &self.stack[receiver_idx] {
-                                    Value::String(s) => s.as_ref(),
+                            // Borrow string and args from the stack
+                            let result = {
+                                let s = match &self.stack[receiver_idx] {
+                                    Value::String(s) => s,
                                     _ => unreachable!(),
                                 };
-                                match name {
-                                    "len" | "length" => Some(Value::Int(s.len() as i64)),
-                                    "empty?" => Some(Value::Bool(s.is_empty())),
-                                    "bytesize" => Some(Value::Int(s.len() as i64)),
-                                    "upcase" | "uppercase" => {
-                                        Some(Value::String(s.to_uppercase().into()))
-                                    }
-                                    "downcase" | "lowercase" => {
-                                        Some(Value::String(s.to_lowercase().into()))
-                                    }
-                                    "trim" => Some(Value::String(s.trim().to_string().into())),
-                                    "reverse" => {
-                                        let out: String = crate::interpreter::executor::calls::string_methods::reverse_string(s);
-                                        Some(Value::String(out.into()))
-                                    }
-                                    "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("string".into())),
-                                    _ => None,
-                                }
-                            } else {
-                                None
+                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let span = self.current_span();
+                                self.vm_call_string_method(s, name, args, span)?
                             };
-                            if let Some(result) = result {
-                                self.stack.truncate(receiver_idx);
-                                self.stack.push(result);
-                            } else {
-                                // General path: borrow string and args from stack
-                                let result = {
-                                    let s = match &self.stack[receiver_idx] {
-                                        Value::String(s) => s,
-                                        _ => unreachable!(),
-                                    };
-                                    let args =
-                                        &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
-                                    let span = self.current_span();
-                                    self.vm_call_string_method(s, name, args, span)?
-                                };
-                                self.stack.truncate(receiver_idx);
-                                self.stack.push(result);
-                            }
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
                         }
                         Value::Instance(_) | Value::Class(_) | Value::VmClosure(_) => {
-                            self.check_private_receiver(receiver_idx, name)?;
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                self.check_private_receiver(receiver_idx, name)?;
+                            }
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                         Value::Array(_) => {
@@ -2367,45 +2695,16 @@ impl Vm {
                             {
                                 continue;
                             }
-                            // Fast path for common zero-arg array methods
-                            let result = if argc == 0 {
-                                let arr = match &self.stack[receiver_idx] {
-                                    Value::Array(a) => a,
-                                    _ => unreachable!(),
-                                };
-                                match name {
-                                    "length" | "len" => Some(Value::Int(arr.borrow().len() as i64)),
-                                    "empty?" => Some(Value::Bool(arr.borrow().is_empty())),
-                                    "first" => {
-                                        Some(arr.borrow().first().cloned().unwrap_or(Value::Null))
-                                    }
-                                    "last" => {
-                                        Some(arr.borrow().last().cloned().unwrap_or(Value::Null))
-                                    }
-                                    "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("array".into())),
-                                    "blank?" => Some(Value::Bool(arr.borrow().is_empty())),
-                                    "present?" => Some(Value::Bool(!arr.borrow().is_empty())),
-                                    _ => None,
-                                }
-                            } else {
-                                None
+                            let arr = match &self.stack[receiver_idx] {
+                                Value::Array(a) => a.clone(),
+                                _ => unreachable!(),
                             };
-                            if let Some(result) = result {
-                                self.stack.truncate(receiver_idx);
-                                self.stack.push(result);
-                            } else {
-                                let arr = match &self.stack[receiver_idx] {
-                                    Value::Array(a) => a.clone(),
-                                    _ => unreachable!(),
-                                };
-                                let args: Vec<Value> =
-                                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
-                                let span = self.current_span();
-                                self.stack.truncate(receiver_idx);
-                                let result = self.vm_call_array_method(&arr, name, &args, span)?;
-                                self.stack.push(result);
-                            }
+                            let args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+                            let span = self.current_span();
+                            self.stack.truncate(receiver_idx);
+                            let result = self.vm_call_array_method(&arr, name, &args, span)?;
+                            self.stack.push(result);
                         }
                         Value::Hash(_) => {
                             // An iterator method with a compiled callback runs
@@ -2417,31 +2716,9 @@ impl Vm {
                             {
                                 continue;
                             }
-                            // Fast path for common zero-arg hash methods
-                            let result = if argc == 0 {
-                                let hash = match &self.stack[receiver_idx] {
-                                    Value::Hash(h) => h,
-                                    _ => unreachable!(),
-                                };
-                                match name {
-                                    "length" | "len" => {
-                                        Some(Value::Int(hash.borrow().len() as i64))
-                                    }
-                                    "empty?" => Some(Value::Bool(hash.borrow().is_empty())),
-                                    "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("hash".into())),
-                                    "blank?" => Some(Value::Bool(hash.borrow().is_empty())),
-                                    "present?" => Some(Value::Bool(!hash.borrow().is_empty())),
-                                    _ => None,
-                                }
-                            } else {
-                                None
-                            };
-                            let result = match result {
-                                Some(result) => Some(Ok(result)),
-                                None => self.hash_method_on_stack(receiver_idx, argc, name),
-                            };
-                            if let Some(result) = result {
+                            if let Some(result) =
+                                self.hash_method_on_stack(receiver_idx, argc, name)
+                            {
                                 let result = result?;
                                 self.stack.truncate(receiver_idx);
                                 self.stack.push(result);
@@ -2454,7 +2731,9 @@ impl Vm {
                                     self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                                 let span = self.current_span();
                                 self.stack.truncate(receiver_idx);
-                                let result = self.vm_call_hash_method(&hash, name, &args, span)?;
+                                // `hash_method_on_stack` just tried the borrowed tier.
+                                let result = self
+                                    .vm_call_hash_method_past_borrowed(&hash, name, &args, span)?;
                                 self.stack.push(result);
                             }
                         }
@@ -2523,6 +2802,12 @@ impl Vm {
                                 &self.stack[receiver_idx + 1],
                                 self.current_span(),
                             ),
+                            Value::Array(a) => super::method_table::array_method_one_arg(
+                                a,
+                                method_id,
+                                &self.stack[receiver_idx + 1],
+                            )
+                            .map(Ok),
                             _ => None,
                         };
                         if let Some(result) = result {
@@ -2612,7 +2897,9 @@ impl Vm {
                                 self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                             let span = self.current_span();
                             self.stack.truncate(receiver_idx);
-                            let result = self.vm_call_hash_method(&hash, name, &args, span)?;
+                            // `hash_method_on_stack` just tried the borrowed tier.
+                            let result =
+                                self.vm_call_hash_method_past_borrowed(&hash, name, &args, span)?;
                             self.stack.push(result);
                         }
                         Value::Int(_)
@@ -2632,7 +2919,9 @@ impl Vm {
                         }
                         _ => {
                             // Class instances, closures: fall back to property dispatch
-                            self.check_private_receiver(receiver_idx, name)?;
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                self.check_private_receiver(receiver_idx, name)?;
+                            }
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                     }
@@ -2744,20 +3033,14 @@ impl Vm {
                 Op::HashSetConst(key_idx) => {
                     let value = self.pop();
                     let receiver = self.pop();
-                    // The constant itself, not its `&str`: a new key is
-                    // inserted as a clone of it (an inline copy or a refcount
-                    // bump), not as a fresh `String` converted a second time.
-                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    // SAFETY: the constant outlives the arm (see `string_constant_key`).
+                    let key_str: &crate::interpreter::value::SoliStr =
+                        unsafe { &*self.string_constant_key(key_idx) };
                     let key: &str = key_str.as_str();
                     match receiver {
                         Value::Hash(hash) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
-                            }
-                            drop(hash_ref);
+                            // A miss appends the pool's key, not a copy of it.
+                            hash.borrow_mut().set_str(key_str, value.clone());
                             // Same rule as `Op::SetIndex`: the expression's value
                             // is the assigned value, not null.
                             self.push(value);
@@ -2913,19 +3196,14 @@ impl Vm {
                 Op::HashSetLocalConst(slot, key_idx) => {
                     let value = self.pop();
                     let base = self.frames.last().unwrap().stack_base;
-                    // The constant itself, not its `&str`: a new key is
-                    // inserted as a clone of it (an inline copy or a refcount
-                    // bump), not as a fresh `String` converted a second time.
-                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    // SAFETY: the constant outlives the arm (see `string_constant_key`).
+                    let key_str: &crate::interpreter::value::SoliStr =
+                        unsafe { &*self.string_constant_key(key_idx) };
                     let key: &str = key_str.as_str();
                     match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
-                            }
+                            // A miss appends the pool's key, not a copy of it.
+                            hash.borrow_mut().set_str(key_str, value.clone());
                         }
                         other => {
                             let other = other.clone();
@@ -3092,18 +3370,15 @@ impl Vm {
                             _ => "" as *const str,
                         }
                     };
-                    // Shared like `HashSetConst`'s key.
-                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    // SAFETY: the constant outlives the arm (see `string_constant_key`).
+                    let key_str: &crate::interpreter::value::SoliStr =
+                        unsafe { &*self.string_constant_key(key_idx) };
                     let global_name: &str = unsafe { &*global_name };
                     let key: &str = key_str.as_str();
                     match self.globals.get(global_name) {
                         Some(Value::Hash(hash)) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
-                            }
+                            // A miss appends the pool's key, not a copy of it.
+                            hash.borrow_mut().set_str(key_str, value.clone());
                         }
                         Some(other) => {
                             let other = other.clone();
@@ -3359,8 +3634,10 @@ impl Vm {
                 }
 
                 // --- Properties ---
-                Op::GetProperty(idx) => {
+                Op::GetProperty(idx, _, _) => {
                     let object = self.stack.pop().unwrap();
+                    #[cfg(test)]
+                    tally_general_field_op(&object);
                     // Fast path: instance-field hit. Fields shadow methods
                     // (op_get_property's documented order), so a present key
                     // fully decides the access — no name copy, no span, and
@@ -3378,8 +3655,7 @@ impl Vm {
                         };
                         if let Some(val) = hit {
                             if crate::interpreter::value::restricted_methods_declared() {
-                                let name = self.read_string_constant_owned(idx);
-                                self.check_private_value(&object, &name)?;
+                                self.check_private_value(&object, self.string_constant(idx))?;
                             }
                             let val = self.force_field_hit(val)?;
                             self.stack.push(val);
@@ -3417,6 +3693,33 @@ impl Vm {
                 }
                 Op::GetPropertyOrNull(idx) => {
                     let object = self.stack.pop().unwrap();
+                    #[cfg(test)]
+                    tally_general_field_op(&object);
+                    // Fast path: an instance-field hit decides the read, as in
+                    // `Op::GetProperty` — only a miss differs (Null here). A
+                    // model's relation or translated field still goes to the
+                    // resolver below, as it did before this path existed.
+                    if let Value::Instance(inst) = &object {
+                        let hit = {
+                            let frame = self.frames.last().unwrap();
+                            match &frame.closure.proto.chunk.constants[idx as usize] {
+                                Constant::String(name)
+                                    if !field_needs_model_resolution(inst, name) =>
+                                {
+                                    inst.borrow().fields.get(name.as_ref()).cloned()
+                                }
+                                _ => None,
+                            }
+                        };
+                        if let Some(val) = hit {
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                self.check_private_value(&object, self.string_constant(idx))?;
+                            }
+                            let val = self.force_field_hit(val)?;
+                            self.stack.push(val);
+                            continue;
+                        }
+                    }
                     let name = self.read_string_constant(idx);
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
@@ -3432,13 +3735,16 @@ impl Vm {
                 }
                 Op::SetProperty(idx) => {
                     let value = self.stack.pop().unwrap();
+                    #[cfg(test)]
+                    tally_general_field_op(self.stack.last().unwrap());
                     // A private/protected field written from outside: refused
                     // like the read. One relaxed load while no class declares
-                    // a restricted member.
+                    // a restricted member; only an instance holds one, so a
+                    // hash write goes on without the check.
                     if crate::interpreter::value::restricted_methods_declared() {
-                        let name = self.read_string_constant_owned(idx);
-                        let object = self.stack.last().unwrap().clone();
-                        self.check_private_value(&object, &name)?;
+                        if let Some(object @ Value::Instance(_)) = self.stack.last() {
+                            self.check_private_value(object, self.string_constant(idx))?;
+                        }
                     }
                     // A constructed value object is frozen. One relaxed load
                     // while no value-object class exists.
@@ -3466,7 +3772,15 @@ impl Vm {
                     // the owned name for the insert anyway.
                     let updated = {
                         let object = self.stack.last().unwrap();
-                        if let Value::Instance(inst) = object {
+                        if let Value::Hash(hash) = object {
+                            // `h.key = v` always sets the key: one borrowed
+                            // probe, and a miss appends the pool's key — no
+                            // owned name, receiver clone or span.
+                            // SAFETY: the constant outlives the arm.
+                            let name = unsafe { &*self.string_constant_key(idx) };
+                            hash.borrow_mut().set_str(name, value.clone());
+                            true
+                        } else if let Value::Instance(inst) = object {
                             let frame = self.frames.last().unwrap();
                             match &frame.closure.proto.chunk.constants[idx as usize] {
                                 Constant::String(name) => {
@@ -4864,8 +5178,10 @@ impl Vm {
                         self.stack.push(self.stack[len - 1].clone());
                     }
                 }
-                Op::GetLocalProperty(slot, idx) => {
+                Op::GetLocalProperty(slot, idx, _, _) => {
                     let base = self.frames.last().unwrap().stack_base;
+                    #[cfg(test)]
+                    tally_general_field_op(&self.stack[base + slot as usize]);
                     // Fast path, mirroring Op::GetProperty: fields shadow
                     // methods, so a present key fully decides the access — no
                     // owned name, no span, one ahash probe. Without this the
@@ -4899,10 +5215,16 @@ impl Vm {
                         continue;
                     }
                     if let Some(val) = hit {
-                        if crate::interpreter::value::restricted_methods_declared() {
-                            let object = self.stack[base + slot as usize].clone();
-                            let name = self.read_string_constant(idx);
-                            self.check_private_value(&object, &name)?;
+                        // `@x` in a method: slot 0 of its frame is the `this`
+                        // the check would compare the receiver with, and a
+                        // member of self is never refused.
+                        if crate::interpreter::value::restricted_methods_declared()
+                            && (slot != 0 || !self.slot_zero_is_this())
+                        {
+                            self.check_private_value(
+                                &self.stack[base + slot as usize],
+                                self.string_constant(idx),
+                            )?;
                         }
                         let val = self.force_field_hit(val)?;
                         self.stack.push(val);
@@ -6139,6 +6461,23 @@ pub(crate) fn clone_scalar_fast(value: &Value) -> Value {
     }
 }
 
+/// Whether reading `name` on `inst` means more than its stored field: a
+/// model's declared relation or translated field, which `op_get_property`
+/// hands to the tree-walker's resolver. `GetPropertyOrNull`'s field fast
+/// path leaves those to it. One memoised flag for any other class.
+#[inline]
+fn field_needs_model_resolution(
+    inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    name: &str,
+) -> bool {
+    let inst = inst.borrow();
+    inst.class.is_model_subclass()
+        && crate::interpreter::builtins::model::member_needs_model_resolution(
+            &inst.class.name,
+            name,
+        )
+}
+
 #[inline(always)]
 pub(crate) fn discard(value: Value) {
     if matches!(
@@ -6150,6 +6489,48 @@ pub(crate) fn discard(value: Value) {
     } else {
         drop(value);
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the instance `GetProperty`, `GetLocalProperty` and
+    /// `SetProperty` ops this thread's general arms ran — the ones the fast
+    /// tier handed back.
+    static GENERAL_FIELD_OPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the `GetProperty`, `GetLocalProperty` and `SetProperty` ops
+    /// this thread's general arms ran on anything but an instance — a
+    /// paren-less `h.length` or `s.blank?` the fast tier handed back.
+    static GENERAL_MEMBER_OPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: count a property op the general arm runs on `receiver`: as a
+/// field op when that is an instance, as a member op otherwise.
+#[cfg(test)]
+fn tally_general_field_op(receiver: &Value) {
+    if matches!(receiver, Value::Instance(_)) {
+        GENERAL_FIELD_OPS.with(|ops| ops.set(ops.get() + 1));
+    } else {
+        GENERAL_MEMBER_OPS.with(|ops| ops.set(ops.get() + 1));
+    }
+}
+
+/// Test-only: how many non-instance property ops the general arms have run
+/// on this thread.
+#[cfg(test)]
+pub(crate) fn general_member_ops() -> usize {
+    GENERAL_MEMBER_OPS.with(std::cell::Cell::get)
+}
+
+/// Test-only: how many instance field ops the general arms have run on this
+/// thread, for a test to tell the fast tier's field reads and writes from
+/// the general arm's.
+#[cfg(test)]
+pub(crate) fn general_field_ops() -> usize {
+    GENERAL_FIELD_OPS.with(std::cell::Cell::get)
 }
 
 #[cfg(test)]
@@ -10680,5 +11061,1038 @@ let x = Mailer.welcome()
                 assert_eq!(answered.is_some(), inline, "{value:?} == {constant:?}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod field_fast_tier_tests {
+    //! Instance field reads and writes (`@x`, `this.x`, `post.title`,
+    //! `@x = v`, `post.title = t`) complete in the fast tier whenever the
+    //! general arm's field hit would complete without an error: the field is
+    //! present (a write may also add it), the value is no `grouped {}`
+    //! placeholder and the privacy check lets the access through. Everything
+    //! else — a miss, a method, a deferred field, a refused or frozen access
+    //! — still reaches the general arm, which answers as before.
+    use super::general_field_ops;
+    use crate::interpreter::value::{Class, DeferredCell, Instance, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Run `src` with `__N__` replaced by `n` and `globals` bound; return its
+    /// `result` global and the instance field ops the general arms ran.
+    fn run(src: &str, n: usize, globals: Vec<(&str, Value)>) -> (Value, usize) {
+        let src = src.replace("__N__", &n.to_string());
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name.to_string(), value);
+        }
+        let start = general_field_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_field_ops() - start;
+        (vm.globals.get("result").cloned().expect("result"), general)
+    }
+
+    fn ints(values: &[i64]) -> Value {
+        Value::Array(Rc::new(RefCell::new(
+            values.iter().map(|n| Value::Int(*n)).collect(),
+        )))
+    }
+
+    const POINT: &str = r#"
+class Point
+  x: Int
+  y: Int
+
+  new(x: Int, y: Int)
+    @x = x
+    @y = y
+  end
+
+  def walk(n)
+    i = 0
+    while i < n
+      @x = @x + 1
+      this.y = this.y + @x
+      i = i + 1
+    end
+    @x * 1000 + @y
+  end
+end
+
+def make
+  new Point(7, 8)
+end
+
+def poke(point, n)
+  i = 0
+  while i < n
+    point.x = point.x + point.y
+    [1].each { |k| point.y = point.y + k }
+    i = i + 1
+  end
+  point.x
+end
+
+point = new Point(1, 2)
+walked = point.walk(__N__)
+poked = poke(point, __N__)
+point.extra = 5
+point.extra = point.extra + make().x
+result = [walked, poked, point.x, point.y, point.extra]
+"#;
+
+    /// Every field read and write of `POINT` — in a constructor, on `self`
+    /// in a method (`@x`, `this.y`), on a local, a block's upvalue, a global
+    /// and a call's result, the first write of a field no class declares —
+    /// completes in the fast tier: the general arms run none of them, at
+    /// any loop length. Before, each one left the tier.
+    #[test]
+    fn field_reads_and_writes_stay_in_the_fast_tier() {
+        let (short, short_general) = run(POINT, 3, Vec::new());
+        let (long, long_general) = run(POINT, 30, Vec::new());
+        // walk(3): x 1 -> 4, y 2 + 2 + 3 + 4 = 11; poke(3) then adds y into
+        // x and bumps y each round: x 15, 27, 40 and y 12, 13, 14.
+        assert_eq!(short, ints(&[4011, 40, 40, 14, 12]));
+        let Value::Array(long) = long else {
+            panic!("expected an array, got {long:?}");
+        };
+        assert_eq!(long.borrow()[2], long.borrow()[1]);
+        assert_eq!(short_general, 0);
+        assert_eq!(long_general, 0);
+    }
+
+    const VAULT: &str = r#"
+class Vault
+  private code: Int
+  protected rank: Int
+  label: String
+
+  new(code: Int)
+    @code = code
+    @rank = 1
+    @label = "vault"
+  end
+
+  def turn(n)
+    i = 0
+    while i < n
+      @code = @code + 1
+      [1].each { |k| @code = @code + k }
+      i = i + 1
+    end
+    @code
+  end
+end
+
+def relabel(vault, n)
+  i = 0
+  while i < n
+    vault.label = vault.label + "!"
+    i = i + 1
+  end
+  vault.label
+end
+
+def peek(vault)
+  vault.code rescue "refused"
+end
+
+def forge(vault)
+  try
+    vault.code = 7
+    return "written"
+  catch error
+    return "refused"
+  end
+end
+
+def rank_of(vault)
+  vault.rank rescue "refused"
+end
+
+vault = new Vault(0)
+turned = vault.turn(__N__)
+label = relabel(vault, __N__)
+result = [turned, label, peek(vault), forge(vault), rank_of(vault), vault.turn(0)]
+"#;
+
+    /// A class with a private and a protected field: a field no class of
+    /// the chain restricts, read and written from a plain function, and the
+    /// private one read and written by the class's own method and the block
+    /// it runs, pass the check and stay in the fast tier. Only the three
+    /// refused accesses from outside — the private read and write and the
+    /// protected read — reach the general arm, which raises them.
+    #[test]
+    fn a_private_member_keeps_the_other_accesses_in_the_fast_tier() {
+        let (short, short_general) = run(VAULT, 3, Vec::new());
+        let (long, long_general) = run(VAULT, 30, Vec::new());
+        let expected = |turned: i64, bangs: usize| {
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(turned),
+                Value::String(format!("vault{}", "!".repeat(bangs)).into()),
+                Value::String("refused".into()),
+                Value::String("refused".into()),
+                Value::String("refused".into()),
+                Value::Int(turned),
+            ])))
+        };
+        assert_eq!(short, expected(6, 3));
+        assert_eq!(long, expected(60, 30));
+        assert_eq!(short_general, 3);
+        assert_eq!(long_general, 3);
+    }
+
+    fn deferred_posts() -> Value {
+        Value::Deferred(Rc::new(RefCell::new(DeferredCell {
+            resolved: Some(Value::Array(Rc::new(RefCell::new(vec![
+                Value::String("a".into()),
+                Value::String("b".into()),
+            ])))),
+        })))
+    }
+
+    fn record() -> Value {
+        let class = Rc::new(Class {
+            name: "Rec".to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        instance.fields.insert("posts".into(), deferred_posts());
+        instance
+            .fields
+            .insert("title".into(), Value::String("t".into()));
+        Value::Instance(Rc::new(RefCell::new(instance)))
+    }
+
+    const DECLINED: &str = r#"
+class Box
+  w: Int
+
+  new(w: Int)
+    @w = w
+  end
+
+  def area
+    @w * @w
+  end
+end
+
+def sizes(rec)
+  [rec.posts.length, rec.title]
+end
+
+box = new Box(3)
+result = [box.area, box.w, sizes(rec), rec.posts.length, rec.title]
+"#;
+
+    /// What the fast tier hands back still gets the general arm's answer: a
+    /// name with no field (`box.area`, the method, auto-invoked) and a field
+    /// holding a `grouped {}` placeholder, from a local (`GetLocalProperty`)
+    /// and from a global (`GetProperty`), which the general arm forces. The
+    /// field hits beside them (`box.w`, `rec.title`) do not leave the tier.
+    #[test]
+    fn a_miss_and_a_deferred_field_go_to_the_general_arm() {
+        let (result, general) = run(DECLINED, 0, vec![("rec", record())]);
+        let pair = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(2),
+            Value::String("t".into()),
+        ])));
+        assert_eq!(
+            result,
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(9),
+                Value::Int(3),
+                pair,
+                Value::Int(2),
+                Value::String("t".into()),
+            ])))
+        );
+        assert_eq!(general, 3);
+    }
+
+    const AMOUNT: &str = r#"
+class Amount < ValueObject
+  cents: Int
+end
+
+class Email < ValueObject
+  address: String
+
+  new(address: String)
+    @address = address.trim
+  end
+end
+
+amount = Amount.new(5)
+frozen = "written"
+try
+  amount.cents = 6
+catch error
+  frozen = "refused"
+end
+email = Email.new(" a@b.c ")
+result = [amount.cents, frozen, email.address]
+"#;
+
+    /// A value object is written by its own constructor in the fast tier;
+    /// a write once it is built is the general arm's to refuse.
+    #[test]
+    fn a_frozen_value_object_write_goes_to_the_general_arm() {
+        let value_object = Value::Class(Rc::new(Class {
+            name: "ValueObject".to_string(),
+            ..Default::default()
+        }));
+        let (result, general) = run(AMOUNT, 0, vec![("ValueObject", value_object)]);
+        assert_eq!(
+            result,
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(5),
+                Value::String("refused".into()),
+                Value::String("a@b.c".into()),
+            ])))
+        );
+        assert_eq!(general, 1);
+    }
+
+    const MEMO: &str = r#"
+class Tally
+  def bump(n)
+    i = 0
+    while i < n
+      @total ||= 0
+      @total = @total + 1
+      @seen &&= @seen + 1
+      @label ??= "t"
+      i = i + 1
+    end
+    @total
+  end
+end
+
+tally = new Tally()
+tally.seen = 1
+total = tally.bump(__N__)
+tally.total ||= 99
+result = [total, tally.total, tally.seen, tally.label]
+"#;
+
+    /// `@total ||= 0` (and `&&=`, `??=`) on a set field is one fast-tier
+    /// read and a jump, with no write: only the first `||=` and `??=`,
+    /// which find nothing and assign, reach the general arm — two ops
+    /// whatever the loop length. Before, every read left the tier.
+    #[test]
+    fn a_short_circuit_field_assign_stays_in_the_fast_tier() {
+        let (short, short_general) = run(MEMO, 3, Vec::new());
+        let (long, long_general) = run(MEMO, 40, Vec::new());
+        assert_eq!(
+            short,
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(3),
+                Value::Int(3),
+                Value::Int(4),
+                Value::String("t".into()),
+            ])))
+        );
+        let Value::Array(long) = long else {
+            panic!("expected an array, got {long:?}");
+        };
+        assert_eq!(long.borrow()[0], Value::Int(40));
+        assert_eq!(long.borrow()[2], Value::Int(41));
+        assert_eq!(short_general, 2);
+        assert_eq!(long_general, 2);
+    }
+}
+
+#[cfg(test)]
+mod bare_builtin_fast_tier_tests {
+    //! A paren-less zero-argument builtin (`h.length`, `s.blank?`, `a.first`,
+    //! `n.to_s`) is answered in the fast tier by method id, as its `()` form
+    //! is by `CallMethodById`, instead of leaving the tier for the general
+    //! arm's by-name path. The value is the one the general arm gives; the
+    //! precedences it keeps (a hash key first, `h.len` a method) stay.
+    use super::general_member_ops;
+    use crate::interpreter::value::Value;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src`; return its `result` global and the non-instance property
+    /// ops the general arms ran.
+    fn run(src: &str) -> (Value, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = general_member_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_member_ops() - start;
+        (vm.globals.get("result").cloned().expect("result"), general)
+    }
+
+    fn shown(value: &Value) -> String {
+        format!("{}", value)
+    }
+
+    /// The bare reads, from a local (`GetLocalProperty`) and from a global
+    /// (`GetProperty`), give what the `()` forms give and never reach the
+    /// general arm. Bools are left out: another test in this binary sets the
+    /// process-wide "user method on Bool" flag, which rightly sends them
+    /// there.
+    #[test]
+    fn bare_builtins_stay_in_the_fast_tier() {
+        const READS: &[&str] = &[
+            "h.length",
+            "h.size",
+            "h.empty?",
+            "h.keys",
+            "h.values",
+            "h.present?",
+            "h.blank?",
+            "h.nil?",
+            "h.class",
+            "s.length",
+            "s.upcase",
+            "s.trim",
+            "s.blank?",
+            "s.present?",
+            "s.nil?",
+            "s.to_s",
+            "s.reverse",
+            "s.empty?",
+            "a.length",
+            "a.first",
+            "a.last",
+            "a.empty?",
+            "a.sum",
+            "a.present?",
+            "n.to_s",
+            "n.to_i",
+            "n.to_f",
+            "n.nil?",
+            "n.class",
+            "f.to_s",
+            "f.to_i",
+            "d.to_s",
+            "d.to_i",
+            "nothing.to_s",
+            "nothing.nil?",
+            "nothing.blank?",
+            "nothing.to_i",
+        ];
+        let setup = "h = {\"a\": 1, \"b\": 2}\ns = \"  Hello \"\na = [3, 1, 2]\nn = 42\n\
+                     f = 2.5\nd = 1.25D\nnothing = nil\n";
+        let bare = READS.join(", ");
+        let paren = READS
+            .iter()
+            .map(|read| format!("{read}()"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        // Locals of a function: the fused `GetLocalProperty`.
+        let local = format!("def go\n{setup}[{bare}]\nend\nresult = go()\n");
+        // Globals: `GetGlobal` + `GetProperty`.
+        let global = format!("{setup}result = [{bare}]\n");
+        let (expected, _) = run(&format!("{setup}result = [{paren}]\n"));
+        for src in [local, global] {
+            let (value, general) = run(&src);
+            assert_eq!(shown(&value), shown(&expected), "{src}");
+            assert_eq!(general, 0, "a bare builtin left the fast tier:\n{src}");
+        }
+    }
+
+    /// What the general arm answered before still holds: a hash key outranks
+    /// the builtin on the VM, `h.len` reads as the method, and a name no
+    /// table answers by id (`f.round`, `i.abs`) still goes by name.
+    #[test]
+    fn bare_reads_keep_their_precedence() {
+        let (value, _) = run(
+            "h = {\"length\": 99, \"keys\": \"k\"}\n\
+             result = [h.length, h.keys, h.size, {\"a\": 1}.len, 2.5.round, (-3).abs, \"zz\".length]\n",
+        );
+        assert_eq!(shown(&value), "[99, k, 2, <method hash.len>, 3, 3, 2]");
+    }
+}
+
+#[cfg(test)]
+mod static_read_fast_tier_tests {
+    //! `Conf.per_page` and `Conf.active` — a static field holding plain
+    //! data, as an enum's unit variant is an instance in one — are read in
+    //! the fast tier, from a global class (`GetProperty`)
+    //! and from a local one (`GetLocalProperty`). A static field the general
+    //! arm does more with (a callable it auto-invokes) still goes there.
+    use super::general_member_ops;
+    use crate::interpreter::value::Value;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    fn run(src: &str) -> (String, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = general_member_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_member_ops() - start;
+        let result: Value = vm.globals.get("result").cloned().expect("result");
+        (format!("{}", result), general)
+    }
+
+    fn reads(n: usize) -> String {
+        format!(
+            "class Marker\nend\n\
+             class Conf\n  static per_page: Int = 20\n  static active: Any = Marker.new()\n  static tags: Array = [\"a\"]\n\
+             \x20 static label: String = \"c\"\n  static make: Any = fn() {{ 42 }}\nend\n\
+             def go\n  klass = Conf\n  total = 0\n  hits = 0\n  i = 0\n  while i < {n}\n\
+             \x20   total += Conf.per_page + klass.per_page + klass.tags.length\n\
+             \x20   hits += 1 if Conf.active == klass.active\n\
+             \x20   i += 1\n  end\n  [total, hits, Conf.label]\nend\n\
+             def calls\n  total = 0\n  i = 0\n  while i < {n}\n    total += Conf.make\n\
+             \x20   i += 1\n  end\n  total\nend\n\
+             result = [go(), calls()]\n"
+        )
+    }
+
+    /// The plain-data reads cost the general arms nothing per iteration, so
+    /// 3 and 40 iterations run the same number of general member ops; the
+    /// callable static field still runs one per iteration (37 more).
+    #[test]
+    fn static_field_reads_stay_in_the_fast_tier() {
+        let (short, short_general) = run(&reads(3));
+        let (long, long_general) = run(&reads(40));
+        assert_eq!(short, "[[123, 3, c], 126]");
+        assert_eq!(long, "[[1640, 40, c], 1680]");
+        assert_eq!(
+            long_general - short_general,
+            37,
+            "{short_general} vs {long_general}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod hash_write_tests {
+    //! `h.key = v` on a hash completes in the fast tier, and every constant-key
+    //! hash write (`h.key = v`, `h["key"] = v` on a local, a global or any
+    //! other receiver) appends a new key as a refcount clone of the constant
+    //! pool's `SoliStr`, never as a copy of its bytes.
+    use super::general_member_ops;
+    use crate::interpreter::value::{HashKey, Value};
+    use crate::vm::chunk::{Constant, FunctionProto};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src`; return its `result` global, the non-instance property ops
+    /// the general arms ran, and the address of every heap-held string
+    /// constant of the program (functions included).
+    fn run(src: &str) -> (Value, usize, Vec<*const u8>) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut pool = Vec::new();
+        collect_strings(&module.main, &mut pool);
+        let mut vm = Vm::new();
+        let start = general_member_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_member_ops() - start;
+        let result = vm.globals.get("result").cloned().expect("result");
+        (result, general, pool)
+    }
+
+    fn collect_strings(proto: &FunctionProto, pool: &mut Vec<*const u8>) {
+        for constant in &proto.chunk.constants {
+            match constant {
+                Constant::String(s) => pool.push(s.as_str().as_ptr()),
+                Constant::Function(inner) => collect_strings(inner, pool),
+                _ => {}
+            }
+        }
+    }
+
+    const BUILD: &str = r#"
+h = {"a": 1}
+h.a = 2
+h.b = 3
+h.a_key_longer_than_fifteen = 4
+def build(n)
+  out = {}
+  out.first = n
+  out.first = out.first + 10
+  [1, 2].each { |k| out.from_block_key_long_name = k }
+  i = 0
+  while i < 10
+    out["k#{i}"] = i
+    i = i + 1
+  end
+  out.after_promotion = true
+  out.first = 0
+  out
+end
+o = {"inner": {"x": 1}}
+o.inner.y = 2
+result = [h, build(5), o]
+"#;
+
+    /// Dot writes on a hash — a global, a function's local, a block's
+    /// upvalue, a nested hash, before and after the promotion past
+    /// `SMALL_MAX` keys — give the general arm's result (overwrites keep
+    /// their position, new keys append) and none of them leaves the tier.
+    #[test]
+    fn hash_dot_writes_stay_in_the_fast_tier() {
+        let (value, general, _) = run(BUILD);
+        assert_eq!(
+            format!("{value}"),
+            "[{a => 2, b => 3, a_key_longer_than_fifteen => 4}, \
+             {first => 0, from_block_key_long_name => 2, k0 => 0, k1 => 1, k2 => 2, \
+             k3 => 3, k4 => 4, k5 => 5, k6 => 6, k7 => 7, k8 => 8, k9 => 9, \
+             after_promotion => true}, {inner => {x => 1, y => 2}}]"
+        );
+        assert_eq!(general, 0, "a hash dot write left the fast tier");
+    }
+
+    /// Each long constant key the writes added is the pool's own buffer:
+    /// `SetProperty`, `HashSetGlobalConst`, `HashSetLocalConst` and
+    /// `HashSetConst` append a refcount clone. Before, each copied the key
+    /// into a `String` and then into a fresh `SoliStr`.
+    #[test]
+    fn constant_hash_keys_share_the_pool_buffer() {
+        let src = r#"
+g = {}
+g.dot_key_longer_than_fifteen = 1
+g["index_key_longer_than_fifteen"] = 2
+def local_writes
+  l = {}
+  l.local_dot_key_longer_than_15 = 3
+  l["local_index_key_longer_than_15"] = 4
+  l
+end
+o = {"inner": {}}
+o["inner"]["nested_index_key_longer_than_15"] = 5
+result = [g, local_writes(), o["inner"]]
+"#;
+        let (value, _, pool) = run(src);
+        let Value::Array(hashes) = value else {
+            panic!("expected an array, got {value:?}");
+        };
+        let mut seen = 0;
+        for hash in hashes.borrow().iter() {
+            let Value::Hash(hash) = hash else {
+                panic!("expected a hash, got {hash:?}");
+            };
+            for (key, _) in hash.borrow().iter() {
+                let HashKey::String(key) = key else {
+                    panic!("expected a string key, got {key:?}");
+                };
+                assert!(
+                    pool.contains(&key.as_str().as_ptr()),
+                    "key {key} was copied out of the constant pool"
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 5);
+    }
+}
+
+#[cfg(test)]
+mod method_fast_tier_tests {
+    //! `obj.m(args)`, `@m(args)` and `this.m(args)` on an instance complete
+    //! in the fast tier whenever the general arm would open the compiled
+    //! method's frame with nothing to pad or raise: the receiver's class
+    //! chain has the method compiled, it takes exactly the arguments given,
+    //! the depth limit is not reached and the privacy check lets the call
+    //! through. The method comes from the call site's entry in the VM's
+    //! method cache, which any change to some class's `vm_methods` stales.
+    //! Everything else — a native or AST-only method, `send`,
+    //! `method_missing`, omitted parameters, a refusal, the depth limit —
+    //! still reaches the general arm, which answers as before.
+    //!
+    //! "General" below counts `call_method_slow_path` entries: every
+    //! instance call the fast tier hands back enters it (a refused call
+    //! raises before it, a `send` enters it twice).
+    use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::vm_calls::slow_path_calls;
+    use crate::vm::Vm;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Run `src` with `__N__` replaced by `n` and `globals` bound; return its
+    /// `result` global and the general method calls it made.
+    fn run(src: &str, n: usize, globals: Vec<(String, Value)>) -> (Value, usize) {
+        let src = src.replace("__N__", &n.to_string());
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name, value);
+        }
+        let start = slow_path_calls();
+        vm.execute(&module.main).expect("vm");
+        let general = slow_path_calls() - start;
+        (vm.globals.get("result").cloned().expect("result"), general)
+    }
+
+    fn text(s: &str) -> Value {
+        Value::String(s.into())
+    }
+
+    fn array(values: Vec<Value>) -> Value {
+        Value::Array(Rc::new(RefCell::new(values)))
+    }
+
+    const SHAPES: &str = r##"
+module Greets
+  def hello(who)
+    "#{who} #{@name}"
+  end
+end
+
+class Shape
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  include Greets
+
+  def area
+    0
+  end
+
+  def scaled(k)
+    @area() * k
+  end
+
+  def label
+    "shape"
+  end
+
+  def describe(k)
+    "#{this.label()}:#{@scaled(k)}"
+  end
+
+  def fact(n)
+    return 1 if n <= 1
+
+    n * @fact(n - 1)
+  end
+
+  def length
+    7
+  end
+end
+
+class Square < Shape
+  side: Int
+
+  new(side: Int)
+    super("square")
+    @side = side
+  end
+
+  def area
+    @side * @side
+  end
+
+  def label
+    "square"
+  end
+
+  def describe(k)
+    "[#{super.describe(k)}]"
+  end
+end
+
+class Cube < Square
+end
+
+def total(shapes, n)
+  sum = 0
+  seen = []
+  i = 0
+  while i < n
+    shapes.each do |shape|
+      sum = sum + shape.scaled(i) + shape.length()
+    end
+    seen = [shapes[1].describe(2), shapes[2].describe(3), shapes[2].fact(5), shapes[2].hello("hi"), shapes[0]&.area()]
+    i = i + 1
+  end
+  [sum, seen]
+end
+
+result = total([new Shape("blob"), new Square(3), new Cube(2)], __N__)
+"##;
+
+    /// Every method call of `SHAPES`'s loop completes in the fast tier, so
+    /// the general calls do not grow with the loop: own, inherited and
+    /// overridden methods; `@area()` in `Shape#scaled`, one site seeing three
+    /// classes; `this.m()`, `@m(x)` and recursion; `length`, a name
+    /// `CallMethodById` carries; a method an included module brings;
+    /// `obj&.m()`; calls from a block. `cube.describe` runs
+    /// `Square#describe`, whose `super` reaches `Shape#describe` only
+    /// because the frame records the defining class, not the receiver's.
+    #[test]
+    fn method_calls_stay_in_the_fast_tier() {
+        let mut general = Vec::new();
+        for (n, sum) in [(3, 102), (30, 6285)] {
+            let (result, spent) = run(SHAPES, n, Vec::new());
+            assert_eq!(
+                result,
+                array(vec![
+                    Value::Int(sum),
+                    array(vec![
+                        text("[square:18]"),
+                        text("[square:12]"),
+                        Value::Int(120),
+                        text("hi square"),
+                        Value::Int(0),
+                    ]),
+                ]),
+                "n = {n}"
+            );
+            general.push(spent);
+        }
+        assert_eq!(
+            general[0], general[1],
+            "a call in the loop left the fast tier"
+        );
+    }
+
+    const ACCOUNT: &str = r#"
+class Account
+  owner: String
+
+  new(owner: String)
+    @owner = owner
+  end
+
+  def balance(cents)
+    cents / 100
+  end
+
+  def greet(who = "you")
+    "hi #{who}"
+  end
+
+  def method_missing(name, args)
+    "missing #{name}"
+  end
+
+  def dig(n)
+    @dig(n + 1)
+  end
+
+  private
+
+  def _secret
+    "s"
+  end
+end
+
+def calls(account, n)
+  out = nil
+  fast = 0
+  i = 0
+  while i < n
+    fast = fast + account.balance(100 * i)
+    out = __CALL__
+    i = i + 1
+  end
+  [fast, out]
+end
+
+result = calls(new Account("ada"), __N__)
+"#;
+
+    /// What the fast tier hands back gets the general arm's answer, once per
+    /// call: an omitted default, `send` on a class with none of its own
+    /// (two entries: the `send`, then the call it makes), `method_missing`,
+    /// too few arguments. A private method called from outside is refused
+    /// by the general arm's check, before the slow path. The fast `balance`
+    /// call beside each costs nothing.
+    #[test]
+    fn the_general_arm_answers_what_the_fast_tier_hands_back() {
+        let cases = [
+            ("account.greet()", text("hi you"), 1),
+            ("account.greet(\"bo\")", text("hi bo"), 0),
+            ("account.send(\"balance\", 500)", Value::Int(5), 2),
+            ("account.whatever(1)", text("missing whatever"), 1),
+            ("account.balance() rescue \"arity\"", text("arity"), 1),
+            ("account._secret() rescue \"refused\"", text("refused"), 0),
+        ];
+        for (call, answer, per_call) in cases {
+            let src = ACCOUNT.replace("__CALL__", call);
+            let (short, short_general) = run(&src, 3, Vec::new());
+            let (long, long_general) = run(&src, 30, Vec::new());
+            assert_eq!(short, array(vec![Value::Int(3), answer.clone()]), "{call}");
+            assert_eq!(long, array(vec![Value::Int(435), answer]), "{call}");
+            assert_eq!(long_general - short_general, 27 * per_call, "{call}");
+        }
+    }
+
+    /// The call at the depth limit goes to the general arm, which raises;
+    /// every call below it stays in the fast tier.
+    #[test]
+    fn the_depth_limit_is_the_general_arms() {
+        let src = ACCOUNT.replace("__CALL__", "1")
+            + "result = new Account(\"a\").dig(0) rescue \"deep\"\n";
+        let (result, general) = run(&src, 3, Vec::new());
+        assert_eq!(result, text("deep"));
+        assert_eq!(general, 1);
+    }
+
+    /// An instance of a class whose only `reading` is native.
+    fn meter() -> Value {
+        let reading = NativeFunction::new("reading", Some(1), |args: &[Value]| match args.get(1) {
+            Some(Value::Int(n)) => Ok(Value::Int(n * 2)),
+            _ => Err("reading expects an integer".to_string()),
+        });
+        let class = Rc::new(Class {
+            name: "Meter".to_string(),
+            native_methods: [("reading".to_string(), Rc::new(reading))]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        });
+        Value::Instance(Rc::new(RefCell::new(Instance::new(class))))
+    }
+
+    const READINGS: &str = r#"
+def readings(meter, n)
+  total = 0
+  i = 0
+  while i < n
+    total = total + meter.reading(i)
+    i = i + 1
+  end
+  total
+end
+
+result = readings(meter, __N__)
+"#;
+
+    /// A native instance method has no compiled frame to open: every call
+    /// goes to the general arm, which calls the native as before.
+    #[test]
+    fn a_native_method_is_called_by_the_general_arm() {
+        for (n, total) in [(3, 6), (30, 870)] {
+            let (result, general) = run(READINGS, n, vec![("meter".to_string(), meter())]);
+            assert_eq!(result, Value::Int(total), "n = {n}");
+            assert_eq!(general, n, "n = {n}");
+        }
+    }
+
+    const PRICING_CLASS: &str = r#"
+class Pricing
+  rate: Int
+
+  new(rate: Int)
+    @rate = rate
+  end
+
+  def total(n)
+    n * @rate
+  end
+end
+
+pricing = new Pricing(2)
+"#;
+
+    const PRICES: &str = r#"
+def sum(pricing, n)
+  acc = 0
+  i = 0
+  while i < n
+    acc = acc + pricing.total(i)
+    i = i + 1
+  end
+  acc
+end
+
+result = sum(pricing, __N__)
+"#;
+
+    /// A class the tree-walker defined, as serve loads an app's classes, has
+    /// its methods as AST only. The first call goes to the general arm,
+    /// which compiles `total` and registers it on the class; that change
+    /// stales the site's remembered miss, and every later call finds the
+    /// compiled method and stays in the fast tier.
+    #[test]
+    fn an_ast_method_stays_in_the_fast_tier_once_compiled() {
+        for (n, total) in [(3, 6), (30, 870)] {
+            let tokens = crate::lexer::Scanner::new(PRICING_CLASS)
+                .scan_tokens()
+                .expect("lex");
+            let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+            let mut interpreter = crate::interpreter::executor::Interpreter::new();
+            interpreter.interpret(&program).expect("interpret");
+            let globals = interpreter
+                .environment
+                .borrow()
+                .get_all_bindings()
+                .into_iter()
+                .collect();
+            let (result, general) = run(PRICES, n, globals);
+            assert_eq!(result, Value::Int(total), "n = {n}");
+            assert_eq!(general, 1, "n = {n}");
+        }
+    }
+
+    const REDEFINED: &str = r#"
+class A
+  def greet
+    "A"
+  end
+
+  def hi
+    "hi"
+  end
+
+  def yo
+    "yo"
+  end
+end
+
+class B < A
+end
+
+class C < B
+end
+
+def greet_of(x)
+  x.greet()
+end
+
+def hi_of(x)
+  x.hi()
+end
+
+b = new B()
+c = new C()
+first = [greet_of(b), greet_of(c), hi_of(c)]
+B.define_method("greet", fn() { "B" })
+A.alias_method("hi", "yo")
+result = [first, [greet_of(b), greet_of(c), hi_of(c)]]
+"#;
+
+    /// A method defined or aliased after a call site has run is what the
+    /// site calls next: `B.define_method` is seen on `B` and on its subclass
+    /// `C`, `A.alias_method` on a grandchild. Without the epoch the second
+    /// round would answer "A", "A", "hi" again from the cache.
+    #[test]
+    fn a_method_defined_after_a_call_is_seen_at_the_same_site() {
+        let (result, _) = run(REDEFINED, 0, Vec::new());
+        assert_eq!(
+            result,
+            array(vec![
+                array(vec![text("A"), text("A"), text("hi")]),
+                array(vec![text("B"), text("B"), text("yo")]),
+            ])
+        );
     }
 }

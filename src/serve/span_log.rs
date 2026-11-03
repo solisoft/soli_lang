@@ -108,13 +108,23 @@ struct RootRequest {
     name: String,
 }
 
+// Process-wide: has any thread ever turned the span log on? Read first by
+// `is_enabled`, so a production worker — where no thread ever does — answers
+// with one relaxed load instead of a thread-local access. It only ever goes
+// from false to true; a thread that enabled its log stores it before its
+// own `ENABLED`, so that thread always reads it back as set.
+static EVER_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn set_enabled(enabled: bool) {
+    if enabled {
+        EVER_ENABLED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     ENABLED.with(|e| e.set(enabled));
 }
 
 #[inline]
 pub fn is_enabled() -> bool {
-    ENABLED.with(|e| e.get())
+    EVER_ENABLED.load(std::sync::atomic::Ordering::Relaxed) && ENABLED.with(|e| e.get())
 }
 
 /// Start a new request: zero the log, the open-span stack, the id
