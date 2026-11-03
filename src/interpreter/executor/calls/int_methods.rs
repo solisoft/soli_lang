@@ -224,11 +224,11 @@ pub(crate) fn call_int_method_impl(
                 Value::Int(n.rem_euclid(divisor)),
             ]))))
         }
-        _ => Err(RuntimeError::NoSuchProperty {
-            value_type: "int".to_string(),
-            property: method_name.to_string(),
+        _ => Err(RuntimeError::no_such_property(
+            "int".to_string(),
+            method_name.to_string(),
             span,
-        }),
+        )),
     }
 }
 

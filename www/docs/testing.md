@@ -643,7 +643,7 @@ already references, for the rest of the current test:
 test("checkout charges through the gateway") do
   charge = Mock.stub_class(Gateway, "charge", fn(amount) { {"ok": true} })
 
-  assert(Checkout.new.pay(1200)["ok"])       # Checkout calls Gateway.charge(...)
+  assert(Checkout.new().pay(1200)["ok"])       # Checkout calls Gateway.charge(...)
   charge.assert_received("charge", [1200])
 
   Mock.stub_instance(User, "save", true)     # every User#save answers true

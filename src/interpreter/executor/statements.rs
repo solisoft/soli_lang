@@ -70,11 +70,7 @@ impl Interpreter {
                         .unwrap_or_else(|| "unknown".to_string());
                     stack_trace
                         .insert(0, format!("debug() at {}:{}", file, expr.span.line_usize()));
-                    return Err(RuntimeError::Breakpoint {
-                        span: expr.span,
-                        env_json,
-                        stack_trace,
-                    });
+                    return Err(RuntimeError::breakpoint(expr.span, env_json, stack_trace));
                 }
                 if matches!(value, Value::Continue) {
                     return Ok(ControlFlow::Continue);

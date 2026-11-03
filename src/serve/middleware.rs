@@ -831,7 +831,9 @@ fn bare_call_in(handler: &Value, interpreter: &Interpreter) -> Option<String> {
                 && match env.borrow().get(candidate) {
                     Some(Value::Function(f)) => f.params.iter().all(|p| p.default_value.is_some()),
                     Some(Value::NativeFunction(native)) => {
-                        native.is_auto_invocable || native.arity == Some(0)
+                        crate::interpreter::builtins::bare_read_differs_between_engines(
+                            candidate, &native,
+                        )
                     }
                     _ => false,
                 }
@@ -1558,6 +1560,32 @@ end
     /// A failure both engines share is the app's own: the re-run answers with
     /// the production error page, and the middleware stays on the VM. It used
     /// to be demoted for the rest of the worker's life by one such request.
+    #[test]
+    fn reading_clock_bare_keeps_the_vm() {
+        // Both engines call a bare `clock`; it is the time on the VM too.
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                req["stamp"] = clock
+                return req
+            }
+        "#,
+        );
+        assert!(bare_call_in(&handler, &interpreter).is_none());
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert!(matches!(stamp_of(&step), Some(Value::Float(_))));
+    }
+
     #[test]
     fn a_middleware_failing_on_both_engines_stays_on_the_vm() {
         let (mut interpreter, handler, request) = middleware_from(

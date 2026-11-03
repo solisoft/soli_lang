@@ -408,6 +408,14 @@ describe("building") do
   test("truncate with a custom suffix") do
     assert_eq("hello world".truncate(8, "~"), "hello w~")
   end
+
+  test("truncate counts characters and never cuts one in half") do
+    assert_eq("ééééé".truncate(3, ""), "ééé")
+    assert_eq("ééééé".truncate(5), "ééééé")
+    assert_eq("héllo world".truncate(8), "héllo...")
+    assert_eq("日本語テキスト".truncate(4, "…"), "日本語…")
+    assert_eq("😀😀😀".truncate(2, ""), "😀😀")
+  end
 end
 
 describe("replacing") do

@@ -176,9 +176,10 @@ fn is_universal_zero_arg_member(name: &str) -> bool {
 
 /// Hash method names eligible for the direct `h.method(args)` dispatch in
 /// `evaluate_call`. These resolve as METHODS even when the hash stores a
-/// value under the same string key (matching the long-standing fast-path
-/// precedence); any other name goes through member access, where a stored
-/// callable value wins.
+/// value under the same string key, as every call does; any other name (and
+/// any call with a block or named arguments) resolves through
+/// `hash_callee_value`, where a builtin name is still the method and any other
+/// name is the key, so a stored callable is called.
 fn is_direct_hash_method(name: &str) -> bool {
     matches!(
         name,
@@ -252,9 +253,9 @@ fn is_direct_string_method(name: &str) -> bool {
 
 /// Array method names eligible for the direct `arr.method(args)` dispatch —
 /// the union of the mutating set, the borrowed tier, and everything
-/// `call_array_method` handles. A name missing here is not a bug, just
-/// slower: it takes the member-access route (ValueMethod boxing) and still
-/// dispatches correctly.
+/// `call_array_method` handles. A name missing here takes the member-access
+/// route (ValueMethod boxing) and still dispatches correctly, but the list is
+/// not only a speed matter: see [`builtin_outranks_user_method`].
 fn is_direct_array_method(name: &str) -> bool {
     matches!(
         name,
@@ -326,6 +327,26 @@ fn is_direct_array_method(name: &str) -> bool {
             | "order"
             | "is_a?"
     )
+}
+
+/// Whether `receiver.name(args)` — parentheses, positional arguments only,
+/// no block — runs the builtin even when `define_method` gave the receiver's
+/// primitive type a method of the same name.
+///
+/// That is what `evaluate_call`'s direct dispatch does: a Hash, Array or
+/// String receiver with a name in its direct list goes straight to the
+/// builtin, before member access (where user methods are consulted first) is
+/// ever reached. Every other paren call — another receiver type, a name off
+/// the list, a block or a named argument — resolves through member access, so
+/// the user method wins. The VM's `CallMethod`/`CallMethodById` ask this same
+/// question, so the two engines cannot disagree about which one runs.
+pub(crate) fn builtin_outranks_user_method(receiver: &Value, name: &str) -> bool {
+    match receiver {
+        Value::Hash(_) => is_direct_hash_method(name),
+        Value::Array(_) => is_direct_array_method(name),
+        Value::String(_) => is_direct_string_method(name),
+        _ => false,
+    }
 }
 
 impl Interpreter {
@@ -748,6 +769,19 @@ impl Interpreter {
                         _ => {}
                     }
                 }
+                // A lazy receiver is forced here by the VM's own helper, as
+                // its CallMethod forces one before it looks at the name: an
+                // HTTP `Future` (`HTTP.get_json` with no tokio runtime) or a
+                // `grouped` `Deferred`. A hash it resolves to then follows the
+                // rules below like a literal one: `body.size()` is the entry
+                // count even when the body has a `size` key, and
+                // `body.lenght()` raises. `evaluate_member_on_value` used to
+                // force it at this same point, by the bare-read rule.
+                let obj_val = if matches!(obj_val, Value::Future(_) | Value::Deferred(_)) {
+                    crate::vm::Vm::force_lazy_receiver(&obj_val, callee.span)?
+                } else {
+                    obj_val
+                };
                 // Remember an absent hash key so the zero-arg fallback below
                 // can tell "this member resolved to null" from "there is no
                 // such member at all" — see the check after this match.
@@ -760,7 +794,14 @@ impl Interpreter {
                     }
                 }
                 member_call_name = Some(name.to_string());
-                self.evaluate_member_on_value(obj_val, name, callee.span)?
+                match obj_val {
+                    // A call names the method: `row.key("abc")` is `Hash#key`
+                    // even on a row with a `key` field, which the bare
+                    // `row.key` reads (`hash_member_value`). The VM's
+                    // CallMethod resolves a builtin name the same way.
+                    Value::Hash(ref hash) => Self::hash_callee_value(hash, name, obj_val.clone()),
+                    other => self.evaluate_member_on_value(other, name, callee.span)?,
+                }
             }
             _ => self.evaluate_callee(callee)?,
         };
@@ -801,11 +842,11 @@ impl Interpreter {
 
         if let Some(name) = &missing_hash_member {
             if matches!(callee_val, Value::Null) {
-                return Err(RuntimeError::NoSuchProperty {
-                    value_type: "Hash".to_string(),
-                    property: name.clone(),
+                return Err(RuntimeError::no_such_property(
+                    "Hash".to_string(),
+                    name.clone(),
                     span,
-                });
+                ));
             }
         }
 

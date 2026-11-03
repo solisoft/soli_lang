@@ -48,7 +48,7 @@
   end
 end
 
-person = Person.new
+person = Person.new()
 person.send("greet")                    # => "Hello!"
 person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
         </div>
@@ -124,7 +124,7 @@ copy_fields(draft, post, ["title", "body"])</code></pre>
   end
 end
 
-person = Person.new
+person = Person.new()
 person.find_by_name("Alice")   # => "Finding person by name"
 person.find_by_email("a@b.c")  # => "Finding person by email"
 person.any_undefined_method     # => "Method 'any_undefined_method' was called"</code></pre>
@@ -167,7 +167,7 @@ person.any_undefined_method     # => "Method 'any_undefined_method' was called"<
   end
 end
 
-person = Person.new
+person = Person.new()
 person.respond_to?("greet")        # => true
 person.respond_to?("find_by_name") # => false
 person.respond_to?("send")          # => true
@@ -221,7 +221,15 @@ foo.add(1, 2)  # => 3
 
 # Methods are defined on the class, so all instances see it:
 foo2 = Foo.new()
-foo2.greet()  # => "Hello!"</code></pre>
+foo2.greet()  # => "Hello!"
+
+# Subclasses see it too, even after their instances ran methods:
+class Bar < Foo
+end
+bar = Bar.new()
+bar.greet()                                 # => "Hello!"
+Foo.define_method("wave", fn() { "bye" })
+bar.wave                                    # => "bye"</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -236,7 +244,12 @@ foo2.greet()  # => "Hello!"</code></pre>
 // For primitive-tagged classes (Int, Float, String, Array, Hash, etc.)
 // writes are routed to a per-type user-method overlay instead, since
 // primitive dispatch in member.rs / vm.rs does not consult Class.methods.
-// See `src/interpreter/executor/calls/user_methods.rs`.</code></pre>
+// See `src/interpreter/executor/calls/user_methods.rs`.
+//
+// Each class keeps a flattened method cache that copies its ancestors'
+// methods. define_method, alias_method and include bump a global method
+// epoch, and a cache built at an older epoch is rebuilt on its next lookup,
+// so subclasses never keep a parent's old method set.</code></pre>
         </div>
     </section>
 
@@ -252,7 +265,7 @@ foo2.greet()  # => "Hello!"</code></pre>
         </h2>
 
         <p class="text-gray-400 mb-4">
-            <code class="text-orange-400">Int</code>, <code class="text-orange-400">Float</code>, <code class="text-orange-400">Bool</code>, <code class="text-orange-400">Decimal</code>, <code class="text-orange-400">String</code>, <code class="text-orange-400">Array</code>, <code class="text-orange-400">Hash</code>, <code class="text-orange-400">Symbol</code>, and <code class="text-orange-400">Null</code> can be reopened with <code class="text-orange-400">define_method</code> / <code class="text-orange-400">alias_method</code>. User methods are checked before built-ins and shadow them on collision.
+            <code class="text-orange-400">Int</code>, <code class="text-orange-400">Float</code>, <code class="text-orange-400">Bool</code>, <code class="text-orange-400">Decimal</code>, <code class="text-orange-400">String</code>, <code class="text-orange-400">Array</code>, <code class="text-orange-400">Hash</code>, <code class="text-orange-400">Symbol</code>, and <code class="text-orange-400">Null</code> can be reopened with <code class="text-orange-400">define_method</code> / <code class="text-orange-400">alias_method</code>. User methods are checked before built-ins and shadow them on collision, with one exception for parenthesised calls on String, Array and Hash (see below).
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
@@ -278,8 +291,17 @@ String.alias_method("shout", "yell")</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Precedence and performance</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Lookup order on a primitive value: user methods → built-in methods → (for Hash) literal hash-key fallback. A user method on Hash shadows the literal-key access, matching Ruby's monkey-patching semantics.
+                Lookup order on a primitive value: user methods → (for a Hash read without parentheses) the key → built-in methods. A user method on Hash shadows the key, and the key shadows a built-in of the same name, the way an instance field shadows a method: <code class="text-orange-400">{"size": 2048}.size</code> is <code class="text-orange-400">2048</code>. A call with parentheses always means the method: <code class="text-orange-400">{"size": 2048}.size()</code> is <code class="text-orange-400">1</code>, the number of entries. This matches Ruby's monkey-patching semantics, and both engines (<code class="text-orange-400">soli serve</code> and <code class="text-orange-400">soli test</code>) follow it.
             </p>
+            <p class="text-gray-400 text-sm mb-3">
+                One exception: a call <strong>with parentheses and no block</strong> on a <code class="text-orange-400">String</code>, <code class="text-orange-400">Array</code> or <code class="text-orange-400">Hash</code>, to one of the built-ins those types dispatch directly (<code class="text-orange-400">includes?</code>, <code class="text-orange-400">contains?</code>, <code class="text-orange-400">map</code>, <code class="text-orange-400">select</code>, <code class="text-orange-400">filter</code>, <code class="text-orange-400">each</code>, <code class="text-orange-400">sum</code>, <code class="text-orange-400">first</code>, <code class="text-orange-400">count</code>, <code class="text-orange-400">upcase</code>, <code class="text-orange-400">split</code>, <code class="text-orange-400">keys</code>, <code class="text-orange-400">merge</code>, …), runs the built-in even when you have shadowed it. A bare read, a block call and any call on another primitive run your method. Both engines draw this line in the same place; to change what a built-in does on these three types, give your method a new name rather than shadowing it.
+            </p>
+            <pre class="mb-3"><code class="language-soli text-sm">Array.define_method("sum", fn() { "mine" })
+
+[1, 2].sum                  # => "mine"   (no parentheses: your method)
+[1, 2].sum()                # => 3        (parentheses: the built-in)
+[1, 2].count { |x| x &gt; 1 }  # => your `count`, if you defined one (a block)
+5.to_s()                    # => your `to_s`, if you defined one (not a String/Array/Hash)</code></pre>
             <p class="text-gray-400 text-sm">
                 Dispatch is gated by a single Relaxed atomic load. When no user methods have been registered for any primitive type, every call short-circuits in one cycle — no measurable overhead on the hot path. Storage is <code class="text-orange-400">thread_local!</code>; each worker thread registers its own copy when models load.
             </p>
@@ -487,7 +509,7 @@ class User
   include Serializable
 end
 
-User.new.to_json</code></pre>
+User.new().to_json</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -586,7 +608,7 @@ User.new.to_json</code></pre>
   end
 end
 
-user = User.new
+user = User.new()
 user.instance_variables   # => ["@name", "@email"]
 user.methods             # => ["greet", "to_s", ...]
 user.respond_to?("greet") # => true</code></pre>

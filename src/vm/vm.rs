@@ -187,8 +187,6 @@ pub struct Vm {
     pub exception_handlers: Vec<ExceptionHandler>,
     /// Iterator state stack (for for-in loops).
     pub iter_stack: Vec<IterState>,
-    /// Output buffer for print statements (for testing/capture).
-    pub output: Vec<String>,
     /// The page a compiled template writes into (`Op::TemplateWrite`).
     pub template_out: String,
     /// Pages set aside by `Op::TemplateCaptureStart`, innermost last.
@@ -524,7 +522,6 @@ impl Vm {
             array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
-            output: Vec::new(),
             template_out: String::new(),
             template_captures: Vec::new(),
             template_content_before: None,
@@ -580,9 +577,9 @@ impl Vm {
         let (Some(frame), Some(value)) = (self.frames.last(), self.stack.last()) else {
             return true;
         };
-        match &frame.closure.proto.return_type {
+        match &frame.closure.proto.return_check {
             None => true,
-            Some(expected) => value_admitted_by(value, expected),
+            Some(check) => check.admits(value),
         }
     }
 
@@ -593,10 +590,10 @@ impl Vm {
             return Ok(());
         };
         let proto = &frame.closure.proto;
-        let Some(expected) = &proto.return_type else {
+        let (Some(check), Some(expected)) = (&proto.return_check, &proto.return_type) else {
             return Ok(());
         };
-        if value_admitted_by(result, expected) {
+        if check.admits(result) {
             return Ok(());
         }
         Err(RuntimeError::General {
@@ -727,6 +724,62 @@ impl Vm {
             Constant::String(s) => s.as_str(),
             _ => "",
         }
+    }
+
+    /// Call the method `define_method` gave the receiver's primitive type
+    /// (`Array.define_method("includes?", …)`), when it outranks the builtin
+    /// for this call; returns false, touching nothing, when the builtin runs.
+    ///
+    /// The precedence is the tree-walker's, through the one predicate both
+    /// engines share: a block-less call on a Hash, Array or String whose name
+    /// is in that type's direct-dispatch list runs the builtin; every other
+    /// call — with a block, on another primitive, or a name off the list —
+    /// runs the user method. `CallMethod` used to consult user methods first
+    /// for every name and `CallMethodById` never did, so which one ran
+    /// depended on whether the name happened to have a method id.
+    ///
+    /// Only reached once a user method exists somewhere (the caller tests
+    /// `user_method_flags()`).
+    #[cold]
+    fn call_primitive_user_method(
+        &mut self,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+        block: bool,
+    ) -> Result<bool, RuntimeError> {
+        use crate::interpreter::executor::calls::user_methods::{lookup_user_method, PrimType};
+        let receiver = &self.stack[receiver_idx];
+        let prim = match receiver {
+            Value::Int(_) => PrimType::Int,
+            Value::Float(_) => PrimType::Float,
+            Value::Bool(_) => PrimType::Bool,
+            Value::Null => PrimType::Null,
+            Value::Decimal(_) => PrimType::Decimal,
+            Value::String(_) => PrimType::String,
+            Value::Array(_) => PrimType::Array,
+            Value::Hash(_) => PrimType::Hash,
+            Value::Symbol(_) => PrimType::Symbol,
+            _ => return Ok(false),
+        };
+        if !block
+            && crate::interpreter::executor::calls::function::builtin_outranks_user_method(
+                receiver, name,
+            )
+        {
+            return Ok(false);
+        }
+        let Some(method) = lookup_user_method(prim, name) else {
+            return Ok(false);
+        };
+        let span = self.current_span();
+        let object = self.stack[receiver_idx].clone();
+        self.stack[receiver_idx] =
+            crate::interpreter::executor::access::member::bind_user_method_to_receiver(
+                object, method,
+            );
+        self.call_value(argc, span)?;
+        Ok(true)
     }
 
     /// Run the dispatch loop.
@@ -983,6 +1036,8 @@ impl Vm {
                         // An `EcoString` clone: an inline copy or a reference
                         // count bump, never an allocation.
                         Constant::String(s) => Value::String(s.clone()),
+                        // Parsed at compile time; a Decimal owns no heap data.
+                        Constant::Decimal(decimal) => Value::Decimal(decimal.clone()),
                         _ => break Some(op),
                     };
                     self.stack.push(value);
@@ -1072,13 +1127,15 @@ impl Vm {
                 // `hash.key` that finds the key, when no user method on Hash
                 // could outrank it, and `post.title` on an instance that has
                 // the field (`Vm::fast_field_read`): the general arm's fast
-                // paths, here so a field read does not leave this tier.
-                // A paren-less zero-argument builtin (`h.length` after the key
-                // misses, `s.blank?`, `a.first`, `n.to_s`) is answered by id
-                // from the tables `CallMethodById` uses for `h.length()`
-                // (`method_table::bare_zero_arg`). Anything else (a miss, a
-                // method, a deferred or refused field) goes to the general
-                // arm.
+                // paths, here so a field read does not leave this tier. A key
+                // named like a builtin (`row.size`) is the key too, as
+                // `Interpreter::hash_member_value` reads it; only a miss may
+                // answer a method. A paren-less zero-argument builtin
+                // (`h.length` after the key misses, `s.blank?`, `a.first`,
+                // `n.to_s`) is answered by id from the tables `CallMethodById`
+                // uses for `h.length()` (`method_table::bare_zero_arg`).
+                // Anything else (a miss, a method, a deferred or refused
+                // field) goes to the general arm.
                 Op::GetProperty(idx, mid, mask) => {
                     let hit = match self.stack.last() {
                         Some(receiver @ Value::Hash(hash))
@@ -1568,7 +1625,7 @@ impl Vm {
                 // AST-only method, `method_missing`, `send`, omitted
                 // parameters, the depth limit and a refused call go to the
                 // general arm.
-                Op::CallMethod(name_idx, argc) | Op::CallMethodById(name_idx, argc, _) => {
+                Op::CallMethod(name_idx, argc, _) | Op::CallMethodById(name_idx, argc, _, _) => {
                     let argc = argc as usize;
                     // SAFETY: as for `Op::Constant`.
                     let name = match unsafe { &*constants.add(name_idx as usize) } {
@@ -2318,6 +2375,9 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x < *y,
                         (Value::Float(x), Value::Float(y)) => *x < *y,
+                        // Strings order by bytes, as `compare_ordered` does,
+                        // without the call or the span it is handed.
+                        (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(&a, &b, span)?
@@ -2330,6 +2390,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x <= *y,
                         (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less_equal(&a, &b, span)?
@@ -2342,6 +2403,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x > *y,
                         (Value::Float(x), Value::Float(y)) => *x > *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // `a > b` is evaluated as `b < a` to reuse one
@@ -2367,6 +2429,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x >= *y,
                         (Value::Float(x), Value::Float(y)) => *x >= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() >= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // Same swap as `>` above: report source order.
@@ -2641,7 +2704,7 @@ impl Vm {
                         }
                     }
                 }
-                Op::CallMethod(name_idx, argc) => {
+                Op::CallMethod(name_idx, argc, block) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
                     if matches!(
@@ -2665,41 +2728,12 @@ impl Vm {
                     // the entire execution of this frame. We never mutate constants.
                     let name: &str = unsafe { &*name };
 
-                    // User-method fast-path guard: gate on the per-type bit in
-                    // `user_method_flags()`. Zero overhead when no user methods exist.
-                    use crate::interpreter::executor::calls::user_methods::{
-                        lookup_user_method as _lookup_um, PrimType,
-                    };
-                    // One load of the whole mask: nine per-type loads (all false,
-                    // so none short-circuited) on every method call before.
-                    let user_prim =
-                        if crate::interpreter::executor::calls::user_methods::user_method_flags()
-                            != 0
-                        {
-                            match &self.stack[receiver_idx] {
-                                Value::Int(_) => Some(PrimType::Int),
-                                Value::Float(_) => Some(PrimType::Float),
-                                Value::Bool(_) => Some(PrimType::Bool),
-                                Value::Null => Some(PrimType::Null),
-                                Value::Decimal(_) => Some(PrimType::Decimal),
-                                Value::String(_) => Some(PrimType::String),
-                                Value::Array(_) => Some(PrimType::Array),
-                                Value::Hash(_) => Some(PrimType::Hash),
-                                Value::Symbol(_) => Some(PrimType::Symbol),
-                                _ => None,
-                            }
-                        } else {
-                            None
-                        };
-                    if let Some(t) = user_prim {
-                        if let Some(f) = _lookup_um(t, name) {
-                            let span = self.current_span();
-                            let object = self.stack[receiver_idx].clone();
-                            let bound = crate::interpreter::executor::access::member::bind_user_method_to_receiver(object, f);
-                            self.stack[receiver_idx] = bound;
-                            self.call_value(argc, span)?;
-                            continue;
-                        }
+                    // A method `define_method` gave a primitive type. One load
+                    // of the whole mask when none exist (the common case).
+                    if crate::interpreter::executor::calls::user_methods::user_method_flags() != 0
+                        && self.call_primitive_user_method(receiver_idx, argc, name, block)?
+                    {
+                        continue;
                     }
 
                     // Fast path: dispatch on receiver type without cloning
@@ -2800,7 +2834,7 @@ impl Vm {
                         }
                     }
                 }
-                Op::CallMethodById(name_idx, argc, method_id) => {
+                Op::CallMethodById(name_idx, argc, method_id, block) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
                     if matches!(
@@ -2810,6 +2844,24 @@ impl Vm {
                         let span = self.current_span();
                         let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
                         self.stack[receiver_idx] = resolved;
+                    }
+                    // The id tables below are builtins only; a primitive user
+                    // method has to be looked for first, under the same rule
+                    // as `CallMethod`. Skipped in one load when none exist.
+                    if crate::interpreter::executor::calls::user_methods::user_method_flags() != 0 {
+                        let name: *const str = {
+                            let frame = self.frames.last().unwrap();
+                            match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                                Constant::String(s) => s.as_ref() as *const str,
+                                _ => "" as *const str,
+                            }
+                        };
+                        // SAFETY: as in `CallMethod` — the constant pool outlives
+                        // this frame's execution and is never mutated.
+                        let name: &str = unsafe { &*name };
+                        if self.call_primitive_user_method(receiver_idx, argc, name, block)? {
+                            continue;
+                        }
                     }
                     // Fast path: zero-arg methods on primitives — pure integer dispatch
                     if argc == 0 {
@@ -3012,11 +3064,11 @@ impl Vm {
                                 // qu'un gestionnaire tournait sur le VM.
                                 Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
-                                    return Err(RuntimeError::NoSuchProperty {
-                                        value_type: receiver.type_name(),
-                                        property: "get".to_string(),
+                                    return Err(RuntimeError::no_such_property(
+                                        receiver.type_name(),
+                                        "get".to_string(),
                                         span,
-                                    })
+                                    ))
                                 }
                             };
                             self.push(value);
@@ -3038,11 +3090,11 @@ impl Vm {
                             self.push(Value::Bool(hash.borrow().contains_key(&StrKey(key))));
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "has_key".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "has_key".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     }
                 }
@@ -3065,11 +3117,11 @@ impl Vm {
                             self.push(value);
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "delete".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "delete".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     }
                 }
@@ -3141,11 +3193,11 @@ impl Vm {
                                 // qu'un gestionnaire tournait sur le VM.
                                 Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
-                                    return Err(RuntimeError::NoSuchProperty {
-                                        value_type: receiver.type_name(),
-                                        property: "get".to_string(),
+                                    return Err(RuntimeError::no_such_property(
+                                        receiver.type_name(),
+                                        "get".to_string(),
                                         span,
-                                    })
+                                    ))
                                 }
                             }
                         }
@@ -3202,11 +3254,11 @@ impl Vm {
                     let result = match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => Value::Bool(hash.borrow().contains_key(&StrKey(key))),
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "has_key".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "has_key".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     };
                     self.push(result);
@@ -3227,11 +3279,11 @@ impl Vm {
                             .shift_remove(&StrKey(key))
                             .unwrap_or(Value::Null),
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "delete".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "delete".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     };
                     self.push(result);
@@ -3310,11 +3362,11 @@ impl Vm {
                                 // qu'un gestionnaire tournait sur le VM.
                                 Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
-                                    return Err(RuntimeError::NoSuchProperty {
-                                        value_type: receiver.type_name(),
-                                        property: "get".to_string(),
+                                    return Err(RuntimeError::no_such_property(
+                                        receiver.type_name(),
+                                        "get".to_string(),
                                         span,
-                                    })
+                                    ))
                                 }
                             };
                             self.push(value);
@@ -3349,11 +3401,11 @@ impl Vm {
                             Value::Bool(hash.borrow().contains_key(&StrKey(key)))
                         }
                         Some(other) => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "has_key".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "has_key".to_string(),
+                                self.current_span(),
+                            ));
                         }
                         None => {
                             return Err(RuntimeError::undefined_variable(
@@ -3390,11 +3442,11 @@ impl Vm {
                             self.push(value);
                         }
                         Some(other) => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "delete".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "delete".to_string(),
+                                self.current_span(),
+                            ));
                         }
                         None => {
                             return Err(RuntimeError::undefined_variable(
@@ -3767,8 +3819,8 @@ impl Vm {
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = match self.op_get_property_member(&object, &name, span) {
-                        Err(RuntimeError::NoSuchProperty { ref property, .. })
-                            if matches!(object, Value::Instance(_)) && *property == name =>
+                        Err(RuntimeError::NoSuchProperty(ref info))
+                            if matches!(object, Value::Instance(_)) && info.property == name =>
                         {
                             Value::Null
                         }
@@ -4045,11 +4097,11 @@ impl Vm {
                             ));
                         }
                     } else {
-                        return Err(RuntimeError::NoSuchProperty {
-                            value_type: format!("super({})", superclass.name),
-                            property: String::from(name.as_str()),
+                        return Err(RuntimeError::no_such_property(
+                            format!("super({})", superclass.name),
+                            String::from(name.as_str()),
                             span,
-                        });
+                        ));
                     }
                 }
                 Op::Field(idx) | Op::ConstField(idx) => {
@@ -4280,16 +4332,35 @@ impl Vm {
 
                 // --- I/O ---
                 Op::Print(n) => {
-                    let len = self.stack.len();
-                    let start = len - n as usize;
-                    let output: String = self.stack[start..len]
-                        .iter()
-                        .map(|v| format!("{}", v))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    self.stack.truncate(start);
-                    println!("{}", output);
-                    self.output.push(output);
+                    // `print`/`puts`/`println`, as the tree-walker's builtins
+                    // do them: Futures are resolved first, and the line goes
+                    // through `write_captured_or_stdout`, so a
+                    // `StdoutCaptureGuard` (test runner, graph builder) sees
+                    // it. Nothing is retained: a serve worker keeps its VM for
+                    // life, and a copy of every printed line was a leak.
+                    use std::fmt::Write as _;
+                    let start = self.stack.len() - n as usize;
+                    let mut line = String::new();
+                    let mut failed = None;
+                    for (i, value) in self.stack.drain(start..).enumerate() {
+                        if i > 0 {
+                            line.push(' ');
+                        }
+                        match value.resolve() {
+                            Ok(value) => {
+                                let _ = write!(line, "{}", value);
+                            }
+                            Err(e) => {
+                                failed = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = failed {
+                        return Err(RuntimeError::new(e, self.current_span()));
+                    }
+                    line.push('\n');
+                    crate::interpreter::builtins::write_captured_or_stdout(&line);
                     self.stack.push(Value::Null);
                 }
 
@@ -4322,6 +4393,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x <= *y,
                         (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less_equal(&a, &b, span)?
@@ -4336,6 +4408,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x < *y,
                         (Value::Float(x), Value::Float(y)) => *x < *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(&a, &b, span)?
@@ -4435,6 +4508,7 @@ impl Vm {
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => *x <= *y,
                         (Value::Float(x), Value::Float(y)) => *x <= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() <= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less_equal(a, b, span)?
@@ -4964,6 +5038,7 @@ impl Vm {
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => *x < *y,
                         (Value::Float(x), Value::Float(y)) => *x < *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() < y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(a, b, span)?
@@ -4978,6 +5053,7 @@ impl Vm {
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => *x > *y,
                         (Value::Float(x), Value::Float(y)) => *x > *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
                         _ => {
                             let span = self.current_span();
                             self.op_compare_less(b, a, span)?
@@ -5017,6 +5093,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x > *y,
                         (Value::Float(x), Value::Float(y)) => *x > *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() > y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // `a > b` is evaluated as `b < a` to reuse one
@@ -5044,6 +5121,7 @@ impl Vm {
                     let result = match (&a, &b) {
                         (Value::Int(x), Value::Int(y)) => *x >= *y,
                         (Value::Float(x), Value::Float(y)) => *x >= *y,
+                        (Value::String(x), Value::String(y)) => x.as_str() >= y.as_str(),
                         _ => {
                             let span = self.current_span();
                             // Same swap as `>` above: report source order.
@@ -5678,6 +5756,16 @@ impl Vm {
         if let (Value::Float(_), Value::Float(_)) = (a, b) {
             return Ok(false);
         }
+        // Two strings are ordered inline by the unfused arms too.
+        if let (Value::String(x), Value::String(y)) = (a, b) {
+            let ordering = x.as_str().cmp(y.as_str());
+            return Ok(match op {
+                Op::LessLocalConst(..) => ordering.is_lt(),
+                Op::LessEqualLocalConst(..) => ordering.is_le(),
+                Op::GreaterLocalConst(..) => ordering.is_gt(),
+                _ => ordering.is_ge(),
+            });
+        }
         let span = self.current_span();
         let source_order = |_| {
             RuntimeError::type_error(
@@ -5825,118 +5913,41 @@ impl Vm {
     }
 
     // --- Arithmetic operations ---
+    //
+    // The slow arm of every arithmetic and ordering op. The dispatch loop
+    // computes the Int and Float cases (and string `+`) inline and hands
+    // everything else here, where the rules are the tree-walker's own
+    // definitions (`interpreter/executor/operators.rs`), called rather than
+    // copied: a Decimal on either side of an Int or a Float, `Array - Array`,
+    // string repetition, the overflow and division-by-zero errors. The copies
+    // these replaced had drifted: no Decimal arm, no array difference, and a
+    // zero divisor raised before the left operand was even looked at.
 
     fn op_add(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-            (Value::String(a), Value::String(b)) => {
-                Ok(Value::String(ecow::eco_format!("{}{}", a, b)))
-            }
-            (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
-            (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
-            (Value::Array(a), Value::Array(b)) => {
-                let mut result = a.borrow().clone();
-                result.extend(b.borrow().iter().cloned());
-                Ok(Value::Array(Rc::new(RefCell::new(result))))
-            }
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot add {} and {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_add(&a, &b, span)
     }
 
     fn op_subtract(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot subtract {} from {}", b.type_name(), a.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_subtract(&a, &b, span)
     }
 
     fn op_multiply(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
-            (Value::String(s), Value::Int(n)) | (Value::Int(n), Value::String(s)) => {
-                let repeated = crate::interpreter::limits::repeat_string(s, *n, "string * count")
-                    .map_err(|message| RuntimeError::General { message, span })?;
-                Ok(Value::String(repeated.into()))
-            }
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot multiply {} and {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_multiply(&a, &b, span)
     }
 
     fn op_divide(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (_, Value::Int(0)) => Err(RuntimeError::division_by_zero(span)),
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a / b)),
-            (Value::Float(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err(RuntimeError::division_by_zero(span))
-                } else {
-                    Ok(Value::Float(a / b))
-                }
-            }
-            (Value::Int(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err(RuntimeError::division_by_zero(span))
-                } else {
-                    Ok(Value::Float(*a as f64 / b))
-                }
-            }
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a / *b as f64)),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot divide {} by {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_divide(&a, &b, span)
     }
 
     fn op_modulo(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (_, Value::Int(0)) => Err(RuntimeError::division_by_zero(span)),
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a % b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 % b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a % *b as f64)),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot modulo {} by {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_modulo(&a, &b, span)
     }
 
+    /// `a < b`. The callers evaluate `a > b` as `b < a` (and `>=` as `<=`
+    /// swapped), then word an error in source order.
     fn op_compare_less(&self, a: &Value, b: &Value, span: Span) -> Result<bool, RuntimeError> {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => Ok(a < b),
-            (Value::Float(a), Value::Float(b)) => Ok(a < b),
-            (Value::Int(a), Value::Float(b)) => Ok((*a as f64) < *b),
-            (Value::Float(a), Value::Int(b)) => Ok(*a < (*b as f64)),
-            (Value::String(a), Value::String(b)) => Ok(a < b),
-            _ => {
-                if let (Some(ts_a), Some(ts_b)) = (a.datetime_ts(), b.datetime_ts()) {
-                    return Ok(ts_a < ts_b);
-                }
-                Err(RuntimeError::type_error(
-                    format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
-                    span,
-                ))
-            }
-        }
+        use crate::interpreter::executor::operators::OrdOp;
+        crate::interpreter::Interpreter::compare_ordered(a, OrdOp::Less, b, span)
     }
 
     fn op_compare_less_equal(
@@ -5945,22 +5956,8 @@ impl Vm {
         b: &Value,
         span: Span,
     ) -> Result<bool, RuntimeError> {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => Ok(a <= b),
-            (Value::Float(a), Value::Float(b)) => Ok(a <= b),
-            (Value::Int(a), Value::Float(b)) => Ok((*a as f64) <= *b),
-            (Value::Float(a), Value::Int(b)) => Ok(*a <= (*b as f64)),
-            (Value::String(a), Value::String(b)) => Ok(a <= b),
-            _ => {
-                if let (Some(ts_a), Some(ts_b)) = (a.datetime_ts(), b.datetime_ts()) {
-                    return Ok(ts_a <= ts_b);
-                }
-                Err(RuntimeError::type_error(
-                    format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
-                    span,
-                ))
-            }
-        }
+        use crate::interpreter::executor::operators::OrdOp;
+        crate::interpreter::Interpreter::compare_ordered(a, OrdOp::LessEqual, b, span)
     }
 
     #[inline]
@@ -6019,11 +6016,11 @@ impl Vm {
                 let span = self.current_span();
                 self.op_get_index(receiver, &Value::String(key.into()), span)
             }
-            other => Err(RuntimeError::NoSuchProperty {
-                value_type: other.type_name(),
-                property: "get".to_string(),
-                span: self.current_span(),
-            }),
+            other => Err(RuntimeError::no_such_property(
+                other.type_name(),
+                "get".to_string(),
+                self.current_span(),
+            )),
         }
     }
 
@@ -6243,11 +6240,11 @@ impl Vm {
                 return self.op_set_index(receiver, &key, value, self.current_span());
             }
         }
-        Err(RuntimeError::NoSuchProperty {
-            value_type: receiver.type_name(),
-            property: "set".to_string(),
-            span: self.current_span(),
-        })
+        Err(RuntimeError::no_such_property(
+            receiver.type_name(),
+            "set".to_string(),
+            self.current_span(),
+        ))
     }
 
     fn op_set_index(
@@ -6342,12 +6339,7 @@ fn constant_to_value(constant: &Constant) -> Value {
     match constant {
         Constant::Int(n) => Value::Int(*n),
         Constant::Float(n) => Value::Float(*n),
-        Constant::Decimal(s) => {
-            use crate::interpreter::value::DecimalValue;
-            let decimal: rust_decimal::Decimal = s.parse().unwrap_or_default();
-            let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-            Value::Decimal(DecimalValue(decimal, precision))
-        }
+        Constant::Decimal(decimal) => Value::Decimal(decimal.clone()),
         Constant::String(s) => Value::String(s.clone()),
         Constant::Bool(b) => Value::Bool(*b),
         Constant::Null => Value::Null,
@@ -6499,32 +6491,6 @@ fn primitive_equal_constant(value: &Value, constant: &Constant) -> Option<bool> 
     })
 }
 
-/// `value_matches_type`, without its allocation for the common primitive
-/// names: it lowercases the annotation on every call, and a typed function
-/// returns on every call.
-#[inline]
-fn value_admitted_by(value: &Value, expected: &crate::ast::TypeAnnotation) -> bool {
-    if let crate::ast::TypeKind::Named(name) = &expected.kind {
-        let is = |n: &str| name.eq_ignore_ascii_case(n);
-        if is("int") {
-            return matches!(value, Value::Int(_));
-        }
-        if is("float") {
-            return matches!(value, Value::Float(_));
-        }
-        if is("bool") {
-            return matches!(value, Value::Bool(_));
-        }
-        if is("string") {
-            return matches!(value, Value::String(_));
-        }
-        if is("any") {
-            return true;
-        }
-    }
-    crate::interpreter::value::value_matches_type(value, expected)
-}
-
 /// Drop a value the fast tier has finished with. `Value`'s drop glue is an
 /// out-of-line jump table even for a scalar, and the ops in `run_fast` —
 /// `Pop`, `SetLocal`, a popped jump condition — discard a scalar far more
@@ -6655,6 +6621,101 @@ mod tests {
             Value::NativeFunction(NativeFunction::new("puts", None, |_| Ok(Value::Null))),
         );
         vm.execute(&module.main)
+    }
+
+    /// A method `define_method` gave a primitive type runs, or not, on the
+    /// same calls in both engines.
+    ///
+    /// The tree-walker runs the builtin for a block-less paren call on a Hash,
+    /// Array or String whose name is in that type's direct-dispatch list, and
+    /// the user method for every other call. The VM used to decide by whether
+    /// the name had a method id instead: `CallMethod` (no id) put the user
+    /// method first for every name, so `xs.includes?(1)` ran an override the
+    /// tree-walker ignores, and `CallMethodById` never looked, so
+    /// `xs.count { … }`, `"ab".capitalize()` and `5.to_s()` ignored overrides
+    /// the tree-walker runs.
+    ///
+    /// The CLI's VM cannot register a primitive method itself (a compiled
+    /// closure is refused), so the tree-walker registers them here, as a serve
+    /// app's tree-walked code would, and both engines then run the probe. Its
+    /// own thread: the overlay tables are thread-local and die with it.
+    #[test]
+    fn test_vm_primitive_user_method_precedence_matches_tree_walker() {
+        const SETUP: &str = r#"
+Array.define_method("includes?", fn(v) { "user includes?" })
+Array.define_method("select", fn(f) { "user select" })
+Array.define_method("sum", fn() { "user sum" })
+Array.define_method("count", fn(f) { "user count" })
+String.define_method("contains?", fn(v) { "user contains?" })
+String.define_method("capitalize", fn() { "user capitalize" })
+Hash.define_method("map", fn(f) { "user map" })
+Hash.define_method("select", fn(f) { "user select" })
+Int.define_method("to_s", fn() { "user to_s" })
+"#;
+        const PROBE: &str = r#"
+xs = [1, 2]
+h = {"a": 1}
+print(xs.includes?(1))
+print(xs&.includes?(1))
+print(xs.select(fn(x) { x > 1 }))
+print(xs.select { |x| x > 1 })
+print(xs.sum())
+print(xs.sum)
+print(xs.count { |x| x > 1 })
+print("ab".contains?("a"))
+print("ab".capitalize())
+print("ab".upcase())
+print(h.map(fn(k, v) { [k, v * 2] }))
+print(h.select { |k, v| true })
+print(5.to_s())
+print(5.abs())
+"#;
+        const EXPECTED: &str = "true\ntrue\n[2]\nuser select\n3\nuser sum\nuser count\n\
+true\nuser capitalize\nAB\n{a => 2}\nuser select\nuser to_s\n5\n";
+
+        fn parse(src: &str) -> crate::ast::Program {
+            let tokens = Scanner::new(src).scan_tokens().expect("lexer error");
+            Parser::new(tokens).parse().expect("parser error")
+        }
+
+        std::thread::spawn(|| {
+            let capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+            crate::interpreter::Interpreter::new()
+                .interpret(&parse(&format!("{SETUP}{PROBE}")))
+                .expect("tree-walker run");
+            let tree = String::from_utf8(capture.finish()).expect("utf-8");
+
+            let module = Compiler::compile(&parse(PROBE)).expect("compile error");
+            let capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+            Vm::new().execute(&module.main).expect("vm run");
+            let vm = String::from_utf8(capture.finish()).expect("utf-8");
+
+            assert_eq!(tree, EXPECTED, "tree-walker");
+            assert_eq!(vm, EXPECTED, "VM");
+        })
+        .join()
+        .expect("probe thread");
+    }
+
+    /// `print`/`puts`/`println` compile to `Op::Print`, which must write
+    /// through `write_captured_or_stdout` like the tree-walker's builtins:
+    /// while a `StdoutCaptureGuard` is alive (test runner, graph builder) the
+    /// line lands in the capture buffer, not on the process stdout. It used to
+    /// `println!` straight to stdout and also keep a copy of every line in a
+    /// `Vm.output` buffer nothing read, which grew a serve worker's memory
+    /// without bound.
+    #[test]
+    fn test_vm_print_op_writes_through_stdout_capture() {
+        let tokens = Scanner::new("print(\"a\", 1)\nputs(\"b\")\nprintln([2, nil])\nprint()")
+            .scan_tokens()
+            .expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        let capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+        vm.execute(&module.main).expect("print must run");
+        let captured = String::from_utf8(capture.finish()).expect("utf-8");
+        assert_eq!(captured, "a 1\nb\n[2, null]\n\n");
     }
 
     /// A match expression must leave the value stack balanced.
@@ -9225,6 +9286,75 @@ let x = Mailer.welcome()
         );
     }
 
+    /// A Decimal literal is parsed when it is compiled: its constant holds
+    /// the value, with the precision the literal was written with, and the
+    /// literal's text is not read again at run time.
+    #[test]
+    fn a_decimal_literal_compiles_to_its_value() {
+        use crate::interpreter::value::DecimalValue;
+        let source = "price = 19.99D\nlong = 1.12345678901234567890123456789012D";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let decimals: Vec<&DecimalValue> = module
+            .main
+            .chunk
+            .constants
+            .iter()
+            .filter_map(|constant| match constant {
+                Constant::Decimal(decimal) => Some(decimal),
+                _ => None,
+            })
+            .collect();
+        let price = DecimalValue("19.99".parse().unwrap(), 2);
+        // 32 digits written, 28 kept: the precision counts what was written.
+        let long = DecimalValue("1.1234567890123456789012345679".parse().unwrap(), 32);
+        assert_eq!(decimals, [&price, &long]);
+        assert_eq!(
+            compile_and_get_global(source, "price"),
+            Value::Decimal(price)
+        );
+    }
+
+    /// Text that is no decimal does not compile, where the VM used to load
+    /// a silent 0. The tree-walker then runs the code, and raises "Invalid
+    /// decimal literal" where the literal is evaluated.
+    #[test]
+    fn an_invalid_decimal_literal_does_not_compile() {
+        for source in [
+            "x = %n[abcD]",
+            "big = 99999999999999999999999999999999.5D",
+            "h = {99999999999999999999999999999999.5D: 1}",
+        ] {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let err = Compiler::compile(&program).expect_err(source);
+            assert!(
+                err.to_string().contains("Invalid decimal literal: "),
+                "{source}: {err}"
+            );
+        }
+    }
+
+    /// The fast tier loads a Decimal constant itself. It used to hand the op
+    /// to the general arm, which parsed the literal's text on every load.
+    #[test]
+    fn a_decimal_constant_loads_in_the_fast_tier() {
+        use crate::interpreter::value::DecimalValue;
+        let decimal = DecimalValue::from_literal("19.99").unwrap();
+        let mut proto = FunctionProto::new(String::new());
+        let idx = proto.chunk.add_constant(Constant::Decimal(decimal.clone()));
+        proto.chunk.emit(Op::Constant(idx), 1);
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        let mut vm = Vm::new();
+        vm.push(Value::VmClosure(closure.clone()));
+        vm.frames
+            .push(CallFrame::new(closure, 0, vm.iter_stack.len(), None, 0));
+        // `None`: the chunk ran to its end without an op handed back.
+        assert_eq!(vm.run_fast().expect("no error"), None);
+        assert_eq!(vm.stack.last(), Some(&Value::Decimal(decimal)));
+    }
+
     #[test]
     fn test_vm_int_to_s_radix() {
         assert_eq!(
@@ -11310,7 +11440,9 @@ let x = Mailer.welcome()
             Constant::Null,
             Constant::String("a".into()),
             Constant::String("Status".into()),
-            Constant::Decimal("1.0".into()),
+            Constant::Decimal(
+                crate::interpreter::value::DecimalValue::from_literal("1.0").unwrap(),
+            ),
         ];
         for value in &values {
             for constant in &constants {
@@ -11331,6 +11463,64 @@ let x = Mailer.welcome()
                 assert_eq!(answered.is_some(), inline, "{value:?} == {constant:?}");
             }
         }
+    }
+
+    /// A key named like a hash method is the key's value on every VM path, as
+    /// on the tree-walker. The key fast paths (`GetProperty`, the fused
+    /// `GetLocalProperty`) always answered it, but `op_get_property` — where a
+    /// read lands once a Hash user method exists, and the read of `x.name ||=`
+    /// (`GetPropertyOrNull`) — answered the builtin method: `row.size ||= 0`
+    /// wrote the entry count over the field, `{"size": nil}.size ||= 7` stored
+    /// 1. A call still means the method, and so does a read without the key.
+    #[test]
+    fn test_vm_hash_key_named_like_a_method_reads_the_key() {
+        let row = "let row = {\"size\": 2048, \"key\": \"abc\", \"map\": null}\n";
+        let global = |body: &str| compile_and_get_global(&format!("{row}{body}"), "x");
+        assert_eq!(global("let x = row.size"), Value::Int(2048));
+        assert_eq!(
+            global("fn read(r) { return r.key }\nlet x = read(row)"),
+            Value::String("abc".into())
+        );
+        // `||=` and `??=` read through GetPropertyOrNull and always write back.
+        assert_eq!(
+            global("row.size ||= 0\nlet x = row[\"size\"]"),
+            Value::Int(2048)
+        );
+        assert_eq!(
+            global("row.map ??= \"set\"\nlet x = row[\"map\"]"),
+            Value::String("set".into())
+        );
+        assert_eq!(
+            compile_and_get_global(
+                "let counts = {\"size\": null}\ncounts.size ||= 7\nlet x = counts[\"size\"]",
+                "x"
+            ),
+            Value::Int(7)
+        );
+        // Parentheses call the method; so does a bare read without the key.
+        assert_eq!(global("let x = row.size()"), Value::Int(3));
+        assert_eq!(
+            global("let x = row.key(\"abc\")"),
+            Value::String("key".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let x = {\"a\": 1, \"b\": 2}.size", "x"),
+            Value::Int(2)
+        );
+        // The slow path itself, where a registered Hash user method sends
+        // every read (registering one here would leak into other tests).
+        let mut pairs = crate::interpreter::value::HashPairs::default();
+        pairs.insert(
+            crate::interpreter::value::HashKey::String("size".into()),
+            Value::Int(2048),
+        );
+        let hash = Value::Hash(Rc::new(RefCell::new(pairs)));
+        assert_eq!(
+            Vm::new()
+                .op_get_property(&hash, "size", Span::default())
+                .unwrap(),
+            Value::Int(2048)
+        );
     }
 }
 

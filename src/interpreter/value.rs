@@ -45,6 +45,21 @@ impl DecimalValue {
         Ok(Self(decimal, precision))
     }
 
+    /// The value of a Decimal literal from its text, `"19.99"` for `19.99D`.
+    /// The precision is the number of digits written after the point, also
+    /// past the 28 places the value keeps. `None` when the text does not
+    /// parse: an integer part beyond Decimal's range, or a `%n[...]` word
+    /// that is not a number. Both engines read literals through this; the
+    /// VM does it once, when it compiles one.
+    pub fn from_literal(text: &str) -> Option<Self> {
+        let decimal: Decimal = text.parse().ok()?;
+        let precision = text
+            .split('.')
+            .nth(1)
+            .map_or(0, |digits| digits.len() as u32);
+        Some(Self(decimal, precision))
+    }
+
     /// Get the precision (number of decimal places)
     pub fn precision(&self) -> u32 {
         self.1
@@ -526,24 +541,33 @@ pub struct DeferredCell {
 /// a NaN, exactly as for two equal copies.
 pub fn enum_aware_equal(a: &Value, b: &Value) -> bool {
     if let (Value::Instance(ia), Value::Instance(ib)) = (a, b) {
-        if Rc::ptr_eq(ia, ib) {
-            let instance = ia.borrow();
-            if instance.fields.len() <= 1 || !instance.fields.contains_key("__variant") {
+        // The left operand decides: an ordinary object never compares
+        // structurally, so the right one is probed only behind an enum.
+        let ra = ia.borrow();
+        if !ra.fields.contains_key("__variant") {
+            // `PartialEq`'s own first answer for one object, without its
+            // depth guard.
+            if Rc::ptr_eq(ia, ib) {
                 return true;
             }
-        }
-        if ia.borrow().fields.contains_key("__variant")
-            && ib.borrow().fields.contains_key("__variant")
-        {
-            let ra = ia.borrow();
-            let rb = ib.borrow();
-            if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
-                return false;
+        } else {
+            // A unit variant (its tag is its only field) compared with
+            // itself: identity answers. A payload variant compares field by
+            // field even against itself (a NaN payload is unequal to itself
+            // on both engines).
+            if ra.fields.len() <= 1 && Rc::ptr_eq(ia, ib) {
+                return true;
             }
-            return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
-                Some(vb) => enum_aware_equal(va, vb),
-                None => false,
-            });
+            let rb = ib.borrow();
+            if rb.fields.contains_key("__variant") {
+                if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
+                    return false;
+                }
+                return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
+                    Some(vb) => enum_aware_equal(va, vb),
+                    None => false,
+                });
+            }
         }
     }
     a == b
@@ -1235,8 +1259,28 @@ fn with_depth<T>(
 /// call.
 #[inline(never)]
 pub fn build_interpolated(parts: &[Value]) -> SoliStr {
+    build_display(parts.iter())
+}
+
+/// `a` followed by `b`, each as `Display` writes it: the `+` of a string and
+/// any other value, on both engines. Built like an interpolation (and through
+/// the same code), so `"n=" + 1.5` and `"n=#{1.5}"` are one string, made the
+/// same way; `eco_format!` went through `Display`'s formatter and depth guard
+/// for every number, 17 ns more per `"str" + int` than the interpolation.
+#[inline(never)]
+pub fn concat_display(a: &Value, b: &Value) -> SoliStr {
+    build_display([a, b].into_iter())
+}
+
+/// The body of [`build_interpolated`] and [`concat_display`]: two passes over
+/// the parts, one to size the result and one to write it.
+#[inline(always)]
+fn build_display<'a, I>(parts: I) -> SoliStr
+where
+    I: Iterator<Item = &'a Value> + Clone,
+{
     let mut len = 0;
-    for part in parts {
+    for part in parts.clone() {
         // Measured inline rather than through `display_len`, whose recursive
         // container arms keep it from inlining: a call per part cost the
         // multi-part case more than the build saves.
@@ -1804,6 +1848,27 @@ fn fresh_copy(value: &Value) -> Value {
     }
 }
 
+thread_local! {
+    /// Bumped whenever a class's instance methods change after it was built
+    /// (`define_method`, `alias_method`, `include`, a module body). Each
+    /// class's flattened method cache records the epoch it was built at and
+    /// is rebuilt on a mismatch. Classes are `Rc` and never cross threads, so
+    /// a per-thread counter is enough.
+    static METHOD_EPOCH: Cell<u64> = const { Cell::new(1) };
+}
+
+/// The current method-definition epoch (see `METHOD_EPOCH`).
+#[inline]
+pub fn method_epoch() -> u64 {
+    METHOD_EPOCH.with(|epoch| epoch.get())
+}
+
+/// Mark every flattened method cache stale: a class's methods changed, and
+/// its subclasses copied the old set into their own caches.
+pub fn bump_method_epoch() {
+    METHOD_EPOCH.with(|epoch| epoch.set(epoch.get().wrapping_add(1)));
+}
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {
@@ -1828,6 +1893,12 @@ pub struct Class {
     /// ahash-keyed: `find_method` probes this once per method call.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_methods_cache: RefCell<Option<HashMap<String, Rc<Function>, AHasher>>>,
+    /// The [`method_epoch`] `all_methods_cache` was built at. The cache copies
+    /// the superclass's flattened map, so a method added to an ancestor later
+    /// (`A.define_method`, `alias_method`, `include`) must rebuild it too —
+    /// the epoch is global and a mismatch means "rebuild". `pub` only for
+    /// struct-literal construction: always `Cell::new(0)` outside this module.
+    pub all_methods_cache_epoch: Cell<u64>,
     /// Flattened native method cache for O(1) lookups.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>, AHasher>>>,
@@ -2145,6 +2216,7 @@ impl Default for Class {
             const_fields: HashSet::new(),
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
+            all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
@@ -2199,6 +2271,7 @@ impl Class {
             const_fields: HashSet::new(),
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
+            all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
@@ -2420,10 +2493,15 @@ impl Class {
         }
     }
 
-    /// Build the flattened method cache if not already built.
+    /// Build the flattened method cache if not already built, or rebuild it
+    /// when a method was defined on any class since it was built (see
+    /// [`bump_method_epoch`]): the map holds the ancestors' methods too, so a
+    /// change to a parent leaves every subclass's copy stale.
     fn ensure_methods_cached(&self) {
+        let epoch = method_epoch();
         // Fast path: check if already cached without borrowing mutably
-        if self.all_methods_cache.borrow().is_some() {
+        if self.all_methods_cache_epoch.get() == epoch && self.all_methods_cache.borrow().is_some()
+        {
             return;
         }
 
@@ -2445,6 +2523,7 @@ impl Class {
 
         // Store in cache
         *self.all_methods_cache.borrow_mut() = Some(all_methods);
+        self.all_methods_cache_epoch.set(epoch);
     }
 
     /// Build the flattened native method cache if not already built.
@@ -2538,9 +2617,14 @@ impl Class {
         None
     }
 
+    /// Call after changing `methods` (or `vm_methods`) of a class that may
+    /// already be in use. Drops this class's flattened caches and bumps the
+    /// global [`method_epoch`], so every subclass rebuilds its own copy on its
+    /// next lookup instead of keeping the parent's old method set.
     pub fn invalidate_method_cache(&self) {
         *self.all_methods_cache.borrow_mut() = None;
         *self.all_native_methods_cache.borrow_mut() = None;
+        bump_method_epoch();
     }
 
     /// Mix `module`'s instance methods into this class (Ruby `include`).
@@ -3561,37 +3645,117 @@ fn class_answers_to(class: &Class, name: &str) -> bool {
 
 pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
     match &expected.kind {
-        TypeKind::Named(name) => {
-            let name_lower = name.to_lowercase();
-            match name_lower.as_str() {
-                "any" => true,
-                "int" => matches!(value, Value::Int(_)),
-                "float" => matches!(value, Value::Float(_)),
-                "decimal" => matches!(value, Value::Decimal(_)),
-                "string" => matches!(value, Value::String(_)),
-                "bool" => matches!(value, Value::Bool(_)),
-                "array" => matches!(value, Value::Array(_)),
-                "hash" => matches!(value, Value::Hash(_)),
-                "function" => matches!(value, Value::Function(_) | Value::NativeFunction(_)),
-                "void" | "null" => matches!(value, Value::Null),
-                // Class instance check
-                // Class instance check: the class or an ancestor, named in
-                // full or — written inside its context — by its short name
-                // (`-> Invoice` for a `Billing::Invoice`).
-                _ => match value {
-                    Value::Instance(inst) => class_answers_to(&inst.borrow().class, name),
-                    _ => false,
-                },
-            }
-        }
+        TypeKind::Named(name) => match TypeCheck::builtin(name) {
+            Some(check) => check.admits(value),
+            None => instance_answers_to(value, name),
+        },
         TypeKind::Void => matches!(value, Value::Null),
         TypeKind::Nullable(inner) => {
             matches!(value, Value::Null) || value_matches_type(value, inner)
         }
         TypeKind::Array(_) => matches!(value, Value::Array(_)),
         TypeKind::Hash { .. } => matches!(value, Value::Hash(_)),
-        TypeKind::Function { .. } => {
-            matches!(value, Value::Function(_) | Value::NativeFunction(_))
+        TypeKind::Function { .. } => is_function_value(value),
+    }
+}
+
+/// A function on either engine: the tree-walker's, a builtin, or a VM
+/// closure (all of which `type_name` reports as `Function`).
+#[inline]
+fn is_function_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+    )
+}
+
+/// An instance of the class `name` names, or of a subclass of it: the
+/// class named in full or, written inside its context, by its short name
+/// (`-> Invoice` for a `Billing::Invoice`).
+#[inline]
+fn instance_answers_to(value: &Value, name: &str) -> bool {
+    match value {
+        Value::Instance(inst) => class_answers_to(&inst.borrow().class, name),
+        _ => false,
+    }
+}
+
+/// A type annotation lowered once, so a check against it reads no name.
+/// It decides exactly what [`value_matches_type`] decides for the same
+/// annotation; the VM lowers a function's return type when it compiles
+/// the function and checks each return against this.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeCheck {
+    Any,
+    Int,
+    Float,
+    Decimal,
+    String,
+    Bool,
+    Array,
+    Hash,
+    Function,
+    /// `Void`, or the name `Null`.
+    Null,
+    /// A class name, matched case-sensitively against the class and its
+    /// ancestors, in full or by short name.
+    Class(Box<str>),
+    /// `T?`: null, or what the inner check admits.
+    Nullable(Box<TypeCheck>),
+}
+
+impl TypeCheck {
+    /// The check for an annotation.
+    pub fn lower(expected: &TypeAnnotation) -> Self {
+        match &expected.kind {
+            TypeKind::Named(name) => {
+                Self::builtin(name).unwrap_or_else(|| Self::Class(name.as_str().into()))
+            }
+            TypeKind::Void => Self::Null,
+            TypeKind::Nullable(inner) => Self::Nullable(Box::new(Self::lower(inner))),
+            TypeKind::Array(_) => Self::Array,
+            TypeKind::Hash { .. } => Self::Hash,
+            TypeKind::Function { .. } => Self::Function,
+        }
+    }
+
+    /// The built-in type a name spells, in any ASCII case (`int`, `Int`,
+    /// `INT`), or `None` for a class name. Dispatches on the length first,
+    /// so a name is compared against at most three candidates.
+    fn builtin(name: &str) -> Option<Self> {
+        let is = |candidate: &str| name.eq_ignore_ascii_case(candidate);
+        let check = match name.len() {
+            3 if is("int") => Self::Int,
+            3 if is("any") => Self::Any,
+            4 if is("hash") => Self::Hash,
+            4 if is("bool") => Self::Bool,
+            4 if is("void") || is("null") => Self::Null,
+            5 if is("array") => Self::Array,
+            5 if is("float") => Self::Float,
+            6 if is("string") => Self::String,
+            7 if is("decimal") => Self::Decimal,
+            8 if is("function") => Self::Function,
+            _ => return None,
+        };
+        Some(check)
+    }
+
+    /// Whether `value` is of this type.
+    #[inline]
+    pub fn admits(&self, value: &Value) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Int => matches!(value, Value::Int(_)),
+            Self::Float => matches!(value, Value::Float(_)),
+            Self::Decimal => matches!(value, Value::Decimal(_)),
+            Self::String => matches!(value, Value::String(_)),
+            Self::Bool => matches!(value, Value::Bool(_)),
+            Self::Array => matches!(value, Value::Array(_)),
+            Self::Hash => matches!(value, Value::Hash(_)),
+            Self::Function => is_function_value(value),
+            Self::Null => matches!(value, Value::Null),
+            Self::Class(name) => instance_answers_to(value, name),
+            Self::Nullable(inner) => matches!(value, Value::Null) || inner.admits(value),
         }
     }
 }
@@ -3684,6 +3848,35 @@ mod decimal_tests {
     fn test_decimal_value_from_str_invalid() {
         let result = DecimalValue::from_str("not_a_decimal", 2);
         assert!(result.is_err());
+    }
+
+    /// A literal's precision is the digits written after its point, also
+    /// past the 28 places the value keeps: the two literals below print
+    /// alike and compare unequal, on both engines.
+    #[test]
+    fn a_decimal_literal_keeps_the_precision_it_was_written_with() {
+        let price = DecimalValue::from_literal("19.99").expect("19.99");
+        assert_eq!(price, DecimalValue(Decimal::from_str("19.99").unwrap(), 2));
+        assert_eq!(DecimalValue::from_literal("1.00").unwrap().precision(), 2);
+        assert_eq!(DecimalValue::from_literal("-2.5").unwrap().precision(), 1);
+
+        let long = DecimalValue::from_literal("1.12345678901234567890123456789012").unwrap();
+        assert_eq!(long.precision(), 32);
+        assert_eq!(long.to_string(), "1.1234567890123456789012345679");
+        let rounded = DecimalValue::from_literal("1.1234567890123456789012345679").unwrap();
+        assert_eq!(long.value(), rounded.value());
+        assert_ne!(long, rounded);
+    }
+
+    #[test]
+    fn text_that_is_no_decimal_is_no_literal() {
+        // `%n[abcD]` reads as the literal `abc.00`.
+        assert_eq!(DecimalValue::from_literal("abc.00"), None);
+        // An integer part beyond Decimal's 96-bit range.
+        assert_eq!(
+            DecimalValue::from_literal("99999999999999999999999999999999.5"),
+            None
+        );
     }
 
     #[test]
@@ -4059,6 +4252,72 @@ mod return_type_tests {
         assert!(value_matches_type(&value, &ty_lower));
         assert!(value_matches_type(&value, &ty_upper));
         assert!(value_matches_type(&value, &ty_mixed));
+    }
+
+    fn annotations() -> Vec<TypeAnnotation> {
+        let named = |n: &str| make_type(TypeKind::Named(n.to_string()));
+        let mut types: Vec<TypeAnnotation> = [
+            "Int", "int", "INT", "Float", "Decimal", "decimal", "String", "Bool", "Array", "Hash",
+            "hash", "Function", "Void", "Null", "Any", "Pt", "pt", "Int2", "Strin",
+        ]
+        .iter()
+        .map(|n| named(n))
+        .collect();
+        types.push(make_type(TypeKind::Void));
+        types.push(make_type(TypeKind::Nullable(Box::new(named("Int")))));
+        types.push(make_type(TypeKind::Nullable(Box::new(named("Pt")))));
+        types.push(make_type(TypeKind::Array(Box::new(named("Int")))));
+        types.push(make_type(TypeKind::Hash {
+            key_type: Box::new(named("String")),
+            value_type: Box::new(named("Int")),
+        }));
+        types.push(make_type(TypeKind::Function {
+            params: vec![named("Int")],
+            return_type: Box::new(named("Int")),
+        }));
+        types
+    }
+
+    fn values() -> Vec<Value> {
+        vec![
+            Value::Int(1),
+            Value::Float(1.5),
+            Value::Decimal(DecimalValue(rust_decimal::Decimal::new(15, 1), 1)),
+            Value::String("s".into()),
+            Value::Bool(true),
+            Value::Null,
+            Value::Array(Rc::new(RefCell::new(vec![]))),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+        ]
+    }
+
+    #[test]
+    fn a_lowered_check_decides_what_value_matches_type_decides() {
+        for ty in annotations() {
+            let check = TypeCheck::lower(&ty);
+            for value in values() {
+                assert_eq!(
+                    check.admits(&value),
+                    value_matches_type(&value, &ty),
+                    "{ty} against {}",
+                    value.type_name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn names_lower_case_insensitively_and_others_are_classes() {
+        let named = |n: &str| TypeCheck::lower(&make_type(TypeKind::Named(n.to_string())));
+        assert_eq!(named("HASH"), TypeCheck::Hash);
+        assert_eq!(named("void"), TypeCheck::Null);
+        assert_eq!(named("Null"), TypeCheck::Null);
+        assert_eq!(named("function"), TypeCheck::Function);
+        assert_eq!(named("Strings"), TypeCheck::Class("Strings".into()));
+        assert_eq!(
+            named("Billing::Invoice"),
+            TypeCheck::Class("Billing::Invoice".into())
+        );
     }
 }
 
@@ -5103,5 +5362,179 @@ mod datetime_text_tests {
                 assert_eq!(value.display_len(), expected.len());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod method_cache_tests {
+    use super::{Class, Function};
+    use std::rc::Rc;
+
+    fn method(name: &str) -> Rc<Function> {
+        Rc::new(Function {
+            name: name.to_string(),
+            ..Function::default()
+        })
+    }
+
+    /// A subclass's flattened cache copies its parent's methods. A method
+    /// added to the parent after that copy was made must still be found
+    /// through the subclass (and the grandchild), not only through the parent.
+    #[test]
+    fn method_added_to_a_parent_reaches_cached_subclasses() {
+        let parent = Rc::new(Class {
+            name: "A".to_string(),
+            ..Default::default()
+        });
+        parent
+            .methods
+            .borrow_mut()
+            .insert("hello".to_string(), method("hello"));
+        let child = Rc::new(Class {
+            name: "B".to_string(),
+            superclass: Some(parent.clone()),
+            ..Default::default()
+        });
+        let grandchild = Class {
+            name: "C".to_string(),
+            superclass: Some(child.clone()),
+            ..Default::default()
+        };
+
+        // Build every cache along the chain.
+        assert!(grandchild.find_method("hello").is_some());
+        assert!(grandchild.find_method("late").is_none());
+        assert!(child.find_method("late").is_none());
+
+        parent
+            .methods
+            .borrow_mut()
+            .insert("late".to_string(), method("late"));
+        parent.invalidate_method_cache();
+
+        assert_eq!(child.find_method("late").unwrap().name, "late");
+        assert_eq!(grandchild.find_method("late").unwrap().name, "late");
+        assert!(grandchild.find_method("hello").is_some());
+    }
+
+    /// With no definition in between, the cache is reused, not rebuilt.
+    #[test]
+    fn cache_is_kept_while_no_method_changes() {
+        let class = Class {
+            name: "Kept".to_string(),
+            ..Default::default()
+        };
+        class
+            .methods
+            .borrow_mut()
+            .insert("a".to_string(), method("a"));
+        let first = class.find_method("a").unwrap();
+        let epoch = class.all_methods_cache_epoch.get();
+        let second = class.find_method("a").unwrap();
+        assert!(Rc::ptr_eq(&first, &second));
+        assert_eq!(class.all_methods_cache_epoch.get(), epoch);
+    }
+}
+
+#[cfg(test)]
+mod concat_and_equality_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// `"str" + x` and `x + "str"` render `x` exactly as `Display` does (what
+    /// `eco_format!("{}{}")` produced before), on the inline and the heap
+    /// path, for every kind of value a string can be added to.
+    #[test]
+    fn concat_display_matches_display_for_every_operand_kind() {
+        let array = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Float(2.5),
+            Value::String("s".into()),
+        ])));
+        let decimal = Value::Decimal(DecimalValue(rust_decimal::Decimal::new(150, 2), 2));
+        let others = [
+            Value::Int(0),
+            Value::Int(-42),
+            Value::Int(i64::MIN),
+            Value::Int(i64::MAX),
+            Value::Float(1.0),
+            Value::Float(-0.0),
+            Value::Float(0.1 + 0.2),
+            Value::Float(1e16),
+            Value::Float(1e-7),
+            Value::Float(1658206780088562.2),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Null,
+            Value::Symbol("sym".into()),
+            decimal,
+            array,
+        ];
+        for prefix in ["", "n=", "a prefix longer than the inline limit: "] {
+            let text = Value::String(prefix.into());
+            for other in &others {
+                assert_eq!(
+                    concat_display(&text, other).as_str(),
+                    format!("{}{}", prefix, other),
+                    "{prefix:?} + {other:?}"
+                );
+                assert_eq!(
+                    concat_display(other, &text).as_str(),
+                    format!("{}{}", other, prefix),
+                    "{other:?} + {prefix:?}"
+                );
+            }
+        }
+    }
+
+    fn instance(class: &Rc<Class>, fields: &[(&str, Value)]) -> Value {
+        let mut inst = Instance::new(class.clone());
+        for (name, value) in fields {
+            inst.set(*name, value.clone());
+        }
+        Value::Instance(Rc::new(RefCell::new(inst)))
+    }
+
+    fn class(name: &str) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            ..Class::default()
+        })
+    }
+
+    /// The identity shortcut answers for ordinary objects only: an enum value
+    /// still compares field by field, even against itself.
+    #[test]
+    fn enum_aware_equal_identity_shortcut_keeps_enum_semantics() {
+        let point = class("Point");
+        let p1 = instance(&point, &[("x", Value::Int(1))]);
+        let p2 = instance(&point, &[("x", Value::Int(1))]);
+        assert!(enum_aware_equal(&p1, &p1.clone()));
+        assert!(!enum_aware_equal(&p1, &p2));
+
+        let maybe = class("Maybe");
+        let some = |v: Value| {
+            instance(
+                &maybe,
+                &[("__variant", Value::String("Some".into())), ("v", v)],
+            )
+        };
+        assert!(enum_aware_equal(&some(Value::Int(7)), &some(Value::Int(7))));
+        assert!(!enum_aware_equal(
+            &some(Value::Int(7)),
+            &some(Value::Int(8))
+        ));
+        let nan = some(Value::Float(f64::NAN));
+        assert!(!enum_aware_equal(&nan, &nan.clone()));
+        let same = some(Value::Float(1.5));
+        assert!(enum_aware_equal(&same, &same.clone()));
+
+        // An enum against an ordinary object, either way round, is identity.
+        let unit = instance(&maybe, &[("__variant", Value::String("None".into()))]);
+        assert!(!enum_aware_equal(&unit, &p1));
+        assert!(!enum_aware_equal(&p1, &unit));
     }
 }

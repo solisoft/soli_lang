@@ -2129,11 +2129,11 @@ impl Vm {
         let Some(bound) = crate::interpreter::executor::access::member::bind_class_method_missing(
             &class, &class_val, name,
         ) else {
-            return Err(RuntimeError::NoSuchProperty {
-                value_type: class.name.clone(),
-                property: name.to_string(),
+            return Err(RuntimeError::no_such_property(
+                class.name.clone(),
+                name.to_string(),
                 span,
-            });
+            ));
         };
         let result = self.invoke_callable(bound, &user_args, span)?;
         self.stack.truncate(receiver_idx);
@@ -2509,6 +2509,42 @@ impl Vm {
         result
     }
 
+    /// `Klass.send(name, args…)` for a class with no static `send`: the static
+    /// `name` with the rest of the arguments, or the tree-walker's errors.
+    fn call_class_send(
+        &mut self,
+        class: &Rc<Class>,
+        receiver_idx: usize,
+        argc: usize,
+    ) -> Result<(), RuntimeError> {
+        if argc == 0 {
+            return Err(RuntimeError::new(
+                "send expects at least a method name argument",
+                self.current_span(),
+            ));
+        }
+        let target = match &self.stack[receiver_idx + 1] {
+            Value::String(s) | Value::Symbol(s) => s.to_string(),
+            _ => {
+                return Err(RuntimeError::new(
+                    "send expects method name as first argument",
+                    self.current_span(),
+                ))
+            }
+        };
+        let is_static = class.find_vm_static_method(&target).is_some()
+            || class.find_static_method(&target).is_some()
+            || class.find_native_static_method(&target).is_some();
+        if !is_static {
+            return Err(RuntimeError::new(
+                format!("undefined method `{}`", target),
+                self.current_span(),
+            ));
+        }
+        self.stack.remove(receiver_idx + 1);
+        self.call_method_slow_path(receiver_idx, argc - 1, &target)
+    }
+
     /// Shared CallMethod/CallMethodById slow path for instance/class/other
     /// receivers. Compiled (VmClosure) methods run under the method calling
     /// convention — the receiver stays in the callee slot and becomes
@@ -2708,6 +2744,22 @@ impl Vm {
                         self.stack.remove(receiver_idx + 1);
                         return self.call_method_slow_path(receiver_idx, argc - 1, &target);
                     }
+                }
+            }
+        }
+        // `Klass.send("name", args…)` calls the static `name`, unless the
+        // class has a static `send` of its own (`Mailer.send`, `Fcm.send`) —
+        // the tree-walker's class `send`, which looks only at statics. It was
+        // a reflection refusal, so auto engine selection sent every script
+        // naming `send` to the tree-walker.
+        if name == "send" {
+            if let Value::Class(class) = &self.stack[receiver_idx] {
+                let own_send = class.find_vm_static_method("send").is_some()
+                    || class.find_static_method("send").is_some()
+                    || class.find_native_static_method("send").is_some();
+                if !own_send {
+                    let class = class.clone();
+                    return self.call_class_send(&class, receiver_idx, argc);
                 }
             }
         }
@@ -3129,11 +3181,11 @@ impl Vm {
                 self.call_model_helper_method(inst, method_name, args, span)?
             }
             _ => {
-                return Err(RuntimeError::NoSuchProperty {
-                    value_type: receiver.type_name(),
-                    property: method_name.to_string(),
+                return Err(RuntimeError::no_such_property(
+                    receiver.type_name(),
+                    method_name.to_string(),
                     span,
-                })
+                ))
             }
         };
         self.push(result);

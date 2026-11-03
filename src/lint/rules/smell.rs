@@ -72,6 +72,11 @@ pub fn check_deep_nesting(depth: usize, span: Span, diagnostics: &mut Vec<LintDi
 /// instance hold each other, and without a cycle collector neither is ever
 /// freed — per call, in a long-lived server. It does not matter whether the
 /// body mentions `this`: the captured environment holds it either way.
+///
+/// The caller skips this check where `this` is the class rather than an
+/// instance (`static { this.before_action = fn(req) {…} }`, a `static def`,
+/// class-level statements): the class lives for the whole process, so a
+/// closure it holds is a one-off, not a per-call leak.
 pub fn check_closure_cycle(
     target: &Expr,
     value: &Expr,
@@ -151,6 +156,60 @@ class Counter {
 }
 "#;
         assert_eq!(count(src), 0);
+    }
+
+    /// The documented controller hook syntax stores a closure on the class
+    /// (`this` in `static { … }` is the class), which lives for the whole
+    /// process: no cycle worth reporting. The instance method in the same
+    /// class is still flagged.
+    #[test]
+    fn closures_stored_on_the_class_are_not_flagged() {
+        let src = r#"
+class PostsController < Controller
+  static {
+    this.layout = "application"
+    this.before_action = fn(req) {
+      nil
+    }
+    this.after_action = fn(req, response) {
+      response
+    }
+  }
+
+  static def configure
+    this.hook = fn(x) { x }
+  end
+
+  def index(req)
+    @handler = fn(x) { x }
+  end
+end
+"#;
+        assert_eq!(count(src), 1);
+    }
+
+    /// A lambda body inside a static block gets its `this` from whoever
+    /// calls it (a hook runs per request), so the exemption stops there; a
+    /// class nested after a static block starts again from instance code.
+    #[test]
+    fn the_class_level_exemption_does_not_leak_into_lambdas_or_nested_classes() {
+        let src = r#"
+class PostsController < Controller
+  static {
+    this.before_action = fn(req) {
+      this.on_done = fn() { nil }
+      nil
+    }
+  }
+end
+
+class Widget
+  new()
+    @render = fn() { nil }
+  end
+end
+"#;
+        assert_eq!(count(src), 2);
     }
 }
 

@@ -333,9 +333,9 @@ impl Compiler {
                     let name_idx = self.add_string_constant("except");
                     let mid = super::method_table::resolve_method_id("except");
                     if mid != super::method_table::METHOD_UNKNOWN {
-                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
+                        self.emit(Op::CallMethodById(name_idx, 1, mid, false), line);
                     } else {
-                        self.emit(Op::CallMethod(name_idx, 1), line);
+                        self.emit(Op::CallMethod(name_idx, 1, false), line);
                     }
                     self.add_local(rest_name.clone(), false);
                     live += 1;
@@ -428,7 +428,9 @@ impl Compiler {
                 self.emit_constant(Constant::Float(*n), line);
             }
             ExprKind::DecimalLiteral(s) => {
-                self.emit_constant(Constant::Decimal(s.clone()), line);
+                let span = crate::span::Span::new(0, 0, line, 0);
+                let decimal = super::compiler_exprs::decimal_literal(s, span)?;
+                self.emit_constant(Constant::Decimal(decimal), line);
             }
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone().into()), line);
@@ -579,7 +581,9 @@ fn literal_pattern_constant(expr_kind: &ExprKind) -> Option<Constant> {
     Some(match expr_kind {
         ExprKind::IntLiteral(n) => Constant::Int(*n),
         ExprKind::FloatLiteral(n) => Constant::Float(*n),
-        ExprKind::DecimalLiteral(s) => Constant::Decimal(s.clone()),
+        ExprKind::DecimalLiteral(s) => {
+            Constant::Decimal(crate::interpreter::value::DecimalValue::from_literal(s)?)
+        }
         ExprKind::StringLiteral(s) => Constant::String(s.clone().into()),
         ExprKind::BoolLiteral(b) => Constant::Bool(*b),
         ExprKind::Null => Constant::Null,

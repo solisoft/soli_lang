@@ -81,6 +81,13 @@ this.on_save = fn(record) { this.log(record) }
 this.on_save = "log"
 ```
 
+The rule only watches instance code. Where `this` is the class — a
+`static { … }` block, a `static def`, class-level statements — a closure stored
+on it is held by a class that lives as long as the process, so the documented
+controller hooks (`this.before_action = fn(req) { … }`,
+`this.after_action = fn(req, response) { … }`) are not flagged. The body of such
+a lambda is instance code again: a closure it stores on `this` is flagged.
+
 `smell/dangerous-server-builtin` fires on `db_query_raw`, `Trusted.*`,
 `System.shell` / `System.shell_sync`, and backtick command substitution, when
 called from `app/controllers/`, `app/middleware/` or `app/views/`. These are

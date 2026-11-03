@@ -34,11 +34,11 @@ pub(crate) fn call_decimal_method_impl(
         "between?" => decimal_between(d, arguments, span),
         "clamp" => decimal_clamp(d, arguments, span),
         "is_a?" => decimal_is_a(arguments, span),
-        _ => Err(RuntimeError::NoSuchProperty {
-            value_type: "decimal".to_string(),
-            property: method_name.to_string(),
+        _ => Err(RuntimeError::no_such_property(
+            "decimal".to_string(),
+            method_name.to_string(),
             span,
-        }),
+        )),
     }
 }
 

@@ -84,11 +84,11 @@ impl Vm {
                 Value::Null => Interpreter::null_member_access(name, span)?,
                 Value::Decimal(d) => Interpreter::decimal_member_access(d, name, span)?,
                 _ => {
-                    return Err(RuntimeError::NoSuchProperty {
-                        value_type: receiver.type_name(),
-                        property: name.to_string(),
+                    return Err(RuntimeError::no_such_property(
+                        receiver.type_name(),
+                        name.to_string(),
                         span,
-                    })
+                    ))
                 }
             };
             match direct {
@@ -101,11 +101,11 @@ impl Vm {
             Value::Bool(b) => call_bool_method_impl(*b, name, args, span),
             Value::Null => call_null_method_impl(name, args, span),
             Value::Decimal(d) => call_decimal_method_impl(d, name, args, span),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: receiver.type_name(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                receiver.type_name(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 }

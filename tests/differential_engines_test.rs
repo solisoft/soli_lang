@@ -73,6 +73,13 @@ const CASES: &[(&str, &str)] = &[
         "print([[1, [2]], 3].flatten())\nprint([1, [2, [3, [4]]]].flatten(1))",
     ),
     (
+        // `print`/`puts`/`println` resolve a Future (here a command
+        // substitution) before printing it, as the tree-walker's builtins do;
+        // the VM's `Op::Print` printed `<pending future>`.
+        "print_resolves_a_future",
+        "r = `printf hi`\nprint(r)\nputs(r, 1)\nprintln(`printf yo`)",
+    ),
+    (
         // The VM's `count` only took a `Function`, so a block (a VmClosure)
         // fell through to the equality count and gave 0; the tree-walker's
         // reject/none?/one?/count dropped a `throw` raised in the block.
@@ -807,6 +814,79 @@ module M
   end
 end
 print(M::F.build.class)"##,
+    ),
+    (
+        // Every kind of declared return type admits what the tree-walker
+        // admits, in any case, and refuses what it refuses. The VM checks
+        // against the annotation lowered once at compile time; it refused
+        // its own closures for `-> Function` and `-> (Int) -> Int`.
+        "return_types_admit_every_kind",
+        r##"class Pt
+end
+class Pt3 < Pt
+end
+def ri -> Int
+  1
+end
+def rf -> float
+  1.5
+end
+def rd -> decimal
+  1.5D
+end
+def rs -> STRING
+  "s"
+end
+def rb -> Bool
+  true
+end
+def ra -> Array
+  [1]
+end
+def rh -> Hash
+  {"a": 1}
+end
+def rv -> Void
+  nil
+end
+def rn -> Int?
+  nil
+end
+def rany -> Any
+  "x"
+end
+def rp -> Pt
+  Pt3.new()
+end
+def rfn -> Function
+  return fn(x) { x * 2 }
+end
+def rft -> (Int) -> Int
+  return fn(x) { x + 1 }
+end
+def rint_arr -> Int[]
+  [1, 2]
+end
+print([ri(), rf(), rd(), rs(), rb(), ra(), rh(), rv(), rn(), rany(), rp().class])
+print(rfn()(4))
+print(rft()(4))
+print(rint_arr())
+def bad_hash -> Hash
+  [1]
+end
+def bad_class -> Pt
+  "nope"
+end
+def bad_void -> Void
+  3
+end
+def bad_nullable -> Pt?
+  4
+end
+print(bad_hash() rescue "refused hash")
+print(bad_class() rescue "refused class")
+print(bad_void() rescue "refused void")
+print(bad_nullable() rescue "refused nullable")"##,
     ),
     (
         // A value object keys a hash by value.
@@ -1628,6 +1708,210 @@ end
 print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
     ),
     (
+        // Decimal with a Decimal, an Int or a Float on either side, for every
+        // arithmetic and ordering operator, through the fused local ops, an
+        // upvalue `+=`, globals and block callbacks. The VM had no Decimal arm
+        // at all: each of these raised "Cannot add decimal and decimal" and
+        // the like, and a zero Decimal divisor named the wrong error.
+        "decimal_arithmetic_and_comparison",
+        r##"def money(a, b, n, f)
+  print(a + b, a - b, a * b, a / b, a % b)
+  print(a + n, n + a, a - n, n - a, a * n, n * a, a / n, n / a)
+  print(a + f, f + a, a - f, f - a, a * f, f * a)
+  print(a + 1, a - 1, a * 3, a / 2, 100 - a, 3 * a)
+  print(type(a * n), type(n - a), type(a + f), type(a * b), type(a / n))
+  print(a > b, a < b, a >= b, a <= b, b < a, b <= a, a < a, a <= a)
+  print(a > n, a < 20, n <= a, a >= f, f < a, a > 12.5, a < 12)
+  if a > b
+    print("ordered")
+  end
+  total = 0.00D
+  [a, b].each do |x|
+    total += x
+  end
+  total -= 1
+  total *= 2
+  print(total)
+  step = a
+  step = step + 1
+  step = step - 1
+  step += b
+  print(step)
+  try
+    print(a / 0)
+  catch error
+    print(error)
+  end
+  try
+    print(a / 0.00D)
+  catch error
+    print(error)
+  end
+  try
+    print(7 / 0.00D)
+  catch error
+    print(error)
+  end
+  try
+    print(a % 0.00D)
+  catch error
+    print(error)
+  end
+end
+money(12.50D, 1.25D, 2, 1.5)
+print(0.10D + 0.20D, 19.99D * 3, 10.00D / 3, 19.99D - 20.00D, 1.25D * 2)
+price = 19.99D
+qty = 3
+subtotal = price * qty
+shipping = 4.50D
+print(subtotal, subtotal + shipping, subtotal > shipping, shipping <= 4.5, -price + 1)
+big = 79228162514264337593543950.335D
+try
+  print(big * 10000)
+catch error
+  print(error)
+end
+try
+  print(big + big * 1000)
+catch error
+  print(error)
+end
+prices = [3.00D, 1.5D, 2.25D]
+print(prices.filter { |p| p > 2 }, prices.map { |p| p * 2 }, prices.reduce(fn(acc, p) acc + p, 0.00D))
+print(prices.sort { |x, y| x < y ? -1 : 1 })"##,
+    ),
+    (
+        // `Array - Array` keeps what is not `==` to an element of the right
+        // side (instances by identity). The VM raised "Cannot subtract array
+        // from array".
+        "array_difference",
+        r##"class Member
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+end
+
+def without(items, removed)
+  items - removed
+end
+print([1, 2, 3] - [2])
+print([1, 2, 1, 3, 1] - [1], [1, 2] - [], [] - [1], [1, 2] - [3])
+print(["apple", "banana", "cherry"] - ["banana"])
+print([1, 2.0, 3] - [2], [[1], [2]] - [[1]], [{"a": 1}, {"a": 2}] - [{"a": 1}])
+print([1.50D, 2.00D, nil] - [2.00D, nil])
+ann = new Member("Ann")
+bo = new Member("Bo")
+print(without([ann, bo], [new Member("Ann")]).length, without([ann, bo], [ann]).length)
+tags = ["a", "b", "c"]
+tags = tags - ["b"]
+tags -= ["c"]
+print(tags, without(tags, tags))
+same = [1, 2]
+print(same - same, same)"##,
+    ),
+    (
+        // A Money amount is a Decimal, so money code met the same gap.
+        "money_amount_arithmetic",
+        r##"line = Money.new(19.99, "EUR")
+amount = line["amount"]
+print(amount * 3, amount + 0.01D, amount > 10, amount - 20 < 0)
+def line_total(money, qty)
+  money["amount"] * qty
+end
+print(line_total(line, 4), Money.format(Money.new(line_total(line, 2), "EUR")))"##,
+    ),
+    (
+        // A Decimal literal is parsed once, when the VM compiles it, and its
+        // load is a copy in the fast tier. Its value and its precision (the
+        // digits written after the point, which `==` compares) read as on
+        // the tree-walker wherever a literal stands: an array, `%n[...]`, a
+        // loop body run many times, a fused `local < literal`, a default
+        // argument, a hash, a block and a match arm.
+        "decimal_literals_keep_their_value_and_precision",
+        r##"prices = [19.99D, 1.50D, 1.0D, 0.10D, 1_000.25D, 7.000D, -2.50D]
+print(prices)
+print(%n[1.5D 2D -2.50D 3.250D 1_000.5D])
+long = 1.12345678901234567890123456789012D
+print(long, long == 1.1234567890123456789012345679D)
+print(1.25D + 0.25D == 1.5D, 1.0D == 1.00D, 19.99D == 19.99D)
+def total(count)
+  sum = 0.00D
+  i = 0
+  while i < count
+    sum += 19.99D
+    i += 1
+  end
+  sum
+end
+print(total(3))
+def is_cheap(price)
+  price < 20.00D
+end
+print(is_cheap(19.99D), is_cheap(25.00D))
+def tax(amount, rate = 0.20D)
+  amount * rate
+end
+print(tax(100.00D), tax(10.00D, 0.5D))
+x = 2.50D
+print(x >= 2.5D, x < 3.0D, x > 2.49D, x <= 2.50D)
+row = {"price": 4.50D, "qty": 2}
+print(row["price"] * row["qty"])
+print(["a", "b"].map { |name| "#{name}:#{0.5D}" })
+label = match 1 {
+  1 => 9.99D,
+  _ => 0.00D
+}
+print(label)"##,
+    ),
+    (
+        // A zero divisor raises only between numbers, and a Float remainder by
+        // zero is NaN, as the native kernels compute it. The VM checked the
+        // divisor first: `1.5 % 0` raised, and Decimal, String and nil left
+        // operands said "Division by zero" instead of their type error.
+        "zero_divisor_follows_the_left_operand",
+        r##"def remainder(a, b)
+  a % b
+end
+
+def quotient(a, b)
+  a / b
+end
+
+def attempt(label, thunk)
+  try
+    print(label, thunk())
+  catch error
+    print(label, error)
+  end
+end
+attempt("float % 0", fn() { remainder(1.5, 0) })
+attempt("float % 0.0", fn() { remainder(1.5, 0.0) })
+attempt("int % 0.0", fn() { remainder(3, 0.0) })
+attempt("decimal % 0", fn() { remainder(2.50D, 0) })
+attempt("string / 0", fn() { quotient("s", 0) })
+attempt("nil % 0", fn() { remainder(nil, 0) })
+attempt("float / 0", fn() { quotient(1.5, 0) })
+attempt("decimal / 0", fn() { quotient(2.50D, 0) })
+attempt("decimal / float", fn() { quotient(2.50D, 0.5) })"##,
+    ),
+    (
+        // Two instants 10 ns apart. The tree-walker compared DateTimes as f64
+        // nanoseconds, which round to 256 ns here, so `early < late` was false
+        // and `early >= late` true; the VM compared the i64. Both engines now
+        // share one comparator.
+        "datetime_ordering_is_exact",
+        r##"early = DateTime.parse("2026-01-01T00:00:00.000000100Z")
+late = DateTime.parse("2026-01-01T00:00:00.000000110Z")
+print(early == late, early < late, early <= late, early > late, early >= late)
+print(late > early, late >= early, late < early, late <= early)
+def before(a, b)
+  a < b
+end
+print(before(early, late), before(late, early))"##,
+    ),
+    (
         // `hash.key` dot access: a hit, and a miss falling back to a method.
         "hash_dot_access",
         "let h = {\"name\": \"x\", \"n\": null}\nprint(h.name)\nprint(h.n)\nprint(h.length)",
@@ -1679,6 +1963,10 @@ print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
     (
         "padding_rejects_an_absurd_width_instead_of_aborting",
         "let caught = false\ntry { \"x\".ljust(9223372036854775807) } catch e { caught = true }\nprint(caught)\nprint(\"x\".ljust(5))",
+    ),
+    (
+        "truncate_counts_characters_and_cuts_on_a_boundary",
+        "print(\"ééééé\".truncate(3, \"\"))\nprint(\"ééééé\".truncate(5))\nprint(\"héllo world\".truncate(8))\nprint(\"日本語テキスト\".truncate(4, \"…\"))\nprint(\"😀😀😀\".truncate(2, \"\"))\nprint(\"héllo\".truncate(2))",
     ),
     (
         "truncate_is_not_capped_like_padding_is",
@@ -2388,6 +2676,34 @@ print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
         "hash_universal_members_read_bare",
         "def probe(h)\n  return [h.present?, h.blank?, h.nil?, h.class, h.empty?, h.present?()]\nend\nprint(probe({\"status\": 302}))\nprint(probe({}))\nbounce = {\"status\": 302}\nif bounce.present?\n  print(\"bounced\")\nend",
     ),
+    // A key named like a hash method reads as the key, on both engines: the
+    // VM's key fast paths answered `row.size` with the field while the
+    // tree-walker answered the method, so a spec of `row.size` disagreed with
+    // production. The VM's own slow read (`x.name ||=`, or any read once a
+    // Hash user method exists) answered the method too, and `row.size ||= 0`
+    // wrote the entry count back over the field. Without the key a bare read
+    // is still the method, and parentheses always call it.
+    (
+        "hash_key_named_like_a_method_reads_the_key",
+        r##"row = {"size": 2048, "key": "abc", "values": [1, 2], "select": "x", "length": 99, "class": "btn", "map": nil}
+print(row.size, row.key, row.values, row.select, row.length, row.class, row.map)
+def read(r)
+  [r.size, r.key, r.values, r.length, "#{r.size}"]
+end
+print(read(row))
+print(row&.size, {"rows": row}.rows.size)
+plain = {"a": 1, "b": 2}
+print(plain.size, plain.keys, plain.class, plain.length, plain.select)
+print(row.size(), row.key("abc"), row.values().length, row.class())
+row.size ||= 0
+row.length += 1
+row.map ??= "set"
+print(row.size, row.length, row.map)
+counts = {"size": nil}
+counts.size ||= 7
+print(counts)
+print([{"size": 3}, {"size": 4}].map(&:size))"##,
+    ),
     // `defined` / `const_get` on a loaded class, from inside a method. They
     // read the tree-walker's `CURRENT_ENV`, which the VM never set: an app
     // testing `defined("ShopChannel")` took its "absent" branch (2.6.4).
@@ -2486,7 +2802,7 @@ print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
         // VM used to push the native function itself: `clock - start` raised
         // "Cannot subtract float from Function".
         "bare_clock_is_the_time",
-        "start = clock()\nprint(type(clock))\nprint(clock >= start)\nprint(type(clock - start))\ndef elapsed(from)\n  clock - from\nend\nprint(elapsed(start) >= 0)\nclass Timer\n  def now\n    clock\n  end\nend\nprint(type(Timer.new.now))\n[1].each do |i|\n  print(type(clock + i))\nend\nprint(type(clock.round))",
+        "start = clock()\nprint(type(clock))\nprint(clock >= start)\nprint(type(clock - start))\ndef elapsed(from)\n  clock - from\nend\nprint(elapsed(start) >= 0)\nclass Timer\n  def now\n    clock\n  end\nend\nprint(type(Timer.new().now))\n[1].each do |i|\n  print(type(clock + i))\nend\nprint(type(clock.round))",
     ),
     (
         // A program's own `clock` keeps what it is.
@@ -2499,6 +2815,15 @@ print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
         // does. The VM had no instance `send` and refused the handler.
         "instance_send",
         "class Policy\n  def edit?\n    true\n  end\n  def scaled(n, k)\n    n * k\n  end\n  def check(action)\n    this.send(action + \"?\")\n  end\nend\np = new Policy()\nprint(p.send(\"edit?\"))\nprint(p.send(\"scaled\", 3, 4))\nprint(p.check(\"edit\"))",
+    ),
+    (
+        // `send` on a class calls the static it names, also through a
+        // variable holding the class; a class with a static `send` of its own
+        // keeps it; an unknown name is an error on both. The VM refused class
+        // `send` as reflection, so a script naming `send` ran on the
+        // tree-walker.
+        "class_send",
+        "class Maker\n  static def make(n)\n    n * 2\n  end\nend\nclass Mailer\n  static def send(to)\n    \"mail to #{to}\"\n  end\nend\nk = Maker\nprint(Maker.send(\"make\", 4))\nprint(k.send(\"make\", 5))\nprint(Mailer.send(\"bob\"))\nprint((Maker.send(\"nope\") rescue \"no such static\"))",
     ),
     (
         // `contains?` is `contains`, named as the predicate it is, on strings
@@ -4634,6 +4959,89 @@ print(Util.shout("a"), Util.shout(s: "b"), Util.shout("c", bang: "?"))"##,
 end
 print(JSON.stringify(Post.new()))
 print(JSON.stringify([Post.new(), Post.new()]))"##,
+    ),
+    (
+        // A method defined on a parent after a subclass has already looked
+        // one up reaches the subclass. The tree-walker's flattened method
+        // cache kept the subclass's old copy of the parent's methods.
+        "define_method_on_a_parent_after_a_subclass_lookup",
+        r##"class A
+  def hello
+    "hi"
+  end
+end
+class B < A
+end
+class C < B
+end
+b = B.new()
+c = C.new()
+print(b.hello, c.hello, b.respond_to?("late"))
+A.define_method("late", fn() { "late!" })
+print(b.respond_to?("late"), b.late, c.late)
+A.alias_method("hello2", "hello")
+print(b.hello2, c.hello2)
+print(b.methods.includes?("late"), c.methods.includes?("hello2"))"##,
+    ),
+    (
+        // `"str" + x` renders `x` as interpolation does, both ways round and
+        // for every kind of operand, including the floats where ryu and
+        // Display disagree on notation or digits.
+        "string_plus_any_value_renders_like_display",
+        r##"print("n=" + 1, "n=" + -42, "n=" + 1.0, "n=" + -0.0, "n=" + (0.1 + 0.2))
+print("n=" + 10000000000000000.0, 1658206780088562.2 + "!", "nan:" + "nan".to_f)
+print("b" + true, false + "b", nil + "x", :sym + "x", "a" + [1, 2.5, "s"], "h" + {"k": 1})
+s = "a prefix longer than the inline limit: "
+print(s + 12345, 3.25 + s)
+t = "x"
+t += 7
+t += 1.5
+print(t)"##,
+    ),
+    (
+        // String orderings, on the unfused, fused-local and test-jump ops.
+        "string_orderings_on_every_comparison_op",
+        r##"a = "abc"
+b = "abd"
+print(a < b, a <= b, a > b, a >= b, b > a, a <= a, "é" > "z")
+print(a < "abd", a >= "abc", a > "ab")
+n = 0
+n += 1 if a < b
+n += 10 if a > b
+n += 100 if b >= a
+print(n)
+def lo(x, y)
+  x < y
+end
+def gt(x, y)
+  x > y
+end
+print(lo("a", "b"), gt("a", "b"))
+i = 0
+w = "a"
+while w < "aaaa"
+  w = w + "a"
+  i += 1
+end
+print(i, w)"##,
+    ),
+    (
+        // Instance `==`: identity for ordinary objects, structure for enum
+        // values, which compare field by field even against themselves.
+        "instance_equality_identity_and_enums",
+        r##"enum M { None, Some(v: Float) }
+class P
+  n: Int
+  new(n: Int)
+    @n = n
+  end
+end
+p1 = P.new(1)
+p2 = P.new(1)
+print(p1 == p1, p1 == p2, p1 != p2, p1 != p1)
+x = M.Some("nan".to_f)
+y = M.Some(1.5)
+print(x == x, y == y, y == M.Some(1.5), M.None == M.None, M.None == p1, p1 == M.None)"##,
     ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in

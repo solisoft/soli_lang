@@ -82,9 +82,10 @@ soli lint app/main.sl  # lint a single file
 ```
 
 A script runs on the bytecode VM, the engine `soli serve` uses in production, unless it needs the
-tree-walking interpreter: it uses class reflection such as `send`, `method_missing`, a model
+tree-walking interpreter: it uses class reflection such as `class_eval`, `method_missing`, a model
 callback or a state machine, or it reads a function with no required parameter without
-parentheses (`x = helper`), which the interpreter calls and the VM would not. That is decided
+parentheses (`x = helper`), which the interpreter calls and the VM would not. `send` on an
+instance or a class and a bare `clock` run on the VM. That is decided
 before the first line runs. `--tree` forces the interpreter, `--vm` the VM, and
 `SOLI_ENGINE_LOG=1` prints which one runs and why (see
 [Configuration](configuration.md#script-engine)). `soli test`, the REPL and `soli serve --dev` use
@@ -131,7 +132,7 @@ let user: Hash = {"name": "Alice", "age": 30};
 
 ### Primitive Types
 
-Soli provides five primitive types:
+Soli provides six primitive types:
 
 ```soli
 # Int - 64-bit signed integer
@@ -146,6 +147,13 @@ large = 9_000_000;  # Underscores for readability
 pi = 3.14159;
 small = 0.001;
 # No exponent literal: `2.5e10` does not parse. Use "2.5e10".to_f
+
+# Decimal - exact decimal arithmetic, for money: a D suffix after at least
+# one decimal place (100.00D, not 100D)
+price = 19.99D
+rate = 0.0675D
+# Past Decimal's range (about 7.9e28) a literal raises "Invalid decimal
+# literal"; digits past the 28th decimal place are rounded.
 
 # String - UTF-8 text
 greeting = "Hello, World!";
@@ -429,6 +437,14 @@ camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
 camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify;    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> numeric HTML entities, ASCII untouched)
+
+# Truncation counts characters, suffix included (default "..."), and never cuts
+# a character in half
+"hello world".truncate(8)         # "hello..."
+"hello world".truncate(8, "~")    # "hello w~"
+"héllo wörld".truncate(8)         # "héllo..."
+"日本語テキスト".truncate(4, "…")  # "日本語…"
+"hi".truncate(10)                 # "hi" (already fits: unchanged)
 
 # Numeric conversion. `to_i` takes an optional radix from 2 to 36; the
 # conventional 0x / 0o / 0b prefixes are accepted.
@@ -1968,6 +1984,18 @@ deleted = delete(person, "city");
 print(deleted);  # Paris
 print(person);   # {name: Alice, age: 31, country: France}
 ```
+
+Dot notation reads a key too: `person.name` is `person["name"]`, and a missing key is `nil`. A key named like a hash method is still the key, so `{"size": 2048}.size` is `2048`. The method answers only when the hash has no such key: `{"a": 1}.size` is `1`. Parentheses always call the method:
+
+```soli
+row = {"size": 2048, "key": "abc"}
+row.size          # 2048  — the key
+row.size()        # 2     — Hash#size, the number of entries
+row.key("abc")    # "key" — Hash#key, the first key holding "abc"
+{"a": 1}.size     # 1     — no "size" key, so the method
+```
+
+Both engines follow this rule, so `soli test` and `soli serve` read a row the same way. Some code handles hashes it did not build, such as `params` or a decoded JSON body. There, call the methods with parentheses (`h.keys()`, `h.length()`), or read the keys with brackets, so that a key named like a method cannot answer in the method's place.
 
 #### Hash Methods
 

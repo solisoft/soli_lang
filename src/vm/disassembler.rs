@@ -338,9 +338,12 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
                 format_constant(chunk.constants.get(*names_idx as usize))
             ));
         }
-        Op::CallMethod(idx, argc) => {
+        Op::CallMethod(idx, argc, block) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));
+            if *block {
+                out.push_str(" block");
+            }
         }
         Op::CallSuperInit(argc) => {
             out.push_str(&format!("CALL_SUPER_INIT    argc={}", argc));
@@ -352,12 +355,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
                 idx, name, argc
             ));
         }
-        Op::CallMethodById(idx, argc, mid) => {
+        Op::CallMethodById(idx, argc, mid, block) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(
                 "CALL_MID     {:>5} ({}) argc={} mid={}",
                 idx, name, argc, mid
             ));
+            if *block {
+                out.push_str(" block");
+            }
         }
         Op::HashGetConst(idx) => {
             let name = constant_string(chunk, *idx);
@@ -541,7 +547,7 @@ fn format_constant(val: Option<&Constant>) -> String {
     match val {
         Some(Constant::Int(n)) => format!("{}", n),
         Some(Constant::Float(n)) => format!("{}", n),
-        Some(Constant::Decimal(s)) => format!("{}D", s),
+        Some(Constant::Decimal(d)) => format!("{}D", d),
         Some(Constant::String(s)) => format!("\"{}\"", s),
         Some(Constant::Bool(b)) => format!("{}", b),
         Some(Constant::Null) => "null".to_string(),
@@ -701,7 +707,8 @@ mod tests {
         let mut p = proto("test");
         let i_b = p.chunk.add_constant(Constant::Bool(true));
         let i_n = p.chunk.add_constant(Constant::Null);
-        let i_d = p.chunk.add_constant(Constant::Decimal("19.99".into()));
+        let decimal = crate::interpreter::value::DecimalValue::from_literal("19.99").unwrap();
+        let i_d = p.chunk.add_constant(Constant::Decimal(decimal));
         p.chunk.emit(Op::Constant(i_b), 1);
         p.chunk.emit(Op::Constant(i_n), 1);
         p.chunk.emit(Op::Constant(i_d), 1);

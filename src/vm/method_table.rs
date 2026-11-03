@@ -998,12 +998,12 @@ mod one_arg_tests {
             let code = &module.main.chunk.code;
             assert!(
                 code.iter()
-                    .any(|op| matches!(op, Op::CallMethodById(_, 1, _))),
+                    .any(|op| matches!(op, Op::CallMethodById(_, 1, _, _))),
                 "{name}: {:?}",
                 code
             );
             assert!(
-                !code.iter().any(|op| matches!(op, Op::CallMethod(_, _))),
+                !code.iter().any(|op| matches!(op, Op::CallMethod(_, _, _))),
                 "{name} still compiles to CallMethod: {:?}",
                 code
             );

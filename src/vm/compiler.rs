@@ -1322,7 +1322,7 @@ fn stack_effect(op: Op) -> i32 {
         | JumpIfLocalTruthy(_, _) => 0,
         JumpIfFalse(_) | JumpIfTrue(_) => -1,
         // Calls: pop callee/receiver + argc args, push the result.
-        Call(argc) | CallMethod(_, argc) | CallMethodById(_, argc, _) => -(argc as i32),
+        Call(argc) | CallMethod(_, argc, _) | CallMethodById(_, argc, _, _) => -(argc as i32),
         // Same shape as Call/New: the callee plus argc slots collapse to one result.
         CallNamed(argc, _) | NewNamed(argc, _) => -(argc as i32),
         // [this, args…] collapse to the result: net -argc.
@@ -4160,7 +4160,7 @@ mod stack_effect_tests {
             (&[GetGlobal(FN_GLOBAL), Constant(INT)], Call(1)),
             (&[Constant(INT)], CallGlobal(FN_GLOBAL, 1)),
             (&[], GetGlobalCall(FN_GLOBAL, 0)),
-            (&[GetLocal(KEYS)], CallMethod(LENGTH, 0)),
+            (&[GetLocal(KEYS)], CallMethod(LENGTH, 0, false)),
             (
                 &[Null, SelfOrGlobalCallee(FN_GLOBAL), Constant(INT)],
                 CallSelfOrGlobal(FN_GLOBAL, 1),

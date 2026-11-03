@@ -318,11 +318,11 @@ impl Vm {
                         self.exit_callable_batch(batch);
                         outcome
                     }
-                    None => Err(RuntimeError::NoSuchProperty {
-                        value_type: "Hash".to_string(),
-                        property: name.to_string(),
+                    None => Err(RuntimeError::no_such_property(
+                        "Hash".to_string(),
+                        name.to_string(),
                         span,
-                    }),
+                    )),
                 }
             }
         }

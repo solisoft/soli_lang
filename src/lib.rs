@@ -323,20 +323,14 @@ pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), Sol
                 return execute_program_tree(program);
             }
             let interpreter = script_interpreter();
-            let env = interpreter.environment.clone();
-            let zero_arg_builtin = |name: &str| match env.borrow().get(name) {
-                Some(Value::NativeFunction(native)) => {
-                    native.is_auto_invocable || native.arity == Some(0)
-                }
-                _ => false,
-            };
-            if let Some(name) = bare_call_reason(program, &zero_arg_builtin) {
+            if let Some(name) = script_bare_call_reason(program, &interpreter) {
                 log_engine(&format!(
                     "tree-walker — the script calls `{name}` without parentheses"
                 ));
                 return execute_program_tree(program);
             }
             let kernels = script_kernels(program, &interpreter);
+            let env = interpreter.environment.clone();
             let is_builtin = |name: &str| env.borrow().get(name).is_some();
             match vm::Compiler::compile_entry_script(program, kernels, &is_builtin) {
                 Ok(module) => {
@@ -351,6 +345,23 @@ pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), Sol
             }
         }
     }
+}
+
+/// [`bare_call_reason`] for a script about to run with `interpreter`'s
+/// builtins: the first bare name the tree-walker would call and the VM would
+/// not. `clock`, which both engines call bare, is not one.
+pub fn script_bare_call_reason(
+    program: &ast::Program,
+    interpreter: &interpreter::Interpreter,
+) -> Option<String> {
+    let env = interpreter.environment.clone();
+    let zero_arg_builtin = |name: &str| match env.borrow().get(name) {
+        Some(Value::NativeFunction(native)) => {
+            interpreter::builtins::bare_read_differs_between_engines(name, &native)
+        }
+        _ => false,
+    };
+    bare_call_reason(program, &zero_arg_builtin)
 }
 
 /// `SOLI_ENGINE_LOG=1`: say which engine runs the script, and why.
@@ -369,14 +380,55 @@ fn log_engine(choice: &str) {
 /// source. The list mirrors the VM's refusals: class reflection
 /// (`vm_classes::is_class_reflection_member`), batch iteration
 /// (`find_each`, `in_batches`, `find_in_batches`), `method_missing`, model
-/// callbacks given as closures and state machines. A dynamic finder
-/// (`User.find_by_email`) runs on the VM, on the same path as `find_by`.
+/// callbacks given as closures, state machines and `subscribe` with a block.
+/// A dynamic finder (`User.find_by_email`) runs on the VM, on the same path
+/// as `find_by`, and so does `send`, on an instance or a class.
+///
+/// A member name counts after a `.`; a bare name counts only when the program
+/// does not bind it itself (`methods = [...]`, `def subscribe(topic)`), since
+/// it then names the program's own value, not the builtin.
 pub fn tree_walker_reason(program: &ast::Program) -> Option<String> {
     use ast::expr::ExprKind;
     use ast::stmt::StmtKind;
+    use std::cell::RefCell;
+    use std::collections::HashSet;
 
+    // Names the program binds: functions, variables, parameters.
+    let bound: RefCell<HashSet<String>> = Default::default();
+    let bind_params = |params: &[ast::Parameter]| {
+        for p in params {
+            bound.borrow_mut().insert(p.name.clone());
+        }
+    };
     let mut reason: Option<String> = None;
     let mut on_stmt = |stmt: &ast::Stmt| {
+        match &stmt.kind {
+            StmtKind::Function(decl) => {
+                bound.borrow_mut().insert(decl.name.clone());
+                bind_params(&decl.params);
+            }
+            StmtKind::Let { name, .. } => {
+                bound.borrow_mut().insert(name.clone());
+            }
+            StmtKind::For {
+                variable,
+                index_variable,
+                ..
+            } => {
+                bound.borrow_mut().insert(variable.clone());
+                if let Some(index) = index_variable {
+                    bound.borrow_mut().insert(index.clone());
+                }
+            }
+            StmtKind::Try { catch_clauses, .. } => {
+                for clause in catch_clauses {
+                    if let Some(var) = &clause.var_name {
+                        bound.borrow_mut().insert(var.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
         if reason.is_some() {
             return;
         }
@@ -391,36 +443,104 @@ pub fn tree_walker_reason(program: &ast::Program) -> Option<String> {
         }
     };
     let mut found: Option<String> = None;
+    // Bare names that would be a reason unless the program binds them.
+    let mut bare: Vec<String> = Vec::new();
+    // `x.send` runs on the VM as the callee of a call with positional
+    // arguments (`CallMethod`); read as a value, or given named arguments or
+    // a block, it is still the reflection member the VM refuses on a class.
+    let mut send_reads: Vec<*const ast::Expr> = Vec::new();
+    let mut send_calls: HashSet<*const ast::Expr> = HashSet::new();
     let mut on_expr = |expr: &ast::Expr| {
+        match &expr.kind {
+            ExprKind::Call { callee, arguments }
+                if arguments
+                    .iter()
+                    .all(|a| matches!(a, ast::expr::Argument::Positional(_))) =>
+            {
+                send_calls.insert(&**callee as *const ast::Expr);
+            }
+            ExprKind::Assign { target, .. } => {
+                if let ExprKind::Variable(name) = &target.kind {
+                    bound.borrow_mut().insert(name.clone());
+                }
+            }
+            ExprKind::Lambda { params, .. } => bind_params(params),
+            _ => {}
+        }
         if found.is_some() {
             return;
         }
-        let (name, receiver) = match &expr.kind {
+        match &expr.kind {
             ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } => {
-                (name.as_str(), Some(object))
+                let on_a_class = matches!(
+                    &object.kind,
+                    ExprKind::Variable(n) if n.starts_with(char::is_uppercase)
+                );
+                let hit = match name.as_str() {
+                    // `send` runs on the VM for an instance and a class alike
+                    // (`call_method_slow_path`); `subscribe` is a global
+                    // function, not a member.
+                    "class_eval" | "instance_eval" | "methods" => true,
+                    "respond_to?" | "inspect" | "to_s" | "to_string" => on_a_class,
+                    "send" => {
+                        send_reads.push(expr as *const ast::Expr);
+                        false
+                    }
+                    other => vm_refuses_by_name(other),
+                };
+                if hit {
+                    found = Some(format!("`{name}`"));
+                }
             }
-            ExprKind::Variable(name) => (name.as_str(), None),
-            _ => return,
-        };
-        let on_a_class = receiver.is_some_and(|object| {
-            matches!(&object.kind, ExprKind::Variable(n) if n.starts_with(char::is_uppercase))
-        });
-        let hit = match name {
-            "class_eval" | "instance_eval" | "send" | "methods" | "find_each" | "in_batches"
-            | "find_in_batches" | "state_machine" | "after_transition" | "before_transition"
-            | "subscribe" => true,
-            "respond_to?" | "inspect" | "to_s" | "to_string" => on_a_class,
-            "before_save" | "after_save" | "before_create" | "after_create" | "before_update"
-            | "after_update" | "before_delete" | "after_delete" | "before_validation"
-            | "after_validation" => true,
-            _ => false,
-        };
-        if hit {
-            found = Some(format!("`{name}`"));
+            ExprKind::Variable(name) => {
+                let hit = matches!(
+                    name.as_str(),
+                    // Bare, in a method: `this.send` / `this.methods`, which
+                    // may be a class's; and the global `subscribe`, whose
+                    // block the VM cannot keep past the commit.
+                    "class_eval" | "instance_eval" | "send" | "methods" | "subscribe"
+                ) || vm_refuses_by_name(name);
+                if hit {
+                    bare.push(name.clone());
+                }
+            }
+            _ => {}
         }
     };
     ast::walk::walk_program(program, &mut on_stmt, &mut on_expr);
-    reason.or(found)
+    let bound = bound.into_inner();
+    if found.is_none() && send_reads.iter().any(|read| !send_calls.contains(read)) {
+        found = Some("`send` other than as a call".to_string());
+    }
+    reason.or(found).or_else(|| {
+        bare.into_iter()
+            .find(|name| !bound.contains(name))
+            .map(|name| format!("`{name}`"))
+    })
+}
+
+/// Names the VM refuses on any receiver: batch iteration, state machines and
+/// model callbacks given as closures.
+fn vm_refuses_by_name(name: &str) -> bool {
+    matches!(
+        name,
+        "find_each"
+            | "in_batches"
+            | "find_in_batches"
+            | "state_machine"
+            | "after_transition"
+            | "before_transition"
+            | "before_save"
+            | "after_save"
+            | "before_create"
+            | "after_create"
+            | "before_update"
+            | "after_update"
+            | "before_delete"
+            | "after_delete"
+            | "before_validation"
+            | "after_validation"
+    )
 }
 
 /// The first class-body DSL call of `class` or of a class nested in it.
@@ -1917,8 +2037,66 @@ too_many = record.pic_url(1, 2) rescue "refused"
             tree_walker_reason(&batch).is_some(),
             "find_each still has no VM path"
         );
+        // `send` on a class runs on the VM now; only a read that is not a
+        // call keeps the reflection member.
         let send = program("User.send(\"find\")\n");
-        assert!(tree_walker_reason(&send).is_some());
+        assert_eq!(tree_walker_reason(&send), None);
+        let read = program("f = User.send\n");
+        assert!(tree_walker_reason(&read).is_some());
+    }
+
+    #[test]
+    fn auto_selection_keeps_on_the_vm_what_the_vm_runs() {
+        let interp = script_interpreter();
+        // `clock` read bare is the time on both engines.
+        let clock = program("start = clock\nacc = 0\nprint(clock - start)\n");
+        assert_eq!(tree_walker_reason(&clock), None);
+        assert_eq!(script_bare_call_reason(&clock, &interp), None);
+        // Another zero-argument builtin read bare still differs.
+        let session = program("x = session_id\nprint(x)\n");
+        assert_eq!(
+            script_bare_call_reason(&session, &interp).as_deref(),
+            Some("session_id")
+        );
+        for source in [
+            // `send` called on an instance, a class, a variable holding one.
+            "class G\n  def hello\n    1\n  end\nend\nG.new().send(\"hello\")\n",
+            "class K\n  static def make(n)\n    n\n  end\nend\nk = K\nk.send(\"make\", 1)\n",
+            // The program's own names, not the builtin or reflection member.
+            "methods = [\"GET\", \"POST\"]\nprint(methods.length)\n",
+            "def subscribe(topic)\n  topic\nend\nsubscribe(\"x\")\n",
+            "def send(message)\n  message\nend\nsend(\"x\")\n",
+            "h = {\"subscribe\": 1}\nprint(h.subscribe)\n",
+        ] {
+            assert_eq!(tree_walker_reason(&program(source)), None, "{source}");
+        }
+        for source in [
+            // The global `subscribe` with a block, class reflection, batches.
+            "subscribe(\"OrderPaid\") do |e|\n  print(e)\nend\n",
+            "print(String.methods)\n",
+            "User.find_each(fn(row) { row })\n",
+            // A bare `send` the program does not define is `this.send`.
+            "class P\n  def go\n    send(\"x\")\n  end\nend\n",
+        ] {
+            assert!(tree_walker_reason(&program(source)).is_some(), "{source}");
+        }
+    }
+
+    #[test]
+    fn class_send_calls_the_static_on_the_vm() {
+        let vm = run_vm(
+            "class K\n  static def make(n)\n    n * 2\n  end\nend\nk = K\na = K.send(\"make\", 4)\nb = k.send(\"make\", 5)\n",
+        )
+        .expect("class send must not leave the VM");
+        assert!(matches!(vm.globals.get("a"), Some(Value::Int(8))));
+        assert!(matches!(vm.globals.get("b"), Some(Value::Int(10))));
+        // No static of that name: the tree-walker's error, not a fallback.
+        let err = run_vm_err("class K\nend\nK.send(\"nope\")\n");
+        assert!(
+            !matches!(err, error::RuntimeError::EngineFallback(..)),
+            "{err:?}"
+        );
+        assert!(err.to_string().contains("undefined method `nope`"), "{err}");
     }
 
     #[test]

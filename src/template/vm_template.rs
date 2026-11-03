@@ -1314,6 +1314,56 @@ mod tests {
         assert_eq!(on_vm, tree);
     }
 
+    /// Money arithmetic and a set difference render on the VM, as on the
+    /// tree-walker. The VM had no Decimal arm and no `Array - Array`: every
+    /// render raised partway, and serve threw that work away and rendered
+    /// the whole view again on the tree-walker, on every request.
+    #[test]
+    fn decimals_and_array_difference_render_on_the_vm() {
+        let decimal = |digits: &str, precision: u32| {
+            Value::Decimal(crate::interpreter::value::DecimalValue(
+                digits.parse().expect("a decimal"),
+                precision,
+            ))
+        };
+        let strings = |items: &[&str]| {
+            array(
+                items
+                    .iter()
+                    .map(|item| Value::String((*item).into()))
+                    .collect(),
+            )
+        };
+        let data = hash(vec![
+            ("price", decimal("19.99", 2)),
+            ("shipping", decimal("4.5", 1)),
+            ("qty", Value::Int(3)),
+            ("rate", Value::Float(0.5)),
+            ("tags", strings(&["a", "b", "c", "b"])),
+            ("removed", strings(&["b"])),
+        ]);
+        let cases = [
+            "<%= price * qty %>|<%= qty * price %>|<%= price + shipping %>|<%= price - shipping %>",
+            "<%= price / qty %>|<%= price + 1 %>|<%= 100 - price %>|<%= price * rate %>|<%= -price %>",
+            "<% if price > 10 %>big<% end %>|<%= price < shipping %>|<%= price >= 19.99 %>|<%= shipping <= qty %>",
+            "<% total = 0 %><% for i in [1, 2] %><% total = total + price * i %><% end %><%= total %>",
+            "<% for tag in tags - removed %><%= tag %>;<% end %>|<%= (tags - removed).length %>",
+        ];
+        let mut vm = Vm::new();
+        for source in cases {
+            let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let tree =
+                render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let compiled = VmTemplate::compile(&nodes)
+                .unwrap_or_else(|e| panic!("{source}: does not compile: {e}"));
+            let on_vm = compiled
+                .render(&mut vm, &data)
+                .unwrap_or_else(|e| panic!("{source}: {e}"))
+                .html;
+            assert_eq!(on_vm, tree, "{source}");
+        }
+    }
+
     /// What a view assigns where its layout sees it on the tree-walker comes
     /// back with the page; a `for` body's assignments do not.
     #[test]

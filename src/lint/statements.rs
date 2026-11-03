@@ -190,6 +190,10 @@ impl Linter {
         rules::naming::check_class_name("class", &decl.name, decl.span, &mut self.diagnostics);
         rules::smell::check_duplicate_methods(decl, &mut self.diagnostics);
 
+        // Instance code by default; the static block, `static def`s and the
+        // class-level statements below see the class as `this`.
+        let outer_class_level_this = std::mem::replace(&mut self.class_level_this, false);
+
         // Lint field initializers
         for field in &decl.fields {
             if let Some(init) = &field.initializer {
@@ -224,7 +228,9 @@ impl Linter {
                 visible_names,
                 &mut self.diagnostics,
             );
+            self.class_level_this = method.is_static;
             self.lint_body(&method.body);
+            self.class_level_this = false;
         }
 
         // Lint constructor
@@ -242,6 +248,7 @@ impl Linter {
         }
 
         // Lint static block
+        self.class_level_this = true;
         if let Some(static_stmts) = &decl.static_block {
             for s in static_stmts {
                 self.lint_stmt(s);
@@ -252,6 +259,7 @@ impl Linter {
         for s in &decl.class_statements {
             self.lint_stmt(s);
         }
+        self.class_level_this = false;
         for invariant in &decl.invariants {
             for s in &invariant.body {
                 self.lint_stmt(s);
@@ -262,5 +270,7 @@ impl Linter {
         for nested in &decl.nested_classes {
             self.lint_class_decl(nested);
         }
+
+        self.class_level_this = outer_class_level_this;
     }
 }
