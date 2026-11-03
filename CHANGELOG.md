@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The Benchmarks page (`www/docs/benchmarks.md` and its `.html.slv`), the home
+  page's load ramp and stats, the README and both OpenGraph cards carry Soli
+  2.29.3's numbers, re-measured on 2026-11-03 on the 9950X box with SoliDB
+  2.4.0 (mean of two runs; Soli alone, so no control cell against the other
+  stacks, which keep their 2026-09 figures). JSON 549,131 req/s (12.7x Rails),
+  template 546,779, DB read 289,884 (uncached 240,424), DB page 281,190
+  (11.2x), create 218,618, update 146,114, delete 164,110. The write rows
+  dropped against the September figures while SoliDB's CPU per write rose;
+  the page says the two SoliDB versions were not A/B'd.
+
 ## [2.29.3] - 2026-11-01
 
 ### Changed

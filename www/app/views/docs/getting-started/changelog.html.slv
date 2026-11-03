@@ -25,6 +25,10 @@
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">sanitize_html</code> drops <code class="text-cyan-400">style</code>, and keeps <code class="text-cyan-400">class</code> only for <code class="text-cyan-400">language-*</code>.</strong> The sanitizer does not look inside CSS, so user content could lay a fixed, full-page box over the app (a fake sign-in form); on a page with a utility CSS framework, a class list like <code class="text-cyan-400">fixed inset-0 z-50</code> does the same. The <code class="text-cyan-400">language-*</code> class Markdown puts on fenced code blocks still gets through.</li>
         </ul>
+        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The <a href="/docs/getting-started/benchmarks" class="text-amber-400 hover:underline">Benchmarks</a> page and the home page carry Soli 2.29.3's own numbers.</strong> Soli's nine rows were re-measured on 2026-11-03 on the same Ryzen 9 9950X, cores and protocol, on SoliDB 2.4.0: 549,131 req/s on JSON (12.7x Rails, now 3% behind Kemal), 281,190 on the database-backed page the home page leads with (11.2x), and the uncached database read up 8% to 240,424. The write rows fell (create 218,618, update 146,114, delete 164,110) while Soli's own CPU per write stayed put and SoliDB's rose, so the page points at the database version, says it was not A/B'd, and prints the lower figures. Only Soli ran, so its rows are a cross-session comparison with the other stacks, and the page says that too.</li>
+        </ul>
     </section>
 
     <section id="v2-29-3" class="mb-16 scroll-mt-24">

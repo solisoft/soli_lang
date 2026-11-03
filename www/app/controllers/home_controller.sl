@@ -13,7 +13,7 @@ class HomeController extends Controller
             "message": "The Modern MVC Framework for Soli",
             "meta": {
                 "title": "Soli — Write it like Ruby. Serve it like Rust.",
-                "description": "A programming language with a web framework built in: models, auth, jobs, mail, PDF and tests in one binary, at 11.9x the throughput of Rails.",
+                "description": "A programming language with a web framework built in: models, auth, jobs, mail, PDF and tests in one binary, at 11.2x the throughput of Rails.",
                 "path": "/"
             }
         }, {"layout": "layouts/landing"})
