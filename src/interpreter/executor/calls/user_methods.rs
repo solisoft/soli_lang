@@ -18,10 +18,18 @@
 //! are `thread_local!` (so we can hold `Rc<Function>`, which is `!Send`). The
 //! flags are process-global so that the fast-path test is uniform across threads;
 //! a thread that hasn't registered anything will load empty maps and fall through.
+//!
+//! Under `cfg(test)` the bits are read per thread instead (`TEST_FLAGS`): the
+//! tables are per thread anyway, so that changes no lookup, but a test that
+//! calls `define_method` on a primitive no longer sends the primitive dispatch
+//! of every other test in the binary down the slow path — the tests that count
+//! the ops a fast tier hands back would see it.
 
 use crate::interpreter::value::Function;
 pub use crate::interpreter::value::{PrimType, PRIM_TYPE_COUNT};
 use ahash::AHashMap;
+#[cfg(test)]
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -35,11 +43,37 @@ thread_local! {
         std::array::from_fn(|_| RefCell::new(AHashMap::new()));
 }
 
+#[cfg(test)]
+thread_local! {
+    /// The bits this thread has set: what `user_method_flags` reads in tests.
+    static TEST_FLAGS: Cell<u16> = const { Cell::new(0) };
+}
+
+/// The whole mask, one bit per `PrimType`: zero when no user method exists.
+/// Read this rather than `USER_METHOD_FLAGS` itself (see `TEST_FLAGS`).
+#[inline(always)]
+pub fn user_method_flags() -> u16 {
+    #[cfg(not(test))]
+    {
+        USER_METHOD_FLAGS.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    {
+        TEST_FLAGS.with(Cell::get)
+    }
+}
+
 /// Fast-path test: returns true only if at least one user method has been
 /// registered for `t` somewhere in the process. Single Relaxed atomic load + bit test.
 #[inline(always)]
 pub fn has_user_methods(t: PrimType) -> bool {
-    USER_METHOD_FLAGS.load(Ordering::Relaxed) & (1u16 << t as u16) != 0
+    user_method_flags() & (1u16 << t as u16) != 0
+}
+
+fn set_user_method_flag(t: PrimType) {
+    USER_METHOD_FLAGS.fetch_or(1u16 << t as u16, Ordering::Relaxed);
+    #[cfg(test)]
+    TEST_FLAGS.with(|flags| flags.set(flags.get() | (1u16 << t as u16)));
 }
 
 /// Lookup a user-defined method on a primitive type. Returns None if no user
@@ -58,7 +92,7 @@ pub fn register_user_method(t: PrimType, name: String, f: Rc<Function>) {
     USER_METHOD_TABLES.with(|tables| {
         tables[t as usize].borrow_mut().insert(name, f);
     });
-    USER_METHOD_FLAGS.fetch_or(1u16 << t as u16, Ordering::Relaxed);
+    set_user_method_flag(t);
 }
 
 /// Alias an existing user method under a new name. Returns true on success,
@@ -68,7 +102,7 @@ pub fn alias_user_method(t: PrimType, new_name: String, old_name: &str) -> bool 
         let mut table = tables[t as usize].borrow_mut();
         if let Some(f) = table.get(old_name).cloned() {
             table.insert(new_name, f);
-            USER_METHOD_FLAGS.fetch_or(1u16 << t as u16, Ordering::Relaxed);
+            set_user_method_flag(t);
             true
         } else {
             false

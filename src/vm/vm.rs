@@ -2622,15 +2622,14 @@ impl Vm {
                     let name: &str = unsafe { &*name };
 
                     // User-method fast-path guard: gate on the per-type bit in
-                    // USER_METHOD_FLAGS. Zero overhead when no user methods exist.
+                    // `user_method_flags()`. Zero overhead when no user methods exist.
                     use crate::interpreter::executor::calls::user_methods::{
                         lookup_user_method as _lookup_um, PrimType,
                     };
                     // One load of the whole mask: nine per-type loads (all false,
                     // so none short-circuited) on every method call before.
                     let user_prim =
-                        if crate::interpreter::executor::calls::user_methods::USER_METHOD_FLAGS
-                            .load(std::sync::atomic::Ordering::Relaxed)
+                        if crate::interpreter::executor::calls::user_methods::user_method_flags()
                             != 0
                         {
                             match &self.stack[receiver_idx] {
