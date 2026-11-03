@@ -49,17 +49,30 @@ fn a_script_runs_on_the_vm_by_default() {
 
 #[test]
 fn reflection_sends_a_script_to_the_tree_walker() {
-    // `send` is one of the members the VM hands back at run time; a script
-    // cannot be replayed halfway, so the choice is made before it starts.
-    let dir = script("class A\n  def hi\n    \"hi\"\n  end\nend\nprint(new A().send(\"hi\"))\n");
+    // `methods` is one of the members the VM hands back at run time; a
+    // script cannot be replayed halfway, so the choice is made before it
+    // starts.
+    let dir = script(
+        "class A\n  def hi\n    \"hi\"\n  end\nend\nnames = new A().methods rescue nil\nprint(new A().hi())\n",
+    );
     let run = soli(dir.path(), &["s.sl"], true);
     assert_eq!(run.stdout, "hi\n", "{}", run.stderr);
     assert!(
         run.stderr
-            .contains("engine: tree-walker — the script uses `send`"),
+            .contains("engine: tree-walker — the script uses `methods`"),
         "{}",
         run.stderr
     );
+}
+
+#[test]
+fn send_on_an_instance_keeps_a_script_on_the_vm() {
+    // `obj.send("m")` called with positional arguments runs on the VM
+    // (`call_method_slow_path`), so it no longer picks the tree-walker.
+    let dir = script("class A\n  def hi\n    \"hi\"\n  end\nend\nprint(new A().send(\"hi\"))\n");
+    let run = soli(dir.path(), &["s.sl"], true);
+    assert_eq!(run.stdout, "hi\n", "{}", run.stderr);
+    assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
 }
 
 /// Same stdout, same stderr, same exit code on the default engine and on
