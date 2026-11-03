@@ -3233,13 +3233,15 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
     /// covers: a store after a fused read (`y = k + 2`), a re-`let`, and each
     /// `match` arm moving its value into the subject's slot. A function's
     /// last statement has no `Pop` (its value is the return value), so its
-    /// `SetLocal` stays.
+    /// `SetLocal` stays. A local's first assignment declares it in place, as
+    /// `let` does (`compiler_hoist`), with no store at all, so each case
+    /// stores into a local that already exists.
     #[test]
     fn assignment_statements_store_with_set_local_pop() {
         let cases = [
-            "s = \"on the heap\"\ny = s\ny",
-            "k = 1\ny = k + 2\ny",
-            "n = [1, 2].length\nn",
+            "s = \"on the heap\"\ny = nil\ny = s\ny",
+            "k = 1\ny = 0\ny = k + 2\ny",
+            "n = 0\nn = [1, 2].length\nn",
             "let a = 1\nlet a = 2\na",
             "v = 2\nmatch v {\n  1 => \"one\",\n  _ => \"other\"\n}\nv",
         ];
@@ -3256,7 +3258,7 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
             );
         }
 
-        let tail = fn_ops("y = 1\nx = y");
+        let tail = fn_ops("y = 1\nx = 0\nx = y");
         assert!(
             tail.windows(2)
                 .any(|pair| matches!(pair, [Op::SetLocal(_), Op::Return])),
@@ -3386,8 +3388,9 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
     /// `Modulo`, whose general arm owns those rules.
     #[test]
     fn modulo_by_a_constant_is_one_op() {
-        // `k` is hoisted into slot 1; slot 0 is the callee.
-        let ops = fn_ops("k = 23\ny = k % 7\nz = k % 2.5\n[y, z]");
+        // `k` is hoisted into slot 1; slot 0 is the callee. `y` and `z` are
+        // declared first, so the results are stores rather than declarations.
+        let ops = fn_ops("k = 23\ny = 0\nz = 0\ny = k % 7\nz = k % 2.5\n[y, z]");
         assert_eq!(
             ops.iter()
                 .filter(|op| matches!(op, Op::ModLocalConst(1, _)))
