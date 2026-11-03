@@ -589,7 +589,6 @@ mod tests {
 
     /// The scaffold's helpers call builtins and each other. They used to
     /// stay on the tree-walker for it; they compile now, and say the same.
-    /// The cases stay on the paths both engines can run.
     #[test]
     fn the_scaffold_helpers_run_on_the_view_vm() {
         let env = builtins_env();
@@ -608,51 +607,19 @@ mod tests {
             ("pluralize", vec![Value::Int(3), s("post"), s("posts")]),
             ("pluralize_simple", vec![Value::Int(2), s("row")]),
             ("truncate_text", vec![s("Hi"), Value::Int(8), s("…")]),
-            ("capitalize", vec![s("")]),
-            ("absolute_url", vec![s("/posts/1")]),
-        ];
-        for (name, args) in cases {
-            on_both(&helpers[*name], args);
-        }
-        // `truncate_text` and `capitalize` call `substring` (and `upcase`),
-        // which are not builtins: past their early return both engines raise
-        // for it, and naming what the closure lacks keeps them on the
-        // tree-walker.
-        let failing: &[(&str, Vec<Value>)] = &[
+            // Past the early return: `truncate_text` and `capitalize` call
+            // the string methods since the serve lane's scaffold fix (they
+            // called `substring(...)`, a view-only function, and raised).
             (
                 "truncate_text",
                 vec![s("Hello, world"), Value::Int(8), s("…")],
             ),
+            ("capitalize", vec![s("")]),
             ("capitalize", vec![s("soli")]),
+            ("absolute_url", vec![s("/posts/1")]),
         ];
-        for (name, args) in failing {
-            let func = &helpers[*name];
-            let tree = crate::interpreter::Interpreter::for_bound_body()
-                .call_function_with_this(func, None, args.clone())
-                .expect_err("the tree-walker raises");
-            let globals: Vec<(String, Value)> =
-                std::iter::once((name.to_string(), Value::Function(Rc::clone(func))))
-                    .chain(
-                        args.iter()
-                            .enumerate()
-                            .map(|(i, v)| (format!("a{i}"), v.clone())),
-                    )
-                    .collect();
-            let globals: Vec<(&str, Value)> = globals
-                .iter()
-                .map(|(n, v)| (n.as_str(), v.clone()))
-                .collect();
-            let call = format!(
-                "let x = {name}({})",
-                (0..args.len())
-                    .map(|i| format!("a{i}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            let on_vm = on_view_vm(&call, &globals).expect_err("the view VM raises");
-            assert!(tree.to_string().contains("Undefined variable"), "{tree}");
-            assert_eq!(on_vm.to_string(), tree.to_string());
-            assert_eq!(decided(func), Some(false), "{name}");
+        for (name, args) in cases {
+            on_both(&helpers[*name], args);
         }
         assert_eq!(
             on_both(&helpers["link_to"], &[s("Go"), s("javascript:x")]),
@@ -664,6 +631,8 @@ mod tests {
             "_safe_link_url",
             "pluralize",
             "pluralize_simple",
+            "truncate_text",
+            "capitalize",
             "absolute_url",
         ] {
             assert_eq!(decided(&helpers[name]), Some(true), "{name}");
