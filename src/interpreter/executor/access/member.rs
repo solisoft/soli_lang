@@ -353,6 +353,75 @@ pub(crate) fn parse_uploader_method_name(name: &str) -> Option<(UploaderMethod, 
     None
 }
 
+/// A model instance's uploader method, as a call to the app helper it
+/// forwards to: `attach_<field>(file)` → `attach_upload`, `detach_<field>`
+/// → `detach_upload`, `<field>_url` / `<field>_urls` → `upload_url`. Returns
+/// the kind, the field and the helper's name; the engine looks the helper up
+/// in its own globals (see [`uploader_helper_missing`]) and calls it with
+/// [`uploader_helper_args`].
+pub(crate) fn uploader_call(
+    method_name: &str,
+    span: Span,
+) -> RuntimeResult<(UploaderMethod, &str, &'static str)> {
+    let (kind, field) = parse_uploader_method_name(method_name).ok_or_else(|| {
+        RuntimeError::type_error(
+            format!("'{}' is not a recognized uploader method", method_name),
+            span,
+        )
+    })?;
+    let helper_name = match kind {
+        UploaderMethod::Attach => "attach_upload",
+        UploaderMethod::Detach => "detach_upload",
+        UploaderMethod::Url | UploaderMethod::Urls => "upload_url",
+    };
+    Ok((kind, field, helper_name))
+}
+
+/// The error for an uploader method whose app helper is not defined.
+pub(crate) fn uploader_helper_missing(
+    method_name: &str,
+    helper_name: &str,
+    span: Span,
+) -> RuntimeError {
+    RuntimeError::type_error(
+        format!(
+            "uploader method '{}' requires the '{}' helper to be defined \
+             (see app/controllers/support.sl)",
+            method_name, helper_name
+        ),
+        span,
+    )
+}
+
+/// The arguments an uploader method passes its helper: the record, the
+/// field, then the file (`attach_`, required) or the optional blob id.
+pub(crate) fn uploader_helper_args(
+    kind: UploaderMethod,
+    field: &str,
+    record: Value,
+    arguments: Vec<Value>,
+    span: Span,
+) -> RuntimeResult<Vec<Value>> {
+    let mut forwarded: Vec<Value> = Vec::with_capacity(arguments.len() + 2);
+    forwarded.push(record);
+    forwarded.push(Value::String(field.to_string().into()));
+    match kind {
+        UploaderMethod::Attach => {
+            if arguments.len() != 1 {
+                return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+            }
+            forwarded.extend(arguments);
+        }
+        UploaderMethod::Detach | UploaderMethod::Url | UploaderMethod::Urls => {
+            if arguments.len() > 1 {
+                return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+            }
+            forwarded.push(arguments.into_iter().next().unwrap_or(Value::Null));
+        }
+    }
+    Ok(forwarded)
+}
+
 pub(crate) fn parse_dynamic_finder(name: &str) -> Result<(Vec<String>, usize), String> {
     let prefix = "find_by_";
     if !name.starts_with(prefix) {
@@ -1834,6 +1903,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };
@@ -1955,6 +2025,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             })));
@@ -1971,19 +2042,6 @@ impl Interpreter {
         }
 
         // Check for static field (including inherited static fields)
-        fn find_static_field(
-            class: &crate::interpreter::value::Class,
-            name: &str,
-        ) -> Option<Value> {
-            if let Some(value) = class.static_fields.borrow().get(name) {
-                return Some(value.clone());
-            }
-            if let Some(ref superclass) = class.superclass {
-                return find_static_field(superclass, name);
-            }
-            None
-        }
-
         if let Some(value) = find_static_field(class, name) {
             return Ok(value);
         }
@@ -2020,24 +2078,15 @@ impl Interpreter {
         // `new_with_attributes`). With other arguments the call itself runs
         // the constructor (`Interpreter::class_new`); this is the bare read.
         if name == "new" {
-            let class_val = class_val.clone();
-            return Ok(Value::NativeFunction(NativeFunction::new(
-                "new",
-                None,
-                move |args| match &class_val {
-                    Value::Class(class) => new_with_attributes(class, args),
-                    _ => unreachable!(),
-                },
-            )));
+            return Ok(attribute_new_function(class_val));
         }
 
         // Universal methods on class values
+        if let Some(value) = class_universal_constant(name) {
+            return Ok(value);
+        }
         match name {
             "inspect" => return Ok(Value::String(format!("<class {}>", class.name).into())),
-            "class" => return Ok(Value::String("class".into())),
-            "nil?" => return Ok(Value::Bool(false)),
-            "blank?" => return Ok(Value::Bool(false)),
-            "present?" => return Ok(Value::Bool(true)),
             "to_s" | "to_string" => {
                 return Ok(Value::String(format!("<class {}>", class.name).into()))
             }
@@ -2361,6 +2410,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };
@@ -3118,85 +3168,194 @@ impl Interpreter {
     }
 }
 
+/// A static field of `class` or of an ancestor, the nearest first.
+fn find_static_field(class: &crate::interpreter::value::Class, name: &str) -> Option<Value> {
+    if let Some(value) = class.static_fields.borrow().get(name) {
+        return Some(value.clone());
+    }
+    class
+        .superclass
+        .as_ref()
+        .and_then(|superclass| find_static_field(superclass, name))
+}
+
+/// The bare `Klass.new` of the attribute form: a native that builds the
+/// instance with [`new_with_attributes`]. What `class_member_access` answers
+/// for `new` once nothing declared on the class has claimed the name.
+pub(crate) fn attribute_new_function(class_val: &Value) -> Value {
+    let class_val = class_val.clone();
+    Value::NativeFunction(NativeFunction::new(
+        "new",
+        None,
+        move |args| match &class_val {
+            Value::Class(class) => new_with_attributes(class, args),
+            _ => unreachable!(),
+        },
+    ))
+}
+
+/// The universal members a class value answers with a constant, whatever
+/// the class: `class`, `nil?`, `blank?`, `present?`.
+fn class_universal_constant(name: &str) -> Option<Value> {
+    Some(match name {
+        "class" => Value::String("class".into()),
+        "nil?" | "blank?" => Value::Bool(false),
+        "present?" => Value::Bool(true),
+        _ => return None,
+    })
+}
+
+/// Whether nothing declared on `class` claims `name` ahead of the built-in
+/// answers of `class_member_access` (`new`, the universal members): no
+/// scope, no static method (Soli, VM-compiled or native), no static field
+/// and no nested class of that name on the chain, and no test stub, which
+/// only the tree-walker's member access consults.
+fn class_member_unclaimed(class: &crate::interpreter::value::Class, name: &str) -> bool {
+    !crate::interpreter::builtins::mock::stubs_active()
+        && !(class.is_model_subclass()
+            && crate::interpreter::builtins::model::scopes::has_scope(&class.name, name))
+        && class.find_static_method(name).is_none()
+        && class.find_vm_static_method(name).is_none()
+        && class.find_native_static_method(name).is_none()
+        && find_static_field(class, name).is_none()
+        && !class.nested_classes.borrow().contains_key(name)
+}
+
+/// Whether `Model.new(...)` on `class` is the attribute form
+/// ([`new_with_attributes`]) — what `class_member_access` answers for a
+/// model's `new` — so an engine can build the instance without asking the
+/// tree-walker's member access for the native first. A model never runs a
+/// constructor for `.new` (`intercepts_new` is false for every model).
+pub(crate) fn model_attribute_new(class: &crate::interpreter::value::Class) -> bool {
+    class.is_model_subclass() && !class.is_value_object() && class_member_unclaimed(class, "new")
+}
+
+/// What `class_member_access` answers for a universal member (`class`,
+/// `nil?`, `blank?`, `present?`) of `class`, when nothing declared on the
+/// class claims the name; `None` otherwise.
+pub(crate) fn class_universal_member(
+    class: &crate::interpreter::value::Class,
+    name: &str,
+) -> Option<Value> {
+    let value = class_universal_constant(name)?;
+    class_member_unclaimed(class, name).then_some(value)
+}
+
 /// `Klass.new` / `Klass.new({...})` / `Klass.new(nil)`: an instance with the
 /// hash's entries assigned to its fields — no constructor runs. Framework-
 /// internal `_`-prefixed keys are skipped. The shape `Klass.new(args)` with
 /// other arguments runs the constructor instead (`Interpreter::class_new`).
+///
+/// The fields start as [`start_declared_fields`] sets them: this path has no
+/// engine to evaluate a default that is not a literal. The engines' own
+/// `class_new` start them in full, as `new Klass()` does, then assign the
+/// attributes with [`assign_attributes`].
 pub fn new_with_attributes(
     class: &Rc<crate::interpreter::value::Class>,
     args: &[Value],
 ) -> Result<Value, String> {
-    if class.is_module {
-        return Err(format!("cannot instantiate module {}", class.name));
-    }
-    if args.len() > 1 {
-        return Err(format!(
-            "new() expects 0 or 1 arguments, got {}",
-            args.len()
-        ));
-    }
+    check_attribute_args(class, args)?;
     let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
         class.clone(),
     )));
-    // Declared fields with a literal default (`items: Array = []`), the
-    // superclass's first — as `new Klass()` sets them. Without this the
-    // attribute form left them unset on the tree-walker, so reading one
-    // raised, while the VM had them.
-    literal_field_defaults(class, &mut instance.borrow_mut());
-    match args.first() {
-        None | Some(Value::Null) => {}
-        Some(Value::Hash(pairs)) => {
-            use crate::interpreter::value::HashKey;
-            let mut inst_mut = instance.borrow_mut();
-            for (k, v) in pairs.borrow().iter() {
-                if let HashKey::String(field) = k {
-                    if field.starts_with('_') {
-                        continue;
-                    }
-                    inst_mut.set(field.clone().to_string(), v.clone());
-                }
-            }
-        }
-        Some(other) => {
-            return Err(format!(
-                "new() expects a Hash of attributes, got {}",
-                other.type_name()
-            ));
-        }
-    }
+    start_declared_fields(class, &mut instance.borrow_mut());
+    assign_attributes(&instance, args);
     Ok(Value::Instance(instance))
 }
 
-fn literal_field_defaults(
+/// The attribute form's arguments: none, `nil` or one hash, on a class.
+pub fn check_attribute_args(
+    class: &crate::interpreter::value::Class,
+    args: &[Value],
+) -> Result<(), String> {
+    if class.is_module {
+        return Err(format!("cannot instantiate module {}", class.name));
+    }
+    match args {
+        [] | [Value::Null] | [Value::Hash(_)] => Ok(()),
+        [other] => Err(format!(
+            "new() expects a Hash of attributes, got {}",
+            other.type_name()
+        )),
+        _ => Err(format!(
+            "new() expects 0 or 1 arguments, got {}",
+            args.len()
+        )),
+    }
+}
+
+/// The attribute hash, if `args` holds one, assigned to the instance's
+/// fields: string keys only, `_`-prefixed ones skipped. Checked first by
+/// [`check_attribute_args`].
+pub fn assign_attributes(
+    instance: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    args: &[Value],
+) {
+    use crate::interpreter::value::HashKey;
+    let Some(Value::Hash(pairs)) = args.first() else {
+        return;
+    };
+    let mut inst_mut = instance.borrow_mut();
+    for (k, v) in pairs.borrow().iter() {
+        if let HashKey::String(field) = k {
+            if field.starts_with('_') {
+                continue;
+            }
+            inst_mut.set(field.clone(), v.clone());
+        }
+    }
+}
+
+/// Every declared instance field of `class` and its ancestors — the farthest
+/// first, so a subclass's default wins — set to its literal default, or to
+/// `nil`. The part of field initialization that needs no engine: a default
+/// that is not a literal starts as `nil` here. The engines evaluate it
+/// (`Interpreter::initialize_instance_fields`, `Vm::init_fields`).
+pub(crate) fn start_declared_fields(
     class: &crate::interpreter::value::Class,
     instance: &mut crate::interpreter::value::Instance,
 ) {
     if let Some(superclass) = &class.superclass {
-        literal_field_defaults(superclass, instance);
+        start_declared_fields(superclass, instance);
     }
-    own_literal_field_defaults(class, instance);
-}
-
-/// `class`'s own literal field defaults, not its ancestors'.
-pub(crate) fn own_literal_field_defaults(
-    class: &crate::interpreter::value::Class,
-    instance: &mut crate::interpreter::value::Instance,
-) {
+    // A class the VM compiled keeps its literal defaults here.
+    if let Some(init) = class.field_init.borrow().as_ref() {
+        init.start(instance);
+        return;
+    }
     for (name, default) in &class.fields {
-        if let Some(value) = default.as_ref().and_then(literal_value) {
-            instance.set(name.clone(), value);
-        }
+        let value = default
+            .as_ref()
+            .and_then(literal_value)
+            .unwrap_or(Value::Null);
+        instance.set(name.clone(), value);
     }
 }
 
-/// The value of a literal expression — numbers, strings, booleans, `nil`,
-/// and arrays and hashes of literals — evaluated without an interpreter.
-fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
-    use crate::ast::ExprKind;
+/// Whether a field's default is a literal (see [`literal_value`]): a value
+/// computed once and copied into each instance, not an expression the
+/// engine evaluates for each one.
+pub(crate) fn is_literal_default(expr: &crate::ast::Expr) -> bool {
+    literal_value(expr).is_some()
+}
+
+/// The value of a literal expression — numbers (negative ones too),
+/// strings, booleans, `nil`, and arrays and hashes of literals — evaluated
+/// without an interpreter.
+pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
+    use crate::ast::{ExprKind, UnaryOp};
     use crate::interpreter::value::{HashKey, HashPairs};
     Some(match &expr.kind {
         ExprKind::IntLiteral(n) => Value::Int(*n),
         ExprKind::FloatLiteral(f) => Value::Float(*f),
+        ExprKind::Unary {
+            operator: UnaryOp::Negate,
+            operand,
+        } => match &operand.kind {
+            ExprKind::IntLiteral(n) => Value::Int(n.checked_neg()?),
+            ExprKind::FloatLiteral(f) => Value::Float(-*f),
+            _ => return None,
+        },
         ExprKind::StringLiteral(s) => Value::String(s.clone().into()),
         ExprKind::BoolLiteral(b) => Value::Bool(*b),
         ExprKind::Null => Value::Null,
@@ -3241,19 +3400,9 @@ pub fn has_constructor(class: &crate::interpreter::value::Class) -> bool {
 
 /// Whether `Klass.new(...)` on `class` is answered by the engines' call
 /// interceptors: not a model (its `new` is the ORM's), not a class with its
-/// own static `new`.
+/// own static `new`. Memoized per class ([`Class::intercepts_new`]).
+///
+/// [`Class::intercepts_new`]: crate::interpreter::value::Class::intercepts_new
 pub fn intercepts_new(class: &crate::interpreter::value::Class) -> bool {
-    !class.is_model_subclass()
-        && !class.is_module
-        && class.find_static_method("new").is_none()
-        && class.find_vm_static_method("new").is_none()
-        && !has_native_static_new(class)
-}
-
-fn has_native_static_new(class: &crate::interpreter::value::Class) -> bool {
-    class.native_static_methods.contains_key("new")
-        || class
-            .superclass
-            .as_ref()
-            .is_some_and(|superclass| has_native_static_new(superclass))
+    class.intercepts_new()
 }

@@ -614,7 +614,7 @@ fn class_name_from_id(id: &str) -> String {
 /// For included relations, the correct class is derived from the _id field.
 pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Value {
     let target_class = resolve_instance_class(class, json);
-    let mut instance = Instance::new(target_class.clone());
+    let mut instance = Instance::with_capacity(target_class.clone(), column_count(json));
     if let serde_json::Value::Object(map) = json {
         for (k, v) in map {
             // `as_str()` avoids cloning the key into an intermediate String
@@ -631,7 +631,7 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
 /// owned (query result rows, batch transforms).
 pub fn json_doc_to_instance_owned(class: &Rc<Class>, json: serde_json::Value) -> Value {
     let target_class = resolve_instance_class(class, &json);
-    let mut instance = Instance::new(target_class.clone());
+    let mut instance = Instance::with_capacity(target_class.clone(), column_count(&json));
     if let serde_json::Value::Object(map) = json {
         for (k, v) in map {
             instance.set(k, json_to_value_owned(v));
@@ -639,6 +639,17 @@ pub fn json_doc_to_instance_owned(class: &Rc<Class>, json: serde_json::Value) ->
     }
     apply_instance_post_load(&target_class, &mut instance);
     Value::Instance(Rc::new(RefCell::new(instance)))
+}
+
+/// How many fields a row's document becomes: its key count. The instance's
+/// map is sized for them up front — a schemaless model declares no field,
+/// and its rows (`_key`, `_id`, `_rev`, the timestamps…) regrew the map at
+/// their 4th and 8th key.
+fn column_count(json: &serde_json::Value) -> usize {
+    match json {
+        serde_json::Value::Object(map) => map.len(),
+        _ => 0,
+    }
 }
 
 fn apply_instance_post_load(target_class: &Rc<Class>, instance: &mut Instance) {

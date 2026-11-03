@@ -1038,9 +1038,8 @@ fn finish_html(body: String) -> (String, String) {
 /// The response hash for a finished HTML body and its ETag.
 fn html_response_parts(body: SoliStr, etag: SoliStr, status: i64) -> Value {
     use crate::interpreter::value::{HashKey, HashPairs};
-    use ahash::RandomState as AHasher;
 
-    let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
+    let mut headers: HashPairs = HashPairs::with_capacity(3);
     headers.insert(
         HashKey::String("Content-Type".into()),
         Value::String("text/html; charset=utf-8".into()),
@@ -1054,7 +1053,7 @@ fn html_response_parts(body: SoliStr, etag: SoliStr, status: i64) -> Value {
         Value::String("private, no-cache".into()),
     );
 
-    let mut result: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
+    let mut result: HashPairs = HashPairs::with_capacity(3);
     result.insert(HashKey::String("status".into()), Value::Int(status));
     result.insert(
         HashKey::String("headers".into()),

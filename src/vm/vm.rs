@@ -1,7 +1,6 @@
 //! The bytecode virtual machine — stack-based execution engine.
 
 use ahash::AHashMap as HashMap;
-use ahash::RandomState as AHasher;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -674,6 +673,18 @@ impl Vm {
         match &frame.closure.proto.chunk.constants[idx as usize] {
             Constant::String(s) => s.clone(),
             _ => crate::interpreter::value::SoliStr::default(),
+        }
+    }
+
+    /// The `Constant::ArgNames` labels at `idx` (an `Arc` clone).
+    fn read_arg_names(
+        &self,
+        idx: u16,
+    ) -> std::sync::Arc<Vec<Option<crate::interpreter::value::SoliStr>>> {
+        let frame = self.frames.last().unwrap();
+        match &frame.closure.proto.chunk.constants[idx as usize] {
+            Constant::ArgNames(names) => names.clone(),
+            _ => unreachable!("a labelled call must reference an ArgNames constant"),
         }
     }
 
@@ -1478,11 +1489,18 @@ impl Vm {
                 Op::Call(argc) => {
                     let argc = argc as usize;
                     let callee = self.stack.len() - 1 - argc;
-                    let closure = match &self.stack[callee] {
-                        Value::VmClosure(closure)
-                            if accepts_positional(&closure.proto, argc)
-                                && self.frames.len() < MAX_CALL_DEPTH =>
-                        {
+                    if self.frames.len() >= MAX_CALL_DEPTH {
+                        break Some(op);
+                    }
+                    // An app-level `def` under serve is a tree-walker
+                    // `Function` whose VM closure is cached on it after the
+                    // first call: it enters here as a `VmClosure` does when
+                    // it takes exactly its parameters and has no native
+                    // kernel, and takes that closure's place in the callee
+                    // slot, as the general arm's `call_compiled_function`
+                    // leaves it.
+                    let (closure, from_function) = match &self.stack[callee] {
+                        Value::VmClosure(closure) if accepts_positional(&closure.proto, argc) => {
                             if closure.proto.kernel.is_some() {
                                 if let Some(value) = self.kernel_value(closure, argc) {
                                     self.stack.truncate(callee);
@@ -1490,10 +1508,24 @@ impl Vm {
                                     continue;
                                 }
                             }
-                            closure.clone()
+                            (closure.clone(), false)
+                        }
+                        Value::Function(func) if !self.tree_walk_functions => {
+                            match super::vm_calls::cached_function_closure(func) {
+                                Some(closure)
+                                    if closure.proto.param_names.len() == argc
+                                        && closure.proto.kernel.is_none() =>
+                                {
+                                    (closure, true)
+                                }
+                                _ => break Some(op),
+                            }
                         }
                         _ => break Some(op),
                     };
+                    if from_function {
+                        self.stack[callee] = Value::VmClosure(closure.clone());
+                    }
                     let params = closure.proto.param_names.len();
                     enter_closure!(closure, argc, params);
                 }
@@ -2425,8 +2457,19 @@ impl Vm {
                     // needed on the cold arity-error branch) and no
                     // call_value double dispatch — this is the hot path for
                     // every compiled function call (e.g. recursion).
-                    if let Value::VmClosure(closure) = &self.stack[callee_idx] {
-                        let closure = closure.clone();
+                    // A `Function` with its VM closure cached (see the fast
+                    // tier's `Op::Call`) is called as that closure.
+                    let (closure, from_function) = match &self.stack[callee_idx] {
+                        Value::VmClosure(closure) => (Some(closure.clone()), false),
+                        Value::Function(func) if !self.tree_walk_functions => {
+                            (super::vm_calls::cached_function_closure(func), true)
+                        }
+                        _ => (None, false),
+                    };
+                    if let Some(closure) = closure {
+                        if from_function {
+                            self.stack[callee_idx] = Value::VmClosure(closure.clone());
+                        }
                         if closure.proto.kernel.is_some() && self.try_kernel(&closure, argc) {
                             continue;
                         }
@@ -3516,7 +3559,7 @@ impl Vm {
                 Op::Hash(n) => {
                     let n = n as usize;
                     let base = self.stack.len() - n * 2;
-                    let mut map = HashPairs::with_capacity_and_hasher(n, AHasher::default());
+                    let mut map = HashPairs::with_capacity(n);
                     let mut drained = self.stack.drain(base..);
                     for _ in 0..n {
                         let key = drained.next().unwrap();
@@ -3900,6 +3943,32 @@ impl Vm {
                     let span = self.current_span();
                     self.call_value_named(argc as usize, &labels, span)?;
                 }
+                Op::CallMethodNamed(name_idx, argc, names_idx) => {
+                    let name = self.read_string_constant(name_idx);
+                    let labels = self.read_arg_names(names_idx);
+                    let receiver_idx = self.stack.len() - 1 - argc as usize;
+                    let span = self.current_span();
+                    self.call_method_named(receiver_idx, &labels, &name, true, span)?;
+                }
+                Op::CallSelfOrGlobalNamed(name_idx, argc, names_idx) => {
+                    // `[callee, marker, args…]`, as for `CallSelfOrGlobal`:
+                    // the marker is what `SelfOrGlobalCallee` decided.
+                    let marker = self.stack.remove(self.stack.len() - 1 - argc as usize);
+                    let labels = self.read_arg_names(names_idx);
+                    let span = self.current_span();
+                    if matches!(marker, Value::Null) {
+                        // A global of that name: `SelfOrGlobalCallee` put it in
+                        // the callee slot, and it binds as `CallNamed` binds.
+                        let labels = crate::vm::vm_calls::without_block_label(&labels);
+                        self.call_value_named(argc as usize, &labels, span)?;
+                    } else {
+                        let name = self.read_string_constant(name_idx);
+                        // `this` stayed as the receiver: a call on self, so a
+                        // private method is allowed, as for `CallSelfOrGlobal`.
+                        let receiver_idx = self.stack.len() - 1 - argc as usize;
+                        self.call_method_named(receiver_idx, &labels, &name, false, span)?;
+                    }
+                }
                 Op::GetThis => {
                     let base = self.frames.last().unwrap().stack_base;
                     let this = self.stack[base].clone();
@@ -3926,10 +3995,15 @@ impl Vm {
                         superclass.find_vm_method_with_class(&name)
                     {
                         self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
-                    } else if let Some(method) = superclass.find_method(&name) {
+                    } else if let Some((method, defining_class)) =
+                        superclass.find_method_with_class(&name)
+                    {
                         // Tree-walking method (e.g. a class copied from
-                        // interpreter globals): JIT and run re-entrantly.
-                        let result = self.run_jit_method_to_completion(&method, argc, span)?;
+                        // interpreter globals): JIT and run re-entrantly, as
+                        // the class that declares it — a `super` inside it
+                        // then goes one level further up the chain.
+                        let result =
+                            self.run_jit_method_to_completion(&method, argc, span, defining_class)?;
                         self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
                         let receiver = self.stack[receiver_idx].clone();
@@ -3978,13 +4052,19 @@ impl Vm {
                     }
                 }
                 Op::Field(idx) | Op::ConstField(idx) => {
-                    // The default itself is baked into the constructor; what
-                    // is kept here is the declaration order, which a value
-                    // object's implicit constructor binds arguments by.
+                    // A declared instance field: its name, in declaration
+                    // order (a value object's implicit constructor binds
+                    // arguments by it), and the value every new instance
+                    // starts it with before any constructor runs — its
+                    // literal default, or nil (`Vm::init_fields`).
                     let name = self.read_string_constant_owned(idx);
-                    self.stack.pop();
+                    let start = self.stack.pop().unwrap_or(Value::Null);
                     if let Some(Value::Class(class)) = self.stack.last() {
-                        class.declared_fields.borrow_mut().push(name);
+                        class.declared_fields.borrow_mut().push(name.clone());
+                        let mut field_init = class.field_init.borrow_mut();
+                        let field_init =
+                            Rc::make_mut(field_init.get_or_insert_with(Default::default));
+                        field_init.fields.push((name.into(), start));
                     }
                 }
                 Op::StaticField(idx) => {
@@ -6712,6 +6792,194 @@ mod tests {
             vm.execute(&module.main).is_err(),
             "omitting a required parameter must not silently bind null"
         );
+    }
+
+    /// A field default that is not a literal runs once for each new instance,
+    /// as on the tree-walker — never when the class is defined. The compiler
+    /// evaluated every initializer in the class body as well (and threw the
+    /// value away), so a default with a side effect ran once too often.
+    #[test]
+    fn test_vm_computed_field_default_runs_per_instance_only() {
+        let source = r##"
+let calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class Stamped
+  stamp: Int = tick()
+  tag: String = "t"
+end
+let before = calls
+let a = new Stamped()
+let b = new Stamped()
+let result = "#{before} #{a.stamp} #{b.stamp} #{a.tag} #{calls}"
+"##;
+        assert_eq!(
+            compile_and_get_global(source, "result"),
+            Value::String("0 1 2 t 2".into())
+        );
+    }
+
+    /// The field defaults are not compiled into the constructor. `Op::Field`
+    /// keeps each field's starting value (its literal default, else nil),
+    /// and the defaults that are not literals compile into one method kept
+    /// out of the class's methods. Baked into `init`, a default ran again
+    /// whenever `super(...)` entered a parent's constructor, after the
+    /// child's own, and a field without a default was never set at all.
+    #[test]
+    fn test_vm_field_defaults_are_not_part_of_the_constructor() {
+        use crate::interpreter::value::FIELD_DEFAULTS_METHOD;
+        let source = r##"
+def tick()
+  1
+end
+class Account
+  balance: Int = 5
+  owner: String
+  opened: Int = tick()
+  tags: Array = ["a"]
+  floor: Int = -3
+
+  new(owner)
+    @owner = owner
+  end
+end
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        let Some(Value::Class(class)) = vm.globals.get("Account").cloned() else {
+            panic!("Account is a class");
+        };
+
+        let init = class
+            .field_init
+            .borrow()
+            .clone()
+            .expect("the class records its fields");
+        let names: Vec<&str> = init.fields.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["balance", "owner", "opened", "tags", "floor"]);
+        assert_eq!(init.fields[0].1, Value::Int(5));
+        assert_eq!(init.fields[1].1, Value::Null);
+        assert_eq!(init.fields[2].1, Value::Null, "evaluated per instance");
+        assert!(matches!(&init.fields[3].1, Value::Array(items) if items.borrow().len() == 1));
+        assert_eq!(
+            init.fields[4].1,
+            Value::Int(-3),
+            "a negative number is a literal"
+        );
+        assert!(init.computed.is_some(), "`opened` has its own method");
+        assert!(
+            class
+                .vm_methods
+                .borrow()
+                .get(FIELD_DEFAULTS_METHOD)
+                .is_none(),
+            "the defaults method is not a method of the class"
+        );
+
+        let ctor = class
+            .vm_methods
+            .borrow()
+            .get("init")
+            .cloned()
+            .expect("the constructor");
+        let assigned: Vec<String> = ctor
+            .proto
+            .chunk
+            .code
+            .iter()
+            .filter_map(|op| match op {
+                Op::SetProperty(idx) => match &ctor.proto.chunk.constants[*idx as usize] {
+                    Constant::String(name) => Some(name.to_string()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            assigned,
+            ["owner"],
+            "the constructor assigns what its body assigns, and no default"
+        );
+    }
+
+    /// A `return` ends a constructor, and `new` is still the instance — what
+    /// the tree-walker gives, which discards a constructor's value. The
+    /// compiler compiled the `return` as `Null; Return`, so a guard made
+    /// `new Guarded(5)` itself nil, and the next read of it raised.
+    #[test]
+    fn test_vm_constructor_return_yields_this() {
+        let source = r##"
+class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+class Looping
+  n: Int
+
+  new(limit)
+    @n = 0
+    while true
+      @n = @n + 1
+      return if @n >= limit
+    end
+  end
+end
+let g = new Guarded(5)
+let h = Guarded(0)
+let l = new Looping(3)
+let result = "#{g.x} #{h.x} #{l.n}"
+"##;
+        assert_eq!(
+            compile_and_get_global(source, "result"),
+            Value::String("5 0 3".into())
+        );
+
+        // Every way out of the compiled `init` returns `this` (slot 0).
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        for name in ["Guarded", "Looping"] {
+            let Some(Value::Class(class)) = vm.globals.get(name).cloned() else {
+                panic!("{name} is a class");
+            };
+            let ctor = class
+                .vm_methods
+                .borrow()
+                .get("init")
+                .cloned()
+                .expect("the constructor");
+            let code: Vec<Op> = ctor
+                .proto
+                .chunk
+                .code
+                .iter()
+                .copied()
+                .filter(|op| !matches!(op, Op::Nop))
+                .collect();
+            let returns: Vec<Op> = code
+                .windows(2)
+                .filter(|pair| matches!(pair[1], Op::Return))
+                .map(|pair| pair[0])
+                .collect();
+            assert_eq!(
+                returns,
+                [Op::GetLocal(0), Op::GetLocal(0)],
+                "{name}: the early return and the end both return `this`"
+            );
+        }
     }
 
     fn compile_and_get_global(source: &str, name: &str) -> Value {

@@ -1024,6 +1024,75 @@ print(o)
         "class A { t: String\n  new(t) { this.t = t }\n  fn d() { return \"A(\" + this.t + \")\" } }\nclass B extends A { new(t) { super(t + \"b\") }\n  fn d() { return \"B[\" + super.d() + \"]\" } }\nclass C extends B { new(t) { super(t + \"c\") }\n  fn d() { return \"C{\" + super.d() + \"}\" } }\nprint(C(\"x\").d())",
     ),
     (
+        // `super(...)` reaching a constructor K2 inherits from K1: it runs as
+        // K1's, so its own `super(...)` goes on to K0 rather than back to K1.
+        // The served form of the same program is in APP_CASES.
+        "super_into_an_inherited_constructor",
+        r##"class K0
+  k0: Int
+  new(a)
+    @k0 = a
+  end
+end
+class K1 < K0
+  k1: Int
+  new(a)
+    super(a + 1)
+    @k1 = a
+  end
+end
+class K2 < K1
+end
+class K3 < K2
+  k3: Int
+  new(a)
+    super(a * 2)
+    @k3 = a
+  end
+end
+k = K3.new(3)
+print(k.k0, k.k1, k.k3, K2.new(10).k0)"##,
+    ),
+    (
+        // The documented custom-error shape: a constructor passing its
+        // message and details up to `Error`'s, thrown, caught and rescued.
+        "error_subclass_constructor_passes_its_message_up",
+        r##"class AppError < Error
+end
+class Overdrawn < AppError
+  amount: Int
+  new(amount: Int)
+    super("overdrawn by #{amount}", {"amount": amount})
+    @amount = amount
+  end
+end
+try
+  throw Overdrawn.new(7)
+catch err
+  print(err.class, err.message, err.details["amount"], err.amount)
+end
+e = Overdrawn.new(9) rescue "rescued"
+print(e.class)"##,
+    ),
+    (
+        // `super` in a block inside a method. The tree-walker resolves it
+        // from the class the block was written in; the VM reads the class off
+        // the running frame, and a block's frame has none ("super used
+        // outside of a subclass method"). Tracked in KNOWN_DIVERGENT.
+        "super_in_a_block_of_a_method",
+        r##"class A
+  def m(x)
+    x * 2
+  end
+end
+class B < A
+  def m(x)
+    [x].map { |y| super.m(y) }
+  end
+end
+print(B.new().m(3))"##,
+    ),
+    (
         // Field initializers apply in both instantiation forms.
         "field_initializer_defaults",
         "class S { theme: String = \"dark\"\n  size: Int = 25 }\nlet s = S()\nprint(s.theme)\nprint(s.size)",
@@ -2480,6 +2549,287 @@ o = new Own(3)
 print(o.x, o.list, o.a)"##,
     ),
     (
+        // A declared field without a default starts as nil, also inside the
+        // constructor, and whatever builds the instance. The VM set only
+        // the fields with a default: reading any other one raised
+        // "Cannot access property".
+        "declared_fields_start_as_nil",
+        r##"class Profile
+  name: String
+  bio: String
+  seen: Any
+
+  new(name)
+    @seen = @bio.nil?
+    @name = name
+  end
+end
+p = Profile.new("ann")
+print(p.bio, p.seen, new Profile("bob").bio, Profile("cy").bio)
+class Bare
+  title: String
+end
+print(new Bare().title, Bare().title)
+class Optional < Profile
+  extra: String
+
+  new(name)
+    super(name)
+  end
+end
+o = new Optional("x")
+print(o.name, o.bio, o.extra)
+class Hinted < Error
+  code: Int = 42
+  hint: String
+end
+h = Hinted.new("boom")
+print(h.message, h.code, h.hint)"##,
+    ),
+    (
+        // Every class's fields are set before any constructor runs, the
+        // farthest class first. The VM kept a class's defaults in its
+        // compiled constructor: a parent's were lost when the child's `new`
+        // did not call `super`, and re-applied by `super()` after the
+        // child's (`2` came out `1`, `7` came out `0`). A field declared
+        // again without a default is reset to nil; a literal array or hash
+        // default is never shared.
+        "field_defaults_reach_every_class_before_any_constructor",
+        r##"class P1
+  a: Int = 1
+  p: Bool
+
+  new()
+    @p = true
+  end
+end
+class K1 < P1
+  c: Int
+
+  new(c)
+    @c = c
+  end
+end
+k1 = new K1(3)
+print(k1.a, k1.p, k1.c)
+class P2
+  a: Int = 1
+
+  new()
+  end
+end
+class K2 < P2
+  a: Int = 2
+
+  new()
+    super()
+  end
+end
+print(new K2().a)
+class P3
+  count: Int = 0
+
+  new()
+  end
+end
+class K3 < P3
+  new(c)
+    @count = c
+    super()
+  end
+end
+print(new K3(7).count)
+class P5
+  a: Int = 1
+end
+class K5 < P5
+  b: Int = 2
+end
+class G5 < K5
+  a: Int
+  c: Int
+
+  new(c)
+    @c = c
+  end
+end
+g = G5.new(3)
+print(g.a, g.b, g.c)
+class Items
+  items: Array = []
+  meta: Hash = {"n": 0}
+
+  new()
+  end
+end
+i1 = new Items()
+i2 = new Items()
+i1.items.push(1)
+i1.meta["n"] = 5
+print(i1.items, i2.items, i2.meta["n"])"##,
+    ),
+    (
+        // A default that is not a literal runs once per instance, a
+        // parent's before a child's. The VM also ran it once when the class
+        // was defined, so every count was one ahead.
+        "a_computed_field_default_runs_once_per_instance",
+        r##"calls = 0
+def next_stamp()
+  calls = calls + 1
+  calls * 10
+end
+class Stamped
+  stamp: Int = next_stamp()
+  tag: String = "t"
+  offset: Int = -1
+end
+print("defined", calls)
+a = new Stamped()
+b = Stamped()
+print(a.stamp, b.stamp, a.tag, a.offset, calls)
+class Later < Stamped
+  label: String = "n#{calls}"
+end
+c = new Later()
+print(c.stamp, c.label, calls)"##,
+    ),
+    (
+        // Without a constructor, `Klass.new({..})` / `Klass.new(k: v)` take
+        // the attributes over fields started as `new Klass()` starts them,
+        // and constructor arguments go nowhere. The VM ran its defaults-only
+        // `init` as a constructor: "expected 0, got 1", "Undefined variable
+        // 'a'". The tree-walker's attribute form set literal defaults only:
+        // `x.b` and `t.n` raised there.
+        "field_defaults_without_a_constructor_keep_the_attribute_form",
+        r##"class D
+  a: Int = 1
+  b: Int
+  offset: Int = -1
+  list: Array = []
+end
+x = D.new({"a": 5})
+y = D.new(a: 6)
+z = D.new()
+print(x.a, x.b, x.offset, y.a, y.b, y.offset, z.a, z.list)
+print(new D(7).a, new D(a: 8).a, D(9).b, D(a: 9).a)
+z.list.push(1)
+print(D.new().list)
+calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class T
+  n: Int = tick()
+end
+print(T.new().n, T.new({}).n, new T().n, calls)"##,
+    ),
+    (
+        // Defaults on private and const fields, one reading a local of the
+        // function the class is declared in, one reading a static, nested
+        // containers copied per instance, a parent's computed default under
+        // a child's literal one. A default that throws is caught where the
+        // instance is built: the VM evaluated it when the class was defined,
+        // outside the `try`, and the script died.
+        "field_defaults_private_const_nested_and_throwing",
+        r##"class Vault
+  private secret: String = "s3"
+  const id: Int = 7
+  stamp: String = "v" + "1"
+
+  def reveal
+    "#{@secret} #{@id} #{@stamp}"
+  end
+end
+print(new Vault().reveal, Vault().reveal)
+def build(prefix)
+  class Tag
+    label: String = prefix + "!"
+  end
+  new Tag().label
+end
+print(build("hi"))
+class Cfg
+  static DEFAULT: Int = 5
+  size: Int = Cfg.DEFAULT * 2
+end
+print(new Cfg().size)
+class Nested
+  data: Hash = {"list": [1, [2, 3]], "n": nil}
+end
+n1 = new Nested()
+n2 = new Nested()
+n1.data["list"][1].push(4)
+print(n1.data, n2.data)
+def boom()
+  throw "boom"
+end
+class Risky
+  x: Int = boom()
+end
+r = "none"
+try
+  new Risky()
+catch e
+  r = "caught #{e}"
+end
+print(r)
+def compute()
+  41 + 1
+end
+class PA
+  x: Int = compute()
+  y: Int = 1
+end
+class CA < PA
+  x: Int = 2
+  y: Int = compute()
+end
+c = new CA()
+print(c.x, c.y)"##,
+    ),
+    (
+        // A value object's field left out takes its default, by every
+        // spelling, and its invariants and `with` see it. On the VM the
+        // defaults-only `init` ran before the arguments were bound, which
+        // held for one level only: a parent value object's defaults were
+        // nil.
+        "value_object_fields_take_their_defaults",
+        r##"class Amount < ValueObject
+  cents: Int
+  currency: String = "EUR"
+
+  invariant(:currency, "three letters") { @currency.length == 3 }
+end
+class Price < Amount
+  vat: Int = 20
+end
+a = Amount.new(500)
+b = Amount(600)
+c = Amount.new(cents: 700)
+d = Amount.new({"cents": 800})
+e = a.with(cents: 900)
+p = Price.new(100)
+print(a.currency, b.currency, c.currency, d.currency, e.currency, e.cents)
+print(p.cents, p.currency, p.vat, Price.new(cents: 5, vat: 7).vat)
+print(a == Amount.new(500, "EUR"), Amount.new(1, "USD").currency)"##,
+    ),
+    (
+        // Tracked in KNOWN_DIVERGENT.
+        "named_attribute_form_runs_a_computed_default",
+        r##"calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class Ticket
+  n: Int = tick()
+  label: String
+end
+t = Ticket.new(label: "x")
+print(t.n, t.label, calls)"##,
+    ),
+    (
         // `this` in a `static def` is the class it was called on, a
         // subclass's too. The tree-walker raised "'this' outside of class".
         "this_in_a_static_method",
@@ -3880,13 +4230,393 @@ print(n&.label(), q&.label())
 hand_offs(c)
 print(c.volume(), describe(c))"##,
     ),
+    (
+        // A `return` ends a constructor; `new` is still the instance. The VM
+        // compiled the `return` as returning nil, so `new Guarded(5)` was
+        // nil and the next read of it raised — and so did a `next` outside a
+        // loop, which ends the body too. A block's own `return` ends only
+        // the block.
+        "a_constructor_that_returns_early_is_still_the_instance",
+        r##"class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+
+class Skipping
+  v: Int
+
+  new(a)
+    @v = a
+    next if a > 1
+
+    @v = 0
+  end
+end
+
+class Branchy
+  label: String
+
+  new(a)
+    if a > 0
+      @label = "pos"
+      return
+    else
+      @label = "neg"
+    end
+    @label = @label + "!"
+  end
+end
+
+class Looping
+  n: Int
+
+  new(limit)
+    @n = 0
+    while true
+      @n = @n + 1
+      return if @n >= limit
+    end
+  end
+end
+
+class Finally
+  log: String
+
+  new
+    @log = ""
+    try
+      @log = @log + "t"
+      return
+    finally
+      @log = @log + "f"
+    end
+  end
+end
+
+class Each
+  seen: Array
+
+  new(xs)
+    @seen = []
+    xs.each do |x|
+      return if x == 2
+
+      @seen.push(x)
+    end
+    @seen.push(99)
+  end
+end
+
+g = new Guarded(5)
+print(g.x, Guarded.new(0).x, Guarded(9).x)
+print(new Skipping(4).v, Skipping.new(1).v)
+print(Branchy.new(1).label, new Branchy(-1).label)
+print(new Looping(3).n)
+print(Finally.new().log)
+print(new Each([1, 2, 3]).seen)"##,
+    ),
+    (
+        // Constructors that build their own class, raise through a helper,
+        // take defaults and run inside a block callback: all three spellings
+        // enter the same compiled constructor.
+        "constructors_recurse_raise_and_run_in_callbacks",
+        r##"class Node
+  value: Int
+  next_node: Any
+
+  new(n)
+    @value = n
+    @next_node = n > 0 ? Node.new(n - 1) : nil
+  end
+
+  def depth
+    @next_node.nil? ? 1 : 1 + @next_node.depth
+  end
+end
+
+class Picky
+  v: Int
+
+  new(v)
+    @v = Picky.check(v)
+  end
+
+  static def check(v)
+    throw "bad #{v}" if v < 0
+
+    v
+  end
+end
+
+class Pair
+  a: Int
+  b: Int
+
+  new(a, b = 10)
+    @a = a
+    @b = b
+  end
+end
+
+print(Node.new(4).depth)
+caught = "none"
+try
+  Picky.new(-1)
+catch err
+  caught = "caught #{err}"
+end
+print(caught, Picky.new(3).v)
+built = [1, 2, 3].map { |x| Pair.new(x) }
+print(built.map { |p| p.a + p.b })
+print(Pair.new(1, 2).b, new Pair(3).b, Pair(4).b)"##,
+    ),
+    (
+        // C571: the VM answers `Model.new(...)`, a bare `Model.new` and a
+        // class value's universal members itself, as `class_member_access`
+        // does — attribute form, `_` keys skipped, literal defaults, the same
+        // argument errors — instead of asking a tree-walker seeded with every
+        // global (~35 µs a call). A model's own static `new` still wins.
+        "model_new_and_class_universal_members",
+        r##"class Note < Model
+  views: Int = 3
+end
+class Plain
+end
+class Own < Model
+  static def new(x)
+    "own #{x}"
+  end
+end
+n = Note.new({"title": "x", "_k": 1})
+print(n.title, n._k, n.views)
+print(Note.new(nil).views, Note.new().views)
+k = Note
+print(k.nil?, Note.blank?, Note.present?, Note.class)
+print(Plain.nil?, Plain.class, Plain.present?)
+print(Note.new)
+print(Own.new(1))
+try
+  Note.new(5)
+catch e
+  print("hash: #{e}")
+end
+try
+  Note.new({}, {})
+catch e
+  print("count: #{e}")
+end"##,
+    ),
+    (
+        // C571: a model's uploader method calls the app helper from the VM's
+        // globals, not through a tree-walker seeded with all of them.
+        "model_uploader_method_calls_the_app_helper",
+        r##"class Snap < Model
+end
+Snap.has_one_attached("pic")
+Snap.has_many_attached("shots")
+def upload_url(record, field, blob_id)
+  "url:#{field}:#{blob_id}"
+end
+s = Snap.new()
+print(s.pic_url(), s.pic_url("b1"), s.shots_urls())
+print(s.pic_url(1, 2) rescue "refused")"##,
+    ),
+    (
+        // C583: labelled arguments on an instance method keep the receiver — by `obj.`, `this.`, `@` and the bare private helper; a method of arity 0 runs once; unknown, duplicate and missing labels raise.
+        "named_args_on_an_instance_method",
+        r##"class Calc
+  base: Int
+  calls: Int
+
+  new()
+    @base = 10
+    @calls = 0
+  end
+
+  def plus(a, b = 5)
+    a + b + @base
+  end
+
+  def opt(a = 1, b = 2)
+    @calls = @calls + 1
+    a * 100 + b
+  end
+
+  def me(flag)
+    this
+  end
+
+  def twice
+    "#{this.plus(a: 1)} #{@plus(b: 2, a: 3)} #{_half(n: 8)} #{@_half(n: 4)}"
+  end
+
+  private
+
+  def _half(n)
+    n / 2
+  end
+end
+
+c = Calc.new()
+print(c.plus(a: 1, b: 2), c.plus(1, b: 3), c.plus(a: 4))
+print(c.opt(b: 7), c.calls)
+print(c.me(flag: true) == c, c.twice)
+r = "none"
+try
+  c.plus(a: 1, zz: 2)
+catch e
+  r = "caught"
+end
+d = "none"
+try
+  c.plus(a: 1, a: 2)
+catch e
+  d = "caught"
+end
+m = "none"
+try
+  c.plus(b: 1)
+catch e
+  m = "caught"
+end
+print(r, d, m)"##,
+    ),
+    (
+        // C583: a static called with labels keeps its class as `this`.
+        "named_args_on_a_static_that_reads_this",
+        r##"class Base
+  static def helper(n)
+    n + 1
+  end
+
+  static def twice(n, k = 2)
+    this.helper(n) * k
+  end
+
+  static def build(v = 0)
+    this.new()
+  end
+
+  def hello
+    "hi"
+  end
+end
+
+class Sub < Base
+end
+
+print(Base.twice(2, 3), Base.twice(n: 2), Sub.twice(n: 2, k: 5))
+print(Sub.build(v: 1).class, Base.build(v: 2).hello)"##,
+    ),
+    (
+        // C583: `nil&.m(k: side())` evaluates no argument.
+        "named_args_under_safe_navigation",
+        r##"class P
+  def m(a, b = 1)
+    a + b
+  end
+end
+
+log = []
+
+def side()
+  log.push(1)
+  2
+end
+
+none = nil
+q = P.new()
+print(none&.m(a: side()), log.length)
+print(q&.m(a: side(), b: 5), log.length)"##,
+    ),
+    (
+        // C583: a field holding a lambda binds the labels by name; `method_missing` gets them as one hash after the positional arguments.
+        "named_args_reach_fields_and_method_missing",
+        r##"class Box
+  f: Any
+
+  new()
+    @f = fn(x) { x * 3 }
+  end
+
+  def method_missing(name, args)
+    "mm #{name} #{args}"
+  end
+end
+
+b = Box.new()
+print(b.f(x: 2), b.nope(z: 1), b.nope(1, z: 2))"##,
+    ),
+    (
+        // C583: a block passed with labels goes to the `&block` parameter, or is dropped when the method declares none.
+        "named_args_with_a_block",
+        r##"class C
+  def amp(a, &blk)
+    blk(a)
+  end
+
+  def n(a, b = 2, f = nil)
+    "#{a} #{b} #{f.nil?}"
+  end
+end
+
+c = C.new()
+r1 = c.amp(a: 4) do |x|
+  x + 40
+end
+r2 = c.n(1, b: 3) do |x|
+  x
+end
+doubler = fn(x) { x * 2 }
+r3 = c.amp(a: 5, &doubler)
+print(r1, r2, r3)"##,
+    ),
+    (
+        // C583: a bare labelled call naming a builtin inside a method still reaches the builtin (agreed before the fix; guards the global branch).
+        "named_args_to_a_global_from_a_method",
+        r##"class K
+  def run
+    "#{type(x: 1)} #{len(a: 1, b: 2)}"
+  end
+end
+
+print(K.new().run)"##,
+    ),
+    (
+        // C583: a module function called with labels (agreed before the fix).
+        "named_args_on_a_module_function",
+        r##"module Util
+  def shout(s, bang = "!")
+    s.upcase + bang
+  end
+end
+
+print(Util.shout("a"), Util.shout(s: "b"), Util.shout("c", bang: "?"))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // Empty: sub-expression comprehensions and binding `match` as a call
-    // argument now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
+    // A block's frame carries no class, so `super` in a block of a method
+    // has nothing to resolve against on the VM. Needs the compiler to hand
+    // the block the class it was written in.
+    "super_in_a_block_of_a_method",
+    // `Klass.new(k: v)` compiles to a read of `Klass.new` and a named call.
+    // On a class without a constructor the read yields the engine-free
+    // attribute form (`member::new_with_attributes`), which starts a
+    // default that is not a literal as nil; the tree-walker evaluates it.
+    // Needs the VM to answer that read itself and build the instance with
+    // `init_fields` (see C571 / C583).
+    "named_attribute_form_runs_a_computed_default",
+    // Sub-expression comprehensions and binding `match` as a call argument
+    // now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
     // Binding patterns at a statement position already compiled — see
     // `match_binding_*`.
     //
@@ -4149,4 +4879,747 @@ fn a_bound_that_is_not_an_integer_is_reported_at_the_range() {
             );
         }
     }
+}
+
+// --- Classes loaded the way a server loads them -----------------------------
+//
+// `soli serve` defines every class of an application on the tree-walker (the
+// app loader), copies the interpreter's globals into each worker's VM, and
+// runs the action there through `Vm::call_method_bound`. The VM compiles such
+// a class's constructor and methods from the tree-walker's AST when it first
+// reaches them. A script's classes are compiled by the VM itself, so CASES
+// never meets one: a constructor calling `super(...)` agreed there and failed
+// in a served app ("super used outside of a subclass method"), which demoted
+// the handler to the interpreter — or, inside a `try`, answered with the VM's
+// own error.
+
+/// (name, source). Each source declares `class Probe` with a zero-argument
+/// `run` that returns a string, and runs cleanly on the tree-walker.
+const APP_CASES: &[(&str, &str)] = &[
+    (
+        "app_constructor_calls_super",
+        r##"class Point
+  x: Int
+  y: Int
+
+  new(x, y)
+    @x = x
+    @y = y
+  end
+end
+
+class Diagonal < Point
+  new(n)
+    super(n, n)
+  end
+end
+
+class Probe
+  def run
+    a = Diagonal.new(4)
+    b = new Diagonal(5)
+    "#{a.x},#{a.y} #{b.x},#{b.y}"
+  end
+end"##,
+    ),
+    (
+        // The middle constructor is reached through `super(...)`: its own
+        // `super(...)` must go one level further up.
+        "app_three_constructors_call_super",
+        r##"class G1
+  a: Int
+
+  new(a)
+    @a = a
+  end
+end
+
+class G2 < G1
+  b: Int
+
+  new(a)
+    super(a)
+    @b = a * 10
+  end
+end
+
+class G3 < G2
+  c: Int
+
+  new(a)
+    super(a)
+    @c = a * 100
+  end
+end
+
+class Probe
+  def run
+    g = G3.new(1)
+    "#{g.a} #{g.b} #{g.c}"
+  end
+end"##,
+    ),
+    (
+        // K2 inherits K1's constructor: reached from K3's `super(...)`, it
+        // runs as K1's, so its `super(...)` reaches K0. Run as K2's, it would
+        // call itself until the stack ran out.
+        "app_super_reaches_an_inherited_constructor",
+        r##"class K0
+  k0: Int
+
+  new(a)
+    @k0 = a
+  end
+end
+
+class K1 < K0
+  k1: Int
+
+  new(a)
+    super(a + 1)
+    @k1 = a
+  end
+end
+
+class K2 < K1
+end
+
+class K3 < K2
+  k3: Int
+
+  new(a)
+    super(a * 2)
+    @k3 = a
+  end
+end
+
+class Probe
+  def run
+    k = K3.new(3)
+    plain = K2.new(10)
+    "#{k.k0} #{k.k1} #{k.k3} #{plain.k0} #{plain.k1}"
+  end
+end"##,
+    ),
+    (
+        // The documented custom errors, built, thrown and rescued. Inside the
+        // `try`, the VM used to catch its own "super used outside of a
+        // subclass method" and answer with it, with no demotion.
+        "app_error_subclasses_pass_their_message_up",
+        r##"class AppError < Error
+end
+
+class Overdrawn < AppError
+  amount: Int
+
+  new(amount: Int)
+    super("overdrawn by #{amount}", {"amount": amount})
+    @amount = amount
+  end
+end
+
+class Refused < DomainError
+  new(why: String)
+    super("refused: #{why}")
+  end
+end
+
+class Probe
+  def run
+    built = Overdrawn.new(5)
+    caught = "none"
+    try
+      throw Overdrawn.new(7)
+    catch err
+      caught = "#{err.class} #{err.message} #{err.details["amount"]}"
+    end
+    typed = "none"
+    try
+      throw Refused.new("closed")
+    catch DomainError err
+      typed = err.to_s
+    end
+    rescued = Overdrawn.new(9) rescue "rescued"
+    "#{built.message} #{built.amount} | #{caught} | #{typed} | #{rescued.class}"
+  end
+end"##,
+    ),
+    (
+        // The error-handling guide's hierarchy, with a typed catch.
+        "app_documented_error_hierarchy",
+        r##"class AppError
+  message: String
+
+  new(msg: String)
+    this.message = msg
+  end
+end
+
+class NotFoundError < AppError
+  new(msg: String)
+    super(msg)
+  end
+end
+
+class Probe
+  def run
+    seen = "none"
+    try
+      throw NotFoundError.new("missing")
+    catch AppError e
+      seen = "App error: " + e.message
+    end
+    seen
+  end
+end"##,
+    ),
+    (
+        // `super.m()` into a parent method that calls `super.m()` itself.
+        "app_three_level_super_method_chain",
+        r##"class LA
+  def m
+    1
+  end
+end
+
+class LB < LA
+  def m
+    super.m() + 10
+  end
+end
+
+class LC < LB
+  def m
+    super.m() + 100
+  end
+end
+
+class Probe
+  def run
+    "#{new LC().m()} #{LB.new().m()}"
+  end
+end"##,
+    ),
+    (
+        // `super.run()` in the action itself, as `super.show(req)` in a
+        // controller that extends another.
+        "app_action_calls_super",
+        r##"class BaseProbe
+  def run
+    "base"
+  end
+end
+
+class Probe < BaseProbe
+  def run
+    "probe+" + super.run()
+  end
+end"##,
+    ),
+    (
+        // An inherited action runs as the class that declares it: its
+        // `super.run()` reaches Root. Run as Probe's, it would call itself.
+        "app_inherited_action_calls_super",
+        r##"class Root
+  def run
+    "root"
+  end
+end
+
+class Mid < Root
+  def run
+    "mid+" + super.run()
+  end
+end
+
+class Probe < Mid
+end"##,
+    ),
+    (
+        // A value object whose constructor hands its argument to the parent's,
+        // with the parent's invariants checked on the VM.
+        "app_value_object_constructor_calls_super",
+        r##"class Email < ValueObject
+  address: String
+
+  new(address: String)
+    @address = address.trim.downcase
+  end
+
+  invariant("must contain @") { @address.includes?("@") }
+  invariant("must not contain spaces") { !@address.includes?(" ") }
+end
+
+class WorkEmail < Email
+  new(user: String)
+    super(user + "@Work.Example")
+  end
+end
+
+class Probe
+  def run
+    work = WorkEmail.new("  Ada")
+    refused = "none"
+    try
+      WorkEmail.new("Ada Lovelace")
+      refused = "built"
+    catch InvariantViolation err
+      refused = err.message
+    end
+    "#{work.address} #{work.class} #{refused}"
+  end
+end"##,
+    ),
+    (
+        // A served app's classes get their fields like a script's: every
+        // default (inherited ones, and one that is not a literal, run per
+        // instance) and nil without one, whatever builds the instance. The VM
+        // set none of them on a class the tree-walker defined: the first read
+        // raised "Cannot access property" and demoted the handler.
+        "app_field_defaults_and_nil",
+        r##"calls = 0
+
+def next_stamp()
+  calls = calls + 1
+  calls
+end
+
+class WithDefaults
+  count: Int = 5
+  label: String = "dflt"
+  v: Int
+
+  new(v)
+    @v = v
+  end
+end
+
+class ZeroCtorDefaults
+  count: Int = 7
+  made: Bool
+
+  new()
+    @made = true
+  end
+end
+
+class ParentD
+  a: Int = 1
+  b: Int = -2
+end
+
+class KidD < ParentD
+  c: Int
+
+  new(c)
+    @c = c
+  end
+end
+
+class Profile
+  name: String
+  bio: String
+
+  new(name)
+    @name = name
+  end
+end
+
+class Stamped
+  stamp: Int = next_stamp()
+  tags: Array = []
+end
+
+class Hinted < Error
+  code: Int = 42
+  hint: String
+end
+
+class Probe
+  def run
+    d1 = WithDefaults.new(1)
+    d2 = new WithDefaults(2)
+    d3 = KidD.new(3)
+    d4 = new KidD(4)
+    d5 = ParentD.new()
+    d6 = new ParentD()
+    d8 = ZeroCtorDefaults.new()
+    u1 = Profile.new("ann")
+    s1 = new Stamped()
+    s2 = Stamped.new()
+    s1.tags.push(1)
+    h = Hinted.new("boom")
+    first = "#{d1.count} #{d1.label} #{d2.count} #{d3.a} #{d3.b} #{d4.a} #{d5.a} #{d6.b}"
+    second = "#{d8.count} #{d8.made} #{u1.bio.nil?} #{s1.stamp} #{s2.stamp} #{s2.tags.length}"
+    "#{first} #{second} #{h.message} #{h.code} #{h.hint.nil?} #{calls}"
+  end
+end"##,
+    ),
+    (
+        // The documented value object, built in a served app. A field left
+        // out takes its default; the VM gave it nil, silently — or, with the
+        // invariant reading it, "Cannot access property 'length' on null".
+        "app_value_object_field_defaults",
+        r##"class Amount < ValueObject
+  cents: Int
+  currency: String = "EUR"
+
+  invariant(:cents, "must not be negative") { @cents >= 0 }
+  invariant(:currency, "three letters") { @currency.length == 3 }
+
+  def to_display -> String
+    symbol = @currency == "EUR" ? "€" : @currency
+    "#{@cents / 100} #{symbol}"
+  end
+end
+
+class Probe
+  def run
+    v1 = Amount.new(500)
+    v2 = Amount(600)
+    v3 = Amount.new(cents: 700)
+    v4 = Amount.new(800, "USD")
+    v5 = v1.with(cents: 900)
+    shown = "none"
+    try
+      shown = Amount.new(1000).to_display
+    catch err
+      shown = "caught: #{err}"
+    end
+    currencies = "#{v1.currency} #{v2.currency} #{v3.currency} #{v4.currency} #{v5.currency}"
+    "#{currencies} #{v5.cents} #{shown} #{v1 == Amount.new(500, "EUR")}"
+  end
+end"##,
+    ),
+    (
+        // A served class's constructor is compiled once, in constructor mode,
+        // and entered as an ordinary frame. Every way out of it — the end, an
+        // early `return`, one inside `try`/`finally` — still gives the
+        // instance, by every spelling; an inherited constructor, `super`, a
+        // raise from a helper, recursion, a block callback and the attribute
+        // form behave as on the tree-walker.
+        "app_constructors_run_as_frames",
+        r##"class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+
+class Finally
+  log: String
+
+  new
+    @log = ""
+    try
+      @log = @log + "t"
+      return
+    finally
+      @log = @log + "f"
+    end
+  end
+end
+
+class Node
+  value: Int
+  next_node: Any
+
+  new(n)
+    @value = n
+    @next_node = n > 0 ? Node.new(n - 1) : nil
+  end
+
+  def depth
+    @next_node.nil? ? 1 : 1 + @next_node.depth
+  end
+end
+
+class Picky
+  v: Int
+
+  new(v)
+    @v = Picky.check(v)
+  end
+
+  static def check(v)
+    throw "bad #{v}" if v < 0
+
+    v
+  end
+end
+
+class Pair
+  a: Int
+  b: Int
+
+  new(a, b = 10)
+    @a = a
+    @b = b
+  end
+end
+
+class K1
+  log: String
+
+  new(a)
+    @log = "k1:#{a}"
+  end
+end
+
+class K2 < K1
+end
+
+class K3 < K2
+  new(a)
+    super(a + 1)
+    @log = @log + ";k3"
+  end
+end
+
+class Bare
+  note: String
+  count: Int = 3
+end
+
+class Probe
+  def run
+    early = "#{Guarded.new(5).x} #{new Guarded(0).x} #{Guarded(7).x} #{Finally.new().log}"
+    caught = "none"
+    try
+      Picky.new(-1)
+    catch err
+      caught = "caught #{err}"
+    end
+    pairs = [1, 2].map { |x| Pair.new(x) }.map { |p| p.a + p.b }
+    chain = "#{K3.new(1).log} #{K2.new(5).log}"
+    bare = Bare.new({"note": "n"})
+    nodes = Node.new(3).depth
+    "#{early} | #{nodes} #{caught} #{Picky.new(2).v} | #{pairs} #{Pair.new(1, 2).b} | #{chain} | #{bare.note} #{bare.count} #{Bare.new().count}"
+  end
+end"##,
+    ),
+    (
+        // Tracked in KNOWN_APP_DIVERGENT.
+        "app_a_compiled_parent_method_hides_the_override",
+        r##"class Pa
+  def m
+    "Pa"
+  end
+end
+
+class Ca < Pa
+  def m
+    "Ca"
+  end
+end
+
+class Probe
+  def run
+    first = Pa.new().m()
+    second = Ca.new().m()
+    "#{first} #{second}"
+  end
+end"##,
+    ),
+    (
+        // C583: on served (tree-walker) classes a labelled method call ran with the method itself as `this`: `ident` returned the Function, `@_scale(factor: 2)` failed on `@count` and demoted the action.
+        "app_named_args_keep_the_receiver",
+        r##"class Pt
+  x: Int
+  calls: Int
+
+  new(x)
+    @x = x
+    @calls = 0
+  end
+
+  def ident(flag)
+    this
+  end
+
+  def opt(a = 1, b = 2)
+    @calls = @calls + 1
+    a * 100 + b
+  end
+
+  def greet(name)
+    "hi #{name}"
+  end
+end
+
+class Probe
+  count: Int
+
+  def run
+    @count = 3
+    p = Pt.new(1)
+    r = p.ident(flag: true)
+    o = p.opt(b: 7)
+    first = "#{type(r)} #{r == p} #{o} #{p.calls} #{p.greet(name: "bob")}"
+    "#{first} #{@_scale(factor: 2)} #{_scale(factor: 4)} #{this._scale(factor: 1)}"
+  end
+
+  private
+
+  def _scale(factor)
+    factor * @count
+  end
+end"##,
+    ),
+    (
+        // C583: a served `static def` reading `this`, called with labels.
+        "app_named_args_on_a_static_that_reads_this",
+        r##"class Base
+  static def helper(n)
+    n + 1
+  end
+
+  static def twice(n, k = 2)
+    this.helper(n) * k
+  end
+
+  static def label(prefix = "<")
+    "#{prefix}#{this.helper(9)}"
+  end
+end
+
+class Sub < Base
+end
+
+class Probe
+  def run
+    "#{Base.twice(n: 2)} #{Sub.twice(n: 2, k: 5)} #{Sub.label(prefix: "+")}"
+  end
+end"##,
+    ),
+    (
+        // C583: a block to a `&block` parameter, a lambda field and `method_missing`, with labels, on served classes.
+        "app_named_args_with_a_block_a_field_and_method_missing",
+        r##"class Box
+  f: Any
+
+  new()
+    @f = fn(x) { x * 3 }
+  end
+
+  def amp(a, &blk)
+    blk(a)
+  end
+
+  def method_missing(name, args)
+    "mm #{name} #{args}"
+  end
+end
+
+class Probe
+  def run
+    b = Box.new()
+    r = b.amp(a: 4) do |x|
+      x + 40
+    end
+    "#{b.f(x: 2)} #{r} #{b.nope(z: 1)}"
+  end
+end"##,
+    ),
+];
+
+/// APP_CASES that still diverge, with KNOWN_DIVERGENT's contract.
+const KNOWN_APP_DIVERGENT: &[&str] = &[
+    // The VM looks a method up in the compiled tables of the whole chain
+    // (`find_vm_method_with_class`) before it compiles a tree-walker one
+    // (`compile_tree_walking_method`): once a parent's method has been
+    // compiled, a subclass's own definition is no longer reached.
+    "app_a_compiled_parent_method_hides_the_override",
+];
+
+fn parse(source: &str) -> solilang::ast::Program {
+    let tokens = solilang::lexer::Scanner::new(source)
+        .scan_tokens()
+        .expect("the case must lex");
+    solilang::parser::Parser::new(tokens)
+        .parse()
+        .expect("the case must parse")
+}
+
+/// `Probe.new().run()` on the tree-walker.
+fn run_app_on_tree_walker(source: &str) -> Result<String, String> {
+    let program = parse(&format!("{source}\nprobe_result = Probe.new().run()\n"));
+    let mut interpreter = solilang::interpreter::Interpreter::new();
+    interpreter.interpret(&program).map_err(|e| e.to_string())?;
+    let result = interpreter.global_env().borrow().get("probe_result");
+    result
+        .map(|value| value.to_string())
+        .ok_or_else(|| "no probe_result".to_string())
+}
+
+/// `Probe#run` as a served request runs an action: the classes defined by the
+/// tree-walker, the action on a VM seeded with the interpreter's globals.
+fn run_app_on_served_vm(source: &str) -> Result<String, String> {
+    use solilang::interpreter::value::{Instance, Value};
+    let program = parse(source);
+    let mut interpreter = solilang::interpreter::Interpreter::new();
+    interpreter.interpret(&program).map_err(|e| e.to_string())?;
+    let mut vm = solilang::vm::Vm::new();
+    for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+        vm.globals.insert(name, value);
+    }
+    let Some(Value::Class(probe)) = vm.globals.get("Probe").cloned() else {
+        return Err("no class Probe".to_string());
+    };
+    let run = probe
+        .find_method("run")
+        .ok_or_else(|| "no Probe#run".to_string())?;
+    let instance = Value::Instance(std::rc::Rc::new(std::cell::RefCell::new(Instance::new(
+        probe,
+    ))));
+    vm.call_method_bound(&run, instance, None, solilang::span::Span::default())
+        .map(|value| value.to_string())
+        .map_err(|e| e.to_string())
+}
+
+#[test]
+fn app_loaded_classes_agree_on_both_engines() {
+    let known: std::collections::HashSet<&str> = KNOWN_APP_DIVERGENT.iter().copied().collect();
+
+    let mut new_divergences: Vec<String> = Vec::new();
+    let mut fixed: Vec<&str> = Vec::new();
+
+    for (name, source) in APP_CASES {
+        let tw = run_app_on_tree_walker(source);
+        assert!(
+            tw.is_ok(),
+            "{name} must run on the tree-walker, the reference: {tw:?}"
+        );
+        let vm = run_app_on_served_vm(source);
+        match (tw != vm, known.contains(name)) {
+            (true, false) => new_divergences.push(format!(
+                "  [NEW DIVERGENCE] {name}\n    tree-walker: {tw:?}\n    served vm:   {vm:?}"
+            )),
+            (false, true) => fixed.push(name),
+            _ => {}
+        }
+    }
+
+    let mut msg = String::new();
+    if !new_divergences.is_empty() {
+        msg.push_str(&format!(
+            "{} app-loaded program(s) give a different result on the VM a server runs \
+             them on than on the tree-walker:\n{}\n",
+            new_divergences.len(),
+            new_divergences.join("\n")
+        ));
+    }
+    if !fixed.is_empty() {
+        msg.push_str(&format!(
+            "{} known-divergent app case(s) now AGREE — remove them from \
+             KNOWN_APP_DIVERGENT to lock in the fix: {:?}\n",
+            fixed.len(),
+            fixed
+        ));
+    }
+    assert!(msg.is_empty(), "\n{msg}");
 }

@@ -121,6 +121,14 @@ fn vm_alias_method(class: Rc<Class>) -> Value {
     ))
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Class-member reads the VM handed to the tree-walker's
+    /// `class_member_access` on this thread: tests pin the members the VM
+    /// answers itself.
+    pub(crate) static CLASS_MEMBER_HANDOFFS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn is_class_reflection_member(name: &str) -> bool {
     matches!(
         name,
@@ -172,10 +180,7 @@ impl Vm {
             return false;
         };
         crate::interpreter::symbol::symbol_string(qb.borrow().class_name).is_some_and(
-            |class_name| {
-                crate::interpreter::builtins::model::scopes::lookup_scope(class_name, name)
-                    .is_some()
-            },
+            |class_name| crate::interpreter::builtins::model::scopes::has_scope(class_name, name),
         )
     }
 
@@ -189,8 +194,7 @@ impl Vm {
         name: &str,
     ) -> bool {
         class.is_model_subclass()
-            && crate::interpreter::builtins::model::scopes::lookup_scope(&class.name, name)
-                .is_some()
+            && crate::interpreter::builtins::model::scopes::has_scope(&class.name, name)
     }
 
     /// A model scope bound to a fresh builder for the class, resolved by the
@@ -513,6 +517,28 @@ impl Vm {
                     .map_err(|e| RuntimeError::type_error(e, span))?;
                     return Ok(Value::Class(nested.clone()));
                 }
+                // A model's bare `new` and the universal members (`klass.nil?`,
+                // `Post.class`), answered here as `class_member_access` answers
+                // them. Asking the tree-walker cost an interpreter seeded with a
+                // copy of every global, ~35 µs plus ~90 ns a global — on every
+                // `authorize(record)` of the auth scaffold, whose `policy_for`
+                // tests `policy_class.nil?`.
+                if name == "new"
+                    && crate::interpreter::executor::access::member::model_attribute_new(class)
+                {
+                    return Ok(
+                        crate::interpreter::executor::access::member::attribute_new_function(
+                            object,
+                        ),
+                    );
+                }
+                if let Some(value) =
+                    crate::interpreter::executor::access::member::class_universal_member(
+                        class, name,
+                    )
+                {
+                    return Ok(value);
+                }
                 // Class reflection (`define_method`, `class_eval`, `send`, …) is
                 // implemented only in the tree-walker's member access, which owns
                 // the primitive-overlay and method-cache bookkeeping. The VM used
@@ -572,7 +598,15 @@ impl Vm {
                 // after a write was a 500 in production (2.6.2). The
                 // interpreter answers the same NoSuchProperty for a member
                 // neither engine knows.
-                let mut interp = Interpreter::for_vm_fragment(&self.globals);
+                //
+                // `class_member_access` reads the class, the model registries
+                // and the test stubs, never a program global, so the
+                // interpreter needs no copy of the VM's globals — seeding one
+                // (`for_vm_fragment`) cost ~35 µs a read, as it did for scopes
+                // (`model_class_scope`).
+                #[cfg(test)]
+                CLASS_MEMBER_HANDOFFS.with(|count| count.set(count.get() + 1));
+                let mut interp = Interpreter::for_bound_body();
                 interp.evaluate_member_on_value(object.clone(), name, span)
             }
             // The tree-walker's rule, by the same function
@@ -1044,6 +1078,7 @@ impl Vm {
             new_class.included_modules = sub.included_modules.clone();
             new_class.mixin_static_methods = sub.mixin_static_methods.clone();
             new_class.declared_fields = sub.declared_fields.clone();
+            *new_class.field_init.get_mut() = sub.field_init.borrow().clone();
             crate::interpreter::domain::note_class(&new_class);
             // Replace the class on top of the stack
             let new_class = Rc::new(new_class);
@@ -1080,6 +1115,18 @@ impl Vm {
                 let mut static_methods = current.static_methods.clone();
 
                 match method {
+                    // The class's field defaults that are not literals: run
+                    // for each new instance (`Vm::init_fields`), never
+                    // dispatched as a method.
+                    Value::VmClosure(closure)
+                        if !is_static
+                            && name == crate::interpreter::value::FIELD_DEFAULTS_METHOD =>
+                    {
+                        let mut field_init = current.field_init.borrow_mut();
+                        Rc::make_mut(field_init.get_or_insert_with(Default::default)).computed =
+                            Some(closure);
+                        return Ok(());
+                    }
                     Value::VmClosure(closure) => {
                         // Bytecode methods from compile_class_decl. The maps
                         // are shared `Rc`s, so no class rebuild is needed —
@@ -1090,6 +1137,7 @@ impl Vm {
                                 .vm_static_methods
                                 .borrow_mut()
                                 .insert(name.to_string(), closure);
+                            crate::interpreter::value::note_static_methods_changed();
                         } else {
                             current.insert_vm_method(name.to_string(), closure.clone());
                             // Modules expose instance methods as module functions.
@@ -1098,6 +1146,7 @@ impl Vm {
                                     .vm_static_methods
                                     .borrow_mut()
                                     .insert(name.to_string(), closure);
+                                crate::interpreter::value::note_static_methods_changed();
                             }
                         }
                         return Ok(());
@@ -1105,6 +1154,7 @@ impl Vm {
                     Value::Function(func) => {
                         if is_static {
                             static_methods.insert(name.to_string(), func);
+                            crate::interpreter::value::note_static_methods_changed();
                         } else {
                             current.methods.borrow_mut().insert(name.to_string(), func);
                         }
@@ -1134,6 +1184,7 @@ impl Vm {
                 new_class.extended_hook_stmts = current.extended_hook_stmts.clone();
                 new_class.concern_static_methods = current.concern_static_methods.clone();
                 new_class.concern_method_names = current.concern_method_names.clone();
+                *new_class.field_init.get_mut() = current.field_init.borrow().clone();
                 self.stack[top] = Value::Class(Rc::new(new_class));
             }
             Ok(())

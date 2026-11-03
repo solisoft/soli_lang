@@ -695,6 +695,46 @@ impl Compiler {
             }
         }
 
+        // A method call with a labelled argument (`obj.m(k: v)`, `@m(k: v)`,
+        // `obj&.m(k: v)`, the bare helper `m(k: v)` in a method) keeps its
+        // receiver: `CallMethodNamed` binds the labels against the method it
+        // resolves at run time, with the receiver as `this`. Reading `obj.m`
+        // first and calling the result lost the receiver — and ran a method of
+        // arity 0 on the read.
+        if arguments.iter().any(|a| matches!(a, Argument::Named(_))) && arguments.len() <= 255 {
+            match &callee.kind {
+                ExprKind::Member { object, name } => {
+                    self.compile_expr(object)?;
+                    let (argc, names_idx) = self.compile_labelled_method_arguments(arguments)?;
+                    let name_idx = self.add_string_constant(name);
+                    self.emit(Op::CallMethodNamed(name_idx, argc, names_idx), line);
+                    return Ok(());
+                }
+                ExprKind::SafeMember { object, name } => {
+                    // A nil receiver evaluates no argument, as positionally.
+                    self.compile_expr(object)?;
+                    let skip = self.emit_jump(Op::JumpIfNull(0), line);
+                    let (argc, names_idx) = self.compile_labelled_method_arguments(arguments)?;
+                    let name_idx = self.add_string_constant(name);
+                    self.emit(Op::CallMethodNamed(name_idx, argc, names_idx), line);
+                    self.patch_jump(skip);
+                    return Ok(());
+                }
+                ExprKind::Variable(name)
+                    if matches!(self.resolve_variable(name), VariableAccess::Global(_))
+                        && self.implicit_self_candidate(name) =>
+                {
+                    let idx = self.add_string_constant(name);
+                    self.compile_this(line)?;
+                    self.emit(Op::SelfOrGlobalCallee(idx), line);
+                    let (argc, names_idx) = self.compile_labelled_method_arguments(arguments)?;
+                    self.emit(Op::CallSelfOrGlobalNamed(idx, argc, names_idx), line);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         // `a&.foo(args)` — a call whose callee is a safe member. A null
         // receiver yields null *without evaluating the arguments*, which is
         // what the tree-walker does and what Ruby does: `nil&.foo(bar())`
@@ -807,6 +847,39 @@ impl Compiler {
             _ => self.compile_expr(callee)?,
         }
         self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)
+    }
+
+    /// The arguments of a labelled method call, in source order, and the
+    /// `Constant::ArgNames` labelling their slots. A block's slot is labelled
+    /// [`super::chunk::BLOCK_LABEL`] so the binder can hand it to the method's
+    /// `&block` parameter (or drop it, as the tree-walker does, when the
+    /// method declares none). Only `CallMethodNamed` and
+    /// `CallSelfOrGlobalNamed` carry that label; `CallNamed` never does.
+    fn compile_labelled_method_arguments(
+        &mut self,
+        arguments: &[Argument],
+    ) -> CompileResult<(u8, u16)> {
+        let mut labels: Vec<Option<crate::interpreter::value::SoliStr>> =
+            Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            match arg {
+                Argument::Positional(expr) => {
+                    self.compile_expr(expr)?;
+                    labels.push(None);
+                }
+                Argument::Named(named_arg) => {
+                    self.compile_expr(&named_arg.value)?;
+                    labels.push(Some(named_arg.name.clone().into()));
+                }
+                Argument::Block(expr) => {
+                    self.compile_expr(expr)?;
+                    labels.push(Some(super::chunk::BLOCK_LABEL.into()));
+                }
+            }
+        }
+        let argc = labels.len() as u8;
+        let idx = self.add_constant(Constant::ArgNames(std::sync::Arc::new(labels)));
+        Ok((argc, idx))
     }
 
     /// Compile a call's arguments (the callee is already on the stack) and emit
@@ -1919,5 +1992,134 @@ fn template_ivar(expr: &Expr) -> Option<Expr> {
             Some(Expr::new(ExprKind::Variable(name.clone()), expr.span))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod labelled_method_call_compile_tests {
+    //! C583: a method call with a labelled argument compiles to
+    //! `CallMethodNamed` (or `CallSelfOrGlobalNamed` for the bare helper
+    //! call), which keeps the receiver. It used to read `obj.m` and call the
+    //! result with `CallNamed`, losing `this` — and a method of arity 0 ran on
+    //! that read.
+    use crate::interpreter::value::Value;
+    use crate::vm::chunk::{Constant, FunctionProto};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    fn compile(src: &str) -> std::sync::Arc<FunctionProto> {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).expect("compile").main
+    }
+
+    /// Every op of `proto` and of the functions compiled inside it.
+    fn all_ops(proto: &FunctionProto, out: &mut Vec<Op>) {
+        out.extend(proto.chunk.code.iter().copied());
+        for constant in &proto.chunk.constants {
+            if let Constant::Function(inner) = constant {
+                all_ops(inner, out);
+            }
+        }
+    }
+
+    fn find_proto<'a>(proto: &'a FunctionProto, name: &str) -> Option<&'a FunctionProto> {
+        if proto.name == name {
+            return Some(proto);
+        }
+        proto
+            .chunk
+            .constants
+            .iter()
+            .find_map(|constant| match constant {
+                Constant::Function(inner) => find_proto(inner, name),
+                _ => None,
+            })
+    }
+
+    const CALC: &str = "class Calc\n  def plus(a, b = 5)\n    a + b\n  end\n\n  def via_self\n    \"#{this.plus(a: 1)} #{@plus(a: 2)} #{_half(n: 8)}\"\n  end\n\n  def _half(n)\n    n / 2\n  end\nend\nc = Calc.new()\nx = c.plus(b: 2, a: 1)\ny = c&.plus(a: 3)\n";
+
+    #[test]
+    fn a_labelled_method_call_keeps_its_receiver() {
+        let main = compile(CALC);
+        let mut ops = Vec::new();
+        all_ops(&main, &mut ops);
+        let method_named = ops
+            .iter()
+            .filter(|op| matches!(op, Op::CallMethodNamed(..)))
+            .count();
+        let self_named = ops
+            .iter()
+            .filter(|op| matches!(op, Op::CallSelfOrGlobalNamed(..)))
+            .count();
+        // `this.plus(a:)`, `@plus(a:)`, `c.plus(b:, a:)`, `c&.plus(a:)`.
+        assert_eq!(method_named, 4, "{ops:?}");
+        // `_half(n: 8)`.
+        assert_eq!(self_named, 1, "{ops:?}");
+        assert!(
+            !ops.iter().any(|op| matches!(op, Op::CallNamed(..))),
+            "no labelled method call may read the method and call it: {ops:?}"
+        );
+    }
+
+    #[test]
+    fn a_safe_navigation_labelled_call_tests_the_receiver_before_its_arguments() {
+        let main = compile("p = nil\nx = p&.m(a: 1)\n");
+        let code = &main.chunk.code;
+        let jump = code
+            .iter()
+            .position(|op| matches!(op, Op::JumpIfNull(_)))
+            .expect("a null test");
+        let call = code
+            .iter()
+            .position(|op| matches!(op, Op::CallMethodNamed(..)))
+            .expect("a labelled method call");
+        assert!(jump < call, "{code:?}");
+        let Op::JumpIfNull(offset) = code[jump] else {
+            unreachable!()
+        };
+        // The jump lands just past the call: a nil receiver skips the
+        // arguments and the call alike.
+        assert_eq!(jump + 1 + offset as usize, call + 1, "{code:?}");
+    }
+
+    #[test]
+    fn a_labelled_method_call_labels_its_block() {
+        let main = compile("def run(c)\n  c.amp(a: 4) do |x|\n    x + 1\n  end\nend\n");
+        let run = find_proto(&main, "run").expect("run");
+        let names_idx = run
+            .chunk
+            .code
+            .iter()
+            .find_map(|op| match op {
+                Op::CallMethodNamed(_, 2, names) => Some(*names),
+                _ => None,
+            })
+            .expect("a two-slot labelled method call");
+        let Constant::ArgNames(labels) = &run.chunk.constants[names_idx as usize] else {
+            panic!("labels")
+        };
+        let labels: Vec<Option<&str>> = labels.iter().map(|l| l.as_deref()).collect();
+        assert_eq!(labels, vec![Some("a"), Some(crate::vm::chunk::BLOCK_LABEL)]);
+    }
+
+    #[test]
+    fn a_block_parameter_is_recorded_on_the_proto() {
+        let main = compile(
+            "class C\n  def amp(a, &blk)\n    blk(a)\n  end\n\n  def plain(a)\n    a\n  end\nend\n",
+        );
+        assert_eq!(find_proto(&main, "amp").expect("amp").block_param, Some(1));
+        assert_eq!(find_proto(&main, "plain").expect("plain").block_param, None);
+    }
+
+    #[test]
+    fn a_labelled_method_call_runs_once_with_its_receiver() {
+        let src = "class Calc\n  calls: Int\n\n  new()\n    @calls = 0\n  end\n\n  def opt(a = 1, b = 2)\n    @calls = @calls + 1\n    a * 100 + b\n  end\n\n  def me(flag)\n    this\n  end\nend\nc = Calc.new()\nx = c.opt(b: 7)\nn = c.calls\nsame = c.me(flag: true) == c\n";
+        let main = compile(src);
+        let mut vm = crate::vm::Vm::new();
+        vm.execute(&main).expect("vm error");
+        assert_eq!(vm.globals.get("x").cloned(), Some(Value::Int(107)));
+        assert_eq!(vm.globals.get("n").cloned(), Some(Value::Int(1)));
+        assert_eq!(vm.globals.get("same").cloned(), Some(Value::Bool(true)));
     }
 }

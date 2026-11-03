@@ -1417,6 +1417,52 @@ configure("example.com", port: 443);     # Mixed: positional then named
 configure(host: "api.example.com", port: 443, debug: true);  # All named
 ```
 
+#### On Methods
+
+Labels work the same on a method call, and the receiver stays `this`: an
+instance method, `@helper(k: v)`, the bare private helper, a `static def`, and
+safe navigation (a nil receiver evaluates no argument):
+
+```soli
+class Invoice
+  total: Int
+
+  new(total: Int)
+    @total = total
+  end
+
+  def with_fee(fee: Int = 5, times: Int = 1) -> Int
+    @total + fee * times
+  end
+
+  def summary -> String
+    "#{@with_fee(times: 3)} with fees, #{_due(days: 30)}"
+  end
+
+  static def zero(note: String = "")
+    this.new(total: 0)
+  end
+
+  private
+
+  def _due(days: Int) -> String
+    "due in #{days} days"
+  end
+end
+
+invoice = Invoice.new(total: 100)
+print(invoice.with_fee(fee: 10))       # 110
+print(invoice.summary)                 # 115 with fees, due in 30 days
+print(Invoice.zero(note: "draft").total)  # 0
+missing = nil
+print(missing&.with_fee(fee: 10))      # null
+```
+
+A block passed along with labels (`list.add(item: x) do … end`) reaches the
+method's `&block` parameter; a method without one ignores it. A builtin method
+receives the labels as one trailing options hash, and `method_missing` gets
+them as a hash after the positional arguments.
+
 #### Ruby-Style Calls Without Parentheses
 
 You can also call methods on objects without parentheses, using Ruby-style syntax:
@@ -2172,8 +2218,50 @@ Counter.new().count   # 0 — the constructor ran
 - Keep the parentheses when there are no arguments: a bare `Counter.new` is
   not a call.
 - A class without a constructor takes its fields from a hash or from named
-  arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`.
+  arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`. The fields it is not given
+  keep their defaults.
 - A module is not instantiated: `Greetable.new()` raises.
+- `return` ends a constructor early (a guard such as `return if amount.nil?`).
+  `new` still gives the instance, never what the constructor returns.
+
+#### Fields start with their defaults
+
+Before any constructor runs, every field the class and its parents declare is
+set: to its default, or to `nil` when it has none. The parent's fields come
+first, so a subclass's default wins. Every way of building the instance sees
+them: `new Klass(...)`, `Klass(...)`, `Klass.new(...)`, and a hash or named
+arguments on a class without a constructor.
+
+```soli
+class Account
+  owner: String
+  nickname: String
+  balance: Int = 0
+  tags: Array = []
+  opened: Float = clock()     # evaluated for each new account
+
+  new(owner)
+    @owner = owner
+  end
+end
+
+a = Account.new("ann")
+a.balance                    # 0
+a.nickname                   # nil — declared, never assigned
+a.tags.push("vip")
+Account.new("bo").tags       # [] — each instance gets its own array
+
+class Savings < Account
+  balance: Int = 100
+end
+
+Savings.new("cy").balance    # 100 — the subclass's default wins
+```
+
+- A default is evaluated once per new instance, never when the class is
+  defined.
+- `super(...)` runs the parent's constructor body only. It does not set the
+  fields again, so what a constructor assigned before calling it stays.
 
 #### `this` and `self`
 

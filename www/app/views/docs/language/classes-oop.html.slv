@@ -88,8 +88,45 @@ end
 Counter.new().count   # 0 — the constructor ran</code></pre>
                 <ul class="list-disc list-inside text-gray-400 mt-3 space-y-1">
                     <li>Keep the parentheses when there are no arguments: a bare <code>Counter.new</code> is not a call.</li>
-                    <li>A class without a constructor takes its fields from a hash or from named arguments: <code>Bag.new({"a": 1})</code>, <code>Bag.new(a: 1)</code>.</li>
+                    <li>A class without a constructor takes its fields from a hash or from named arguments: <code>Bag.new({"a": 1})</code>, <code>Bag.new(a: 1)</code>. The fields it is not given keep their defaults.</li>
                     <li>A module is not instantiated: <code>Greetable.new()</code> raises.</li>
+                    <li><code>return</code> ends a constructor early (a guard such as <code>return if amount.nil?</code>). <code>new</code> still gives the instance, never what the constructor returns.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="kw-field-defaults" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-field-defaults" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Field defaults</code>
+                </a>
+                <p class="text-gray-400 mb-3">Before any constructor runs, every field the class and its parents declare is set: to its default, or to <code>nil</code> when it has none. The parent's fields come first, so a subclass's default wins. Every way of building the instance sees them &mdash; <code>new Klass(...)</code>, <code>Klass(...)</code>, <code>Klass.new(...)</code>, and a hash or named arguments on a class without a constructor.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Account
+  owner: String
+  nickname: String
+  balance: Int = 0
+  tags: Array = []
+  opened: Float = clock()     # evaluated for each new account
+
+  new(owner)
+    @owner = owner
+  end
+end
+
+a = Account.new("ann")
+a.balance                    # 0
+a.nickname                   # nil — declared, never assigned
+a.tags.push("vip")
+Account.new("bo").tags       # [] — each instance gets its own array
+
+class Savings < Account
+  balance: Int = 100
+end
+
+Savings.new("cy").balance    # 100 — the subclass's default wins</code></pre>
+                <ul class="list-disc list-inside text-gray-400 mt-3 space-y-1">
+                    <li>A default is evaluated once per new instance, never when the class is defined.</li>
+                    <li><code>super(...)</code> runs the parent's constructor body only. It does not set the fields again, so what a constructor assigned before calling it stays.</li>
                 </ul>
             </div>
         </section>

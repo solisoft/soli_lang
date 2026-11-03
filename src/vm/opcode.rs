@@ -390,6 +390,10 @@ pub enum Op {
     /// `SelfOrGlobalCallee` left — a call on `self`, so a private method is
     /// allowed.
     CallSelfOrGlobal(u16, u8),
+    /// `CallSelfOrGlobal` with labelled arguments (`_scale(factor: 2)` in a
+    /// method): (name_constant_idx, argc, names_idx). A global takes them as
+    /// `CallNamed` would; otherwise they bind as for `CallMethodNamed`.
+    CallSelfOrGlobalNamed(u16, u8, u16),
     /// No-op: does nothing (placeholder after peephole optimization)
     Nop,
     /// Line coverage: record a hit for this line of the function's source file.
@@ -405,6 +409,12 @@ pub enum Op {
     /// Like CallMethod but with a resolved method ID for direct dispatch (no string matching).
     /// Fields: (name_constant_idx, argc, method_id). Falls back to string dispatch for classes.
     CallMethodById(u16, u8, u16),
+    /// A method call with labelled arguments (`obj.m(k: v)`): the receiver,
+    /// then `argc` slots labelled by the `ArgNames` constant `names_idx`.
+    /// Fields: (name_constant_idx, argc, names_idx). The method is resolved
+    /// as `CallMethod` resolves it and its parameters bound by name, with the
+    /// receiver kept as `this`.
+    CallMethodNamed(u16, u8, u16),
     /// Specialized hash get with a compile-time constant string key.
     HashGetConst(u16),
     /// Specialized hash has_key? with a compile-time constant string key.

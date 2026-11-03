@@ -22,6 +22,24 @@ use super::value::{HashKey, SoliStr, StrKey, Value};
 
 type Hasher = ahash::RandomState;
 
+/// The hasher every map of Soli values is built with: one
+/// `ahash::RandomState`, seeded once per process, cloned into each map.
+///
+/// `RandomState::new()` (what `Default` gives) draws its seed from ahash's
+/// process-wide `fetch_add` counter, so every object, model row, dirty
+/// snapshot and large hash a serve worker built wrote the one cache line all
+/// workers share: with four busy workers object construction ran 2.65x
+/// slower, and the counter was the hottest symbol after the dispatch loop.
+/// The clone here is four words copied, after a read-only load of the
+/// initialised state. HashDoS resistance comes from the seed being random per
+/// process, as Ruby's is; no map relied on having a seed of its own, and
+/// `IndexMap` iteration order never depends on the hasher.
+#[inline]
+pub fn map_hasher() -> Hasher {
+    static STATE: std::sync::LazyLock<Hasher> = std::sync::LazyLock::new(Hasher::new);
+    STATE.clone()
+}
+
 /// Entries kept in the linear representation. Ruby's `ar_table` limit.
 pub const SMALL_MAX: usize = 8;
 
@@ -85,17 +103,16 @@ impl SmallMap {
             }
         } else {
             SmallMap {
-                repr: Repr::Large(IndexMap::with_capacity_and_hasher(
-                    capacity,
-                    Hasher::default(),
-                )),
+                repr: Repr::Large(IndexMap::with_capacity_and_hasher(capacity, map_hasher())),
             }
         }
     }
 
-    /// `IndexMap`-compatible constructor; the hasher only matters once the
-    /// map outgrows the linear representation, and every caller passes a
-    /// default one.
+    /// `IndexMap`-compatible constructor. The hasher is dropped: a map that
+    /// outgrows the linear representation takes [`map_hasher`]. Do not call
+    /// this with `RandomState::default()` — building that argument is the
+    /// contended seed draw `map_hasher` exists to avoid; use
+    /// [`SmallMap::with_capacity`].
     #[inline]
     pub fn with_capacity_and_hasher(capacity: usize, _hasher: Hasher) -> Self {
         Self::with_capacity(capacity)
@@ -120,7 +137,7 @@ impl SmallMap {
                 repr: Repr::Small(keys.iter().cloned().zip(values).collect()),
             }
         } else {
-            let mut map = IndexMap::with_capacity_and_hasher(keys.len(), Hasher::default());
+            let mut map = IndexMap::with_capacity_and_hasher(keys.len(), map_hasher());
             for (key, value) in keys.iter().cloned().zip(values) {
                 map.insert(key, value);
             }
@@ -161,7 +178,7 @@ impl SmallMap {
     #[cold]
     fn promote(&mut self, capacity: usize) {
         if let Repr::Small(entries) = &mut self.repr {
-            let mut map = IndexMap::with_capacity_and_hasher(capacity, Hasher::default());
+            let mut map = IndexMap::with_capacity_and_hasher(capacity, map_hasher());
             for (key, value) in entries.drain(..) {
                 map.insert(key, value);
             }
@@ -725,6 +742,86 @@ mod tests {
             map.insert(key(&format!("k{i}")), Value::Int(i as i64));
         }
         map
+    }
+
+    /// The hasher of a map in the `IndexMap` representation.
+    fn large_hasher(map: &SmallMap) -> &Hasher {
+        match &map.repr {
+            Repr::Large(map) => map.hasher(),
+            Repr::Small(_) => panic!("expected the IndexMap representation"),
+        }
+    }
+
+    /// Every way a map reaches the `IndexMap` representation takes the one
+    /// per-process seed of [`map_hasher`] instead of drawing a fresh
+    /// `RandomState` — a `fetch_add` on ahash's process-wide counter, which
+    /// serve workers contended on. Two hashers that hash a probe alike share
+    /// the seed; two `RandomState::new()` never do.
+    #[test]
+    fn large_maps_take_the_shared_hasher() {
+        let probe = |hasher: &Hasher| hasher.hash_one("probe");
+        let shared = probe(&map_hasher());
+        assert_ne!(
+            probe(&Hasher::new()),
+            probe(&Hasher::new()),
+            "control: RandomState::new() seeds every map afresh"
+        );
+        assert_eq!(probe(&map_hasher()), shared, "map_hasher is stable");
+
+        assert_eq!(
+            probe(large_hasher(&filled(SMALL_MAX + 1))),
+            shared,
+            "promotion"
+        );
+        let presized = SmallMap::with_capacity(SMALL_MAX + 1);
+        assert_eq!(probe(large_hasher(&presized)), shared, "with_capacity");
+        let mut reserved = SmallMap::default();
+        reserved.reserve(SMALL_MAX + 1);
+        assert_eq!(probe(large_hasher(&reserved)), shared, "reserve");
+        let keys: Vec<HashKey> = (0..=SMALL_MAX).map(|i| key(&format!("k{i}"))).collect();
+        let literal = SmallMap::from_distinct(&keys, (0..).map(Value::Int));
+        assert_eq!(probe(large_hasher(&literal)), shared, "from_distinct");
+        let json_like =
+            SmallMap::with_capacity_and_hasher(SMALL_MAX + 1, Hasher::with_seeds(1, 2, 3, 4));
+        assert_eq!(
+            probe(large_hasher(&json_like)),
+            shared,
+            "a supplied hasher is dropped"
+        );
+    }
+
+    /// An object's field map, a model row's dirty snapshot and a tree-walker
+    /// scope are built with the shared hasher too.
+    #[test]
+    fn instances_and_snapshots_take_the_shared_hasher() {
+        use crate::interpreter::value::{Class, Instance};
+        use std::rc::Rc;
+
+        let shared = map_hasher().hash_one("probe");
+        let class = Rc::new(Class::default());
+        let mut instance = Instance::with_capacity(class.clone(), 4);
+        assert_eq!(
+            instance.fields.hasher().hash_one("probe"),
+            shared,
+            "Instance"
+        );
+        assert_eq!(
+            Instance::new(class).fields.hasher().hash_one("probe"),
+            shared,
+            "Instance::new"
+        );
+
+        instance.set("title", Value::Int(1));
+        instance.set("_key", Value::Int(2));
+        crate::interpreter::builtins::model::dirty::seed_snapshot(&mut instance);
+        let snapshot = instance.original_fields.as_deref().expect("snapshot");
+        assert_eq!(
+            snapshot.hasher().hash_one("probe"),
+            shared,
+            "dirty snapshot"
+        );
+        assert_eq!(snapshot.len(), 1, "the snapshot still skips `_` fields");
+        assert_eq!(snapshot.get("title"), Some(&Value::Int(1)));
     }
 
     /// Order, positions and removals behave the same on both sides of the

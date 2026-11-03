@@ -89,6 +89,14 @@ pub struct Interpreter {
     pub(crate) kernels: Option<crate::native::KernelSet>,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Interpreters seeded with a copy of a VM's globals
+    /// ([`Interpreter::for_vm_fragment`]) on this thread: tests pin the VM
+    /// paths that must not build one.
+    pub(crate) static VM_FRAGMENTS_BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl Interpreter {
     /// Install the kernels compiled for the program about to run.
     pub fn set_kernels(&mut self, kernels: Option<crate::native::KernelSet>) {
@@ -166,6 +174,8 @@ impl Interpreter {
     /// to configure the host class (which is behind an `Rc`, so those changes do
     /// propagate), not to mutate program state.
     pub(crate) fn for_vm_fragment(globals: &ahash::AHashMap<String, Value>) -> Self {
+        #[cfg(test)]
+        VM_FRAGMENTS_BUILT.with(|built| built.set(built.get() + 1));
         // A VM's globals are a copy of an interpreter's environment, builtins
         // included (serve workers and `soli file.sl` both seed them that way),
         // so registering the builtins first only to overwrite them cost a full

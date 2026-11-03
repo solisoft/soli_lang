@@ -318,6 +318,26 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::ArrayRestLocal(sl, start) => {
             out.push_str(&format!("ARRAY_REST_LOCAL {:>4} {:>4}", sl, start))
         }
+        Op::CallMethodNamed(idx, argc, names_idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_METHOD_NAMED {:>3} ({}) argc={} {}",
+                idx,
+                name,
+                argc,
+                format_constant(chunk.constants.get(*names_idx as usize))
+            ));
+        }
+        Op::CallSelfOrGlobalNamed(idx, argc, names_idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_SELF_OR_GLOBAL_NAMED {:>3} ({}) argc={} {}",
+                idx,
+                name,
+                argc,
+                format_constant(chunk.constants.get(*names_idx as usize))
+            ));
+        }
         Op::CallMethod(idx, argc) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));

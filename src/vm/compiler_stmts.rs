@@ -138,7 +138,17 @@ impl Compiler {
                 }
             }
             StmtKind::Return(expr) => {
-                if let Some(expr) = expr {
+                if self.function_type == FunctionType::Constructor {
+                    // `return` only ends a constructor: `new` is the
+                    // instance, whatever follows the `return`, as on the
+                    // tree-walker. Returning the value (nil for a bare
+                    // guard) made `new K(..)` itself nil.
+                    if let Some(expr) = expr {
+                        self.compile_expr(expr)?;
+                        self.emit(Op::Pop, line);
+                    }
+                    self.emit_default_return_value(line);
+                } else if let Some(expr) = expr {
                     self.compile_expr(expr)?;
                 } else {
                     self.emit(Op::Null, line);

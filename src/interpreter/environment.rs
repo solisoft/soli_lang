@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use ahash::AHashMap;
 
-use crate::interpreter::value::{Function, HashPairs, StrKey, Value};
+use crate::interpreter::value::{map_hasher, Function, HashPairs, StrKey, Value};
 
 /// Result of an `Environment::assign` call.
 ///
@@ -51,8 +51,8 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Self {
         Self {
-            values: AHashMap::new(),
-            consts: AHashMap::new(),
+            values: AHashMap::with_hasher(map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: None,
             data_hash: None,
         }
@@ -62,8 +62,8 @@ impl Environment {
     /// Avoids repeated rehashing during `register_builtins()`.
     pub fn with_builtins_capacity() -> Self {
         Self {
-            values: AHashMap::with_capacity(300),
-            consts: AHashMap::new(),
+            values: AHashMap::with_capacity_and_hasher(300, map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: None,
             data_hash: None,
         }
@@ -71,8 +71,8 @@ impl Environment {
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
-            values: AHashMap::new(),
-            consts: AHashMap::new(),
+            values: AHashMap::with_hasher(map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: Some(enclosing),
             data_hash: None,
         }
@@ -86,8 +86,8 @@ impl Environment {
         data_hash: Rc<RefCell<HashPairs>>,
     ) -> Self {
         Self {
-            values: AHashMap::new(),
-            consts: AHashMap::new(),
+            values: AHashMap::with_hasher(map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: Some(enclosing),
             data_hash: Some(data_hash),
         }

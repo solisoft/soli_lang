@@ -731,6 +731,7 @@ impl Interpreter {
                 return_type: None,
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             })
@@ -836,6 +837,7 @@ impl Interpreter {
                 stored.insert(method_decl.name.clone(), func.clone());
                 on_module.insert(method_decl.name.clone(), func);
             }
+            crate::interpreter::value::note_static_methods_changed();
         }
         self.environment
             .borrow_mut()

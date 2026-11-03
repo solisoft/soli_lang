@@ -1446,6 +1446,7 @@ fn rebind_closure(
                 return_type: func.return_type.clone(),
                 cached_env: std::cell::RefCell::new(None),
                 jit_cache: std::cell::RefCell::new(None),
+                jit_closure: std::cell::RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };
@@ -1758,6 +1759,150 @@ mod dynamic_finder_vm_tests {
             Err(err) => err,
             Ok(_) => panic!("expected an error, got a value"),
         }
+    }
+
+    /// The tree-walker handoffs a VM run made: interpreters seeded with a
+    /// copy of the globals, and class-member reads answered by the
+    /// tree-walker's `class_member_access`.
+    fn handoffs() -> (usize, usize) {
+        (
+            interpreter::executor::VM_FRAGMENTS_BUILT.with(|c| c.get()),
+            vm::vm_classes::CLASS_MEMBER_HANDOFFS.with(|c| c.get()),
+        )
+    }
+
+    /// C571: `Post.new()`, `Post.new(attrs)`, a bare `Post.new` and the
+    /// universal members of a class value (`klass.nil?`, `Post.class`) are
+    /// answered on the VM, as `class_member_access` answers them, without a
+    /// tree-walker seeded with every global (~35 µs a call).
+    #[test]
+    fn model_new_and_class_universal_members_stay_on_the_vm() {
+        let before = handoffs();
+        let vm = run_vm(
+            r#"
+class VmNewProbe < Model
+  views: Int = 3
+end
+class VmNewPlain
+end
+empty = VmNewProbe.new()
+filled = VmNewProbe.new({"title": "x", "_secret": 1})
+from_nil = VmNewProbe.new(nil)
+bare = VmNewProbe.new
+klass = VmNewProbe
+is_nil = klass.nil?
+is_blank = VmNewProbe.blank?
+is_present = VmNewProbe.present?
+kind = VmNewProbe.class
+plain_nil = VmNewPlain.nil?
+title = filled.title
+secret = filled._secret
+views = empty.views
+nil_views = from_nil.views
+"#,
+        )
+        .expect("model construction must run on the VM");
+        assert_eq!(handoffs(), before, "no tree-walker was asked");
+        let global = |name: &str| vm.globals.get(name).cloned();
+        assert_eq!(global("title"), Some(Value::str("x")));
+        assert_eq!(global("secret"), Some(Value::Null), "`_` keys are skipped");
+        assert_eq!(
+            global("views"),
+            Some(Value::Int(3)),
+            "literal defaults apply"
+        );
+        assert_eq!(global("nil_views"), Some(Value::Int(3)));
+        assert_eq!(global("is_nil"), Some(Value::Bool(false)));
+        assert_eq!(global("is_blank"), Some(Value::Bool(false)));
+        assert_eq!(global("is_present"), Some(Value::Bool(true)));
+        assert_eq!(global("plain_nil"), Some(Value::Bool(false)));
+        assert_eq!(global("kind"), Some(Value::str("class")));
+        assert!(matches!(global("empty"), Some(Value::Instance(_))));
+        match global("bare") {
+            Some(Value::NativeFunction(native)) => assert_eq!(native.name, "new"),
+            other => panic!("a bare `new` reads as the native, got {other:?}"),
+        }
+    }
+
+    /// The attribute form's argument errors are the tree-walker's.
+    #[test]
+    fn model_new_rejects_what_the_attribute_form_rejects() {
+        let source = "class VmNewBad < Model\nend\n";
+        let not_a_hash = run_vm_err(&format!("{source}VmNewBad.new(5)\n"));
+        assert!(
+            not_a_hash
+                .to_string()
+                .contains("new() expects a Hash of attributes, got int"),
+            "{not_a_hash}"
+        );
+        let two = run_vm_err(&format!("{source}VmNewBad.new({{}}, {{}})\n"));
+        assert!(
+            two.to_string()
+                .contains("new() expects 0 or 1 arguments, got 2"),
+            "{two}"
+        );
+    }
+
+    /// A model's own static `new`, and a scope or static field of that
+    /// name, still win over the attribute form.
+    #[test]
+    fn a_declared_new_on_a_model_wins_over_the_attribute_form() {
+        let vm = run_vm(
+            r#"
+class VmNewOwn < Model
+  static def new(x)
+    "own #{x}"
+  end
+end
+got = VmNewOwn.new(1)
+"#,
+        )
+        .expect("a static `new` runs on the VM");
+        assert_eq!(vm.globals.get("got"), Some(&Value::str("own 1")));
+    }
+
+    /// An unknown class member still reaches `class_member_access` — and
+    /// its "no such property" — without a copy of the globals.
+    #[test]
+    fn an_unknown_class_member_asks_the_tree_walker_without_the_globals() {
+        let before = handoffs();
+        let err = run_vm_err("class VmNewUnknown\nend\nVmNewUnknown.zzz\n");
+        let after = handoffs();
+        assert_eq!(after.0, before.0, "no interpreter seeded with the globals");
+        assert_eq!(after.1, before.1 + 1, "the tree-walker answered");
+        assert!(err.to_string().contains("zzz"), "{err}");
+    }
+
+    /// An uploader method (`<field>_url`) calls the app's helper from the
+    /// VM's globals, with the tree-walker's arguments and arity rule, and
+    /// builds no interpreter seeded with the globals (~40 µs a call).
+    #[test]
+    fn an_uploader_method_calls_its_helper_on_the_vm() {
+        let before = handoffs();
+        let vm = run_vm(
+            r#"
+class VmUploadProbe < Model
+end
+VmUploadProbe.has_one_attached("pic")
+def upload_url(record, field, blob_id)
+  "url:#{field}:#{blob_id}"
+end
+record = VmUploadProbe.new()
+plain = record.pic_url()
+with_id = record.pic_url("b1")
+too_many = record.pic_url(1, 2) rescue "refused"
+"#,
+        )
+        .expect("an uploader method runs on the VM");
+        assert_eq!(
+            handoffs().0,
+            before.0,
+            "no interpreter seeded with the globals"
+        );
+        let global = |name: &str| vm.globals.get(name).cloned();
+        assert_eq!(global("plain"), Some(Value::str("url:pic:null")));
+        assert_eq!(global("with_id"), Some(Value::str("url:pic:b1")));
+        assert_eq!(global("too_many"), Some(Value::str("refused")));
     }
 
     #[test]

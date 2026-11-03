@@ -8,7 +8,8 @@ use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    Class, Function, HashKey, Instance, NativeFunction, NativeSpecial, Value, NATIVE_CONSTRUCTOR,
+    Class, FieldInit, Function, HashKey, Instance, NativeFunction, NativeSpecial, Value,
+    NATIVE_CONSTRUCTOR,
 };
 use crate::span::Span;
 
@@ -19,6 +20,21 @@ type MethodWithClass = (Rc<VmClosure>, Rc<Class>);
 use super::compiler::Compiler;
 use super::upvalue::VmClosure;
 use super::vm::{positional_supplied_mask, CallFrame, Vm};
+
+/// The constructor a construction runs, as the VM runs it
+/// ([`Vm::resolve_constructor`]).
+pub(crate) enum Constructor {
+    /// A compiled constructor and the class that declares it: the bytecode
+    /// `init` of a class the VM compiled, or a tree-walker constructor
+    /// compiled in constructor mode ([`Vm::compiled_constructor`]). It runs
+    /// as an ordinary frame with `this` in the callee slot, and returns it.
+    Compiled(Rc<VmClosure>, Rc<Class>),
+    /// A native one (`__construct__`, e.g. `Error`'s message): it fills the
+    /// instance it is handed.
+    Native(Rc<NativeFunction>),
+    /// No class of the chain has one.
+    Absent,
+}
 
 /// JIT-compile a tree-walking [`Function`] to a bytecode [`FunctionProto`] and
 /// cache it in `func.jit_cache`. Returns the cached proto on a hit, otherwise
@@ -185,6 +201,36 @@ thread_local! {
 #[cfg(test)]
 pub(crate) fn slow_path_calls() -> usize {
     SLOW_PATH_CALLS.with(std::cell::Cell::get)
+}
+
+/// The closure a VM call to `func` runs: the one cached on `func` when its
+/// proto is still `func.jit_cache`'s, so a call allocates nothing. `None`
+/// before the first call has made one, or once the proto changed.
+#[inline]
+pub(crate) fn cached_function_closure(func: &Function) -> Option<Rc<VmClosure>> {
+    let closure = func.jit_closure.borrow();
+    let closure = closure.as_ref()?;
+    let proto = func.jit_cache.borrow();
+    if Arc::ptr_eq(&closure.proto, proto.as_ref()?) {
+        Some(closure.clone())
+    } else {
+        None
+    }
+}
+
+/// The closure over `proto` for `func`: the cached one when it wraps this
+/// very proto, otherwise a new one, kept for the next call. The closure has
+/// no upvalues and is never mutated, so one serves every call.
+fn function_closure(func: &Function, proto: Arc<FunctionProto>) -> Rc<VmClosure> {
+    let mut slot = func.jit_closure.borrow_mut();
+    if let Some(closure) = slot.as_ref() {
+        if Arc::ptr_eq(&closure.proto, &proto) {
+            return closure.clone();
+        }
+    }
+    let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+    *slot = Some(closure.clone());
+    closure
 }
 
 // Whether a view helper's body can run on the view VM. Keyed by the body
@@ -423,6 +469,94 @@ fn resolve_static_callee(class: &Rc<Class>, name: &str, plain: bool) -> Option<S
         }
         level = level.superclass.as_ref()?;
     }
+}
+
+/// [`bind_named_arguments`] for a method call that may carry a block
+/// (`obj.m(k: v) do … end`), as the tree-walker's `call_value_with_named`
+/// binds it. With no `&block` parameter the block is dropped and the rest binds
+/// as for a function. With one, the block (or `nil`) goes to that parameter,
+/// which takes no positional or labelled argument and does not count in the
+/// arity an error reports.
+pub(crate) fn bind_method_arguments(
+    proto: &FunctionProto,
+    positional: Vec<Value>,
+    named: Vec<(crate::interpreter::value::SoliStr, Value)>,
+    block: Option<Value>,
+    span: Span,
+) -> Result<(Vec<Value>, u64), RuntimeError> {
+    let total_params = proto.param_names.len();
+    let block_param = match proto.block_param {
+        Some(index) if (index as usize) < total_params && total_params <= 64 => index as usize,
+        _ => return bind_named_arguments(proto, positional, named, span),
+    };
+    let regular = total_params - 1;
+    if positional.len() > regular {
+        return Err(RuntimeError::wrong_arity(
+            regular,
+            positional.len() + named.len(),
+            span,
+        ));
+    }
+
+    let mut slots = vec![Value::Null; total_params];
+    let mut supplied = 0u64;
+    for (i, value) in positional.into_iter().enumerate() {
+        let index = if i < block_param { i } else { i + 1 };
+        slots[index] = value;
+        supplied |= 1u64 << index;
+    }
+    for (name, value) in named {
+        let Some(index) = proto
+            .param_names
+            .iter()
+            .enumerate()
+            .position(|(i, p)| i != block_param && p.as_str() == name.as_ref())
+        else {
+            return Err(RuntimeError::undefined_variable(name.to_string(), span));
+        };
+        // A label naming a parameter already filled by position is dropped,
+        // as in `bind_named_arguments`.
+        if supplied & (1u64 << index) != 0 {
+            continue;
+        }
+        slots[index] = value;
+        supplied |= 1u64 << index;
+    }
+
+    let required = (0..total_params)
+        .filter(|&i| i != block_param && proto.defaults_mask & (1u64 << i) == 0)
+        .count();
+    for index in 0..total_params {
+        if index == block_param {
+            continue;
+        }
+        let filled = supplied & (1u64 << index) != 0;
+        let has_default = proto.defaults_mask & (1u64 << index) != 0;
+        if !filled && !has_default {
+            let bound_before = (0..index)
+                .filter(|&i| i != block_param && supplied & (1u64 << i) != 0)
+                .count();
+            return Err(RuntimeError::wrong_arity(required, bound_before, span));
+        }
+    }
+
+    // The block, or `nil` without one — never the parameter's default.
+    slots[block_param] = block.unwrap_or(Value::Null);
+    supplied |= 1u64 << block_param;
+    Ok((slots, supplied))
+}
+
+/// `labels` as `CallNamed` carries them: a block's slot is positional.
+pub(crate) fn without_block_label(
+    labels: &[Option<crate::interpreter::value::SoliStr>],
+) -> Vec<Option<crate::interpreter::value::SoliStr>> {
+    labels
+        .iter()
+        .map(|label| match label {
+            Some(name) if name.as_str() == super::chunk::BLOCK_LABEL => None,
+            other => other.clone(),
+        })
+        .collect()
 }
 
 impl Vm {
@@ -750,12 +884,25 @@ impl Vm {
                     self.stack.truncate(callee_idx);
                     return self.build_value_object(class, positional, named, span);
                 }
-                // Tree-walking constructors need the interpreter's
-                // run-to-completion dance; punt rather than half-bind.
-                Err(RuntimeError::EngineFallback(
-                    format!("named arguments to {}'s constructor", class.name),
-                    span,
-                ))
+                if class.find_constructor().is_none()
+                    && class.find_native_method(NATIVE_CONSTRUCTOR).is_none()
+                {
+                    // No constructor anywhere: the arguments go nowhere, as
+                    // on the tree-walker (`new Point(x: 1)` on a class that
+                    // only declares fields).
+                    let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                    self.init_fields(class, &instance, span)?;
+                    self.stack.truncate(callee_idx);
+                    self.push(Value::Instance(instance));
+                    Ok(())
+                } else {
+                    // Tree-walking constructors need the interpreter's
+                    // run-to-completion dance; punt rather than half-bind.
+                    Err(RuntimeError::EngineFallback(
+                        format!("named arguments to {}'s constructor", class.name),
+                        span,
+                    ))
+                }
             }
             _ => Err(RuntimeError::EngineFallback(
                 "named arguments to this callee".to_string(),
@@ -799,11 +946,17 @@ impl Vm {
         )?;
 
         let args_base = self.stack.len() - argc;
-        let defining_class = construct.map(|(class, defining_class)| {
-            self.stack[args_base - 1] =
-                Value::Instance(Rc::new(RefCell::new(Instance::new(class))));
-            defining_class
-        });
+        // The declared fields start before the constructor runs, as on the
+        // tree-walker (`init_fields`).
+        let defining_class = match construct {
+            Some((class, defining_class)) => {
+                let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                self.init_fields(&class, &instance, span)?;
+                self.stack[args_base - 1] = Value::Instance(instance);
+                Some(defining_class)
+            }
+            None => None,
+        };
 
         let total_params = closure.proto.param_names.len();
         let slots_base = self.stack.len();
@@ -834,6 +987,159 @@ impl Vm {
             supplied,
         ));
         Ok(())
+    }
+
+    /// Take the `labels.len()` arguments of a labelled method call off the
+    /// stack, split into positional ones, labelled ones (a duplicate label is
+    /// an error, as on the tree-walker) and the block.
+    #[allow(clippy::type_complexity)]
+    fn take_labelled_arguments(
+        &mut self,
+        labels: &[Option<crate::interpreter::value::SoliStr>],
+        span: Span,
+    ) -> Result<
+        (
+            Vec<Value>,
+            Vec<(crate::interpreter::value::SoliStr, Value)>,
+            Option<Value>,
+        ),
+        RuntimeError,
+    > {
+        let values = self.stack.split_off(self.stack.len() - labels.len());
+        let mut positional = Vec::new();
+        let mut named: Vec<(crate::interpreter::value::SoliStr, Value)> =
+            Vec::with_capacity(labels.len());
+        let mut block = None;
+        for (label, value) in labels.iter().zip(values) {
+            match label {
+                Some(name) if name.as_str() == super::chunk::BLOCK_LABEL => block = Some(value),
+                Some(name) => {
+                    if named.iter().any(|(existing, _)| existing == name) {
+                        return Err(RuntimeError::type_error(
+                            format!("duplicate named argument '{}'", name),
+                            span,
+                        ));
+                    }
+                    named.push((name.clone(), value));
+                }
+                None => positional.push(value),
+            }
+        }
+        Ok((positional, named, block))
+    }
+
+    /// A method call with labelled arguments (`Op::CallMethodNamed`,
+    /// `Op::CallSelfOrGlobalNamed`): the receiver at `receiver_idx`, one
+    /// argument slot per entry of `labels` above it.
+    ///
+    /// The method resolves as [`Self::call_method_slow_path`] resolves it: on
+    /// an instance its compiled method, else its tree-walker method compiled as
+    /// a method (unless a field of that name shadows it); on a class its
+    /// static. The labels bind by name ([`bind_method_arguments`]) and the
+    /// frame opens with the receiver still in the callee slot, so it is
+    /// `this`. Nothing is called by a property read first.
+    ///
+    /// Otherwise, on an instance with no field of that name (a native method,
+    /// `with`, `method_missing`), the labels become one trailing options hash
+    /// and the block follows — the tree-walker's native convention — and the
+    /// call takes the positional path. Any other receiver or member (a field,
+    /// `Klass.new`, a model scope, a native value's method) is read and called
+    /// as `CallNamed` calls it.
+    pub(crate) fn call_method_named(
+        &mut self,
+        receiver_idx: usize,
+        labels: &[Option<crate::interpreter::value::SoliStr>],
+        name: &str,
+        check_privacy: bool,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if matches!(
+            &self.stack[receiver_idx],
+            Value::Future(_) | Value::Deferred(_)
+        ) {
+            let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
+            self.stack[receiver_idx] = resolved;
+        }
+        if check_privacy {
+            self.check_private_receiver(receiver_idx, name)?;
+        }
+
+        let target: Option<MethodWithClass> = match &self.stack[receiver_idx] {
+            Value::Instance(inst) => {
+                let class = inst.borrow().class.clone();
+                match class.find_vm_method_with_class(name) {
+                    Some(found) => Some(found),
+                    None if inst.borrow().fields.contains_key(name) => None,
+                    None => self.compile_tree_walking_method(&class, name)?,
+                }
+            }
+            Value::Class(class) => {
+                let class = class.clone();
+                if name == "new"
+                    || (class.is_model_subclass() && Self::is_model_class_scope(&class, name))
+                {
+                    None
+                } else {
+                    // The bytecode static, or a tree-walker one that reads
+                    // `this` compiled as a method, as `call_method_slow_path`
+                    // resolves them; a plain tree-walker static is read and
+                    // called below.
+                    match resolve_static_callee(&class, name, false) {
+                        Some(StaticCallee::Compiled(closure)) => Some((closure, class.clone())),
+                        Some(StaticCallee::TreeWalker { func, defining, .. })
+                            if func.binds_this =>
+                        {
+                            let closure =
+                                self.compile_tree_walking_static(&func, &defining, name)?;
+                            Some((closure, class.clone()))
+                        }
+                        _ => None,
+                    }
+                }
+            }
+            _ => None,
+        };
+
+        if let Some((closure, defining_class)) = target {
+            let (positional, named, block) = self.take_labelled_arguments(labels, span)?;
+            let (slots, supplied) =
+                bind_method_arguments(&closure.proto, positional, named, block, span)?;
+            return self.call_closure_with_slots(closure, slots, supplied, Some(defining_class));
+        }
+
+        let instance_without_field = matches!(
+            &self.stack[receiver_idx],
+            Value::Instance(inst) if !inst.borrow().fields.contains_key(name)
+        );
+        if instance_without_field {
+            let (positional, named, block) = self.take_labelled_arguments(labels, span)?;
+            let mut argc = positional.len();
+            for value in positional {
+                self.push(value);
+            }
+            if !named.is_empty() {
+                let mut pairs = crate::interpreter::value::HashPairs::default();
+                for (name, value) in named {
+                    pairs.insert(
+                        crate::interpreter::value::HashKey::String(name.to_string().into()),
+                        value,
+                    );
+                }
+                self.push(Value::Hash(Rc::new(RefCell::new(pairs))));
+                argc += 1;
+            }
+            if let Some(block) = block {
+                self.push(block);
+                argc += 1;
+            }
+            return self.call_method_slow_path(receiver_idx, argc, name);
+        }
+
+        let object = self.stack[receiver_idx].clone();
+        let callee = self.op_get_property_member(&object, name, span)?;
+        self.stack[receiver_idx] = callee;
+        let labels = without_block_label(labels);
+        self.call_value_named(labels.len(), &labels, span)
     }
 
     fn call_native(
@@ -1218,13 +1524,15 @@ impl Vm {
                 }
                 continue;
             }
-            if let Some(method) = class.find_method(cb_name) {
+            if let Some((method, declaring)) = class.find_method_with_class(cb_name) {
                 // Compiled as a method with the instance in the callee slot, so
                 // `this` inside the callback is the record — see `callback_proto`.
+                // A callback inherited from a parent model runs as that
+                // parent's: a `super` in it goes past the parent, not back to it.
                 let proto = self.callback_proto(&method, span)?;
                 let closure = Rc::new(VmClosure::new(proto, Vec::new()));
                 let result =
-                    self.invoke_zero_arg_instance_method(instance, closure, class.clone(), span)?;
+                    self.invoke_zero_arg_instance_method(instance, closure, declaring, span)?;
                 if matches!(result, Value::Bool(false)) {
                     return Ok(false);
                 }
@@ -1886,7 +2194,7 @@ impl Vm {
         // `EngineFallback` from a view helper would demote the whole view.
         if self.tree_walk_functions {
             if let Some(proto) = view_helper_proto(func) {
-                return self.call_compiled_function(proto, argc, span);
+                return self.call_compiled_function(func, proto, argc, span);
             }
             let callee_idx = self.stack.len() - 1 - argc;
             let args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
@@ -1902,16 +2210,17 @@ impl Vm {
         let proto = jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
         })?;
-        self.call_compiled_function(proto, argc, span)
+        self.call_compiled_function(func, proto, argc, span)
     }
 
     fn call_compiled_function(
         &mut self,
+        func: &Function,
         proto: Arc<FunctionProto>,
         argc: usize,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+        let closure = function_closure(func, proto);
         // Replace the Function value on the stack with the compiled VmClosure.
         let callee_idx = self.stack.len() - 1 - argc;
         self.stack[callee_idx] = Value::VmClosure(closure.clone());
@@ -1934,81 +2243,97 @@ impl Vm {
         if crate::interpreter::domain::value_objects_declared() && class.is_value_object() {
             return self.construct_value_object(class, argc, span);
         }
-        let instance_val = Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
+        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+        self.init_fields(class, &instance, span)?;
+        let instance_val = Value::Instance(instance);
 
-        // Bytecode constructor (classes compiled in the VM): registered as
-        // "init" by compile_constructor and returns `this`, so the frame's
-        // return value is already the instance. The instance takes the
-        // callee slot → it becomes slot 0 (`this`) under the method calling
-        // convention.
-        if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
-            if ctor.proto.defaults_only && defining_class.superclass.is_some() {
-                return self.construct_past_defaults(class, argc, span);
+        match self.resolve_constructor(class, span)? {
+            // A compiled constructor — the class's bytecode `init`, or a
+            // tree-walker one compiled once in constructor mode — returns
+            // `this`. The instance takes the callee slot, so it becomes slot
+            // 0 (`this`) under the method calling convention, and the frame
+            // records the class that declares the constructor, so the
+            // `super(...)` inside reaches that class's superclass.
+            Constructor::Compiled(ctor, defining_class) => {
+                self.stack[callee_idx] = instance_val;
+                self.call_closure_in_class(ctor, argc, span, Some(defining_class))
             }
-            // A constructor sets its own class's defaults; the ancestors'
-            // are set here, whether it calls `super` or not.
-            if let (Some(superclass), Value::Instance(instance)) =
-                (&defining_class.superclass, &instance_val)
-            {
-                if superclass.inherits_field_defaults() {
-                    let instance = instance.clone();
-                    self.apply_field_defaults(superclass, &instance, span)?;
-                }
+            // Native constructor (a Rust-defined class such as RateLimiter):
+            // it receives the instance and the arguments and fills the fields.
+            Constructor::Native(init) => {
+                let mut init_args = Vec::with_capacity(argc + 1);
+                init_args.push(instance_val.clone());
+                init_args.extend(self.stack[callee_idx + 1..].iter().cloned());
+                self.stack.truncate(callee_idx);
+                (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
+                self.push(instance_val);
+                Ok(())
             }
-            self.stack[callee_idx] = instance_val;
-            return self.call_closure_in_class(ctor, argc, span, Some(defining_class));
+            // No constructor: drop any args (tree-walker parity) and yield the
+            // instance.
+            Constructor::Absent => {
+                self.stack.truncate(callee_idx);
+                self.push(instance_val);
+                Ok(())
+            }
         }
+    }
 
-        // Tree-walking constructor (classes copied from interpreter globals,
-        // e.g. native classes in serve mode): JIT-compile as a method, run
-        // it to completion, discard its return value, and yield the instance.
-        if let Some(ctor) = class.find_constructor() {
-            let proto = jit_compile_method(&ctor, self.globals.keys().cloned()).map_err(|e| {
+    /// The constructor a construction of `class` runs, in the order
+    /// `call_class` has always looked: a bytecode `init` up the chain, then a
+    /// tree-walker constructor, then a native one.
+    pub(crate) fn resolve_constructor(
+        &self,
+        class: &Rc<Class>,
+        span: Span,
+    ) -> Result<Constructor, RuntimeError> {
+        if let Some((init, defining_class)) = class.find_vm_method_with_class("init") {
+            return Ok(Constructor::Compiled(init, defining_class));
+        }
+        if let Some((ctor, defining_class)) = class.find_constructor_with_class() {
+            let closure = self.compiled_constructor(&ctor, &defining_class, span)?;
+            return Ok(Constructor::Compiled(closure, defining_class));
+        }
+        Ok(match class.find_native_method(NATIVE_CONSTRUCTOR) {
+            Some(init) => Constructor::Native(init),
+            None => Constructor::Absent,
+        })
+    }
+
+    /// `ctor`, the tree-walker constructor `declaring` declares (every class
+    /// of an app under `soli serve` has its constructor as AST), compiled in
+    /// constructor mode: the frame returns `this` however the body ends, so
+    /// it runs as one ordinary frame, like the `init` of a class the VM
+    /// compiled. Compiled the first time it runs and kept on the class
+    /// (`Class::vm_constructor`); it was compiled as a method, wrapped in a
+    /// new closure and run to completion in a nested `run()` on every `new`.
+    pub(crate) fn compiled_constructor(
+        &self,
+        ctor: &Rc<Function>,
+        declaring: &Class,
+        span: Span,
+    ) -> Result<Rc<VmClosure>, RuntimeError> {
+        if let Some((compiled_from, closure)) = declaring.vm_constructor.borrow().as_ref() {
+            if Rc::ptr_eq(compiled_from, ctor) {
+                return Ok(closure.clone());
+            }
+        }
+        let proto = Compiler::compile_constructor_standalone(ctor, self.globals.keys().cloned())
+            .map_err(|e| {
                 RuntimeError::EngineFallback(
                     format!("a function the VM cannot compile ({})", e),
                     span,
                 )
             })?;
-            let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-            self.stack[callee_idx] = instance_val.clone();
-            let saved_depth = self.return_depth;
-            let frames_before = self.frames.len();
-            self.return_depth = frames_before;
-            let outcome = (|| -> Result<(), RuntimeError> {
-                self.call_closure(closure, argc, span)?;
-                if self.frames.len() != frames_before {
-                    self.run()?; // discard the constructor's return value
-                }
-                Ok(())
-            })();
-            self.return_depth = saved_depth;
-            outcome?;
-            self.push(instance_val);
-            return Ok(());
-        }
-
-        // Native constructor (a Rust-defined class such as RateLimiter): it
-        // receives the instance and the arguments and fills the fields.
-        if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
-            let mut init_args = Vec::with_capacity(argc + 1);
-            init_args.push(instance_val.clone());
-            init_args.extend(self.stack[callee_idx + 1..].iter().cloned());
-            self.stack.truncate(callee_idx);
-            (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
-            self.push(instance_val);
-            return Ok(());
-        }
-
-        // No constructor: drop any args (tree-walker parity) and yield the
-        // instance.
-        self.stack.truncate(callee_idx);
-        self.push(instance_val);
-        Ok(())
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        *declaring.vm_constructor.borrow_mut() = Some((ctor.clone(), closure.clone()));
+        Ok(closure)
     }
 
     /// Run `class`'s constructor on the instance in the callee slot
     /// (`[this, args…]`), leaving `this` — or a frame that returns it — in
-    /// its place: `super(...)`, and construction past a `defaults_only` init.
+    /// its place: `super(...)`. The fields were set when the instance was
+    /// built (`init_fields`); a constructor only runs its body.
     pub(crate) fn call_init_of(
         &mut self,
         class: &Rc<Class>,
@@ -2016,108 +2341,151 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let receiver_idx = self.stack.len() - 1 - argc;
-        // Compiled constructor — `this` is already in the callee slot;
-        // "init" returns `this`.
-        if let Some((init, defining_class)) = class.find_vm_method_with_class("init") {
-            self.call_closure_in_class(init, argc, span, Some(defining_class))?;
-        } else if let Some(ctor) = class.find_constructor() {
-            // Tree-walking constructor: JIT-compile, run to completion,
-            // evaluate to `this`.
-            let this_val = self.stack[receiver_idx].clone();
-            self.run_jit_method_to_completion(&ctor, argc, span)?;
-            self.push(this_val);
-        } else if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
+        match self.resolve_constructor(class, span)? {
+            // A compiled constructor — `this` is already in the callee slot,
+            // and the frame returns it. A tree-walker one may be inherited
+            // (`class K2 < K1` with no `new` of its own): it runs as K1's, so
+            // a `super(...)` in it reaches K1's superclass, not K1 again.
+            Constructor::Compiled(ctor, defining_class) => {
+                self.call_closure_in_class(ctor, argc, span, Some(defining_class))?;
+            }
             // A native constructor — `super(message)` in an `Error`
             // subclass. It takes `this` first, then the arguments; the
             // expression evaluates to `this`.
-            let call_args: Vec<Value> = self.stack[receiver_idx..].to_vec();
-            self.stack.truncate(receiver_idx + 1);
-            (init.func)(&call_args).map_err(|e| RuntimeError::new(e, span))?;
-        } else {
+            Constructor::Native(init) => {
+                let call_args: Vec<Value> = self.stack[receiver_idx..].to_vec();
+                self.stack.truncate(receiver_idx + 1);
+                (init.func)(&call_args).map_err(|e| RuntimeError::new(e, span))?;
+            }
             // No constructor: drop args, evaluate to `this` (matching
             // tree-walker behavior).
-            self.stack.truncate(receiver_idx + 1);
+            Constructor::Absent => self.stack.truncate(receiver_idx + 1),
         }
         Ok(())
     }
 
-    /// `new C(args…)` where `C`'s `init` only sets field defaults: the
-    /// defaults of every class up the chain, then the nearest real
-    /// constructor with the arguments — as the tree-walker constructs.
-    /// `init` alone would refuse the arguments and skip the superclasses'
-    /// defaults.
-    fn construct_past_defaults(
-        &mut self,
-        class: &Rc<Class>,
-        argc: usize,
-        span: Span,
-    ) -> Result<(), RuntimeError> {
-        let callee_idx = self.stack.len() - 1 - argc;
-        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
-        self.apply_field_defaults(class, &instance, span)?;
-        let mut constructor_class = Some(class.clone());
-        while let Some(current) = constructor_class.take() {
-            match current.find_vm_method_with_class("init") {
-                Some((init, defining)) if init.proto.defaults_only => {
-                    constructor_class = defining.superclass.clone();
-                }
-                _ => {
-                    constructor_class = Some(current);
-                    break;
-                }
-            }
-        }
-        self.stack[callee_idx] = Value::Instance(instance.clone());
-        match constructor_class {
-            Some(rest) => {
-                self.run_to_completion(|vm| vm.call_init_of(&rest, argc, span))?;
-            }
-            None => self.stack.truncate(callee_idx),
-        }
-        self.push(Value::Instance(instance));
-        Ok(())
-    }
-
-    /// The field defaults of `class` and its ancestors, the farthest first,
-    /// on `instance`: each class's defaults-only `init`, or the literal
-    /// defaults of a class the tree-walker defined. The tree-walker sets
-    /// them all before any constructor runs, whether or not it calls `super`.
-    pub(crate) fn apply_field_defaults(
+    /// Every declared instance field of `class` and its ancestors on
+    /// `instance`, the farthest class first: its default, or `nil`. The
+    /// tree-walker sets them before any constructor runs
+    /// (`initialize_instance_fields`), whatever the constructor does and
+    /// whether it calls `super`. So a subclass's default wins, a field no
+    /// constructor assigns reads as `nil`, and `super(...)` never sets
+    /// them again.
+    ///
+    /// Each class starts its fields (a literal default, else `nil`), then
+    /// runs its defaults that are not literals, before the next class down
+    /// starts its own: a subclass that declares a field again without a
+    /// default resets it to `nil`, as on the tree-walker. Every write is
+    /// raw, as the tree-walker's: a `const`, `private` or frozen field takes
+    /// its default.
+    pub(crate) fn init_fields(
         &mut self,
         class: &Rc<Class>,
         instance: &Rc<RefCell<Instance>>,
         span: Span,
     ) -> Result<(), RuntimeError> {
-        let mut chain = Vec::new();
-        let mut next = Some(class.clone());
-        while let Some(current) = next {
-            if !current.inherits_field_defaults() {
-                break;
-            }
-            next = current.superclass.clone();
-            chain.push(current);
+        if let Some(superclass) = &class.superclass {
+            self.init_fields(superclass, instance, span)?;
         }
-        for current in chain.into_iter().rev() {
-            let init = current
-                .vm_methods
-                .borrow()
-                .get("init")
-                .filter(|init| init.proto.defaults_only)
-                .cloned();
-            match init {
-                Some(init) => {
-                    self.push(Value::Instance(instance.clone()));
-                    self.run_to_completion(|vm| {
-                        vm.call_closure_in_class(init, 0, span, Some(current.clone()))
-                    })?;
+        let Some(init) = self.field_init_of(class, span)? else {
+            return Ok(());
+        };
+        init.start(&mut instance.borrow_mut());
+        if let Some(computed) = &init.computed {
+            self.push(Value::Instance(instance.clone()));
+            let values = self.run_to_completion(|vm| {
+                vm.call_closure_in_class(computed.clone(), 0, span, Some(class.clone()))
+            })?;
+            if let Value::Hash(values) = values {
+                let mut instance = instance.borrow_mut();
+                for (name, value) in values.borrow().iter() {
+                    if let HashKey::String(name) = name {
+                        instance.fields.insert(name.clone(), value.clone());
+                    }
                 }
-                None => crate::interpreter::executor::access::member::own_literal_field_defaults(
-                    &current,
-                    &mut instance.borrow_mut(),
-                ),
             }
         }
         Ok(())
+    }
+
+    /// `class`'s [`FieldInit`], or `None` when it declares no instance
+    /// field. The VM records it when it compiles a class; a class the
+    /// tree-walker defined (every class of a served app) gets one the first
+    /// time the VM builds an instance of it, from its AST: the literal
+    /// defaults, and one method compiled for the others.
+    fn field_init_of(
+        &mut self,
+        class: &Rc<Class>,
+        span: Span,
+    ) -> Result<Option<Rc<FieldInit>>, RuntimeError> {
+        if let Some(init) = class.field_init.borrow().as_ref() {
+            return Ok(Some(init.clone()));
+        }
+        if class.fields.is_empty() {
+            return Ok(None);
+        }
+        // Declaration order, then any field the declarations do not list.
+        let declared = class.declared_fields.borrow();
+        let mut names: Vec<&String> = declared
+            .iter()
+            .filter(|name| class.fields.contains_key(*name))
+            .collect();
+        let mut rest: Vec<&String> = class
+            .fields
+            .keys()
+            .filter(|name| !declared.contains(*name))
+            .collect();
+        rest.sort();
+        names.extend(rest);
+
+        let mut fields = Vec::with_capacity(names.len());
+        let mut computed = Vec::new();
+        for name in names {
+            let default = class.fields.get(name).and_then(Option::as_ref);
+            let start = match default {
+                None => Value::Null,
+                Some(expr) => {
+                    match crate::interpreter::executor::access::member::literal_value(expr) {
+                        Some(value) => value,
+                        None => {
+                            computed.push((name.clone(), expr.clone()));
+                            Value::Null
+                        }
+                    }
+                }
+            };
+            fields.push((name.as_str().into(), start));
+        }
+        drop(declared);
+
+        let computed = match super::compiler_classes::computed_defaults_method(&computed) {
+            None => None,
+            Some(method) => {
+                // Compiled as one of the class's methods: with their
+                // environment (its namespace) and their file.
+                let (closure, source_path) = class
+                    .constructor
+                    .clone()
+                    .or_else(|| class.methods.borrow().values().next().cloned())
+                    .map(|f| (f.closure.clone(), f.source_path.clone()))
+                    .unwrap_or_else(|| {
+                        let env = crate::interpreter::environment::Environment::new();
+                        (Rc::new(RefCell::new(env)), None)
+                    });
+                let func = Function::from_method(&method, closure, source_path);
+                let proto =
+                    jit_compile_method(&func, self.globals.keys().cloned()).map_err(|e| {
+                        RuntimeError::EngineFallback(
+                            format!("a field default the VM cannot compile ({})", e),
+                            span,
+                        )
+                    })?;
+                Some(Rc::new(VmClosure::new(proto, Vec::new())))
+            }
+        };
+        let init = Rc::new(FieldInit { fields, computed });
+        *class.field_init.borrow_mut() = Some(init.clone());
+        Ok(Some(init))
     }
 
     /// Resolve the superclass of the class defining the currently executing
@@ -2136,11 +2504,17 @@ impl Vm {
     /// JIT-compile a tree-walking method and run it to completion with the
     /// receiver already in the callee slot (`[this, args…]`). Returns the
     /// method's return value; the stack is left at the callee slot.
+    ///
+    /// `class` is the class that declares the method. It goes on the frame,
+    /// so a `super` inside the method resolves against that class's
+    /// superclass, one level further up a chain each time — as the
+    /// tree-walker resolves it from the class the method was written in.
     pub(crate) fn run_jit_method_to_completion(
         &mut self,
         method: &Rc<Function>,
         argc: usize,
         span: Span,
+        class: Rc<Class>,
     ) -> Result<Value, RuntimeError> {
         let proto = jit_compile_method(method, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
@@ -2150,7 +2524,7 @@ impl Vm {
         let frames_before = self.frames.len();
         self.return_depth = frames_before;
         let result = (|| -> Result<Value, RuntimeError> {
-            self.call_closure(closure, argc, span)?;
+            self.call_closure_in_class(closure, argc, span, Some(class))?;
             if self.frames.len() == frames_before {
                 Ok(self.pop())
             } else {
@@ -2240,6 +2614,25 @@ impl Vm {
                     if self.try_call_model_class_delete(receiver_idx, span)? {
                         return Ok(());
                     }
+                }
+                // `Post.new()` / `Post.new(attrs)`: the attribute form, built
+                // here as `class_member_access`'s `new` builds it — no
+                // constructor runs for a model's `new`. Reaching it through
+                // `op_get_property` cost a native per call, and before that an
+                // interpreter seeded with every global (~35 µs).
+                if name == "new"
+                    && crate::interpreter::executor::access::member::model_attribute_new(&class)
+                {
+                    let span = self.current_span();
+                    let instance =
+                        crate::interpreter::executor::access::member::new_with_attributes(
+                            &class,
+                            &self.stack[receiver_idx + 1..receiver_idx + 1 + argc],
+                        )
+                        .map_err(|e| RuntimeError::new(e, span))?;
+                    self.stack.truncate(receiver_idx);
+                    self.push(instance);
+                    return Ok(());
                 }
             }
             // A static resolves once, in one walk of the chain, and is called
@@ -2756,18 +3149,10 @@ impl Vm {
                 self.call_query_builder_method(receiver, method_name, args, span)?
             }
             // A model helper resolved by the tree-walker's instance access —
-            // uploader (`attach_file`), HABTM (`add_tag`) — comes back as a
-            // bound method; it runs where it was resolved.
+            // uploader (`attach_photo`, `photo_url`), HABTM (`add_tag`) —
+            // comes back as a bound method.
             Value::Instance(ref inst) if inst.borrow().class.is_model_subclass() => {
-                let method = Rc::new(crate::interpreter::value::ValueMethod {
-                    receiver: Box::new(receiver.clone()),
-                    method_name: method_name.to_string(),
-                });
-                // Seeded with the VM's globals: an uploader method calls the
-                // app's `attach_upload` helper.
-                let mut interp =
-                    crate::interpreter::executor::Interpreter::for_vm_fragment(&self.globals);
-                interp.call_method(method, args, span)?
+                self.call_model_helper_method(inst, method_name, args, span)?
             }
             _ => {
                 return Err(RuntimeError::NoSuchProperty {
@@ -2779,6 +3164,46 @@ impl Vm {
         };
         self.push(result);
         Ok(())
+    }
+
+    /// A model instance's HABTM (`add_tag`, `remove_tag`) or uploader
+    /// method (`attach_photo`, `detach_photo`, `photo_url`, `photo_urls`),
+    /// run as the tree-walker's `call_method` runs it: a HABTM join write, or
+    /// a call to the app helper the uploader method forwards to, looked up in
+    /// the VM's globals and called here. Running it in a tree-walker meant one
+    /// seeded with a copy of every global on each call (~40 µs for a
+    /// `photo_url()` in a view row), and a VM-compiled helper then cost a
+    /// second VM.
+    fn call_model_helper_method(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        method_name: &str,
+        args: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        use crate::interpreter::builtins::model::habtm::{
+            habtm_add, habtm_remove, match_habtm_method, HabtmAction,
+        };
+        use crate::interpreter::executor::access::member::{
+            uploader_call, uploader_helper_args, uploader_helper_missing,
+        };
+        let class_name = inst.borrow().class.name.clone();
+        if let Some(matched) = match_habtm_method(&class_name, method_name) {
+            let result = match matched.action {
+                HabtmAction::Add => habtm_add(inst, &matched.relation, &args),
+                HabtmAction::Remove => habtm_remove(inst, &matched.relation, &args),
+            };
+            return result.map_err(|e| RuntimeError::new(e, span));
+        }
+        let (kind, field, helper_name) = uploader_call(method_name, span)?;
+        let helper = self
+            .globals
+            .get(helper_name)
+            .cloned()
+            .ok_or_else(|| uploader_helper_missing(method_name, helper_name, span))?;
+        let forwarded =
+            uploader_helper_args(kind, field, Value::Instance(inst.clone()), args, span)?;
+        self.invoke_callable(helper, &forwarded, span)
     }
 
     /// Call an arbitrary Value with arguments (used by server integration).
@@ -2825,6 +3250,11 @@ impl Vm {
     /// `load_controllers_in_worker`, so the `RefCell` cache is per-worker and
     /// has no cross-thread aliasing.) `warm_vm_handlers` pre-fills the cache at
     /// boot so the first request to a method is a cache hit, not a compile.
+    ///
+    /// The frame records the class that declares the action — the routed
+    /// controller, or the ancestor it inherits the action from — so a
+    /// `super.show(req)` in it resolves against that class's superclass, as
+    /// on the tree-walker.
     pub fn call_method_bound(
         &mut self,
         method: &Function,
@@ -2832,17 +3262,36 @@ impl Vm {
         arg: Option<Value>,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        self.call_method_bound_args(method, instance, arg.as_slice(), span)
+        let declaring = match &instance {
+            Value::Instance(inst) => inst.borrow().class.declaring_class_of(method),
+            _ => None,
+        };
+        self.call_method_bound_in(method, instance, arg.as_slice(), span, declaring)
     }
 
     /// `call_method_bound` with any number of arguments (a controller's
-    /// after-action hook takes the request and the response).
+    /// after-action hook takes the request and the response). A hook is a
+    /// lambda no class declares, and a bare static's receiver is the class
+    /// itself: neither frame gets a class.
     pub fn call_method_bound_args(
         &mut self,
         method: &Function,
         instance: Value,
         args: &[Value],
         span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.call_method_bound_in(method, instance, args, span, None)
+    }
+
+    /// `call_method_bound_args`, with `class` — the class declaring `method`,
+    /// when known — on the frame.
+    fn call_method_bound_in(
+        &mut self,
+        method: &Function,
+        instance: Value,
+        args: &[Value],
+        span: Span,
+        class: Option<Rc<Class>>,
     ) -> Result<Value, RuntimeError> {
         // The `let cached = ...borrow().clone()` line scopes the
         // `RefCell` borrow to the let statement so it's released before
@@ -2880,7 +3329,7 @@ impl Vm {
         for arg in args {
             self.push(arg.clone());
         }
-        self.call_closure(closure, args.len(), span)?;
+        self.call_closure_in_class(closure, args.len(), span, class)?;
         self.run()
     }
 
@@ -3252,6 +3701,343 @@ mod tests {
         );
     }
 
+    /// The classes `source` declares, defined by the tree-walker as the app
+    /// loader defines an application's, and a VM seeded with its globals.
+    fn vm_with_app_classes(source: &str) -> Vm {
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).expect("the classes load");
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        vm
+    }
+
+    /// A callback the record's class inherits runs as the class that declares
+    /// it. It ran as the record's class, so the `super.stamp()` in it resolved
+    /// against the declaring class itself: the callback ran a second time
+    /// before the grandparent's was reached.
+    #[test]
+    fn an_inherited_callback_runs_as_the_class_that_declares_it() {
+        let mut vm = vm_with_app_classes(
+            r#"
+class Root
+  def stamp
+    @log = "root;"
+  end
+end
+
+class Base < Root
+  def stamp
+    super.stamp()
+    @log = @log + "base;"
+  end
+end
+
+class Rec < Base
+end
+"#,
+        );
+        let Some(Value::Class(rec)) = vm.globals.get("Rec").cloned() else {
+            panic!("Rec is a class");
+        };
+        let inst = Rc::new(RefCell::new(Instance::new(rec.clone())));
+        let kept = vm
+            .run_model_callbacks_vm(&rec, &inst, &["stamp".to_string()], Span::default())
+            .expect("the callback runs on the VM");
+        assert!(kept, "the callback did not veto");
+        assert_eq!(inst.borrow().get("log"), Some(Value::str("root;base;")));
+    }
+
+    /// `name` of a fresh `class_name` instance on the VM, entered as a served
+    /// action is.
+    fn call_on_vm(vm: &mut Vm, class_name: &str, name: &str) -> Value {
+        let Some(Value::Class(class)) = vm.globals.get(class_name).cloned() else {
+            panic!("{class_name} is a class");
+        };
+        let method = class.find_method(name).expect("the method exists");
+        let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class))));
+        let result = vm
+            .call_method_bound(&method, instance, None, Span::default())
+            .unwrap_or_else(|err| panic!("{class_name}#{name}: {err}"));
+        vm.reset();
+        result
+    }
+
+    /// A tree-walker constructor runs with the class that declares it on its
+    /// frame, inherited or not, and so does a method reached through
+    /// `super.m()`: each `super` goes one level up, past a class that only
+    /// inherits. With no class there, the first `super` raised "super used
+    /// outside of a subclass method"; with the class it was looked up from
+    /// instead, K1's would have called itself.
+    #[test]
+    fn super_in_tree_walker_constructors_and_methods_climbs_the_chain() {
+        let mut vm = vm_with_app_classes(
+            r##"
+class K0
+  def tag
+    "k0"
+  end
+
+  new(a)
+    @k0 = a
+  end
+end
+
+class K1 < K0
+  def tag
+    "k1>" + super.tag()
+  end
+
+  new(a)
+    super(a + 1)
+    @k1 = a
+  end
+end
+
+class K2 < K1
+end
+
+class K3 < K2
+  def tag
+    "k3>" + super.tag()
+  end
+
+  new(a)
+    super(a * 2)
+    @k3 = a
+  end
+end
+
+class Probe
+  def built
+    k = K3.new(3)
+    "#{k.k0} #{k.k1} #{k.k3}"
+  end
+
+  def tagged
+    K3.new(1).tag()
+  end
+end
+"##,
+        );
+        assert_eq!(call_on_vm(&mut vm, "Probe", "built"), Value::str("7 6 3"));
+        assert_eq!(
+            call_on_vm(&mut vm, "Probe", "tagged"),
+            Value::str("k3>k1>k0")
+        );
+    }
+
+    /// A class the tree-walker defined (a served app's) gets its fields on
+    /// the VM: a literal default copied per instance, one that is not a
+    /// literal run per instance, nil without one — by every spelling. The
+    /// plan is built from the AST on the first instance and kept. The VM set
+    /// none of them: the first read raised "Cannot access property".
+    #[test]
+    fn a_served_class_gets_literal_computed_and_nil_fields() {
+        let mut vm = vm_with_app_classes(
+            r##"
+calls = 0
+
+def tick()
+  calls = calls + 1
+  calls
+end
+
+class Ticket
+  n: Int = tick()
+  tags: Array = []
+  note: String
+  seen: Any
+
+  new()
+    @seen = @note.nil?
+  end
+end
+
+class Probe
+  def run
+    a = Ticket.new()
+    b = new Ticket()
+    a.tags.push(1)
+    "#{a.n} #{b.n} #{a.tags.length} #{b.tags.length} #{b.note.nil?} #{b.seen}"
+  end
+end
+"##,
+        );
+        assert_eq!(
+            call_on_vm(&mut vm, "Probe", "run"),
+            Value::str("1 2 1 0 true true")
+        );
+        let Some(Value::Class(ticket)) = vm.globals.get("Ticket").cloned() else {
+            panic!("Ticket is a class");
+        };
+        let init = ticket
+            .field_init
+            .borrow()
+            .clone()
+            .expect("built on the first instance");
+        let names: Vec<&str> = init.fields.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["n", "tags", "note", "seen"]);
+        assert!(init.computed.is_some(), "`n` is computed by one method");
+        assert_eq!(
+            call_on_vm(&mut vm, "Probe", "run"),
+            Value::str("3 4 1 0 true true")
+        );
+        let again = ticket.field_init.borrow().clone().expect("kept");
+        assert!(Rc::ptr_eq(&init, &again), "built once per class");
+    }
+
+    /// `class` built from `args` the way `new Klass(args)` builds it:
+    /// `call_class` must leave the constructor as one more frame of this
+    /// dispatch loop (not run it to completion itself), and the loop then
+    /// returns the instance.
+    fn construct_as_a_frame(vm: &mut Vm, class: &Rc<Class>, args: &[Value]) -> Value {
+        vm.push(Value::Class(class.clone()));
+        for arg in args {
+            vm.push(arg.clone());
+        }
+        let frames = vm.frames.len();
+        vm.call_class(class, args.len(), Span::default())
+            .expect("the constructor starts");
+        assert_eq!(
+            vm.frames.len(),
+            frames + 1,
+            "{}'s constructor is a frame of the running loop, not a nested run",
+            class.name
+        );
+        vm.run().expect("the constructor runs")
+    }
+
+    fn field_of(value: &Value, name: &str) -> Option<Value> {
+        match value {
+            Value::Instance(instance) => instance.borrow().get(name),
+            other => panic!("expected an instance, got {}", other.type_name()),
+        }
+    }
+
+    /// A served class's tree-walker constructor is compiled once, in
+    /// constructor mode, kept on the class that declares it, and entered as
+    /// an ordinary frame by every construction and by a subclass's
+    /// `super(...)`. It was compiled into a fresh closure and run in a nested
+    /// `run()` on every `new`, which threw its value away.
+    #[test]
+    fn a_served_constructor_runs_as_a_frame_of_one_cached_closure() {
+        let mut vm = vm_with_app_classes(
+            r##"
+class Pt
+  x: Int
+  y: Int
+
+  new(x, y)
+    @x = x
+    @y = y
+  end
+end
+
+class Diagonal < Pt
+  new(n)
+    super(n, n)
+  end
+end
+"##,
+        );
+        let Some(Value::Class(pt)) = vm.globals.get("Pt").cloned() else {
+            panic!("Pt is a class");
+        };
+        let Some(Value::Class(diagonal)) = vm.globals.get("Diagonal").cloned() else {
+            panic!("Diagonal is a class");
+        };
+        assert!(
+            pt.vm_constructor.borrow().is_none(),
+            "compiled on first use"
+        );
+
+        let first = construct_as_a_frame(&mut vm, &pt, &[Value::Int(1), Value::Int(2)]);
+        assert_eq!(field_of(&first, "x"), Some(Value::Int(1)));
+        assert_eq!(field_of(&first, "y"), Some(Value::Int(2)));
+        let (compiled_from, closure) = pt
+            .vm_constructor
+            .borrow()
+            .clone()
+            .expect("kept on the class");
+        let declared = pt.constructor.clone().expect("Pt declares one");
+        assert!(
+            Rc::ptr_eq(&compiled_from, &declared),
+            "compiled from Pt's own constructor"
+        );
+
+        let second = construct_as_a_frame(&mut vm, &pt, &[Value::Int(3), Value::Int(4)]);
+        assert_eq!(field_of(&second, "x"), Some(Value::Int(3)));
+        let diagonal_built = construct_as_a_frame(&mut vm, &diagonal, &[Value::Int(5)]);
+        assert_eq!(field_of(&diagonal_built, "x"), Some(Value::Int(5)));
+        assert_eq!(field_of(&diagonal_built, "y"), Some(Value::Int(5)));
+
+        let (_, kept) = pt.vm_constructor.borrow().clone().expect("still kept");
+        assert!(
+            Rc::ptr_eq(&closure, &kept),
+            "the next `new` and the subclass's `super(...)` reuse Pt's closure"
+        );
+        assert!(
+            diagonal.vm_constructor.borrow().is_some(),
+            "Diagonal keeps its own constructor"
+        );
+    }
+
+    /// The frame a served constructor runs in returns its instance however
+    /// the body ends — a guard's early `return`, a `return` inside
+    /// `try`/`finally` — by every spelling. Run to completion, its value was
+    /// thrown away; as a frame, constructor mode is what keeps `new` from
+    /// evaluating to what the body returned.
+    #[test]
+    fn a_served_constructor_returning_early_yields_the_instance() {
+        let mut vm = vm_with_app_classes(
+            r##"
+class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+
+class Finally
+  log: String
+
+  new
+    @log = ""
+    try
+      @log = @log + "t"
+      return
+    finally
+      @log = @log + "f"
+    end
+  end
+end
+
+class Probe
+  def run
+    "#{Guarded.new(5).x} #{new Guarded(0).x} #{Guarded(9).x} #{Finally.new().log}"
+  end
+end
+"##,
+        );
+        assert_eq!(call_on_vm(&mut vm, "Probe", "run"), Value::str("5 0 9 tf"));
+        let Some(Value::Class(guarded)) = vm.globals.get("Guarded").cloned() else {
+            panic!("Guarded is a class");
+        };
+        let early = construct_as_a_frame(&mut vm, &guarded, &[Value::Int(7)]);
+        assert_eq!(field_of(&early, "x"), Some(Value::Int(7)));
+    }
+
     #[test]
     fn jit_compile_function_caches_proto() {
         // An empty-bodied function is enough to exercise the compile path.
@@ -3274,6 +4060,109 @@ mod tests {
         // ...and a second call returns the same cached proto (no recompile).
         let again = jit_compile_function(&func, std::iter::empty()).expect("cached compile");
         assert!(Arc::ptr_eq(&proto.unwrap(), &again));
+    }
+
+    /// An app-level `def` under serve is a tree-walker `Function` in the VM
+    /// globals. Its first VM call compiles it and keeps the closure; every
+    /// later call runs that same closure — in the fast tier, in the general
+    /// arm (an omitted default), recursively — instead of allocating one per
+    /// call, and returns what the tree-walker returns.
+    #[test]
+    fn a_tree_walker_def_is_called_through_its_cached_closure() {
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+        use crate::vm::Compiler;
+
+        let mut vm = vm_with_app_classes(
+            r#"
+def util_add(acc, i)
+  acc + i
+end
+
+def with_default(a, b = 10)
+  a + b
+end
+
+def fact(n)
+  return 1 if n < 2
+
+  n * fact(n - 1)
+end
+"#,
+        );
+        let function = |vm: &Vm, name: &str| match vm.globals.get(name) {
+            Some(Value::Function(func)) => Rc::clone(func),
+            other => panic!("{name} is a tree-walker function, got {other:?}"),
+        };
+        let run = |vm: &mut Vm, source: &str| -> Result<Value, RuntimeError> {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            vm.reset();
+            vm.execute(&module.main)?;
+            Ok(vm.globals.get("x").cloned().unwrap_or(Value::Null))
+        };
+        let loop_source = "let x = 0\nfor i in 0..1000\n  x = util_add(x, i)\nend\n\
+                           x = x + with_default(1) + with_default(1, 2) + fact(10)";
+        let expected = Value::Int(499_500 + 11 + 3 + 3_628_800);
+
+        assert_eq!(run(&mut vm, loop_source).unwrap(), expected);
+        let add = function(&vm, "util_add");
+        let closure = add
+            .jit_closure
+            .borrow()
+            .clone()
+            .expect("the closure is kept");
+        assert!(Arc::ptr_eq(
+            &closure.proto,
+            add.jit_cache.borrow().as_ref().unwrap()
+        ));
+        let defaults = function(&vm, "with_default");
+        let defaults_closure = cached_function_closure(&defaults).expect("kept");
+        let fact = function(&vm, "fact");
+        let fact_closure = cached_function_closure(&fact).expect("kept");
+
+        // A second run reuses each closure.
+        assert_eq!(run(&mut vm, loop_source).unwrap(), expected);
+        assert!(Rc::ptr_eq(
+            &closure,
+            &cached_function_closure(&add).unwrap()
+        ));
+        assert!(Rc::ptr_eq(
+            &defaults_closure,
+            &cached_function_closure(&defaults).unwrap()
+        ));
+        assert!(Rc::ptr_eq(
+            &fact_closure,
+            &cached_function_closure(&fact).unwrap()
+        ));
+
+        // The function itself is still what the globals hold: `type` and
+        // arity probes see a function, not the closure.
+        assert!(matches!(
+            vm.globals.get("util_add"),
+            Some(Value::Function(_))
+        ));
+
+        // A wrong argument count is the arity error it was.
+        let err = run(&mut vm, "let x = util_add(1)").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                RuntimeError::WrongArity {
+                    expected: 2,
+                    got: 1,
+                    ..
+                }
+            ),
+            "an arity error: {err}"
+        );
+
+        // A closure over a proto that is no longer the cached one is never
+        // trusted: the next call makes a new one over the current proto.
+        let fresh = jit_compile_function(&Function::default(), std::iter::empty()).unwrap();
+        *add.jit_cache.borrow_mut() = Some(fresh);
+        assert!(cached_function_closure(&add).is_none());
     }
 
     #[test]
@@ -3430,8 +4319,14 @@ mod tests {
             .borrow()
             .clone()
             .expect("a helper with no free name is compiled");
+        let closure = double
+            .jit_closure
+            .borrow()
+            .clone()
+            .expect("the helper's closure is kept");
 
-        // The second call is the cache hit: same proto, still the VM.
+        // The second call is the cache hit: same proto, still the VM, and
+        // the same closure rather than a new one.
         assert_eq!(
             call_on_view_vm(&double, "let x = double(22)"),
             Value::Int(44)
@@ -3439,6 +4334,10 @@ mod tests {
         assert!(std::sync::Arc::ptr_eq(
             &cached,
             &double.jit_cache.borrow().clone().unwrap()
+        ));
+        assert!(Rc::ptr_eq(
+            &closure,
+            &double.jit_closure.borrow().clone().unwrap()
         ));
 
         // The bench witness: a method call on the argument, no free name.
@@ -3808,5 +4707,102 @@ result = [defined("Widget"), const_get("Widget") == Widget]
 "#);
         assert_eq!(result.to_string(), "[true, true]");
         assert_eq!(calls, 0, "an intercepted native took the plain path");
+    }
+}
+
+#[cfg(test)]
+mod bind_method_arguments_tests {
+    //! C583: a labelled method call binds its block to the `&block` parameter
+    //! (as the tree-walker's `call_value_with_named` does), or drops it.
+    use super::{bind_method_arguments, FunctionProto};
+    use crate::interpreter::value::Value;
+    use crate::span::Span;
+
+    /// `def m(a, b = 2, &blk)`.
+    fn proto_with_block() -> FunctionProto {
+        let mut proto = FunctionProto::new("m".to_string());
+        proto.param_names = vec!["a".into(), "b".into(), "blk".into()];
+        proto.arity = 2;
+        proto.defaults = 1;
+        proto.defaults_mask = 0b010;
+        proto.block_param = Some(2);
+        proto
+    }
+
+    #[test]
+    fn a_labelled_call_binds_its_block_to_the_block_parameter() {
+        let proto = proto_with_block();
+        let (slots, supplied) = bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("a".into(), Value::Int(4))],
+            Some(Value::Int(99)),
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(4), Value::Null, Value::Int(99)]);
+        // `b` is left to its default; the block slot is never defaulted.
+        assert_eq!(supplied, 0b101);
+
+        let (slots, _) = bind_method_arguments(
+            &proto,
+            vec![Value::Int(1)],
+            vec![("b".into(), Value::Int(3))],
+            None,
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(1), Value::Int(3), Value::Null]);
+    }
+
+    #[test]
+    fn the_block_parameter_takes_no_argument_and_no_label() {
+        let proto = proto_with_block();
+        // A third positional argument has no regular parameter to go to.
+        assert!(bind_method_arguments(
+            &proto,
+            vec![Value::Int(1), Value::Int(2), Value::Int(3)],
+            vec![],
+            None,
+            Span::default(),
+        )
+        .is_err());
+        // Nor may a label name the block parameter.
+        assert!(bind_method_arguments(
+            &proto,
+            vec![Value::Int(1)],
+            vec![("blk".into(), Value::Int(3))],
+            None,
+            Span::default(),
+        )
+        .is_err());
+        // `a` is required.
+        assert!(bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("b".into(), Value::Int(3))],
+            None,
+            Span::default(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn without_a_block_parameter_the_block_is_dropped() {
+        let mut proto = FunctionProto::new("n".to_string());
+        proto.param_names = vec!["a".into(), "f".into()];
+        proto.arity = 1;
+        proto.defaults = 1;
+        proto.defaults_mask = 0b10;
+        let (slots, supplied) = bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("a".into(), Value::Int(1))],
+            Some(Value::Int(7)),
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(1), Value::Null]);
+        assert_eq!(supplied, 0b01);
     }
 }

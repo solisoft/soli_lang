@@ -430,6 +430,46 @@ config3 = configure(port: 443)
             <li>Unknown parameter names cause a runtime error</li>
         </ul>
 
+        <h3 class="text-lg font-semibold text-white mb-3">On Methods</h3>
+        <p class="text-gray-400 mb-4">Labels work the same on a method call, and the receiver stays <code class="text-amber-400">this</code>: an instance method, <code class="text-amber-400">@helper(k: v)</code>, the bare private helper, a <code class="text-amber-400">static def</code>, and safe navigation (a nil receiver evaluates no argument):</p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Invoice
+  total: Int
+
+  new(total: Int)
+    @total = total
+  end
+
+  def with_fee(fee: Int = 5, times: Int = 1) -> Int
+    @total + fee * times
+  end
+
+  def summary -> String
+    "#{@with_fee(times: 3)} with fees, #{_due(days: 30)}"
+  end
+
+  static def zero(note: String = "")
+    this.new(total: 0)
+  end
+
+  private
+
+  def _due(days: Int) -> String
+    "due in #{days} days"
+  end
+end
+
+invoice = Invoice.new(total: 100)
+invoice.with_fee(fee: 10)          # 110
+invoice.summary                    # "115 with fees, due in 30 days"
+Invoice.zero(note: "draft").total  # 0
+missing = nil
+missing&amp;.with_fee(fee: 10)        # nil</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-6">A block passed along with labels reaches the method's <code class="text-amber-400">&amp;block</code> parameter; a method without one ignores it. A builtin method receives the labels as one trailing options hash, and <code class="text-amber-400">method_missing</code> gets them as a hash after the positional arguments.</p>
+
         <h3 class="text-lg font-semibold text-white mb-3">Ruby-Style Calls Without Parentheses</h3>
         <p class="text-gray-400 mb-4">You can call methods on objects without parentheses, using Ruby-style syntax:</p>
         <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
