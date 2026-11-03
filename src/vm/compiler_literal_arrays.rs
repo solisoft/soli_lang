@@ -229,17 +229,18 @@ mod tests {
         )));
         let (items, name) = membership_of(&proto);
         assert_eq!(items, strings(&["up", "late", "overdue"]));
-        assert_eq!(name.as_deref(), Some("includes?"));
+        assert_eq!(name.as_deref(), None);
     }
 
-    /// `includes?` and `contains?` keep `CallMethod`'s user-method gate;
-    /// `include?` and `contains` have a method id, compile to
-    /// `CallMethodById`, and have none.
+    /// Every membership name has a method id (`includes?` and `contains?`
+    /// share those of `include?` and `contains`), so each compiles where the
+    /// call would to `CallMethodById`, and none has `CallMethod`'s
+    /// user-method gate.
     #[test]
     fn every_membership_name_compiles_to_the_op_with_its_call_gate() {
         for (method, gate) in [
-            ("includes?", Some("includes?")),
-            ("contains?", Some("contains?")),
+            ("includes?", None::<&str>),
+            ("contains?", None),
             ("include?", None),
             ("contains", None),
         ] {
@@ -473,9 +474,10 @@ result = [first, second, rows, make() == make()]
     }
 
     /// A user-defined Array method takes a literal's membership call
-    /// exactly when it takes the same call on an array in a variable:
-    /// through `CallMethod`'s gate for `includes?` and `contains?`, never
-    /// for `include?` and `contains` (`CallMethodById`).
+    /// exactly when it takes the same call on an array in a variable. All
+    /// four names compile to `CallMethodById` there, so the builtin answers
+    /// for each, as on the tree-walker, whose direct dispatch runs the
+    /// builtin for a paren call on an Array.
     ///
     /// The methods are registered on the tree-walker, as an app does: a VM
     /// closure cannot be defined on a primitive class.
@@ -501,7 +503,7 @@ result = [first, second, rows, make() == make()]
         let literal = vm.globals.get("literal").expect("literal").to_string();
         let variable = vm.globals.get("variable").expect("variable").to_string();
         assert_eq!(literal, variable);
-        assert_eq!(literal, "[user includes?, user contains?, true, true]");
+        assert_eq!(literal, "[true, true, true, true]");
     }
 
     /// Under line coverage, every line of the literal is still marked, ahead
