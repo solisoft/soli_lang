@@ -176,6 +176,7 @@ impl Chunk {
             // one, instead of mis-jumping at run time.
             Op::Jump(target)
             | Op::JumpIfFalse(target)
+            | Op::JumpIfTrue(target)
             | Op::JumpIfFalseNoPop(target)
             | Op::JumpIfTrueNoPop(target)
             | Op::JumpIfNull(target)
@@ -303,6 +304,7 @@ mod tests {
         let variants = [
             Op::Jump(0),
             Op::JumpIfFalse(0),
+            Op::JumpIfTrue(0),
             Op::JumpIfFalseNoPop(0),
             Op::JumpIfTrueNoPop(0),
             Op::JumpIfNull(0),
@@ -322,6 +324,7 @@ mod tests {
             let target = match c.code[off] {
                 Op::Jump(t)
                 | Op::JumpIfFalse(t)
+                | Op::JumpIfTrue(t)
                 | Op::JumpIfFalseNoPop(t)
                 | Op::JumpIfTrueNoPop(t)
                 | Op::JumpIfNull(t)

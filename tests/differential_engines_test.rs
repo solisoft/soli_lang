@@ -138,6 +138,134 @@ const CASES: &[(&str, &str)] = &[
         "or_assign_default",
         "fn f(v) { let x = v\n  x ||= 99\n  return x }\nprint(f(0))\nprint(f(7))",
     ),
+    (
+        // A self-assignment leaves every local as it was. The VM fused
+        // `GetLocal(s), SetLocal(s)` into `SwapSetLocal`, which popped a value
+        // the pair never pushed: two locals were swapped, and reading the last
+        // one indexed past the stack (a panic).
+        "self_assignment_keeps_every_local",
+        r##"def keep
+  a = 1
+  b = 2
+  a = a
+  [a, b]
+end
+
+def keep_last
+  a = 1
+  b = 2
+  a = a
+  [b, a]
+end
+
+def keep_param(p, q)
+  p = p
+  [p, q]
+end
+
+def value_of
+  x = 5
+  y = (x = x)
+  [x, y]
+end
+
+def in_loop(n)
+  x = 0
+  i = 0
+  while i < n
+    i += 1
+    x = i
+    x = x
+  end
+  x
+end
+
+def relet
+  let a = 1
+  let b = 2
+  let a = a
+  [a, b]
+end
+print(keep(), keep_last(), keep_param(3, 4), value_of(), in_loop(3), relet())"##,
+    ),
+    (
+        // An assignment statement's `SetLocal, Pop` runs as one `SetLocalPop`
+        // on the VM, which moves the value into the slot instead of copying
+        // it there and dropping the copy. Each store shape: a heap value
+        // shared with another local, `a = a op b`, `+=`, a re-`let`, a value a
+        // branch merges into (`||`, `&&`, `??`, a ternary, a `match`,
+        // `rescue`, `||=`), a chained store, a local a closure reads, and a
+        // store whose `Pop` a short-circuit jumps to, which keeps the `Pop`.
+        "assignment_statements_move_the_value_into_the_slot",
+        r##"def boom
+  throw "boom"
+end
+
+def stores(a, b, c, v)
+  s = "heap"
+  t = s
+  t += "!"
+  arr = [1]
+  same = arr
+  same.push(2)
+  h = {"k": 1}
+  g = h
+  g["j"] = 2
+  k = 7
+  z = 2
+  k = k - z
+  k = k * 3
+  k = k / 5
+  k += 2
+  w = k - z
+  let r = 1
+  let r = r + 1
+  x = a || b
+  y = a && b
+  q = a ?? 3
+  tern = c ? "yes" : "no"
+  m = match v {
+    1 => "one",
+    n => "n=#{n}"
+  }
+  res = boom() rescue "rescued"
+  n0 = 0
+  n0 ||= 5
+  p = q = 4
+  [s, t, arr, same, h, g, k, w, r, x, y, q, tern, m, res, n0, p]
+end
+print(stores(nil, 2, true, 1))
+print(stores(4, 2, false, 7))
+
+def short(ok)
+  x = 0
+  ok && (x = 1)
+  ok || (x = x + 10)
+  ok ? (x = x * 2) : (x = x - 1)
+  let y = 5
+  [x, y]
+end
+print(short(false), short(true))
+
+def captured
+  x = 1
+  read = fn() { x }
+  x = 2
+  read()
+end
+print(captured())
+
+def loop_store(n)
+  last = nil
+  i = 0
+  while i < n
+    i += 1
+    last = i * 10
+  end
+  last
+end
+print(loop_store(3))"##,
+    ),
     // --- recursion (reentrant locals) ---
     (
         "recursion_let",
@@ -198,6 +326,28 @@ const CASES: &[(&str, &str)] = &[
         // Comprehension as a call argument — wrapped in a clean-frame lambda.
         "comprehension_call_arg",
         "fn total(a) { let t = 0\n  for v in a { t = t + v }\n  return t }\nprint(total([x * 2 for x in [1, 2, 3]]))",
+    ),
+    (
+        // `h["k"] = v` / `h.set("k", v)` leaves `v` on the stack, so a
+        // comprehension or binding `match` later in the expression must take
+        // the clean-frame lambda. The VM counted the constant-key set opcodes
+        // at -1, saw a clean stack, and built the result in `v`'s slot.
+        "index_assignment_before_a_comprehension_or_match",
+        r##"h = {}
+
+def run
+  g = {}
+  xs = [1, 2]
+  a = [g["k"] = 9, [x * 10 for x in xs]]
+  b = [g.set("j", 8), [x + 1 for x in xs if x > 1]]
+  c = [h["k"] = 7, {x: x * 2 for x in xs}]
+  d = [g["m"] = 1, match xs { [p, q] => p + q, _ => 0 }]
+  e = [h.set("n", 6), [x for x in xs]]
+  [a, b, c, d, e, g, h]
+end
+print(run())
+r = [h["t"] = 5, [x * 2 for x in [3, 4]]]
+print(r)"##,
     ),
     (
         // Backticks used to refuse compiled mode. They lower to System.shell;
@@ -794,6 +944,49 @@ end"##,
         "try_catch_native_error",
         "try { print(\"zz\".hex) } catch (e) { print(\"caught\") }",
     ),
+    (
+        // `TryBegin`/`TryEnd`/`RescueJump` run in the VM's fast tier: the
+        // handler it pushes must unwind the stack, a `for` iterator and a
+        // callee frame exactly as the general arm's did, on iterations that
+        // throw and on those that do not.
+        "try_rescue_in_loops_fast_tier",
+        r##"def risky(i)
+  throw "odd #{i}" if i % 2 == 1
+  i * 10
+end
+
+def run_loops
+  total = 0
+  log = []
+  i = 0
+  while i < 6
+    try
+      total += risky(i)
+    catch e
+      log.push(e)
+    finally
+      total += 1
+    end
+    i += 1
+  end
+  arr = [1, 2, 3]
+  for x in [0, 1, 5, 2]
+    total += arr[x] rescue 100
+    for y in [1, 2]
+      total += risky(y) rescue y
+    end
+  end
+  print(total)
+  print(log)
+  try
+    total = 0
+  catch e
+    total = -1
+  end
+  total
+end
+print(run_loops())"##,
+    ),
     // --- enums (VM-native: declaration, construction, methods, equality) ---
     // Enum-variant *match patterns* and named construction deliberately bail to
     // the tree-walker (binding-pattern / named-arg VM gaps), so they aren't
@@ -819,6 +1012,83 @@ end"##,
         // DB/JSON serialization shape + `parse` reconstruction must match.
         "enum_serialization_and_parse",
         "enum C { Red, Blue, Tag(name: String) }\nprint(json_stringify({\"c\": C.Red, \"t\": C.Tag(\"x\")}))\nprint(C.parse(\"Red\") == C.Red)\nprint(C.parse({\"variant\": \"Tag\", \"name\": \"y\"}) == C.Tag(\"y\"))",
+    ),
+    (
+        // A condition ending in `!=` branches the way `a != b` evaluates.
+        // The VM fuses `NotEqual, JumpIfFalse` into `TestNotEqualJump`, whose
+        // general arm compared two instances by pointer: two equal enum values
+        // built apart (a payload variant, or one rebuilt by `parse` as an
+        // `enum_field` read is) took the "different" branch. `unless`, `&&`,
+        // a block's value and `a != b` itself are not fused and were right.
+        "enum_not_equal_in_a_condition",
+        r##"enum Shape
+  Circle(radius: Int)
+  Square(side: Int)
+end
+
+enum Status
+  Active
+  Inactive
+end
+
+def guard(a, b)
+  return "guard" if a != b
+
+  "-"
+end
+
+def loop_runs(a, b)
+  rounds = 0
+  while a != b
+    rounds += 1
+    break
+  end
+  rounds
+end
+
+def conditions(a, b)
+  out = []
+  if a != b
+    out.push("if")
+  else
+    out.push("-")
+  end
+  if a == Shape.Square(9)
+    out.push("square")
+  elsif a != b
+    out.push("elsif")
+  else
+    out.push("-")
+  end
+  out.push(a != b ? "ternary" : "-")
+  label = "-"
+  label = "postfix" if a != b
+  out.push(label)
+  out.push(guard(a, b))
+  out.push(loop_runs(a, b))
+  arm = match a {
+    x if x != b => "match-guard",
+    _ => "-"
+  }
+  out.push(arm)
+  out.push([x for x in [a] if x != b].length)
+  out.push([a].filter { |x| x != b }.length)
+  unless a != b
+    out.push("unless")
+  end
+  out.push(a != b && true)
+  out.push(a != b)
+  out
+end
+
+print(conditions(Shape.Circle(1), Shape.Circle(1)))
+print(conditions(Shape.Circle(1), Shape.Circle(2)))
+print(conditions(Shape.Circle(1), Shape.Square(1)))
+print(conditions(Status.parse("Active"), Status.Active))
+print(conditions(Status.parse("Inactive"), Status.Active))
+print(conditions(Shape.parse({"variant": "Circle", "radius": 1}), Shape.Circle(1)))
+# One shared unit-variant value: identity already answered this one.
+print(conditions(Status.Active, Status.Active))"##,
     ),
     // --- functions stored in hash entries (dispatch tables) ---
     // The VM used to reject `handlers.on_create(rec)` outright: an unknown hash
@@ -935,6 +1205,200 @@ end"##,
         // in the fused local ops, and string equality against a constant.
         "fast_tier_hands_off_to_the_general_arm",
         "fn f() {\n  let big = 9223372036854775807\n  try { print(big + 1) } catch e { print(\"overflow\") }\n  let s = \"\"\n  let i = 0\n  while i < 3 { s = s + \"ab\"\n    i = i + 1 }\n  print(s)\n  let x = 1.5\n  let y = 2\n  print(x + y)\n  print(y * x - 1)\n  print(y < x)\n  print(x <= 1.5)\n  print(x + x)\n  x += 1\n  print(x)\n  let name = \"soli\"\n  print(name == \"soli\")\n  print(name != \"ruby\")\n  let n = null\n  print(n == null)\n  let t = 0\n  for k in 0..10 { if k > 4 && k != 7 { t = t + k } }\n  print(t)\n}\nf()",
+    ),
+    (
+        // The fused local ops (`IncrLocal`, `DecrLocal`, `AddLocalsInPlace`,
+        // `AddNestedIndex`) raise where an Int leaves the range, and leave the
+        // variable as it was. Their general arms wrapped instead — `i += 1` on
+        // the largest Int gave the smallest — while the tree-walker raised.
+        "int_overflow_in_fused_local_ops_raises",
+        r##"const INT_MAX = 9223372036854775807
+const INT_MIN = -9223372036854775807 - 1
+
+# `x = x + …` is located at the `=` by the tree-walker and at the `+` by the
+# VM, so those three shapes compare the message alone.
+def without_location(error)
+  error.split(" at ")[0]
+end
+
+def incr
+  i = INT_MAX - 1
+  i += 1
+  try
+    i += 1
+  catch e
+    print(e)
+  end
+  try
+    i++
+  catch e
+    print(e)
+  end
+  try
+    i = i + 1
+  catch e
+    print(without_location(e))
+  end
+  i
+end
+
+def decr
+  i = INT_MIN + 1
+  i -= 1
+  try
+    i -= 1
+  catch e
+    print(e)
+  end
+  try
+    i--
+  catch e
+    print(e)
+  end
+  try
+    i = i - 1
+  catch e
+    print(e)
+  end
+  i
+end
+
+def accumulate(step)
+  total = INT_MAX - step
+  total += step
+  try
+    total += step
+  catch e
+    print(e)
+  end
+  try
+    total = total + step
+  catch e
+    print(without_location(e))
+  end
+  total
+end
+
+def keyed_sum
+  h = {"a": INT_MAX - 1, "b": 1}
+  names = ["a", "b", "b"]
+  acc = 0
+  k = 0
+  while k < 2
+    acc = acc + h[names[k]]
+    k += 1
+  end
+  try
+    acc += h[names[k]]
+  catch e
+    print(e)
+  end
+  try
+    acc = acc + h[names[k]]
+  catch e
+    print(without_location(e))
+  end
+  acc
+end
+
+print(incr(), decr(), accumulate(1), keyed_sum())"##,
+    ),
+    (
+        // `k += c`, `k -= c` and `k *= c` with an Int or Float constant other
+        // than `+= 1`/`-= 1` are one in-place op on the VM
+        // (`AddLocalConstInPlace` and its siblings). Its fast arm takes two
+        // Ints or two Floats; an overflow, a mix, a string and `nil` go to the
+        // general arm, which must raise or convert as the tree-walker does,
+        // leaving the variable as it was on an error.
+        "self_arithmetic_with_a_constant_in_place",
+        r##"const INT_MAX = 9223372036854775807
+const INT_MIN = -9223372036854775807 - 1
+
+def ints
+  k = 10
+  k += 2
+  k -= 5
+  k *= 3
+  k = k + 4
+  k = k - 6
+  k = k * 2
+  k += -3
+  k *= 0
+  k += 7
+  k
+end
+
+def floats
+  x = 1.5
+  x += 0.25
+  x -= 0.5
+  x *= 4.0
+  y = 2
+  y += 0.5
+  z = 3.0
+  z *= 2
+  z -= 1
+  [x, y, z]
+end
+
+def strings
+  s = "ab"
+  s *= 3
+  t = "n"
+  t += 2
+  [s, t]
+end
+
+def overflow
+  i = INT_MAX - 2
+  i += 2
+  try
+    i += 2
+  catch e
+    print(e)
+  end
+  j = INT_MIN + 3
+  j -= 3
+  try
+    j -= 3
+  catch e
+    print(e)
+  end
+  m = INT_MAX / 2 + 1
+  try
+    m *= 2
+  catch e
+    print(e)
+  end
+  [i, j, m]
+end
+
+def bad_type
+  h = nil
+  try
+    h += 2
+  catch e
+    print("caught")
+  end
+  try
+    h *= 2
+  catch e
+    print("caught")
+  end
+  h
+end
+
+def loop_sum(n)
+  total = 0
+  i = 0
+  while i < n
+    total += 10
+    i += 1
+  end
+  total
+end
+
+print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
     ),
     (
         // `hash.key` dot access: a hit, and a miss falling back to a method.
@@ -1180,6 +1644,31 @@ end"##,
     (
         "match_array_rest_with_guard",
         "fn f(v) { return match v { [a, ...r] if r.length > 1 => \"long\", [a, ...r] => \"short\", _ => \"no\" } }\nprint([f([1, 2, 3]), f([1]), f([])])",
+    ),
+    // `MatchArrayLen` tests "is an Array" and the length in one op, on the
+    // subject's slot or on a parked nested element; `ArrayRestLocal` builds
+    // `...rest` natively. Pinned: non-array subjects of every kind fall
+    // through, a nested element that is not an array fails only its arm, and
+    // the rest is a copy the subject does not share.
+    (
+        "match_array_shape_on_non_array_subjects",
+        "fn f(v) { return match v { [] => \"empty\", [a] => \"one\", [a, ...r] => \"many\", _ => \"not\" } }\nprint([f([]), f([1]), f([1, 2]), f(\"ab\"), f({\"a\": 1}), f(nil), f(0), f(1..3)])",
+    ),
+    (
+        "match_array_nested_shape",
+        "fn f(v) { return match v { [[x, y], z] => x * y + z, [[x, ...r], z] => r.length, [a, b] => a + b, _ => -1 } }\nprint([f([[2, 3], 4]), f([[1, 2, 3], 0]), f([1, 2]), f([[1], 2]), f([1])])",
+    ),
+    (
+        "match_array_rest_is_a_copy",
+        "xs = [1, 2, 3]\nr = match xs { [h, ...t] => t, _ => [] }\nr.push(9)\nprint([xs, r])",
+    ),
+    (
+        "match_enum_payload_skips_wildcards_by_position",
+        "enum Shape { Circle(radius: Int), Rect(w: Int, h: Int), Box(a: Int, b: Int, c: Int) }\nfn f(s) { return match s { Shape.Rect(_, h) => \"h=\" + str(h), Shape.Box(_, _, c) => \"c=\" + str(c), Shape.Circle(r) => \"r=\" + str(r), _ => \"?\" } }\nprint([f(Shape.Rect(3, 4)), f(Shape.Box(1, 2, 3)), f(Shape.Circle(5)), f(7)])",
+    ),
+    (
+        "match_typed_primitives_and_typed_catch",
+        "class Base { }\nclass Child < Base { }\nclass AppError < Error { }\nclass NotFound < AppError { }\nfn f(v) { return match v { Float: x => \"float\", String: s => \"string:\" + s, Bool: b => \"bool\", Void: z => \"nil\", Int: n => \"int\", _ => \"?\" } }\nprint([f(1.5), f(\"s\"), f(false), f(nil), f(1), f([1]), f(new Child())])\nfn g(e) { try { throw e } catch AppError err { return \"app\" } catch err { return \"other\" } }\nprint([g(new NotFound(\"x\")), g(new AppError(\"y\")), g(new ValueError(\"z\")), g(\"plain\")])",
     ),
     // --- typed patterns (`Int: n`) compile, and a non-exhaustive match raises ---
     (
@@ -1850,6 +2339,525 @@ module Util
   end
 end
 print(Util.shout("a"))"##,
+    ),
+    (
+        // `==`/`!=` against a literal or another local compile to the fused
+        // `EqualLocalConst`/`EqualLocalLocal` (and their `!=` twins), a
+        // condition on any other left side to `TestEqualJump`, and literal
+        // `match` arms to `EqualLocalConst`; string literals and primitive
+        // equality are answered in the VM's fast tier. Every kind pair must
+        // still answer as `==` does: nil against a value, Int against Float,
+        // a symbol against its string, a class against its name, enums.
+        "equality_fused_and_fast_paths",
+        r##"def g(s)
+  match s {
+    "a" => 1,
+    "b" => 2,
+    nil => 3,
+    true => 4,
+    1.5 => 5,
+    0 => 6,
+    _ => 0
+  }
+end
+print([g("a"), g("b"), g(nil), g(true), g(1.5), g("z"), g(1), g(0), g(false)])
+def f(s, t)
+  [s == "admin", s != "admin", s == t, s != t, s == nil, s != nil, s == 0, s != 0, s == 1.5, s == true]
+end
+print(f("admin", "admin"))
+print(f("user", "admin"))
+print(f(nil, nil))
+print(f(nil, 0))
+print(f(0.0, 0))
+print(f(0, 0.0))
+print(f(1.5, 1.5))
+print(f(true, false))
+print(f(:admin, "admin"))
+print(f(:admin, :admin))
+def branch(s, t)
+  out = []
+  out.push("eq") if s == "admin"
+  out.push("ne") if s != "admin"
+  out.push("ll") if s == t
+  if s == nil
+    out.push("nil")
+  elsif s == 0
+    out.push("zero")
+  end
+  while out.length < 3 && s != t
+    out.push("loop")
+  end
+  out
+end
+print(branch("admin", "admin"))
+print(branch(nil, 0))
+print(branch(0.0, 0))
+h = {"k": "z", "n": nil}
+print(h["k"] == "z", h["k"] != "z", h["n"] == nil, h["k"] == :z)
+if h["k"] == "z"
+  print("hash condition")
+end
+print([1, 5, 2, 5].filter { |x| x == 5 })
+print([1, 5.0, 2, 5].filter { |x| x != 5 })
+print(["a", "b", nil].filter { |x| x == "b" })
+print({"a": 1, "b": 5}.filter { |k, v| v == 5 })
+class Account
+end
+klass = Account
+print(klass == "Account", klass != "Account")
+def same_class(c)
+  c == "Account"
+end
+print(same_class(Account))
+enum Status
+  Active
+  Inactive
+end
+def active(st)
+  [st == Status.Active, st != Status.Active]
+end
+print(active(Status.parse("Active")))
+print(active(Status.Inactive))
+s = "x"
+y = "#{s}" == "x"
+print(y, "lit" == "lit", :a == :a, "a" == :a)"##,
+    ),
+    (
+        // The fast tier answers `k -= 1`, Int `/` and `%` (and `k % 7`'s new
+        // ModLocalConst), `??`, `h["k"]` and `xs[i]` in range; each declines
+        // where the general arm raises or converts. Results, errors and their
+        // spans must stay the tree-walker's.
+        "fast_tier_division_nullish_and_index_reads",
+        r##"def f(k, c, z, m, h, arr, v)
+  print(k % 7, k / 7, k % c, k / c, -k % 7, -k / 7, k % -3, (k + 1) % 4)
+  print(7.5 / 2.0, 7.5 % 2.0, k / 2.0, 7.0 / k, k % 2.5)
+  try
+    print(k / z)
+  catch e
+    print("div: #{e}")
+  end
+  try
+    print(k % z)
+  catch e
+    print("mod: #{e}")
+  end
+  try
+    print(k % 0)
+  catch e
+    print("modc: #{e}")
+  end
+  try
+    print(m / -1)
+  catch e
+    print("ovf: #{e}")
+  end
+  try
+    print(m % -1)
+  catch e
+    print("ovfm: #{e}")
+  end
+  try
+    print(1.0 / 0.0)
+  catch e
+    print("fz: #{e}")
+  end
+  try
+    print(k % "x")
+  catch e
+    print("mods: #{e}")
+  end
+  print(h["a"], h["zz"], arr[1], arr[-1], arr[c - 2], v ?? 3, nil ?? 4, false ?? 5)
+  try
+    print(arr[k])
+  catch e
+    print("oob: #{e}")
+  end
+  try
+    print(arr[-9])
+  catch e
+    print("oobn: #{e}")
+  end
+  n = 3
+  n -= 1
+  n -= 1
+  d = 2.5
+  d -= 1
+  x = nil
+  x ??= 8
+  x ??= 9
+  low = m
+  try
+    low -= 1
+  catch e
+    print("decr: #{e}")
+  end
+  s = "abc"
+  g = {"q": 1}
+  print(n, d, x, s[1], g["q"] ?? 0, g["r"] ?? 0)
+end
+f(10, 4, 0, -9223372036854775807 - 1, {"a": 1}, [1, 2, 3], nil)
+top = {"a": 1, "b": nil}
+print(top["a"], top["b"] ?? "dflt", top["c"])
+i = 10
+evens = 0
+while i > 0
+  evens += 1 if i % 2 == 0
+  i -= 1
+end
+print(evens, i)"##,
+    ),
+    (
+        // Defaulted parameters, short positional calls and named arguments
+        // bind alike: the VM runs the default prologue and short calls in its
+        // fast tier and binds labels in place on the stack. The positional
+        // value wins over a label for the same parameter; an explicit nil is
+        // supplied. (A duplicate label and `f()` are refused by both engines,
+        // with a different column and expected count: only the refusal is
+        // compared.)
+        "defaults_short_calls_and_named_arguments_bind_alike",
+        r##"def f(a, b = 2, c = 10 + 1)
+  "#{a}/#{b}/#{c}"
+end
+def g(x, y)
+  x - y
+end
+print(f(1), f(1, 5), f(1, 5, 6), f(1, nil))
+print(f(1, c: 7), f(b: 3, a: 4), f(c: 0, a: 9), f(1, a: 99), g(y: 1, x: 10))
+i = 0
+total = 0
+while i < 3
+  total += g(f(i).length, 1)
+  i += 1
+end
+print(total)
+try
+  f(b: 1)
+catch e
+  print("missing: #{e}")
+end
+try
+  f(1, zz: 1)
+catch e
+  print("unknown: #{e}")
+end
+try
+  f(1, 2, 3, 4)
+catch e
+  print("arity: #{e}")
+end
+try
+  f(1, 2, 3, d: 4)
+catch e
+  print("unknown after positional: #{e}")
+end
+try
+  f(a: 1, a: 2)
+catch e
+  print("duplicate refused")
+end
+try
+  f()
+catch e
+  print("none refused")
+end
+class Pt
+  x: Int
+  y: Int
+  new(x: Int, y: Int = 5)
+    @x = x
+    @y = y
+  end
+end
+print(Pt.new(y: 1, x: 2).x, Pt(x: 3).y)
+def many(a, b = 1, c = 2, d = 3, e = 4, f = 5, g = 6, h = 7, i = 8, j = 9, k = 10, l = 11, m = 12, n = 13, o = 14, p = 15, q = 16, r = 17, s = 18)
+  [a, b, s, r, j]
+end
+print(many(0, s: 100, r: 99, q: 1, p: 1, o: 1, n: 1, m: 1, l: 1, k: 1, i: 1, h: 1, g: 1, f: 1, e: 1, d: 1, c: 1, b: 7))"##,
+    ),
+    (
+        // `if v`, `unless v`, `if !v` and `while k` on a local compile to the
+        // fused `JumpIfLocalFalsy` / `JumpIfLocalTruthy`, which test the slot
+        // in place; every truthiness class must branch as the tree-walker
+        // does (`0.0` truthy, `0`, `""`, `[]`, `{}` falsy). `&&`/`||` keep the
+        // tested value, so they stay unfused.
+        "local_condition_fused_branches",
+        r##"class Box
+  v: Int
+  new(v: Int)
+    @v = v
+  end
+end
+def branches(v)
+  out = []
+  out.push(1) if v
+  out.push(2) unless v
+  n = 0
+  if !v
+    out.push(3)
+  else
+    out.push(4)
+  end
+  k = v
+  n = 0
+  while k
+    n = n + 1
+    k = nil if n >= 2
+  end
+  out.push(n)
+  a = v && "and"
+  b = v || "or"
+  out.push(a)
+  out.push(b)
+  out
+end
+[true, false, nil, 0, 1, -7, 0.0, 2.5, "", "x", [], [nil], {}, {"k": 0}, :sym, Box.new(0), fn(x) { x }].each do |v|
+  print(branches(v))
+end"##,
+    ),
+    (
+        // `unless <expr>`, the postfix `unless` forms and `if !<expr>` fold
+        // the `!` into one `JumpIfTrue` on the expression's value (`!!` and
+        // `unless !` back into `JumpIfFalse`), in statements, tail position,
+        // `while`, the ternary, comprehension filters and `match` guards.
+        // Every truthiness class must branch as the tree-walker's `!` does.
+        "negated_condition_jump_if_true",
+        r##"class Box
+  v: Int
+  new(v: Int)
+    @v = v
+  end
+end
+def id(v)
+  v
+end
+def guard(v)
+  return "g" unless id(v)
+
+  "G"
+end
+def tail(v)
+  unless id(v) == nil
+    "t"
+  else
+    "T"
+  end
+end
+def forms(v)
+  out = []
+  out.push(1) unless id(v)
+  unless [v][0]
+    out.push(2)
+  else
+    out.push(3)
+  end
+  out.push(4) if !id(v)
+  out.push(5) if !!id(v)
+  out.push(6) unless !id(v)
+  out.push(!(id(v)) ? 7 : 8)
+  n = 0
+  while !(n >= 2 || id(v))
+    n += 1
+  end
+  out.push(n)
+  out.push([1, 2].filter { |x| !id(v) }.length)
+  out.push(match 1 { x if !id(v) => "m", _ => "M" })
+  out.push(guard(v))
+  out.push(tail(v))
+  out
+end
+[true, false, nil, 0, 1, -7, 0.0, 2.5, "", "x", [], [nil], {}, {"k": 0}, :sym, Box.new(0), fn(x) { x }].each do |v|
+  print(forms(v))
+end
+i = 5
+until_like = 0
+while !(i < 0)
+  i -= 1
+  until_like += 1 unless i % 2 == 0
+end
+print(until_like)
+print([1, 2, 3, 4].map { |x| x unless x > 2 })
+print((0..6).filter { |x| !(x % 3 == 0) })"##,
+    ),
+    // The ops that read their name from the constant pool by sharing it
+    // rather than copying it (T33.20): AddAssignGlobal (hit and the insert of
+    // a first write), AppendGlobal, AppendGlobalConst, CallSuperMethod and
+    // `send`, each with a name short enough to sit inline and one long enough
+    // to be reference-counted.
+    (
+        "borrowed_constant_names_global_updates_super_and_send",
+        r##"total = 0
+an_accumulator_with_a_long_name = 0
+for i in [1, 2, 3] {
+  total = total + i * 2
+  an_accumulator_with_a_long_name = an_accumulator_with_a_long_name + i * 3
+}
+print(total)
+print(an_accumulator_with_a_long_name)
+buf = "a"
+buf << "b"
+list = []
+list << 1
+print(buf)
+print(list)
+out = ""
+for w in [1, 2] { out = out + "x" }
+print(out)
+class Base
+  def greet(x)
+    "base #{x}"
+  end
+  def a_method_name_longer_than_fifteen
+    "long"
+  end
+end
+class Kid < Base
+  def greet(x)
+    super.greet(x) + "!"
+  end
+  def a_method_name_longer_than_fifteen
+    super.a_method_name_longer_than_fifteen() + "er"
+  end
+end
+k = Kid.new()
+print(k.greet(1))
+print(k.a_method_name_longer_than_fifteen)
+print(k.send("greet", 2))
+print(k.send("a_method_name_longer_than_fifteen"))"##,
+    ),
+    (
+        // Each `while` condition is the `Loop` target. It fuses to a `*LocalLocal` / `*LocalConst` compare (C587): Int, Float and String operands, a loop that runs and one that does not.
+        "fused_head_at_while_headers",
+        r##"def headers(n, lim)
+  i = 0
+  f = 0.0
+  s = "a"
+  hits = 0
+  while i < n
+    i += 1
+  end
+  while f < lim
+    f = f + 0.5
+  end
+  while s < "aaaa"
+    s = s + "a"
+  end
+  while hits <= 3
+    hits += 1
+  end
+  [i, f, s, hits]
+end
+print(headers(4, 2.0))
+print(headers(0, 0.0))"##,
+    ),
+    (
+        // The statement after an `if` or a postfix guard is the branch's merge, and fuses (C587): `IncrLocal`, `AddLocalsInPlace`, `GetLocalProperty`, `LessLocalLocal`, `AppendLocalConst` and a method call, with Int, Float, String and Array operands.
+        "fused_head_after_if_and_guard",
+        r##"class Box
+  v: Int
+  new(v)
+    @v = v
+  end
+  def twice
+    @v * 2
+  end
+end
+def merges(k, m, h, b)
+  t = 0
+  y = nil
+  c = 0
+  buf = ""
+  i = 0
+  while i < 4
+    c += 1 if i % 2 == 0
+    i += 1
+    if i > 2
+      buf = buf + "x"
+    end
+    t = t + m
+    y = h.a
+    z = k < m
+    buf = buf + "y"
+    w = b.twice
+    i += 0
+    print([t, y, z, buf, w])
+  end
+  [c, t]
+end
+print(merges(1, 2, {"a": 5}, Box.new(3)))
+print(merges(1.5, 2.25, {"a": "s"}, Box.new(1)))
+print(merges("a", "b", {"a": [1]}, Box.new(0)))"##,
+    ),
+    (
+        // `elsif` and `else` heads, the statement after a `match`, a defaulted function's first statement and a `catch` body's are branch targets that fuse (C587).
+        "fused_head_at_elsif_match_default_catch",
+        r##"def classify(v)
+  r = 0
+  if v < 0
+    r = 1
+  elsif v < 3
+    r = r + v
+  elsif v == 3
+    r = v * 10
+  else
+    r = v - 1
+  end
+  r
+end
+def arms(v)
+  n = 1
+  out = match v {
+    1 => n + 1,
+    2 => n * 5,
+    "s" => n - 3,
+    _ => v
+  }
+  n += 1
+  [out, n]
+end
+def defaults(a, b = 2, c = "z")
+  a += 1
+  [a, b, c]
+end
+def caught(x)
+  n = 0
+  try
+    throw "boom" if x
+    n += 5
+  catch e
+    n += 1
+    n = n * 3
+  end
+  n += 10
+  n
+end
+print([classify(-2), classify(2), classify(3), classify(9), classify(2.5)])
+print([arms(1), arms(2), arms("s"), arms(7)])
+print([defaults(1), defaults(1.5, 3), defaults(0, 0, "q")])
+print([caught(true), caught(false)])"##,
+    ),
+    (
+        // `x += 1` after an `if` is `IncrLocal` (C587): Float and String operands take the general arm, and an Int overflow raises with the statement's location.
+        "fused_head_after_if_raises_like_unfused",
+        r##"def bump(flag, x)
+  r = 0
+  if flag
+    r = 1
+  end
+  x += 1
+  x
+end
+print(bump(true, 1))
+print(bump(false, 2.5))
+try
+  print(bump(true, 9223372036854775807))
+catch e
+  print("caught: #{e}")
+end
+try
+  print(bump(false, "s"))
+catch e
+  print("caught type")
+end"##,
     ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in

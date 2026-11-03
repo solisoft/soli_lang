@@ -1186,11 +1186,11 @@ impl Compiler {
                 // path: `h.set("k", v)` already compiled to one dispatch while
                 // `h["k"] = v` — the far more common spelling — took two.
                 //
-                // Safe to swap because both sequences leave exactly one value:
-                // the generic form pops receiver+value and pushes Null, the
-                // fused form pops value and pushes Null. Only a plain variable
-                // receiver is fused, so skipping its evaluation cannot lose a
-                // side effect.
+                // Safe to swap because both sequences leave exactly one value,
+                // the assigned one: the generic form pops receiver+value and
+                // pushes the value, the fused form pops the value and pushes it
+                // back. Only a plain variable receiver is fused, so skipping
+                // its evaluation cannot lose a side effect.
                 if let ExprKind::StringLiteral(key) = &index.kind {
                     let key_idx = self.add_string_constant(key);
                     let fused = match &object.kind {
@@ -1261,8 +1261,7 @@ impl Compiler {
         else_branch: Option<&Expr>,
         line: usize,
     ) -> CompileResult<()> {
-        self.compile_expr(condition)?;
-        let then_jump = self.emit_jump(Op::JumpIfFalse(0), line);
+        let then_jump = self.compile_condition_jump(condition, false, line)?;
 
         self.compile_expr(then_branch)?;
 
@@ -1568,8 +1567,7 @@ impl Compiler {
         // Append `element` to the result array: GetLocal(result); element;
         // ArrayPush (mutates in place, leaves the array copy); Pop.
         if let Some(cond) = condition {
-            self.compile_expr(cond)?;
-            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
+            let skip = self.compile_condition_jump(cond, false, line)?;
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(element)?;
             self.emit(Op::ArrayPush, line);
@@ -1650,8 +1648,7 @@ impl Compiler {
         // SetIndex (hash[key]=value, leaves the hash); Pop. SetIndex (not
         // HashSetConst) because the key is a runtime value, not a constant.
         if let Some(cond) = condition {
-            self.compile_expr(cond)?;
-            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
+            let skip = self.compile_condition_jump(cond, false, line)?;
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(key)?;
             self.compile_expr(value)?;

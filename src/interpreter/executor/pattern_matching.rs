@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::ast::expr::MatchPattern;
-use crate::interpreter::value::{Class, HashKey, HashPairs, Value};
+use crate::interpreter::value::{HashKey, HashPairs, Instance, StrKey, Value};
 
 use super::{Interpreter, RuntimeResult};
 
@@ -156,7 +156,7 @@ impl Interpreter {
                 };
 
                 // Class name + `__variant` tag must both match.
-                let class_rc = {
+                {
                     let inst = instance.borrow();
                     if inst.class.name != *enum_name {
                         return Ok(None);
@@ -168,22 +168,18 @@ impl Interpreter {
                     if !variant_ok {
                         return Ok(None);
                     }
-                    inst.class.clone()
-                };
+                }
 
                 if bindings.is_empty() {
                     return Ok(Some(Vec::new()));
                 }
 
                 // Bind the payload positionally, using the variant's declared
-                // field order from the enum's `__enum_variants` metadata.
-                let field_names = enum_variant_field_names(&class_rc, variant_name);
+                // field order from the enum's `__enum_variants` metadata. The
+                // VM's `EnumPayload` reads it through the same helper.
                 let mut result = Vec::new();
                 for (i, binding) in bindings.iter().enumerate() {
-                    let field_value = match field_names.get(i) {
-                        Some(field) => instance.borrow().fields.get(field.as_str()).cloned(),
-                        None => None,
-                    };
+                    let field_value = enum_variant_payload(&instance.borrow(), variant_name, i);
                     match field_value {
                         Some(fv) => match self.match_pattern(&fv, binding)? {
                             Some(b) => result.extend(b),
@@ -198,28 +194,32 @@ impl Interpreter {
     }
 }
 
-/// Read an enum's ordered payload field names for `variant` from the synthesized
-/// `__enum_variants` static-const metadata map. Returns an empty list if the
-/// class isn't an enum or the variant carries no payload.
-pub(crate) fn enum_variant_field_names(class: &Class, variant: &str) -> Vec<String> {
-    // Clone the inner `Rc`s out of each borrow so the borrow chain doesn't
-    // outlive the temporary `Ref` guards (cheap refcount bumps).
-    let meta = match class.static_fields.borrow().get("__enum_variants") {
-        Some(Value::Hash(m)) => m.clone(),
-        _ => return Vec::new(),
+/// The `index`-th payload field of an enum instance of `variant`, by the
+/// variant's declared field order in the synthesized `__enum_variants`
+/// static-const metadata map. `None` when the class isn't an enum, the variant
+/// carries no such field, or the instance lacks it.
+///
+/// Shared by the tree-walker and the VM's `EnumPayload`, so both bind the same
+/// value. Everything is borrowed: this runs once per bound payload field, and
+/// it used to build a `HashKey`, then a `Vec<String>` of every field name, to
+/// read one of them.
+pub(crate) fn enum_variant_payload(inst: &Instance, variant: &str, index: usize) -> Option<Value> {
+    let statics = inst.class.static_fields.borrow();
+    let Some(Value::Hash(meta)) = statics.get("__enum_variants") else {
+        return None;
     };
-    let key = HashKey::String(variant.to_string().into());
-    let fields = match meta.borrow().get(&key) {
-        Some(Value::Array(f)) => f.clone(),
-        _ => return Vec::new(),
+    let meta = meta.borrow();
+    let Some(Value::Array(fields)) = meta.get(&StrKey(variant)) else {
+        return None;
     };
-    let names = fields
-        .borrow()
+    let fields = fields.borrow();
+    // Non-string entries are skipped before indexing, as they always were.
+    let name = fields
         .iter()
         .filter_map(|v| match v {
-            Value::String(s) => Some(s.to_string()),
+            Value::String(s) => Some(s),
             _ => None,
         })
-        .collect();
-    names
+        .nth(index)?;
+    inst.fields.get(name.as_str()).cloned()
 }

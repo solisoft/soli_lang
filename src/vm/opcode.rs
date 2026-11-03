@@ -66,6 +66,10 @@ pub enum Op {
     Jump(u16),
     /// Jump forward if top of stack is falsy (pops the value).
     JumpIfFalse(u16),
+    /// Jump forward if top of stack is truthy (pops the value): the branch
+    /// of `unless cond`, `x unless cond` and `if !cond`, which used to be
+    /// `Not, JumpIfFalse` — a Bool pushed only to be popped.
+    JumpIfTrue(u16),
     /// Jump backward by offset (for loops).
     Loop(u16),
     /// Jump forward if falsy, don't pop (for &&).
@@ -262,12 +266,20 @@ pub enum Op {
     /// Decrement a local integer by 1: local[slot] -= 1
     DecrLocal(u16),
     /// Add two locals and push result: push(local[a] + local[b])
+    ///
+    /// Nothing emits it at the moment. `a = a + b` becomes `AddLocalsInPlace`,
+    /// and no rule fuses `GetLocal, GetLocal, Add` on its own (the `Sub`,
+    /// `Mul` and `Div` forms have one).
     AddLocalLocal(u16, u16),
     /// Compare two locals with <=: push(local[a] <= local[b])
     LessEqualLocalLocal(u16, u16),
     /// Get local and add int constant: push(local[slot] + constant_int)
     AddLocalConst(u16, u16),
     /// Assign top of stack to local (without extra pop): local[slot] = pop()
+    ///
+    /// Replaces `SetLocal(slot), Pop`, which is what an assignment statement
+    /// compiles to (`fuse_set_local_pop`). The parameter-default prologue
+    /// emits it directly.
     SetLocalPop(u16),
     /// `local[a] += local[b]` entirely in place: no push, no pop, one dispatch.
     ///
@@ -284,6 +296,19 @@ pub enum Op {
     /// [`Op::AddLocalsInPlace`] for strings. Other types of local fall back
     /// to a normal add against that constant.
     AppendLocalConst(u16, u16),
+    /// `local[slot] += constant` for an Int or Float constant other than an
+    /// Int 1 (that is [`Op::IncrLocal`]), in place: no push, no pop.
+    ///
+    /// Replaces `GetLocal(slot), Constant(c), Add, SetLocal(slot), Pop`, which
+    /// was otherwise `AddLocalConst, SetLocalPop`. An Int overflow raises and
+    /// leaves the local as it was; any other pair of types goes through the
+    /// general `+`.
+    AddLocalConstInPlace(u16, u16),
+    /// `local[slot] -= constant`, in place, as [`Op::AddLocalConstInPlace`]
+    /// (an Int 1 is [`Op::DecrLocal`]).
+    SubLocalConstInPlace(u16, u16),
+    /// `local[slot] *= constant`, in place, as [`Op::AddLocalConstInPlace`].
+    MulLocalConstInPlace(u16, u16),
     /// `local[slot] << value`. Pops the value and, below it, the local as it
     /// was read before the value ran. An array is pushed into; a string local
     /// appends a string. The resulting local is pushed, matching `<<`
@@ -396,6 +421,8 @@ pub enum Op {
     MulLocalConst(u16, u16),
     /// Divide local by constant: push(local[slot] / constant)
     DivLocalConst(u16, u16),
+    /// Local modulo constant: push(local[slot] % constant)
+    ModLocalConst(u16, u16),
     /// Push two locals onto stack (reduces GetLocal dispatch overhead)
     GetLocal2(u16, u16),
     /// Combined Greater + JumpIfFalse: pop two, compare >, jump if false.
@@ -404,6 +431,8 @@ pub enum Op {
     TestGreaterEqualJump(u16),
     /// Combined NotEqual + JumpIfFalse: pop two, compare !=, jump if false.
     TestNotEqualJump(u16),
+    /// Combined Equal + JumpIfFalse: pop two, compare ==, jump if false.
+    TestEqualJump(u16),
     /// Compare locals: push(local[a] < local[b])
     LessLocalLocal(u16, u16),
     /// Compare locals: push(local[a] > local[b])
@@ -433,7 +462,17 @@ pub enum Op {
     IsTruthyLocal(u16),
     /// Check if local is falsy (null, false, 0, ""), push bool
     IsFalsyLocal(u16),
+    /// `if local` / `while local`: jump `offset` when `local[slot]` is falsy.
+    /// The fused form of `GetLocal(slot), JumpIfFalse` — one dispatch, and
+    /// nothing pushed or popped. Peephole-only (not patched by `patch_jump`).
+    JumpIfLocalFalsy(u16, u16),
+    /// `unless local` / `if !local`: jump `offset` when `local[slot]` is
+    /// truthy. The fused form of `GetLocal(slot), Not, JumpIfFalse`.
+    JumpIfLocalTruthy(u16, u16),
     /// Get local and add int (optimized for small ints)
+    ///
+    /// Nothing emits it at the moment: `AddLocalConst` takes
+    /// `GetLocal, Constant(Int), Add`, which the callback kernels read.
     AddLocalInt(u16, i32),
     /// Increment local by 1 (already have IncrLocal, add this as variant)
     IncrLocalFast(u16),
@@ -443,8 +482,6 @@ pub enum Op {
     IsZeroLocal(u16),
     /// Check if local != 0, push bool
     NotZeroLocal(u16),
-    /// Set local to value from stack and push old value
-    SwapSetLocal(u16),
     /// Get global and check if null/undefined in one op
     GetGlobalNullCheck(u16),
     /// Get global, call if exists (optimized fast path)
@@ -490,6 +527,20 @@ pub enum Op {
     /// primitives (`Int s`, `String s`), so this mirrors the tree-walker's
     /// pattern rules instead.
     MatchType(u16, u16),
+    /// Array-pattern shape test on a local: push `true` when the value in
+    /// `slot` is an Array whose length is exactly `len` (`at_least == 0`), or
+    /// at least `len` (`at_least != 0`, a pattern with `...rest`).
+    ///
+    /// One op for what was `MatchType("Array")`, `Pop`, a `length` property
+    /// read through the generic member path, a constant and a comparison. The
+    /// length is the native one, which is what the tree-walker reads too: a
+    /// user-defined `Array#length` is consulted by neither engine.
+    MatchArrayLen(u16, u16, u8),
+    /// Push `arr[start..]` of the Array in `slot`, as a new Array: the
+    /// `...rest` of an array pattern, once `MatchArrayLen` has proven the
+    /// length. Empty when the value is not an Array or is shorter. Native, as
+    /// in the tree-walker, rather than a `slice` method call.
+    ArrayRestLocal(u16, u16),
     /// Discard the innermost `for` iterator.
     ///
     /// `ForIter` pops it when the sequence is exhausted, which is the only way
@@ -526,6 +577,7 @@ pub enum Op {
 pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::Jump(0),
     Op::JumpIfFalse(0),
+    Op::JumpIfTrue(0),
     Op::JumpIfFalseNoPop(0),
     Op::JumpIfTrueNoPop(0),
     Op::JumpIfNull(0),
@@ -541,6 +593,9 @@ pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::TestGreaterJump(0),
     Op::TestGreaterEqualJump(0),
     Op::TestNotEqualJump(0),
+    Op::TestEqualJump(0),
+    Op::JumpIfLocalFalsy(0, 0),
+    Op::JumpIfLocalTruthy(0, 0),
     Op::MatchType(0, 0),
     // Two targets, and neither name says "jump".
     Op::TryBegin(0, 0),

@@ -10,7 +10,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
     build_interpolated, hash_get_value, hash_set_value, same_string, Class, HashKey, HashPairs,
-    StrKey, Value,
+    SoliStr, StrKey, Value,
 };
 use crate::metrics::VmTimingGuard;
 use crate::span::Span;
@@ -62,6 +62,14 @@ pub struct CallFrame {
     /// This frame is the callback of an in-VM iterator loop: its `Return`
     /// hands the result to `Vm::callback_returned` instead of the caller.
     pub drives_loop: bool,
+}
+
+/// Whether a positional call of `argc` arguments binds `proto` without an
+/// arity error: every required parameter given, none too many. The omitted
+/// tail is left to the callee's default-value prologue.
+#[inline(always)]
+fn accepts_positional(proto: &FunctionProto, argc: usize) -> bool {
+    proto.arity as usize <= argc && argc <= proto.param_names.len()
 }
 
 /// Build the supplied-parameter mask for a plain positional call of `argc`
@@ -495,11 +503,10 @@ impl Vm {
         )
     }
 
-    /// Read a string constant as an owned String (for global-map keys).
-    #[inline]
     /// A string constant, shared rather than copied: a short name (`upcase`,
     /// `title`) is stored inline, a long one is reference-counted. Property
     /// reads use it on every access; `read_string_constant_owned` allocated.
+    #[inline]
     fn read_string_constant(&self, idx: u16) -> crate::interpreter::value::SoliStr {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
@@ -508,10 +515,30 @@ impl Vm {
         }
     }
 
+    /// A string constant by address, for the ops that keep it borrowed while
+    /// they mutate the VM (the hash-set ops). The constant pool lives in the
+    /// running frame's `Arc<FunctionProto>`, which outlives the op, so the
+    /// pointer stays valid for the op's duration. A non-string constant reads
+    /// as the empty string, like `read_string_constant`.
+    #[inline]
+    fn string_constant_ptr(&self, idx: u16) -> *const SoliStr {
+        static EMPTY: SoliStr = SoliStr::new();
+        let frame = self.frames.last().unwrap();
+        match &frame.closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s as *const SoliStr,
+            _ => &EMPTY as *const SoliStr,
+        }
+    }
+
+    /// A string constant as an owned `String`, for the ops that store it (a
+    /// global-map key, a class or method name). An op that only compares the
+    /// name or looks it up reads `read_string_constant` instead, which does not
+    /// allocate. The copy is a plain `String::from(&str)`: `EcoString`'s
+    /// `to_string()` went through `Display`, `Formatter::pad` and `write_str`.
     fn read_string_constant_owned(&self, idx: u16) -> String {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
-            Constant::String(s) => s.to_string(),
+            Constant::String(s) => String::from(s.as_str()),
             _ => String::new(),
         }
     }
@@ -574,6 +601,18 @@ impl Vm {
     /// general arm to execute — so the two tiers cannot disagree on a
     /// result or an error. `frame.ip` is written back before returning;
     /// `Ok(None)` means the frame's code ran out.
+    ///
+    /// The operand stack's top is read and popped unchecked (`pop`, `pop2`,
+    /// `peek`, `peek_mut`, `peek_two!`), as the general tier already does: an
+    /// op is only emitted after the pushes it consumes, `stack_effect` states
+    /// that per op and a test measures it against every handler, and the
+    /// frame's callee sits at `stack_base` beneath its operands, so a checked
+    /// `pop().unwrap()` could only ever catch a stack already corrupt below
+    /// the frame. Local slots (`self.stack[base + slot]`) stay bounds-checked,
+    /// and so do `ip < code_len` and `Vec::push`: dropping those needs a
+    /// bytecode verifier (slot and jump ranges, a per-proto max depth), and
+    /// without one a compiler bug would turn from a panic into memory
+    /// corruption.
     #[inline(always)]
     fn run_fast(&mut self) -> Result<Option<Op>, RuntimeError> {
         /// Load the top frame's state into the cached locals.
@@ -591,14 +630,19 @@ impl Vm {
         }
         let (mut code, mut code_len, mut constants, mut base, mut ip) = load_frame!();
 
-        /// Enter a compiled closure whose callee and exactly `argc` arguments
-        /// are on top of the stack — the case the general `Call` arm handles
-        /// with no default to fill and no error to raise — and switch the
-        /// cached state to it.
+        /// Enter a compiled closure whose callee and `argc` arguments are on
+        /// top of the stack, `arity <= argc <= params` — the range in which
+        /// the general `Call` arm raises nothing — and switch the cached state
+        /// to it. As there, each omitted parameter gets a null slot that the
+        /// callee's default-value prologue fills, and the supplied mask
+        /// covers only the `argc` given.
         macro_rules! enter_closure {
-            ($closure:expr, $argc:expr) => {{
+            ($closure:expr, $argc:expr, $params:expr) => {{
                 self.frames.last_mut().unwrap().ip = ip;
-                let stack_base = self.stack.len() - $argc - 1;
+                for _ in $argc..$params {
+                    self.stack.push(Value::Null);
+                }
+                let stack_base = self.stack.len() - $params - 1;
                 self.frames.push(CallFrame::new(
                     $closure,
                     stack_base,
@@ -614,8 +658,8 @@ impl Vm {
         macro_rules! replace_top_two {
             ($len:expr, $result:expr) => {{
                 let result = $result;
-                // SAFETY: both operands were just matched as Int/Float/Bool,
-                // which own no heap data, so overwriting the lower one
+                // SAFETY: both operands were just matched as Int/Float/Bool
+                // (or nil), which own no heap data, so overwriting the lower one
                 // without dropping it and forgetting the upper one leaks
                 // nothing; `len >= 2` held for the peek.
                 unsafe {
@@ -626,10 +670,23 @@ impl Vm {
         }
 
         /// Peek at the two operands; `None` hands the op to the general arm.
+        /// Unchecked like `pop2`: an op that peeks two operands is only
+        /// emitted after the two pushes it consumes (`stack_effect`, pinned
+        /// by `stack_effect_matches_what_each_handler_does`), and every frame
+        /// keeps its callee at `stack_base` besides.
         macro_rules! peek_two {
             () => {{
                 let len = self.stack.len();
-                (len, &self.stack[len - 2], &self.stack[len - 1])
+                debug_assert!(len >= 2, "VM stack underflow in peek_two!");
+                // SAFETY: `len >= 2`, as above. Indexing the field, not
+                // calling `self.peek`, borrows only `self.stack`.
+                unsafe {
+                    (
+                        len,
+                        self.stack.get_unchecked(len - 2),
+                        self.stack.get_unchecked(len - 1),
+                    )
+                }
             }};
         }
 
@@ -640,6 +697,30 @@ impl Vm {
                 // data), and `len >= 2` held for the peek.
                 unsafe { self.stack.set_len($len - 2) }
             };
+        }
+
+        /// Pop the two operands `primitive_equal` just answered for, and
+        /// push `$result` in their place when there is one. Scalars go the
+        /// way of `replace_top_two!`/`drop_top_two!`; a string or a symbol
+        /// owns a reference count, so it is popped and dropped.
+        macro_rules! settle_equality_operands {
+            ($len:expr, $scalars:expr) => {{
+                if $scalars {
+                    drop_top_two!($len);
+                } else {
+                    let (a, b) = self.pop2();
+                    discard(b);
+                    discard(a);
+                }
+            }};
+            ($len:expr, $scalars:expr, $result:expr) => {{
+                if $scalars {
+                    replace_top_two!($len, $result);
+                } else {
+                    settle_equality_operands!($len, false);
+                    self.stack.push($result);
+                }
+            }};
         }
 
         let next = loop {
@@ -656,6 +737,11 @@ impl Vm {
                     let value = clone_scalar_fast(&self.stack[base + slot as usize]);
                     self.stack.push(value);
                 }
+                // An array pattern's shape test: pure, never throws.
+                Op::MatchArrayLen(slot, len, at_least) => {
+                    let ok = array_len_matches(&self.stack[base + slot as usize], len, at_least);
+                    self.stack.push(Value::Bool(ok));
+                }
                 Op::GetLocal2(slot_a, slot_b) => {
                     let a = clone_scalar_fast(&self.stack[base + slot_a as usize]);
                     let b = clone_scalar_fast(&self.stack[base + slot_b as usize]);
@@ -663,7 +749,7 @@ impl Vm {
                     self.stack.push(b);
                 }
                 Op::SetLocal(slot) => {
-                    let value = clone_scalar_fast(self.stack.last().unwrap());
+                    let value = clone_scalar_fast(self.peek(0));
                     discard(std::mem::replace(
                         &mut self.stack[base + slot as usize],
                         value,
@@ -682,7 +768,7 @@ impl Vm {
                     self.stack.push(Value::Null);
                 }
                 Op::Dup => {
-                    let value = clone_scalar_fast(self.stack.last().unwrap());
+                    let value = clone_scalar_fast(self.peek(0));
                     self.stack.push(value);
                 }
                 Op::Null => self.stack.push(Value::Null),
@@ -699,14 +785,41 @@ impl Vm {
                         Constant::Float(n) => Value::Float(*n),
                         Constant::Bool(b) => Value::Bool(*b),
                         Constant::Null => Value::Null,
+                        // An `EcoString` clone: an inline copy or a reference
+                        // count bump, never an allocation.
+                        Constant::String(s) => Value::String(s.clone()),
                         _ => break Some(op),
                     };
                     self.stack.push(value);
                 }
+                Op::Symbol(idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(idx as usize) };
+                    let Constant::String(name) = constant else {
+                        break Some(op);
+                    };
+                    self.stack.push(Value::Symbol(name.clone()));
+                }
                 Op::Jump(offset) => ip += offset as usize,
+                Op::JumpIfParamSupplied(param_index, offset) => {
+                    // The default-value prologue, as the general arm runs it:
+                    // skip the default when the caller supplied the parameter
+                    // (past bit 63 the mask saturates: read as supplied).
+                    let supplied = self.frames.last().unwrap().supplied;
+                    if param_index >= 64 || supplied & (1u64 << param_index) != 0 {
+                        ip += offset as usize;
+                    }
+                }
                 Op::JumpIfFalse(offset) => {
-                    let value = self.stack.pop().unwrap();
+                    let value = self.pop();
                     if !value.is_truthy() {
+                        ip += offset as usize;
+                    }
+                    discard(value);
+                }
+                Op::JumpIfTrue(offset) => {
+                    let value = self.pop();
+                    if value.is_truthy() {
                         ip += offset as usize;
                     }
                     discard(value);
@@ -813,6 +926,68 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
+                // `h["k"]` with `h` a local or a global hash: the hit's value,
+                // or nil on a miss, as the general arms answer. Any other
+                // receiver (an array, a string, a model) is theirs.
+                Op::HashGetLocalConst(slot, key_idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let key = unsafe { &*constants.add(key_idx as usize) };
+                    let Constant::String(key) = key else {
+                        break Some(op);
+                    };
+                    let Value::Hash(hash) = &self.stack[base + slot as usize] else {
+                        break Some(op);
+                    };
+                    let value = hash
+                        .borrow()
+                        .get(&StrKey(key.as_ref()))
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    self.stack.push(value);
+                }
+                Op::HashGetGlobalConst(global_idx, key_idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let (global, key) = unsafe {
+                        (
+                            &*constants.add(global_idx as usize),
+                            &*constants.add(key_idx as usize),
+                        )
+                    };
+                    let (Constant::String(global), Constant::String(key)) = (global, key) else {
+                        break Some(op);
+                    };
+                    let Some(Value::Hash(hash)) = self.globals.get(global.as_ref()) else {
+                        break Some(op);
+                    };
+                    let value = hash
+                        .borrow()
+                        .get(&StrKey(key.as_ref()))
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    self.stack.push(value);
+                }
+                // `xs[i]` in range and `h[k]`: the general arms' own first
+                // step (`try_get_index_hit`). An index out of range, a string
+                // receiver, a model go to the general arm.
+                Op::GetIndex => {
+                    let (_, object, index) = peek_two!();
+                    let Some(value) = Self::try_get_index_hit(object, index) else {
+                        break Some(op);
+                    };
+                    let (a, b) = self.pop2();
+                    discard(b);
+                    discard(a);
+                    self.stack.push(value);
+                }
+                Op::GetLocalIndex(slot, idx_slot) => {
+                    let Some(value) = Self::try_get_index_hit(
+                        &self.stack[base + slot as usize],
+                        &self.stack[base + idx_slot as usize],
+                    ) else {
+                        break Some(op);
+                    };
+                    self.stack.push(value);
+                }
                 Op::TemplateWriteConst(idx) => {
                     // SAFETY: as for `Op::Constant` above.
                     if let Constant::String(text) = unsafe { &*constants.add(idx as usize) } {
@@ -893,12 +1068,12 @@ impl Vm {
                 }
                 Op::Equal | Op::NotEqual => {
                     let (len, a, b) = peek_two!();
-                    let equal = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => break Some(op),
+                    let Some(equal) = primitive_equal(a, b) else {
+                        break Some(op);
                     };
-                    replace_top_two!(len, Value::Bool(equal == matches!(op, Op::Equal)));
+                    let scalars = owns_no_heap(a) && owns_no_heap(b);
+                    let result = Value::Bool(equal == matches!(op, Op::Equal));
+                    settle_equality_operands!(len, scalars, result);
                 }
                 Op::TestLessJump(offset)
                 | Op::TestLessEqualJump(offset)
@@ -926,6 +1101,50 @@ impl Vm {
                         _ => break Some(op),
                     }
                 }
+                Op::DecrLocal(slot) => {
+                    let idx = base + slot as usize;
+                    match self.stack[idx] {
+                        Value::Int(n) if n != i64::MIN => self.stack[idx] = Value::Int(n - 1),
+                        _ => break Some(op),
+                    }
+                }
+                // `/` and `%` on two Ints, and `/` on two Floats. A zero
+                // divisor, `i64::MIN / -1`, a Float `%` and any mix go to the
+                // general arm, which raises or converts.
+                Op::Divide | Op::Modulo => {
+                    let (len, a, b) = peek_two!();
+                    let Some(result) = fast_quotient(a, b, matches!(op, Op::Divide)) else {
+                        break Some(op);
+                    };
+                    replace_top_two!(len, result);
+                }
+                Op::DivLocalLocal(slot_a, slot_b) | Op::ModLocalLocal(slot_a, slot_b) => {
+                    let Some(result) = fast_quotient(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                        matches!(op, Op::DivLocalLocal(..)),
+                    ) else {
+                        break Some(op);
+                    };
+                    self.stack.push(result);
+                }
+                Op::DivLocalConst(slot, const_idx) | Op::ModLocalConst(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let divisor = match constant {
+                        Constant::Int(n) => Value::Int(*n),
+                        Constant::Float(f) => Value::Float(*f),
+                        _ => break Some(op),
+                    };
+                    let Some(result) = fast_quotient(
+                        &self.stack[base + slot as usize],
+                        &divisor,
+                        matches!(op, Op::DivLocalConst(..)),
+                    ) else {
+                        break Some(op);
+                    };
+                    self.stack.push(result);
+                }
                 Op::AddLocalConst(slot, const_idx) => {
                     // SAFETY: as for `Op::Constant`.
                     let constant = unsafe { &*constants.add(const_idx as usize) };
@@ -938,24 +1157,63 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
+                // `k += 2`, `k -= 2`, `k *= 2` on two Ints or two Floats, in
+                // place. An Int overflow and any mix go to the general arm,
+                // which raises or converts.
+                Op::AddLocalConstInPlace(slot, const_idx)
+                | Op::SubLocalConstInPlace(slot, const_idx)
+                | Op::MulLocalConstInPlace(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let idx = base + slot as usize;
+                    let result = match (&self.stack[idx], constant) {
+                        (Value::Int(x), Constant::Int(y)) => match op {
+                            Op::AddLocalConstInPlace(..) => x.checked_add(*y),
+                            Op::SubLocalConstInPlace(..) => x.checked_sub(*y),
+                            _ => x.checked_mul(*y),
+                        }
+                        .map(Value::Int),
+                        (Value::Float(x), Constant::Float(y)) => Some(Value::Float(match op {
+                            Op::AddLocalConstInPlace(..) => x + y,
+                            Op::SubLocalConstInPlace(..) => x - y,
+                            _ => x * y,
+                        })),
+                        _ => None,
+                    };
+                    match result {
+                        Some(value) => self.stack[idx] = value,
+                        None => break Some(op),
+                    }
+                }
                 // Calls and returns stay in the tier for the common shape;
-                // anything else — a native or a class callee, omitted
-                // parameters, the depth limit, open upvalues, a return that
+                // anything else — a native or a class callee, an arity
+                // error, the depth limit, open upvalues, a return that
                 // leaves this `run` — goes to the general arms, which own
-                // every one of those rules and their errors.
+                // every one of those rules and their errors. A function
+                // with a native kernel is tried here as the general arm
+                // tries it: the value replaces callee and arguments, and a
+                // decline runs the bytecode, still in the tier.
                 Op::Call(argc) => {
                     let argc = argc as usize;
-                    let closure = match &self.stack[self.stack.len() - 1 - argc] {
+                    let callee = self.stack.len() - 1 - argc;
+                    let closure = match &self.stack[callee] {
                         Value::VmClosure(closure)
-                            if closure.proto.param_names.len() == argc
-                                && self.frames.len() < MAX_CALL_DEPTH
-                                && closure.proto.kernel.is_none() =>
+                            if accepts_positional(&closure.proto, argc)
+                                && self.frames.len() < MAX_CALL_DEPTH =>
                         {
+                            if closure.proto.kernel.is_some() {
+                                if let Some(value) = self.kernel_value(closure, argc) {
+                                    self.stack.truncate(callee);
+                                    self.stack.push(value);
+                                    continue;
+                                }
+                            }
                             closure.clone()
                         }
                         _ => break Some(op),
                     };
-                    enter_closure!(closure, argc);
+                    let params = closure.proto.param_names.len();
+                    enter_closure!(closure, argc, params);
                 }
                 Op::CallGlobal(name_idx, argc) => {
                     let argc = argc as usize;
@@ -966,10 +1224,17 @@ impl Vm {
                     };
                     let closure = match self.globals.get(name) {
                         Some(Value::VmClosure(closure))
-                            if closure.proto.param_names.len() == argc
-                                && self.frames.len() < MAX_CALL_DEPTH
-                                && closure.proto.kernel.is_none() =>
+                            if accepts_positional(&closure.proto, argc)
+                                && self.frames.len() < MAX_CALL_DEPTH =>
                         {
+                            if closure.proto.kernel.is_some() {
+                                if let Some(value) = self.kernel_value(closure, argc) {
+                                    let args = self.stack.len() - argc;
+                                    self.stack.truncate(args);
+                                    self.stack.push(value);
+                                    continue;
+                                }
+                            }
                             closure.clone()
                         }
                         _ => break Some(op),
@@ -978,7 +1243,8 @@ impl Vm {
                     let insert_at = self.stack.len() - argc;
                     self.stack
                         .insert(insert_at, Value::VmClosure(closure.clone()));
-                    enter_closure!(closure, argc);
+                    let params = closure.proto.param_names.len();
+                    enter_closure!(closure, argc, params);
                 }
                 Op::Return => {
                     let depth_after = self.frames.len() - 1;
@@ -1053,7 +1319,7 @@ impl Vm {
                     self.stack.push(value);
                 }
                 Op::SetUpvalue(idx) => {
-                    let value = self.stack.last().unwrap().clone();
+                    let value = self.peek(0).clone();
                     let upvalue =
                         self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
                     let mut cell = upvalue.borrow_mut();
@@ -1206,13 +1472,11 @@ impl Vm {
                     self.stack.push(Value::Bool(result));
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) | Op::NotEqualLocalLocal(slot_a, slot_b) => {
-                    let equal = match (
+                    let Some(equal) = primitive_equal(
                         &self.stack[base + slot_a as usize],
                         &self.stack[base + slot_b as usize],
-                    ) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => break Some(op),
+                    ) else {
+                        break Some(op);
                     };
                     let want_equal = matches!(op, Op::EqualLocalLocal(..));
                     self.stack.push(Value::Bool(equal == want_equal));
@@ -1220,23 +1484,24 @@ impl Vm {
                 Op::EqualLocalConst(slot, const_idx) | Op::NotEqualLocalConst(slot, const_idx) => {
                     // SAFETY: as for `Op::Constant`.
                     let constant = unsafe { &*constants.add(const_idx as usize) };
-                    let equal = match (&self.stack[base + slot as usize], constant) {
-                        (Value::Int(x), Constant::Int(y)) => x == y,
-                        (Value::String(x), Constant::String(y)) => x == y,
-                        _ => break Some(op),
+                    let Some(equal) =
+                        primitive_equal_constant(&self.stack[base + slot as usize], constant)
+                    else {
+                        break Some(op);
                     };
                     let want_equal = matches!(op, Op::EqualLocalConst(..));
                     self.stack.push(Value::Bool(equal == want_equal));
                 }
-                Op::TestNotEqualJump(offset) => {
+                // `if a == b` / `if a != b`: pop both, and branch past the
+                // body when the condition is false.
+                Op::TestEqualJump(offset) | Op::TestNotEqualJump(offset) => {
                     let (len, a, b) = peek_two!();
-                    let not_equal = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => break Some(op),
+                    let Some(equal) = primitive_equal(a, b) else {
+                        break Some(op);
                     };
-                    drop_top_two!(len);
-                    if !not_equal {
+                    let scalars = owns_no_heap(a) && owns_no_heap(b);
+                    settle_equality_operands!(len, scalars);
+                    if equal != matches!(op, Op::TestEqualJump(_)) {
                         ip += offset as usize;
                     }
                 }
@@ -1248,6 +1513,19 @@ impl Vm {
                     let truthy = self.stack[base + slot as usize].is_truthy();
                     self.stack.push(Value::Bool(!truthy));
                 }
+                // `if local` / `unless local`: test the slot in place, no
+                // push and pop. A `Deferred` local is resolved by
+                // `is_truthy`, as `IsTruthyLocal` did.
+                Op::JumpIfLocalFalsy(slot, offset) => {
+                    if !self.stack[base + slot as usize].is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
+                Op::JumpIfLocalTruthy(slot, offset) => {
+                    if self.stack[base + slot as usize].is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
                 Op::IsZeroLocal(slot) | Op::NotZeroLocal(slot) => {
                     let zero = match &self.stack[base + slot as usize] {
                         Value::Int(x) => *x == 0,
@@ -1258,31 +1536,34 @@ impl Vm {
                     self.stack.push(Value::Bool(zero == want_zero));
                 }
                 Op::Not => {
-                    let truthy = self.stack.last().unwrap().is_truthy();
-                    *self.stack.last_mut().unwrap() = Value::Bool(!truthy);
+                    let top = self.peek_mut(0);
+                    let truthy = top.is_truthy();
+                    discard(std::mem::replace(top, Value::Bool(!truthy)));
                 }
                 Op::JumpIfFalseNoPop(offset) => {
-                    if !self.stack.last().unwrap().is_truthy() {
+                    if !self.peek(0).is_truthy() {
                         ip += offset as usize;
                     }
                 }
                 Op::JumpIfTrueNoPop(offset) => {
-                    if self.stack.last().unwrap().is_truthy() {
+                    if self.peek(0).is_truthy() {
                         ip += offset as usize;
                     }
                 }
                 Op::IsNull | Op::NotNull => {
-                    let null = matches!(self.stack.last().unwrap(), Value::Null);
+                    let null = matches!(self.peek(0), Value::Null);
                     self.stack
                         .push(Value::Bool(null == matches!(op, Op::IsNull)));
                 }
                 Op::JumpIfNull(offset) => {
-                    if matches!(self.stack.last().unwrap(), Value::Null) {
+                    if matches!(self.peek(0), Value::Null) {
                         ip += offset as usize;
                     }
                 }
-                Op::JumpIfNotNull(offset) => {
-                    if !matches!(self.stack.last().unwrap(), Value::Null) {
+                // `a ?? b` and `x ??= v`: the general arms of the two ops are
+                // the same test.
+                Op::JumpIfNotNull(offset) | Op::NullishJump(offset) => {
+                    if !matches!(self.peek(0), Value::Null) {
                         ip += offset as usize;
                     }
                 }
@@ -1291,12 +1572,31 @@ impl Vm {
                         std::mem::replace(&mut self.stack[base + slot as usize], Value::Null);
                     self.stack.push(value);
                 }
-                Op::SwapSetLocal(slot) => {
-                    let new_value = self.pop();
-                    let old_value =
-                        std::mem::replace(&mut self.stack[base + slot as usize], new_value);
-                    self.stack.push(old_value);
+                // `try` and `expr rescue x` on the path that does not throw.
+                // None of these pushes a frame, so the cached state stays
+                // valid; the throw side (`throw_exception`, the catch-resume
+                // in `run`) reads only the handler, never the tier it was
+                // pushed from. Each records what the general arm records:
+                // `ip` is already past the op, as `frame.ip` is there.
+                Op::TryBegin(catch_offset, finally_offset) => {
+                    self.exception_handlers.push(ExceptionHandler {
+                        catch_ip: ip + catch_offset as usize,
+                        finally_ip: ip + finally_offset as usize,
+                        stack_depth: self.stack.len(),
+                        frame_depth: self.frames.len(),
+                        iter_depth: self.iter_stack.len(),
+                    });
                 }
+                Op::TryEnd | Op::PopHandler => {
+                    self.exception_handlers.pop();
+                }
+                // Only a Future has anything to settle; that stays general.
+                Op::ForceFuture => {
+                    if self.stack.last().is_some_and(Value::is_future) {
+                        break Some(op);
+                    }
+                }
+                Op::RescueJump(offset) => ip += offset as usize,
                 _ => break Some(op),
             }
         };
@@ -1636,21 +1936,11 @@ impl Vm {
                 // --- Comparison (inlined fast paths for Int) ---
                 Op::Equal => {
                     let (a, b) = self.pop2();
-                    let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => crate::interpreter::value::enum_aware_equal(&a, &b),
-                    };
-                    self.stack.push(Value::Bool(result));
+                    self.stack.push(Value::Bool(values_equal(&a, &b)));
                 }
                 Op::NotEqual => {
                     let (a, b) = self.pop2();
-                    let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => !crate::interpreter::value::enum_aware_equal(&a, &b),
-                    };
-                    self.stack.push(Value::Bool(result));
+                    self.stack.push(Value::Bool(!values_equal(&a, &b)));
                 }
                 Op::Less => {
                     let (a, b) = self.pop2();
@@ -1752,6 +2042,12 @@ impl Vm {
                 Op::JumpIfFalse(offset) => {
                     let val = self.stack.pop().unwrap();
                     if !val.is_truthy() {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::JumpIfTrue(offset) => {
+                    let val = self.stack.pop().unwrap();
+                    if val.is_truthy() {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
@@ -2409,22 +2705,18 @@ impl Vm {
                 Op::HashSetConst(key_idx) => {
                     let value = self.pop();
                     let receiver = self.pop();
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
+                    // The constant itself, not its `&str`: a new key is
+                    // inserted as a clone of it (an inline copy or a refcount
+                    // bump), not as a fresh `String` converted a second time.
+                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    let key: &str = key_str.as_str();
                     match receiver {
                         Value::Hash(hash) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
+                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
                             }
                             drop(hash_ref);
                             // Same rule as `Op::SetIndex`: the expression's value
@@ -2582,22 +2874,18 @@ impl Vm {
                 Op::HashSetLocalConst(slot, key_idx) => {
                     let value = self.pop();
                     let base = self.frames.last().unwrap().stack_base;
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
+                    // The constant itself, not its `&str`: a new key is
+                    // inserted as a clone of it (an inline copy or a refcount
+                    // bump), not as a fresh `String` converted a second time.
+                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    let key: &str = key_str.as_str();
                     match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
+                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
                             }
                         }
                         other => {
@@ -2765,23 +3053,17 @@ impl Vm {
                             _ => "" as *const str,
                         }
                     };
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
+                    // Shared like `HashSetConst`'s key.
+                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
                     let global_name: &str = unsafe { &*global_name };
-                    let key: &str = unsafe { &*key };
+                    let key: &str = key_str.as_str();
                     match self.globals.get(global_name) {
                         Some(Value::Hash(hash)) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
+                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
                             }
                         }
                         Some(other) => {
@@ -3267,8 +3549,7 @@ impl Vm {
                     let this = self.stack[base].clone();
                     self.stack.push(this);
                 }
-                Op::GetSuper(idx) => {
-                    let _name = self.read_string_constant_owned(idx);
+                Op::GetSuper(_idx) => {
                     let _this = self.stack.pop().unwrap();
                     self.stack.push(Value::Null);
                 }
@@ -3281,7 +3562,9 @@ impl Vm {
                     let argc = argc as usize;
                     let span = self.current_span();
                     let receiver_idx = self.stack.len() - 1 - argc;
-                    let name = self.read_string_constant_owned(name_idx);
+                    // Shared, not copied: the name is only looked up, and
+                    // copied into the error on a miss.
+                    let name = self.read_string_constant(name_idx);
                     let superclass = self.frame_superclass(span)?;
                     if let Some((closure, defining_class)) =
                         superclass.find_vm_method_with_class(&name)
@@ -3333,7 +3616,7 @@ impl Vm {
                     } else {
                         return Err(RuntimeError::NoSuchProperty {
                             value_type: format!("super({})", superclass.name),
-                            property: name,
+                            property: String::from(name.as_str()),
                             span,
                         });
                     }
@@ -3403,11 +3686,19 @@ impl Vm {
                     self.throw_exception(value, span)?;
                 }
                 Op::CatchMatch(name_idx, jump_offset) => {
-                    let type_name = self.read_string_constant_owned(name_idx);
+                    // The class name is borrowed from the constant pool: this
+                    // runs on every typed `catch` test, and copying the name
+                    // into a String only to compare it was the whole cost.
+                    let frame = self.frames.last().unwrap();
+                    let type_name: &str =
+                        match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
                     let matches = match self.stack.last().unwrap() {
                         Value::Instance(inst) => {
                             let inst = inst.borrow();
-                            class_name_matches(&inst.class, &type_name)
+                            class_name_matches(&inst.class, type_name)
                         }
                         _ => false,
                     };
@@ -3417,28 +3708,56 @@ impl Vm {
                     }
                 }
                 Op::EnumPayload(slot, variant_idx, index) => {
-                    let variant = self.read_string_constant_owned(variant_idx);
-                    let base = self.frames.last().unwrap().stack_base;
-                    let value = match &self.stack[base + slot as usize] {
-                        Value::Instance(inst) => {
-                            let inst = inst.borrow();
-                            let names =
-                                crate::interpreter::executor::pattern_matching::enum_variant_field_names(
-                                    &inst.class,
-                                    &variant,
-                                );
-                            names
-                                .get(index as usize)
-                                .and_then(|n| inst.fields.get(n.as_str()))
-                                .cloned()
+                    // Borrowed all the way down: the variant name from the
+                    // constant pool, the metadata and field name in place. It
+                    // used to build the variant String, a HashKey and a Vec of
+                    // every field name per bound field.
+                    let value = {
+                        let frame = self.frames.last().unwrap();
+                        let variant: &str =
+                            match &frame.closure.proto.chunk.constants[variant_idx as usize] {
+                                Constant::String(s) => s.as_str(),
+                                _ => "",
+                            };
+                        match &self.stack[frame.stack_base + slot as usize] {
+                            Value::Instance(inst) => {
+                                crate::interpreter::executor::pattern_matching::enum_variant_payload(
+                                    &inst.borrow(),
+                                    variant,
+                                    index as usize,
+                                )
                                 .unwrap_or(Value::Null)
+                            }
+                            _ => Value::Null,
                         }
-                        _ => Value::Null,
                     };
                     self.push(value);
                 }
+                Op::MatchArrayLen(slot, len, at_least) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let ok = array_len_matches(&self.stack[base + slot as usize], len, at_least);
+                    self.push(Value::Bool(ok));
+                }
+                Op::ArrayRestLocal(slot, start) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let rest = match &self.stack[base + slot as usize] {
+                        Value::Array(arr) => arr
+                            .borrow()
+                            .get(start as usize..)
+                            .map(<[Value]>::to_vec)
+                            .unwrap_or_default(),
+                        _ => Vec::new(),
+                    };
+                    self.push(Value::Array(Rc::new(RefCell::new(rest))));
+                }
                 Op::MatchType(name_idx, jump_offset) => {
-                    let type_name = self.read_string_constant_owned(name_idx);
+                    // Borrowed, not copied: see `CatchMatch`.
+                    let frame = self.frames.last().unwrap();
+                    let type_name: &str =
+                        match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                            Constant::String(s) => s.as_str(),
+                            _ => "",
+                        };
                     let matches = match self.stack.last().unwrap() {
                         Value::Int(_) => type_name == "Int",
                         Value::Float(_) => type_name == "Float",
@@ -3591,11 +3910,25 @@ impl Vm {
                 }
 
                 // --- Super-instructions ---
-                Op::IncrLocal(slot) => {
+                //
+                // Every Int one of these computes is checked: past the Int
+                // range it raises `Op::Add`'s overflow error and leaves the
+                // local as it was. A bare `n + 1` wrapped instead (release
+                // builds have no overflow checks), so `i += 1` on the largest
+                // Int gave the smallest. `run_fast` hands its overflows here.
+                Op::IncrLocal(slot) | Op::IncrLocalFast(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
                     if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n + 1);
+                        match n.checked_add(1) {
+                            Some(next) => self.stack[idx] = Value::Int(next),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    n, "+", 1, span,
+                                ));
+                            }
+                        }
                     } else {
                         // Fallback: treat as GetLocal + Constant(1) + Add + SetLocal + Pop
                         let val = self.stack[idx].clone();
@@ -3613,7 +3946,15 @@ impl Vm {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
                     if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n - 1);
+                        match n.checked_sub(1) {
+                            Some(next) => self.stack[idx] = Value::Int(next),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    n, "-", 1, span,
+                                ));
+                            }
+                        }
                     } else {
                         let val = self.stack[idx].clone();
                         let result = match val {
@@ -3668,9 +4009,10 @@ impl Vm {
                 //
                 // The fast arms mutate the slot directly. `Value` is 24 bytes with
                 // drop glue, so avoiding the push/pop pair matters more here than
-                // the saved dispatches. The slow arms fall back to the generic
-                // operators, which preserve overflow/coercion/error behaviour
-                // exactly — these opcodes are a peephole, not new semantics.
+                // the saved dispatches. The slow arms keep `Op::Add`'s overflow,
+                // coercion and error behaviour exactly — an Int sum is checked,
+                // anything else goes to the generic operator — so these opcodes
+                // are a peephole, not new semantics.
                 Op::AddLocalsInPlace(a, b) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let (ia, ib) = (base + a as usize, base + b as usize);
@@ -3687,9 +4029,15 @@ impl Vm {
                         _ => Pair::Other,
                     };
                     match pair {
-                        Pair::Int(x, y) => {
-                            self.stack[ia] = Value::Int(x.wrapping_add(y));
-                        }
+                        Pair::Int(x, y) => match x.checked_add(y) {
+                            Some(sum) => self.stack[ia] = Value::Int(sum),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    x, "+", y, span,
+                                ));
+                            }
+                        },
                         Pair::Float(x, y) => {
                             self.stack[ia] = Value::Float(x + y);
                         }
@@ -3704,7 +4052,7 @@ impl Vm {
                 Op::AppendGlobal(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let name = self.read_string_constant_owned(idx);
+                    let name = self.read_string_constant(idx);
                     self.append_named(&name, before, rhs)?;
                 }
                 Op::AppendGlobalConst(name_idx, cidx) => {
@@ -3712,8 +4060,8 @@ impl Vm {
                         let frame = self.frames.last().unwrap();
                         let constants = &frame.closure.proto.chunk.constants;
                         let name = match &constants[name_idx as usize] {
-                            Constant::String(text) => text.to_string(),
-                            _ => String::new(),
+                            Constant::String(text) => text.clone(),
+                            _ => crate::interpreter::value::SoliStr::default(),
                         };
                         let extra = match &constants[cidx as usize] {
                             Constant::String(text) => text.clone(),
@@ -3726,13 +4074,17 @@ impl Vm {
                         };
                         (name, extra)
                     };
-                    if let Some(Value::String(text)) = self.globals.get_mut(&name) {
+                    if let Some(Value::String(text)) = self.globals.get_mut(name.as_str()) {
                         text.push_str(&extra);
                     } else {
-                        let left = self.globals.get(&name).cloned().unwrap_or(Value::Null);
+                        let left = self
+                            .globals
+                            .get(name.as_str())
+                            .cloned()
+                            .unwrap_or(Value::Null);
                         let span = self.current_span();
                         let updated = self.op_add(left, Value::String(extra), span)?;
-                        self.globals.insert(name, updated);
+                        self.globals.insert(String::from(name.as_str()), updated);
                     }
                 }
                 Op::AppendLocalConst(slot, cidx) => {
@@ -3810,8 +4162,10 @@ impl Vm {
                 Op::AddAssignGlobal(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let name = self.read_string_constant_owned(idx);
-                    let appended = match self.globals.get_mut(&name) {
+                    // Shared, not copied: the key is built only when the
+                    // global does not exist yet.
+                    let name = self.read_string_constant(idx);
+                    let appended = match self.globals.get_mut(name.as_str()) {
                         Some(slot) => add_strings_into(slot, before, rhs),
                         None => Err((before, rhs)),
                     };
@@ -3819,7 +4173,15 @@ impl Vm {
                         Ok(updated) => updated,
                         Err((before, rhs)) => {
                             let sum = self.add_values(before, rhs)?;
-                            self.globals.insert(name, sum.clone());
+                            // An Int or Float sum overwrites the slot in
+                            // place; the key is copied only for a first write.
+                            match self.globals.get_mut(name.as_str()) {
+                                Some(slot) => *slot = sum.clone(),
+                                None => {
+                                    self.globals
+                                        .insert(String::from(name.as_str()), sum.clone());
+                                }
+                            }
                             sum
                         }
                     };
@@ -4035,6 +4397,53 @@ impl Vm {
                     };
                     self.stack.push(result);
                 }
+                // `MulLocalConst`'s and its siblings' rules, with the result
+                // stored back into the local instead of pushed. On an error the
+                // local keeps its value, as `GetLocal … SetLocal` left it.
+                Op::AddLocalConstInPlace(slot, const_idx)
+                | Op::SubLocalConstInPlace(slot, const_idx)
+                | Op::MulLocalConstInPlace(slot, const_idx) => {
+                    let frame = self.frames.last().unwrap();
+                    let idx = frame.stack_base + slot as usize;
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let local = &self.stack[idx];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => {
+                            let (symbol, checked) = match op {
+                                Op::AddLocalConstInPlace(..) => ("+", x.checked_add(*y)),
+                                Op::SubLocalConstInPlace(..) => ("-", x.checked_sub(*y)),
+                                _ => ("*", x.checked_mul(*y)),
+                            };
+                            match checked {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, symbol, *y, span,
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                        (Value::Float(x), Constant::Float(y)) => Value::Float(match op {
+                            Op::AddLocalConstInPlace(..) => x + y,
+                            Op::SubLocalConstInPlace(..) => x - y,
+                            _ => x * y,
+                        }),
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            match op {
+                                Op::AddLocalConstInPlace(..) => self.op_add(a, b, span)?,
+                                Op::SubLocalConstInPlace(..) => self.op_subtract(a, b, span)?,
+                                _ => self.op_multiply(a, b, span)?,
+                            }
+                        }
+                    };
+                    self.stack[idx] = result;
+                }
                 Op::DivLocalConst(slot, const_idx) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let local = &self.stack[base + slot as usize];
@@ -4068,6 +4477,38 @@ impl Vm {
                             let b = constant_to_value(constant);
                             let span = self.current_span();
                             self.op_divide(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::ModLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    // `Modulo`'s rules, with the operands read in place.
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            match x.checked_rem(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "%", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            self.op_modulo(a, b, span)?
                         }
                     };
                     self.stack.push(result);
@@ -4116,7 +4557,7 @@ impl Vm {
                         (Value::Int(x), Constant::Int(y)) => *x != *y,
                         (Value::Float(x), Constant::Float(y)) => *x != *y,
                         (Value::String(x), Constant::String(y)) => x != y,
-                        _ => local != &constant_to_value(constant),
+                        _ => !values_equal(local, &constant_to_value(constant)),
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -4129,7 +4570,7 @@ impl Vm {
                         (Value::Int(x), Constant::Int(y)) => *x == *y,
                         (Value::Float(x), Constant::Float(y)) => *x == *y,
                         (Value::String(x), Constant::String(y)) => x == y,
-                        _ => local == &constant_to_value(constant),
+                        _ => values_equal(local, &constant_to_value(constant)),
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -4187,12 +4628,13 @@ impl Vm {
                 }
                 Op::TestNotEqualJump(offset) => {
                     let (a, b) = self.pop2();
-                    let result = match (&a, &b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => a != b,
-                    };
-                    if !result {
+                    if values_equal(&a, &b) {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::TestEqualJump(offset) => {
+                    let (a, b) = self.pop2();
+                    if !values_equal(&a, &b) {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
@@ -4228,11 +4670,26 @@ impl Vm {
                     let val = &self.stack[base + slot as usize];
                     self.stack.push(Value::Bool(!val.is_truthy()));
                 }
+                Op::JumpIfLocalFalsy(slot, offset) | Op::JumpIfLocalTruthy(slot, offset) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    let truthy = self.stack[frame.stack_base + slot as usize].is_truthy();
+                    if truthy == matches!(op, Op::JumpIfLocalTruthy(..)) {
+                        frame.ip += offset as usize;
+                    }
+                }
                 Op::AddLocalInt(slot, n) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let local = &self.stack[base + slot as usize];
                     let result = match local {
-                        Value::Int(x) => Value::Int(x + n as i64),
+                        Value::Int(x) => match x.checked_add(n as i64) {
+                            Some(sum) => Value::Int(sum),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "+", n as i64, span,
+                                ));
+                            }
+                        },
                         Value::Float(x) => Value::Float(*x + n as f64),
                         _ => {
                             let a = local.clone();
@@ -4241,23 +4698,6 @@ impl Vm {
                         }
                     };
                     self.stack.push(result);
-                }
-                Op::IncrLocalFast(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let idx = base + slot as usize;
-                    if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n + 1);
-                    } else {
-                        let val = self.stack[idx].clone();
-                        let result = match val {
-                            Value::Float(n) => Value::Float(n + 1.0),
-                            _ => {
-                                let span = self.current_span();
-                                self.op_add(val, Value::Int(1), span)?
-                            }
-                        };
-                        self.stack[idx] = result;
-                    }
                 }
                 Op::GetAndNullLocal(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
@@ -4284,13 +4724,6 @@ impl Vm {
                         _ => true,
                     };
                     self.stack.push(Value::Bool(result));
-                }
-                Op::SwapSetLocal(slot) => {
-                    let new_val = self.pop();
-                    let base = self.frames.last().unwrap().stack_base;
-                    let old_val = self.stack[base + slot as usize].clone();
-                    self.stack[base + slot as usize] = new_val;
-                    self.stack.push(old_val);
                 }
                 Op::GetGlobalNullCheck(idx) => {
                     let val = {
@@ -4364,25 +4797,19 @@ impl Vm {
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let a = &self.stack[base + slot_a as usize];
-                    let b = &self.stack[base + slot_b as usize];
-                    let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x == y,
-                        (Value::Bool(x), Value::Bool(y)) => x == y,
-                        _ => a == b,
-                    };
-                    self.stack.push(Value::Bool(result));
+                    let equal = values_equal(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                    );
+                    self.stack.push(Value::Bool(equal));
                 }
                 Op::NotEqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let a = &self.stack[base + slot_a as usize];
-                    let b = &self.stack[base + slot_b as usize];
-                    let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x != y,
-                        (Value::Bool(x), Value::Bool(y)) => x != y,
-                        _ => a != b,
-                    };
-                    self.stack.push(Value::Bool(result));
+                    let equal = values_equal(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                    );
+                    self.stack.push(Value::Bool(!equal));
                 }
                 Op::PopNull => {
                     self.stack.pop();
@@ -4470,9 +4897,15 @@ impl Vm {
                     let addend = self.nested_index_get(base, obj_slot, arr_slot, idx_slot)?;
                     let acc_i = base + acc_slot as usize;
                     match (&self.stack[acc_i], &addend) {
-                        (Value::Int(a), Value::Int(b)) => {
-                            self.stack[acc_i] = Value::Int(a + b);
-                        }
+                        (&Value::Int(a), &Value::Int(b)) => match a.checked_add(b) {
+                            Some(sum) => self.stack[acc_i] = Value::Int(sum),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    a, "+", b, span,
+                                ));
+                            }
+                        },
                         _ => {
                             let acc = self.stack[acc_i].clone();
                             self.stack[acc_i] = match (&acc, &addend) {
@@ -4703,6 +5136,19 @@ impl Vm {
         unsafe { self.stack.get_unchecked(self.stack.len() - 1 - distance) }
     }
 
+    /// `peek`, for writing the slot in place.
+    #[inline(always)]
+    pub(crate) fn peek_mut(&mut self, distance: usize) -> &mut Value {
+        debug_assert!(
+            self.stack.len() > distance,
+            "VM stack underflow in peek_mut({distance})"
+        );
+        let index = self.stack.len() - 1 - distance;
+        // SAFETY: as for `peek`: the VM's stack invariants keep `index` in
+        // range, and the debug_assert checks it in debug builds.
+        unsafe { self.stack.get_unchecked_mut(index) }
+    }
+
     /// Pop two values from the stack (b first, then a).
     #[inline(always)]
     fn pop2(&mut self) -> (Value, Value) {
@@ -4890,7 +5336,11 @@ impl Vm {
                 // Iterate by byte offset instead of pre-collecting a Vec<char>.
                 if let Some(ch) = s[*byte_offset..].chars().next() {
                     *byte_offset += ch.len_utf8();
-                    Some(Value::String(ch.to_string().into()))
+                    // A char is at most 4 bytes, so it is stored inline: no
+                    // heap `String` per character.
+                    Some(Value::String(SoliStr::from(
+                        &*ch.encode_utf8(&mut [0u8; 4]),
+                    )))
                 } else {
                     None
                 }
@@ -5412,6 +5862,23 @@ impl Default for Vm {
     }
 }
 
+/// `MatchArrayLen`: an Array of exactly `len` elements, or of at least `len`
+/// when the pattern has a `...rest`. Native length, as in the tree-walker.
+#[inline]
+fn array_len_matches(value: &Value, len: u16, at_least: u8) -> bool {
+    match value {
+        Value::Array(arr) => {
+            let n = arr.borrow().len();
+            if at_least != 0 {
+                n >= len as usize
+            } else {
+                n == len as usize
+            }
+        }
+        _ => false,
+    }
+}
+
 /// Check if a class (or any of its superclasses) matches the given name.
 fn class_name_matches(class: &Class, name: &str) -> bool {
     if class.name == name {
@@ -5463,6 +5930,121 @@ fn scalar_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
         _ => None,
     }
+}
+
+/// `a == b` as the `==` and `!=` operators define it, on both engines: Ints
+/// and Bools inline, everything else through `enum_aware_equal`, which the
+/// tree-walker's operators call too. Every general arm that compares two
+/// values for `==` or `!=` decides with this, fused or not: `Equal`,
+/// `NotEqual`, `TestEqualJump`, `TestNotEqualJump`, `EqualLocalLocal`,
+/// `NotEqualLocalLocal`, and `EqualLocalConst`/`NotEqualLocalConst` past
+/// their inline pairs. The fast tier answers the primitive pairs itself with
+/// [`primitive_equal`], which agrees with this on every pair it answers.
+///
+/// `PartialEq` on `Value` is not this equality. It compares two instances by
+/// pointer, so two equal enum values built apart (any payload variant, or an
+/// `enum_field` read rebuilt from storage) differ under it. `TestNotEqualJump`
+/// used it, and `if a != b` took the branch that `a != b` as a value did not.
+#[inline(always)]
+fn values_equal(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => x == y,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        _ => crate::interpreter::value::enum_aware_equal(a, b),
+    }
+}
+
+/// Whether `value` is one of the kinds `primitive_equal` answers for.
+#[inline(always)]
+fn is_primitive(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Int(_)
+            | Value::Float(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::String(_)
+            | Value::Symbol(_)
+    )
+}
+
+/// `a / b` (`divide`) or `a % b` where the fast tier may answer it: two Ints
+/// with a quotient or remainder that fits (not a zero divisor, not
+/// `i64::MIN / -1`), or `/` on two Floats with a non-zero divisor. `None`
+/// for everything the general arms raise on or convert (a Float `%`, an
+/// Int/Float mix, a Decimal).
+#[inline(always)]
+fn fast_quotient(a: &Value, b: &Value, divide: bool) -> Option<Value> {
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => if divide {
+            x.checked_div(*y)
+        } else {
+            x.checked_rem(*y)
+        }
+        .map(Value::Int),
+        (Value::Float(x), Value::Float(y)) if divide && *y != 0.0 => Some(Value::Float(x / y)),
+        _ => None,
+    }
+}
+
+/// Whether dropping `value` is a no-op: the scalars `replace_top_two!`
+/// may overwrite without running drop glue.
+#[inline(always)]
+fn owns_no_heap(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Null
+    )
+}
+
+/// [`values_equal`] for two primitives (Int, Float, Bool, nil, String,
+/// Symbol), answered inline by the fast tier; `None` for anything else.
+///
+/// It is `eq_inner` restricted to those kinds: the same kind compares by
+/// value (a Float NaN equals nothing), two different kinds are never equal,
+/// except an Int and a Float, which compare as numbers and are left to the
+/// general arm. Everything that is not a primitive declines: a `Deferred`
+/// must be forced, an enum compares structurally, a class equals its name.
+#[inline(always)]
+fn primitive_equal(a: &Value, b: &Value) -> Option<bool> {
+    Some(match (a, b) {
+        (Value::Int(x), Value::Int(y)) => x == y,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::Float(x), Value::Float(y)) => x == y,
+        (Value::String(x), Value::String(y)) => x == y,
+        (Value::Symbol(x), Value::Symbol(y)) => x == y,
+        (Value::Null, Value::Null) => true,
+        (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_)) => return None,
+        _ if is_primitive(a) && is_primitive(b) => false,
+        _ => return None,
+    })
+}
+
+/// [`primitive_equal`] against a constant-pool entry, without building a
+/// `Value` for it. A `Decimal` or a function constant declines.
+#[inline(always)]
+fn primitive_equal_constant(value: &Value, constant: &Constant) -> Option<bool> {
+    Some(match (value, constant) {
+        (Value::Int(x), Constant::Int(y)) => x == y,
+        (Value::Bool(x), Constant::Bool(y)) => x == y,
+        (Value::Float(x), Constant::Float(y)) => x == y,
+        (Value::String(x), Constant::String(y)) => x == y,
+        (Value::Null, Constant::Null) => true,
+        (Value::Int(_), Constant::Float(_)) | (Value::Float(_), Constant::Int(_)) => return None,
+        _ if is_primitive(value)
+            && matches!(
+                constant,
+                Constant::Int(_)
+                    | Constant::Float(_)
+                    | Constant::Bool(_)
+                    | Constant::Null
+                    | Constant::String(_)
+            ) =>
+        {
+            false
+        }
+        _ => return None,
+    })
 }
 
 /// `value_matches_type`, without its allocation for the common primitive
@@ -5725,6 +6307,597 @@ mod tests {
     fn test_vm_arithmetic() {
         let result = compile_and_get_global("let x = 2 + 3 * 4;", "x");
         assert_eq!(result, Value::Int(14));
+    }
+
+    /// Run hand-built bytecode as a script. Slot 0 holds the running closure,
+    /// so the first value `code` pushes is local 1, the next local 2, and so on.
+    fn run_bytecode(
+        constants: Vec<Constant>,
+        code: &[Op],
+    ) -> Result<Value, crate::error::RuntimeError> {
+        run_bytecode_with_globals(constants, code, &[])
+    }
+
+    /// [`run_bytecode`] with `globals` defined first: `Op::GetGlobal` pushes
+    /// the values no constant can hold, such as instances.
+    fn run_bytecode_with_globals(
+        constants: Vec<Constant>,
+        code: &[Op],
+        globals: &[(&str, Value)],
+    ) -> Result<Value, crate::error::RuntimeError> {
+        let mut proto = FunctionProto::new(String::new());
+        proto.chunk.constants = constants;
+        for op in code {
+            proto.chunk.emit(*op, 1);
+        }
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name.to_string(), value.clone());
+        }
+        vm.execute(&Arc::new(proto))
+    }
+
+    /// The fused local ops raise `Op::Add`'s overflow error where an Int
+    /// result leaves the range. Their general arms used an unchecked `+`/`-`
+    /// (`wrapping_add` in `AddLocalsInPlace`), and release builds do not check
+    /// overflow, so the result wrapped: `i += 1` on the largest Int gave the
+    /// smallest. Built by hand so that `IncrLocalFast` and `AddLocalInt`, which
+    /// the compiler does not emit, are covered too.
+    #[test]
+    fn fused_int_ops_raise_on_overflow_instead_of_wrapping() {
+        const MAX: u16 = 0;
+        const MIN: u16 = 1;
+        const ONE: u16 = 2;
+        const ZERO: u16 = 3;
+        const KEY: u16 = 4;
+        let constants = || {
+            vec![
+                Constant::Int(i64::MAX),
+                Constant::Int(i64::MIN),
+                Constant::Int(1),
+                Constant::Int(0),
+                Constant::String("k".into()),
+            ]
+        };
+        // Locals 2-4 are {"k": 1}, ["k"] and 0, so `AddNestedIndex(1, 2, 3, 4)`
+        // adds {"k": 1}[["k"][0]] — that is 1 — to local 1.
+        let add_one_nested = [
+            Op::Constant(KEY),
+            Op::Constant(ONE),
+            Op::Hash(1),
+            Op::Constant(KEY),
+            Op::Array(1),
+            Op::Constant(ZERO),
+            Op::AddNestedIndex(1, 2, 3, 4),
+        ];
+        let max_plus_one = "integer overflow: 9223372036854775807 + 1 does not fit in an Int";
+        let cases: Vec<(Vec<Op>, &str)> = vec![
+            (vec![Op::Constant(MAX), Op::IncrLocal(1)], max_plus_one),
+            (vec![Op::Constant(MAX), Op::IncrLocalFast(1)], max_plus_one),
+            (
+                vec![Op::Constant(MIN), Op::DecrLocal(1)],
+                "integer overflow: -9223372036854775808 - 1 does not fit in an Int",
+            ),
+            (vec![Op::Constant(MAX), Op::AddLocalInt(1, 1)], max_plus_one),
+            (
+                vec![Op::Constant(MIN), Op::AddLocalInt(1, -1)],
+                "integer overflow: -9223372036854775808 + -1 does not fit in an Int",
+            ),
+            (
+                vec![
+                    Op::Constant(MAX),
+                    Op::Constant(ONE),
+                    Op::AddLocalsInPlace(1, 2),
+                ],
+                max_plus_one,
+            ),
+            (
+                [&[Op::Constant(MAX)][..], &add_one_nested[..]].concat(),
+                max_plus_one,
+            ),
+        ];
+        for (code, expected) in &cases {
+            let err = match run_bytecode(constants(), code) {
+                Ok(value) => panic!("{code:?} must raise an overflow, got {value:?}"),
+                Err(err) => err,
+            };
+            assert!(err.to_string().contains(expected), "{code:?}: {err}");
+        }
+
+        // Up to the edge they still compute. `DecrLocal` and `AddNestedIndex`
+        // have no fast arm, so every execution of them runs this code.
+        let to_min = [
+            Op::Constant(MIN),
+            Op::IncrLocal(1),
+            Op::DecrLocal(1),
+            Op::GetLocal(1),
+            Op::Return,
+        ];
+        assert_eq!(
+            run_bytecode(constants(), &to_min).expect("MIN + 1 - 1 is in range"),
+            Value::Int(i64::MIN)
+        );
+        let to_max = [
+            &[Op::Constant(MAX), Op::DecrLocal(1)][..],
+            &add_one_nested[..],
+            &[Op::GetLocal(1), Op::Return][..],
+        ]
+        .concat();
+        assert_eq!(
+            run_bytecode(constants(), &to_max).expect("MAX - 1 + 1 is in range"),
+            Value::Int(i64::MAX)
+        );
+    }
+
+    /// `h["k"] = v` on a hash without `"k"` inserts a clone of the key
+    /// constant, so a key longer than `EcoString`'s 15 inline bytes shares the
+    /// constant's buffer. The three ops inserted `key.to_string().into()`: a
+    /// heap `String`, then a second copy into a new `EcoString`.
+    #[test]
+    fn hash_set_const_ops_share_the_key_constant() {
+        const KEY: u16 = 0;
+        const ONE: u16 = 1;
+        const GLOBAL: u16 = 2;
+        let key: SoliStr = "content_type_header_value".into();
+        assert!(key.len() > 15, "the key must not fit inline");
+        let constants = || {
+            vec![
+                Constant::String(key.clone()),
+                Constant::Int(1),
+                Constant::String("h".into()),
+            ]
+        };
+        let shapes: Vec<(&str, Vec<Op>)> = vec![
+            (
+                "HashSetConst",
+                vec![
+                    Op::Hash(0),
+                    Op::GetLocal(1),
+                    Op::Constant(ONE),
+                    Op::HashSetConst(KEY),
+                    Op::Pop,
+                    Op::GetLocal(1),
+                    Op::Return,
+                ],
+            ),
+            (
+                "HashSetLocalConst",
+                vec![
+                    Op::Hash(0),
+                    Op::Constant(ONE),
+                    Op::HashSetLocalConst(1, KEY),
+                    Op::Pop,
+                    Op::GetLocal(1),
+                    Op::Return,
+                ],
+            ),
+            (
+                "HashSetGlobalConst",
+                vec![
+                    Op::Constant(ONE),
+                    Op::HashSetGlobalConst(GLOBAL, KEY),
+                    Op::Pop,
+                    Op::GetGlobal(GLOBAL),
+                    Op::Return,
+                ],
+            ),
+        ];
+        for (name, code) in &shapes {
+            let globals = [("h", crate::interpreter::value::empty_hash())];
+            let value = run_bytecode_with_globals(constants(), code, &globals)
+                .unwrap_or_else(|err| panic!("{name} raised: {err}"));
+            let Value::Hash(hash) = value else {
+                panic!("{name} did not return the hash: {value:?}");
+            };
+            let hash = hash.borrow();
+            assert_eq!(hash.len(), 1, "{name}");
+            let (stored_key, stored_value) = hash.get_index(0).unwrap();
+            let HashKey::String(stored) = stored_key else {
+                panic!("{name} stored a non-string key: {stored_key:?}");
+            };
+            assert_eq!(stored.as_str(), key.as_str(), "{name}");
+            assert_eq!(
+                stored.as_ptr(),
+                key.as_ptr(),
+                "{name} copied the key instead of sharing the constant"
+            );
+            assert_eq!(stored_value, &Value::Int(1), "{name}");
+            // A shared key still hashes and compares like a borrowed one.
+            assert_eq!(
+                hash.get(&StrKey(key.as_str())),
+                Some(&Value::Int(1)),
+                "{name}"
+            );
+        }
+    }
+
+    /// `for ch in str` yields one-character strings, multi-byte ones included;
+    /// each is built inline from the char's UTF-8 bytes.
+    #[test]
+    fn string_iteration_yields_each_character() {
+        let source = "let out = []\nfor ch in \"a\u{e9}\u{1F600}z\"\n  out.push(ch)\nend\nlet joined = out.join(\"|\")\nlet n = out.length";
+        assert_eq!(
+            compile_and_get_global(source, "joined"),
+            Value::String("a|\u{e9}|\u{1F600}|z".into())
+        );
+        assert_eq!(compile_and_get_global(source, "n"), Value::Int(4));
+    }
+
+    /// The source shapes the peephole turns into those ops: each must really
+    /// compile to the fused op, and raise the overflow the tree-walker raises.
+    #[test]
+    fn fused_local_arithmetic_raises_on_overflow() {
+        let largest = "i = 9223372036854775807";
+        let smallest = "i = -9223372036854775807 - 1";
+        let with_local = "i = 9223372036854775807\n  one = 1";
+        let with_keys = "i = 9223372036854775807\n  h = {\"k\": 1}\n  names = [\"k\"]\n  k = 0";
+        let max_plus_one = "integer overflow: 9223372036854775807 + 1 does not fit in an Int";
+        let min_minus_one = "integer overflow: -9223372036854775808 - 1 does not fit in an Int";
+        let cases = [
+            (largest, "i += 1", Op::IncrLocal(0), max_plus_one),
+            (largest, "i = i + 1", Op::IncrLocal(0), max_plus_one),
+            (largest, "i++", Op::IncrLocal(0), max_plus_one),
+            (smallest, "i -= 1", Op::DecrLocal(0), min_minus_one),
+            (smallest, "i = i - 1", Op::DecrLocal(0), min_minus_one),
+            (smallest, "i--", Op::DecrLocal(0), min_minus_one),
+            (
+                largest,
+                "i += 2",
+                Op::AddLocalConstInPlace(0, 0),
+                "integer overflow: 9223372036854775807 + 2 does not fit in an Int",
+            ),
+            (
+                largest,
+                "i = i + 2",
+                Op::AddLocalConstInPlace(0, 0),
+                "integer overflow: 9223372036854775807 + 2 does not fit in an Int",
+            ),
+            (
+                smallest,
+                "i -= 2",
+                Op::SubLocalConstInPlace(0, 0),
+                "integer overflow: -9223372036854775808 - 2 does not fit in an Int",
+            ),
+            (
+                largest,
+                "i *= 2",
+                Op::MulLocalConstInPlace(0, 0),
+                "integer overflow: 9223372036854775807 * 2 does not fit in an Int",
+            ),
+            (
+                with_local,
+                "i += one",
+                Op::AddLocalsInPlace(0, 0),
+                max_plus_one,
+            ),
+            (
+                with_local,
+                "i = i + one",
+                Op::AddLocalsInPlace(0, 0),
+                max_plus_one,
+            ),
+            (
+                with_keys,
+                "i += h[names[k]]",
+                Op::AddNestedIndex(0, 0, 0, 0),
+                max_plus_one,
+            ),
+            (
+                with_keys,
+                "i = i + h[names[k]]",
+                Op::AddNestedIndex(0, 0, 0, 0),
+                max_plus_one,
+            ),
+        ];
+        for (setup, statement, fused, expected) in cases {
+            // `i` is read afterwards, so the statement carries the `Pop` the
+            // fusions need.
+            let source = format!("def f()\n  {setup}\n  {statement}\n  i\nend\nf()\n");
+            let tokens = Scanner::new(&source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let code = module
+                .main
+                .chunk
+                .constants
+                .iter()
+                .find_map(|constant| match constant {
+                    Constant::Function(proto) if proto.name == "f" => {
+                        Some(proto.chunk.code.clone())
+                    }
+                    _ => None,
+                })
+                .expect("the function f");
+            assert!(
+                code.iter()
+                    .any(|op| std::mem::discriminant(op) == std::mem::discriminant(&fused)),
+                "`{statement}` should compile to {fused:?}: {code:?}"
+            );
+            let err = match Vm::new().execute(&module.main) {
+                Ok(value) => panic!("`{statement}` must raise an overflow, got {value:?}"),
+                Err(err) => err,
+            };
+            assert!(err.to_string().contains(expected), "`{statement}`: {err}");
+        }
+    }
+
+    /// A class, as far as `==` is concerned: an enum value is an instance
+    /// carrying a `__variant` tag, so these tests need no enum declaration.
+    fn bare_class(name: &str) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            ..Default::default()
+        })
+    }
+
+    /// A unit variant read back from storage, as an `enum_field` read and
+    /// `Status.parse("Active")` build it: a new instance on every call.
+    fn stored_variant(class: &Rc<Class>, tag: &str) -> Value {
+        crate::interpreter::value::build_enum_value(class, &Value::String(tag.into()))
+    }
+
+    /// `Shape.Circle(radius)` as `__enum_construct` builds it: a new instance
+    /// on every call.
+    fn circle(shape: &Rc<Class>, radius: i64) -> Value {
+        let mut instance = crate::interpreter::value::Instance::new(shape.clone());
+        instance.set("__variant", Value::String("Circle".into()));
+        instance.set("radius", Value::Int(radius));
+        Value::Instance(Rc::new(RefCell::new(instance)))
+    }
+
+    /// Every op that decides `==` or `!=` compares enum values by value, as
+    /// the tree-walker does. `TestNotEqualJump` (the fused `if a != b`) and
+    /// the general arms of `EqualLocalLocal` and `NotEqualLocalLocal` used
+    /// `PartialEq`, which compares two instances by pointer: two equal enum
+    /// values built apart were "not equal" to them, and equal to `Equal`.
+    /// Built by hand, so every fused shape is covered whatever the
+    /// peephole picks for a given source.
+    #[test]
+    fn enum_values_compare_by_value_in_every_equality_op() {
+        let status = bare_class("Status");
+        let shape = bare_class("Shape");
+        let shared = stored_variant(&status, "Active");
+        let point = || {
+            let mut instance = crate::interpreter::value::Instance::new(bare_class("Point"));
+            instance.set("x", Value::Int(1));
+            Value::Instance(Rc::new(RefCell::new(instance)))
+        };
+        // (pair, a, b, whether a == b)
+        let pairs = [
+            (
+                "two stored Status.Active",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Active"),
+                true,
+            ),
+            (
+                "Status.Active and Status.Inactive",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Inactive"),
+                false,
+            ),
+            ("two Circle(1)", circle(&shape, 1), circle(&shape, 1), true),
+            (
+                "Circle(1) and Circle(2)",
+                circle(&shape, 1),
+                circle(&shape, 2),
+                false,
+            ),
+            (
+                "Status.Active and Mode.Active",
+                stored_variant(&status, "Active"),
+                stored_variant(&bare_class("Mode"), "Active"),
+                false,
+            ),
+            ("one value twice", shared.clone(), shared, true),
+            // Not enums: an instance is still only equal to itself.
+            ("two plain instances, same fields", point(), point(), false),
+            ("two Ints", Value::Int(3), Value::Int(3), true),
+            (
+                "two Strings",
+                Value::String("a".into()),
+                Value::String("b".into()),
+                false,
+            ),
+        ];
+        const A: u16 = 0;
+        const B: u16 = 1;
+        const YES: u16 = 2;
+        const NO: u16 = 3;
+        let constants = || {
+            vec![
+                Constant::String("a".into()),
+                Constant::String("b".into()),
+                Constant::Bool(true),
+                Constant::Bool(false),
+            ]
+        };
+        // (op, the code after `a` and `b` are pushed as locals 1 and 2, and
+        // whether the Bool it returns answers "equal?" or "not equal?")
+        let shapes: [(&str, &[Op], bool); 6] = [
+            ("Equal", &[Op::Equal, Op::Return], true),
+            ("NotEqual", &[Op::NotEqual, Op::Return], false),
+            (
+                "EqualLocalLocal",
+                &[Op::EqualLocalLocal(1, 2), Op::Return],
+                true,
+            ),
+            (
+                "NotEqualLocalLocal",
+                &[Op::NotEqualLocalLocal(1, 2), Op::Return],
+                false,
+            ),
+            // `if a != b { true } else { false }`: equal operands jump over
+            // the `true` to the `false`.
+            (
+                "TestNotEqualJump",
+                &[
+                    Op::TestNotEqualJump(2),
+                    Op::Constant(YES),
+                    Op::Return,
+                    Op::Constant(NO),
+                    Op::Return,
+                ],
+                false,
+            ),
+            // `if a == b { true } else { false }`.
+            (
+                "TestEqualJump",
+                &[
+                    Op::TestEqualJump(2),
+                    Op::Constant(YES),
+                    Op::Return,
+                    Op::Constant(NO),
+                    Op::Return,
+                ],
+                true,
+            ),
+        ];
+        for (pair, a, b, equal) in &pairs {
+            let globals = [("a", a.clone()), ("b", b.clone())];
+            for &(op, tail, answers_equal) in &shapes {
+                let code = [&[Op::GetGlobal(A), Op::GetGlobal(B)][..], tail].concat();
+                let answer = run_bytecode_with_globals(constants(), &code, &globals)
+                    .unwrap_or_else(|e| panic!("{op} on {pair}: {e}"));
+                assert_eq!(
+                    answer,
+                    Value::Bool(*equal == answers_equal),
+                    "{op} on {pair}"
+                );
+            }
+        }
+
+        // `EqualLocalConst` and `NotEqualLocalConst` take their right side
+        // from the constant pool, which holds no instances. Past their inline
+        // pairs they must still answer what `Equal` does: an enum is not its
+        // tag, and the Int 3 equals the Float 3.0.
+        let pool = vec![
+            Constant::String("a".into()),
+            Constant::String("Active".into()),
+            Constant::Int(3),
+            Constant::Float(3.0),
+        ];
+        let locals = [
+            ("a stored Status.Active", stored_variant(&status, "Active")),
+            ("the Int 3", Value::Int(3)),
+        ];
+        for (label, local) in &locals {
+            let globals = [("a", local.clone())];
+            for constant in 1..pool.len() as u16 {
+                let run = |tail: &[Op]| {
+                    let code = [&[Op::GetGlobal(A)][..], tail].concat();
+                    run_bytecode_with_globals(pool.clone(), &code, &globals)
+                        .unwrap_or_else(|e| panic!("{label}, constant {constant}: {e}"))
+                };
+                let Value::Bool(equal) = run(&[Op::Constant(constant), Op::Equal, Op::Return])
+                else {
+                    panic!("Equal answers a Bool: {label}, constant {constant}");
+                };
+                assert_eq!(
+                    run(&[Op::EqualLocalConst(1, constant), Op::Return]),
+                    Value::Bool(equal),
+                    "EqualLocalConst: {label}, constant {constant}"
+                );
+                assert_eq!(
+                    run(&[Op::NotEqualLocalConst(1, constant), Op::Return]),
+                    Value::Bool(!equal),
+                    "NotEqualLocalConst: {label}, constant {constant}"
+                );
+            }
+        }
+    }
+
+    /// The conditions the peephole fuses into `TestNotEqualJump` (an `if`,
+    /// an `elsif`, a `while`, a ternary, a postfix `if` and a guard clause on
+    /// `!=`) branch the way `!=` evaluates, on equal enum values built apart.
+    /// `status != WANTED` has the shape of `if order.status != Status.Paid`.
+    /// The values come in as globals, so no enum declaration is needed.
+    #[test]
+    fn not_equal_conditions_compare_enum_values_by_value() {
+        let source = r#"
+def guarded(status)
+  return "guard " if status != WANTED
+
+  ""
+end
+
+def conditions(status)
+  seen = ""
+  if status != WANTED
+    seen = seen + "if "
+  end
+  if status == nil
+    seen = seen + "nil "
+  elsif status != WANTED
+    seen = seen + "elsif "
+  end
+  rounds = 0
+  while status != WANTED
+    rounds += 1
+    break
+  end
+  seen = seen + "while " if rounds > 0
+  seen = seen + (status != WANTED ? "ternary " : "")
+  seen = seen + "postfix " if status != WANTED
+  seen + guarded(status)
+end
+
+let result = conditions(STATUS)
+"#;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        // The test is about the fused op: every `!=` condition must be one.
+        for (function, expected_fused) in [("guarded", 1), ("conditions", 5)] {
+            let code = module
+                .main
+                .chunk
+                .constants
+                .iter()
+                .find_map(|constant| match constant {
+                    Constant::Function(proto) if proto.name == function => {
+                        Some(proto.chunk.code.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("the function {function}"));
+            let fused = code
+                .iter()
+                .filter(|op| matches!(op, Op::TestNotEqualJump(_)))
+                .count();
+            assert_eq!(fused, expected_fused, "{function}: {code:?}");
+            assert!(!code.contains(&Op::NotEqual), "{function}: {code:?}");
+        }
+
+        let status = bare_class("Status");
+        let shape = bare_class("Shape");
+        let cases = [
+            (
+                "two stored Status.Active",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Active"),
+                "",
+            ),
+            ("two Circle(1)", circle(&shape, 1), circle(&shape, 1), ""),
+            (
+                "Status.Active and Status.Inactive",
+                stored_variant(&status, "Active"),
+                stored_variant(&status, "Inactive"),
+                "if elsif while ternary postfix guard ",
+            ),
+        ];
+        for (pair, value, wanted, expected) in cases {
+            let mut vm = Vm::new();
+            vm.globals.insert("STATUS".to_string(), value);
+            vm.globals.insert("WANTED".to_string(), wanted);
+            vm.execute(&module.main)
+                .unwrap_or_else(|e| panic!("{pair}: {e}"));
+            assert_eq!(
+                vm.globals.get("result"),
+                Some(&Value::String(expected.into())),
+                "{pair}"
+            );
+        }
     }
 
     // Regression: `@sdbql{ ... #{var} ... }` must lower to a resolvable
@@ -8549,5 +9722,915 @@ let x = Mailer.welcome()
             compile_and_get_global("let x = [1, 2, 3, 4, 5].filter(fn(n) n > 2).first();", "x"),
             Value::Int(3)
         );
+    }
+
+    /// Run `code` in the fast tier alone, with `locals` in slots 1.., and
+    /// return the op it handed back (`None`: it ran every op itself) and
+    /// what it left on the stack above the locals.
+    fn run_fast_tier(
+        constants: Vec<Constant>,
+        locals: &[Value],
+        code: &[Op],
+    ) -> (Option<Op>, Vec<Value>) {
+        run_fast_tier_with(constants, locals, code, 0, &[])
+    }
+
+    /// [`run_fast_tier`] in a frame whose caller supplied the parameters in
+    /// the `supplied` mask, with `globals` defined.
+    fn run_fast_tier_with(
+        constants: Vec<Constant>,
+        locals: &[Value],
+        code: &[Op],
+        supplied: u64,
+        globals: &[(&str, Value)],
+    ) -> (Option<Op>, Vec<Value>) {
+        let (declined, mut vm) = run_fast_tier_vm(constants, locals, code, supplied, globals);
+        let above_locals = vm.stack.split_off(1 + locals.len());
+        (declined, above_locals)
+    }
+
+    /// [`run_fast_tier_with`], handing back the whole VM so a test can read
+    /// the state the fast tier left beside the stack (handlers, frames).
+    fn run_fast_tier_vm(
+        constants: Vec<Constant>,
+        locals: &[Value],
+        code: &[Op],
+        supplied: u64,
+        globals: &[(&str, Value)],
+    ) -> (Option<Op>, Vm) {
+        let mut proto = FunctionProto::new(String::new());
+        proto.chunk.constants = constants;
+        for op in code {
+            proto.chunk.emit(*op, 1);
+        }
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name.to_string(), value.clone());
+        }
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        vm.push(Value::VmClosure(closure.clone()));
+        for local in locals {
+            vm.push(local.clone());
+        }
+        vm.frames.push(CallFrame::new(
+            closure,
+            0,
+            vm.iter_stack.len(),
+            None,
+            supplied,
+        ));
+        let declined = vm.run_fast().expect("the fast tier raised");
+        (declined, vm)
+    }
+
+    /// A `try` or `expr rescue x` that does not throw stays in the fast
+    /// tier: `TryBegin`, `TryEnd`, `PopHandler`, `RescueJump` and a
+    /// `ForceFuture` on anything but a Future had no fast arm, so each cost a
+    /// tier exit. The handler the fast arm pushes must be the one the general
+    /// arm pushed, since the throw side reads nothing else.
+    #[test]
+    fn try_and_rescue_that_do_not_throw_stay_in_the_fast_tier() {
+        const SEVEN: u16 = 0;
+        const ZERO: u16 = 1;
+        let constants = || vec![Constant::Int(7), Constant::Int(0)];
+        let locals = [Value::Int(5)];
+
+        // `TryBegin` records the targets relative to the next op, and the
+        // stack (closure + one local), frame and iterator depths.
+        let (declined, vm) = run_fast_tier_vm(constants(), &locals, &[Op::TryBegin(2, 3)], 0, &[]);
+        assert_eq!(declined, None, "TryBegin left the fast tier");
+        assert_eq!(vm.exception_handlers.len(), 1);
+        let handler = &vm.exception_handlers[0];
+        assert_eq!(
+            (
+                handler.catch_ip,
+                handler.finally_ip,
+                handler.stack_depth,
+                handler.frame_depth,
+                handler.iter_depth,
+            ),
+            (3, 4, 2, 1, 0)
+        );
+
+        // The non-throwing paths, each leaving no handler behind.
+        let cases: Vec<(&[Op], Vec<Value>)> = vec![
+            // try { 7 } … : the handler is pushed and popped.
+            (
+                &[Op::TryBegin(0, 0), Op::Constant(SEVEN), Op::TryEnd],
+                vec![Value::Int(7)],
+            ),
+            // The outer handler of a try/finally, dropped on the normal path.
+            (&[Op::TryBegin(0, 0), Op::PopHandler], vec![]),
+            (&[Op::Constant(SEVEN), Op::ForceFuture], vec![Value::Int(7)]),
+            (
+                &[Op::RescueJump(1), Op::Constant(SEVEN), Op::Null],
+                vec![Value::Null],
+            ),
+            // `7 rescue 0`, as the compiler lays it out: the Jump skips the
+            // catch target's Pop and the fallback.
+            (
+                &[
+                    Op::TryBegin(4, 0),
+                    Op::Constant(SEVEN),
+                    Op::ForceFuture,
+                    Op::TryEnd,
+                    Op::Jump(2),
+                    Op::Pop,
+                    Op::Constant(ZERO),
+                ],
+                vec![Value::Int(7)],
+            ),
+        ];
+        for (code, expected) in cases {
+            let (declined, mut vm) = run_fast_tier_vm(constants(), &locals, code, 0, &[]);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert!(vm.exception_handlers.is_empty(), "{code:?} left a handler");
+            assert_eq!(vm.stack.split_off(2), expected, "{code:?}");
+        }
+
+        // A Future still has to be settled, which the general arm does: the
+        // op is handed back with the Future untouched under the handler.
+        #[allow(clippy::arc_with_non_send_sync)]
+        let future = Value::Future(Arc::new(std::sync::Mutex::new(
+            crate::interpreter::value::FutureState::Resolved(Value::Int(7)),
+        )));
+        crate::interpreter::value::note_future_created();
+        let (declined, vm) = run_fast_tier_vm(
+            constants(),
+            &[future],
+            &[Op::TryBegin(0, 0), Op::GetLocal(1), Op::ForceFuture],
+            0,
+            &[],
+        );
+        assert_eq!(declined, Some(Op::ForceFuture));
+        assert_eq!(vm.exception_handlers.len(), 1);
+        assert!(vm.stack.last().unwrap().is_future());
+    }
+
+    /// `def f(a, b = 7) b`, built by hand: the prologue runs `b`'s default
+    /// only when the caller left `b` out.
+    fn defaulted_callee() -> Value {
+        let mut proto = FunctionProto::new("f".to_string());
+        proto.param_names = vec!["a".to_string(), "b".to_string()];
+        proto.arity = 1;
+        proto.defaults = 1;
+        proto.defaults_mask = 0b10;
+        proto.chunk.constants = vec![Constant::Int(7)];
+        for op in [
+            Op::JumpIfParamSupplied(1, 2),
+            Op::Constant(0),
+            Op::SetLocalPop(2),
+            Op::GetLocal(2),
+            Op::Return,
+        ] {
+            proto.chunk.emit(op, 1);
+        }
+        Value::VmClosure(Rc::new(VmClosure::new(Arc::new(proto), Vec::new())))
+    }
+
+    /// A parameter-default prologue and a call that leaves defaulted
+    /// parameters out stay in the fast tier. `JumpIfParamSupplied` had no
+    /// fast arm, so every defaulted parameter cost a tier exit per call, even
+    /// a supplied one; and the fast `Call`/`CallGlobal` took only calls that
+    /// supplied every parameter.
+    #[test]
+    fn defaulted_parameters_and_short_calls_stay_in_the_fast_tier() {
+        const FIVE: u16 = 0;
+        const F: u16 = 1;
+        let constants = || vec![Constant::Int(5), Constant::String("f".into())];
+        let five = || Value::Int(5);
+        let seven = || Value::Int(7);
+
+        // The prologue alone: a supplied parameter skips its default, an
+        // omitted one runs it, and past bit 63 the mask reads as supplied.
+        let prologue: Vec<(Op, u64, Vec<Value>)> = vec![
+            (Op::JumpIfParamSupplied(0, 1), 0b1, vec![]),
+            (Op::JumpIfParamSupplied(0, 1), 0b10, vec![five()]),
+            (Op::JumpIfParamSupplied(1, 1), 0b10, vec![]),
+            (Op::JumpIfParamSupplied(63, 1), 1 << 63, vec![]),
+            (Op::JumpIfParamSupplied(64, 1), 0, vec![]),
+        ];
+        for (jump, supplied, expected) in prologue {
+            let code = [jump, Op::Constant(FIVE)];
+            let (declined, stack) = run_fast_tier_with(constants(), &[], &code, supplied, &[]);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?} with {supplied:#b}");
+        }
+
+        // A call from the fast tier into `f`, whose prologue and return run
+        // there too: `b` defaults to 7 when left out.
+        let callee = [defaulted_callee()];
+        let globals = [("f", defaulted_callee())];
+        let calls: Vec<(&[Op], Vec<Value>)> = vec![
+            (
+                &[Op::GetLocal(1), Op::Constant(FIVE), Op::Call(1)],
+                vec![seven()],
+            ),
+            (
+                &[
+                    Op::GetLocal(1),
+                    Op::Constant(FIVE),
+                    Op::Constant(FIVE),
+                    Op::Call(2),
+                ],
+                vec![five()],
+            ),
+            (&[Op::Constant(FIVE), Op::CallGlobal(F, 1)], vec![seven()]),
+            (
+                &[Op::Constant(FIVE), Op::Constant(FIVE), Op::CallGlobal(F, 2)],
+                vec![five()],
+            ),
+        ];
+        for (code, expected) in calls {
+            let (declined, stack) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?}");
+        }
+
+        // Too few or too many arguments: the general arm raises the error.
+        let declined: Vec<&[Op]> = vec![
+            &[Op::GetLocal(1), Op::Call(0)],
+            &[
+                Op::GetLocal(1),
+                Op::Constant(FIVE),
+                Op::Constant(FIVE),
+                Op::Constant(FIVE),
+                Op::Call(3),
+            ],
+            &[Op::CallGlobal(F, 0)],
+        ];
+        for code in declined {
+            let (handed_back, _) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
+            assert_eq!(handed_back, code.last().copied(), "{code:?}");
+        }
+    }
+
+    /// A call to a function with a native kernel stays in the fast tier. The
+    /// fast `Call`/`CallGlobal` required `kernel.is_none()`, so every such
+    /// call left the tier for the general arm to try the kernel, and a
+    /// kernel that declined (an argument of another type, a rebound name)
+    /// cost that tier exit on every call before its bytecode ran.
+    ///
+    /// The callee carries the kernel of `addf(a: Float, b: Float) -> Float`
+    /// but a body of one op the fast tier hands back (`Print`): a call that
+    /// finishes in the tier was answered by the kernel, and one that hands
+    /// `Print` back from a second frame was declined and ran the bytecode.
+    #[cfg(feature = "native")]
+    #[test]
+    fn calls_to_a_native_kernel_stay_in_the_fast_tier() {
+        let source = "def addf(a: Float, b: Float) -> Float\n  a + b\nend\n";
+        let program = Parser::new(Scanner::new(source).scan_tokens().unwrap())
+            .parse()
+            .unwrap();
+        let set =
+            crate::native::analyze_and_compile(&program, &|_| false).expect("kernels compile");
+        let crate::ast::StmtKind::Function(decl) = &program.statements[0].kind else {
+            unreachable!()
+        };
+        let mut proto = FunctionProto::new("addf".to_string());
+        proto.param_names = vec!["a".to_string(), "b".to_string()];
+        proto.arity = 2;
+        proto.kernel = Some(set.for_decl(decl).expect("addf is a kernel"));
+        proto.chunk.emit(Op::Print(0), 1);
+        let addf = Value::VmClosure(Rc::new(VmClosure::new(Arc::new(proto), Vec::new())));
+
+        const A: u16 = 0;
+        const B: u16 = 1;
+        const INT: u16 = 2;
+        const ADDF: u16 = 3;
+        let constants = || {
+            vec![
+                Constant::Float(1.5),
+                Constant::Float(2.0),
+                Constant::Int(2),
+                Constant::String("addf".into()),
+            ]
+        };
+        let callee = [addf.clone()];
+        let bound = [("addf", addf.clone())];
+        let by_value: &[Op] = &[
+            Op::GetLocal(1),
+            Op::Constant(A),
+            Op::Constant(B),
+            Op::Call(2),
+        ];
+        let by_name: &[Op] = &[Op::Constant(A), Op::Constant(B), Op::CallGlobal(ADDF, 2)];
+
+        // The kernel answers: no frame, the value where the callee was.
+        for code in [by_value, by_name] {
+            let (declined, mut vm) = run_fast_tier_vm(constants(), &callee, code, 0, &bound);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(vm.frames.len(), 1, "{code:?} opened a frame");
+            assert_eq!(vm.stack.split_off(2), vec![Value::Float(3.5)], "{code:?}");
+        }
+
+        // An Int argument: declined, and the bytecode runs in the tier.
+        let int_arg: Vec<&[Op]> = vec![
+            &[
+                Op::GetLocal(1),
+                Op::Constant(A),
+                Op::Constant(INT),
+                Op::Call(2),
+            ],
+            &[Op::Constant(A), Op::Constant(INT), Op::CallGlobal(ADDF, 2)],
+        ];
+        for code in int_arg {
+            let (declined, vm) = run_fast_tier_vm(constants(), &callee, code, 0, &bound);
+            assert_eq!(declined, Some(Op::Print(0)), "{code:?}");
+            assert_eq!(vm.frames.len(), 2, "{code:?} did not enter addf");
+        }
+
+        // `addf` no longer bound to its kernel: declined (Rebound) likewise.
+        let (declined, vm) = run_fast_tier_vm(constants(), &callee, by_value, 0, &[]);
+        assert_eq!(declined, Some(Op::Print(0)));
+        assert_eq!(vm.frames.len(), 2);
+    }
+
+    /// Named arguments to a compiled function bind in place on the stack, by
+    /// the tree-walker's rules: the positional value wins over a label for
+    /// the same parameter, an unknown label is an undefined variable, a
+    /// missing required parameter is an arity error, and a call with more
+    /// labels than fit inline binds the same way. A refused call leaves a
+    /// stack the next statement can use.
+    #[test]
+    fn named_arguments_bind_in_place_by_the_tree_walkers_rules() {
+        let f = "def f(a, b = 2, c = 3) { return [a, b, c] }\n";
+        let cases = [
+            ("f(1, a: 9)", "[1, 2, 3]"),
+            ("f(c: 30, a: 10)", "[10, 2, 30]"),
+            ("f(1, c: nil)", "[1, 2, null]"),
+            ("f(b: 20, c: 30, a: 10)", "[10, 20, 30]"),
+            ("f(1, 2, c: 3)", "[1, 2, 3]"),
+        ];
+        for (call, expected) in cases {
+            let source = format!("{f}let x = {call}.to_s();");
+            assert_eq!(
+                compile_and_get_global(&source, "x"),
+                Value::String(expected.into()),
+                "{call}"
+            );
+        }
+
+        let errors = [
+            ("f(1, zz: 1)", "Undefined variable 'zz'"),
+            ("f(b: 1)", "expected 1, got 0"),
+            ("f(a: 1, a: 2)", "duplicate named argument 'a'"),
+            ("f(1, 2, 3, 4, c: 1)", "expected 3, got 5"),
+        ];
+        for (call, message) in errors {
+            let err = compile_and_run(&format!("{f}{call}")).expect_err(call);
+            assert!(err.to_string().contains(message), "{call}: {err}");
+        }
+
+        // Caught, the refusal leaves a stack the following calls run on.
+        assert_eq!(
+            compile_and_get_global(
+                &format!(
+                    "{f}let e = nil\ntry {{ f(1, zz: 2) }} catch err {{ e = err }}\nlet x = f(c: 5, a: 4).to_s();"
+                ),
+                "x"
+            ),
+            Value::String("[4, 2, 5]".into())
+        );
+
+        // Twenty labels, past the inline plan, in reverse order.
+        let params: Vec<String> = (0..20).map(|i| format!("p{i} = 0")).collect();
+        let labels: Vec<String> = (0..20).rev().map(|i| format!("p{i}: {i}")).collect();
+        let source = format!(
+            "def g({}) {{ return p0 + p7 * 100 + p19 * 10000 }}\nlet x = g({});",
+            params.join(", "),
+            labels.join(", ")
+        );
+        assert_eq!(compile_and_get_global(&source, "x"), Value::Int(190_700));
+
+        // A constructor binds the same way, with the instance as `this`.
+        assert_eq!(
+            compile_and_get_global(
+                "class P { x: Int; y: Int; new(x, y = 5) { this.x = x; this.y = y } }\nlet x = P(y: 1, x: 2).x * 10 + P(x: 3).y;",
+                "x"
+            ),
+            Value::Int(25)
+        );
+    }
+
+    /// String literals, symbols and `==`/`!=` between primitives stay in the
+    /// fast tier, each comparison shape included: `Equal`/`NotEqual`, the
+    /// `*LocalConst` and `*LocalLocal` fused ops and both test-and-jump ops.
+    /// Each used to hand a string, a nil or a float back to `run_dispatch`.
+    #[test]
+    fn string_literals_and_primitive_equality_stay_in_the_fast_tier() {
+        const ADMIN: u16 = 0;
+        const USER: u16 = 1;
+        const NINE: u16 = 2;
+        const HALF: u16 = 3;
+        const YES: u16 = 4;
+        const NIL: u16 = 5;
+        const SYM: u16 = 6;
+        let constants = || {
+            vec![
+                Constant::String("admin".into()),
+                Constant::String("user".into()),
+                Constant::Int(9),
+                Constant::Float(1.5),
+                Constant::Bool(true),
+                Constant::Null,
+                Constant::String("sym".into()),
+            ]
+        };
+        let string = |s: &str| Value::String(s.into());
+        let locals = [string("admin"), string("user"), Value::Null];
+        let t = Value::Bool(true);
+        let f = Value::Bool(false);
+        let cases: Vec<(&[Op], Vec<Value>)> = vec![
+            (&[Op::Constant(ADMIN)], vec![string("admin")]),
+            (&[Op::Symbol(SYM)], vec![Value::Symbol("sym".into())]),
+            (
+                &[Op::Constant(ADMIN), Op::Constant(ADMIN), Op::Equal],
+                vec![t.clone()],
+            ),
+            (
+                &[Op::Constant(ADMIN), Op::Constant(USER), Op::NotEqual],
+                vec![t.clone()],
+            ),
+            (&[Op::Null, Op::Constant(ADMIN), Op::Equal], vec![f.clone()]),
+            (&[Op::Null, Op::Null, Op::Equal], vec![t.clone()]),
+            (
+                &[Op::Null, Op::Constant(NINE), Op::NotEqual],
+                vec![t.clone()],
+            ),
+            (
+                &[Op::Constant(HALF), Op::Constant(HALF), Op::Equal],
+                vec![t.clone()],
+            ),
+            (
+                &[Op::Constant(NINE), Op::Constant(ADMIN), Op::Equal],
+                vec![f.clone()],
+            ),
+            (
+                &[Op::Symbol(SYM), Op::Constant(SYM), Op::Equal],
+                vec![f.clone()],
+            ),
+            (
+                &[Op::Symbol(SYM), Op::Symbol(SYM), Op::Equal],
+                vec![t.clone()],
+            ),
+            (&[Op::EqualLocalConst(1, ADMIN)], vec![t.clone()]),
+            (&[Op::NotEqualLocalConst(2, ADMIN)], vec![t.clone()]),
+            (&[Op::EqualLocalConst(1, NIL)], vec![f.clone()]),
+            (&[Op::EqualLocalConst(3, NIL)], vec![t.clone()]),
+            (&[Op::EqualLocalConst(3, YES)], vec![f.clone()]),
+            (&[Op::EqualLocalLocal(1, 2)], vec![f.clone()]),
+            (&[Op::NotEqualLocalLocal(1, 2)], vec![t.clone()]),
+            (&[Op::EqualLocalLocal(1, 1)], vec![t.clone()]),
+            // `if a == b { true }`: equal falls through to the `True`,
+            // different jumps over it.
+            (
+                &[
+                    Op::Constant(ADMIN),
+                    Op::Constant(ADMIN),
+                    Op::TestEqualJump(1),
+                    Op::True,
+                ],
+                vec![t.clone()],
+            ),
+            (
+                &[
+                    Op::Constant(ADMIN),
+                    Op::Constant(USER),
+                    Op::TestEqualJump(1),
+                    Op::True,
+                ],
+                vec![],
+            ),
+            (
+                &[
+                    Op::Constant(ADMIN),
+                    Op::Constant(ADMIN),
+                    Op::TestNotEqualJump(1),
+                    Op::True,
+                ],
+                vec![],
+            ),
+            (
+                &[
+                    Op::Null,
+                    Op::Constant(USER),
+                    Op::TestNotEqualJump(1),
+                    Op::True,
+                ],
+                vec![t.clone()],
+            ),
+        ];
+        for (code, expected) in cases {
+            let (declined, stack) = run_fast_tier(constants(), &locals, code);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?}");
+        }
+
+        // What still needs the general arm declines, untouched: an Int and a
+        // Float compare as numbers there, an instance may be an enum, a
+        // Decimal constant is parsed.
+        let status = bare_class("Status");
+        let enum_locals = [
+            stored_variant(&status, "Active"),
+            stored_variant(&status, "Active"),
+        ];
+        let declined: Vec<(&[Op], &[Value], Op)> = vec![
+            (
+                &[Op::Constant(NINE), Op::Constant(HALF), Op::Equal],
+                &locals,
+                Op::Equal,
+            ),
+            (
+                &[Op::EqualLocalLocal(1, 2)],
+                &enum_locals,
+                Op::EqualLocalLocal(1, 2),
+            ),
+            (
+                &[Op::GetLocal(1), Op::GetLocal(2), Op::TestEqualJump(0)],
+                &enum_locals,
+                Op::TestEqualJump(0),
+            ),
+            (
+                &[Op::EqualLocalConst(1, ADMIN)],
+                &enum_locals,
+                Op::EqualLocalConst(1, ADMIN),
+            ),
+        ];
+        for (code, locals, op) in declined {
+            let (handed_back, _) = run_fast_tier(constants(), locals, code);
+            assert_eq!(handed_back, Some(op), "{code:?}");
+        }
+    }
+
+    /// `k -= 1`, `/` and `%` on Ints (`/` on Floats), `??`, `h["k"]` on a
+    /// local hash and `xs[i]` in range stay in the fast tier, each in its
+    /// stack and fused forms; every one used to cost a round trip through
+    /// `run_dispatch`. What the general arms raise on or convert declines,
+    /// untouched, so the error text stays theirs.
+    #[test]
+    fn decrement_division_nullish_and_index_reads_stay_in_the_fast_tier() {
+        const SEVEN: u16 = 0;
+        const ZERO: u16 = 1;
+        const HALF: u16 = 2;
+        const KEY_A: u16 = 3;
+        const KEY_B: u16 = 4;
+        const ONE: u16 = 5;
+        const BIG: u16 = 6;
+        let constants = || {
+            vec![
+                Constant::Int(7),
+                Constant::Int(0),
+                Constant::Float(0.5),
+                Constant::String("a".into()),
+                Constant::String("b".into()),
+                Constant::Int(1),
+                Constant::Int(9),
+            ]
+        };
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("a".into()), Value::Int(1));
+        let hash = Value::Hash(Rc::new(RefCell::new(pairs)));
+        let array = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(10),
+            Value::Int(20),
+            Value::Int(30),
+        ])));
+        // Slots: 1 k=23, 2 c=-4, 3 hash, 4 array, 5 nil, 6 i=-1, 7 x=3.0.
+        let locals = [
+            Value::Int(23),
+            Value::Int(-4),
+            hash,
+            array,
+            Value::Null,
+            Value::Int(-1),
+            Value::Float(3.0),
+        ];
+        let int = Value::Int;
+        let cases: Vec<(&[Op], Vec<Value>)> = vec![
+            (&[Op::DecrLocal(1), Op::GetLocal(1)], vec![int(22)]),
+            (
+                &[Op::GetLocal(1), Op::Constant(SEVEN), Op::Divide],
+                vec![int(3)],
+            ),
+            (
+                &[Op::GetLocal(1), Op::Constant(SEVEN), Op::Modulo],
+                vec![int(2)],
+            ),
+            (
+                &[Op::GetLocal(2), Op::Constant(SEVEN), Op::Modulo],
+                vec![int(-4)],
+            ),
+            (
+                &[Op::GetLocal(7), Op::GetLocal(7), Op::Divide],
+                vec![Value::Float(1.0)],
+            ),
+            (&[Op::DivLocalLocal(1, 2)], vec![int(-5)]),
+            (&[Op::ModLocalLocal(1, 2)], vec![int(3)]),
+            (&[Op::DivLocalConst(1, SEVEN)], vec![int(3)]),
+            (&[Op::ModLocalConst(1, SEVEN)], vec![int(2)]),
+            (&[Op::DivLocalConst(7, HALF)], vec![Value::Float(6.0)]),
+            // `nil ?? 7` evaluates the default; `23 ?? 7` jumps over it.
+            (
+                &[
+                    Op::GetLocal(5),
+                    Op::NullishJump(2),
+                    Op::Pop,
+                    Op::Constant(SEVEN),
+                ],
+                vec![int(7)],
+            ),
+            (
+                &[
+                    Op::GetLocal(1),
+                    Op::NullishJump(2),
+                    Op::Pop,
+                    Op::Constant(SEVEN),
+                ],
+                vec![int(23)],
+            ),
+            (&[Op::HashGetLocalConst(3, KEY_A)], vec![int(1)]),
+            (&[Op::HashGetLocalConst(3, KEY_B)], vec![Value::Null]),
+            (
+                &[Op::GetLocal(4), Op::Constant(ONE), Op::GetIndex],
+                vec![int(20)],
+            ),
+            (
+                &[Op::GetLocal(4), Op::GetLocal(6), Op::GetIndex],
+                vec![int(30)],
+            ),
+            (
+                &[Op::GetLocal(3), Op::Constant(KEY_B), Op::GetIndex],
+                vec![Value::Null],
+            ),
+            (&[Op::GetLocalIndex(4, 6)], vec![int(30)]),
+        ];
+        for (code, expected) in cases {
+            let (declined, stack) = run_fast_tier(constants(), &locals, code);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?}");
+        }
+
+        let min = [Value::Int(i64::MIN), Value::Int(-1), Value::Float(2.0)];
+        let declined: Vec<(&[Op], &[Value], Op)> = vec![
+            (&[Op::DecrLocal(1)], &min, Op::DecrLocal(1)),
+            (&[Op::DecrLocal(3)], &min, Op::DecrLocal(3)),
+            (&[Op::DivLocalLocal(1, 2)], &min, Op::DivLocalLocal(1, 2)),
+            (&[Op::ModLocalLocal(1, 2)], &min, Op::ModLocalLocal(1, 2)),
+            (
+                &[Op::DivLocalConst(1, ZERO)],
+                &locals,
+                Op::DivLocalConst(1, ZERO),
+            ),
+            (
+                &[Op::ModLocalConst(1, ZERO)],
+                &locals,
+                Op::ModLocalConst(1, ZERO),
+            ),
+            // A Float `%` and an Int/Float mix are converted by the general arm.
+            (
+                &[Op::ModLocalConst(7, HALF)],
+                &locals,
+                Op::ModLocalConst(7, HALF),
+            ),
+            (
+                &[Op::DivLocalConst(1, HALF)],
+                &locals,
+                Op::DivLocalConst(1, HALF),
+            ),
+            (
+                &[Op::GetLocal(1), Op::Constant(ZERO), Op::Divide],
+                &locals,
+                Op::Divide,
+            ),
+            (
+                &[Op::GetLocal(3), Op::GetLocal(3), Op::Modulo],
+                &min,
+                Op::Modulo,
+            ),
+            // An array or a string receiver of `x["k"]` has its own rules.
+            (
+                &[Op::HashGetLocalConst(4, KEY_A)],
+                &locals,
+                Op::HashGetLocalConst(4, KEY_A),
+            ),
+            (
+                &[Op::GetLocal(4), Op::Constant(BIG), Op::GetIndex],
+                &locals,
+                Op::GetIndex,
+            ),
+            (&[Op::GetLocalIndex(4, 1)], &locals, Op::GetLocalIndex(4, 1)),
+        ];
+        for (code, locals, op) in declined {
+            let (handed_back, _) = run_fast_tier(constants(), locals, code);
+            assert_eq!(handed_back, Some(op), "{code:?}");
+        }
+    }
+
+    /// `k += c`, `k -= c` and `k *= c` with an Int or Float constant run in
+    /// the fast tier and store into the slot, pushing nothing. An overflow, a
+    /// mix of Int and Float, and any other type are handed to the general
+    /// arm, which raises or converts.
+    #[test]
+    fn local_const_in_place_ops_run_in_the_fast_tier() {
+        const SEVEN: u16 = 0;
+        const HALF: u16 = 1;
+        let constants = || vec![Constant::Int(7), Constant::Float(0.5)];
+        // Slots: 1 k=23, 2 x=3.0, 3 s="ab", 4 the smallest Int.
+        let locals = [
+            Value::Int(23),
+            Value::Float(3.0),
+            Value::String("ab".into()),
+            Value::Int(i64::MIN),
+        ];
+        let cases: Vec<(Op, u16, Value)> = vec![
+            (Op::AddLocalConstInPlace(1, SEVEN), 1, Value::Int(30)),
+            (Op::SubLocalConstInPlace(1, SEVEN), 1, Value::Int(16)),
+            (Op::MulLocalConstInPlace(1, SEVEN), 1, Value::Int(161)),
+            (Op::AddLocalConstInPlace(2, HALF), 2, Value::Float(3.5)),
+            (Op::SubLocalConstInPlace(2, HALF), 2, Value::Float(2.5)),
+            (Op::MulLocalConstInPlace(2, HALF), 2, Value::Float(1.5)),
+        ];
+        for (op, slot, expected) in cases {
+            let (declined, stack) = run_fast_tier(constants(), &locals, &[op, Op::GetLocal(slot)]);
+            assert_eq!(declined, None, "{op:?} left the fast tier");
+            assert_eq!(stack, vec![expected], "{op:?}");
+        }
+
+        for op in [
+            // Overflow.
+            Op::SubLocalConstInPlace(4, SEVEN),
+            Op::MulLocalConstInPlace(4, SEVEN),
+            // Int with Float, Float with Int.
+            Op::AddLocalConstInPlace(1, HALF),
+            Op::MulLocalConstInPlace(2, SEVEN),
+            // A string.
+            Op::MulLocalConstInPlace(3, SEVEN),
+        ] {
+            let (handed_back, stack) = run_fast_tier(constants(), &locals, &[op]);
+            assert_eq!(handed_back, Some(op));
+            assert!(stack.is_empty(), "{op:?} pushed {stack:?}");
+        }
+    }
+
+    /// The fast tier reads and pops the operand stack's top unchecked
+    /// (`pop`, `pop2`, `peek`, `peek_mut`, `peek_two!`). Each op that does so
+    /// still runs there, leaves what the general arm would, and releases a
+    /// heap operand exactly once: the array's reference count after each
+    /// sequence is the slot's own plus one per copy left on the stack.
+    #[test]
+    fn unchecked_operand_reads_keep_values_and_reference_counts() {
+        const NAME: u16 = 0;
+        let constants = || vec![Constant::String("a name longer than inline".into())];
+        let items = Rc::new(RefCell::new(vec![Value::Int(10), Value::Int(20)]));
+        let array = Value::Array(items.clone());
+        // Slots: 1 the array, 2 i=1, 3 nil.
+        let locals = [array.clone(), Value::Int(1), Value::Null];
+        let cases: Vec<(&[Op], Vec<Value>, usize)> = vec![
+            // Truthy: no jump, `True` runs.
+            (
+                &[Op::GetLocal(1), Op::JumpIfFalse(1), Op::True],
+                vec![Value::Bool(true)],
+                0,
+            ),
+            (&[Op::GetLocal(1), Op::JumpIfTrue(1), Op::True], vec![], 0),
+            (&[Op::GetLocal(1), Op::Not], vec![Value::Bool(false)], 0),
+            (
+                &[Op::GetLocal(1), Op::Dup],
+                vec![array.clone(), array.clone()],
+                2,
+            ),
+            (
+                &[Op::GetLocal(1), Op::JumpIfFalseNoPop(1), Op::True],
+                vec![array.clone(), Value::Bool(true)],
+                1,
+            ),
+            (
+                &[Op::GetLocal(1), Op::JumpIfTrueNoPop(1), Op::True],
+                vec![array.clone()],
+                1,
+            ),
+            (
+                &[Op::GetLocal(1), Op::IsNull],
+                vec![array.clone(), Value::Bool(false)],
+                1,
+            ),
+            (
+                &[Op::GetLocal(1), Op::JumpIfNotNull(1), Op::True],
+                vec![array.clone()],
+                1,
+            ),
+            (
+                &[Op::GetLocal(3), Op::JumpIfNull(1), Op::True],
+                vec![Value::Null],
+                0,
+            ),
+            // `SetLocal` copies the top into slot 3 and leaves it there.
+            (
+                &[Op::GetLocal(1), Op::SetLocal(3), Op::Pop, Op::GetLocal(3)],
+                vec![array.clone()],
+                2,
+            ),
+            (
+                &[Op::GetLocal(1), Op::GetLocal(2), Op::GetIndex],
+                vec![Value::Int(20)],
+                0,
+            ),
+            // Two strings: `primitive_equal` answers, `pop2` drops both.
+            (
+                &[Op::Constant(NAME), Op::Constant(NAME), Op::Equal],
+                vec![Value::Bool(true)],
+                0,
+            ),
+            (
+                &[Op::Constant(NAME), Op::Constant(NAME), Op::NotEqual],
+                vec![Value::Bool(false)],
+                0,
+            ),
+        ];
+        for (code, expected, extra) in cases {
+            let before = Rc::strong_count(&items);
+            let (declined, mut vm) = run_fast_tier_vm(constants(), &locals, code, 0, &[]);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            // The VM's copy in slot 1, plus `extra` left on the stack or in
+            // slot 3.
+            assert_eq!(
+                Rc::strong_count(&items),
+                before + 1 + extra,
+                "{code:?}: reference count"
+            );
+            let stack = vm.stack.split_off(1 + locals.len());
+            assert_eq!(stack, expected, "{code:?}");
+            drop(stack);
+            drop(vm);
+            assert_eq!(Rc::strong_count(&items), before, "{code:?}: released");
+        }
+    }
+
+    /// The fast tier's inline equality is `values_equal`, restricted: on
+    /// every pair it answers, it answers the same, and it declines the pairs
+    /// whose rules live in the general arm (an Int and a Float, a class and
+    /// its name, an enum, a Decimal).
+    #[test]
+    fn primitive_equal_agrees_with_values_equal() {
+        let status = bare_class("Status");
+        let values = [
+            Value::Int(1),
+            Value::Int(2),
+            Value::Float(1.0),
+            Value::Float(f64::NAN),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Null,
+            Value::String("a".into()),
+            Value::String("1".into()),
+            Value::String("Status".into()),
+            Value::Symbol("a".into()),
+            Value::Class(status.clone()),
+            stored_variant(&status, "Active"),
+        ];
+        for a in &values {
+            for b in &values {
+                let answered = primitive_equal(a, b);
+                if let Some(equal) = answered {
+                    assert_eq!(equal, values_equal(a, b), "{a:?} == {b:?}");
+                }
+                let numbers = matches!(
+                    (a, b),
+                    (Value::Int(_), Value::Float(_)) | (Value::Float(_), Value::Int(_))
+                );
+                let inline = is_primitive(a) && is_primitive(b) && !numbers;
+                assert_eq!(answered.is_some(), inline, "{a:?} == {b:?}");
+            }
+        }
+        let constants = [
+            Constant::Int(1),
+            Constant::Float(1.0),
+            Constant::Float(f64::NAN),
+            Constant::Bool(true),
+            Constant::Null,
+            Constant::String("a".into()),
+            Constant::String("Status".into()),
+            Constant::Decimal("1.0".into()),
+        ];
+        for value in &values {
+            for constant in &constants {
+                let answered = primitive_equal_constant(value, constant);
+                if let Some(equal) = answered {
+                    assert_eq!(
+                        equal,
+                        values_equal(value, &constant_to_value(constant)),
+                        "{value:?} == {constant:?}"
+                    );
+                }
+                let numbers = matches!(
+                    (value, constant),
+                    (Value::Int(_), Constant::Float(_)) | (Value::Float(_), Constant::Int(_))
+                );
+                let inline =
+                    is_primitive(value) && !matches!(constant, Constant::Decimal(_)) && !numbers;
+                assert_eq!(answered.is_some(), inline, "{value:?} == {constant:?}");
+            }
+        }
     }
 }

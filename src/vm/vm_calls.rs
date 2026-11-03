@@ -18,7 +18,7 @@ use super::chunk::{Constant, FunctionProto};
 type MethodWithClass = (Rc<VmClosure>, Rc<Class>);
 use super::compiler::Compiler;
 use super::upvalue::VmClosure;
-use super::vm::{CallFrame, Vm};
+use super::vm::{positional_supplied_mask, CallFrame, Vm};
 
 /// JIT-compile a tree-walking [`Function`] to a bytecode [`FunctionProto`] and
 /// cache it in `func.jit_cache`. Returns the cached proto on a hit, otherwise
@@ -231,47 +231,49 @@ fn view_helper_proto(func: &Function) -> Option<Arc<FunctionProto>> {
     }
 }
 
-/// Lay labelled arguments out in parameter order for `proto`, returning the
-/// slot values and a mask of which parameters were actually supplied.
+/// A labelled argument that [`plan_named_binding`] drops: a positional
+/// argument already filled the parameter it names.
+pub(crate) const DROPPED_LABEL: usize = usize::MAX;
+
+/// How many labels a named call to a compiled callee resolves without a heap
+/// allocation; a call with more spills its plan to a `Vec`.
+const INLINE_LABELS: usize = 16;
+
+/// Work out where each argument of a labelled call lands in `proto`'s
+/// parameters, and return the mask of the parameters it supplies.
+///
+/// `positional` unlabelled arguments fill the leading parameters in order;
+/// `names` yields the labels in source order, and `named_targets[j]` receives
+/// the parameter index of the `j`-th, or [`DROPPED_LABEL`].
 ///
 /// Follows the tree-walking interpreter's rules: positional arguments fill the
 /// leading parameters, labelled arguments fill by name, an unknown label is an
 /// undefined-variable error, and a parameter that ends up unfilled is an arity
 /// error unless it declares a default. Unfilled defaulted slots are left null
-/// here and written by the callee's prologue, so a default expression is
-/// evaluated in the callee — and only when it is actually needed.
-pub(crate) fn bind_named_arguments(
+/// and written by the callee's prologue, so a default expression is evaluated
+/// in the callee — and only when it is actually needed. Only names are read,
+/// so a call can plan before it moves a single value.
+pub(crate) fn plan_named_binding<'a>(
     proto: &FunctionProto,
-    positional: Vec<Value>,
-    named: Vec<(crate::interpreter::value::SoliStr, Value)>,
+    positional: usize,
+    names: impl Iterator<Item = &'a str>,
+    named_targets: &mut [usize],
     span: Span,
-) -> Result<(Vec<Value>, u64), RuntimeError> {
+) -> Result<u64, RuntimeError> {
     let total_params = proto.param_names.len();
 
-    if positional.len() > total_params {
+    if positional > total_params {
         return Err(RuntimeError::wrong_arity(
             total_params,
-            positional.len() + named.len(),
+            positional + named_targets.len(),
             span,
         ));
     }
 
-    let mut slots = vec![Value::Null; total_params];
-    let mut supplied = 0u64;
+    let mut supplied = positional_supplied_mask(positional);
 
-    for (i, value) in positional.into_iter().enumerate() {
-        slots[i] = value;
-        if i < 64 {
-            supplied |= 1u64 << i;
-        }
-    }
-
-    for (name, value) in named {
-        let Some(index) = proto
-            .param_names
-            .iter()
-            .position(|p| p.as_str() == name.as_ref())
-        else {
+    for (target, name) in named_targets.iter_mut().zip(names) {
+        let Some(index) = proto.param_names.iter().position(|p| p.as_str() == name) else {
             // Same error the interpreter raises for `f(nope: 1)`.
             return Err(RuntimeError::undefined_variable(name.to_string(), span));
         };
@@ -281,9 +283,10 @@ pub(crate) fn bind_named_arguments(
         // tree-walking interpreter does (`used_params.contains(...) { continue }`
         // in `call_value_with_named`), and the engines must agree.
         if index < 64 && supplied & (1u64 << index) != 0 {
+            *target = DROPPED_LABEL;
             continue;
         }
-        slots[index] = value;
+        *target = index;
         if index < 64 {
             supplied |= 1u64 << index;
         }
@@ -309,6 +312,34 @@ pub(crate) fn bind_named_arguments(
         }
     }
 
+    Ok(supplied)
+}
+
+/// Lay labelled arguments out in parameter order for `proto`, returning the
+/// slot values and a mask of which parameters were actually supplied — the
+/// rules of [`plan_named_binding`], for a caller that holds the values in
+/// vectors rather than on the stack.
+pub(crate) fn bind_named_arguments(
+    proto: &FunctionProto,
+    positional: Vec<Value>,
+    named: Vec<(crate::interpreter::value::SoliStr, Value)>,
+    span: Span,
+) -> Result<(Vec<Value>, u64), RuntimeError> {
+    let mut targets = vec![0; named.len()];
+    let supplied = plan_named_binding(
+        proto,
+        positional.len(),
+        named.iter().map(|(name, _)| name.as_str()),
+        &mut targets,
+        span,
+    )?;
+    let mut slots = positional;
+    slots.resize(proto.param_names.len(), Value::Null);
+    for ((_, value), target) in named.into_iter().zip(targets) {
+        if target != DROPPED_LABEL {
+            slots[target] = value;
+        }
+    }
     Ok((slots, supplied))
 }
 
@@ -434,23 +465,31 @@ impl Vm {
     /// and the caller opens the frame as usual.
     #[inline]
     pub(crate) fn try_kernel(&mut self, closure: &VmClosure, argc: usize) -> bool {
-        let Some(kernel) = &closure.proto.kernel else {
-            return false;
-        };
-        let base = self.stack.len() - argc;
-        let globals = &self.globals;
-        let bound = |name: &str| match globals.get(name) {
-            Some(Value::VmClosure(c)) => c.proto.kernel.as_ref().map(|k| k.id()),
-            _ => None,
-        };
-        match kernel.try_call(&self.stack[base..], self.frames.len(), bound) {
+        match self.kernel_value(closure, argc) {
             Some(value) => {
+                let base = self.stack.len() - argc;
                 self.stack.truncate(base - 1);
                 self.stack.push(value);
                 true
             }
             None => false,
         }
+    }
+
+    /// What `closure`'s native kernel returns for the `argc` arguments at the
+    /// top of the stack, touching nothing: `None` when it has no kernel or
+    /// the kernel declined. The fast tier's `Call`/`CallGlobal` use it while
+    /// still borrowing the callee, then settle the stack themselves.
+    #[inline]
+    pub(crate) fn kernel_value(&self, closure: &VmClosure, argc: usize) -> Option<Value> {
+        let kernel = closure.proto.kernel.as_ref()?;
+        let base = self.stack.len() - argc;
+        let globals = &self.globals;
+        let bound = |name: &str| match globals.get(name) {
+            Some(Value::VmClosure(c)) => c.proto.kernel.as_ref().map(|k| k.id()),
+            _ => None,
+        };
+        kernel.try_call(&self.stack[base..], self.frames.len(), bound)
     }
 
     /// Push `slots` (already in parameter order) and open a frame with an
@@ -499,6 +538,54 @@ impl Vm {
         labels: &[Option<crate::interpreter::value::SoliStr>],
         span: Span,
     ) -> Result<(), RuntimeError> {
+        let label = |i: usize| labels.get(i).and_then(|l| l.as_ref());
+        // A label given twice is refused whatever the callee turns out to be.
+        for i in 0..argc {
+            if let Some(name) = label(i) {
+                if (0..i).any(|earlier| label(earlier) == Some(name)) {
+                    return Err(RuntimeError::type_error(
+                        format!("duplicate named argument '{}'", name),
+                        span,
+                    ));
+                }
+            }
+        }
+
+        // A compiled callee — a compiled function, a tree-walking one compiled
+        // now, or a class whose constructor is compiled — binds in place on
+        // the stack.
+        let callee_idx = self.stack.len() - 1 - argc;
+        let compiled = match &self.stack[callee_idx] {
+            Value::VmClosure(closure) => Some((closure.clone(), None)),
+            Value::Function(func) => {
+                let func = func.clone();
+                let proto =
+                    jit_compile_function(&func, self.globals.keys().cloned()).map_err(|e| {
+                        RuntimeError::EngineFallback(
+                            format!("a function the VM cannot compile ({})", e),
+                            span,
+                        )
+                    })?;
+                let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+                self.stack[callee_idx] = Value::VmClosure(closure.clone());
+                Some((closure, None))
+            }
+            // `Config(port: 3000)` — bind against the compiled constructor and
+            // let it run with `this` in the callee slot.
+            Value::Class(class)
+                if !(crate::interpreter::domain::value_objects_declared()
+                    && class.is_value_object()) =>
+            {
+                class
+                    .find_vm_method_with_class("init")
+                    .map(|(ctor, defining_class)| (ctor, Some((class.clone(), defining_class))))
+            }
+            _ => None,
+        };
+        if let Some((closure, construct)) = compiled {
+            return self.call_compiled_named(closure, argc, labels, construct, span);
+        }
+
         // Arguments were evaluated in source order, so slot i pairs with
         // labels[i]. Lift them off the stack, leaving the callee on top.
         let mut values = Vec::with_capacity(argc);
@@ -510,16 +597,8 @@ impl Vm {
         let mut positional: Vec<Value> = Vec::new();
         let mut named: Vec<(crate::interpreter::value::SoliStr, Value)> = Vec::new();
         for (i, value) in values.into_iter().enumerate() {
-            match labels.get(i).and_then(|l| l.as_ref()) {
-                Some(name) => {
-                    if named.iter().any(|(existing, _)| existing == name) {
-                        return Err(RuntimeError::type_error(
-                            format!("duplicate named argument '{}'", name),
-                            span,
-                        ));
-                    }
-                    named.push((name.clone(), value));
-                }
+            match label(i) {
+                Some(name) => named.push((name.clone(), value)),
                 None => positional.push(value),
             }
         }
@@ -549,28 +628,6 @@ impl Vm {
                 let native = native.clone();
                 self.call_native(&native, count, span)
             }
-            // Compiled function: reorder into parameter slots.
-            Value::VmClosure(closure) => {
-                let (slots, supplied) =
-                    bind_named_arguments(&closure.proto, positional, named, span)?;
-                self.call_closure_with_slots(closure, slots, supplied, None)
-            }
-            // Tree-walking function reached from compiled code: compile it,
-            // then bind exactly as above.
-            Value::Function(ref func) => {
-                let proto =
-                    jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
-                        RuntimeError::EngineFallback(
-                            format!("a function the VM cannot compile ({})", e),
-                            span,
-                        )
-                    })?;
-                let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-                self.stack[callee_idx] = Value::VmClosure(closure.clone());
-                let (slots, supplied) =
-                    bind_named_arguments(&closure.proto, positional, named, span)?;
-                self.call_closure_with_slots(closure, slots, supplied, None)
-            }
             // `amount.with(cents: 600)` — the property read handed back a
             // marker for it (see `op_get_property`).
             Value::Method(ref method)
@@ -595,34 +652,97 @@ impl Vm {
                 }
                 self.value_object_with(&inst, changes, span)
             }
-            // `Config(port: 3000)` — bind against the compiled constructor and
-            // let it run with `this` in the callee slot.
+            // A value object, or a class with no compiled constructor (bound
+            // above when it has one).
             Value::Class(ref class) => {
                 if crate::interpreter::domain::value_objects_declared() && class.is_value_object() {
                     self.stack.truncate(callee_idx);
                     return self.build_value_object(class, positional, named, span);
                 }
-                if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
-                    let (slots, supplied) =
-                        bind_named_arguments(&ctor.proto, positional, named, span)?;
-                    let instance =
-                        Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
-                    self.stack[callee_idx] = instance;
-                    self.call_closure_with_slots(ctor, slots, supplied, Some(defining_class))
-                } else {
-                    // Tree-walking constructors need the interpreter's
-                    // run-to-completion dance; punt rather than half-bind.
-                    Err(RuntimeError::EngineFallback(
-                        format!("named arguments to {}'s constructor", class.name),
-                        span,
-                    ))
-                }
+                // Tree-walking constructors need the interpreter's
+                // run-to-completion dance; punt rather than half-bind.
+                Err(RuntimeError::EngineFallback(
+                    format!("named arguments to {}'s constructor", class.name),
+                    span,
+                ))
             }
             _ => Err(RuntimeError::EngineFallback(
                 "named arguments to this callee".to_string(),
                 span,
             )),
         }
+    }
+
+    /// Bind a labelled call to a compiled `closure` in place: the arguments
+    /// sitting above the callee are moved into a parameter-ordered run of
+    /// slots pushed after them, and the arguments' region is then closed up,
+    /// with no vector in between. With `construct`, the callee slot first
+    /// becomes a new instance of the class, the constructor's `this`.
+    ///
+    /// The plan is made from the labels alone, so an error leaves the stack
+    /// as it was.
+    fn call_compiled_named(
+        &mut self,
+        closure: Rc<VmClosure>,
+        argc: usize,
+        labels: &[Option<crate::interpreter::value::SoliStr>],
+        construct: Option<(Rc<Class>, Rc<Class>)>,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let label = |i: usize| labels.get(i).and_then(|l| l.as_ref());
+        let named = (0..argc).filter(|&i| label(i).is_some()).count();
+        let mut inline = [0usize; INLINE_LABELS];
+        let mut spilled = Vec::new();
+        let targets: &mut [usize] = if named <= INLINE_LABELS {
+            &mut inline[..named]
+        } else {
+            spilled.resize(named, 0);
+            &mut spilled
+        };
+        let supplied = plan_named_binding(
+            &closure.proto,
+            argc - named,
+            (0..argc).filter_map(label).map(|name| name.as_str()),
+            targets,
+            span,
+        )?;
+
+        let args_base = self.stack.len() - argc;
+        let defining_class = construct.map(|(class, defining_class)| {
+            self.stack[args_base - 1] =
+                Value::Instance(Rc::new(RefCell::new(Instance::new(class))));
+            defining_class
+        });
+
+        let total_params = closure.proto.param_names.len();
+        let slots_base = self.stack.len();
+        self.stack.resize(slots_base + total_params, Value::Null);
+        let (mut next_positional, mut next_named) = (0, 0);
+        for i in 0..argc {
+            let target = if label(i).is_some() {
+                next_named += 1;
+                targets[next_named - 1]
+            } else {
+                next_positional += 1;
+                next_positional - 1
+            };
+            if target != DROPPED_LABEL {
+                self.stack.swap(args_base + i, slots_base + target);
+            }
+        }
+        // What is left there: nulls, and the values of dropped labels.
+        self.stack.drain(args_base..slots_base);
+
+        let stack_base = self.stack.len() - total_params - 1;
+        self.ensure_call_depth(&closure.proto, span)?;
+        self.frames.push(CallFrame::new(
+            closure,
+            stack_base,
+            self.iter_stack.len(),
+            defining_class,
+            supplied,
+        ));
+        Ok(())
     }
 
     fn call_native(
@@ -2042,7 +2162,7 @@ impl Vm {
                     || class.find_native_method("send").is_some();
                 if !own_send {
                     let target = match &self.stack[receiver_idx + 1] {
-                        Value::String(s) | Value::Symbol(s) => Some(s.to_string()),
+                        Value::String(s) | Value::Symbol(s) => Some(s.clone()),
                         _ => None,
                     };
                     if let Some(target) = target {

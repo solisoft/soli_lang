@@ -405,6 +405,8 @@ enum CmpOp {
     LessEqual,
     Greater,
     GreaterEqual,
+    Equal,
+    NotEqual,
 }
 
 /// A callback body the loop evaluates itself, element after element, with no
@@ -421,7 +423,7 @@ enum Kernel {
     Param(u16),
     /// `ADD_LC` / `SUB_LC` / `MUL_LC s, c` — `fn(x) x * 2`
     Arith(ArithOp, u16, KConst),
-    /// `<CMP>_LC s, c` — `fn(x) x > 10`
+    /// `<CMP>_LC s, c` — `fn(x) x > 10`, `fn(x) x == 5`
     Cmp(CmpOp, u16, KConst),
     /// `GET_LOCAL a; <ARITH>_LC b, c; ARRAY 2` — `fn(k, v) [k, v + 1]`
     PairParamArith(u16, ArithOp, u16, KConst),
@@ -516,6 +518,10 @@ fn compare(op: CmpOp, a: KConst, b: KConst) -> Option<bool> {
         CmpOp::LessEqual => ordering.is_le(),
         CmpOp::Greater => ordering.is_gt(),
         CmpOp::GreaterEqual => ordering.is_ge(),
+        // Int with Int, Float with Float: equal exactly when they order
+        // equal (a NaN has no ordering and declined above).
+        CmpOp::Equal => ordering.is_eq(),
+        CmpOp::NotEqual => ordering.is_ne(),
     })
 }
 
@@ -554,6 +560,12 @@ impl Kernel {
             }
             [Op::GreaterEqualLocalConst(s, c), Op::Return, ..] => {
                 Some(Kernel::Cmp(CmpOp::GreaterEqual, param(*s)?, constant(*c)?))
+            }
+            [Op::EqualLocalConst(s, c), Op::Return, ..] => {
+                Some(Kernel::Cmp(CmpOp::Equal, param(*s)?, constant(*c)?))
+            }
+            [Op::NotEqualLocalConst(s, c), Op::Return, ..] => {
+                Some(Kernel::Cmp(CmpOp::NotEqual, param(*s)?, constant(*c)?))
             }
             [Op::GetLocal(a), op, Op::Array(2), Op::Return, ..] if arith_of(*op).is_some() => {
                 let (ar, s, c) = arith_of(*op)?;
