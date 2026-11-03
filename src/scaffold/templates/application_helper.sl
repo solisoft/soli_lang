@@ -1,15 +1,21 @@
 # Application-wide view helpers
+#
+# A helper sees the builtins a script sees, not the functions only a view has
+# such as `substring(...)`: call string methods (`text.substring(0, 3)`,
+# `text.upcase`) instead.
 
-# Truncate text to a maximum length with ellipsis
+# Cut text to at most `length` characters, the suffix included (a suffix
+# longer than `length` comes back alone)
 def truncate_text(text: String, length: Int, suffix: String) -> String
   return text if len(text) <= length
-  substring(text, 0, length - len(suffix)) + suffix
+
+  text.substring(0, length - len(suffix)) + suffix
 end
 
-# Capitalize first letter of a string
+# Capitalize the first letter and leave the rest as it is: "hello WORLD"
+# gives "Hello WORLD" (`text.capitalize` lowercases the rest)
 def capitalize(text: String) -> String
-  return text if len(text) == 0
-  upcase(substring(text, 0, 1)) + substring(text, 1, len(text))
+  text.substring(0, 1).upcase + text.substring(1, len(text))
 end
 
 # SEC-012: Reject href values that would let an attacker run JS through
@@ -36,6 +42,7 @@ end
 
 def _safe_link_url(url)
   return url if _is_safe_link_url(url)
+
   "#"
 end
 
@@ -53,12 +60,14 @@ end
 # Pluralize a word based on count
 def pluralize(count: Int, singular: String, plural: String) -> String
   return str(count) + " " + singular if count == 1
+
   str(count) + " " + plural
 end
 
 # Simple pluralize (adds 's')
 def pluralize_simple(count: Int, word: String) -> String
   return str(count) + " " + word if count == 1
+
   str(count) + " " + word + "s"
 end
 

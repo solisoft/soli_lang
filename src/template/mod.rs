@@ -398,7 +398,9 @@ impl TemplateCache {
     /// `response_cache::is_known_uncacheable`. A request with a session skips
     /// it too: the layout can read the session (`current_user`, `signed_in?`),
     /// which the data signature cannot see, so one person's page would be
-    /// served to the next.
+    /// served to the next. And so does data the signature cannot stand for —
+    /// a model record, a query not yet run: see
+    /// `response_cache::data_signature`.
     fn cache_signature(
         template_path: &Arc<PathBuf>,
         layout_name: Option<&str>,
@@ -409,7 +411,7 @@ impl TemplateCache {
         {
             return None;
         }
-        Some(response_cache::data_signature(data))
+        response_cache::data_signature(data)
     }
 
     /// Internal: do the actual template render. Wrapped by `render`
@@ -1165,39 +1167,15 @@ fn finish_html(body: String) -> (String, String) {
         body
     };
 
-    // Inject the instant-navigation script (body swap + pushState) unless
-    // disabled via `SOLI_NAV=off`. Nav subsumes hover prefetching with its own
-    // in-memory cache (a fetch() can't consume `<link rel="prefetch">`
-    // entries), so the two scripts are mutually exclusive: prefetch.js is only
-    // injected when nav is off, restoring the previous behavior unchanged.
-    let nav_on = crate::serve::nav::is_enabled();
-    let body = if nav_on {
-        crate::serve::nav::inject_nav_tag(body)
-    } else {
-        body
-    };
-    let body = if !nav_on && crate::serve::prefetch::is_enabled() {
-        crate::serve::prefetch::inject_prefetch_tag(body)
-    } else {
-        body
-    };
-
-    // Native bridge: injected only for pages that called `native_channel(...)`,
-    // which is what puts the `soli-native` meta tag in the HTML. Pages that
-    // want nothing from the shell get no script and open no stream.
-    let body = crate::serve::native::inject_native_tag(body);
-
-    // Camera preview + scan loop, for pages carrying a `data-soli-camera`
-    // element. Independent of the native bridge: a page can show a camera
-    // without wanting notifications, and vice versa.
-    let body = crate::serve::camera::inject_camera_tag(body);
-
-    // Motion sensors (gyroscope / accelerometer / orientation), for pages that
-    // enabled them with `motion_sensors()` or reference `soli.sensors`.
-    let body = crate::serve::sensors::inject_sensors_tag(body);
-
-    // Proof of work, for pages carrying a `pow_field()` challenge.
-    let body = crate::serve::pow::inject_pow_tag(body);
+    // The instant-navigation script (body swap + pushState) on every page, or
+    // hover prefetching with `SOLI_NAV=off`; then the native bridge, camera,
+    // motion sensors and proof of work, each only for the pages whose markup
+    // asks for it. One forward pass over the page answers what each script
+    // asks, one backward pass finds where the tags go: see `serve::inject`.
+    let body = crate::serve::inject::add_framework_scripts(
+        body,
+        crate::serve::inject::Navigation::from_env(),
+    );
 
     // Compute a content-derived ETag so the shipped hover-prefetch feature
     // actually delivers "instant navigation": Chrome reuses the prefetched
@@ -3281,5 +3259,115 @@ mod tests {
 
         assert_eq!(etag_of(&a), etag_of(&b), "same body must produce same ETag");
         assert_ne!(etag_of(&a), etag_of(&c), "different body must change ETag");
+    }
+
+    /// A fragment (an htmx swap, a `layout: false` render) has no `</body>`:
+    /// its scripts go at the end, in the order the injectors always used.
+    #[test]
+    fn a_fragment_gets_its_scripts_at_the_end_in_order() {
+        let fragment = "<div data-soli-camera></div><input data-soli-pow=\"x\">";
+        let response = html_response(fragment.to_string(), 200);
+        let Value::Hash(map) = &response else {
+            panic!("html_response must return a Hash, got {response:?}");
+        };
+        let body = match map.borrow().get(&HashKey::String("body".into())) {
+            Some(Value::String(body)) => body.to_string(),
+            other => panic!("the response has no body: {other:?}"),
+        };
+        assert!(body.starts_with(fragment), "{body}");
+        assert!(body.ends_with("</script>"), "{body}");
+        let camera = body.find("/__soli/camera.js").expect("camera.js");
+        let pow = body.find("/__soli/pow.js").expect("pow.js");
+        assert!(camera < pow, "{body}");
+        // nav.js, or prefetch.js with `SOLI_NAV=off`, whichever this test
+        // run's environment selects, goes first.
+        for navigation in ["/__soli/nav.js", "/__soli/prefetch.js"] {
+            if let Some(at) = body.find(navigation) {
+                assert!(at < camera, "{body}");
+            }
+        }
+    }
+
+    /// A page rendered from an object is rendered again for the next object.
+    /// The response cache keyed it on a signature that hashed an object by the
+    /// length of its class name, so `Post.all` after an edit (here, the next
+    /// card) got the first page back. This held on both cached paths: `render`
+    /// (dev mode, auto-render, mailers) and `render_html_response`
+    /// (production `render()`).
+    #[test]
+    fn render_data_holding_an_object_is_rendered_every_time() {
+        use crate::interpreter::value::{Class, Instance};
+
+        response_cache::reset_for_new_request();
+        response_cache::clear_cache();
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("cards")).unwrap();
+        fs::write(
+            views.join("cards/show.html.slv"),
+            "<p><%= card.title %></p>",
+        )
+        .unwrap();
+        let cache = TemplateCache::new(&views);
+
+        let data = |card: Value| {
+            let mut pairs = HashPairs::default();
+            pairs.insert(HashKey::String("card".into()), card);
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        };
+        let class = Rc::new(Class {
+            name: "Card".to_string(),
+            ..Default::default()
+        });
+        let card = |title: &str| {
+            let mut instance = Instance::new(class.clone());
+            instance.set("title", Value::String(title.into()));
+            data(Value::Instance(Rc::new(RefCell::new(instance))))
+        };
+
+        let render = |data: &Value| cache.render("cards/show", data, Some(None)).unwrap();
+        assert!(render(&card("first")).contains("first"));
+        let second = render(&card("second"));
+        assert!(
+            second.contains("second"),
+            "render() answered with the first card's page: {second}"
+        );
+
+        let response_body = |data: &Value| {
+            let response = cache
+                .render_html_response("cards/show", data, Some(None), 200)
+                .unwrap();
+            let Value::Hash(map) = &response else {
+                panic!("a response is a hash, got {response:?}");
+            };
+            let body = map.borrow().get(&HashKey::String("body".into())).cloned();
+            match body {
+                Some(Value::String(body)) => body.to_string(),
+                other => panic!("the response has no body: {other:?}"),
+            }
+        };
+        assert!(response_body(&card("third")).contains("third"));
+        let fourth = response_body(&card("fourth"));
+        assert!(
+            fourth.contains("fourth"),
+            "render_html_response answered with the third card's page: {fourth}"
+        );
+
+        // The refusal belongs to those renders, not to the site: the same view
+        // rendered from plain values is still kept and found.
+        let path = cache.resolve_template_path("cards/show").unwrap();
+        assert!(!response_cache::is_known_uncacheable(&path, None));
+        let mut fields = HashPairs::default();
+        fields.insert(
+            HashKey::String("title".into()),
+            Value::String("plain".into()),
+        );
+        let plain = data(Value::Hash(Rc::new(RefCell::new(fields))));
+        let signature = response_cache::data_signature(&plain).expect("plain data has one");
+        assert!(render(&plain).contains("plain"));
+        assert!(
+            response_cache::get(path, None, signature, false).is_some(),
+            "a page rendered from plain values must still be cached"
+        );
     }
 }

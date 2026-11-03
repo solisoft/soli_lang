@@ -13,7 +13,7 @@ pub(crate) use crate::interpreter::builtins::html::html_escape;
 use crate::interpreter::builtins::http_log::LoggedHttpRequest;
 use crate::interpreter::builtins::kv_log::LoggedKvCall;
 use crate::interpreter::builtins::model::query_log::LoggedQuery;
-use crate::serve::live_reload::rfind_ascii_case_insensitive;
+use crate::serve::inject::body_close_position;
 use crate::serve::span_log::{SpanKind, SpanRecord};
 
 /// Marker injected so we never double-inject (e.g. nested layouts).
@@ -133,21 +133,13 @@ pub fn inject_dev_bar(html: &str, ctx: &DevBarContext) -> String {
 
     let bar = render_bar(ctx);
 
-    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut out = String::with_capacity(html.len() + bar.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&bar);
-        out.push_str(&html[pos..]);
-        out
-    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        let mut out = String::with_capacity(html.len() + bar.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&bar);
-        out.push_str(&html[pos..]);
-        out
-    } else {
-        format!("{}{}", html, bar)
-    }
+    // Before the last `</body>`, else the last `</html>`, else at the end.
+    let pos = body_close_position(html);
+    let mut out = String::with_capacity(html.len() + bar.len());
+    out.push_str(&html[..pos]);
+    out.push_str(&bar);
+    out.push_str(&html[pos..]);
+    out
 }
 
 fn render_bar(ctx: &DevBarContext) -> String {

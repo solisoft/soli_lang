@@ -4605,6 +4605,36 @@ print(Util.shout("a"), Util.shout(s: "b"), Util.shout("c", bang: "?"))"##,
         "datetime_string_forms",
         "d = DateTime.from_unix(-1).utc\nprint(\"at #{d} ok\")\nprint(str(DateTime.from_unix(951782400).utc))\nprint(DateTime.from_unix(4107542399).utc.to_s)\nprint([DateTime.from_unix(0).utc, DateTime.from_unix(86399).utc].join(\" | \"))",
     ),
+    // --- JSON of a class instance ---
+    // Instance fields live in a hash map with a random seed per instance, and
+    // the JSON writers used to follow its iteration order: two instances with
+    // the same data serialised in different key orders, so this case printed
+    // different bytes from one run to the next. Both engines now write the
+    // SEC-013-filtered fields sorted by name.
+    (
+        "instance_json_sorted_and_filtered",
+        r##"class Post
+  title: String
+  body: String
+  views: Int
+  category: String
+  password_digest: String
+  _key: String
+  _errors: Array
+
+  new()
+    @title = "t"
+    @body = "b"
+    @views = 3
+    @category = "c"
+    @password_digest = "secret"
+    @_key = "k1"
+    @_errors = []
+  end
+end
+print(JSON.stringify(Post.new()))
+print(JSON.stringify([Post.new(), Post.new()]))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -26,7 +26,7 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 | `--dev` | Tree-walk `Interpreter` (hot reload) |
 | production | Bytecode `Vm` after `warm_vm_handlers` |
 
-`src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it).
+`src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it). Any other VM error re-runs the request on the interpreter, unless the handler wrote first. The handler is demoted only if that re-run succeeds (an engine divergence) or if it wrote first; an error both engines raise leaves it on the VM.
 
 ## Builtins: one registry per consumer, on purpose
 
@@ -218,6 +218,35 @@ pub(crate) fn finish_response(builder: Builder, body: Bytes) -> Response<Respons
 
 Use this for every response you build in `src/serve/`. File-mode already does.
 
+### The framework's script tags (`inject.rs`)
+
+`finish_html` (`src/template/mod.rs`) finishes every rendered HTML page before
+its ETag is computed. It adds `nav.js` (or `prefetch.js` with `SOLI_NAV=off`)
+to every page, and `native.js`, `camera.js`, `sensors.js` and `pow.js` to the
+pages whose markup asks for them. `inject::add_framework_scripts` makes the
+decision in one forward pass and places the tags in one backward pass:
+
+- **`Probe`** answers every question the scripts ask: each feature's gate
+  (`data-soli-camera`, `name="soli-native"`, …) and each tag's
+  `__soli_*_injected` marker. All of them contain `soli`, so one SIMD `memmem`
+  pass over the page finds them all. A needle missing from `NEEDLES` is still
+  answered correctly, by a full search, but that costs a pass per response, and
+  the unit tests fail.
+- **`body_close_position`** is the insertion point for every tag: the last
+  `</body>`, else the last `</html>`, else the end (ASCII case-insensitive),
+  found with `memrchr` over the page's `<` bytes. A fragment has neither tag
+  (an htmx swap, a `layout: false` render), so it is the one page that is
+  searched end to end; this is what keeps that cheap. The dev bar and the live
+  reload script use the same function.
+
+To add a page-gated script, give its module a `pub(crate) fn tag_for(&Probe) ->
+Option<Cow<'static, str>>` holding its gate. Add its gate and marker to
+`NEEDLES`, then call it from `inject::tags_for` in the order the tags should
+appear. The one-pass result equals injecting the scripts one at a time
+only if no tag contains `</body>`, `</html>`, or another script's gate or
+marker; `no_tag_holds_a_body_close_or_another_script_s_needle` checks every
+tag for that.
+
 ## The worker-side request path
 
 `handle_request` in `mod.rs` is the order the stages run in; each stage is its
@@ -271,7 +300,7 @@ cleared and learnt again.
 
 Each request gets an `Interpreter::coroutine_shell` (the worker's environment,
 its own call stack), so the VM → tree-walker fallback runs inside the
-coroutine; handlers the VM failed on are merged back into the worker's VM.
+coroutine; handlers it moved off the VM are merged back into the worker's VM.
 WebSocket, LiveView and EUI events still run on the worker's own interpreter,
 between switches.
 
@@ -316,6 +345,7 @@ No `.env`, no DB, no controllers. Templates in that folder **are** code — only
 | `tenant.rs` | Per-application state; app root and the `File`/`Image` jails |
 | `websocket.rs` | WS upgrade + rooms |
 | `dev_bar.rs` | `--dev` overlay |
+| `inject.rs` | Which framework scripts an HTML page needs and where their tags go (see above) |
 | `cors.rs` | `cors("/api/*", …)` |
 
 ## How to add a reserved route

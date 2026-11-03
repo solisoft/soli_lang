@@ -12,18 +12,20 @@
 //! individual links with `<a data-no-prefetch>` or any ancestor carrying that
 //! attribute.
 
+use std::borrow::Cow;
+
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
-use crate::serve::live_reload::rfind_ascii_case_insensitive;
+use crate::serve::inject::{self, Probe};
 
 /// Client JS — compiled into the binary so there's no filesystem dependency.
 pub const PREFETCH_SCRIPT: &str = include_str!("prefetch.js");
 
 /// Marker used to make injection idempotent when the same body is rewrapped
 /// (e.g. by a middleware that re-enters `html_response`).
-const INJECTED_MARKER: &str = "__soli_prefetch_injected";
+pub(crate) const INJECTED_MARKER: &str = "__soli_prefetch_injected";
 
 /// Lazily-computed `<script>` tag with a content-derived query-string version.
 /// Gives us "immutable with cache-bust" semantics: old binaries served their
@@ -80,16 +82,10 @@ fn read_is_enabled() -> bool {
     }
 }
 
-/// Insert `tag` into `html` in place — before the last `</body>`
-/// (case-insensitive), else before the last `</html>`, else at the end — and
-/// hand the same buffer back. Shared by every script injector on the HTML
-/// response path so none of them copies the body to add a few dozen bytes.
-pub(crate) fn insert_before_body_close(mut html: String, tag: &str) -> String {
-    let pos = rfind_ascii_case_insensitive(&html, b"</body>")
-        .or_else(|| rfind_ascii_case_insensitive(&html, b"</html>"))
-        .unwrap_or(html.len());
-    html.insert_str(pos, tag);
-    html
+/// The prefetch `<script>` tag a page still needs: every page, unless it
+/// carries the tag already.
+pub(crate) fn tag_for(page: &Probe<'_>) -> Option<Cow<'static, str>> {
+    (!page.contains(INJECTED_MARKER)).then(|| Cow::Borrowed(prefetch_tag()))
 }
 
 /// Insert the prefetch `<script>` tag into an HTML body. Idempotent — calling
@@ -101,11 +97,7 @@ pub(crate) fn insert_before_body_close(mut html: String, tag: &str) -> String {
 ///   2. Fallback: before `</html>`.
 ///   3. Last resort: appended at the end.
 pub fn inject_prefetch_tag(html: impl Into<String>) -> String {
-    let html: String = html.into();
-    if html.contains(INJECTED_MARKER) {
-        return html;
-    }
-    insert_before_body_close(html, prefetch_tag())
+    inject::inject_with(html.into(), tag_for)
 }
 
 /// True when the request headers indicate a browser-issued *speculative*

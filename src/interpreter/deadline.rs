@@ -39,11 +39,19 @@ const CHECK_INTERVAL: u32 = 4096;
 /// Generous on purpose: this is a runaway-loop backstop, not a performance
 /// policy, and a legitimate slow handler (a report, a large export) must not
 /// trip it. `SOLI_HANDLER_TIMEOUT_SECS=0` disables it.
+///
+/// Read once and kept: every request enters this budget, `std::env::var` takes
+/// the process environment lock, and the environment does not change after
+/// boot (`.env` loads before the first worker starts; `setenv` is gone,
+/// SEC-033).
 pub fn default_budget_secs() -> u64 {
-    crate::platform::env::var("SOLI_HANDLER_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .unwrap_or(30)
+    static SECS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *SECS.get_or_init(|| {
+        crate::platform::env::var("SOLI_HANDLER_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(30)
+    })
 }
 
 /// Start a budget on this thread, returning a guard that restores the previous
@@ -136,6 +144,23 @@ mod tests {
             }
         }
         assert!(hit, "an elapsed deadline must be reported");
+    }
+
+    /// Every request enters the default budget, so the setting is read from
+    /// the environment once and kept: a later change is not seen. The value
+    /// set here is larger than the default, so a child process that inherits
+    /// it while the test runs is not cut short by it.
+    #[test]
+    fn the_default_budget_is_read_from_the_environment_once() {
+        let first = default_budget_secs();
+        let previous = std::env::var_os("SOLI_HANDLER_TIMEOUT_SECS");
+        std::env::set_var("SOLI_HANDLER_TIMEOUT_SECS", "86400");
+        let second = default_budget_secs();
+        match previous {
+            Some(v) => std::env::set_var("SOLI_HANDLER_TIMEOUT_SECS", v),
+            None => std::env::remove_var("SOLI_HANDLER_TIMEOUT_SECS"),
+        }
+        assert_eq!(second, first);
     }
 
     /// A live budget does not fire.

@@ -151,8 +151,18 @@ curl -s localhost:5011/_metrics</code></pre>
             </tbody>
         </table>
     </div>
-    <p class="text-gray-400 mb-12">
+    <p class="text-gray-400 mb-4">
         <code>soli_handler_panics_total</code> and <code>soli_vm_handler_demotions_total</code> are counted even when <code>SOLI_METRICS</code> is off &mdash; rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance. Access: with <code>SOLI_METRICS_TOKEN</code> set, the endpoint wants <code>Authorization: Bearer &lt;token&gt;</code>. Unset, it answers only loopback and private-range peers &mdash; and <strong class="text-white">refuses (404) any request carrying <code>X-Forwarded-For</code>, <code>X-Real-IP</code> or <code>Forwarded</code>, or any request while <code>trust_proxy</code> is on</strong>, since behind a reverse proxy every peer looks local. A deployment behind a proxy must set <code>SOLI_METRICS_TOKEN</code> and have the scraper send it.
+    </p>
+    <p class="text-gray-400 mb-4">
+        A handler that fails on the VM is re-run on the tree-walker, which answers the request, unless it wrote to the database first. The handler is demoted only when the VM was at fault:
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-4">
+        <li>the VM refused it;</li>
+        <li>the re-run succeeded where the VM failed, an engine divergence, also counted in <code>soli_vm_engine_divergences_total</code>, which should stay at zero.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        An error both engines raise, such as a <code>throw</code>, a nil read from a missing parameter or a <code>JSON.parse</code> of a bad body, is the app&rsquo;s own. The request answers 500 and the handler stays on the VM, so a bad request cannot move it to the slower engine. A handler that fails after a database write is not re-run, since the write would happen twice. Its error is the answer, and it is demoted, since nothing can tell a VM gap from the app&rsquo;s error.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Structured logs</h2>

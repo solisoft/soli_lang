@@ -89,6 +89,7 @@ println(json)  # {"name":"Alice","scores":[95,87]}
 
 arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]</code></pre>
+                <p class="text-sm text-gray-400 mt-3">A Hash is written in insertion order. A class instance or model record is written with its sensitive and <code class="text-amber-400">_</code>-internal fields left out (see <a href="/docs/core-concepts/controllers" class="text-amber-400 hover:underline">Controllers</a>) and the rest <strong>sorted by name</strong>, so the same data always gives the same bytes.</p>
                 <div class="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-gray-300">
                     <strong class="text-white">Not safe inside a <code>&lt;script&gt;</code>.</strong>
                     A <code>&lt;/script&gt;</code> in any string value ends the element &mdash; the
