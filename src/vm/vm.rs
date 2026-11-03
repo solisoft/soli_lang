@@ -9850,6 +9850,7 @@ let x = Mailer.welcome()
 
         // A Future still has to be settled, which the general arm does: the
         // op is handed back with the Future untouched under the handler.
+        #[allow(clippy::arc_with_non_send_sync)]
         let future = Value::Future(Arc::new(std::sync::Mutex::new(
             crate::interpreter::value::FutureState::Resolved(Value::Int(7)),
         )));

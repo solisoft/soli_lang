@@ -2806,7 +2806,8 @@ mod inplace_peephole_tests {
     #[test]
     fn local_condition_compiles_to_one_branch() {
         // Slot 0 is the callee, so `flag` is slot 1.
-        let cases: [(&str, fn(&Op) -> bool); 4] = [
+        type Case = (&'static str, fn(&Op) -> bool);
+        let cases: [Case; 4] = [
             ("flag = true\nn = 0\nif flag { n = 1 }\nn", |op| {
                 matches!(op, Op::JumpIfLocalFalsy(1, _))
             }),
