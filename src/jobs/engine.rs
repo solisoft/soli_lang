@@ -167,9 +167,10 @@ fn ensure_queue_collections() {
     }
     // The claim filters a range on run_at and sorts by priority then
     // run_at: the hash indexes above only serve the state equality, so
-    // every poll read the whole queue. A sorted index in the query's own
-    // order serves all of it (the SQL backends build theirs in
-    // `store::enqueue`).
+    // every poll read every pending, scheduled and failed row. From SoliDB
+    // 2.6.3 this index serves the FILTER as one bounded range per state
+    // (older servers ignore it); the SORT then runs over the due rows only.
+    // The SQL backends build theirs in `store::enqueue`.
     if let Err(e) = crud::ensure_sorted_index(
         super::JOBS_COLLECTION,
         "idx_jobs_claim",

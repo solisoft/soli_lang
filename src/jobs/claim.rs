@@ -64,8 +64,12 @@ fn claim_solidb(
     // an app with a once-a-minute cron) that was ~110ms a tick, over the
     // server's 100ms slow-query threshold, and `_slow_queries` grew by 15k rows
     // a day. Each half below is answered from the index in well under 1ms.
+    // `idx_jobs_claim` ([state, run_at, priority], created by the engine)
+    // serves the FILTER as one bounded range per state from SoliDB 2.6.3;
+    // the hint names it. It is not forced: an older server, or one without
+    // the index, runs the query as before.
     let due = format!(
-        "FOR doc IN {coll} \
+        "FOR doc IN {coll} OPTIONS {{ indexHint: \"idx_jobs_claim\" }} \
          FILTER doc.state IN [\"pending\", \"scheduled\", \"failed\"] AND doc.run_at <= \"{now}\" \
          SORT doc.priority DESC, doc.run_at ASC \
          LIMIT {candidate_limit} RETURN doc",
