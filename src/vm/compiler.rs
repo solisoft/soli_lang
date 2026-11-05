@@ -1379,6 +1379,7 @@ fn stack_effect(op: Op) -> i32 {
         // pushes the element on the continue path — loops resync regardless).
         GetIter => -1,
         GetIterRange => -2,
+        PopRangeComprehension(_) => -1,
         ForIter(_) | ForIterRange(_) => 1,
         // I/O: pop n, push the Null result.
         Print(n) => 1 - n as i32,
@@ -4165,6 +4166,7 @@ mod stack_effect_tests {
             // Iterators (the iterator itself lives on `iter_stack`).
             (&[GetLocal(KEYS)], GetIter),
             (&[Constant(ZERO), Constant(INT)], GetIterRange),
+            (&[Constant(INT)], PopRangeComprehension(KEYS)),
             (&[GetLocal(KEYS), GetIter], ForIter(0)),
             (
                 &[Constant(ZERO), Constant(INT), GetIterRange],

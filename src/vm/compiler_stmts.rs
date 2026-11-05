@@ -449,7 +449,8 @@ impl Compiler {
     /// A range `a..b`, with or without parentheses around it, compiles to its
     /// two bounds and `GetIterRange`, which counts from one to the other: no
     /// array is built, so there is no allocation and no `SOLI_MAX_RANGE_LEN`
-    /// limit. `for i in (0..n)` used to compile `Op::Range` and walk the
+    /// limit on the range (a comprehension still holds its result to it, with
+    /// `PopRangeComprehension`). `for i in (0..n)` used to compile `Op::Range` and walk the
     /// array it built, 24 bytes an element. `GetIterRange` records the
     /// range's own line and column, so a bound that is not an integer is
     /// reported at the range, where `Op::Range` and the tree-walker report it.

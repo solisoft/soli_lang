@@ -267,7 +267,7 @@ greeting = user&.greet
 # Combine with ?? for default values
 display_name = user&.name ?? "Anonymous"</code></pre>
 
-                <p class="text-gray-400 mb-3">Creates a range of integers (exclusive end). As a value it is an array, of at most <code>SOLI_MAX_RANGE_LEN</code> elements; a <code>for</code> loop or a comprehension counts through it instead, in parentheses or not, without building that array.</p>
+                <p class="text-gray-400 mb-3">Creates a range of integers (exclusive end). As a value it is an array, of at most <code>SOLI_MAX_RANGE_LEN</code> elements; a <code>for</code> loop or a comprehension counts through it instead, in parentheses or not, without building that array. A comprehension&rsquo;s result is held to the same limit, since it is built.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Range creates an array
 numbers = 1..5  # [1, 2, 3, 4]
 
