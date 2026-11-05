@@ -696,6 +696,11 @@ impl Interpreter {
 
         let mut result = Vec::new();
         for item in items {
+            // No statement runs in a comprehension's loop, so the handler
+            // budget `execute` checks is checked here, per element.
+            if crate::interpreter::deadline::expired() {
+                return Err(crate::interpreter::deadline::timeout_error(iterable.span));
+            }
             let mut loop_env = Environment::with_enclosing(self.environment.clone());
             loop_env.define(variable.to_string(), item);
             let prev_env =
@@ -743,6 +748,9 @@ impl Interpreter {
         let mut result: crate::interpreter::value::HashPairs =
             crate::interpreter::value::HashPairs::default();
         for item in items {
+            if crate::interpreter::deadline::expired() {
+                return Err(crate::interpreter::deadline::timeout_error(iterable.span));
+            }
             let mut loop_env = Environment::with_enclosing(self.environment.clone());
             loop_env.define(variable.to_string(), item);
             let prev_env =

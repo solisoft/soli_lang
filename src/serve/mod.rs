@@ -4996,6 +4996,24 @@ fn call_handler(
                             vm.reset();
                             return resp;
                         }
+                        // The handler budget ran out: not a VM gap. A re-run
+                        // on the tree-walker would start the request over
+                        // past its deadline, and demoting would move the
+                        // handler there for good. Answer the timeout.
+                        if crate::interpreter::deadline::exhausted() {
+                            vm.reset();
+                            let request_id = Uuid::new_v4().to_string();
+                            return error_response::handler_failure(
+                                dev_mode,
+                                interpreter,
+                                request_data,
+                                &err.to_string(),
+                                &[],
+                                None,
+                                &request_id,
+                                false,
+                            );
+                        }
                         record_vm_demotion(handler_name, &err);
                         note_possible_divergence(handler_name, &err);
                         vm.failed_handlers.insert(handler_name.to_string());
@@ -5402,6 +5420,12 @@ fn call_class_method(
                             vm.reset();
                             return Err(err);
                         }
+                        // The handler budget ran out (see `call_handler`):
+                        // no demotion, no re-run on the tree-walker.
+                        if crate::interpreter::deadline::exhausted() {
+                            vm.reset();
+                            return Err(err);
+                        }
                         let handler_key = format!("{}#{}", class.name, method_name);
                         record_vm_demotion(&handler_key, &err);
                         note_possible_divergence(&handler_key, &err);
@@ -5546,7 +5570,9 @@ fn run_hook_on_vm(
         Ok(value) => return Some(Ok(value)),
         Err(err) => err,
     };
-    if raised_response(&err).is_some() {
+    // A deliberate response, or the handler budget ran out (see
+    // `call_handler`): no demotion, no re-run on the tree-walker.
+    if raised_response(&err).is_some() || crate::interpreter::deadline::exhausted() {
         return Some(Err(err));
     }
     let handler = format!("{class_name}#{kind}");
@@ -6498,6 +6524,9 @@ fn is_private_metrics_peer(ip: std::net::IpAddr) -> bool {
         }
     }
 }
+
+#[cfg(test)]
+mod vm_dispatch_tests;
 
 #[cfg(test)]
 mod metrics_gate_tests {

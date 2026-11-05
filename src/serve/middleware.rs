@@ -886,6 +886,9 @@ fn call_on_vm(
     match outcome {
         Ok(value) => VmAttempt::Done(Ok(value)),
         Err(err) if super::raised_response(&err).is_some() => VmAttempt::Done(Err(err)),
+        // The handler budget ran out: no demotion, no re-run on the
+        // tree-walker (see `call_handler`).
+        Err(err) if crate::interpreter::deadline::exhausted() => VmAttempt::Done(Err(err)),
         Err(err) => {
             super::record_vm_demotion(name, &err);
             DEMOTED_MIDDLEWARE.with(|demoted| demoted.borrow_mut().insert(name.to_string()));

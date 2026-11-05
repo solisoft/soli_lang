@@ -955,6 +955,12 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
+                    // The handler budget, as `ensure_call_depth` checks it
+                    // for the general arm — which raises it (expiry is
+                    // sticky). Nothing is touched yet, so it can take over.
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     enter_closure!(closure, argc);
                 }
                 Op::CallGlobal(name_idx, argc) => {
@@ -974,6 +980,11 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
+                    // The handler budget, before the stack is touched (see
+                    // `Op::Call` above).
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     // The general arm inserts the callee below the arguments.
                     let insert_at = self.stack.len() - argc;
                     self.stack
@@ -1860,7 +1871,15 @@ impl Vm {
                     let name = self.read_string_constant_owned(name_idx);
                     let this = self.pop();
                     if let Some(value) = self.global_or_namespaced(&name) {
+                        // A zero-argument def read bare is called, as
+                        // `Op::AutoInvoke` does for a global known at
+                        // compile time.
+                        let call = auto_invocable(&value);
                         self.push(value);
+                        if call {
+                            let span = self.current_span();
+                            self.call_value(0, span)?;
+                        }
                     } else if Self::has_instance_method(&this, &name) {
                         let span = self.current_span();
                         let value = self.op_get_property_member(&this, &name, span)?;
@@ -3283,15 +3302,16 @@ impl Vm {
                     let receiver_idx = self.stack.len() - 1 - argc;
                     let name = self.read_string_constant_owned(name_idx);
                     let superclass = self.frame_superclass(span)?;
+                    // The nearest definition above the defining class, level
+                    // by level: an ancestor's compiled method must not beat
+                    // a nearer override that is still AST. A tree-walker one
+                    // (a class copied from interpreter globals) is compiled
+                    // as a method of the class that declares it, so its own
+                    // `super` resolves from there.
                     if let Some((closure, defining_class)) =
-                        superclass.find_vm_method_with_class(&name)
+                        self.resolve_instance_method(&superclass, &name)?
                     {
                         self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
-                    } else if let Some(method) = superclass.find_method(&name) {
-                        // Tree-walking method (e.g. a class copied from
-                        // interpreter globals): JIT and run re-entrantly.
-                        let result = self.run_jit_method_to_completion(&method, argc, span)?;
-                        self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
                         let receiver = self.stack[receiver_idx].clone();
                         if let Value::Instance(ref inst) = receiver {
@@ -3538,6 +3558,16 @@ impl Vm {
                 }
 
                 Op::Nop => {}
+
+                // A bare read of a name that may hold a zero-argument def or
+                // builtin: call it, as the tree-walker does (see
+                // `Op::AutoInvoke`). Anything else stays as read.
+                Op::AutoInvoke => {
+                    if auto_invocable(self.stack.last().unwrap()) {
+                        let span = self.current_span();
+                        self.call_value(0, span)?;
+                    }
+                }
 
                 // Line coverage (only compiled in under a coverage tracker —
                 // see `Op::CoverLine`). The fast tier does not handle it, so
@@ -5519,6 +5549,19 @@ pub(crate) fn discard(value: Value) {
         std::mem::forget(value);
     } else {
         drop(value);
+    }
+}
+
+/// Whether a bare read of `value` calls it, the tree-walker's rule for a
+/// bare name (`can_auto_invoke_with_no_args`): a def that takes no arguments
+/// (all defaulted counts), or a builtin that is called bare. A lambda kept in
+/// a variable is left alone — `<lambda>` is the name both engines give one.
+pub(crate) fn auto_invocable(value: &Value) -> bool {
+    match value {
+        Value::Function(func) => func.name != "<lambda>" && func.arity() == 0,
+        Value::VmClosure(closure) => closure.proto.name != "<lambda>" && closure.proto.arity == 0,
+        Value::NativeFunction(func) => func.is_auto_invocable || func.arity == Some(0),
+        _ => false,
     }
 }
 
