@@ -220,7 +220,7 @@ pub struct Vm {
     /// Handlers moved off the VM on this worker — skip VM for these and use
     /// interpreter directly. The VM refused them, failed where the
     /// tree-walker's re-run then succeeded, or failed after a durable write
-    /// (`serve::demote_on_vm_failure`); an error both engines raise is not one.
+    /// (`serve::vm_failure_verdict`); an error both engines raise is not one.
     pub failed_handlers: ahash::AHashSet<String>,
     /// Frame depth at which `run()` should stop. Bumped by native methods that
     /// need to synchronously invoke a user closure (e.g. array.map); `Op::Return`

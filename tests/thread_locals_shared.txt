@@ -102,6 +102,7 @@ src/regex_cache.rs LOCAL_CACHE
 src/serve/eui/tree.rs MEMOS
 src/serve/eui/tree.rs SWEEP
 src/serve/middleware.rs DEMOTED_MIDDLEWARE
+src/serve/mod.rs SETTLED_APP_ERRORS
 src/serve/middleware.rs TREE_WALKER_ONLY
 src/serve/mod.rs CONTROLLERS_WITH_HOOKS
 src/serve/mod.rs PASCAL_CASE_CACHE

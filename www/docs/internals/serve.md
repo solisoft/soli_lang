@@ -28,6 +28,21 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 
 `src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it). Any other VM error re-runs the request on the interpreter, unless the handler wrote first. The handler is demoted only if that re-run answers (it succeeds, or raises a deliberate 404/403/`halt`/`DomainError` — an engine divergence) or if it wrote first; an error both engines raise leaves it on the VM.
 
+### The demotion rule (`vm_failure_verdict`, `settle_engine_divergence`)
+
+Every kind of handler — an action (`call_handler`, `call_class_method`), a controller hook (`run_hook_on_vm`), a middleware (`middleware::call_on_vm`) — takes the same path when the VM fails it. A raised 404/403/`halt`/`DomainError` is the answer, and a request past its time budget (`deadline::exhausted()`) answers the timeout: neither is re-run nor demoted, ahead of everything below. Otherwise `vm_failure_verdict` returns one of four outcomes:
+
+| VM failure | Demoted | Re-run on the tree-walker |
+|---|---|---|
+| a refusal (`EngineFallback`), nothing written | yes | yes — it answers the request |
+| anything after a durable write (`crud::had_durable_commit`) | yes | no — the VM's error is the answer |
+| an error settled earlier as the app's own | no | no — the VM's error is the answer |
+| anything else | only if the re-run answers | yes — `settle_engine_divergence` decides |
+
+**The tripwire.** `crud::clear_durable_commit` arms it before each VM attempt; every write the framework makes on the app's behalf sets it: each write of the SQL facade (`db::sql`: insert, update, delete, `increment_field`, `execute_raw`, the bulk writes) and of the column facade (`db::columns`), SoliDB document writes, an SDBQL statement that writes (`crud::mark_if_sdbql_writes`, the scan `grouped` already used: `update_all`, `delete_all`, `db.query("INSERT …")`), a `Solidb` client write, a columnar insert, a prune, a job enqueue (`jobs::enqueue_doc`, any backend) and a delivered mail. A write inside a transaction marks at the commit; a job and a mail mark at once (`mark_durable_effect`), since a rollback takes neither back. The framework's own bookkeeping (the error tracker's and slow-query log's collections, the dev inbox, the operator notifier's mail) runs `without_durable_mark`. Before, only model saves and bulk inserts marked, so an `increment` or a `perform_later` followed by an error was repeated by the re-run.
+
+**Settled verdicts.** When the re-run fails too, the error is the app's own: `settle_app_error` remembers the VM's error message for that handler (per kind, in a worker thread-local the coroutines share), and the next request failing with the same message is answered from the VM without a re-run. Without it every failing request ran the handler twice, once per engine, for the worker's life — repeating whatever it did before the error that no tripwire sees (outbound HTTP, a cache write, a push). A message that carries request data would re-run each new value once, so past eight messages every error of the handler counts as its own. A new message is re-run, so a VM gap on another path of a settled handler is still caught. The verdicts are forgotten on a code reload (`forget_settled_app_errors`), and a re-run that ran out of time settles nothing.
+
 ## Builtins: one registry per consumer, on purpose
 
 A worker thread builds the builtin registry three times — for the interpreter's globals, the template engine's environment (`src/template/core_eval.rs`), and the view helpers' closure (`load_view_helpers`). Sharing one root between the three, with the others as child scopes, was tried and **reverted**. It measured as no RSS win (a registry is a few hundred KB; five alternating A/B pairs at `SOLI_WORKERS=16` put the difference at 0.4 MiB against a ±12 MiB spread) and it changed behaviour in two ways separate registries never did: a bare `logger = …` inside a function created a short-lived local instead of updating the global, because the shared root had to be sealed against writes; and `Model.define_method(…)` mutated an `Rc<Class>` that outlived the interpreter, so a hot reload kept a method the developer had deleted. Three cheap registries that die with their interpreter are the right shape.
