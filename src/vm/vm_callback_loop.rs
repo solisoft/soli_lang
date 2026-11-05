@@ -985,10 +985,12 @@ fn run_kernel(
         Source::Ints { start, step, .. } => {
             let (start, step) = (*start, *step);
             while *index < *len {
-                // The handler budget, once per element: unlike an array or a
-                // hash, a count (`params["n"].to_i.times { … }`) is as large
-                // as the request makes it, and the template runs no frame.
-                if crate::interpreter::deadline::expired() {
+                // The handler budget: unlike an array or a hash, a count
+                // (`params["n"].to_i.times { … }`) is as large as the request
+                // makes it, and the template runs no frame. Once every 256
+                // elements — a bit test, where the body is a few ns — so the
+                // clock is read about every million elements.
+                if *index & 255 == 0 && crate::interpreter::deadline::expired() {
                     return Ok(KernelRun::Expired);
                 }
                 let n = Value::Int(int_at(start, step, *index));
