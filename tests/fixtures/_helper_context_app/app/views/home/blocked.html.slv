@@ -1,0 +1,1 @@
+<p>blocked for: <%= current_user_name() %></p>

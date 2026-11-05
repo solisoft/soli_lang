@@ -126,18 +126,22 @@ pub(crate) fn set_view_helper_env_for_test(
     VIEW_HELPER_ENV.with(|cell| std::mem::replace(&mut *cell.borrow_mut(), env))
 }
 
-/// Bind request-scoped names onto the view helpers' shared closure env so user
-/// helpers (`app/helpers/*.sl`) can read `req`, `params`, etc. directly.
-///
-/// Called from the request lifecycle (`setup_controller_context` for OOP
-/// controllers and `call_handler` for function-based handlers) so the bindings
-/// reflect any mutations already applied by middleware (e.g. `req["current_user"]`).
-/// Safe to call before helpers are loaded — it's a no-op until then.
 /// The view helpers' closure environment, once helpers are loaded.
 pub(crate) fn helper_env() -> Option<Rc<RefCell<Environment>>> {
     VIEW_HELPER_ENV.with(|cell| cell.borrow().clone())
 }
 
+/// The request-scoped names [`set_helper_request_context`] binds.
+const HELPER_REQUEST_NAMES: [&str; 5] = ["req", "params", "session", "cookies", "headers"];
+
+/// Bind request-scoped names onto the view helpers' shared closure env so user
+/// helpers (`app/helpers/*.sl`) can read `req`, `params`, etc. directly.
+///
+/// Called from the request lifecycle: before middleware runs (so a view a
+/// middleware renders sees this request) and again in `call_handler` so the
+/// bindings reflect any mutations already applied by middleware (e.g.
+/// `req["current_user"]`). Safe to call before helpers are loaded — it's a
+/// no-op until then.
 pub fn set_helper_request_context(
     req: &Value,
     params: &Value,
@@ -153,6 +157,25 @@ pub fn set_helper_request_context(
             env.define_or_update("session", session.clone());
             env.define_or_update("cookies", cookies.clone());
             env.define_or_update("headers", headers.clone());
+        }
+    });
+}
+
+/// Bind the request-scoped helper names to `nil`.
+///
+/// The helper env is per thread and outlives the request that bound it, so
+/// whatever rendered before the next binding — a custom 404 page for a route
+/// miss, a view a middleware rendered, a LiveView frame, a mailer view in a
+/// job — read the *previous* visitor's `req`, and a `current_user` helper
+/// showed their name. Run when a request, socket event, LiveView event or job
+/// starts; the request binds its own as soon as it has one.
+pub fn clear_helper_request_context() {
+    VIEW_HELPER_ENV.with(|cell| {
+        if let Some(env_rc) = cell.borrow().as_ref() {
+            let mut env = env_rc.borrow_mut();
+            for name in HELPER_REQUEST_NAMES {
+                env.define_or_update(name, Value::Null);
+            }
         }
     });
 }

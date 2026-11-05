@@ -337,6 +337,8 @@ fn run_one(job: &BackgroundJob, interpreter: &mut Interpreter, runner: &Value) -
     };
 
     super::slow_queries::set_context(&format!("job {}", job.class_name));
+    // A mailer view a job renders has no request: its helpers read `nil`.
+    crate::interpreter::builtins::template::clear_helper_request_context();
     let start = Instant::now();
     let call_args = vec![Value::String(job.class_name.clone().into()), args];
     // A panic unwinds past the scope swaps and frame pops of the job's code;

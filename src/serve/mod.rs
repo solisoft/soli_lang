@@ -1853,6 +1853,11 @@ fn worker_loop(
             eprintln!("Worker {}: Error loading view helpers: {}", worker_id, e);
         }
     }
+    // The template env caches the helpers it was built with. When a panic
+    // escaped this loop and the worker restarted, that cache (thread-local,
+    // so it survived) still held the previous run's helpers, bound to the
+    // previous helper env — and to the `req` the last request left on it.
+    crate::template::core_eval::reset_builtins_rc();
 
     // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
     crate::interpreter::builtins::template::set_dev_mode(dev_mode);
@@ -3593,6 +3598,9 @@ fn handle_liveview_event(
         .map(|id| id.to_string());
     set_current_session_id(socket_session);
     let _session_guard = RealtimeSessionGuard;
+    // A frame renders on a worker that served HTTP requests: its helpers must
+    // not read the last request's `req`.
+    crate::interpreter::builtins::template::clear_helper_request_context();
     // The socket's own locale, from its session — a realtime worker serves
     // many sessions and would otherwise render this frame in whatever
     // language the last frame on this thread used. An EUI session is pinned
@@ -6337,9 +6345,15 @@ fn handle_request(
         );
     }
 
+    // A view a middleware renders (a halt page) reads `req` — its own and its
+    // helpers': bind this request now, before `call_handler` rebinds it
+    // post-middleware.
+    publish_request_to_views(&request_hash);
+
     // Scoped and global middleware, merged and sorted by `# order:`.
     let global_middleware = get_middleware();
     for (handler, name) in middleware::plan(&scoped_middleware, &global_middleware) {
+        let given = hash_ptr(&request_hash);
         match middleware::run(
             interpreter,
             vm.as_mut(),
@@ -6349,7 +6363,16 @@ fn handle_request(
             request_hash,
             dev_mode,
         ) {
-            middleware::Step::Continue(modified_request) => request_hash = modified_request,
+            middleware::Step::Continue(modified_request) => {
+                // A middleware that hands back another hash (rather than the
+                // one it was given, mutated) changed the request the next
+                // middleware's views must see.
+                let replaced = hash_ptr(&modified_request) != given;
+                request_hash = modified_request;
+                if replaced {
+                    publish_request_to_views(&request_hash);
+                }
+            }
             middleware::Step::Halt(response) => {
                 return finalize::finish(&finalizer, method, path, response)
             }
@@ -6371,6 +6394,42 @@ fn handle_request(
             false,
         ),
     )
+}
+
+/// The allocation behind a hash value, to tell a middleware that returned the
+/// request it was given from one that built another. (`publish_request_to_views`
+/// keeps the given hash alive, so its address cannot be reused meanwhile.)
+fn hash_ptr(value: &Value) -> Option<*const RefCell<HashPairs>> {
+    match value {
+        Value::Hash(hash) => Some(Rc::as_ptr(hash)),
+        _ => None,
+    }
+}
+
+/// Make `request_hash` the request views see, as `call_handler` does once
+/// middleware has run: the `req` a render injects into its data (and keys
+/// the response cache with), and the names on the view helpers' shared env.
+///
+/// Before middleware ran, neither was set: a view a middleware rendered had
+/// no `req` (so the response cache served one visitor's page to the next)
+/// and its helpers read the previous request's.
+fn publish_request_to_views(request_hash: &Value) {
+    crate::interpreter::builtins::template::set_current_request(request_hash.clone());
+    if !crate::interpreter::builtins::template::helper_env_loaded() {
+        return;
+    }
+    let empty_hash = || Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+    let params_value = get_hash_field(request_hash, "all").unwrap_or_else(empty_hash);
+    let cookies_value = get_hash_field(request_hash, "cookies").unwrap_or_else(empty_hash);
+    let session_value = get_hash_field(request_hash, "session").unwrap_or(Value::Null);
+    let headers_value = get_hash_field(request_hash, "headers").unwrap_or(Value::Null);
+    crate::interpreter::builtins::template::set_helper_request_context(
+        request_hash,
+        &params_value,
+        &session_value,
+        &cookies_value,
+        &headers_value,
+    );
 }
 
 /// May this request read `/_metrics`?
