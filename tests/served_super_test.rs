@@ -25,6 +25,8 @@ fn write(root: &Path, path: &str, body: &str) {
 const ROUTES: &str = r#"get("/up", "probe#up")
 get("/built", "probe#built")
 get("/chain", "probe#chain")
+get("/la", "probe#la")
+get("/lb", "probe#lb")
 get("/caught", "probe#caught")
 get("/rescued", "probe#rescued")
 get("/refused", "probe#refused")
@@ -106,6 +108,16 @@ class ProbeController < BaseProbeController
   # GET /chain
   def chain(req)
     {"status": 200, "body": "#{new LC().m()}"}
+  end
+
+  # GET /la — the chain's root alone
+  def la(req)
+    {"status": 200, "body": "#{LA.new().m()}"}
+  end
+
+  # GET /lb — the chain's middle level alone
+  def lb(req)
+    {"status": 200, "body": "#{LB.new().m()}"}
   end
 
   # GET /caught
@@ -227,4 +239,29 @@ fn super_in_served_classes_runs_on_the_vm() {
         metrics.contains("soli_vm_handler_demotions_total 0\n"),
         "a handler left the VM:\n{metrics}"
     );
+}
+
+/// `super.m()` reaches the nearest override however the worker warmed up.
+/// On the branch before the 2.29.4 merge, GET /chain answered 111, then GET
+/// /la compiled `LA#m` on its own, and from then on GET /chain answered 101
+/// for the rest of the worker's life: `LC#m`'s `super` took the first
+/// compiled method up the chain (`LA#m`) and skipped `LB#m`. The action was
+/// not demoted, so nothing reported it.
+#[test]
+fn super_reaches_the_nearest_override_whatever_ran_first() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "config/routes.sl", ROUTES);
+    write(dir.path(), "app/models/shapes.sl", MODELS);
+    write(
+        dir.path(),
+        "app/controllers/probe_controller.sl",
+        CONTROLLER,
+    );
+    let server = serve(dir.path());
+
+    assert_eq!(get(&server, "/chain"), (200, "111".to_string()));
+    assert_eq!(get(&server, "/la"), (200, "1".to_string()));
+    assert_eq!(get(&server, "/chain"), (200, "111".to_string()));
+    assert_eq!(get(&server, "/lb"), (200, "11".to_string()));
+    assert_eq!(get(&server, "/chain"), (200, "111".to_string()));
 }

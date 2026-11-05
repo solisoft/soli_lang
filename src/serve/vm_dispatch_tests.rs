@@ -117,6 +117,10 @@ class PagesController
   def leaf_m
     Leaf.new().m()
   end
+
+  def mid_m
+    Mid.new().m()
+  end
 end
 "#;
 
@@ -170,6 +174,20 @@ fn super_reaches_the_nearest_override_after_an_ancestor_was_compiled() {
     assert_eq!(app.call("PagesController", "base_m"), Value::Int(1));
     assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
     // And again, now that every level is compiled.
+    assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
+}
+
+/// The order the review found on a served app: the whole chain first, then
+/// its root alone, then the chain again. `Base#m` run alone must not make
+/// `Leaf#m`'s `super` skip `Mid#m` (it answered 101 on the branch before the
+/// 2.29.4 merge, for the rest of the worker's life).
+#[test]
+fn super_still_reaches_the_middle_override_after_the_root_ran_alone() {
+    let mut app = ServedApp::load(POLICIES);
+    assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
+    assert_eq!(app.call("PagesController", "base_m"), Value::Int(1));
+    assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
+    assert_eq!(app.call("PagesController", "mid_m"), Value::Int(11));
     assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
 }
 
