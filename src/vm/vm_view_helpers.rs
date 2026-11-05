@@ -649,6 +649,39 @@ mod tests {
         );
     }
 
+    /// A helper's bare assignment to a name the shared env holds — a
+    /// builtin like `h`, a sibling helper — defines a local, whichever
+    /// engine runs it: the env is frozen once its helpers are loaded
+    /// (`load_view_helpers`), and the view VM leaves a helper that assigns
+    /// such a name to the tree-walker. Neither may overwrite the env every
+    /// later helper call on the worker reads.
+    #[test]
+    fn a_helper_assigning_a_shared_name_defines_a_local() {
+        let env = builtins_env();
+        let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
+        let helpers = define_helpers(
+            "def shout(text)\n  h = text.upcase\n  h + \"!\"\nend\n\
+             def other()\n  \"o\"\nend\n\
+             def shadow()\n  other = \"local\"\n  other\nend\n\
+             def escape(text)\n  h(text)\nend\n",
+            &env,
+        );
+        env.borrow_mut().freeze();
+        for _ in 0..2 {
+            assert_eq!(on_both(&helpers["shout"], &[Value::str("hi")]), Value::str("HI!"));
+            assert_eq!(on_both(&helpers["shadow"], &[]), Value::str("local"));
+            assert_eq!(on_both(&helpers["other"], &[]), Value::str("o"));
+            assert_eq!(
+                on_both(&helpers["escape"], &[Value::str("<b>")]),
+                Value::str("&lt;b&gt;")
+            );
+        }
+        assert_eq!(decided(&helpers["shout"]), Some(false));
+        assert_eq!(decided(&helpers["shadow"]), Some(false));
+        assert!(matches!(env.borrow().get("h"), Some(Value::NativeFunction(_))));
+        assert!(matches!(env.borrow().get("other"), Some(Value::Function(_))));
+    }
+
     /// `req` is rebound on the closure for every request: a compiled helper
     /// reads the current one.
     #[test]
@@ -712,14 +745,26 @@ mod tests {
         assert_eq!(on_both(&who, &[Value::Int(1)]), Value::str("Ada"));
     }
 
+    /// A helper that assigns a name its closure holds stays on the
+    /// tree-walker, which defines a local for it: the helper env is frozen
+    /// (`load_view_helpers`), so the shared `req` and `total` stay as they
+    /// were. Before 2.29.4 the tree-walker wrote them into the shared env,
+    /// and this test pinned that (`req` read "no" afterwards).
     #[test]
     fn a_helper_that_assigns_a_closure_name_stays_interpreted() {
         let env = empty_env();
         env.borrow_mut()
             .define("req".to_string(), Value::str("Ada"));
+        env.borrow_mut().define("total".to_string(), Value::Int(0));
         let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
 
         let clobber = helper("def clobber()\n  req = \"no\"\nend\n", &env);
+        // A compound assignment, and one inside a block, count too.
+        let count = helper(
+            "def bump(xs)\n  xs.each { |x| total += x }\n  total\nend\n",
+            &env,
+        );
+        env.borrow_mut().freeze();
         on_view_vm(
             "let x = clobber()",
             &[("clobber", Value::Function(Rc::clone(&clobber)))],
@@ -727,23 +772,17 @@ mod tests {
         .expect("runs");
         assert_eq!(
             env.borrow().get("req"),
-            Some(Value::str("no")),
-            "assigning req updates the helper closure"
+            Some(Value::str("Ada")),
+            "assigning req defines a local, not the helper env's req"
         );
         assert_eq!(decided(&clobber), Some(false));
 
-        // A compound assignment, and one inside a block, count too.
-        let count = helper(
-            "def bump(xs)\n  xs.each { |x| total += x }\n  total\nend\n",
-            &env,
-        );
-        env.borrow_mut().define("total".to_string(), Value::Int(0));
         on_view_vm(
             "let x = bump([1, 2])",
             &[("bump", Value::Function(Rc::clone(&count)))],
         )
         .expect("runs");
-        assert_eq!(env.borrow().get("total"), Some(Value::Int(3)));
+        assert_eq!(env.borrow().get("total"), Some(Value::Int(0)));
         assert_eq!(decided(&count), Some(false));
     }
 
