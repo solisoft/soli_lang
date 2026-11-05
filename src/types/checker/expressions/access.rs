@@ -8,12 +8,37 @@ use crate::types::type_repr::Type;
 use super::{TypeChecker, TypeResult};
 
 impl TypeChecker {
-    /// Check member access expression.
+    /// Check member access expression: a bare read (`"12".to_i`), or the
+    /// callee of a call without arguments (`"12".to_i()`).
     pub(crate) fn check_member_expr(
         &mut self,
         span: Span,
         object: &Expr,
         name: &str,
+    ) -> TypeResult<Type> {
+        self.check_member_access(span, object, name, false)
+    }
+
+    /// The member callee of a call that passes arguments (`"ff".to_i(16)`,
+    /// `xs.sort { |a, b| … }`, `x |> s.split(",")`). It keeps the method's
+    /// signature, so the arguments are checked against it, where a bare read
+    /// of the same method may be typed as the call the runtime makes — see
+    /// [`builtin_member_type`].
+    pub(crate) fn check_member_callee_with_args(
+        &mut self,
+        span: Span,
+        object: &Expr,
+        name: &str,
+    ) -> TypeResult<Type> {
+        self.check_member_access(span, object, name, true)
+    }
+
+    fn check_member_access(
+        &mut self,
+        span: Span,
+        object: &Expr,
+        name: &str,
+        called_with_args: bool,
     ) -> TypeResult<Type> {
         let obj_type = self.check_expr(object)?;
 
@@ -134,7 +159,7 @@ impl TypeChecker {
             }
             Type::Array(inner_type) => self
                 .check_array_method(&inner_type, name, span)
-                .map(collapse_zero_arg_method),
+                .map(|ty| builtin_member_type(ty, "array", name, called_with_args)),
             Type::Hash {
                 key_type,
                 value_type,
@@ -142,7 +167,12 @@ impl TypeChecker {
                 // First check if it's a known method
                 if let Ok(method_type) = self.check_hash_method(&key_type, &value_type, name, span)
                 {
-                    return Ok(collapse_zero_arg_method(method_type));
+                    return Ok(builtin_member_type(
+                        method_type,
+                        "hash",
+                        name,
+                        called_with_args,
+                    ));
                 }
                 // If not a method, treat as property access - return value_type
                 // (hash.key returns the value type for any key)
@@ -150,7 +180,7 @@ impl TypeChecker {
             }
             Type::String => self
                 .check_string_method(name, span)
-                .map(collapse_zero_arg_method),
+                .map(|ty| builtin_member_type(ty, "string", name, called_with_args)),
             Type::Any | Type::Unknown => Ok(Type::Any),
             // Primitive types support methods via the OO method dispatch system
             Type::Int | Type::Float | Type::Bool | Type::Null | Type::Decimal(_) | Type::Symbol => {
@@ -322,8 +352,13 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Int),
             }),
-            "get" | "pop" | "clear" => Ok(Type::Function {
+            "pop" | "clear" => Ok(Type::Function {
                 params: vec![],
+                return_type: Box::new(Type::Any),
+            }),
+            // `xs.get(i)` takes the index; the runtime does not call it bare.
+            "get" => Ok(Type::Function {
+                params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
             "push" => Ok(Type::Function {
@@ -526,9 +561,16 @@ impl TypeChecker {
                 params: vec![Type::String],
                 return_type: Box::new(Type::Int),
             }),
-            "starts_with?" | "ends_with?" | "empty?" | "include?" | "includes?" | "contains"
-            | "contains?" | "starts_with" | "ends_with" => Ok(Type::Function {
+            "starts_with?" | "ends_with?" | "include?" | "includes?" | "contains" | "contains?"
+            | "starts_with" | "ends_with" => Ok(Type::Function {
                 params: vec![Type::String],
+                return_type: Box::new(Type::Bool),
+            }),
+            // Takes nothing: both engines refuse `"".empty?("x")`. It sat with
+            // the needle-taking predicates above, so the checker accepted that
+            // call and typed the bare `s.empty?` as a function.
+            "empty?" => Ok(Type::Function {
+                params: vec![],
                 return_type: Box::new(Type::Bool),
             }),
             // `squeeze(chars)` restricts the squeeze to a character set, exactly
@@ -576,7 +618,7 @@ impl TypeChecker {
                 params: vec![Type::String, Type::String],
                 return_type: Box::new(Type::String),
             }),
-            "match" | "hex" | "oct" => Ok(Type::Function {
+            "hex" | "oct" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(Type::Any),
             }),
@@ -603,9 +645,11 @@ impl TypeChecker {
                 params: vec![Type::Int, Type::Any],
                 return_type: Box::new(Type::String),
             }),
-            // `to_i` takes an optional radix: `"ff".to_i(16)`.
+            // `to_i` takes an optional radix: `"ff".to_i(16)`. Both engines
+            // refuse any other argument ("to_i base must be an Int"). Bare,
+            // `"12".to_i` is the call — see `builtin_member_type`.
             "to_i" | "to_int" => Ok(Type::Function {
-                params: vec![Type::Any],
+                params: vec![Type::Int],
                 return_type: Box::new(Type::Int),
             }),
             "to_f" | "to_float" => Ok(Type::Function {
@@ -616,8 +660,16 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::String),
             }),
-            "chr" | "insert" | "delete" | "substring" => Ok(Type::Function {
+            "chr" => Ok(Type::Function {
                 params: vec![],
+                return_type: Box::new(Type::Any),
+            }),
+            // These take arguments (`s.insert(1, "x")`, `s.delete("a")`,
+            // `s.substring(0, 2)`, `s.match(re)`), and the runtime does not
+            // call them when read bare. Declared without parameters, the bare
+            // read was typed as a call the runtime never makes.
+            "insert" | "delete" | "substring" | "match" => Ok(Type::Function {
+                params: vec![Type::Any],
                 return_type: Box::new(Type::Any),
             }),
             "parse_json" => Ok(Type::Function {
@@ -837,6 +889,48 @@ pub(crate) fn collapse_zero_arg_method(ty: Type) -> Type {
     }
 }
 
+/// The type of `receiver.name` for a built-in receiver (`receiver_type` is the
+/// method registry's name for it: `"string"`, `"array"`, `"hash"`).
+///
+/// A method without parameters is typed as its return value, as
+/// [`collapse_zero_arg_method`] does for every receiver. A method whose
+/// signature lists *optional* parameters (`"ff".to_i(16)`, `xs.sort(cmp)`,
+/// `s.split(",")`) is called bare too when the runtime's method registry says
+/// it is zero-arg for that receiver — the rule both engines apply
+/// (`method_registry::is_zero_arg_method`) — so a bare read
+/// (`"12".to_i + 1`) is typed as that call. The callee of a call with
+/// arguments (`called_with_args`) keeps the signature: its arguments are
+/// checked against it.
+fn builtin_member_type(ty: Type, receiver_type: &str, name: &str, called_with_args: bool) -> Type {
+    use crate::interpreter::executor::calls::method_registry::known_methods;
+
+    let Type::Function {
+        params,
+        return_type,
+    } = ty
+    else {
+        return ty;
+    };
+    if params.is_empty() {
+        return *return_type;
+    }
+    let runtime_calls_it_bare = known_methods(receiver_type)
+        .iter()
+        .any(|m| m.name == name && m.zero_arg);
+    if called_with_args || !runtime_calls_it_bare {
+        return Type::Function {
+            params,
+            return_type,
+        };
+    }
+    match (receiver_type, name) {
+        // Called with a block it answers the receiver; bare, it answers the
+        // `[item, index]` pairs (`xs.each_with_index.map { |pair| … }`).
+        ("array", "each_with_index") => Type::Array(Box::new(Type::Array(Box::new(Type::Any)))),
+        _ => *return_type,
+    }
+}
+
 #[cfg(test)]
 mod http_class_typing_tests {
     use crate::types::TypeChecker;
@@ -892,5 +986,132 @@ print(HTTP.get_json("https://x")["body"]["name"])
 "#,
         )
         .expect("indexing the returned Future must type-check");
+    }
+}
+
+/// A built-in method whose signature lists optional parameters but which the
+/// runtime calls when read bare (`method_registry`'s `zero_arg`) — `to_i`,
+/// `split`, `sort`, `count`… The checker kept the bare read as a function, so
+/// `"12".to_i + 1` failed with "cannot add (Any) -> Int and Int" though both
+/// engines answer 13.
+#[cfg(test)]
+mod optional_arg_builtin_tests {
+    use crate::types::TypeChecker;
+
+    fn check(source: &str) -> Result<(), String> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
+        TypeChecker::new().check(&program).map_err(|errs| {
+            errs.iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+    }
+
+    fn accepts(source: &str) {
+        if let Err(e) = check(source) {
+            panic!("{source:?} should type-check: {e}");
+        }
+    }
+
+    fn refuses(source: &str) {
+        assert!(check(source).is_err(), "{source:?} should be refused");
+    }
+
+    #[test]
+    fn a_bare_to_i_is_the_int_it_returns() {
+        accepts("x = \"12\".to_i + 1\nprint(x)\n");
+        accepts("y = \"12\".to_i\nprint(y + 1)\n");
+        accepts("print(\"12\".to_int + 1)\n");
+        accepts("let n: Int = \"12\".to_i\nprint(n)\n");
+    }
+
+    #[test]
+    fn to_i_with_a_radix_or_empty_parens_still_type_checks() {
+        accepts("print(\"ff\".to_i(16) + 1)\n");
+        accepts("print(\"12\".to_i() + 1)\n");
+        accepts("s = \"ff\"\nprint(s&.to_i(16))\n");
+    }
+
+    /// Both engines refuse it: "to_i base must be an Int".
+    #[test]
+    fn a_radix_that_is_no_int_is_refused() {
+        refuses("print(\"ff\".to_i(\"16\"))\n");
+    }
+
+    #[test]
+    fn other_string_methods_with_optional_arguments_read_bare() {
+        accepts("print(\"a b\".split[0] + \"!\")\n");
+        accepts("print(\"a,b\".split(\",\")[0] + \"!\")\n");
+        accepts("let s: String = \"a_b\".camelize\nprint(s)\n");
+        accepts("let s: String = \"a_b\".camelize(true)\nprint(s)\n");
+        accepts("let s: String = \"aab\".squeeze\nprint(s)\n");
+        accepts("let s: String = \"aab\".squeeze(\"a\")\nprint(s)\n");
+        // The runtime reads the piped-into member bare: `"a,b".split` is
+        // already an Array, so both engines raise "Cannot call non-function
+        // value".
+        refuses("print(\",\" |> \"a,b\".split())\n");
+        refuses("print(16 |> \"ff\".to_i())\n");
+        // A method the runtime does not call bare still takes the piped value.
+        accepts("print(\"a\" |> \"ab\".starts_with?())\n");
+    }
+
+    #[test]
+    fn empty_takes_no_argument() {
+        accepts("let b: Bool = \"\".empty?\nprint(b)\n");
+        accepts("print(\"\".empty?())\n");
+        refuses("print(\"\".empty?(\"x\"))\n");
+    }
+
+    #[test]
+    fn array_methods_with_optional_arguments_read_bare() {
+        for method in [
+            "sort",
+            "reverse",
+            "uniq",
+            "compact",
+            "compact_blank",
+            "flatten",
+            "shuffle",
+            "all",
+            "rotate",
+        ] {
+            accepts(&format!("print([2, 1].{method}[0] + 1)\n"));
+            accepts(&format!("print([2, 1].{method}()[0] + 1)\n"));
+        }
+        accepts("print([2, 1].sort(fn(a, b) { a - b })[0] + 1)\n");
+        accepts("print([1, 2, 3].rotate(2)[0] + 1)\n");
+        accepts("print([[1], [2]].flatten(1).length)\n");
+        accepts("print([1, 2].count + 1)\n");
+        accepts("print([1, 2].count(fn(x) { x > 1 }) + 1)\n");
+        accepts("print([1, 2].count { |x| x > 1 } + 1)\n");
+    }
+
+    /// Bare, `each_with_index` answers `[item, index]` pairs, not the
+    /// receiver it answers when given a block.
+    #[test]
+    fn a_bare_each_with_index_is_the_pairs() {
+        accepts("print([5, 6].each_with_index[0][1] + 1)\n");
+        accepts("print([5, 6].each_with_index.map { |pair| pair[1] })\n");
+        accepts("[5, 6].each_with_index do |x, i|\n  print(x + i)\nend\n");
+    }
+
+    /// The runtime does not call these bare, so neither does the checker.
+    #[test]
+    fn methods_the_runtime_does_not_call_bare_stay_functions() {
+        accepts("print(\"ab\".insert(1, \"x\"))\n");
+        accepts("print(\"ab\".delete(\"a\"))\n");
+        accepts("print(\"ab\".substring(0, 1))\n");
+        accepts("print(\"ab\".match(\"a\"))\n");
+        accepts("print([1, 2].get(0))\n");
+        refuses("print(\"ab\".insert + 1)\n");
+        refuses("print([1, 2].get + 1)\n");
+        // A method that takes a needle is still a function when read bare.
+        refuses("print(\"ab\".starts_with? + 1)\n");
     }
 }

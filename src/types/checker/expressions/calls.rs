@@ -32,6 +32,13 @@ impl TypeChecker {
         }
         let callee_type = match &callee.kind {
             ExprKind::Variable(name) => self.check_variable(name, callee.span)?,
+            // `"ff".to_i(16)`: the arguments are checked against the method's
+            // signature, which a bare `"12".to_i` would have collapsed.
+            ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
+                if !arguments.is_empty() =>
+            {
+                self.check_member_callee_with_args(callee.span, object, name)?
+            }
             _ => self.check_expr(callee)?,
         };
 
@@ -166,6 +173,9 @@ impl TypeChecker {
         // Right side can be a call or a function value
         match &right.kind {
             ExprKind::Call { callee, arguments } => {
+                // Both engines evaluate the callee before passing the piped
+                // value, so `x |> s.split()` reads `s.split` bare: a method the
+                // runtime calls bare is collapsed here too.
                 let callee_type = self.check_expr(callee)?;
 
                 match callee_type {
