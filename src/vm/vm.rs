@@ -7086,12 +7086,7 @@ end
             "the defaults method is not a method of the class"
         );
 
-        let ctor = class
-            .vm_methods
-            .borrow()
-            .get("init")
-            .cloned()
-            .expect("the constructor");
+        let ctor = class.vm_init.borrow().clone().expect("the constructor");
         let assigned: Vec<String> = ctor
             .proto
             .chunk
@@ -7160,12 +7155,7 @@ let result = "#{g.x} #{h.x} #{l.n}"
             let Some(Value::Class(class)) = vm.globals.get(name).cloned() else {
                 panic!("{name} is a class");
             };
-            let ctor = class
-                .vm_methods
-                .borrow()
-                .get("init")
-                .cloned()
-                .expect("the constructor");
+            let ctor = class.vm_init.borrow().clone().expect("the constructor");
             let code: Vec<Op> = ctor
                 .proto
                 .chunk

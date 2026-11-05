@@ -1372,14 +1372,13 @@ impl Interpreter {
                     }
                 }
                 // Methods the VM compiled live in `vm_methods` only (the
-                // constructor is registered there as "init").
+                // constructor is not one of them: `Class::vm_init`).
                 let mut class_in_chain = Some(inst_ref.class.clone());
                 while let Some(class) = class_in_chain {
                     for k in class.vm_methods.borrow().keys() {
-                        if k != "init"
-                            && !method_names
-                                .iter()
-                                .any(|v| matches!(v, Value::String(s) if **s == **k))
+                        if !method_names
+                            .iter()
+                            .any(|v| matches!(v, Value::String(s) if **s == **k))
                         {
                             method_names.push(Value::String(k.clone().into()));
                         }
@@ -3429,7 +3428,7 @@ pub fn is_attribute_new(positional: &[Value], has_named: bool) -> bool {
 /// engine: a class with one builds every `Klass.new(...)` through it, as
 /// `new Klass(...)` does — the attribute form is for classes without.
 pub fn has_constructor(class: &crate::interpreter::value::Class) -> bool {
-    class.find_vm_method("init").is_some() || class.find_constructor().is_some()
+    class.has_vm_init() || class.find_constructor().is_some()
 }
 
 /// Whether `Klass.new(...)` on `class` is answered by the engines' call

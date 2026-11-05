@@ -430,6 +430,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         all_native_methods_cache: RefCell::new(None),
         primitive: None,
         vm_methods: Rc::new(RefCell::new(HashMap::default())),
+        vm_init: Rc::new(RefCell::new(None)),
         vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
         vm_plain_static_methods: Default::default(),
         model_subclass_memo: std::cell::Cell::new(None),

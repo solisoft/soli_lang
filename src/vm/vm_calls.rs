@@ -769,7 +769,7 @@ impl Vm {
                     && class.is_value_object()) =>
             {
                 class
-                    .find_vm_method_with_class("init")
+                    .find_vm_init_with_class()
                     .map(|(ctor, defining_class)| (ctor, Some((class.clone(), defining_class))))
             }
             _ => None,
@@ -2298,20 +2298,29 @@ impl Vm {
         }
     }
 
-    /// The constructor a construction of `class` runs, in the order
-    /// `call_class` has always looked: a bytecode `init` up the chain, then a
-    /// tree-walker constructor, then a native one.
+    /// The constructor a construction of `class` runs: the nearest class up
+    /// the chain that declares one — compiled by the VM (`Class::vm_init`)
+    /// or by the tree-walker (`Class::constructor`) — else a native one. A
+    /// method, whatever its name, is never the constructor.
     pub(crate) fn resolve_constructor(
         &self,
         class: &Rc<Class>,
         span: Span,
     ) -> Result<Constructor, RuntimeError> {
-        if let Some((init, defining_class)) = class.find_vm_method_with_class("init") {
-            return Ok(Constructor::Compiled(init, defining_class));
-        }
-        if let Some((ctor, defining_class)) = class.find_constructor_with_class() {
-            let closure = self.compiled_constructor(&ctor, &defining_class, span)?;
-            return Ok(Constructor::Compiled(closure, defining_class));
+        let mut level = class.clone();
+        loop {
+            let compiled = level.vm_init.borrow().clone();
+            if let Some(init) = compiled {
+                return Ok(Constructor::Compiled(init, level));
+            }
+            if let Some(ctor) = level.constructor.clone() {
+                let closure = self.compiled_constructor(&ctor, &level, span)?;
+                return Ok(Constructor::Compiled(closure, level));
+            }
+            match level.superclass.clone() {
+                Some(superclass) => level = superclass,
+                None => break,
+            }
         }
         Ok(match class.find_native_method(NATIVE_CONSTRUCTOR) {
             Some(init) => Constructor::Native(init),

@@ -364,7 +364,9 @@ impl Compiler {
         let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(fn_idx), line);
 
-        let name_idx = self.add_string_constant("init");
+        // Registered apart from the methods (`Class::vm_init`): a user
+        // method named `init` is not the constructor.
+        let name_idx = self.add_string_constant(crate::interpreter::value::VM_CONSTRUCTOR);
         self.emit(Op::Method(name_idx), line);
         Ok(())
     }

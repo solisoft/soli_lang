@@ -65,7 +65,7 @@ impl Vm {
             // A field left out takes its default (`Amount.new(500)` is in
             // EUR), and the constructor and invariants see it.
             self.init_fields(class, &instance, span)?;
-            match class.find_vm_method_with_class("init") {
+            match class.find_vm_init_with_class() {
                 Some((ctor, defining)) => {
                     let (slots, supplied) = super::vm_calls::bind_named_arguments(
                         &ctor.proto,
@@ -165,7 +165,7 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let class = instance.borrow().class.clone();
-        let params: Option<Vec<String>> = match class.find_vm_method_with_class("init") {
+        let params: Option<Vec<String>> = match class.find_vm_init_with_class() {
             Some((ctor, _)) => Some(ctor.proto.param_names.clone()),
             None => class
                 .find_constructor()

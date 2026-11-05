@@ -1083,6 +1083,7 @@ impl Vm {
             );
             // Preserve the shared bytecode-method maps across rebuilds.
             new_class.vm_methods = sub.vm_methods.clone();
+            new_class.vm_init = sub.vm_init.clone();
             new_class.vm_static_methods = sub.vm_static_methods.clone();
             new_class.is_module = sub.is_module;
             new_class.included_modules = sub.included_modules.clone();
@@ -1128,6 +1129,14 @@ impl Vm {
                     // The class's field defaults that are not literals: run
                     // for each new instance (`Vm::init_fields`), never
                     // dispatched as a method.
+                    // The constructor: kept apart from the methods, so a
+                    // user method `init` is a method like any other.
+                    Value::VmClosure(closure)
+                        if !is_static && name == crate::interpreter::value::VM_CONSTRUCTOR =>
+                    {
+                        *current.vm_init.borrow_mut() = Some(closure);
+                        return Ok(());
+                    }
                     Value::VmClosure(closure)
                         if !is_static
                             && name == crate::interpreter::value::FIELD_DEFAULTS_METHOD =>
@@ -1140,8 +1149,8 @@ impl Vm {
                     Value::VmClosure(closure) => {
                         // Bytecode methods from compile_class_decl. The maps
                         // are shared `Rc`s, so no class rebuild is needed —
-                        // and the constructor ("init") plus instance methods
-                        // become dispatchable via find_vm_method.
+                        // and instance methods become dispatchable via
+                        // find_vm_method.
                         if is_static {
                             current
                                 .vm_static_methods
@@ -1186,6 +1195,7 @@ impl Vm {
                 );
                 // Preserve the shared bytecode-method maps across rebuilds.
                 new_class.vm_methods = current.vm_methods.clone();
+                new_class.vm_init = current.vm_init.clone();
                 new_class.vm_static_methods = current.vm_static_methods.clone();
                 new_class.is_module = current.is_module;
                 new_class.included_modules = current.included_modules.clone();
@@ -1314,7 +1324,7 @@ impl Vm {
 
         match class_val {
             // Same protocol as calling the class value directly — runs the
-            // compiled "init" constructor (or JIT-compiles a tree-walking
+            // compiled constructor (or JIT-compiles a tree-walking
             // one) with the instance bound as `this`.
             Value::Class(class) => self.call_class(&class, argc, span),
             _ => Err(RuntimeError::NotAClass(

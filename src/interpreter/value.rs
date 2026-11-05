@@ -1801,6 +1801,11 @@ pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 /// and keeps it in [`FieldInit::computed`], never among the class's methods.
 pub const FIELD_DEFAULTS_METHOD: &str = "__field_defaults__";
 
+/// The name `Op::Method` registers a compiled constructor under: no
+/// identifier can spell it, so it never meets a user method. `op_add_method`
+/// stores it in [`Class::vm_init`], never among the class's methods.
+pub const VM_CONSTRUCTOR: &str = "<new>";
+
 /// How the VM starts one class's own declared instance fields on a new
 /// instance, before any constructor runs: what the tree-walker's
 /// `initialize_instance_fields` does for that class (each ancestor has its
@@ -1916,13 +1921,20 @@ pub struct Class {
     /// dispatch in `member.rs` and the VM does not consult `Class.methods`.
     pub primitive: Option<PrimType>,
     /// Bytecode instance methods, registered by `Op::Method` when a class is
-    /// compiled in the VM (`compile_class_decl`). The constructor lands here
-    /// under the name `"init"` (it returns `this`). `Rc` so the per-method
-    /// class rebuilds in `op_add_method` share one map. ahash-keyed: the VM
+    /// compiled in the VM (`compile_class_decl`) — not the constructor (see
+    /// `vm_init`). `Rc` so the per-method class rebuilds in `op_add_method`
+    /// share one map. ahash-keyed: the VM
     /// probes this on every compiled instance-method call. Write it through
     /// [`Class::insert_vm_method`], or call [`note_vm_methods_changed`] after
     /// writing: the VM's method cache trusts an entry until that epoch moves.
     pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
+    /// The constructor of a class the VM compiled (`new(...) … end`),
+    /// registered by `Op::Method` under [`VM_CONSTRUCTOR`]. Kept apart from
+    /// `vm_methods`: a user method may be called `init` (or anything else)
+    /// without being taken for the constructor, and the constructor is never
+    /// reachable as a method. `Rc` so the class rebuilds share it, as
+    /// `vm_methods`.
+    pub vm_init: Rc<RefCell<Option<Rc<VmClosure>>>>,
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
     pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
@@ -2228,6 +2240,7 @@ impl Default for Class {
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_init: Rc::new(RefCell::new(None)),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
@@ -2283,6 +2296,7 @@ impl Class {
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_init: Rc::new(RefCell::new(None)),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
@@ -2416,6 +2430,29 @@ impl Class {
             let next = current.superclass.clone()?;
             current = next;
         }
+    }
+
+    /// The nearest compiled constructor up the chain ([`Class::vm_init`]),
+    /// with the class that declares it.
+    pub fn find_vm_init_with_class(self: &Rc<Self>) -> Option<(Rc<VmClosure>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let found = current.vm_init.borrow().clone();
+            if let Some(closure) = found {
+                return Some((closure, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// Whether this class or an ancestor has a compiled constructor.
+    pub fn has_vm_init(&self) -> bool {
+        self.vm_init.borrow().is_some()
+            || self
+                .superclass
+                .as_ref()
+                .is_some_and(|superclass| superclass.has_vm_init())
     }
 
     /// Register bytecode instance method `name`, replacing any of that name,

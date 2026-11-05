@@ -3149,6 +3149,54 @@ print(p.cents, p.currency, p.vat, Price.new(cents: 5, vat: 7).vat)
 print(a == Amount.new(500, "EUR"), Amount.new(1, "USD").currency)"##,
     ),
     (
+        // A method named `init` is a method, not the constructor. The VM kept
+        // its compiled constructor as the method `init`: `new Service()` ran
+        // the user's `init` and was its value, and a class with field
+        // defaults and an `init(a)` raised "Wrong number of arguments" on
+        // `new K()`.
+        "a_method_named_init_is_not_the_constructor",
+        r##"class Service
+  def init
+    "init-value"
+  end
+end
+s = new Service()
+print(s.is_a?("Service"), s.init)
+class K
+  x: Int = 1
+
+  def init(a)
+    @x = a
+  end
+end
+k = new K()
+print(k.x)
+k.init(5)
+print(k.x)
+class Cart
+  owner: String
+  items: Array
+
+  new(owner)
+    @owner = owner
+    @items = []
+  end
+
+  def init(items)
+    @items = items
+    "init-ran"
+  end
+end
+c = Cart.new("ann")
+print(c.init([1, 2]), c.owner, c.items)
+d = Cart.new("bo")
+print(d.owner, d.items)
+class SubCart < Cart
+end
+e = new SubCart("cy")
+print(e.owner, e.items, e.init([3]))"##,
+    ),
+    (
         // Tracked in KNOWN_DIVERGENT.
         "named_attribute_form_runs_a_computed_default",
         r##"calls = 0
@@ -5809,8 +5857,8 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //   #8  `||=` panic (let-from-local)      — removed unsafe GetLocal2 fusion
     //   #10 return inside catch               — TryBegin catch_ip off-by-one
     //   #14 instance_method_call              — VmClosure methods stored on
-    //        Class.vm_methods; ctor ("init") + methods dispatch with the
-    //        receiver in the callee slot as `this`
+    //        Class.vm_methods (the constructor on Class.vm_init); they
+    //        dispatch with the receiver in the callee slot as `this`
 ];
 
 /// Programs the type checker refuses but both engines run. It rejects a read
@@ -6706,6 +6754,36 @@ class Probe
       x + 40
     end
     "#{b.f(x: 2)} #{r} #{b.nope(z: 1)}"
+  end
+end"##,
+    ),
+    (
+        // A served class's method named `init`, once the VM has compiled it,
+        // is not the constructor: `Cart.new("bo")` ran it ("init-ran") and
+        // `c.init([1])` re-ran the constructor's body.
+        "app_a_method_named_init_is_not_the_constructor",
+        r##"class Cart
+  owner: String
+  items: Array
+
+  new(owner)
+    @owner = owner
+    @items = []
+  end
+
+  def init(items)
+    @items = items
+    "init-ran"
+  end
+end
+
+class Probe
+  def run
+    c = Cart.new("ann")
+    first = c.init([1, 2])
+    d = Cart.new("bo")
+    e = new Cart("cy")
+    "#{first} #{c.owner} #{c.items} #{d.owner} #{d.items} #{e.owner} #{e.init([3])}"
   end
 end"##,
     ),
