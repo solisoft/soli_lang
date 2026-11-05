@@ -27,6 +27,9 @@ pub mod vm_int_methods;
 pub mod vm_primitive_methods;
 pub mod vm_string_methods;
 
+#[cfg(test)]
+mod deadline_tests;
+
 pub use chunk::{CompiledModule, FunctionProto};
 pub use compiler::Compiler;
 pub use disassembler::disassemble;

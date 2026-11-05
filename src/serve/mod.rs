@@ -4928,6 +4928,24 @@ fn call_handler(
                             vm.reset();
                             return resp;
                         }
+                        // The handler budget ran out: not a VM gap. A re-run
+                        // on the tree-walker would start the request over
+                        // past its deadline, and demoting would move the
+                        // handler there for good. Answer the timeout.
+                        if crate::interpreter::deadline::exhausted() {
+                            vm.reset();
+                            let request_id = Uuid::new_v4().to_string();
+                            return error_response::handler_failure(
+                                dev_mode,
+                                interpreter,
+                                request_data,
+                                &err.to_string(),
+                                &[],
+                                None,
+                                &request_id,
+                                false,
+                            );
+                        }
                         record_vm_demotion(handler_name, &err);
                         note_possible_divergence(handler_name, &err);
                         vm.failed_handlers.insert(handler_name.to_string());
@@ -5331,6 +5349,12 @@ fn call_class_method(
                         // Deliberate 404/403/halt: the caller maps it to the
                         // response. No demotion, no re-run (see above).
                         if raised_response(&err).is_some() {
+                            vm.reset();
+                            return Err(err);
+                        }
+                        // The handler budget ran out (see `call_handler`):
+                        // no demotion, no re-run on the tree-walker.
+                        if crate::interpreter::deadline::exhausted() {
                             vm.reset();
                             return Err(err);
                         }

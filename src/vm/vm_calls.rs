@@ -318,6 +318,12 @@ impl Vm {
     /// iterative (deep recursion grows `frames` on the heap), but builtins
     /// that call back into Soli recurse natively — and a stack overflow
     /// aborts without unwinding, so it must be prevented, not caught.
+    ///
+    /// Every call that opens a frame passes here, so it is also where the
+    /// handler budget is checked for calls — `Op::Loop` alone missed a
+    /// program that loops without a backward jump: recursion, and the
+    /// blocks a native iterator (`n.times`, `upto`, `each`…) calls once per
+    /// element. A countdown decrement, reading the clock every few thousand.
     #[inline]
     pub(crate) fn ensure_call_depth(
         &self,
@@ -340,6 +346,9 @@ impl Vm {
                 ),
                 at,
             ));
+        }
+        if crate::interpreter::deadline::expired() {
+            return Err(crate::interpreter::deadline::timeout_error(span));
         }
         Ok(())
     }

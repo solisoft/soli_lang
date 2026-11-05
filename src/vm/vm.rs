@@ -955,6 +955,12 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
+                    // The handler budget, as `ensure_call_depth` checks it
+                    // for the general arm — which raises it (expiry is
+                    // sticky). Nothing is touched yet, so it can take over.
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     enter_closure!(closure, argc);
                 }
                 Op::CallGlobal(name_idx, argc) => {
@@ -974,6 +980,11 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
+                    // The handler budget, before the stack is touched (see
+                    // `Op::Call` above).
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     // The general arm inserts the callee below the arguments.
                     let insert_at = self.stack.len() - argc;
                     self.stack

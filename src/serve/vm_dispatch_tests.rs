@@ -260,3 +260,56 @@ end
     };
     assert_eq!(hits.borrow().len(), 1, "the action's side effect ran twice");
 }
+
+/// A VM action that runs out of handler budget answers the timeout: it is
+/// neither demoted nor re-run on the tree-walker. The VM's timeout was an
+/// ordinary error, so serve moved the action to the tree-walker for good and
+/// started it over there, past its deadline — whose comprehensions did not
+/// check it either.
+#[test]
+fn a_vm_timeout_is_not_rerun_on_the_tree_walker() {
+    let mut app = ServedApp::load(
+        r#"
+hits = []
+
+class SlowController
+  def index
+    hits.push("ran")
+    total = 0
+    200000.times { |i| total = i }
+    total
+  end
+end
+"#,
+    );
+    let class = match app.interpreter.environment.borrow().get("SlowController") {
+        Some(Value::Class(class)) => class,
+        other => panic!("SlowController is not a class: {other:?}"),
+    };
+    let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class.clone()))));
+    let request = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+    let result = {
+        let _budget = crate::interpreter::deadline::enter(web_time::Duration::from_nanos(1));
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        call_class_method(
+            &mut app.interpreter,
+            Some(&mut app.vm),
+            &class,
+            &instance,
+            "index",
+            &request,
+        )
+    };
+    let err = result.expect_err("the action ran past its budget");
+    assert!(err.to_string().contains("handler budget"), "{err}");
+    assert!(
+        app.vm.failed_handlers.is_empty(),
+        "a timeout demoted the action: {:?}",
+        app.vm.failed_handlers
+    );
+    let hits = app.interpreter.environment.borrow().get("hits").unwrap();
+    let Value::Array(hits) = hits else {
+        panic!("hits is not an array: {hits:?}")
+    };
+    assert_eq!(hits.borrow().len(), 1, "the action was run a second time");
+}

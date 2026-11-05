@@ -8,8 +8,11 @@
 //! handful of them take the server down. There was no watchdog anywhere.
 //!
 //! Both engines check this deadline on their backward jumps and function calls
-//! — the only places a program can spend unbounded time without returning — and
-//! raise an ordinary catchable error when it passes. Checking a thread-local
+//! — the only places a program can spend unbounded time without returning —
+//! and on every element a native iterator (`n.times`, `each`, a comprehension)
+//! hands a block, and raise an ordinary catchable error when it passes. Once
+//! it has passed it stays passed: every later check fails too, so a `rescue`
+//! cannot swallow the error and keep looping, until the request's guard drops. Checking a thread-local
 //! `Instant` costs a few nanoseconds and only every Nth iteration, so the hot
 //! path is unaffected.
 //!
@@ -92,11 +95,30 @@ pub fn expired() -> bool {
     if remaining != 0 {
         return false;
     }
-    COUNTDOWN.with(|c| c.set(CHECK_INTERVAL));
+    let expired = exhausted();
+    // Sticky: once the budget is gone, read the clock on every call (it
+    // stays gone) instead of granting another few thousand iterations. The
+    // guard's drop restores the countdown.
+    COUNTDOWN.with(|c| c.set(if expired { 1 } else { CHECK_INTERVAL }));
+    expired
+}
+
+/// Has the current unit of work's budget run out? Reads the clock now; for
+/// deciding what to do after a failure (serve does not re-run a handler on
+/// the tree-walker once its budget is spent), not for a dispatch loop.
+pub fn exhausted() -> bool {
     DEADLINE.with(|d| match d.get() {
         Some(deadline) => Instant::now() >= deadline,
         None => false,
     })
+}
+
+/// The error raised when a budget runs out, at `span`.
+pub fn timeout_error(span: crate::span::Span) -> crate::error::RuntimeError {
+    crate::error::RuntimeError::General {
+        message: timeout_message(),
+        span,
+    }
 }
 
 /// The message raised when a budget runs out.
@@ -136,6 +158,33 @@ mod tests {
             }
         }
         assert!(hit, "an elapsed deadline must be reported");
+    }
+
+    /// Expiry is sticky: once reported, every later check reports it too —
+    /// a handler that rescues the timeout cannot buy itself another few
+    /// thousand iterations, over and over — until the guard drops.
+    #[test]
+    fn expiry_stays_reported_until_the_guard_drops() {
+        {
+            let _guard = enter(Duration::from_nanos(1));
+            std::thread::sleep(Duration::from_millis(2));
+            let mut calls = 0;
+            while !expired() {
+                calls += 1;
+                assert!(
+                    calls <= CHECK_INTERVAL,
+                    "the elapsed budget was never reported"
+                );
+            }
+            for _ in 0..10 {
+                assert!(expired(), "an expired budget must stay expired");
+            }
+            assert!(exhausted());
+        }
+        assert!(!exhausted(), "no budget outside the guard");
+        for _ in 0..(CHECK_INTERVAL + 1) {
+            assert!(!expired(), "the guard's drop ends the expiry");
+        }
     }
 
     /// A live budget does not fire.
