@@ -72,6 +72,7 @@ pub mod error;
 pub mod escape;
 pub mod parse;
 pub mod policy;
+pub mod serialize;
 pub mod tree;
 
 
@@ -81,6 +82,7 @@ pub use policy::{
     OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
     MAX_NAME_LEN,
 };
+pub use serialize::{serialize, serialize_children, SerializeOptions};
 pub use tree::{Attr, ElementRef, Kind, NodeData, NodeId, NsDecl, XmlDecl, XmlTree, XML_NS};
 
 #[cfg(test)]
