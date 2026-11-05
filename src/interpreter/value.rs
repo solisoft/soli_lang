@@ -2692,10 +2692,15 @@ impl Class {
     /// already be in use. Drops this class's flattened caches and bumps the
     /// global [`method_epoch`], so every subclass rebuilds its own copy on its
     /// next lookup instead of keeping the parent's old method set.
+    ///
+    /// The VM's per-site method cache answers the nearest definition, which
+    /// a new tree-walker method can change too: it is staled as well
+    /// ([`note_vm_methods_changed`]).
     pub fn invalidate_method_cache(&self) {
         *self.all_methods_cache.borrow_mut() = None;
         *self.all_native_methods_cache.borrow_mut() = None;
         bump_method_epoch();
+        note_vm_methods_changed();
     }
 
     /// Mix `module`'s instance methods into this class (Ruby `include`).

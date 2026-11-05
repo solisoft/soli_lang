@@ -1,16 +1,24 @@
 //! What each `CallMethod` / `CallMethodById` site found on each receiver
-//! class it saw: the compiled method and the class that defines it, as
-//! `Class::find_vm_method_with_class` answers. The fast tier's method calls
-//! (`Vm::fast_method`) ask here instead of walking the class chain and
-//! hashing the name at every level on every call.
+//! class it saw: the compiled method and the class that defines it, when the
+//! nearest definition of the name (`Class::find_instance_method_level`) is
+//! compiled. The fast tier's method calls (`Vm::fast_method`) ask here
+//! instead of walking the class chain and hashing the name at every level on
+//! every call.
+//!
+//! Nearest, not first compiled: a subclass override the VM has not compiled
+//! yet hides an ancestor's compiled method of the same name. Taking the
+//! first compiled method anywhere up the chain ran `Base#m` for a `Leaf`
+//! whose own `m` was still AST, once `Base#m` had run on that worker. Such a
+//! lookup is a miss here: the general arm compiles the override
+//! (`Vm::resolve_instance_method`), which bumps the epoch.
 //!
 //! An entry answers for one call site (the op's address, which fixes the
 //! name) and one receiver class (which fixes the chain), in one
 //! method-definition epoch (`value::vm_methods_epoch`, bumped by every change
-//! to some class's `vm_methods`). Those three fix what the uncached lookup
-//! returns, so a current entry answers exactly what it would. A miss is
-//! remembered too: a native method's site then hands its call to the general
-//! arm after one probe.
+//! to some class's `vm_methods` or `methods`). Those three fix what the
+//! uncached lookup returns, so a current entry answers exactly what it
+//! would. A miss is remembered too: a native method's site then hands its
+//! call to the general arm after one probe.
 //!
 //! An entry keeps its class and the code holding its site alive, so neither
 //! address can be reused by another class or op while the entry exists.
@@ -18,7 +26,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::interpreter::value::Class;
+use crate::interpreter::value::{Class, InstanceMethodDef};
 use crate::vm::chunk::FunctionProto;
 use crate::vm::opcode::Op;
 use crate::vm::upvalue::VmClosure;
@@ -59,7 +67,8 @@ fn set_of(site: *const Op, class: &Rc<Class>) -> usize {
 }
 
 impl MethodCache {
-    /// What `class.find_vm_method_with_class(name)` answers, for the call at
+    /// The compiled nearest definition of `name` on `class` (see the module
+    /// docs), for the call at
     /// `site` (whose op names `name`) in `epoch`. `code` gives the code that
     /// holds `site`, asked only on a fill.
     #[inline]
@@ -93,7 +102,11 @@ impl MethodCache {
         epoch: u64,
         code: Arc<FunctionProto>,
     ) -> Option<FoundMethod> {
-        let found = class.find_vm_method_with_class(name);
+        let found = match class.find_instance_method_level(name) {
+            Some((InstanceMethodDef::Compiled(closure), defining)) => Some((closure, defining)),
+            // Not compiled yet, or no such method: the general arm decides.
+            _ => None,
+        };
         let sets = self
             .sets
             .get_or_insert_with(|| Box::new(std::array::from_fn(|_| [None, None])));

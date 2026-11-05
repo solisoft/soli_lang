@@ -515,12 +515,14 @@ impl Vm {
     /// a refused call after checking it again.
     ///
     /// For an instance, the general path tries nothing before
-    /// `find_vm_method_with_class` that could answer differently: `send` is
+    /// `resolve_instance_method` that could answer differently: `send` is
     /// re-dispatched only on a class with no `send` of its own, where the
-    /// lookup misses too. So a hit decides the call, before fields, natives,
-    /// `method_missing` and AST-only methods. A change there must be
-    /// mirrored here. The lookup goes through `method_cache`; a miss is
-    /// remembered too, so a native method's site hands off after one probe.
+    /// lookup misses too. So a hit — the nearest definition, compiled —
+    /// decides the call, before fields, natives and `method_missing`; a
+    /// nearest definition still AST is a miss, which the general arm
+    /// compiles. A change there must be mirrored here. The lookup goes
+    /// through `method_cache`; a miss is remembered too, so a native
+    /// method's site hands off after one probe.
     #[inline]
     fn fast_method(
         &mut self,
@@ -2792,14 +2794,18 @@ impl Vm {
                         let found = match self.stack.last() {
                             Some(Value::Instance(inst)) => {
                                 let class = inst.borrow().class.clone();
-                                match class.find_vm_method_with_class(name) {
+                                // The nearest definition, level by level: a
+                                // subclass override not compiled yet beats an
+                                // ancestor's compiled method.
+                                match class.find_instance_method_level(name) {
                                     // The class that defines the compiled
                                     // method: the call reads it from there.
-                                    Some((_, defining)) => Some(Value::Class(defining)),
-                                    None if class.find_method(name).is_some() => {
-                                        // `true`: a tree-walker method, dispatched by name.
-                                        Some(Value::Bool(true))
-                                    }
+                                    Some((
+                                        crate::interpreter::value::InstanceMethodDef::Compiled(_),
+                                        defining,
+                                    )) => Some(Value::Class(defining)),
+                                    // `true`: a tree-walker method, dispatched by name.
+                                    Some(_) => Some(Value::Bool(true)),
                                     None => None,
                                 }
                             }
