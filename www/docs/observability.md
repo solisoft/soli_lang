@@ -75,7 +75,7 @@ Representative series (all Prometheus text format):
 A handler that fails on the VM is re-run on the tree-walker, which answers the request, unless it wrote to the database first. The handler is demoted only when the VM was at fault:
 
 - the VM refused it;
-- the re-run succeeded where the VM failed, an engine divergence, also counted in `soli_vm_engine_divergences_total`, which should stay at zero.
+- the re-run answered where the VM failed (it succeeded, or raised a deliberate 404, 403, `halt` or `DomainError`), an engine divergence, also counted in `soli_vm_engine_divergences_total`, which should stay at zero.
 
 An error both engines raise, such as a `throw`, a nil read from a missing parameter or a `JSON.parse` of a bad body, is the app's own. The request answers 500 and the handler stays on the VM, so a bad request cannot move it to the slower engine. A handler that fails after a database write is not re-run, since the write would happen twice. Its error is the answer, and it is demoted, since nothing can tell a VM gap from the app's error. A handler that ran out of the request's time budget ([`SOLI_HANDLER_TIMEOUT_SECS`](configuration.md)) is neither re-run nor demoted: the timeout is the answer.
 

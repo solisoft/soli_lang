@@ -727,7 +727,7 @@ fn invoke_middleware_with_frame(
             interpreter.pop_frame();
             // The VM failed where the tree-walker succeeds: the VM's gap, so
             // the middleware leaves it. A failure both engines share does not.
-            if fell_back && super::settle_engine_divergence(result.is_ok()) {
+            if fell_back && super::settle_engine_divergence(super::tree_walker_answered(&result)) {
                 demote_middleware(name);
             }
             result

@@ -4507,11 +4507,23 @@ fn note_possible_divergence(handler: &str, err: &RuntimeError) {
     PENDING_DIVERGENCE.with(|p| *p.borrow_mut() = Some((handler.to_string(), err.to_string())));
 }
 
+/// Whether the tree-walker's re-run answered the request: it returned, or it
+/// raised a deliberate response (a 404, a 403, a `halt`, a `DomainError`).
+/// Either way it did what the VM failed to do — an engine divergence, not the
+/// app's own error.
+pub(super) fn tree_walker_answered<T>(outcome: &Result<T, RuntimeError>) -> bool {
+    match outcome {
+        Ok(_) => true,
+        Err(err) => raised_response(err).is_some(),
+    }
+}
+
 /// The tree-walker's re-run is done. Returns `true` when the handler must
 /// leave the VM: a failure was noted for it (`note_possible_divergence`) and
-/// the re-run succeeded. The caller then demotes it, each kind of handler in
-/// its own set. When the re-run fails too, the error is the app's own and the
-/// handler stays on the VM.
+/// the re-run answered — it succeeded, or raised a deliberate response
+/// ([`tree_walker_answered`]). The caller then demotes it, each kind of
+/// handler in its own set. When the re-run fails too, the error is the app's
+/// own and the handler stays on the VM.
 ///
 /// Success where the VM failed means the two engines disagree on the same
 /// code: a VM bug, whatever the error said — or a transient error the re-run
@@ -4521,11 +4533,11 @@ fn note_possible_divergence(handler: &str, err: &RuntimeError) {
 /// `SOLI_ENGINE_LOG=1`, counted on `/_metrics` (as a divergence and as a
 /// demotion), and a hard stop under `SOLI_FAIL_ON_VM_DEMOTION=1` so a test
 /// suite cannot pass over it.
-fn settle_engine_divergence(tree_walker_succeeded: bool) -> bool {
+fn settle_engine_divergence(tree_walker_answered: bool) -> bool {
     let Some((handler, vm_error)) = PENDING_DIVERGENCE.with(|p| p.borrow_mut().take()) else {
         return false;
     };
-    if !tree_walker_succeeded {
+    if !tree_walker_answered {
         return false;
     }
     crate::metrics::Metrics::global()
@@ -5094,7 +5106,7 @@ fn call_handler(
             let outcome = interpreter.call_value(handler_value, args, Span::default());
             // The VM failed where the tree-walker succeeds: the VM's gap, so
             // the handler leaves it. A failure both engines share does not.
-            if settle_engine_divergence(outcome.is_ok()) {
+            if settle_engine_divergence(tree_walker_answered(&outcome)) {
                 if let Some(vm) = vm {
                     vm.failed_handlers.insert(handler_name.to_string());
                 }
@@ -5558,7 +5570,7 @@ fn call_class_method(
             interpreter.call_value(Value::Function(bound_method), action_args, method_span);
         // The VM failed where the tree-walker succeeds: the VM's gap, so the
         // action leaves it. A failure both engines share leaves it there.
-        if settle_engine_divergence(result.is_ok()) {
+        if settle_engine_divergence(tree_walker_answered(&result)) {
             if let Some(vm) = vm {
                 vm.failed_handlers
                     .insert(format!("{}#{}", class.name, method_name));
@@ -5718,7 +5730,11 @@ fn execute_before_actions(
             interpreter,
             req.clone(),
         );
-        if settle_engine_divergence(result.is_ok()) {
+        let answered = match &result {
+            Ok(_) => true,
+            Err(e) => raised_response(&RuntimeError::new(e.clone(), Span::default())).is_some(),
+        };
+        if settle_engine_divergence(answered) {
             crate::interpreter::builtins::controller::registry::demote_hook_function(
                 &before_action.handler_source,
                 before_action.source_line,
@@ -5822,7 +5838,13 @@ fn execute_after_actions(
                         req.clone(),
                         response_value.clone(),
                     );
-                if settle_engine_divergence(result.is_ok()) {
+                let answered = match &result {
+                    Ok(_) => true,
+                    Err(e) => {
+                        raised_response(&RuntimeError::new(e.clone(), Span::default())).is_some()
+                    }
+                };
+                if settle_engine_divergence(answered) {
                     crate::interpreter::builtins::controller::registry::demote_hook_function(
                         &after_action.handler_source,
                         after_action.source_line,
@@ -7365,6 +7387,42 @@ end
         assert!(
             settle_engine_divergence(true),
             "the re-run succeeded where the VM failed"
+        );
+    }
+
+    /// A re-run that answers with a deliberate response (`halt`, a `find`
+    /// miss, `forbidden()`) where the VM raised an error did what the VM
+    /// could not: an engine divergence, as a plain success is. It was read
+    /// as "both failed", so the VM gap stayed hidden, uncounted, and every
+    /// such request ran twice.
+    #[test]
+    fn a_rerun_that_halts_where_the_vm_failed_is_a_divergence() {
+        if engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
+            return;
+        }
+        let (flaky, calls) = fails_once();
+        let source =
+            "class Halter {\n    fn action(req) {\n        flaky()\n        halt(403, \"denied\")\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) =
+            served_class(source, "Halter", vec![("flaky", flaky)]);
+        let err = call_class_method(
+            &mut interpreter,
+            Some(&mut vm),
+            &class_rc,
+            &instance,
+            "action",
+            &empty_request(),
+        )
+        .expect_err("the re-run halts");
+        assert_eq!(
+            raised_response(&err).map(|r| r.status),
+            Some(403),
+            "the halt is the answer: {err}"
+        );
+        assert_eq!(calls.get(), 2, "once on the VM, once on the re-run");
+        assert!(
+            vm.failed_handlers.contains("Halter#action"),
+            "the VM failed where the tree-walker answered"
         );
     }
 
