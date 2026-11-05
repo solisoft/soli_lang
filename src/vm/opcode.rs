@@ -134,6 +134,12 @@ pub enum Op {
     GetPropertyOrNull(u16),
     /// Set a property by name constant index.
     SetProperty(u16),
+    /// A declared field's default, written by the constructor before its
+    /// body runs: a plain store, without `SetProperty`'s write rules (a
+    /// `const` field takes its value here; on a model, a `_`-prefixed or
+    /// translated field is set as the tree-walker's field initialisation
+    /// sets it). Same stack effect as `SetProperty`.
+    InitProperty(u16),
 
     // --- Classes ---
     /// Create a class with the given name constant index.

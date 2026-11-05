@@ -1872,6 +1872,40 @@ print(state, greeting, greeting.upcase)
 cb = fn() { 7 }
 print(cb())"##,
     ),
+    (
+        // A bare local whose name the function also binds with a
+        // comprehension variable compiled to a VM global: the recursive call
+        // overwrote the caller's `item`.
+        "local_also_bound_by_comprehension_survives_recursion",
+        r##"def summary(items, depth)
+  item = items[0]
+  if depth > 0
+    summary(["inner"], depth - 1)
+  end
+  names = [item.upcase for item in items]
+  "#{item}: #{names}"
+end
+print(summary(["outer", "b"], 1))"##,
+    ),
+    (
+        // Same with a `catch` and a `for` variable.
+        "local_also_bound_by_catch_and_for_survives_recursion",
+        r##"def guarded(secret, depth)
+  e = secret
+  i = depth
+  guarded("inner", depth - 1) if depth > 0
+  try
+    throw "boom"
+  catch e
+    nil
+  end
+  for i in [7, 8]
+    nil
+  end
+  "#{e}:#{i}"
+end
+print(guarded("alice-password", 1))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
