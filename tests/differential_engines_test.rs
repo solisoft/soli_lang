@@ -2826,13 +2826,11 @@ print([{"size": 3}, {"size": 4}].map(&:size))"##,
         "class Policy\n  def edit?\n    true\n  end\n  def scaled(n, k)\n    n * k\n  end\n  def check(action)\n    this.send(action + \"?\")\n  end\nend\np = new Policy()\nprint(p.send(\"edit?\"))\nprint(p.send(\"scaled\", 3, 4))\nprint(p.check(\"edit\"))",
     ),
     (
-        // `send` on a class calls the static it names, also through a
-        // variable holding the class; a class with a static `send` of its own
-        // keeps it; an unknown name is an error on both. The VM refused class
-        // `send` as reflection, so a script naming `send` ran on the
-        // tree-walker.
-        "class_send",
-        "class Maker\n  static def make(n)\n    n * 2\n  end\nend\nclass Mailer\n  static def send(to)\n    \"mail to #{to}\"\n  end\nend\nk = Maker\nprint(Maker.send(\"make\", 4))\nprint(k.send(\"make\", 5))\nprint(Mailer.send(\"bob\"))\nprint((Maker.send(\"nope\") rescue \"no such static\"))",
+        // A class with a static `send` of its own keeps it. The reflection
+        // `send` on a class is the tree-walker's alone: the VM refuses it,
+        // and `soli serve` re-runs the action on the tree-walker.
+        "class_own_static_send",
+        "class Mailer\n  static def send(to)\n    \"mail to #{to}\"\n  end\nend\nm = Mailer\nprint(Mailer.send(\"bob\"))\nprint(m.send(\"ann\"))",
     ),
     (
         // `contains?` is `contains`, named as the predicate it is, on strings

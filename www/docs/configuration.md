@@ -554,16 +554,16 @@ Read by the [`ES` class](builtins.md#es-class), per application; `ES.configure` 
 `soli script.sl`, `soli -e "…"` and executables from `soli build tool.sl` run on the bytecode VM —
 the engine `soli serve` uses in production — unless the script needs the tree-walking interpreter.
 That is decided from the source before the first line runs. The interpreter takes a script that
-uses class reflection (`class_eval`, `instance_eval`, `methods`, or `respond_to?`, `inspect`,
+uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`, `inspect`,
 `to_s`, `to_string` on a class name), `method_missing`, model batch iteration
 (`find_each`, `in_batches`, `find_in_batches`), a model
 lifecycle callback (`before_save`, `after_create`, …), a state machine (`state_machine`,
 `before_transition`, `after_transition`) or `subscribe` with a block; one that reads a function
 with no required parameter without parentheses (`x = helper`, `print(helper)`: the interpreter
-calls it, the VM would hand over the function); and one the VM cannot compile. `send` called on an
-instance or a class stays on the VM, and so does a bare `clock`, which both engines call. A name
-the script defines itself — a variable `methods`, a `def subscribe(topic)` — is the script's own
-and does not count. `soli test`, the REPL and `soli serve --dev`
+calls it, the VM would hand over the function); and one the VM cannot compile. Those names count
+wherever they appear, even where the script defines one itself (a variable `methods`, a
+`def subscribe(topic)`), since the same name may be the builtin elsewhere in the script. A bare
+`clock`, which both engines call, stays on the VM. `soli test`, the REPL and `soli serve --dev`
 always use the interpreter. See [Running Soli Code](soli-language.md#running-soli-code).
 
 | Variable / flag | Purpose | Default |

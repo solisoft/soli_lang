@@ -82,10 +82,10 @@ soli lint app/main.sl  # lint a single file
 ```
 
 A script runs on the bytecode VM, the engine `soli serve` uses in production, unless it needs the
-tree-walking interpreter: it uses class reflection such as `class_eval`, `method_missing`, a model
+tree-walking interpreter: it uses class reflection such as `send`, `method_missing`, a model
 callback or a state machine, or it reads a function with no required parameter without
-parentheses (`x = helper`), which the interpreter calls and the VM would not. `send` on an
-instance or a class and a bare `clock` run on the VM. That is decided
+parentheses (`x = helper`), which the interpreter calls and the VM would not. A bare `clock`
+runs on the VM. That is decided
 before the first line runs. `--tree` forces the interpreter, `--vm` the VM, and
 `SOLI_ENGINE_LOG=1` prints which one runs and why (see
 [Configuration](configuration.md#script-engine)). `soli test`, the REPL and `soli serve --dev` use

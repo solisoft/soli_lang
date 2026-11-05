@@ -66,13 +66,138 @@ fn reflection_sends_a_script_to_the_tree_walker() {
 }
 
 #[test]
-fn send_on_an_instance_keeps_a_script_on_the_vm() {
-    // `obj.send("m")` called with positional arguments runs on the VM
-    // (`call_method_slow_path`), so it no longer picks the tree-walker.
+fn send_sends_a_script_to_the_tree_walker() {
+    // The VM's `send` is not the tree-walker's (extra arguments, fields,
+    // defaults, thrown values), and the VM refuses it on a class, so a script
+    // calling it runs on the tree-walker, as up to 2.29.3.
     let dir = script("class A\n  def hi\n    \"hi\"\n  end\nend\nprint(new A().send(\"hi\"))\n");
     let run = soli(dir.path(), &["s.sl"], true);
     assert_eq!(run.stdout, "hi\n", "{}", run.stderr);
-    assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
+    assert!(
+        run.stderr
+            .contains("engine: tree-walker — the script uses `send`"),
+        "{}",
+        run.stderr
+    );
+}
+
+/// A script that calls `send` gives what `--tree` gives: on the VM, `send`
+/// answered a field, applied a default, kept an extra argument from being
+/// dropped and let a thrown value through unwrapped, and `Klass.send` called
+/// the static with full method semantics. A name the script binds in one
+/// function (`def describe(subscribe)`, `def configure(send = false)`) no
+/// longer keeps the builtin used elsewhere on the VM, where `subscribe` with a
+/// block stopped the script halfway, after its side effects.
+#[test]
+fn send_and_reflection_scripts_match_the_tree_walker() {
+    for source in [
+        r###"class Greeter
+  name: String = "bob"
+
+  def greet(who = "world")
+    "hi #{who}"
+  end
+
+  def boom()
+    throw "bad thing"
+  end
+end
+
+g = Greeter.new()
+print(g.send("name") rescue "ERR name")
+print(g.send("greet") rescue "ERR greet")
+try
+  g.send("boom")
+catch e
+  print("caught: #{e}")
+end
+"###,
+        r###"class A
+  def hi
+    "hi"
+  end
+end
+print(A.new().send("hi", 1))
+"###,
+        r###"class K
+  static def make(n = 5)
+    n * 2
+  end
+end
+print(K.send("make"))
+"###,
+        r###"class Insufficient < DomainError
+end
+class Account
+  def withdraw(n)
+    throw Insufficient.new("balance too low")
+  end
+  static def close(n)
+    throw Insufficient.new("cannot close")
+  end
+end
+try
+  Account.new().send("withdraw", 5)
+catch e
+  print("instance: #{type(e)}")
+end
+try
+  Account.send("close", 5)
+catch e
+  print("class: #{type(e)}")
+end
+try
+  Account.new().withdraw(5)
+catch e
+  print("direct: #{type(e)}")
+end
+"###,
+        r###"class OrderPaid < DomainEvent
+end
+
+def describe(subscribe)
+  "flag=#{subscribe}"
+end
+
+print(describe(true))
+subscribe(OrderPaid) do |e|
+  print("paid handler ran")
+end
+publish(OrderPaid.new())
+print("done")
+"###,
+        r###"class P
+  def hi()
+    "hi"
+  end
+
+  def go()
+    send("hi")
+  end
+end
+
+def configure(send = false)
+  send
+end
+
+print(configure())
+print(P.new().go())
+"###,
+        r###"class P
+  def hi()
+    "hi"
+  end
+
+  def list()
+    methods
+  end
+end
+
+print(P.new().list())
+"###,
+    ] {
+        assert_same(source);
+    }
 }
 
 /// Same stdout, same stderr, same exit code on the default engine and on
