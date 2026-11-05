@@ -62,38 +62,36 @@ impl Proj {
     /// JSON text, keys in order. Iterative.
     pub fn to_json_string(&self) -> String {
         enum Item<'a> {
-            Value(&'a Proj),
+            Data(&'a Proj),
             Raw(&'static str),
             Key(&'a str),
         }
         let mut out = String::new();
-        let mut stack = vec![Item::Value(self)];
+        let mut stack = vec![Item::Data(self)];
         while let Some(item) = stack.pop() {
             match item {
                 Item::Raw(text) => out.push_str(text),
                 Item::Key(key) => {
-                    out.push_str(&serde_json::Value::String(key.to_string()).to_string());
+                    push_json_string(&mut out, key);
                     out.push(':');
                 }
-                Item::Value(Proj::Null) => out.push_str("null"),
-                Item::Value(Proj::Str(s)) => {
-                    out.push_str(&serde_json::Value::String(s.clone()).to_string())
-                }
-                Item::Value(Proj::List(items)) => {
+                Item::Data(Proj::Null) => out.push_str("null"),
+                Item::Data(Proj::Str(s)) => push_json_string(&mut out, s),
+                Item::Data(Proj::List(items)) => {
                     out.push('[');
                     stack.push(Item::Raw("]"));
                     for (i, value) in items.iter().enumerate().rev() {
-                        stack.push(Item::Value(value));
+                        stack.push(Item::Data(value));
                         if i > 0 {
                             stack.push(Item::Raw(","));
                         }
                     }
                 }
-                Item::Value(Proj::Map(map)) => {
+                Item::Data(Proj::Map(map)) => {
                     out.push('{');
                     stack.push(Item::Raw("}"));
                     for (i, (key, value)) in map.iter().enumerate().rev() {
-                        stack.push(Item::Value(value));
+                        stack.push(Item::Data(value));
                         stack.push(Item::Key(key));
                         if i > 0 {
                             stack.push(Item::Raw(","));
@@ -104,6 +102,12 @@ impl Proj {
         }
         out
     }
+}
+
+/// Append `s` as a JSON string literal.
+fn push_json_string(out: &mut String, s: &str) {
+    // Serialising a `&str` cannot fail; the fallback is never taken.
+    out.push_str(&serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string()));
 }
 
 /// Add `value` under `key`; a repeated key turns into a list.
