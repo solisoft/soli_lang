@@ -17,7 +17,16 @@
 //! **Namespaces.** An element's namespace URI is resolved once, when it is
 //! parsed or created, and stored on the node (`ns_uri`, shared through
 //! `Arc<str>`). The serialiser re-declares whatever a moved or detached
-//! element needs, so a resolved URI is never lost by an edit.
+//! element needs, so a resolved URI is never lost by an edit. Lookups follow
+//! the same rule: a prefix is bound by a declaration **or** by a resolved
+//! name using it (the element's own, then its attributes'), nearest first.
+//! So a `dup`, an `import` or a removed node can be built on with exactly
+//! the prefixes its own `to_xml` declares.
+//!
+//! **Sibling position** is found by a scan of the parent's children
+//! (`next_node`, `previous_node`, `next_sibling`, `previous_sibling`,
+//! `insert_before`, `detach`, …): walking all children of one element with
+//! `next_node` is quadratic in its child count. Walk `children(id)` instead.
 //!
 //! Every walk here is iterative: a built tree has no depth limit, so nothing
 //! may recurse once per level.
@@ -27,6 +36,8 @@ use std::sync::Arc;
 
 use super::error::{XmlError, XmlErrorKind};
 use super::escape::{drop_forbidden, is_ncname, is_qname, split_qname};
+use super::ns::Bindings;
+use super::parse::normalize_eol;
 use super::policy::MAX_NAME_LEN;
 
 /// The namespace the `xml` prefix is bound to, everywhere, without a
@@ -157,10 +168,11 @@ pub struct XmlTree {
     order_dirty: bool,
     version: u64,
     node_limit: usize,
-    /// Some element of this tree carries a namespace declaration. While none
-    /// does, namespace lookups answer without walking the ancestors (building
-    /// a deep tree with no namespaces stays linear).
-    has_ns_decls: bool,
+    /// Some element of this tree carries a namespace declaration or a
+    /// namespaced name. While none does, namespace lookups answer without
+    /// walking the ancestors (building a deep tree with no namespaces stays
+    /// linear).
+    has_namespaces: bool,
 }
 
 /// A borrowed view of an element's fields, for readers that do not want to
@@ -217,7 +229,7 @@ impl XmlTree {
             order_dirty: false,
             version: 0,
             node_limit,
-            has_ns_decls: false,
+            has_namespaces: false,
         }
     }
 
@@ -392,25 +404,23 @@ impl XmlTree {
             .map(|a| &*a.value)
     }
 
-    /// The URI `prefix` (`None` = default namespace) is bound to at `id`,
-    /// looking at `id`'s own declarations, then its ancestors'. `xml` is always
-    /// bound. An undeclared default (`xmlns=""`) gives `None`.
+    /// The URI `prefix` (`None` = default namespace) is bound to at `id`:
+    /// walking from `id` up, the first element that binds it — by a
+    /// declaration, by its own name, or by one of its attributes' names —
+    /// decides. `xml` is always bound. An undeclared default (`xmlns=""`, or
+    /// an unprefixed element in no namespace) gives `None`.
     pub fn lookup_namespace(&self, id: NodeId, prefix: Option<&str>) -> Option<Arc<str>> {
         if prefix == Some("xml") {
             return Some(Arc::from(XML_NS));
         }
-        if !self.has_ns_decls {
+        if !self.has_namespaces {
             return None;
         }
         let mut current = Some(id);
         while let Some(node) = current {
             if let Some(el) = self.element(node) {
-                if let Some(decl) = el.ns_decls.iter().find(|d| d.prefix.as_deref() == prefix) {
-                    return if decl.uri.is_empty() {
-                        None
-                    } else {
-                        Some(decl.uri.clone())
-                    };
+                if let Some(binding) = binding_at(&el, prefix) {
+                    return binding;
                 }
             }
             current = self.parent(node);
@@ -419,9 +429,11 @@ impl XmlTree {
     }
 
     /// `node.namespaces`: every prefix in scope at `id` (`None` = default),
-    /// nearest declaration winning, in the order the declarations were first
-    /// met walking from the root down. `xml` and undeclared defaults are left
-    /// out.
+    /// nearest binding winning, in the order the prefixes were first bound
+    /// walking from the root down. A binding is a declaration or a resolved
+    /// name that uses the prefix (the rule [`XmlTree::lookup_namespace`] and
+    /// the serialiser follow). `xml` and undeclared defaults are left out.
+    /// Linear in the declarations and attributes on the path.
     pub fn in_scope_namespaces(&self, id: NodeId) -> Vec<NsDecl> {
         let mut chain = Vec::new();
         let mut current = Some(id);
@@ -429,20 +441,38 @@ impl XmlTree {
             chain.push(node);
             current = self.parent(node);
         }
-        let mut scope: Vec<NsDecl> = Vec::new();
+        let mut scope = Bindings::default();
+        let mut seen: HashSet<&str> = HashSet::new();
         for node in chain.into_iter().rev() {
-            if let Some(el) = self.element(node) {
-                for decl in el.ns_decls {
-                    if let Some(slot) = scope.iter_mut().find(|d| d.prefix == decl.prefix) {
-                        slot.uri = decl.uri.clone();
-                    } else {
-                        scope.push(decl.clone());
-                    }
+            let Some(el) = self.element(node) else {
+                continue;
+            };
+            for decl in el.ns_decls {
+                scope.push(decl.prefix.as_deref(), decl.uri.clone());
+            }
+            let declared = |p: Option<&str>| el.ns_decls.iter().any(|d| d.prefix.as_deref() == p);
+            let name_binds =
+                el.prefix != Some("xml") && (el.prefix.is_none() || el.ns_uri.is_some());
+            if name_binds && !declared(el.prefix) {
+                let uri = el.ns_uri.map_or("", |u| &**u);
+                if !scope.means(el.prefix, uri) {
+                    scope.push(el.prefix, Arc::from(uri));
+                }
+            }
+            seen.clear();
+            for attr in el.attrs {
+                let (Some(p), Some(uri)) = (attr.prefix(), attr.ns_uri.as_ref()) else {
+                    continue;
+                };
+                if p == "xml" || el.prefix == Some(p) || declared(Some(p)) || !seen.insert(p) {
+                    continue;
+                }
+                if !scope.means(Some(p), uri) {
+                    scope.push(Some(p), uri.clone());
                 }
             }
         }
-        scope.retain(|d| !d.uri.is_empty());
-        scope
+        scope.in_scope()
     }
 
     /// Position of `id` among its parent's children.
@@ -673,8 +703,16 @@ impl XmlTree {
         }
         let id = NodeId(u32::try_from(self.nodes.len()).map_err(|_| too_many(self.node_limit))?);
         let order = id.0;
-        if let Kind::Element { ns_decls, .. } = &kind {
-            self.has_ns_decls |= !ns_decls.is_empty();
+        if let Kind::Element {
+            ns_decls,
+            ns_uri,
+            attrs,
+            ..
+        } = &kind
+        {
+            self.has_namespaces |= !ns_decls.is_empty()
+                || ns_uri.is_some()
+                || attrs.iter().any(|a| a.ns_uri.is_some());
         }
         self.nodes.push(NodeData {
             parent: None,
@@ -722,6 +760,7 @@ impl XmlTree {
         }
         let mut ns_decls: Vec<NsDecl> = Vec::new();
         let mut plain: Vec<(&str, &str)> = Vec::new();
+        let max_attrs = max_attrs();
         for &(key, value) in attrs {
             if key == "xmlns" {
                 push_decl(&mut ns_decls, None, value)?;
@@ -731,6 +770,9 @@ impl XmlTree {
                 }
                 push_decl(&mut ns_decls, Some(prefix), value)?;
             } else {
+                if plain.len() >= max_attrs {
+                    return Err(XmlError::new(XmlErrorKind::AttrsExceeded(max_attrs)));
+                }
                 plain.push((key, value));
             }
         }
@@ -759,17 +801,16 @@ impl XmlTree {
                 },
                 None => None,
             };
-            let attr = Attr {
+            out_attrs.push(Attr {
                 qname: key.into(),
                 ns_uri: attr_ns,
                 value: drop_forbidden(value).into(),
-            };
-            if out_attrs.iter().any(|a| same_expanded_name(a, &attr)) {
-                return Err(XmlError::new(XmlErrorKind::DuplicateAttribute(
-                    key.to_string(),
-                )));
-            }
-            out_attrs.push(attr);
+            });
+        }
+        if let Some(dup) = find_duplicate(&out_attrs) {
+            return Err(XmlError::new(XmlErrorKind::DuplicateAttribute(
+                dup.qname.to_string(),
+            )));
         }
         let id = self.push_node(Kind::Element {
             qname: qname.into(),
@@ -789,23 +830,27 @@ impl XmlTree {
         self.created(Kind::Text(drop_forbidden(text).into()))
     }
 
-    /// Create a detached CDATA node. Forbidden characters are dropped; a
-    /// `]]>` inside is split across sections when written.
+    /// Create a detached CDATA node. Forbidden characters are dropped and
+    /// line endings normalised to LF (a CR cannot be escaped there, and a
+    /// parser would read it back as LF); a `]]>` inside is split across
+    /// sections when written.
     pub fn create_cdata(&mut self, text: &str) -> Result<NodeId, XmlError> {
-        self.created(Kind::CData(drop_forbidden(text).into()))
+        self.created(Kind::CData(normalize_eol(&drop_forbidden(text)).into()))
     }
 
-    /// Create a detached comment. Raises when it holds `--` or ends with `-`.
+    /// Create a detached comment (line endings normalised, as for CDATA).
+    /// Raises when it holds `--` or ends with `-`.
     pub fn create_comment(&mut self, text: &str) -> Result<NodeId, XmlError> {
-        let text = drop_forbidden(text);
+        let text = normalize_eol(&drop_forbidden(text));
         check_comment(&text)?;
         self.created(Kind::Comment(text.into()))
     }
 
-    /// Create a detached processing instruction. Raises on a target that is
-    /// not an NCName or is `xml` (any case), or data holding `?>`.
+    /// Create a detached processing instruction (line endings normalised, as
+    /// for CDATA). Raises on a target that is not an NCName or is `xml` (any
+    /// case), or data holding `?>`.
     pub fn create_pi(&mut self, target: &str, data: &str) -> Result<NodeId, XmlError> {
-        let data = drop_forbidden(data);
+        let data = normalize_eol(&drop_forbidden(data));
         check_pi(target, &data)?;
         self.created(Kind::Pi {
             target: target.into(),
@@ -1075,6 +1120,10 @@ impl XmlTree {
                     qname.to_string(),
                 )));
             }
+            let limit = max_attrs();
+            if attrs.len() >= limit {
+                return Err(XmlError::new(XmlErrorKind::AttrsExceeded(limit)));
+            }
             attrs.push(attr);
             None
         };
@@ -1126,13 +1175,15 @@ impl XmlTree {
                 Ok(())
             }
             Kind::Text(_) => self.set_kind(id, Kind::Text(text.into())),
-            Kind::CData(_) => self.set_kind(id, Kind::CData(text.into())),
+            Kind::CData(_) => self.set_kind(id, Kind::CData(normalize_eol(&text).into())),
             Kind::Comment(_) => {
+                let text = normalize_eol(&text);
                 check_comment(&text)?;
                 self.set_kind(id, Kind::Comment(text.into()))
             }
             Kind::Pi { target, .. } => {
                 let target = target.clone();
+                let text = normalize_eol(&text);
                 check_pi(&target, &text)?;
                 self.set_kind(
                     id,
@@ -1270,6 +1321,34 @@ impl XmlTree {
     }
 }
 
+/// What `el` binds `prefix` to, if anything: `Some(Some(uri))` bound,
+/// `Some(None)` unbound here (an undeclaration, or an unprefixed element in
+/// no namespace), `None` when `el` says nothing about `prefix`. A
+/// declaration wins, then the element's own name, then its first attribute
+/// using the prefix — the order the serialiser settles prefixes in.
+fn binding_at(el: &ElementRef<'_>, prefix: Option<&str>) -> Option<Option<Arc<str>>> {
+    if let Some(decl) = el.ns_decls.iter().find(|d| d.prefix.as_deref() == prefix) {
+        return Some((!decl.uri.is_empty()).then(|| decl.uri.clone()));
+    }
+    if el.prefix == prefix {
+        return match (prefix, el.ns_uri) {
+            // A prefix a lenient parse left unbound binds nothing.
+            (Some(_), None) => None,
+            (_, uri) => Some(uri.cloned()),
+        };
+    }
+    prefix?;
+    el.attrs
+        .iter()
+        .find(|a| a.prefix() == prefix && a.ns_uri.is_some())
+        .map(|a| a.ns_uri.clone())
+}
+
+/// `SOLI_MAX_XML_ATTRS`, for built elements as for parsed ones.
+fn max_attrs() -> usize {
+    usize::try_from(crate::interpreter::limits::max_xml_attrs()).unwrap_or(usize::MAX)
+}
+
 /// Kind equality for [`XmlTree::subtree_eq`]: the self-closing bit only
 /// matters on an element with no children (it is how an empty one is written).
 fn kinds_eq(a: &Kind, b: &Kind, empty: bool) -> bool {
@@ -1296,7 +1375,16 @@ fn kinds_eq(a: &Kind, b: &Kind, empty: bool) -> bool {
     }
 }
 
+/// Namespace declarations one built element may make: quick-xml's per-element
+/// cap, so whatever is built can be parsed back.
+const MAX_BUILT_DECLS: usize = 256;
+
 fn push_decl(decls: &mut Vec<NsDecl>, prefix: Option<&str>, uri: &str) -> Result<(), XmlError> {
+    if decls.len() >= MAX_BUILT_DECLS {
+        return Err(invalid(&format!(
+            "more than {MAX_BUILT_DECLS} namespace declarations on one element"
+        )));
+    }
     if decls.iter().any(|d| d.prefix.as_deref() == prefix) {
         let name = match prefix {
             Some(p) => format!("xmlns:{p}"),

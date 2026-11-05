@@ -58,9 +58,13 @@ pub enum XmlErrorKind {
     BytesExceeded(Option<usize>, usize),
     /// More attributes on one element than the limit.
     AttrsExceeded(usize),
+    /// More namespace bindings live at once than the policy's
+    /// `max_ns_bindings`.
+    NamespacesExceeded(usize),
     /// A name longer than [`super::policy::MAX_NAME_LEN`] bytes.
     NameTooLong(usize),
-    /// One text run longer than the policy's `max_text_run`.
+    /// More text directly inside one element (or in one run outside the
+    /// root) than the policy's `max_text_run`.
     TextRunExceeded(usize),
     /// Serialised output larger than the limit.
     OutputExceeded(usize),
@@ -182,6 +186,10 @@ impl fmt::Display for XmlErrorKind {
             AttrsExceeded(limit) => write!(
                 f,
                 "more than {limit} attributes on one element (SOLI_MAX_XML_ATTRS)"
+            ),
+            NamespacesExceeded(limit) => write!(
+                f,
+                "more than {limit} namespace declarations in scope at once"
             ),
             NameTooLong(limit) => write!(f, "name longer than {limit} bytes"),
             TextRunExceeded(limit) => write!(f, "text longer than {limit} bytes"),

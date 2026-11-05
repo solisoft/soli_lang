@@ -22,8 +22,8 @@
 //! (they can only go down) and [`ParsePolicy::strip_blank`] drops blank text.
 //! Knobs: `doctype_message`, `unknown_entity`, `unbound_prefix`,
 //! `duplicate_attribute`, `trailing_content`, `no_root`, `max_depth`,
-//! `max_nodes`, `max_bytes`, `max_attrs`, `max_text_run`, `keep_blank_text`,
-//! `strict_syntax`, `raw_pi_data`. Limits come from `interpreter::limits::max_xml_*`.
+//! `max_nodes`, `max_bytes`, `max_attrs`, `max_text_run`, `max_ns_bindings`,
+//! `keep_blank_text`, `strict_syntax`, `raw_pi_data`, `lenient_attributes`. Limits come from `interpreter::limits::max_xml_*`.
 //!
 //! **The tree** — [`XmlTree`], [`NodeId`] (`NodeId::DOCUMENT` is 0), [`Kind`]
 //! (`Document`, `Element { qname, local_start, ns_uri, attrs, ns_decls,
@@ -70,6 +70,7 @@
 
 pub mod error;
 pub mod escape;
+mod ns;
 pub mod parse;
 pub mod policy;
 pub mod project;
@@ -83,7 +84,7 @@ pub use error::{line_col, XmlError, XmlErrorKind};
 pub use parse::{parse, parse_bytes, EventLoop, NsScope, Sink, StartTag, Step, TreeSink};
 pub use policy::{
     OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
-    MAX_NAME_LEN,
+    MAX_NAME_LEN, MAX_NS_BINDINGS,
 };
 pub use project::{soap_error_message, soap_shape, to_h, Proj};
 pub use serialize::{serialize, serialize_children, SerializeOptions};

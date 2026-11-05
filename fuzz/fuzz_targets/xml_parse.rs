@@ -5,7 +5,44 @@
 //! round-trip: serialise it, parse the output, and get the same tree back.
 
 use libfuzzer_sys::fuzz_target;
-use solilang::xml::{parse, serialize, soap_shape, to_h, NodeId, ParsePolicy, SerializeOptions};
+use solilang::xml::{
+    parse, serialize, soap_shape, to_h, NodeId, ParsePolicy, SerializeOptions, XmlTree,
+};
+
+/// Every element under `id` in document order, by expanded name, with its
+/// attributes by expanded name (prefixes may be renamed on output).
+fn expanded(
+    tree: &XmlTree,
+    id: NodeId,
+) -> Vec<(
+    Option<String>,
+    String,
+    Vec<(Option<String>, String, String)>,
+)> {
+    tree.descendants(id)
+        .into_iter()
+        .filter_map(|n| tree.element(n))
+        .map(|el| {
+            let mut attrs: Vec<_> = el
+                .attrs
+                .iter()
+                .map(|a| {
+                    (
+                        a.ns_uri.as_deref().map(str::to_string),
+                        a.local_name().to_string(),
+                        a.value.to_string(),
+                    )
+                })
+                .collect();
+            attrs.sort();
+            (
+                el.ns_uri.map(|u| u.to_string()),
+                el.local_name.to_string(),
+                attrs,
+            )
+        })
+        .collect()
+}
 
 fuzz_target!(|data: &[u8]| {
     let Ok(text) = std::str::from_utf8(data) else {
@@ -42,5 +79,44 @@ fuzz_target!(|data: &[u8]| {
     for node in tree.descendants(NodeId::DOCUMENT) {
         let fragment = serialize(&tree, node, &opts).expect("a fragment serialises");
         parse(&fragment, &ParsePolicy::xml()).expect("a fragment parses on its own");
+    }
+
+    // Mutate, then serialise and reparse: moves and attributes set in a new
+    // scope must keep every element's and attribute's expanded name, and the
+    // output must stay well-formed (no prefix rebound, no duplicate xmlns).
+    let mut edited = tree.clone();
+    let elements = edited.descendants(NodeId::DOCUMENT);
+    let n = elements.len();
+    let seed = data.len();
+    for (i, &el) in elements.iter().enumerate().take(64) {
+        let target = elements[(i * 7 + seed) % n];
+        let _ = edited.append_child(target, el);
+        let prefixes: Vec<Option<Box<str>>> = tree
+            .in_scope_namespaces(el)
+            .into_iter()
+            .map(|d| d.prefix)
+            .take(4)
+            .collect();
+        for (k, prefix) in prefixes.iter().enumerate() {
+            if let Some(p) = prefix {
+                let _ = edited.set_attribute(el, &format!("{p}:fz{k}"), Some("v"));
+            }
+        }
+        // A copy of the element can be built on with its own prefixes.
+        if let (Ok((mut copy, id)), Some(name)) = (edited.dup(el), edited.name(el)) {
+            copy.add_element(id, name, &[])
+                .expect("a dup accepts its own element name");
+        }
+    }
+    let written = serialize(&edited, NodeId::DOCUMENT, &opts).expect("an edited tree serialises");
+    let again = parse(&written, &ParsePolicy::xml()).expect("an edited tree's output parses");
+    assert_eq!(
+        expanded(&edited, NodeId::DOCUMENT),
+        expanded(&again, NodeId::DOCUMENT),
+        "editing changed a namespace: {written:?}"
+    );
+    for node in edited.descendants(NodeId::DOCUMENT) {
+        let fragment = serialize(&edited, node, &opts).expect("an edited fragment serialises");
+        parse(&fragment, &ParsePolicy::xml()).expect("an edited fragment parses on its own");
     }
 });

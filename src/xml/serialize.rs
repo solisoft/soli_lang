@@ -15,15 +15,19 @@
 //! - **Indent** pretty-prints element-only content (whitespace-only text is
 //!   dropped there) and never touches mixed content or anything below it.
 //! - CDATA holding `]]>` is split across sections; text and attribute values
-//!   go through [`super::escape`], which drops characters XML forbids.
+//!   go through [`super::escape`], which drops characters XML forbids. A
+//!   comment a lenient parse kept with `--` in it gets a space between the
+//!   dashes, so the output always parses.
 //! - Output is capped at `max_bytes`.
 //!
 //! Iterative: a built tree has no depth limit.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::error::{XmlError, XmlErrorKind};
 use super::escape::{drop_forbidden, escape_attr_into, escape_text_into, split_qname};
+use super::ns::Bindings;
 use super::tree::{Kind, NodeId, XmlTree, XML_NS};
 
 /// `to_xml` options.
@@ -97,7 +101,7 @@ pub fn serialize_children(
 ) -> Result<String, XmlError> {
     let mut writer = Writer::new(tree, opts);
     for decl in tree.in_scope_namespaces(id) {
-        writer.scope.push((decl.prefix, Some(decl.uri)));
+        writer.scope.push(decl.prefix.as_deref(), decl.uri);
     }
     for child in tree.children(id) {
         writer.node(*child, 0, false)?;
@@ -105,10 +109,6 @@ pub fn serialize_children(
     writer.check()?;
     Ok(writer.out)
 }
-
-/// One output binding: `(prefix, uri)`; a `None` uri undeclares the default
-/// namespace.
-type ScopeEntry = (Option<Box<str>>, Option<Arc<str>>);
 
 enum Work {
     Node {
@@ -127,9 +127,9 @@ struct Writer<'t> {
     tree: &'t XmlTree,
     opts: SerializeOptions,
     out: String,
-    /// Output namespace scope: `(prefix, uri)`; a `None` uri undeclares the
-    /// default namespace.
-    scope: Vec<ScopeEntry>,
+    /// Output namespace scope, one stack per prefix; an empty URI
+    /// undeclares the default namespace.
+    scope: Bindings,
 }
 
 impl<'t> Writer<'t> {
@@ -138,7 +138,7 @@ impl<'t> Writer<'t> {
             tree,
             opts: *opts,
             out: String::new(),
-            scope: Vec::new(),
+            scope: Bindings::default(),
         }
     }
 
@@ -173,11 +173,7 @@ impl<'t> Writer<'t> {
         if prefix == Some("xml") {
             return None;
         }
-        self.scope
-            .iter()
-            .rev()
-            .find(|(p, _)| p.as_deref() == prefix)
-            .and_then(|(_, uri)| uri.as_ref())
+        self.scope.get(prefix).filter(|uri| !uri.is_empty())
     }
 
     fn bound_to(&self, prefix: Option<&str>, uri: Option<&Arc<str>>) -> bool {
@@ -253,7 +249,7 @@ impl<'t> Writer<'t> {
             }
             Kind::Comment(text) => {
                 self.out.push_str("<!--");
-                self.out.push_str(&drop_forbidden(text));
+                push_comment_body(&mut self.out, &drop_forbidden(text));
                 self.out.push_str("-->");
             }
             Kind::Pi { target, data } => {
@@ -278,25 +274,33 @@ impl<'t> Writer<'t> {
         self.out.push('<');
         self.out.push_str(el.qname);
 
+        // Prefixes whose meaning on this element is settled: declared here,
+        // the element's own (declared here or inherited), and those of
+        // attributes already written. A later attribute may not rebind one,
+        // or an earlier name would silently change namespace: it gets a
+        // fresh `nsN` prefix instead. Sets, so a tag with a thousand
+        // prefixed attributes stays linear.
+        let mut pinned: HashSet<Option<&str>> = HashSet::new();
+        let mut fresh_names: HashSet<String> = HashSet::new();
+        let has_prefixed_attr = el.attrs.iter().any(|a| a.prefix().is_some());
+
         // The element's own declarations, as written.
-        let mut declared_here: Vec<Option<&str>> = Vec::new();
         for decl in el.ns_decls {
-            let uri = (!decl.uri.is_empty()).then(|| decl.uri.clone());
             self.write_decl(decl.prefix.as_deref(), Some(&*decl.uri));
-            self.scope.push((decl.prefix.clone(), uri));
-            declared_here.push(decl.prefix.as_deref());
+            self.scope.push(decl.prefix.as_deref(), decl.uri.clone());
+            pinned.insert(decl.prefix.as_deref());
         }
 
         // Fix-up for the element's own name.
         let unbound_prefix = el.prefix.is_some() && el.ns_uri.is_none();
-        if !unbound_prefix
-            && !self.bound_to(el.prefix, el.ns_uri)
-            && !declared_here.contains(&el.prefix)
-        {
+        if !unbound_prefix && !self.bound_to(el.prefix, el.ns_uri) && !pinned.contains(&el.prefix) {
             let uri = el.ns_uri.cloned();
             self.write_decl(el.prefix, uri.as_deref());
-            self.scope.push((el.prefix.map(Box::from), uri));
-            declared_here.push(el.prefix);
+            self.scope
+                .push(el.prefix, uri.unwrap_or_else(|| Arc::from("")));
+        }
+        if has_prefixed_attr {
+            pinned.insert(el.prefix);
         }
 
         // Fix-ups for attribute prefixes, then the attributes.
@@ -315,29 +319,32 @@ impl<'t> Writer<'t> {
             };
             if self.bound_to(Some(p), Some(uri)) {
                 names.push(std::borrow::Cow::Borrowed(&attr.qname));
+                pinned.insert(Some(p));
                 continue;
             }
-            if !declared_here.contains(&Some(p)) {
+            if !pinned.contains(&Some(p)) && !fresh_names.contains(p) {
                 self.write_decl(Some(p), Some(&**uri));
-                self.scope.push((Some(p.into()), Some(uri.clone())));
-                declared_here.push(Some(p));
+                self.scope.push(Some(p), uri.clone());
+                pinned.insert(Some(p));
                 names.push(std::borrow::Cow::Borrowed(&attr.qname));
                 continue;
             }
-            // `p` is taken on this element by another URI: a fresh prefix.
+            // `p` is settled on this element with another URI: a fresh prefix
+            // (never one already used here or bound above; earlier fresh
+            // names are distinct by construction).
             let candidate = loop {
                 fresh += 1;
                 let candidate = format!("ns{fresh}");
-                if !declared_here.contains(&Some(candidate.as_str()))
+                if !pinned.contains(&Some(candidate.as_str()))
                     && self.lookup(Some(&candidate)).is_none()
                 {
                     break candidate;
                 }
             };
             self.write_decl(Some(&candidate), Some(&**uri));
-            self.scope
-                .push((Some(candidate.as_str().into()), Some(uri.clone())));
+            self.scope.push(Some(&candidate), uri.clone());
             names.push(std::borrow::Cow::Owned(format!("{candidate}:{local}")));
+            fresh_names.insert(candidate);
         }
         for (attr, name) in el.attrs.iter().zip(names) {
             self.out.push(' ');
@@ -395,5 +402,22 @@ impl<'t> Writer<'t> {
                 Kind::CData(_) => false,
                 _ => true,
             })
+    }
+}
+
+/// A comment body that is always well-formed. A lenient parse (SOAP, c14n)
+/// can keep `--` or a trailing `-`, which no comment may hold: a space goes
+/// between two dashes and after a final one. Built comments never need it.
+fn push_comment_body(out: &mut String, text: &str) {
+    let mut previous_dash = false;
+    for c in text.chars() {
+        if c == '-' && previous_dash {
+            out.push(' ');
+        }
+        out.push(c);
+        previous_dash = c == '-';
+    }
+    if previous_dash {
+        out.push(' ');
     }
 }

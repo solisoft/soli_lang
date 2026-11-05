@@ -30,8 +30,10 @@ use quick_xml::reader::NsReader;
 
 use super::error::{XmlError, XmlErrorKind};
 use super::escape::{first_forbidden, is_ncname, is_qname, is_xml_char, split_qname};
+use super::ns::Bindings;
 use super::policy::{
-    OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_NAME_LEN,
+    OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
+    MAX_NAME_LEN,
 };
 use super::tree::{find_duplicate, Attr, Kind, NodeId, NsDecl, XmlDecl, XmlTree, XML_NS};
 
@@ -66,10 +68,13 @@ pub trait Sink {
     fn pi(&mut self, target: String, data: String) -> Result<(), XmlError>;
 }
 
-/// The namespace bindings in scope while parsing.
+/// The namespace bindings in scope while parsing. Lookups are one hash
+/// probe and [`NsScope::in_scope`] is linear in the live bindings, however
+/// many a hostile document piles up (the policy's `max_ns_bindings` caps
+/// them).
 #[derive(Debug, Clone)]
 pub struct NsScope {
-    bindings: Vec<(Option<Box<str>>, Arc<str>)>,
+    bindings: Bindings,
     marks: Vec<usize>,
     xml: Arc<str>,
 }
@@ -77,7 +82,7 @@ pub struct NsScope {
 impl Default for NsScope {
     fn default() -> Self {
         NsScope {
-            bindings: Vec::new(),
+            bindings: Bindings::default(),
             marks: Vec::new(),
             xml: Arc::from(XML_NS),
         }
@@ -91,36 +96,25 @@ impl NsScope {
         if prefix == Some("xml") {
             return Some(&self.xml);
         }
-        self.bindings
-            .iter()
-            .rev()
-            .find(|(p, _)| p.as_deref() == prefix)
-            .map(|(_, uri)| uri)
-            .filter(|uri| !uri.is_empty())
+        self.bindings.get(prefix).filter(|uri| !uri.is_empty())
     }
 
     /// Every binding in scope, nearest winning, `xml` and undeclared defaults
-    /// excluded, in the order the prefixes were first declared.
+    /// excluded, in the order the prefixes were first declared. Linear in
+    /// the number of live bindings ([`NsScope::binding_count`]).
     pub fn in_scope(&self) -> Vec<NsDecl> {
-        let mut out: Vec<NsDecl> = Vec::new();
-        for (prefix, uri) in &self.bindings {
-            if let Some(slot) = out.iter_mut().find(|d| d.prefix == *prefix) {
-                slot.uri = uri.clone();
-            } else {
-                out.push(NsDecl {
-                    prefix: prefix.clone(),
-                    uri: uri.clone(),
-                });
-            }
-        }
-        out.retain(|d| !d.uri.is_empty());
-        out
+        self.bindings.in_scope()
+    }
+
+    /// Live bindings, shadowed ones included: what `max_ns_bindings` caps.
+    pub fn binding_count(&self) -> usize {
+        self.bindings.len()
     }
 
     fn push(&mut self, decls: &[NsDecl]) {
         self.marks.push(self.bindings.len());
         for decl in decls {
-            self.bindings.push((decl.prefix.clone(), decl.uri.clone()));
+            self.bindings.push(decl.prefix.as_deref(), decl.uri.clone());
         }
     }
 
@@ -146,13 +140,20 @@ enum RootState {
 }
 
 /// The parse loop over any `BufRead` (a string's bytes, a buffered file).
+///
+/// `max_bytes` and the text cap are checked once quick-xml has handed over a
+/// whole event, so one huge text or tag is buffered before it is refused.
+/// [`parse`] checks a string's length first; a driver reading a file must
+/// bound the reader itself (a `BufRead` adapter that stops after
+/// `max_bytes`) to keep a single oversized event out of memory.
 pub struct EventLoop<R: BufRead> {
     reader: NsReader<R>,
     buf: Vec<u8>,
     policy: ParsePolicy,
     scope: NsScope,
-    /// qnames and start offsets of the open elements of the kept tree.
-    open: Vec<(Box<str>, u64)>,
+    /// The open elements of the kept tree: qname, start offset, and the
+    /// bytes of text delivered directly inside it so far (`max_text_run`).
+    open: Vec<(Box<str>, u64, usize)>,
     /// Depth inside a trailing root being skipped (`TrailingContent::Ignore`).
     skip_depth: usize,
     state: RootState,
@@ -174,7 +175,7 @@ fn is_xml_space(c: char) -> bool {
 }
 
 /// CRLF and lone CR become LF (XML 1.0 §2.11).
-fn normalize_eol(s: &str) -> String {
+pub(crate) fn normalize_eol(s: &str) -> String {
     if !s.contains('\r') {
         return s.to_string();
     }
@@ -326,6 +327,10 @@ fn check_name(name: &str, strict: bool, offset: u64) -> Result<(), XmlError> {
 
 impl<R: BufRead> EventLoop<R> {
     pub fn new(input: R, policy: ParsePolicy) -> Self {
+        // quick-xml counts nesting in a `u16`: no policy may go past the
+        // ceiling, however it was built.
+        let mut policy = policy;
+        policy.max_depth = policy.max_depth.min(MAX_DEPTH_CEILING);
         let mut reader = NsReader::from_reader(input);
         let config = reader.config_mut();
         config.check_end_names = true;
@@ -437,6 +442,7 @@ impl<R: BufRead> EventLoop<R> {
                 } else {
                     self.check_literal(&text, start)?;
                     self.check_run(text.len(), start)?;
+                    self.add_direct_text(text.len());
                     sink.cdata(text)?;
                 }
             }
@@ -537,7 +543,7 @@ impl<R: BufRead> EventLoop<R> {
             // ignored anyway.
             return Ok(Step::Done);
         }
-        if let Some((name, start)) = self.open.last() {
+        if let Some((name, start, _)) = self.open.last() {
             return Err(match self.policy.no_root {
                 OnNoRoot::Error(message) => XmlError::at(XmlErrorKind::NoRoot(message), offset),
                 _ => XmlError::at(XmlErrorKind::Unclosed(name.to_string()), *start),
@@ -579,12 +585,23 @@ impl<R: BufRead> EventLoop<R> {
         Ok(())
     }
 
+    /// `len` more bytes of text directly in the current element (or one run
+    /// outside the root) would pass `max_text_run`.
     fn check_run(&self, len: usize, offset: u64) -> Result<(), XmlError> {
+        let held = self.open.last().map_or(0, |(_, _, held)| *held);
         match self.policy.max_text_run {
-            Some(limit) if len > limit => {
+            Some(limit) if held.saturating_add(len) > limit => {
                 Err(XmlError::at(XmlErrorKind::TextRunExceeded(limit), offset))
             }
             _ => Ok(()),
+        }
+    }
+
+    fn add_direct_text(&mut self, len: usize) {
+        if self.skip_depth == 0 {
+            if let Some((_, _, held)) = self.open.last_mut() {
+                *held = held.saturating_add(len);
+            }
         }
     }
 
@@ -614,6 +631,7 @@ impl<R: BufRead> EventLoop<R> {
             }
             return Ok(());
         }
+        self.add_direct_text(text.len());
         if blank && !self.policy.keep_blank_text {
             return Ok(());
         }
@@ -670,7 +688,7 @@ impl<R: BufRead> EventLoop<R> {
                 self.state = RootState::After;
             }
         } else {
-            self.open.push((qname, offset));
+            self.open.push((qname, offset, 0));
         }
         Ok(())
     }
@@ -691,13 +709,26 @@ impl<R: BufRead> EventLoop<R> {
             return Err(XmlError::at(XmlErrorKind::InvalidName(qname), offset));
         }
 
+        let lenient = self.policy.lenient_attributes;
         let mut ns_decls: Vec<NsDecl> = Vec::new();
         let mut raw_attrs: Vec<(String, String)> = Vec::new();
         for attr in e.attributes().with_checks(false) {
-            let attr = attr.map_err(|err| map_qx_error(QxError::InvalidAttr(err), offset))?;
-            let key = utf8(attr.key.as_ref(), offset)?;
-            check_name(key, strict, offset)?;
-            let value = decode_attr_value(utf8(&attr.value, offset)?, &self.policy, offset)?;
+            let attr = match attr {
+                Ok(attr) => attr,
+                // Best effort: keep what came before the bad attribute.
+                Err(_) if lenient => break,
+                Err(err) => return Err(map_qx_error(QxError::InvalidAttr(err), offset)),
+            };
+            let decoded = utf8(attr.key.as_ref(), offset).and_then(|key| {
+                check_name(key, strict, offset)?;
+                let value = decode_attr_value(utf8(&attr.value, offset)?, &self.policy, offset)?;
+                Ok((key, value))
+            });
+            let (key, value) = match decoded {
+                Ok(pair) => pair,
+                Err(_) if lenient => continue,
+                Err(err) => return Err(err),
+            };
             let decl_prefix = if key == "xmlns" {
                 Some(None)
             } else {
@@ -729,6 +760,9 @@ impl<R: BufRead> EventLoop<R> {
                 }
                 None => {
                     if raw_attrs.len() >= self.policy.max_attrs {
+                        if lenient {
+                            continue;
+                        }
                         return Err(XmlError::at(
                             XmlErrorKind::AttrsExceeded(self.policy.max_attrs),
                             offset,
@@ -739,6 +773,12 @@ impl<R: BufRead> EventLoop<R> {
             }
         }
 
+        if self.scope.binding_count().saturating_add(ns_decls.len()) > self.policy.max_ns_bindings {
+            return Err(XmlError::at(
+                XmlErrorKind::NamespacesExceeded(self.policy.max_ns_bindings),
+                offset,
+            ));
+        }
         self.scope.push(&ns_decls);
         let result = self.resolve_tag(qname, raw_attrs, ns_decls, offset, empty);
         if result.is_err() {

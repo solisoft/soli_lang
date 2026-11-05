@@ -15,8 +15,15 @@ pub const MAX_NAME_LEN: usize = 4096;
 
 /// Hard ceiling on the nesting depth, whatever `SOLI_MAX_XML_DEPTH` says.
 /// quick-xml counts open elements in a `u16`, and the tree walkers that are
-/// not iterative recurse at most this deep.
+/// not iterative recurse at most this deep. [`super::EventLoop::new`] clamps
+/// any policy to it, so a hand-built policy cannot overflow quick-xml.
 pub const MAX_DEPTH_CEILING: usize = 10_000;
+
+/// Default cap on the namespace bindings live at one point of a document
+/// (every `xmlns*` of every open element, shadowed ones included). quick-xml
+/// caps declarations per element (256) but not their sum down a deep path;
+/// real vocabularies stay in the tens.
+pub const MAX_NS_BINDINGS: usize = 4096;
 
 /// What to do with `&name;` when `name` is not a predefined entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,9 +86,13 @@ pub struct ParsePolicy {
     pub max_bytes: usize,
     /// Attributes per element (namespace declarations excluded).
     pub max_attrs: usize,
-    /// Longest single text run (adjacent text and references joined, or one
-    /// CDATA section), in bytes. `None`: bounded by `max_bytes` only.
+    /// Most text one element may hold directly, in bytes: its text,
+    /// references and CDATA added up across comments, PIs and child elements
+    /// (what a projection joins into one `_text`). Text outside the root
+    /// counts per run. `None`: bounded by `max_bytes` only.
     pub max_text_run: Option<usize>,
+    /// Namespace bindings live at one point (see [`MAX_NS_BINDINGS`]).
+    pub max_ns_bindings: usize,
     /// Keep whitespace-only text nodes inside the root (`false` is
     /// `strip_blank: true`).
     pub keep_blank_text: bool,
@@ -97,6 +108,13 @@ pub struct ParsePolicy {
     /// trio formats PIs from that raw content today; everyone else gets the
     /// data with leading whitespace stripped (`"d"`).
     pub raw_pi_data: bool,
+    /// Never refuse a document over an attribute (SOAP, which drops
+    /// attributes anyway): an attribute whose value does not decode (`&`
+    /// alone, `&#0;`) or whose name is too long is skipped, a syntax error
+    /// stops reading the tag's attributes (the ones before it are kept),
+    /// and attributes past `max_attrs` are dropped. Namespace declarations
+    /// are read best effort under the same rules.
+    pub lenient_attributes: bool,
 }
 
 impl ParsePolicy {
@@ -114,9 +132,11 @@ impl ParsePolicy {
             max_bytes: env_usize(limits::max_xml_bytes()),
             max_attrs: env_usize(limits::max_xml_attrs()),
             max_text_run: None,
+            max_ns_bindings: MAX_NS_BINDINGS,
             keep_blank_text: true,
             strict_syntax: true,
             raw_pi_data: false,
+            lenient_attributes: false,
         }
     }
 
@@ -136,9 +156,11 @@ impl ParsePolicy {
             max_bytes: env_usize(limits::max_xml_bytes()),
             max_attrs: env_usize(limits::max_xml_attrs()),
             max_text_run: Some(1024 * 1024),
+            max_ns_bindings: MAX_NS_BINDINGS,
             keep_blank_text: true,
             strict_syntax: false,
             raw_pi_data: false,
+            lenient_attributes: true,
         }
     }
 
@@ -159,9 +181,11 @@ impl ParsePolicy {
             max_bytes: env_usize(limits::max_xml_bytes()),
             max_attrs: env_usize(limits::max_xml_attrs()),
             max_text_run: None,
+            max_ns_bindings: MAX_NS_BINDINGS,
             keep_blank_text: true,
             strict_syntax: false,
             raw_pi_data: true,
+            lenient_attributes: false,
         }
     }
 
@@ -230,6 +254,8 @@ mod tests {
         assert!(soap.max_depth <= 64);
         assert_eq!(c14n.max_depth, 256);
         assert_eq!(soap.max_text_run, Some(1024 * 1024));
+        assert!(soap.lenient_attributes && !xml.lenient_attributes && !c14n.lenient_attributes);
+        assert_eq!(xml.max_ns_bindings, MAX_NS_BINDINGS);
         assert!(xml.max_depth <= MAX_DEPTH_CEILING);
         assert!(!ParsePolicy::xml().strip_blank(true).keep_blank_text);
         assert_eq!(

@@ -8,8 +8,9 @@
 //! Two shapes:
 //! - [`to_h`] (§1.9 of the design): `{qname => value}`; attributes under
 //!   `"@name"`, children by qname (repeats become a list), non-blank direct
-//!   text joined and trimmed under `"_text"`; a leaf is its trimmed text or
-//!   `nil`.
+//!   text joined and trimmed under `"_text"` (a child element named `_text`
+//!   and the text then form a list, child first); a leaf is its trimmed text
+//!   or `nil`.
 //! - [`soap_shape`]: today's `SOAP.parse` output, with its six bugs fixed
 //!   (whitespace around entities kept, CDATA kept, self-closing repeats
 //!   appended, a self-closing root gives `{"a" => nil}`, mixed-content runs
@@ -194,7 +195,8 @@ pub fn to_h(tree: &XmlTree, id: NodeId) -> Proj {
         let text = tree.own_text(node);
         let text = text.trim();
         if !text.is_empty() {
-            map.insert("_text".to_string(), Proj::Str(text.to_string()));
+            // A child element named `_text` is kept: the two become a list.
+            insert_repeat(&mut map, "_text", Proj::Str(text.to_string()));
         }
         Proj::Map(map)
     });

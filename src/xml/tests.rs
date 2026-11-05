@@ -1243,17 +1243,17 @@ fn a_moved_element_keeps_its_namespace_on_output() -> TestResult {
         compact(&tree, c)?,
         "<c xmlns:x=\"urn:2\"><x:b xmlns:x=\"urn:1\" x:k=\"v\"/></c>"
     );
-    // An attribute resolved in the new scope, on an element whose prefix
-    // keeps the old URI: the attribute gets a fresh prefix.
+    // A prefix resolves where the element's output declares it: `x` on the
+    // moved `x:b` still means urn:1, so an attribute set there gets urn:1.
     s(tree.set_attribute(b, "x:n", Some("w")))?;
     let written = compact(&tree, c)?;
     assert_eq!(
         written,
-        "<c xmlns:x=\"urn:2\"><x:b xmlns:x=\"urn:1\" xmlns:ns1=\"urn:2\" x:k=\"v\" ns1:n=\"w\"/></c>"
+        "<c xmlns:x=\"urn:2\"><x:b xmlns:x=\"urn:1\" x:k=\"v\" x:n=\"w\"/></c>"
     );
     let back = xml(&written)?;
     let b2 = child(&back, root(&back)?, 0)?;
-    assert_eq!(back.attribute_ns(b2, "n", Some("urn:2")), Some("w"));
+    assert_eq!(back.attribute_ns(b2, "n", Some("urn:1")), Some("w"));
     assert_eq!(back.attribute_ns(b2, "k", Some("urn:1")), Some("v"));
     // A default-namespace element moved under no namespace re-declares it.
     let mut tree = xml("<r><a xmlns=\"urn:d\"><b/></a></r>")?;
@@ -1524,4 +1524,498 @@ fn proj_json_escapes_strings_and_keeps_order() -> TestResult {
         "{\"z\":\"q\\\"uote\\n\",\"a\":[null,{}]}"
     );
     Ok(())
+}
+
+// ------------------------------------------------------------- review fixes
+
+/// `levels` nested elements each declaring `per_level` prefixes, then
+/// `leaves` leaves named and attributed with prefixes from the outermost
+/// level (the worst case for a backwards scan of every binding).
+fn hostile_scope(levels: usize, per_level: usize, leaves: usize, attrs: usize) -> String {
+    let mut s = String::new();
+    for l in 0..levels {
+        s.push_str("<l");
+        for d in 0..per_level {
+            s.push_str(&format!(" xmlns:p{l}_{d}=\"u{l}_{d}\""));
+        }
+        s.push('>');
+    }
+    for _ in 0..leaves {
+        s.push_str("<p0_0:leaf");
+        for k in 0..attrs {
+            s.push_str(&format!(" p0_{k}:a=\"1\""));
+        }
+        s.push_str("/>");
+    }
+    for _ in 0..levels {
+        s.push_str("</l>");
+    }
+    s
+}
+
+/// A sink that asks for the in-scope namespaces at the first `budget`
+/// leaves, the way the streaming lane copies them onto each match.
+struct ScopeProbe {
+    inner: TreeSink,
+    budget: usize,
+    seen: Vec<usize>,
+}
+
+impl Sink for ScopeProbe {
+    fn start_element(&mut self, tag: StartTag, scope: &NsScope) -> Result<(), XmlError> {
+        if tag.self_closing && self.budget > 0 {
+            self.budget -= 1;
+            self.seen.push(scope.in_scope().len());
+        }
+        self.inner.start_element(tag, scope)
+    }
+    fn end_element(&mut self) -> Result<(), XmlError> {
+        self.inner.end_element()
+    }
+    fn text(&mut self, text: String) -> Result<(), XmlError> {
+        self.inner.text(text)
+    }
+    fn cdata(&mut self, text: String) -> Result<(), XmlError> {
+        self.inner.cdata(text)
+    }
+    fn comment(&mut self, text: String) -> Result<(), XmlError> {
+        self.inner.comment(text)
+    }
+    fn pi(&mut self, target: String, data: String) -> Result<(), XmlError> {
+        self.inner.pi(target, data)
+    }
+}
+
+#[test]
+fn namespace_lookups_stay_fast_on_a_hostile_scope() -> TestResult {
+    // 64 × 250 = 16,000 live bindings and 4,000 leaves of 8 prefixed
+    // attributes. With a scan per lookup (and a find per binding in
+    // `in_scope`) this took minutes; with one stack per prefix it is
+    // milliseconds. The bound is loose enough for an unoptimised build.
+    let (levels, per_level, leaves, attrs) = (64, 250, 4000, 8);
+    let input = hostile_scope(levels, per_level, leaves, attrs);
+    let mut policy = ParsePolicy::xml();
+    policy.max_ns_bindings = usize::MAX;
+    let started = std::time::Instant::now();
+
+    let mut probe = ScopeProbe {
+        inner: TreeSink::new(policy.max_nodes),
+        budget: 200,
+        seen: Vec::new(),
+    };
+    EventLoop::new(input.as_bytes(), policy)
+        .run(&mut probe)
+        .map_err(|e| e.to_string())?;
+    assert_eq!(probe.seen, vec![levels * per_level; 200]);
+    let tree = probe.inner.into_tree();
+
+    let mut leaf = root(&tree)?;
+    for _ in 1..levels {
+        leaf = child(&tree, leaf, 0)?;
+    }
+    let first_leaf = child(&tree, leaf, 0)?;
+    assert_eq!(
+        tree.element(first_leaf)
+            .and_then(|e| e.ns_uri.map(|u| u.to_string())),
+        Some("u0_0".to_string())
+    );
+    assert_eq!(tree.attribute_ns(first_leaf, "a", Some("u0_7")), Some("1"));
+    for id in tree.children(leaf).iter().take(200) {
+        assert_eq!(tree.in_scope_namespaces(*id).len(), levels * per_level);
+    }
+    let written = compact(&tree, NodeId::DOCUMENT)?;
+    assert_eq!(written.len(), input.len());
+    let inner =
+        serialize_children(&tree, leaf, &SerializeOptions::compact()).map_err(|e| e.to_string())?;
+    assert!(inner.starts_with("<p0_0:leaf p0_0:a=\"1\""));
+
+    let elapsed = started.elapsed();
+    ensure(
+        elapsed < std::time::Duration::from_secs(5),
+        &format!("hostile namespace scope took {elapsed:?}"),
+    )
+}
+
+#[test]
+fn live_namespace_bindings_are_capped() -> TestResult {
+    // The default cap refuses the hostile shape outright.
+    let err = fails_xml(&hostile_scope(20, 250, 1, 1))?;
+    assert_eq!(err.kind, XmlErrorKind::NamespacesExceeded(MAX_NS_BINDINGS));
+    assert!(err.to_string().contains("namespace declarations in scope"));
+    // N and N + 1, counting shadowed bindings; siblings do not add up.
+    let mut policy = ParsePolicy::xml();
+    policy.max_ns_bindings = 3;
+    with(
+        "<a xmlns:p=\"1\" xmlns:q=\"2\"><b xmlns:p=\"3\"/><c xmlns:r=\"3\"/></a>",
+        &policy,
+    )?;
+    let err = fails(
+        "<a xmlns:p=\"1\" xmlns:q=\"2\"><b xmlns:r=\"3\"><c xmlns:s=\"4\"/></b></a>",
+        &policy,
+    )?;
+    assert_eq!(err.kind, XmlErrorKind::NamespacesExceeded(3));
+    // Every caller has the cap.
+    fails(&hostile_scope(20, 250, 1, 1), &ParsePolicy::soap())?;
+    fails(&hostile_scope(20, 250, 1, 1), &ParsePolicy::c14n())?;
+    Ok(())
+}
+
+/// Every element of a reparsed output, in document order, by expanded name,
+/// with its attributes by expanded name.
+type Expanded = Vec<(
+    Option<String>,
+    String,
+    Vec<(Option<String>, String, String)>,
+)>;
+
+fn expanded(tree: &XmlTree, id: NodeId) -> Expanded {
+    let mut ids = vec![id];
+    ids.extend(tree.descendants(id));
+    ids.into_iter()
+        .filter_map(|n| tree.element(n))
+        .map(|el| {
+            let mut attrs: Vec<_> = el
+                .attrs
+                .iter()
+                .map(|a| {
+                    (
+                        a.ns_uri.as_deref().map(str::to_string),
+                        a.local_name().to_string(),
+                        a.value.to_string(),
+                    )
+                })
+                .collect();
+            attrs.sort();
+            (
+                el.ns_uri.map(|u| u.to_string()),
+                el.local_name.to_string(),
+                attrs,
+            )
+        })
+        .collect()
+}
+
+fn attr(qname: &str, ns: &str) -> Attr {
+    Attr {
+        qname: qname.into(),
+        ns_uri: Some(std::sync::Arc::from(ns)),
+        value: "1".into(),
+    }
+}
+
+fn element(qname: &str, ns: Option<&str>, attrs: Vec<Attr>, decls: Vec<(&str, &str)>) -> Kind {
+    Kind::Element {
+        qname: qname.into(),
+        local_start: qname.find(':').map_or(0, |c| (c + 1) as u16),
+        ns_uri: ns.map(std::sync::Arc::from),
+        attrs,
+        ns_decls: decls
+            .into_iter()
+            .map(|(p, u)| NsDecl {
+                prefix: Some(p.into()),
+                uri: std::sync::Arc::from(u),
+            })
+            .collect(),
+        self_closing: true,
+    }
+}
+
+#[test]
+fn the_serializer_never_rebinds_a_settled_prefix() -> TestResult {
+    // An element whose prefix is inherited (p = urn:A from its own name,
+    // urn:B above) and an attribute on it using p for urn:B: the attribute
+    // gets a fresh prefix; the element keeps urn:A.
+    let mut tree = xml("<r xmlns:p=\"urn:A\"><c xmlns:p=\"urn:B\"/></r>")?;
+    let c = child(&tree, root(&tree)?, 0)?;
+    let e = s(tree.push_child_unchecked(
+        c,
+        element("p:e", Some("urn:A"), vec![attr("p:x", "urn:B")], vec![]),
+    ))?;
+    let written = compact(&tree, e)?;
+    let back = xml(&written)?;
+    assert_eq!(
+        expanded(&back, root(&back)?),
+        expanded(&tree, e),
+        "{written}"
+    );
+    // The same element under `c` (where p already means urn:B).
+    let written = compact(&tree, c)?;
+    let back = xml(&written)?;
+    assert_eq!(
+        expanded(&back, root(&back)?),
+        expanded(&tree, c),
+        "{written}"
+    );
+    // Under `r`, where p is inherited as urn:A and needs no declaration:
+    // the attribute must not declare `xmlns:p="urn:B"` on the element.
+    let r = root(&tree)?;
+    s(tree.push_child_unchecked(
+        r,
+        element("p:e", Some("urn:A"), vec![attr("p:x", "urn:B")], vec![]),
+    ))?;
+    let written = compact(&tree, r)?;
+    assert!(
+        written.contains("<p:e xmlns:ns1=\"urn:B\" ns1:x=\"1\"/>"),
+        "{written}"
+    );
+    let back = xml(&written)?;
+    assert_eq!(
+        expanded(&back, root(&back)?),
+        expanded(&tree, r),
+        "{written}"
+    );
+
+    // A fresh `ns1` is settled too: a later attribute spelled `ns1:` with
+    // another URI gets `ns2`, never a second `xmlns:ns1`.
+    let mut tree = xml("<r/>")?;
+    let r = root(&tree)?;
+    let e = s(tree.push_child_unchecked(
+        r,
+        element(
+            "e",
+            None,
+            vec![attr("p:x", "urn:A"), attr("ns1:y", "urn:C")],
+            vec![("p", "urn:B")],
+        ),
+    ))?;
+    let written = compact(&tree, e)?;
+    assert_eq!(
+        written,
+        "<e xmlns:p=\"urn:B\" xmlns:ns1=\"urn:A\" xmlns:ns2=\"urn:C\" ns1:x=\"1\" ns2:y=\"1\"/>"
+    );
+    let back = xml(&written)?;
+    assert_eq!(expanded(&back, root(&back)?), expanded(&tree, e));
+
+    // Two attributes sharing a prefix for different URIs: the first one
+    // (inherited binding) is not rebound by the second.
+    let mut tree = xml("<r xmlns:p=\"urn:A\"/>")?;
+    let r = root(&tree)?;
+    s(tree.push_child_unchecked(
+        r,
+        element(
+            "e",
+            None,
+            vec![attr("p:x", "urn:A"), attr("p:y", "urn:B")],
+            vec![],
+        ),
+    ))?;
+    let written = compact(&tree, r)?;
+    let back = xml(&written)?;
+    assert_eq!(
+        expanded(&back, root(&back)?),
+        expanded(&tree, r),
+        "{written}"
+    );
+
+    // The reviewer's sequence through the public API: the element stays in
+    // urn:A after the move and the attribute follows the element's prefix.
+    let mut tree = xml("<r xmlns:p=\"urn:A\"><c xmlns:p=\"urn:B\"/></r>")?;
+    let r = root(&tree)?;
+    let c = child(&tree, r, 0)?;
+    let e = s(tree.add_element(r, "p:e", &[]))?;
+    s(tree.append_child(c, e))?;
+    s(tree.set_attribute(e, "p:x", Some("1")))?;
+    s(tree.append_child(r, e))?;
+    let written = compact(&tree, r)?;
+    let back = xml(&written)?;
+    assert_eq!(
+        expanded(&back, root(&back)?),
+        expanded(&tree, r),
+        "{written}"
+    );
+    let e2 = child(&back, root(&back)?, 1)?;
+    assert_eq!(
+        back.element(e2)
+            .and_then(|el| el.ns_uri.map(|u| u.to_string())),
+        Some("urn:A".to_string())
+    );
+    Ok(())
+}
+
+#[test]
+fn dup_import_and_detach_keep_the_prefixes_their_output_declares() -> TestResult {
+    let source = xml("<r xmlns:p=\"urn:A\" xmlns=\"urn:D\"><p:a q=\"1\"><b/></p:a></r>")?;
+    let a = child(&source, root(&source)?, 0)?;
+    let check = |tree: &mut XmlTree, a: NodeId| -> TestResult {
+        let shown = compact(tree, a)?;
+        assert!(shown.starts_with("<p:a xmlns:p=\"urn:A\""), "{shown}");
+        let added = s(tree.add_element(a, "p:b", &[]))?;
+        assert_eq!(
+            tree.lookup_namespace(added, Some("p")).as_deref(),
+            Some("urn:A")
+        );
+        s(tree.set_attribute(a, "p:x", Some("v")))?;
+        assert_eq!(tree.attribute_ns(a, "x", Some("urn:A")), Some("v"));
+        s(tree.rename(added, "p:c"))?;
+        let unprefixed = s(tree.add_element(a, "d", &[]))?;
+        // `b` was in urn:D: the default namespace stays what `to_xml` shows.
+        let b = child(tree, a, 0)?;
+        assert_eq!(tree.lookup_namespace(b, None).as_deref(), Some("urn:D"));
+        assert_eq!(tree.lookup_namespace(unprefixed, None), None);
+        let names: Vec<String> = tree
+            .in_scope_namespaces(a)
+            .into_iter()
+            .map(|d| format!("{:?}={}", d.prefix, d.uri))
+            .collect();
+        assert_eq!(names, vec!["Some(\"p\")=urn:A".to_string()]);
+        // Unused prefixes stay unbound: only what the output declares.
+        ensure(
+            tree.add_element(a, "z:q", &[]).is_err(),
+            "an unbound prefix on a fragment",
+        )?;
+        let written = compact(tree, a)?;
+        let back = xml(&written)?;
+        assert_eq!(
+            expanded(&back, root(&back)?),
+            expanded(tree, a),
+            "{written}"
+        );
+        Ok(())
+    };
+
+    let (mut copy, id) = s(source.dup(a))?;
+    check(&mut copy, id)?;
+
+    let mut target = xml("<t/>")?;
+    let imported = s(target.import(&source, a))?;
+    check(&mut target, imported)?;
+
+    let mut detached = source.clone();
+    s(detached.detach(a))?;
+    check(&mut detached, a)?;
+    Ok(())
+}
+
+#[test]
+fn soap_skips_bad_attributes_instead_of_refusing() -> TestResult {
+    for input in ["<a x=\"AT&T\">v</a>", "<a b>v</a>", "<a x=\"&#0;\">v</a>"] {
+        assert_eq!(soap(input)?, map(vec![("a", st("v"))]), "{input}");
+        fails_xml(input)?;
+        fails(input, &ParsePolicy::c14n())?;
+    }
+    // The attributes that do decode are kept, declarations included.
+    let tree = with(
+        "<p:a xmlns:p=\"urn:p\" bad=\"&\" q=\"1\" z=\"&#1;\">v</p:a>",
+        &ParsePolicy::soap(),
+    )?;
+    let a = root(&tree)?;
+    assert_eq!(tree.attribute(a, "q"), Some("1"));
+    assert_eq!(tree.attribute(a, "bad"), None);
+    assert_eq!(
+        tree.element(a)
+            .and_then(|e| e.ns_uri.map(|u| u.to_string())),
+        Some("urn:p".to_string())
+    );
+    // A declaration that does not decode is skipped: its prefix is unbound,
+    // which SOAP allows.
+    with("<a xmlns:p=\"&#0;\"><p:b>v</p:b></a>", &ParsePolicy::soap())?;
+    // Attributes past the cap are dropped, not refused.
+    let mut policy = ParsePolicy::soap();
+    policy.max_attrs = 2;
+    let tree = with("<a x=\"1\" y=\"2\" z=\"3\">v</a>", &policy)?;
+    assert_eq!(tree.element(root(&tree)?).map(|e| e.attrs.len()), Some(2));
+    Ok(())
+}
+
+#[test]
+fn a_policy_deeper_than_the_ceiling_is_clamped() -> TestResult {
+    let mut policy = ParsePolicy::xml();
+    policy.max_depth = usize::MAX;
+    with(&nested(MAX_DEPTH_CEILING), &policy)?;
+    let err = fails(&nested(MAX_DEPTH_CEILING + 1), &policy)?;
+    assert_eq!(err.kind, XmlErrorKind::DepthExceeded(MAX_DEPTH_CEILING));
+    Ok(())
+}
+
+#[test]
+fn soaps_text_cap_counts_an_elements_text_across_comments_and_children() -> TestResult {
+    let mut policy = ParsePolicy::soap();
+    policy.max_text_run = Some(10);
+    with("<a>12345<!--c-->67890</a>", &policy)?;
+    fails("<a>12345<!--c-->678901</a>", &policy)?;
+    with("<a>12345<b>xxxxxxxxxx</b>67890</a>", &policy)?;
+    let err = fails("<a>12345<b/>6789<![CDATA[01]]></a>", &policy)?;
+    assert_eq!(err.kind, XmlErrorKind::TextRunExceeded(10));
+    // So the projected `_text` can never pass the cap.
+    let tree = with("<a> 1234<b/>5678 </a>", &policy)?;
+    assert_eq!(
+        soap_shape(&tree),
+        map(vec![(
+            "a",
+            map(vec![("b", Proj::Null), ("_text", st("12345678"))])
+        )])
+    );
+    Ok(())
+}
+
+#[test]
+fn built_cdata_comments_and_pis_round_trip_their_line_endings() -> TestResult {
+    let (mut tree, r) = s(XmlTree::new_document(100, Some(("r", &[]))))?;
+    let r = r.ok_or("no root")?;
+    let cdata = s(tree.add_cdata(r, "a\r\nb\rc"))?;
+    let comment = s(tree.add_comment(r, "x\r\ny"))?;
+    let pi = s(tree.add_pi(r, "t", "1\r2"))?;
+    assert_eq!(tree.text(cdata), "a\nb\nc");
+    assert_eq!(tree.text(comment), "x\ny");
+    assert_eq!(tree.text(pi), "1\n2");
+    s(tree.set_text(cdata, "\r"))?;
+    assert_eq!(tree.text(cdata), "\n");
+    let written = compact(&tree, NodeId::DOCUMENT)?;
+    let back = xml(&written)?;
+    ensure(
+        tree.subtree_eq(NodeId::DOCUMENT, &back, NodeId::DOCUMENT),
+        &format!("built tree changed on the round trip: {written:?}"),
+    )
+}
+
+#[test]
+fn a_lenient_comment_with_double_hyphens_is_written_well_formed() -> TestResult {
+    for policy in [ParsePolicy::soap(), ParsePolicy::c14n()] {
+        let tree = with("<a><!--x--y---></a>", &policy)?;
+        let written = compact(&tree, NodeId::DOCUMENT)?;
+        // The comment body is `x--y-` (it ends at the first `-->`).
+        assert_eq!(written, "<a><!--x- -y- --></a>");
+        xml(&written)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn to_h_keeps_a_child_named_text_beside_the_text() -> TestResult {
+    let tree = xml("<a><_text>c</_text>t</a>")?;
+    assert_eq!(
+        to_h(&tree, NodeId::DOCUMENT),
+        map(vec![(
+            "a",
+            map(vec![("_text", Proj::List(vec![st("c"), st("t")]))])
+        )])
+    );
+    Ok(())
+}
+
+#[test]
+fn built_elements_are_capped_and_duplicate_checked() -> TestResult {
+    let limit =
+        usize::try_from(crate::interpreter::limits::max_xml_attrs()).map_err(|e| e.to_string())?;
+    let names: Vec<String> = (0..=limit).map(|i| format!("a{i}")).collect();
+    let pairs: Vec<(&str, &str)> = names.iter().map(|n| (n.as_str(), "1")).collect();
+    let mut tree = XmlTree::new(100);
+    let err = tree
+        .create_element("e", &pairs, None)
+        .err()
+        .ok_or("too many attributes accepted")?;
+    assert_eq!(err.kind, XmlErrorKind::AttrsExceeded(limit));
+    let e = s(tree.create_element("e", &pairs[..limit], None))?;
+    let err = tree
+        .set_attribute(e, "one_more", Some("1"))
+        .err()
+        .ok_or("set_attribute past the cap")?;
+    assert_eq!(err.kind, XmlErrorKind::AttrsExceeded(limit));
+    // A duplicate among many (the hashed path) is still caught.
+    let mut many: Vec<(&str, &str)> = pairs[..40].to_vec();
+    many.push(("a3", "2"));
+    ensure(
+        tree.create_element("e", &many, None).is_err(),
+        "a duplicate among 41 attributes",
+    )
 }
