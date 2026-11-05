@@ -8,7 +8,8 @@ use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    Class, Function, HashKey, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
+    Class, Function, HashKey, Instance, InstanceMethodDef, NativeFunction, Value,
+    NATIVE_CONSTRUCTOR,
 };
 use crate::span::Span;
 
@@ -925,10 +926,9 @@ impl Vm {
         use crate::interpreter::executor::calls::function::callback_names_for;
         for events in event_sets {
             for cb_name in callback_names_for(&class.name, events) {
-                if class.find_vm_method_with_class(&cb_name).is_some() {
-                    continue;
-                }
-                if let Some(method) = class.find_method(&cb_name) {
+                if let Some((InstanceMethodDef::Source(method), _)) =
+                    class.find_instance_method_level(&cb_name)
+                {
                     self.callback_proto(&method, span)?;
                 }
             }
@@ -967,7 +967,10 @@ impl Vm {
         span: Span,
     ) -> Result<bool, RuntimeError> {
         for cb_name in callback_names {
-            if let Some((closure, defining)) = class.find_vm_method_with_class(cb_name) {
+            // Level by level, as instance dispatch: a subclass's own callback
+            // beats an ancestor's compiled one.
+            let nearest = class.find_instance_method_level(cb_name);
+            if let Some((InstanceMethodDef::Compiled(closure), defining)) = nearest {
                 let result =
                     self.invoke_zero_arg_instance_method(instance, closure, defining, span)?;
                 if matches!(result, Value::Bool(false)) {
@@ -975,7 +978,7 @@ impl Vm {
                 }
                 continue;
             }
-            if let Some(method) = class.find_method(cb_name) {
+            if let Some((InstanceMethodDef::Source(method), _)) = nearest {
                 // Compiled as a method with the instance in the callee slot, so
                 // `this` inside the callback is the record — see `callback_proto`.
                 let proto = self.callback_proto(&method, span)?;
@@ -2055,16 +2058,12 @@ impl Vm {
         let compiled = match &self.stack[receiver_idx] {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();
-                match class.find_vm_method_with_class(name) {
-                    Some(found) => Some(found),
-                    None => {
-                        let shadowed_by_field = inst.borrow().fields.contains_key(name);
-                        if shadowed_by_field {
-                            None
-                        } else {
-                            self.compile_tree_walking_method(&class, name)?
-                        }
-                    }
+                // A field of that name shadows a method not compiled yet,
+                // as before; otherwise the nearest definition wins.
+                if inst.borrow().fields.contains_key(name) {
+                    class.find_vm_method_with_class(name)
+                } else {
+                    self.resolve_instance_method(&class, name)?
                 }
             }
             // Statics compile as plain functions; the class value left in
@@ -2196,10 +2195,7 @@ impl Vm {
                 // as on the tree-walker.
                 if let Value::Instance(inst) = &object {
                     let class = inst.borrow().class.clone();
-                    let found = match class.find_vm_method_with_class("method_missing") {
-                        Some(found) => Some(found),
-                        None => self.compile_tree_walking_method(&class, "method_missing")?,
-                    };
+                    let found = self.resolve_instance_method(&class, "method_missing")?;
                     if let Some((closure, defining_class)) = found {
                         return self.call_instance_method_missing(
                             closure,
@@ -2257,7 +2253,8 @@ impl Vm {
         Ok(())
     }
 
-    /// Compile an instance method that exists only as AST — one inherited from
+    /// The instance method `name` of `class`, compiled. One that exists only
+    /// as AST — such as one inherited from
     /// a class the VM never compiled, such as a controller's base class — as
     /// a *method* and register the bytecode on the class that defines it, so
     /// later calls take the compiled-method hot path.
@@ -2267,21 +2264,24 @@ impl Vm {
     /// function and put the closure in the callee slot — the slot a method
     /// reads as `this`. `this._base()` inside it then failed with
     /// "Cannot access property '_base' on Function".
-    pub(crate) fn compile_tree_walking_method(
+    ///
+    /// The lookup goes class by class from the receiver's up — that class's
+    /// compiled method, then its AST one — so a subclass override that was
+    /// never compiled still beats an ancestor's method that was. Taking the
+    /// first compiled method anywhere in the chain before compiling the
+    /// receiver's own skipped the override for good once the parent had been
+    /// called on that worker (an authorization fail-open for policies).
+    pub(crate) fn resolve_instance_method(
         &self,
         class: &Rc<Class>,
         name: &str,
     ) -> Result<Option<MethodWithClass>, RuntimeError> {
-        let mut defining = class.clone();
-        let method = loop {
-            let own = defining.methods.borrow().get(name).cloned();
-            if let Some(method) = own {
-                break method;
+        let (method, defining) = match class.find_instance_method_level(name) {
+            None => return Ok(None),
+            Some((InstanceMethodDef::Compiled(closure), defining)) => {
+                return Ok(Some((closure, defining)))
             }
-            match defining.superclass.clone() {
-                Some(superclass) => defining = superclass,
-                None => return Ok(None),
-            }
+            Some((InstanceMethodDef::Source(method), defining)) => (method, defining),
         };
         let proto = jit_compile_method(&method, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(

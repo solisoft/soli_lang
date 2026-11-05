@@ -785,10 +785,7 @@ impl Vm {
                 // VM never compiled) is compiled here too: the tree-walker
                 // auto-invokes it (`@kpis = @_kpis`), and returning the unbound
                 // `Function` left a function in the field instead.
-                let lookup = match class.find_vm_method_with_class(name) {
-                    Some(found) => Some(found),
-                    None => self.compile_tree_walking_method(&class, name)?,
-                };
+                let lookup = self.resolve_instance_method(&class, name)?;
                 let inst_ref = inst.borrow();
                 if let Some((closure, defining_class)) = lookup {
                     drop(inst_ref);

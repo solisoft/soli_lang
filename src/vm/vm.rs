@@ -3283,15 +3283,16 @@ impl Vm {
                     let receiver_idx = self.stack.len() - 1 - argc;
                     let name = self.read_string_constant_owned(name_idx);
                     let superclass = self.frame_superclass(span)?;
+                    // The nearest definition above the defining class, level
+                    // by level: an ancestor's compiled method must not beat
+                    // a nearer override that is still AST. A tree-walker one
+                    // (a class copied from interpreter globals) is compiled
+                    // as a method of the class that declares it, so its own
+                    // `super` resolves from there.
                     if let Some((closure, defining_class)) =
-                        superclass.find_vm_method_with_class(&name)
+                        self.resolve_instance_method(&superclass, &name)?
                     {
                         self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
-                    } else if let Some(method) = superclass.find_method(&name) {
-                        // Tree-walking method (e.g. a class copied from
-                        // interpreter globals): JIT and run re-entrantly.
-                        let result = self.run_jit_method_to_completion(&method, argc, span)?;
-                        self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
                         let receiver = self.stack[receiver_idx].clone();
                         if let Value::Instance(ref inst) = receiver {

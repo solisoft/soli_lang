@@ -1651,6 +1651,14 @@ pub const PRIM_TYPE_COUNT: usize = 9;
 /// dropped and the instance came back empty.
 pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 
+/// An instance method as `Class::find_instance_method_level` finds it on the
+/// class that declares it: already compiled to bytecode, or still the
+/// tree-walker's AST.
+pub enum InstanceMethodDef {
+    Compiled(Rc<VmClosure>),
+    Source(Rc<Function>),
+}
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {
@@ -1943,6 +1951,35 @@ impl Class {
             let found = current.vm_methods.borrow().get(name).cloned();
             if let Some(closure) = found {
                 return Some((closure, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// The nearest definition of instance method `name`, and the class that
+    /// declares it: each class from this one up is asked for its compiled
+    /// method, then for its tree-walker one, before its superclass is.
+    ///
+    /// `find_vm_method_with_class` alone looks at compiled methods only, so
+    /// once an ancestor's method had been compiled (the VM caches a compiled
+    /// tree-walker method on the class that declares it) it beat a subclass
+    /// override that had not been compiled yet: `AdminPolicy#show?` was
+    /// skipped for `ArticlePolicy#show?` on a worker that had served the
+    /// parent first. Dispatch must resolve through this instead.
+    pub fn find_instance_method_level(
+        self: &Rc<Self>,
+        name: &str,
+    ) -> Option<(InstanceMethodDef, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let compiled = current.vm_methods.borrow().get(name).cloned();
+            if let Some(closure) = compiled {
+                return Some((InstanceMethodDef::Compiled(closure), current));
+            }
+            let source = current.methods.borrow().get(name).cloned();
+            if let Some(method) = source {
+                return Some((InstanceMethodDef::Source(method), current));
             }
             let next = current.superclass.clone()?;
             current = next;

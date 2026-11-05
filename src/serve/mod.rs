@@ -6381,6 +6381,9 @@ fn is_private_metrics_peer(ip: std::net::IpAddr) -> bool {
 }
 
 #[cfg(test)]
+mod vm_dispatch_tests;
+
+#[cfg(test)]
 mod metrics_gate_tests {
     use super::{metrics_request_allowed, metrics_request_is_proxied};
 
