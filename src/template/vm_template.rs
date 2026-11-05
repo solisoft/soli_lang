@@ -1000,9 +1000,7 @@ mod tests {
             .parse()
             .map_err(|e| e.to_string())?;
         let mut interpreter = crate::interpreter::Interpreter::new();
-        interpreter
-            .interpret(&program)
-            .map_err(|e| e.to_string())?;
+        interpreter.interpret(&program).map_err(|e| e.to_string())?;
         let env = interpreter.environment.borrow();
         names
             .iter()
