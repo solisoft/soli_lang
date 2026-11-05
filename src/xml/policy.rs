@@ -92,6 +92,11 @@ pub struct ParsePolicy {
     /// On for `Xml.parse`, off where today's lenient parsers must not start
     /// refusing payloads they accepted (SOAP, c14n).
     pub strict_syntax: bool,
+    /// Keep a processing instruction's data exactly as quick-xml gives it,
+    /// leading whitespace included (`<?p  d?>` has data `"  d"`). The c14n
+    /// trio formats PIs from that raw content today; everyone else gets the
+    /// data with leading whitespace stripped (`"d"`).
+    pub raw_pi_data: bool,
 }
 
 impl ParsePolicy {
@@ -111,6 +116,7 @@ impl ParsePolicy {
             max_text_run: None,
             keep_blank_text: true,
             strict_syntax: true,
+            raw_pi_data: false,
         }
     }
 
@@ -132,6 +138,7 @@ impl ParsePolicy {
             max_text_run: Some(1024 * 1024),
             keep_blank_text: true,
             strict_syntax: false,
+            raw_pi_data: false,
         }
     }
 
@@ -154,6 +161,7 @@ impl ParsePolicy {
             max_text_run: None,
             keep_blank_text: true,
             strict_syntax: false,
+            raw_pi_data: true,
         }
     }
 

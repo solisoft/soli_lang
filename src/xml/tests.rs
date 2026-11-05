@@ -236,6 +236,21 @@ fn prolog_and_epilogue_comments_and_pis_are_document_children() -> TestResult {
 }
 
 #[test]
+fn pi_data_is_stripped_except_for_c14n() -> TestResult {
+    let input = "<a><?p   d e ?></a>";
+    for (policy, data) in [
+        (ParsePolicy::xml(), "d e "),
+        (ParsePolicy::soap(), "d e "),
+        (ParsePolicy::c14n(), "   d e "),
+    ] {
+        let tree = with(input, &policy)?;
+        let pi = child(&tree, root(&tree)?, 0)?;
+        assert_eq!(tree.text(pi), data);
+    }
+    Ok(())
+}
+
+#[test]
 fn whitespace_is_kept_unless_strip_blank() -> TestResult {
     let input = "<a>\n  <b> x </b>\n</a>";
     let tree = xml(input)?;

@@ -477,7 +477,11 @@ impl<R: BufRead> EventLoop<R> {
                 if self.skip_depth == 0 {
                     let target = utf8(e.target(), start)?.to_string();
                     let data = utf8(e.content(), start)?;
-                    let data = normalize_eol(data.trim_start_matches(is_xml_space));
+                    let data = if self.policy.raw_pi_data {
+                        normalize_eol(data)
+                    } else {
+                        normalize_eol(data.trim_start_matches(is_xml_space))
+                    };
                     if target.len() > MAX_NAME_LEN {
                         return Err(XmlError::at(XmlErrorKind::NameTooLong(MAX_NAME_LEN), start));
                     }

@@ -23,7 +23,7 @@
 //! Knobs: `doctype_message`, `unknown_entity`, `unbound_prefix`,
 //! `duplicate_attribute`, `trailing_content`, `no_root`, `max_depth`,
 //! `max_nodes`, `max_bytes`, `max_attrs`, `max_text_run`, `keep_blank_text`,
-//! `strict_syntax`. Limits come from `interpreter::limits::max_xml_*`.
+//! `strict_syntax`, `raw_pi_data`. Limits come from `interpreter::limits::max_xml_*`.
 //!
 //! **The tree** — [`XmlTree`], [`NodeId`] (`NodeId::DOCUMENT` is 0), [`Kind`]
 //! (`Document`, `Element { qname, local_start, ns_uri, attrs, ns_decls,
