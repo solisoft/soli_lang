@@ -604,7 +604,9 @@ pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 pub(crate) fn order_by(items: &[Value], field: &str, ascending: bool) -> Vec<Value> {
     let key = Value::String(field.into());
     let mut sorted = items.to_vec();
-    sorted.sort_by(|a, b| {
+    // Not std's sort: `compare_sort_values` is no total order (mixed types and
+    // NaN compare Equal), and std's sort panics on such a comparator.
+    stable_sort_by(&mut sorted, |a, b| {
         let ord = compare_sort_values(&field_of(a, &key), &field_of(b, &key));
         if ascending {
             ord

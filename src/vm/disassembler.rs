@@ -143,6 +143,10 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("SET_PROPERTY {:>5} ({})", idx, name));
         }
+        Op::InitProperty(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("INIT_PROPERTY {:>5} ({})", idx, name));
+        }
         Op::Class(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CLASS        {:>5} ({})", idx, name));
@@ -279,6 +283,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             ));
         }
         Op::Nop => out.push_str("NOP"),
+        Op::AutoInvoke => out.push_str("AUTO_INVOKE"),
         Op::CoverLine(line) => out.push_str(&format!("COVER_LINE {line}")),
         Op::PopIter => out.push_str("POP_ITER"),
         Op::EnumPayload(sl, v, i) => {

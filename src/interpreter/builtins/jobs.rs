@@ -967,7 +967,11 @@ fn perform_now_inline(class: &Rc<Class>, args: &[Value]) -> Result<Value, String
     if let Some(native) = class.native_static_methods.get("perform") {
         return (native.func)(&call_args);
     }
-    if let Some(closure) = class.find_vm_static_method("perform") {
+    // The nearest `perform` wins: a parent's compiled one must not run for
+    // a subclass's tree-walker override.
+    if let Some((crate::interpreter::value::InstanceMethodDef::Compiled(closure), _)) =
+        class.find_static_method_level("perform")
+    {
         let mut interpreter = crate::interpreter::Interpreter::default();
         return interpreter
             .call_value(

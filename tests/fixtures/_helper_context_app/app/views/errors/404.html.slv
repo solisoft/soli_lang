@@ -1,0 +1,1 @@
+<p>404 page, signed in as: <%= current_user_name() %></p>

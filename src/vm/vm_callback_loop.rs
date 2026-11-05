@@ -1055,6 +1055,15 @@ impl Vm {
     /// Open the frame for the next element, or end the loop and push the
     /// method's result.
     fn next_callback(&mut self) -> Result<(), RuntimeError> {
+        // The handler budget, once per element: a callback run in a loop
+        // never reaches `Op::Loop`, and `n.times`/`each` over a request-sized
+        // count pinned the worker past it.
+        if crate::interpreter::deadline::expired() {
+            self.iter_stack.pop();
+            return Err(crate::interpreter::deadline::timeout_error(
+                self.current_span(),
+            ));
+        }
         // A template runs the elements it can right here, with no frame.
         let Some(IterState::Callback(state)) = self.iter_stack.last_mut() else {
             unreachable!("no loop on the iterator stack");
@@ -1109,6 +1118,14 @@ impl Vm {
         result: Value,
         stack_base: usize,
     ) -> Result<bool, RuntimeError> {
+        // The handler budget, once per element (see `next_callback`): this
+        // reruns the frame at ip 0 and never reaches `Op::Loop`.
+        if crate::interpreter::deadline::expired() {
+            self.iter_stack.pop();
+            return Err(crate::interpreter::deadline::timeout_error(
+                self.current_span(),
+            ));
+        }
         // One lookup of the loop for the whole step — record the result, then
         // write the next element into the argument slots — with `iter_stack`
         // and `stack` borrowed separately.

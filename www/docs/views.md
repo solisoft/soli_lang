@@ -1437,11 +1437,12 @@ A template too small to gain from it stays on the interpreter as well: one with 
 The rules are the tree-walker's:
 
 - A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a builtin or a helper, and nil when it is neither. `@title` reads `title`.
-- A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout.
+- A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout, and only for that render: one that reuses a builtin's or a helper's name (`<% url = … %>`, `<% h = … %>`) no longer replaces it for the renders that follow on the worker. A bare assignment in a helper body is a local of that call in the same way.
+- A zero-argument helper or builtin read without `()` is called where the view reads it — `<% if signed_in? %>`, `<%= current_user %>` — as on the tree-walker. Before 2.29.4 a compiled view read the function itself, which is always truthy.
 - A `for` over a hash yields `[key, value]` pairs.
 - A helper from `app/helpers` whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name — `req`, `params`, `session`, `cookies`, `headers`, `flash`, another helper, a builtin — or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.
 
-If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
+If a compiled view fails while it renders, or writes a function by name (a lambda: `<%= callback %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
 
 `SOLI_VM_VIEWS=0` renders every view on the tree-walker. `SOLI_VM_VIEWS_CHECK=<file>` renders each compiled view on both engines, serves the tree-walker's output and appends to `<file>` every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.
 
