@@ -1851,6 +1851,27 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    // A zero-argument def read bare is called on both engines. The VM read
+    // `signed_in?` as the function itself, always truthy, so an auth guard
+    // `return … unless signed_in?` let everyone through on the VM.
+    (
+        "bare_zero_argument_def_is_called",
+        r##"def signed_in?
+  false
+end
+def greeting(name = "you")
+  "hi #{name}"
+end
+def guard
+  return "redirect" unless signed_in?
+  "page"
+end
+print(guard())
+state = signed_in?
+print(state, greeting, greeting.upcase)
+cb = fn() { 7 }
+print(cb())"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

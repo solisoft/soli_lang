@@ -172,3 +172,54 @@ fn super_reaches_the_nearest_override_after_an_ancestor_was_compiled() {
     // And again, now that every level is compiled.
     assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
 }
+
+const GUARDED: &str = r#"
+def signed_in?
+  false
+end
+
+def current_name
+  "guest"
+end
+
+class AccountController
+  def show
+    return "redirect:/login" unless signed_in?
+
+    "secret page"
+  end
+
+  def greet
+    name = current_name
+    "hello #{name} #{current_name.upcase}"
+  end
+
+  def keeps_lambdas
+    callback = fn() { "called" }
+    holder = callback
+    holder()
+  end
+end
+"#;
+
+/// A zero-argument global def read bare is called on the VM, as on the
+/// tree-walker. The VM read `signed_in?` as the function itself — always
+/// truthy — so `return redirect("/login") unless signed_in?` served the
+/// protected page in production while --dev redirected.
+#[test]
+fn a_bare_zero_argument_global_is_called_in_a_vm_action() {
+    let mut app = ServedApp::load(GUARDED);
+    assert_eq!(
+        app.call("AccountController", "show"),
+        Value::String("redirect:/login".into())
+    );
+    assert_eq!(
+        app.call("AccountController", "greet"),
+        Value::String("hello guest GUEST".into())
+    );
+    assert_eq!(
+        app.call("AccountController", "keeps_lambdas"),
+        Value::String("called".into()),
+        "a lambda kept in a variable is read as the function"
+    );
+}

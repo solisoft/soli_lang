@@ -279,6 +279,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             ));
         }
         Op::Nop => out.push_str("NOP"),
+        Op::AutoInvoke => out.push_str("AUTO_INVOKE"),
         Op::CoverLine(line) => out.push_str(&format!("COVER_LINE {line}")),
         Op::PopIter => out.push_str("POP_ITER"),
         Op::EnumPayload(sl, v, i) => {

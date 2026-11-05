@@ -3540,6 +3540,16 @@ impl Vm {
 
                 Op::Nop => {}
 
+                // A bare read of a name that may hold a zero-argument def or
+                // builtin: call it, as the tree-walker does (see
+                // `Op::AutoInvoke`). Anything else stays as read.
+                Op::AutoInvoke => {
+                    if auto_invocable(self.stack.last().unwrap()) {
+                        let span = self.current_span();
+                        self.call_value(0, span)?;
+                    }
+                }
+
                 // Line coverage (only compiled in under a coverage tracker —
                 // see `Op::CoverLine`). The fast tier does not handle it, so
                 // it lands here; an ordinary server never emits it.
@@ -5520,6 +5530,19 @@ pub(crate) fn discard(value: Value) {
         std::mem::forget(value);
     } else {
         drop(value);
+    }
+}
+
+/// Whether a bare read of `value` calls it, the tree-walker's rule for a
+/// bare name (`can_auto_invoke_with_no_args`): a def that takes no arguments
+/// (all defaulted counts), or a builtin that is called bare. A lambda kept in
+/// a variable is left alone — `<lambda>` is the name both engines give one.
+pub(crate) fn auto_invocable(value: &Value) -> bool {
+    match value {
+        Value::Function(func) => func.name != "<lambda>" && func.arity() == 0,
+        Value::VmClosure(closure) => closure.proto.name != "<lambda>" && closure.proto.arity == 0,
+        Value::NativeFunction(func) => func.is_auto_invocable || func.arity == Some(0),
+        _ => false,
     }
 }
 

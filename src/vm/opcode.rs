@@ -332,6 +332,11 @@ pub enum Op {
     /// receiver `SelfOrGlobalCallee` left — a call on `self`, so a private
     /// method is allowed.
     CallSelfOrGlobal(u16, u8),
+    /// Follows a bare read (`signed_in?`, no parens) that may hold a function:
+    /// a zero-argument def, or a builtin the tree-walker calls bare, is called
+    /// with no arguments and its result replaces it; any other value — a
+    /// lambda (`<lambda>`) among them — is left as read.
+    AutoInvoke,
     /// No-op: does nothing (placeholder after peephole optimization)
     Nop,
     /// Line coverage: record a hit for this line of the function's source file.

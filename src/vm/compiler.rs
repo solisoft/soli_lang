@@ -139,6 +139,16 @@ pub struct Compiler {
     /// global scope, or a function declaration, so it means what it says in
     /// both modes.
     pub program_globals: Rc<RefCell<HashSet<String>>>,
+    /// The `program_globals` that are variables (`let`, `const` or a bare
+    /// assignment at global scope) rather than functions. A bare read of one
+    /// holds a value, not a def, so it needs no `Op::AutoInvoke`, which would
+    /// also keep the peephole from fusing `buf = buf + "x"` at the top level.
+    pub program_variables: Rc<RefCell<HashSet<String>>>,
+    /// In a compiled view, the free names (the template's parameters bound to
+    /// the data or to the worker's globals). A bare read of one is followed by
+    /// `Op::AutoInvoke`, so `<% if signed_in? %>` calls the helper, as the
+    /// tree-walker's renderer does.
+    pub template_free_names: Option<Rc<HashSet<String>>>,
     /// When set, every name resolved as a global is recorded here, nested
     /// functions included. A compiled template reads its free names this way
     /// and turns them into parameters (`template::vm_template`).
@@ -233,6 +243,8 @@ impl Compiler {
             stack_height: 0,
             try_stack: Vec::new(),
             program_globals: Rc::new(RefCell::new(HashSet::new())),
+            program_variables: Rc::new(RefCell::new(HashSet::new())),
+            template_free_names: None,
             referenced_globals: None,
             template_mode: false,
             kernels: None,
@@ -328,13 +340,17 @@ impl Compiler {
 
     /// Compile a view's program in `template_mode`, recording into `seen`
     /// (when given) every name it resolves as a global, nested functions
-    /// included (see `referenced_globals`).
+    /// included (see `referenced_globals`). A bare read of one of
+    /// `free_names` calls a zero-argument def or builtin it holds (see
+    /// `template_free_names`).
     pub fn compile_template(
         program: &Program,
         seen: Option<Rc<RefCell<HashSet<String>>>>,
+        free_names: Option<Rc<HashSet<String>>>,
     ) -> CompileResult<CompiledModule> {
         let mut compiler = Compiler::new(FunctionType::Script, String::new());
         compiler.referenced_globals = seen;
+        compiler.template_free_names = free_names;
         compiler.template_mode = true;
         Self::compile_script(compiler, program, None, None)
     }
@@ -718,6 +734,8 @@ impl Compiler {
         new_compiler.known_globals = self.known_globals.clone();
         new_compiler.base_globals = self.base_globals.clone();
         new_compiler.program_globals = self.program_globals.clone();
+        new_compiler.program_variables = self.program_variables.clone();
+        new_compiler.template_free_names = self.template_free_names.clone();
         new_compiler.referenced_globals = self.referenced_globals.clone();
         new_compiler.template_mode = self.template_mode;
         // A closure reads names in the namespace of the code around it.
@@ -1175,6 +1193,8 @@ fn stack_effect(op: Op) -> i32 {
         | NotLocal(_)
         | NegateLocal(_)
         | GetGlobalNullCheck(_) => 1,
+        // Replaces the value read with the call's result, or leaves it.
+        AutoInvoke => 0,
         GetLocal2(_, _) => 2,
         DupN(n) => n as i32,
         SetLocalPop(_) => -1,
