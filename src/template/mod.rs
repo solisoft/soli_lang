@@ -505,6 +505,7 @@ impl TemplateCache {
                 }
                 rendered.html
             }
+            ViewRender::Failed(message) => return Err(message),
             ViewRender::TreeWalker(vm_failure) => {
                 let html = render_with_interpreter(
                     &mut interpreter,
@@ -741,6 +742,7 @@ impl TemplateCache {
                     Some(tree)
                 }
                 ViewRender::Rendered(rendered) => Some(rendered.html),
+                ViewRender::Failed(message) => return Err(message),
                 ViewRender::TreeWalker(failure) => {
                     vm_failure = failure;
                     None

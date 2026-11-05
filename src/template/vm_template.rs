@@ -764,6 +764,11 @@ pub enum ViewRender {
     /// [`VmFailure`] when the VM tried and failed, which the caller settles
     /// once the tree-walker has rendered the view.
     TreeWalker(Option<VmFailure>),
+    /// The VM failed past the request's time budget: the render fails with
+    /// this message. The tree-walker does not render the view again — that
+    /// is the work the budget was meant to stop — and the view stays
+    /// compiled: the error is the request's, not the view's.
+    Failed(String),
 }
 
 /// A render the VM failed with an error other than a refusal. Nothing it
@@ -957,6 +962,11 @@ pub fn render_view(
                     "[vm-views] {}: render failed, tree-walker used: {err}",
                     path.display()
                 ));
+            }
+            // Past the handler budget the render is over: neither re-run on
+            // the tree-walker nor demoted (what serve does for an action).
+            if crate::interpreter::deadline::exhausted() {
+                return ViewRender::Failed(format!("Evaluation error: {err}"));
             }
             // A refusal is about the view (a function written bare), so it
             // keeps the tree-walker from now on.
@@ -2056,6 +2066,41 @@ mod tests {
             assert!(cache.render("page", &data, None).is_err());
         }
         assert_eq!((on_vm.get(), on_tree_walker.get()), (2, 2));
+        Ok(())
+    }
+
+    /// A view the VM stops at the handler budget fails: the tree-walker
+    /// rendered it again past the budget (its `for` over output checks no
+    /// deadline) and returned the whole page, then kept the view on the
+    /// tree-walker for good, as if the engines disagreed about it.
+    #[test]
+    fn a_view_past_the_budget_fails_and_stays_compiled() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(&views)?;
+        std::fs::write(
+            views.join("page.html.slv"),
+            "<% for row in rows %><%= row %>,<% end %><%= probe() %>",
+        )?;
+        let cache = crate::template::TemplateCache::new(&views);
+        let (probe, on_vm, on_tree_walker) = counting_probe(false, false);
+        let many = array((0..200_000).map(Value::Int).collect());
+        let data = hash(vec![("probe", probe.clone()), ("rows", many)]);
+        {
+            let guard = crate::interpreter::deadline::enter(web_time::Duration::from_nanos(1));
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            let Err(err) = cache.render("page", &data, None) else {
+                return Err("a view past the budget rendered".into());
+            };
+            assert!(err.contains("handler budget"), "{err}");
+            drop(guard);
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (0, 0));
+        // Not demoted: the next request renders on the VM.
+        let data = hash(vec![("probe", probe), ("rows", array(vec![Value::Int(1)]))]);
+        assert_eq!(cache.render("page", &data, None)?, "1,p");
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (1, 0));
         Ok(())
     }
 
