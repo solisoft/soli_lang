@@ -3365,6 +3365,27 @@ pub(crate) fn start_declared_fields(
     }
 }
 
+/// The instance fields `class` itself declares, in declaration order, then
+/// any it lists without declaring them in order (sorted) — the order both
+/// engines start them and evaluate their defaults in.
+pub(crate) fn declared_field_order(class: &crate::interpreter::value::Class) -> Vec<String> {
+    let declared = class.declared_fields.borrow();
+    let mut names: Vec<String> = declared
+        .iter()
+        .filter(|name| class.fields.contains_key(*name))
+        .cloned()
+        .collect();
+    let mut rest: Vec<String> = class
+        .fields
+        .keys()
+        .filter(|name| !declared.contains(*name))
+        .cloned()
+        .collect();
+    rest.sort();
+    names.extend(rest);
+    names
+}
+
 /// Whether a field's default is a literal (see [`literal_value`]): a value
 /// computed once and copied into each instance, not an expression the
 /// engine evaluates for each one.
@@ -3372,9 +3393,9 @@ pub(crate) fn is_literal_default(expr: &crate::ast::Expr) -> bool {
     literal_value(expr).is_some()
 }
 
-/// The value of a literal expression — numbers (negative ones too),
-/// strings, booleans, `nil`, and arrays and hashes of literals — evaluated
-/// without an interpreter.
+/// The value of a literal expression — numbers (negative ones too, and
+/// Decimals), strings, symbols, booleans, `nil`, and arrays and hashes of
+/// literals — evaluated without an interpreter.
 pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
     use crate::ast::{ExprKind, UnaryOp};
     use crate::interpreter::value::{HashKey, HashPairs};
@@ -3390,6 +3411,10 @@ pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
             _ => return None,
         },
         ExprKind::StringLiteral(s) => Value::String(s.clone().into()),
+        ExprKind::Symbol(s) => Value::Symbol(s.clone().into()),
+        ExprKind::DecimalLiteral(s) => {
+            Value::Decimal(crate::interpreter::value::DecimalValue::from_literal(s)?)
+        }
         ExprKind::BoolLiteral(b) => Value::Bool(*b),
         ExprKind::Null => Value::Null,
         ExprKind::Array(items) => Value::Array(Rc::new(RefCell::new(

@@ -2309,8 +2309,24 @@ Savings.new("cy").balance    # 100 — the subclass's default wins
 
 - A default is evaluated once per new instance, never when the class is
   defined.
+- A default that is not a literal (`clock()`, `@items.length`, a constant)
+  is evaluated on the new instance: `@field` and `@method` are the new
+  instance's, and a name reads what the class's methods would read — never a
+  local or the `this` of the code that calls `new`.
+- Each class sets its fields first — its literal defaults, `nil` for the
+  rest — then evaluates its other defaults in declaration order, before the
+  next class down sets its own. So a default may read a field declared above
+  it, or any field with a literal default of its class or its parents.
 - `super(...)` runs the parent's constructor body only. It does not set the
   fields again, so what a constructor assigned before calling it stays.
+
+```soli
+class Basket
+  items: Array = [1, 2, 3]
+  count: Int = @items.length      # 3 — this basket's items
+  label: String = "n=#{@count}"   # "n=3": `count` is declared above
+end
+```
 
 #### `this` and `self`
 
@@ -5000,14 +5016,14 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
 - **Implicit returns** — the last expression is the value; `return` is for early
   exits, and before a last line that would start with `fn(` (read as a named
   function declaration). A line opening with `(` is its own statement.
-- **No `()` on a zero-argument method call** — `Post.all`,
-  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
-  them on model writes for now — `@post.save()`, `@post.delete()`,
-  `Post.delete_all()`, `Post.new()`: bare, a write skips its lifecycle
-  callbacks and a static returns the function. Keep them on a **bare function** (`current_user()`, `session_destroy()`), so a
-  call reads as one — and a lambda kept in a variable needs them: production
-  leaves a bare one uncalled. Keep them before an index too — `list.sort()[0]`: the type checker refuses
-  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+- **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
+  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`.
+  Three places keep them: **`Klass.new()`** — a bare `Post.new` reads the
+  class's `new` without calling it, so it is no instance; a **bare function**
+  (`current_user()`, `session_destroy()`), so a call reads as one — and a
+  lambda kept in a variable needs them: production leaves a bare one
+  uncalled; and **before an index** — `list.sort()[0]`: the type checker
+  refuses `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.

@@ -58,9 +58,24 @@ pub struct CallFrame {
     /// parameters silently loses defaults past that point rather than
     /// misbinding — a limit no realistic signature reaches.
     supplied: u64,
-    /// This frame is the callback of an in-VM iterator loop: its `Return`
-    /// hands the result to `Vm::callback_returned` instead of the caller.
-    pub drives_loop: bool,
+    /// What the frame's `Return` does with its value: hand it to the
+    /// caller, to an in-VM iterator loop, or drop it.
+    pub on_return: FrameReturn,
+}
+
+/// What a frame's `Return` does with the value it returns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameReturn {
+    /// Pushes it for the caller: every ordinary call.
+    Value,
+    /// The callback of an in-VM iterator loop: the result goes to
+    /// `Vm::callback_returned` and the frame runs again for the next element.
+    DrivesLoop,
+    /// Drops it: a frame run for its effect on the stack beneath it, which
+    /// the frame leaves as it found it — the field defaults of a new
+    /// instance (`Vm::push_field_defaults`), run before its constructor
+    /// starts, or once the instance is the call's value.
+    Discard,
 }
 
 /// Whether a positional call of `argc` arguments binds `proto` without an
@@ -104,7 +119,7 @@ impl CallFrame {
             code,
             code_len,
             supplied,
-            drives_loop: false,
+            on_return: FrameReturn::Value,
         }
     }
 }
@@ -1776,15 +1791,32 @@ impl Vm {
                     if self.has_open_upvalues_from(base) {
                         self.close_upvalues(base);
                     }
-                    let (drives_loop, params, iter_base) = {
+                    let (on_return, params, iter_base) = {
                         let frame = self.frames.last().unwrap();
                         (
-                            frame.drives_loop,
+                            frame.on_return,
                             frame.closure.proto.param_names.len(),
                             frame.iter_base,
                         )
                     };
-                    if drives_loop {
+                    if on_return != FrameReturn::Value {
+                        if on_return == FrameReturn::Discard {
+                            // Its value goes nowhere: the frame leaves the
+                            // stack beneath it as it found it.
+                            self.stack.pop();
+                            let frame = self.frames.pop().unwrap();
+                            self.stack.truncate(frame.stack_base);
+                            self.iter_stack.truncate(frame.iter_base);
+                            while self
+                                .exception_handlers
+                                .last()
+                                .is_some_and(|handler| handler.frame_depth > depth_after)
+                            {
+                                self.exception_handlers.pop();
+                            }
+                            (code, code_len, constants, base, ip) = load_frame!();
+                            continue;
+                        }
                         // A loop callback: the frame is kept and run again for
                         // the next element. Clean up exactly what a return
                         // would — the callback's temporaries and locals above
@@ -3736,9 +3768,21 @@ impl Vm {
                         self.exception_handlers.pop();
                     }
 
-                    if frame.drives_loop {
-                        self.callback_returned(result)?;
-                        continue;
+                    match frame.on_return {
+                        FrameReturn::Value => {}
+                        FrameReturn::DrivesLoop => {
+                            self.callback_returned(result)?;
+                            continue;
+                        }
+                        // The value goes nowhere. At the edge of a nested run
+                        // the run's value is what the frame found beneath it:
+                        // the instance whose field defaults it ran.
+                        FrameReturn::Discard => {
+                            if self.frames.len() <= self.return_depth {
+                                return Ok(self.pop());
+                            }
+                            continue;
+                        }
                     }
 
                     if self.frames.len() <= self.return_depth {
@@ -7023,6 +7067,87 @@ let result = "#{before} #{a.stamp} #{b.stamp} #{a.tag} #{calls}"
         assert_eq!(
             compile_and_get_global(source, "result"),
             Value::String("0 1 2 t 2".into())
+        );
+    }
+
+    /// The defaults that are not literals run in the activation that builds
+    /// the instance, as frames above its constructor's — or above the
+    /// instance when there is none — and store each field themselves. Every
+    /// `new` ran them in a nested `run()` that built a hash of their values.
+    /// A class that adds fields below one with such defaults still runs
+    /// them class by class, nested.
+    #[test]
+    fn test_vm_computed_field_defaults_run_without_a_nested_run() {
+        use crate::interpreter::value::FIELD_DEFAULTS_METHOD;
+        let source = r##"
+calls = 0
+def tick()
+  calls = calls + 1
+  calls
+end
+class Stamp
+  n: Int = 0
+  at: Int = tick()
+  twice: Int = @at * 2
+
+  new(x)
+    @n = x + @at
+  end
+end
+class Bare
+  at: Int = tick()
+  tags: Array = [:a]
+end
+class Kid < Stamp
+end
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        let Some(Value::Class(stamp)) = vm.globals.get("Stamp").cloned() else {
+            panic!("Stamp is a class");
+        };
+        let computed = stamp
+            .field_init
+            .borrow()
+            .as_ref()
+            .and_then(|init| init.computed.clone())
+            .expect("`at` and `twice` have a method");
+        assert_eq!(computed.proto.name, FIELD_DEFAULTS_METHOD);
+        assert!(
+            !computed
+                .proto
+                .chunk
+                .code
+                .iter()
+                .any(|op| matches!(op, Op::Hash(_) | Op::HashWithKeys(..))),
+            "the defaults are stored, not collected into a hash"
+        );
+
+        let use_source = r##"
+a = new Stamp(10)
+b = Stamp(20)
+c = Stamp.new(30)
+d = Bare.new()
+e = new Bare()
+f = Kid.new(40)
+result = "#{a.n} #{a.at} #{a.twice} #{b.n} #{c.n} #{d.at} #{d.tags.length} #{e.at} #{f.n} #{f.twice} #{calls}"
+"##;
+        let tokens = Scanner::new(use_source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let before = crate::vm::vm_domain::nested_runs();
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(
+            crate::vm::vm_domain::nested_runs(),
+            before,
+            "no construction started a nested run"
+        );
+        assert_eq!(
+            vm.globals.get("result"),
+            Some(&Value::String("11 1 2 22 33 4 1 5 46 12 6".into()))
         );
     }
 

@@ -3149,6 +3149,64 @@ print(p.cents, p.currency, p.vat, Price.new(cents: 5, vat: 7).vat)
 print(a == Amount.new(500, "EUR"), Amount.new(1, "USD").currency)"##,
     ),
     (
+        // A field default that is not a literal runs on the new instance, in
+        // declaration order, whatever the spelling: the tree-walker evaluated
+        // it in the caller's environment (its `this`, its locals) and in
+        // hash-map order.
+        "field_defaults_run_on_the_new_instance_in_declaration_order",
+        r##"class Basket
+  items: Array = [1, 2, 3]
+  count: Int = @items.length
+  label: String = "n=#{@count}"
+  doubled: Int = @count * 2
+end
+class Shop
+  items: Array = [9]
+  count: Int = 40
+
+  def build
+    items = [7, 7]
+    [new Basket(), Basket.new(), Basket.new({}), Basket.new(label: "x"), Basket()]
+  end
+end
+Shop.new().build.each do |b|
+  print(b.items, b.count, b.label, b.doubled)
+end"##,
+    ),
+    (
+        // Each class starts its fields, then runs its defaults that are not
+        // literals, before the next class down starts its own.
+        "field_defaults_run_class_by_class_from_the_farthest",
+        r##"calls = []
+def note(tag)
+  calls.push(tag)
+  tag
+end
+class Base1
+  a: String = note("base-a")
+  b: Int = 1
+  c: String = "#{@a}/#{@b}"
+end
+class Kid1 < Base1
+  b: Int = 2
+  d: String = note("kid-d") + @c
+end
+k = Kid1.new()
+print(k.a, k.b, k.c, k.d)
+k2 = new Kid1()
+print(k2.c, k2.d, calls)
+class Plain
+  stamp: Int = 5 + 5
+  sym = :draft
+end
+class Child < Plain
+  extra: Array = []
+end
+class Grand < Child
+end
+print(new Child().stamp, Child.new().sym, Grand.new().extra, Grand.new(extra: [1]).extra)"##,
+    ),
+    (
         // A method named `init` is a method, not the constructor. The VM kept
         // its compiled constructor as the method `init`: `new Service()` ran
         // the user's `init` and was its value, and a class with field
@@ -3197,7 +3255,9 @@ e = new SubCart("cy")
 print(e.owner, e.items, e.init([3]))"##,
     ),
     (
-        // Tracked in KNOWN_DIVERGENT.
+        // `Klass.new(k: v)` runs a default that is not a literal, as every
+        // other spelling does: the VM read `Ticket.new` as a member and built
+        // the attribute form with that default left nil.
         "named_attribute_form_runs_a_computed_default",
         r##"calls = 0
 def tick()
@@ -5838,13 +5898,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // has nothing to resolve against on the VM. Needs the compiler to hand
     // the block the class it was written in.
     "super_in_a_block_of_a_method",
-    // `Klass.new(k: v)` compiles to a read of `Klass.new` and a named call.
-    // On a class without a constructor the read yields the engine-free
-    // attribute form (`member::new_with_attributes`), which starts a
-    // default that is not a literal as nil; the tree-walker evaluates it.
-    // Needs the VM to answer that read itself and build the instance with
-    // `init_fields` (see C571 / C583).
-    "named_attribute_form_runs_a_computed_default",
     // Sub-expression comprehensions and binding `match` as a call argument
     // now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
     // Binding patterns at a statement position already compiled — see
@@ -5859,6 +5912,8 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //   #14 instance_method_call              — VmClosure methods stored on
     //        Class.vm_methods (the constructor on Class.vm_init); they
     //        dispatch with the receiver in the callee slot as `this`
+    //   named_attribute_form_runs_a_computed_default — the VM answers
+    //        `Klass.new(k: v)` itself and runs the field defaults
 ];
 
 /// Programs the type checker refuses but both engines run. It rejects a read
@@ -6784,6 +6839,41 @@ class Probe
     d = Cart.new("bo")
     e = new Cart("cy")
     "#{first} #{c.owner} #{c.items} #{d.owner} #{d.items} #{e.owner} #{e.init([3])}"
+  end
+end"##,
+    ),
+    (
+        // A served class's defaults that are not literals run on the new
+        // instance, in declaration order, whichever spelling builds it — not
+        // in the action's environment (the tree-walker read the controller's
+        // `@items` there).
+        "app_field_defaults_run_on_the_new_instance",
+        r##"class Basket
+  items: Array = [1, 2, 3]
+  count: Int = @items.length
+  label: String = "n=#{@count}"
+end
+
+class Base1
+  a: String = "base"
+  c: String = "#{@a}/#{@b}"
+  b: Int = 1
+end
+
+class Kid1 < Base1
+  b: Int = 2
+  d: String = @c + "!"
+end
+
+class Probe
+  items: Array = [9]
+
+  def run
+    items = [7, 7]
+    built = [new Basket(), Basket.new(), Basket.new({}), Basket.new(label: "x"), Basket()]
+    kid = Kid1.new()
+    shown = built.map { |b| "#{b.count}:#{b.label}" }
+    "#{shown} #{kid.b} #{kid.c} #{kid.d}"
   end
 end"##,
     ),

@@ -774,6 +774,15 @@ impl Interpreter {
             crate::interpreter::value::note_restricted_methods_declared();
         }
 
+        // The defaults that are not literals are evaluated per instance, in
+        // the environment the methods see.
+        let defaults_env = decl
+            .fields
+            .iter()
+            .filter(|field| !field.is_static)
+            .filter_map(|field| field.initializer.as_ref())
+            .any(|init| !crate::interpreter::executor::access::member::is_literal_default(init))
+            .then(|| method_env.clone());
         let class = Class {
             name: qualified,
             superclass,
@@ -790,6 +799,7 @@ impl Interpreter {
             private_members: Rc::new(RefCell::new(private_members)),
             protected_members: Rc::new(RefCell::new(protected_members)),
             is_module: decl.is_module,
+            defaults_env,
             ..Default::default()
         };
 

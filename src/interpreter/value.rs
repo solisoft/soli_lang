@@ -1834,6 +1834,35 @@ impl FieldInit {
     }
 }
 
+/// How the VM starts every declared field of a new instance of one class —
+/// its own and its ancestors' — built once per class from their
+/// [`FieldInit`]s (`Vm::construct_plan`, kept in [`Class::construct_plan`]).
+#[derive(Debug, Default)]
+pub struct ConstructPlan {
+    /// Every declared field of the chain with the value it starts with: in
+    /// the order the farthest class first declares them, with the value of
+    /// the nearest class that declares them.
+    pub starts: Vec<(SoliStr, Value)>,
+    /// The field-defaults methods of the chain, the farthest class first,
+    /// each with the class it runs as (`None`: the class itself — kept
+    /// without an `Rc` to it, which would never be freed).
+    pub computed: Vec<(Rc<VmClosure>, Option<Rc<Class>>)>,
+    /// A class below one with defaults that are not literals declares
+    /// fields of its own. Each class must then start its fields after its
+    /// ancestors' defaults ran, as the tree-walker does: class by class.
+    pub class_by_class: bool,
+}
+
+impl ConstructPlan {
+    /// Set every field to the value it starts with (arrays and hashes
+    /// copied, so two instances never share one).
+    pub fn start(&self, instance: &mut Instance) {
+        for (name, value) in &self.starts {
+            instance.fields.insert(name.clone(), fresh_copy(value));
+        }
+    }
+}
+
 /// `value` with each array and hash in it copied: a literal default handed to
 /// one more instance.
 fn fresh_copy(value: &Value) -> Value {
@@ -1968,6 +1997,14 @@ pub struct Class {
     /// enters it as one frame. A copy of the class given another
     /// constructor compiles its own: the function is compared by pointer.
     pub vm_constructor: RefCell<Option<(Rc<Function>, Rc<VmClosure>)>>,
+    /// How the VM starts the declared fields of a new instance of this
+    /// class ([`ConstructPlan`]): built on the first one, kept for the next.
+    pub construct_plan: RefCell<Option<Rc<ConstructPlan>>>,
+    /// The environment a class the tree-walker defined evaluates its field
+    /// defaults that are not literals in — its methods' — with `this` the
+    /// new instance. `None` for a class without such defaults (and for one
+    /// the VM compiled, whose defaults are bytecode).
+    pub defaults_env: Option<Rc<RefCell<Environment>>>,
     /// Memo for [`Class::intercepts_new`]: always `Default::default()`
     /// outside this module.
     pub intercepts_new_memo: InterceptsNewMemo,
@@ -2247,6 +2284,8 @@ impl Default for Class {
             value_object_memo: Cell::new(None),
             field_init: RefCell::new(None),
             vm_constructor: RefCell::new(None),
+            construct_plan: RefCell::new(None),
+            defaults_env: None,
             intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
@@ -2303,6 +2342,8 @@ impl Class {
             value_object_memo: Cell::new(None),
             field_init: RefCell::new(None),
             vm_constructor: RefCell::new(None),
+            construct_plan: RefCell::new(None),
+            defaults_env: None,
             intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,

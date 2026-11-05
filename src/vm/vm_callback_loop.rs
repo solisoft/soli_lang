@@ -44,7 +44,9 @@ use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{HashKey, HashPairs, Value};
 
 use super::upvalue::VmClosure;
-use super::vm::{clone_scalar_fast, positional_supplied_mask, CallFrame, IterState, Vm};
+use super::vm::{
+    clone_scalar_fast, positional_supplied_mask, CallFrame, FrameReturn, IterState, Vm,
+};
 
 /// What the method does with each callback result.
 #[derive(Clone, Copy)]
@@ -1592,7 +1594,7 @@ impl Vm {
             None,
             positional_supplied_mask(argc),
         );
-        frame.drives_loop = true;
+        frame.on_return = FrameReturn::DrivesLoop;
         self.frames.push(frame);
         Ok(())
     }

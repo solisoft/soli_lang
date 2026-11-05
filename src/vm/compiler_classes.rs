@@ -82,8 +82,8 @@ impl Compiler {
                     .then(|| (field.name.clone(), init.clone()))
             })
             .collect();
-        if let Some(method) = computed_defaults_method(&computed) {
-            self.compile_method(&method, line)?;
+        if !computed.is_empty() {
+            self.compile_field_defaults(&computed, line)?;
         }
 
         // Compile methods
@@ -371,6 +371,53 @@ impl Compiler {
         Ok(())
     }
 
+    /// The class's field defaults that are not literals, as one method
+    /// registered under [`FIELD_DEFAULTS_METHOD`]: run on a new instance as
+    /// the class, it stores each value in its field, in declaration order,
+    /// and returns nil. `op_add_method` keeps it in the class's `FieldInit`,
+    /// never among its methods.
+    ///
+    /// [`FIELD_DEFAULTS_METHOD`]: crate::interpreter::value::FIELD_DEFAULTS_METHOD
+    fn compile_field_defaults(
+        &mut self,
+        defaults: &[(String, crate::ast::Expr)],
+        line: usize,
+    ) -> CompileResult<()> {
+        let _dummy = self.start_function(
+            FunctionType::Method,
+            crate::interpreter::value::FIELD_DEFAULTS_METHOD.to_string(),
+            &[],
+        );
+        self.emit_field_defaults(defaults, line)?;
+        let proto = self.finish_function(line);
+        let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
+        self.emit(Op::Closure(fn_idx), line);
+        let name_idx = self.add_string_constant(crate::interpreter::value::FIELD_DEFAULTS_METHOD);
+        self.emit(Op::Method(name_idx), line);
+        Ok(())
+    }
+
+    /// The body of the field-defaults method: `this.<name> = <default>` for
+    /// each, as raw writes (`Op::InitProperty`) — a `const`, `private` or
+    /// frozen field takes its default, as on the tree-walker. Nothing is
+    /// collected: no hash per instance.
+    pub(super) fn emit_field_defaults(
+        &mut self,
+        defaults: &[(String, crate::ast::Expr)],
+        line: usize,
+    ) -> CompileResult<()> {
+        self.begin_scope();
+        for (name, init) in defaults {
+            self.emit(Op::GetLocal(0), line);
+            self.compile_expr(init)?;
+            let name_idx = self.add_string_constant(name);
+            self.emit(Op::InitProperty(name_idx), line);
+            self.emit(Op::Pop, line);
+        }
+        self.end_scope(line);
+        Ok(())
+    }
+
     /// Finish compiling a constructor — returns `this` instead of null.
     fn finish_constructor(&mut self, line: usize) -> super::chunk::FunctionProto {
         // Return this (slot 0) instead of implicit null
@@ -390,38 +437,4 @@ impl Compiler {
 
         proto
     }
-}
-
-/// The method that evaluates a class's field defaults that are not literals
-/// on a new instance: `{"created": clock(), …}` (see
-/// [`FIELD_DEFAULTS_METHOD`](crate::interpreter::value::FIELD_DEFAULTS_METHOD)).
-/// `None` when there are none. The compiler compiles it with the class; for
-/// a class the tree-walker defined, the VM compiles it the first time it
-/// builds an instance (`Vm::init_fields`).
-pub(crate) fn computed_defaults_method(
-    defaults: &[(String, crate::ast::Expr)],
-) -> Option<MethodDecl> {
-    use crate::ast::{Expr, ExprKind, Stmt, StmtKind};
-    let span = defaults.first()?.1.span;
-    let pairs = defaults
-        .iter()
-        .map(|(name, init)| {
-            let key = Expr::new(ExprKind::StringLiteral(name.clone()), init.span);
-            (key, init.clone())
-        })
-        .collect();
-    let body = Stmt::new(
-        StmtKind::Expression(Expr::new(ExprKind::Hash(pairs), span)),
-        span,
-        None,
-    );
-    Some(MethodDecl {
-        visibility: crate::ast::stmt::Visibility::Public,
-        is_static: false,
-        name: crate::interpreter::value::FIELD_DEFAULTS_METHOD.to_string(),
-        params: Vec::new(),
-        return_type: None,
-        body: vec![body].into(),
-        span,
-    })
 }

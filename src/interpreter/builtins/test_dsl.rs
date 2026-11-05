@@ -437,6 +437,8 @@ pub fn register_expectation_class(env: &mut Environment) {
         value_object_memo: std::cell::Cell::new(None),
         field_init: RefCell::new(None),
         vm_constructor: RefCell::new(None),
+        construct_plan: RefCell::new(None),
+        defaults_env: None,
         intercepts_new_memo: Default::default(),
         declared_fields: Rc::new(RefCell::new(Vec::new())),
         is_module: false,

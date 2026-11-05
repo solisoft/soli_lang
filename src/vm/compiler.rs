@@ -513,6 +513,44 @@ impl Compiler {
         Self::compile_method_with(compiler, func)
     }
 
+    /// The field-defaults method of a class the tree-walker defined (every
+    /// class of a served app), from its AST: what `compile_class_decl` emits
+    /// for a class the VM compiles (`emit_field_defaults`). `context` is one
+    /// of the class's functions, whose closure gives the namespace and file
+    /// the defaults are read in.
+    pub fn compile_field_defaults_standalone<I: IntoIterator<Item = String>>(
+        defaults: &[(String, crate::ast::Expr)],
+        context: &crate::interpreter::value::Function,
+        globals: I,
+    ) -> CompileResult<FunctionProto> {
+        let mut compiler = Compiler::new(
+            FunctionType::Method,
+            crate::interpreter::value::FIELD_DEFAULTS_METHOD.to_string(),
+        );
+        compiler.known_globals.borrow_mut().extend(globals);
+        compiler.proto.namespace = namespace_of(context);
+        compiler.proto.source_path = context
+            .source_path
+            .as_ref()
+            .map(|p| std::sync::Arc::new(std::path::PathBuf::from(p)));
+        compiler.class_context = Some(ClassContext {
+            has_superclass: context.defining_superclass.is_some(),
+        });
+        let line = defaults
+            .first()
+            .map(|(_, init)| init.span.line as usize)
+            .unwrap_or(0);
+        compiler.emit_field_defaults(defaults, line)?;
+        compiler.emit(Op::Null, line);
+        compiler.emit(Op::Return, line);
+
+        let mut proto = compiler.proto;
+        proto.upvalue_descriptors = compiler.upvalues;
+        proto.is_method = true;
+        peephole_optimize_proto(&mut proto);
+        Ok(proto)
+    }
+
     fn compile_method_with(
         mut compiler: Compiler,
         func: &crate::interpreter::value::Function,
