@@ -23,6 +23,7 @@ src/parser|parser sees raw source from users
 src/interpreter/value_json.rs|JSON parsing of network bodies
 src/interpreter/value_stringify.rs|serialization of runtime values
 yaml/src|YAML parser behind Yaml.parse and locale files
+src/xml|XML core behind Xml.parse, SOAP.parse and the c14n trio (network bodies)
 "
 
 count() {

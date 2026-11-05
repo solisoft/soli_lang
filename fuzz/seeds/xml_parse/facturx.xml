@@ -1,0 +1,1 @@
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"><ram:SellerTradeParty><ram:Name>ACME &#38; Co</ram:Name></ram:SellerTradeParty></rsm:CrossIndustryInvoice>
