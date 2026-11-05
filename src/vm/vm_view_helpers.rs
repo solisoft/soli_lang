@@ -668,7 +668,10 @@ mod tests {
         );
         env.borrow_mut().freeze();
         for _ in 0..2 {
-            assert_eq!(on_both(&helpers["shout"], &[Value::str("hi")]), Value::str("HI!"));
+            assert_eq!(
+                on_both(&helpers["shout"], &[Value::str("hi")]),
+                Value::str("HI!")
+            );
             assert_eq!(on_both(&helpers["shadow"], &[]), Value::str("local"));
             assert_eq!(on_both(&helpers["other"], &[]), Value::str("o"));
             assert_eq!(
@@ -678,8 +681,14 @@ mod tests {
         }
         assert_eq!(decided(&helpers["shout"]), Some(false));
         assert_eq!(decided(&helpers["shadow"]), Some(false));
-        assert!(matches!(env.borrow().get("h"), Some(Value::NativeFunction(_))));
-        assert!(matches!(env.borrow().get("other"), Some(Value::Function(_))));
+        assert!(matches!(
+            env.borrow().get("h"),
+            Some(Value::NativeFunction(_))
+        ));
+        assert!(matches!(
+            env.borrow().get("other"),
+            Some(Value::Function(_))
+        ));
     }
 
     /// `req` is rebound on the closure for every request: a compiled helper
@@ -823,7 +832,7 @@ mod tests {
             .get("callback")
             .expect("the lambda");
         assert_eq!(
-            on_both(&helpers["kept"], &[callback.clone()]),
+            on_both(&helpers["kept"], std::slice::from_ref(&callback)),
             Value::str("called")
         );
         assert_eq!(decided(&helpers["kept"]), Some(true));

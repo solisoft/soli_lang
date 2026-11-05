@@ -128,7 +128,10 @@ fn vm_a_timeout_in_a_block_loop_is_caught_by_the_method() {
     let module = Compiler::compile(&program).expect("compile error");
     let mut vm = Vm::new();
     let outcome = vm.execute(&module.main);
-    assert!(outcome.is_ok(), "the method's catch must answer: {outcome:?}");
+    assert!(
+        outcome.is_ok(),
+        "the method's catch must answer: {outcome:?}"
+    );
     match vm.globals.get("answer") {
         Some(Value::String(text)) => assert!(
             text.starts_with("caught: ") && text.contains("handler budget"),

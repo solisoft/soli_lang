@@ -3901,7 +3901,9 @@ end
             if let Value::Array(store) = vm.globals.get("STORE").cloned().expect("STORE") {
                 store.borrow_mut().clear();
             }
-            assert!(vm.call_value_direct(leak.clone(), &[], Span::default()).is_err());
+            assert!(vm
+                .call_value_direct(leak.clone(), &[], Span::default())
+                .is_err());
             if recover {
                 vm.recover_after_panic();
                 assert!(vm.spare_callback_loop.is_none());
@@ -3918,8 +3920,10 @@ end
                 vm.reset();
                 assert_eq!(seen, Value::String(expected.clone().into()));
                 assert!(
-                    vm.upvalue_pool.iter().all(|cell| Rc::strong_count(cell) == 1
-                        && matches!(*cell.borrow(), Upvalue::Open(_))),
+                    vm.upvalue_pool
+                        .iter()
+                        .all(|cell| Rc::strong_count(cell) == 1
+                            && matches!(*cell.borrow(), Upvalue::Open(_))),
                     "a pooled cell is held by nothing else"
                 );
             }
