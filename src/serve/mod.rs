@@ -5590,6 +5590,37 @@ thread_local! {
     static HANDLER_KEY_BUF: RefCell<String> = RefCell::new(String::with_capacity(64));
 }
 
+/// A VM error that is the action's answer, given the stack the tree-walker's
+/// run of the action would have reported: the action's frame
+/// (`Class#action at <file>:<line>`) and the environment the caller would
+/// capture. The VM's error carries no frame, so without this the error was
+/// logged with `<no stack frames captured>`, and the error tracker — which
+/// groups by message and innermost frame — filed a settled app error answered
+/// from the VM apart from its first occurrence, re-run on the tree-walker.
+/// Only on the failure path.
+fn with_action_frame(
+    interpreter: &mut Interpreter,
+    err: RuntimeError,
+    class: &crate::interpreter::value::Class,
+    method_name: &str,
+    method: &crate::interpreter::value::Function,
+) -> RuntimeError {
+    if err.breakpoint_stack_trace().is_some() {
+        return err;
+    }
+    interpreter.push_frame(
+        &format!("{}#{}", class.name, method_name),
+        method
+            .span
+            .unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1)),
+        method.source_path.clone(),
+    );
+    let stack_trace = interpreter.get_stack_trace();
+    interpreter.pop_frame();
+    let env_json = interpreter.serialize_environment_for_debug();
+    RuntimeError::with_env(err.to_string(), err.span(), env_json, stack_trace)
+}
+
 /// Call a method on a class instance.
 fn call_class_method(
     interpreter: &mut Interpreter,
@@ -5649,7 +5680,13 @@ fn call_class_method(
                         // no demotion, no re-run on the tree-walker.
                         if crate::interpreter::deadline::exhausted() {
                             vm.reset();
-                            return Err(err);
+                            return Err(with_action_frame(
+                                interpreter,
+                                err,
+                                class,
+                                method_name,
+                                &method,
+                            ));
                         }
                         // Demoted now only when the VM refused the action or
                         // it wrote first; otherwise the re-run below decides.
@@ -5664,7 +5701,13 @@ fn call_class_method(
                         // `no_retry_after_commit`) — or an error both engines
                         // were seen to raise: the VM's error is the answer.
                         if !verdict.reruns() {
-                            return Err(err);
+                            return Err(with_action_frame(
+                                interpreter,
+                                err,
+                                class,
+                                method_name,
+                                &method,
+                            ));
                         }
                     }
                 }
@@ -7651,6 +7694,48 @@ end
             !vm.failed_handlers.contains("Boom#action"),
             "an app error must not move the action off the VM"
         );
+        forget_settled_app_errors();
+    }
+
+    /// A settled app error answered from the VM is reported with the stack
+    /// its first occurrence (re-run on the tree-walker) had: the action's
+    /// frame. It was answered with no frame at all, so the log said
+    /// `<no stack frames captured>` and the error tracker, which groups by
+    /// message and innermost frame, filed one bug as two.
+    #[test]
+    fn a_settled_app_error_answered_from_the_vm_keeps_its_stack() {
+        forget_settled_app_errors();
+        let source = "class Boom {\n    fn action(req) {\n        throw \"bad input\"\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) = served_class(source, "Boom", vec![]);
+        let mut fingerprints = Vec::new();
+        for request in 1..=3 {
+            let err = call_class_method(
+                &mut interpreter,
+                Some(&mut vm),
+                &class_rc,
+                &instance,
+                "action",
+                &empty_request(),
+            )
+            .expect_err("the action fails on both engines");
+            let stack = err.breakpoint_stack_trace().unwrap_or(&[]).to_vec();
+            let frame = stack
+                .iter()
+                .rev()
+                .find(|frame| !frame.starts_with("Error:"))
+                .cloned()
+                .unwrap_or_default();
+            assert!(
+                frame.starts_with("Boom#action at "),
+                "request {request}: no action frame in {stack:?} ({err})"
+            );
+            fingerprints.push(error_tracker::fingerprint(&err.to_string(), &frame));
+        }
+        assert!(
+            fingerprints.iter().all(|fp| *fp == fingerprints[0]),
+            "one error, one group: {fingerprints:?}"
+        );
+        assert!(!vm.failed_handlers.contains("Boom#action"));
         forget_settled_app_errors();
     }
 
