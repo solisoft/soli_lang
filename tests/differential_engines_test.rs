@@ -1941,3 +1941,61 @@ fn tree_walker_and_vm_agree() {
     }
     assert!(msg.is_empty(), "\n{msg}");
 }
+
+/// `sort_by` (block and string-key forms) and `order` over keys of mixed
+/// types, NaN and nil. Their comparator is no total order — values of
+/// different types and NaN compare Equal — and std's sort panics on that
+/// past 20 elements: the script died with exit 101, a served request with a
+/// panic `rescue` could not catch. Each form must return, on both engines,
+/// the same deterministic and stable order. (The differential cases above
+/// cannot pin this: two engines that both crash agree.)
+#[test]
+fn sort_by_over_mixed_type_and_nan_keys_returns_on_both_engines() {
+    let source = r#"
+pool = [3, "b", 1.5, 2, "a", 7, 0.25, "c", 5, 1, "NaN".to_f, nil]
+rows = (0..72).map { |i| {"k": pool[(i * 7 + i / 3) % 12], "i": i} }
+def stable(sorted)
+  (1..sorted.length).all? do |j|
+    a = sorted[j - 1]
+    b = sorted[j]
+    same = type(a["k"]) == type(b["k"]) && a["k"] == b["k"]
+    !same || a["i"] < b["i"]
+  end
+end
+def ids(sorted)
+  sorted.map { |r| r["i"] }.join(",")
+end
+by_block = rows.sort_by { |r| r["k"] }
+by_key = rows.sort_by("k")
+by_order = rows.order("k")
+print(ids(by_block))
+print(ids(by_key))
+print(ids(by_order))
+print(stable(by_block), stable(by_key), stable(by_order))
+"#;
+    let tree = run(source, 90_000, false);
+    let vm = run(source, 90_001, true);
+    assert_ne!(
+        tree, "<non-success>",
+        "sort_by must not crash the tree-walker"
+    );
+    assert_ne!(vm, "<non-success>", "sort_by must not crash the VM");
+    assert_eq!(tree, vm, "both engines must give the same order");
+    assert_eq!(
+        tree,
+        run(source, 90_002, false),
+        "the order is deterministic"
+    );
+
+    let lines: Vec<&str> = tree.lines().collect();
+    assert_eq!(lines.len(), 4, "{tree}");
+    for line in &lines[..3] {
+        let mut ids: Vec<usize> = line.split(',').map(|n| n.parse().unwrap()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, (0..72).collect::<Vec<_>>(), "every row once: {line}");
+    }
+    assert_eq!(
+        lines[3], "true true true",
+        "rows with equal keys keep their order"
+    );
+}
