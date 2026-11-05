@@ -8,10 +8,25 @@ use std::rc::Rc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::domain;
-use crate::interpreter::value::{Class, Instance, InstanceMethodDef, SoliStr, Value};
+use crate::interpreter::value::{Class, HashKey, Instance, InstanceMethodDef, SoliStr, Value};
 use crate::span::Span;
 
 use super::vm::Vm;
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the nested runs (`run_to_completion`) started on this
+    /// thread.
+    static NESTED_RUNS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many nested runs this thread has started, for a test to
+/// tell a construction that runs in the current activation from one that
+/// starts a run of its own.
+#[cfg(test)]
+pub(crate) fn nested_runs() -> usize {
+    NESTED_RUNS.with(std::cell::Cell::get)
+}
 
 impl Vm {
     /// Run whatever `start` pushes (a frame, usually) until it returns, and
@@ -21,6 +36,8 @@ impl Vm {
         &mut self,
         start: impl FnOnce(&mut Self) -> Result<(), RuntimeError>,
     ) -> Result<Value, RuntimeError> {
+        #[cfg(test)]
+        NESTED_RUNS.with(|runs| runs.set(runs.get() + 1));
         let saved_depth = self.return_depth;
         let frames_before = self.frames.len();
         self.return_depth = frames_before;
@@ -65,7 +82,7 @@ impl Vm {
             // A field left out takes its default (`Amount.new(500)` is in
             // EUR), and the constructor and invariants see it.
             self.init_fields(class, &instance, span)?;
-            match class.find_vm_method_with_class("init") {
+            match class.find_vm_init_with_class() {
                 Some((ctor, defining)) => {
                     let (slots, supplied) = super::vm_calls::bind_named_arguments(
                         &ctor.proto,
@@ -150,6 +167,68 @@ impl Vm {
         // every default, `nil` without one — then take the attributes.
         check_attribute_args(class, &args).map_err(|e| RuntimeError::new(e, span))?;
         let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+        if matches!(args.as_slice(), [] | [Value::Null]) {
+            // No attributes to assign after the defaults: they run as frames
+            // above the instance, the call's value, as for `new Klass()`.
+            let defaults = self.start_fields(class, &instance, span)?;
+            self.push(Value::Instance(instance.clone()));
+            if let Some(plan) = defaults {
+                self.push_field_defaults(&plan, class, &instance, span)?;
+            }
+            return Ok(());
+        }
+        self.init_fields(class, &instance, span)?;
+        assign_attributes(&instance, &args);
+        self.push(Value::Instance(instance));
+        Ok(())
+    }
+
+    /// `Klass.new(...)` with labelled arguments, `[class, args…]` on the
+    /// stack from `receiver_idx`: the rules of `Interpreter::class_new`. On
+    /// a plain class without a constructor, named arguments alone are the
+    /// attribute form — the fields started as `new Klass()` starts them, its
+    /// defaults that are not literals included, then the attributes
+    /// assigned. Anything else is the construction `Klass(k: v)` is. The VM
+    /// read `Klass.new` as a member before, whose attribute form left those
+    /// defaults nil.
+    pub(crate) fn class_new_named(
+        &mut self,
+        class: &Rc<Class>,
+        receiver_idx: usize,
+        labels: &[Option<SoliStr>],
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        use crate::interpreter::executor::access::member::{
+            assign_attributes, check_attribute_args, has_constructor,
+        };
+        let block_label = |label: &Option<SoliStr>| {
+            label
+                .as_ref()
+                .is_some_and(|name| name.as_str() == super::chunk::BLOCK_LABEL)
+        };
+        if labels.iter().any(block_label) {
+            return Err(RuntimeError::new(
+                format!("{}.new takes no block", class.name),
+                span,
+            ));
+        }
+        let attribute_form = labels.iter().all(Option::is_some)
+            && !(domain::value_objects_declared() && class.is_value_object())
+            && !has_constructor(class);
+        if !attribute_form {
+            return self.call_value_named(labels.len(), labels, span);
+        }
+        let values = self.stack.split_off(receiver_idx + 1);
+        self.stack.truncate(receiver_idx);
+        let mut pairs = crate::interpreter::value::HashPairs::default();
+        for (label, value) in labels.iter().zip(values) {
+            if let Some(name) = label {
+                pairs.insert(HashKey::String(name.clone()), value);
+            }
+        }
+        let args = [Value::Hash(Rc::new(RefCell::new(pairs)))];
+        check_attribute_args(class, &args).map_err(|e| RuntimeError::new(e, span))?;
+        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
         self.init_fields(class, &instance, span)?;
         assign_attributes(&instance, &args);
         self.push(Value::Instance(instance));
@@ -165,7 +244,7 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let class = instance.borrow().class.clone();
-        let params: Option<Vec<String>> = match class.find_vm_method_with_class("init") {
+        let params: Option<Vec<String>> = match class.find_vm_init_with_class() {
             Some((ctor, _)) => Some(ctor.proto.param_names.clone()),
             None => class
                 .find_constructor()

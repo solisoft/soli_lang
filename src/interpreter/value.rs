@@ -1801,6 +1801,11 @@ pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 /// and keeps it in [`FieldInit::computed`], never among the class's methods.
 pub const FIELD_DEFAULTS_METHOD: &str = "__field_defaults__";
 
+/// The name `Op::Method` registers a compiled constructor under: no
+/// identifier can spell it, so it never meets a user method. `op_add_method`
+/// stores it in [`Class::vm_init`], never among the class's methods.
+pub const VM_CONSTRUCTOR: &str = "<new>";
+
 /// How the VM starts one class's own declared instance fields on a new
 /// instance, before any constructor runs: what the tree-walker's
 /// `initialize_instance_fields` does for that class (each ancestor has its
@@ -1824,6 +1829,45 @@ impl FieldInit {
     /// is copied, so two instances never share one.
     pub fn start(&self, instance: &mut Instance) {
         for (name, value) in &self.fields {
+            instance.fields.insert(name.clone(), fresh_copy(value));
+        }
+    }
+
+    /// [`Self::start`] for the fields that start with something other than
+    /// `nil`: the literal defaults, as a model's `Model.new(attrs)` sets them.
+    pub fn start_literals(&self, instance: &mut Instance) {
+        for (name, value) in &self.fields {
+            if !matches!(value, Value::Null) {
+                instance.fields.insert(name.clone(), fresh_copy(value));
+            }
+        }
+    }
+}
+
+/// How the VM starts every declared field of a new instance of one class —
+/// its own and its ancestors' — built once per class from their
+/// [`FieldInit`]s (`Vm::construct_plan`, kept in [`Class::construct_plan`]).
+#[derive(Debug, Default)]
+pub struct ConstructPlan {
+    /// Every declared field of the chain with the value it starts with: in
+    /// the order the farthest class first declares them, with the value of
+    /// the nearest class that declares them.
+    pub starts: Vec<(SoliStr, Value)>,
+    /// The field-defaults methods of the chain, the farthest class first,
+    /// each with the class it runs as (`None`: the class itself — kept
+    /// without an `Rc` to it, which would never be freed).
+    pub computed: Vec<(Rc<VmClosure>, Option<Rc<Class>>)>,
+    /// A class below one with defaults that are not literals declares
+    /// fields of its own. Each class must then start its fields after its
+    /// ancestors' defaults ran, as the tree-walker does: class by class.
+    pub class_by_class: bool,
+}
+
+impl ConstructPlan {
+    /// Set every field to the value it starts with (arrays and hashes
+    /// copied, so two instances never share one).
+    pub fn start(&self, instance: &mut Instance) {
+        for (name, value) in &self.starts {
             instance.fields.insert(name.clone(), fresh_copy(value));
         }
     }
@@ -1916,13 +1960,20 @@ pub struct Class {
     /// dispatch in `member.rs` and the VM does not consult `Class.methods`.
     pub primitive: Option<PrimType>,
     /// Bytecode instance methods, registered by `Op::Method` when a class is
-    /// compiled in the VM (`compile_class_decl`). The constructor lands here
-    /// under the name `"init"` (it returns `this`). `Rc` so the per-method
-    /// class rebuilds in `op_add_method` share one map. ahash-keyed: the VM
+    /// compiled in the VM (`compile_class_decl`) — not the constructor (see
+    /// `vm_init`). `Rc` so the per-method class rebuilds in `op_add_method`
+    /// share one map. ahash-keyed: the VM
     /// probes this on every compiled instance-method call. Write it through
     /// [`Class::insert_vm_method`], or call [`note_vm_methods_changed`] after
     /// writing: the VM's method cache trusts an entry until that epoch moves.
     pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
+    /// The constructor of a class the VM compiled (`new(...) … end`),
+    /// registered by `Op::Method` under [`VM_CONSTRUCTOR`]. Kept apart from
+    /// `vm_methods`: a user method may be called `init` (or anything else)
+    /// without being taken for the constructor, and the constructor is never
+    /// reachable as a method. `Rc` so the class rebuilds share it, as
+    /// `vm_methods`.
+    pub vm_init: Rc<RefCell<Option<Rc<VmClosure>>>>,
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
     pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
@@ -1956,6 +2007,14 @@ pub struct Class {
     /// enters it as one frame. A copy of the class given another
     /// constructor compiles its own: the function is compared by pointer.
     pub vm_constructor: RefCell<Option<(Rc<Function>, Rc<VmClosure>)>>,
+    /// How the VM starts the declared fields of a new instance of this
+    /// class ([`ConstructPlan`]): built on the first one, kept for the next.
+    pub construct_plan: RefCell<Option<Rc<ConstructPlan>>>,
+    /// The environment a class the tree-walker defined evaluates its field
+    /// defaults that are not literals in — its methods' — with `this` the
+    /// new instance. `None` for a class without such defaults (and for one
+    /// the VM compiled, whose defaults are bytecode).
+    pub defaults_env: Option<Rc<RefCell<Environment>>>,
     /// Memo for [`Class::intercepts_new`]: always `Default::default()`
     /// outside this module.
     pub intercepts_new_memo: InterceptsNewMemo,
@@ -2228,12 +2287,15 @@ impl Default for Class {
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_init: Rc::new(RefCell::new(None)),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_init: RefCell::new(None),
             vm_constructor: RefCell::new(None),
+            construct_plan: RefCell::new(None),
+            defaults_env: None,
             intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
@@ -2283,12 +2345,15 @@ impl Class {
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_init: Rc::new(RefCell::new(None)),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
             vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_init: RefCell::new(None),
             vm_constructor: RefCell::new(None),
+            construct_plan: RefCell::new(None),
+            defaults_env: None,
             intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
@@ -2416,6 +2481,29 @@ impl Class {
             let next = current.superclass.clone()?;
             current = next;
         }
+    }
+
+    /// The nearest compiled constructor up the chain ([`Class::vm_init`]),
+    /// with the class that declares it.
+    pub fn find_vm_init_with_class(self: &Rc<Self>) -> Option<(Rc<VmClosure>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let found = current.vm_init.borrow().clone();
+            if let Some(closure) = found {
+                return Some((closure, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// Whether this class or an ancestor has a compiled constructor.
+    pub fn has_vm_init(&self) -> bool {
+        self.vm_init.borrow().is_some()
+            || self
+                .superclass
+                .as_ref()
+                .is_some_and(|superclass| superclass.has_vm_init())
     }
 
     /// Register bytecode instance method `name`, replacing any of that name,

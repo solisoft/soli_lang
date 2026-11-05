@@ -64,6 +64,7 @@ src/vm/vm_calls.rs PLAIN_NATIVE_CALLS
 src/vm/vm_calls.rs SLOW_PATH_CALLS
 src/vm/vm_classes.rs CLASS_MEMBER_HANDOFFS
 src/vm/vm_classes.rs THIS_SCANS
+src/vm/vm_domain.rs NESTED_RUNS
 
 # Boot-time flags
 src/serve/app_loader.rs LOAD_STATS

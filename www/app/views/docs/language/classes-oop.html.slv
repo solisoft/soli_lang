@@ -126,8 +126,16 @@ end
 Savings.new("cy").balance    # 100 — the subclass's default wins</code></pre>
                 <ul class="list-disc list-inside text-gray-400 mt-3 space-y-1">
                     <li>A default is evaluated once per new instance, never when the class is defined.</li>
+                    <li>A default that is not a literal (<code>clock()</code>, <code>@items.length</code>, a constant) is evaluated on the new instance: <code>@field</code> and <code>@method</code> are the new instance's, and a name reads what the class's methods would read &mdash; never a local or the <code>this</code> of the code that calls <code>new</code>.</li>
+                    <li>Each class sets its fields first &mdash; its literal defaults, <code>nil</code> for the rest &mdash; then evaluates its other defaults in declaration order, before the next class down sets its own. So a default may read a field declared above it, or any field with a literal default of its class or its parents.</li>
                     <li><code>super(...)</code> runs the parent's constructor body only. It does not set the fields again, so what a constructor assigned before calling it stays.</li>
+                    <li>A model's <code>Post.new(attrs)</code> is the ORM's: it sets the literal defaults and the attributes, and leaves any other field unset (see <a href="/docs/database/models#building-without-saving" class="text-cyan-400 hover:underline">Models</a>).</li>
                 </ul>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Basket
+  items: Array = [1, 2, 3]
+  count: Int = @items.length      # 3 — this basket's items
+  label: String = "n=#{@count}"   # "n=3": `count` is declared above
+end</code></pre>
             </div>
         </section>
     </section>

@@ -149,6 +149,27 @@ user = User.create({
 # (`_errors` is nil on success)
 ```
 
+#### Building without saving
+
+`User.new(attrs)` builds an instance without writing it: the attributes,
+plus the fields declared with a literal default (`views: Int = 0`). A
+declared field it is not given and that has no literal default stays unset
+— not `nil` — so a later `save` treats it as `User.create(attrs)` would:
+no `nil` is validated or written for it, and the column's own default
+applies.
+
+```soli
+class User < Model
+  name: String
+  age: Int
+  views: Int = 0
+end
+
+user = User.new({"name": "Ann"})
+user.to_h        # {name => Ann, views => 0} — no `age`
+user.save        # writes name and views; the column default fills age
+```
+
 #### Choosing the key
 
 The attributes hash never chooses the document key: `create` drops every

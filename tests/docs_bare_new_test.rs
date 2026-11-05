@@ -162,3 +162,54 @@ fn the_scan_sees_a_bare_new() {
     let md = "text Post.new\n```soli\n@post = Post.new\n```\n";
     assert_eq!(markdown_code(md), vec![(3, "@post = Post.new".to_string())]);
 }
+
+/// The house rule on `()` for a zero-argument call, as one surface states
+/// it: the bullet from its bold title to the next bullet, joined to one line.
+fn zero_argument_rule(text: &str) -> Option<String> {
+    let start = text.find("- **No `()` on a zero-argument method call**")?;
+    let rest = &text[start + 2..];
+    let end = rest.find("\n- ").unwrap_or(rest.len());
+    Some(rest[..end].split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+/// The root `CLAUDE.md`, the guide `soli new` ships and the language docs
+/// give one rule for `()` on a zero-argument call, and it keeps them on
+/// `Klass.new()`. The two guides said every zero-argument call drops them,
+/// while the docs (and this file's scan) require `Klass.new()`, and the
+/// docs alone kept them on model writes.
+#[test]
+fn the_guides_and_the_docs_state_one_rule_for_zero_argument_calls() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read = |path: &str| fs::read_to_string(repo.join(path)).unwrap_or_default();
+    let rules: Vec<(&str, Option<String>)> = [
+        "CLAUDE.md",
+        "src/scaffold/templates/CLAUDE.md",
+        "www/docs/soli-language.md",
+    ]
+    .into_iter()
+    .map(|path| (path, zero_argument_rule(&read(path))))
+    .collect();
+    let first = rules[0].1.clone().unwrap_or_default();
+    assert!(
+        first.contains("`Klass.new()`"),
+        "CLAUDE.md keeps `()` on `Klass.new()`: {first}"
+    );
+    for (path, rule) in &rules {
+        assert_eq!(
+            rule.as_deref(),
+            Some(first.as_str()),
+            "{path} states the rule as CLAUDE.md does"
+        );
+    }
+    let index = read("www/app/views/docs/language/index.html.slv");
+    let line = index
+        .lines()
+        .find(|line| line.contains("on a zero-argument method call</strong>"))
+        .unwrap_or_default();
+    for keeps in ["Klass.new()", "current_user()", "list.sort()[0]"] {
+        assert!(
+            line.contains(keeps),
+            "the language index keeps `()` on {keeps}: {line}"
+        );
+    }
+}

@@ -1372,14 +1372,13 @@ impl Interpreter {
                     }
                 }
                 // Methods the VM compiled live in `vm_methods` only (the
-                // constructor is registered there as "init").
+                // constructor is not one of them: `Class::vm_init`).
                 let mut class_in_chain = Some(inst_ref.class.clone());
                 while let Some(class) = class_in_chain {
                     for k in class.vm_methods.borrow().keys() {
-                        if k != "init"
-                            && !method_names
-                                .iter()
-                                .any(|v| matches!(v, Value::String(s) if **s == **k))
+                        if !method_names
+                            .iter()
+                            .any(|v| matches!(v, Value::String(s) if **s == **k))
                         {
                             method_names.push(Value::String(k.clone().into()));
                         }
@@ -3280,10 +3279,14 @@ pub(crate) fn class_universal_member(
 /// internal `_`-prefixed keys are skipped. The shape `Klass.new(args)` with
 /// other arguments runs the constructor instead (`Interpreter::class_new`).
 ///
-/// The fields start as [`start_declared_fields`] sets them: this path has no
-/// engine to evaluate a default that is not a literal. The engines' own
-/// `class_new` start them in full, as `new Klass()` does, then assign the
-/// attributes with [`assign_attributes`].
+/// A model's `Model.new(attrs)` sets only its literal defaults
+/// ([`start_literal_defaults`]): a declared field it is not given and that
+/// has no default stays unset, so `save` neither validates nor writes a
+/// `nil` nobody assigned, and a column's own default applies. Any other
+/// class's fields start as [`start_declared_fields`] sets them: this path
+/// has no engine to evaluate a default that is not a literal. The engines'
+/// own `class_new` start them in full, as `new Klass()` does, then assign
+/// the attributes with [`assign_attributes`].
 pub fn new_with_attributes(
     class: &Rc<crate::interpreter::value::Class>,
     args: &[Value],
@@ -3292,9 +3295,47 @@ pub fn new_with_attributes(
     let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
         class.clone(),
     )));
-    start_declared_fields(class, &mut instance.borrow_mut());
+    if class.is_model_subclass() {
+        start_literal_defaults(class, &mut instance.borrow_mut());
+    } else {
+        start_declared_fields(class, &mut instance.borrow_mut());
+    }
     assign_attributes(&instance, args);
     Ok(Value::Instance(instance))
+}
+
+/// The declared fields of `class` and its ancestors that have a literal
+/// default, set to it — the farthest class first, so a subclass's wins. A
+/// model's `Model.new(attrs)` starts these and no other: a field without a
+/// default, or with one that is not a literal, is left unset, as through
+/// 2.29.3. Setting it to `nil` made `save` validate that `nil` (a
+/// `numericality` rule failed on a field nobody assigned) and write it,
+/// replacing a column's SQL `DEFAULT` with `NULL`.
+pub(crate) fn start_literal_defaults(
+    class: &crate::interpreter::value::Class,
+    instance: &mut crate::interpreter::value::Instance,
+) {
+    if let Some(superclass) = &class.superclass {
+        start_literal_defaults(superclass, instance);
+    }
+    if class.fields.is_empty() {
+        // A model the VM compiled keeps its starts in `field_init`, where a
+        // field without a literal default starts as `nil`.
+        if let Some(init) = class.field_init.borrow().as_ref() {
+            init.start_literals(instance);
+        }
+        return;
+    }
+    for name in declared_field_order(class) {
+        if let Some(value) = class
+            .fields
+            .get(&name)
+            .and_then(Option::as_ref)
+            .and_then(literal_value)
+        {
+            instance.set(name, value);
+        }
+    }
 }
 
 /// The attribute form's arguments: none, `nil` or one hash, on a class.
@@ -3366,6 +3407,27 @@ pub(crate) fn start_declared_fields(
     }
 }
 
+/// The instance fields `class` itself declares, in declaration order, then
+/// any it lists without declaring them in order (sorted) — the order both
+/// engines start them and evaluate their defaults in.
+pub(crate) fn declared_field_order(class: &crate::interpreter::value::Class) -> Vec<String> {
+    let declared = class.declared_fields.borrow();
+    let mut names: Vec<String> = declared
+        .iter()
+        .filter(|name| class.fields.contains_key(*name))
+        .cloned()
+        .collect();
+    let mut rest: Vec<String> = class
+        .fields
+        .keys()
+        .filter(|name| !declared.contains(*name))
+        .cloned()
+        .collect();
+    rest.sort();
+    names.extend(rest);
+    names
+}
+
 /// Whether a field's default is a literal (see [`literal_value`]): a value
 /// computed once and copied into each instance, not an expression the
 /// engine evaluates for each one.
@@ -3373,9 +3435,9 @@ pub(crate) fn is_literal_default(expr: &crate::ast::Expr) -> bool {
     literal_value(expr).is_some()
 }
 
-/// The value of a literal expression — numbers (negative ones too),
-/// strings, booleans, `nil`, and arrays and hashes of literals — evaluated
-/// without an interpreter.
+/// The value of a literal expression — numbers (negative ones too, and
+/// Decimals), strings, symbols, booleans, `nil`, and arrays and hashes of
+/// literals — evaluated without an interpreter.
 pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
     use crate::ast::{ExprKind, UnaryOp};
     use crate::interpreter::value::{HashKey, HashPairs};
@@ -3391,6 +3453,10 @@ pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
             _ => return None,
         },
         ExprKind::StringLiteral(s) => Value::String(s.clone().into()),
+        ExprKind::Symbol(s) => Value::Symbol(s.clone().into()),
+        ExprKind::DecimalLiteral(s) => {
+            Value::Decimal(crate::interpreter::value::DecimalValue::from_literal(s)?)
+        }
         ExprKind::BoolLiteral(b) => Value::Bool(*b),
         ExprKind::Null => Value::Null,
         ExprKind::Array(items) => Value::Array(Rc::new(RefCell::new(
@@ -3429,7 +3495,7 @@ pub fn is_attribute_new(positional: &[Value], has_named: bool) -> bool {
 /// engine: a class with one builds every `Klass.new(...)` through it, as
 /// `new Klass(...)` does — the attribute form is for classes without.
 pub fn has_constructor(class: &crate::interpreter::value::Class) -> bool {
-    class.find_vm_method("init").is_some() || class.find_constructor().is_some()
+    class.has_vm_init() || class.find_constructor().is_some()
 }
 
 /// Whether `Klass.new(...)` on `class` is answered by the engines' call
