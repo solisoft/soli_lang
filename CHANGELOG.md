@@ -187,11 +187,16 @@
   function-wide slot, and one `PushNulls(n)` now fills all of them. Nothing a
   program can observe changes. (C598)
 - Scripts stay on the VM when they read `clock` bare (`elapsed = clock -
-  start`), call `send` on an instance or a class, or merely define their own
-  `methods`, `send` or `subscribe`; auto engine selection used to send them
-  whole to the tree-walker (up to 7.7× slower on loop-bound code). A `serve`
-  middleware reading `clock` bare is no longer demoted. `Klass.send("static",
-  …)` now runs on the VM. (#600)
+  start`); auto engine selection used to send them whole to the tree-walker
+  (up to 7.7× slower on loop-bound code). A `serve` middleware reading `clock`
+  bare is no longer demoted. (#600) A script that calls `send`, or uses
+  `methods`, `subscribe`, `class_eval` or `instance_eval` anywhere (even as a
+  name it defines), still runs on the tree-walker, as in 2.29.3: the VM's
+  `send` raises on an extra argument, returns a field, applies a default and
+  does not wrap a thrown value, so `soli script.sl` and `soli --tree
+  script.sl` would differ. Under `soli serve`, `Klass.send("name", …)` still
+  re-runs the action on the interpreter, so a DomainError thrown through it
+  gives the same status in production as under `--dev`. (#647)
 - serve: finishing an HTML response is cheaper, and the bytes are the same.
   Placing the framework's script tags before the last `</body>` used to search
   a page backwards byte by byte, lowercasing each byte. A page without
@@ -229,7 +234,15 @@
   and refused past `SOLI_MAX_RANGE_LEN`). Tree-walker comprehensions no longer
   build a bare range either. The VM now reports a non-integer range bound at
   the range, as the tree-walker does, instead of at the `for` statement. (VM
-  audit T13)
+  audit T13) A list or hash comprehension over a range is still held to
+  `SOLI_MAX_RANGE_LEN` (16,777,216 by default), on both engines, with a
+  catchable error at the range, so a request-supplied bound such as
+  `[f(i) for i in 0..params["n"].to_i]` cannot grow a result until memory runs
+  out. The limit now applies to the result rather than to the range: a filter
+  that keeps few elements (`[i for i in 0..n if i % 1000 == 0]`) is not
+  refused however long the range is, and the message reads "a comprehension
+  over a range (..) would build more than N elements". A hash comprehension
+  counts distinct keys. (#642)
 - `match` on the VM: array patterns test type and length with one
   `MatchArrayLen` op and build `...rest` natively (`ArrayRestLocal`); typed
   patterns, typed `catch` and enum payload bindings no longer allocate the
@@ -378,14 +391,33 @@
   162 to 321 µs on a middleware with a loop. Any client could trigger it with
   one bad request. A handler now leaves the VM only when the VM was at fault:
   it refused the handler (`EngineFallback`), or the tree-walker's re-run
-  succeeded where the VM failed (an engine divergence, still logged, counted,
-  and a hard stop under `SOLI_FAIL_ON_VM_DEMOTION=1`). A handler that fails
-  after a database write is not re-run, and is demoted as before. A failing
-  request is still re-run on the tree-walker, which answers it. So side
-  effects before the error that are not database writes (print, outbound HTTP,
-  mail, cache) now run twice on every such request, not only on the first per
-  worker. `soli_vm_handler_demotions_total` counts only real demotions now.
-  (C574)
+  answered where the VM failed. The re-run answers when it succeeds, or when
+  it ends in a deliberate `halt(...)`, a `find` miss (404), `forbidden()`
+  (403) or a raised `DomainError`; that is an engine divergence, logged under
+  `SOLI_ENGINE_LOG=1`, counted in `soli_vm_engine_divergences_total`, and a
+  hard stop under `SOLI_FAIL_ON_VM_DEMOTION=1`.
+  `soli_vm_handler_demotions_total` counts only real demotions now. (C574)
+- serve: a handler that fails in production no longer repeats its side
+  effects on every failing request: the worker remembers which errors belong
+  to the app. The first failure is re-run once on the tree-walker; a later
+  request failing with the same error gets the VM's error as its 500 straight
+  away, logged with the action's
+  location and grouped with the first occurrence in the error tracker. A new
+  error from the same handler is re-run once, up to eight distinct errors per
+  handler; past that, every error of the handler is answered from the VM.
+  Edited code is re-run again after a hot reload. Any write the framework
+  makes for the app counts as "wrote first": model and SQL writes including
+  `increment`/`decrement`, column-mode writes, SoliDB bulk and raw writes,
+  `Solidb` client writes, a job enqueue on any backend, and a delivered mail.
+  Such a handler is not re-run (its error is the answer) and moves to the
+  interpreter. Session writes on the `solidb` session driver do not count.
+  Effects the guard cannot see (print, outbound HTTP, cache, File writes)
+  happen twice only on the first failure per handler and error per worker.
+  Measured on `soli serve` + SQLite, three failing requests each: 6 → 3
+  increments, 6 → 3 jobs, 6 → 4 appends to a file. A request whose handler
+  succeeds pays nothing extra; each SoliDB query now scans its text for write
+  keywords. Hook names in the engine log and the demotion metrics carry the
+  hook's line (`PostsController#before_action:12`). (#643)
 - Views: a bare `clock` is the time in a VM-compiled view, as in an action. It
   used to be the function itself, so `clock - start` raised and serve rendered
   every such page twice, the second time on the tree-walker (−45% req/s on a
@@ -420,7 +452,26 @@
   (`Klass.new()`, `Klass.new({..})`, `Klass.new(k: v)` on a class without a
   constructor) now starts the fields like `new Klass()` on both engines:
   before, the tree-walker left a field without a literal default unset there.
-  (C577)
+  (C577) A model's `Post.new(attrs)` is the exception: it sets the declared
+  fields that have a literal default (`views: Int = 0`), now on the VM too,
+  and leaves every other field it is not given unset, as 2.29.3 did, so
+  `save` does not validate a `nil` nobody assigned and the column's SQL
+  DEFAULT applies. (#644)
+- Language: field defaults behave the same on both engines and with every way
+  of building an instance. A default that is not a literal (`count: Int =
+  @items.length`, `opened: Float = clock()`, a constant) is evaluated on the
+  new instance: `@field` and `@method` are the new instance's own, and names
+  resolve as in the class's methods. Each class sets its fields, then
+  evaluates such defaults in declaration order, the parent's first. Before,
+  `--dev` and `soli test` (the tree-walker) evaluated them in the caller's
+  environment and in no fixed order: a `new Basket()` built inside a
+  controller action counted the controller's `@items`, not the basket's, and
+  `Basket.new()` ran no such default at all. On the VM a default reading
+  `@items` raised. `Klass.new(k: v)` runs them too. Performance: such defaults
+  no longer run in a nested VM run that built a hash on every `new`, and
+  symbol and Decimal defaults (`status = :draft`) count as literals. Behaviour
+  change on the tree-walker: a default can no longer read the caller's locals
+  or `this`. (#646)
 - The response cache no longer answers a render whose data holds an object (a
   model record from `Post.all` or `Post.find`, any class instance) or a query
   not yet run with the page of an earlier request. The data signature hashed
@@ -625,6 +676,23 @@
   way without raising "value objects are immutable", `obj.getter ||= v` no
   longer copies the getter's result into a field, and the receiver is
   evaluated once. (T33.67)
+- VM: a method named `init` is no longer taken for the constructor. Compiled
+  code kept the constructor as the method `init`, so `class Service; def init
+  … end; end; new Service()` evaluated to the method's value instead of an
+  instance, and in a served app, once `cart.init([1, 2])` had run,
+  `Cart.new("ann")` ran that method and `c.init(…)` re-ran the constructor's
+  body. The constructor is now kept apart from the methods, and `init` is an
+  ordinary method that `methods` lists. (#645)
+- VM: a function, method or script whose body compiles to more than about
+  65,500 VM instructions inside one `if`, loop or `try` now runs on the
+  interpreter instead of jumping to the wrong instruction. Jump offsets are 16
+  bits and were silently truncated, so such code returned wrong results
+  (`f(false)` gave 65535 instead of 0) or crashed the process. Code that fits
+  is unchanged. (#648)
+- serve (`SOLI_COROUTINES=1`): when two requests in flight each moved a
+  different handler to the interpreter, one of the two moves could be lost,
+  and that handler went back to the VM (after a write, another 500).
+  Demotions are now merged by content, not by count.
 
 ## [2.29.5] - 2026-11-05
 
