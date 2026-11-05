@@ -66,6 +66,29 @@ impl ServerProcess {
         server
     }
 
+    /// A one-worker server for another fixture app under `tests/fixtures/`.
+    fn start_fixture(name: &str) -> Self {
+        let binary = PathBuf::from(env!("CARGO_BIN_EXE_soli"));
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name);
+        let port = pick_port();
+        let child = Command::new(&binary)
+            .arg("serve")
+            .arg(&fixture)
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--workers")
+            .arg("1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn soli serve");
+        let server = ServerProcess { child, port };
+        server.wait_ready();
+        server
+    }
+
     /// A server collecting line coverage, as `soli test --coverage` starts
     /// one, with the token its `/__coverage__` dump requires.
     fn start_with_coverage(token: &str) -> Self {
@@ -2028,4 +2051,45 @@ fn render_json_and_render_text_skip_the_actions_default_view() {
     let page = get("/page");
     assert_eq!(page.status(), 200);
     assert!(body_string(page).contains("<main>hello view</main>"));
+}
+
+/// GET `path` with optional `X-User`, whatever the status.
+fn get_page(server: &ServerProcess, path: &str, user: Option<&str>) -> String {
+    let mut request = ureq::get(&server.url(path)).timeout(Duration::from_secs(5));
+    if let Some(user) = user {
+        request = request.set("X-User", user);
+    }
+    match request.call() {
+        Ok(resp) => body_string(resp),
+        Err(ureq::Error::Status(_, resp)) => body_string(resp),
+        Err(e) => panic!("GET {path}: {e}"),
+    }
+}
+
+/// The view helpers read `req` from an env their worker thread keeps, and it
+/// was only rebound in the action. A page rendered without one — a route
+/// miss's custom `errors/404`, a view a middleware renders — showed the
+/// previous visitor's `req["current_user"]`. One worker, so every request
+/// lands on the thread alice's request used.
+#[test]
+fn view_helpers_never_see_the_previous_visitors_request() {
+    let server = ServerProcess::start_fixture("_helper_context_app");
+    let alice = Some("alice@example.com");
+
+    assert!(get_page(&server, "/me", alice).contains("me: alice@example.com"));
+    let not_found = get_page(&server, "/nope", None);
+    assert!(
+        not_found.contains("404 page, signed in as: guest"),
+        "a route miss must not render with alice's request: {not_found}"
+    );
+
+    assert!(get_page(&server, "/me", alice).contains("me: alice@example.com"));
+    let blocked = get_page(&server, "/blocked", None);
+    assert!(
+        blocked.contains("blocked for: guest"),
+        "a middleware-rendered view must see this request: {blocked}"
+    );
+    let bob = get_page(&server, "/blocked", Some("bob@example.com"));
+    assert!(bob.contains("blocked for: bob@example.com"), "{bob}");
+    assert!(get_page(&server, "/me", None).contains("me: guest"));
 }

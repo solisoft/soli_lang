@@ -72,6 +72,14 @@ pub(crate) enum ControlFlow {
     Break,
 }
 
+/// An interpreter's state between two units of work, taken by
+/// [`Interpreter::engine_mark`] and put back by
+/// [`Interpreter::restore_engine_mark`].
+pub struct EngineMark {
+    environment: Rc<RefCell<Environment>>,
+    call_depth: usize,
+}
+
 /// The Solilang interpreter.
 pub struct Interpreter {
     pub(crate) environment: Rc<RefCell<Environment>>,
@@ -478,6 +486,29 @@ impl Interpreter {
             other => crate::interpreter::value::stringify_to_string(other)
                 .unwrap_or_else(|_| format!("\"<{}>\"", other.type_name())),
         }
+    }
+
+    /// Where this interpreter stands between two units of work (requests,
+    /// socket events, jobs): its scope and its call depth.
+    pub fn engine_mark(&self) -> EngineMark {
+        EngineMark {
+            environment: self.environment.clone(),
+            call_depth: self.call_stack.len(),
+        }
+    }
+
+    /// Return to `mark`. A no-op after a unit of work that finished; after a
+    /// caught panic it undoes what the unwind skipped. Scope swaps
+    /// (`execute_block` and friends) restore the previous environment on the
+    /// way out, not in a drop guard, so a panic left the worker inside the
+    /// dead request's innermost scope: later requests published `params` and
+    /// `cookies` into that scope while handlers read them from the real
+    /// globals, still holding the panicking request's values. The frames a
+    /// panic skipped popping piled up the same way, until every handler on the
+    /// worker failed with "call stack too deep".
+    pub fn restore_engine_mark(&mut self, mark: EngineMark) {
+        self.environment = mark.environment;
+        self.call_stack.truncate(mark.call_depth);
     }
 
     /// Push a frame onto the call stack.

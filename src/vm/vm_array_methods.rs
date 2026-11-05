@@ -1130,7 +1130,13 @@ impl Vm {
                         })();
                         self.exit_callable_batch(batch);
                         outcome?;
-                        keyed.sort_by(|a, b| compare_sort_values(&a.1, &b.1));
+                        // Tolerant merge sort, as the string-key form above:
+                        // std's sort panics on a comparator that is no total
+                        // order, and mixed-type or NaN keys make this one so.
+                        crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                            &mut keyed,
+                            |a, b| compare_sort_values(&a.1, &b.1),
+                        );
                         let sorted: Vec<Value> = keyed.into_iter().map(|(item, _)| item).collect();
                         Ok(Value::Array(Rc::new(RefCell::new(sorted))))
                     }

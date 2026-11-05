@@ -73,6 +73,8 @@ impl Compiler {
                 self.compile_variable_get(name, line)?;
                 if self.calls_bare_builtin(name) {
                     self.emit(Op::Call(0), line);
+                } else if self.bare_read_may_call(name) {
+                    self.emit(Op::AutoInvoke, line);
                 }
             }
             ExprKind::Binary {
@@ -488,6 +490,28 @@ impl Compiler {
         crate::interpreter::builtins::is_bare_call_builtin(name)
             && matches!(self.resolve_variable(name), VariableAccess::Global(_))
             && !self.program_globals.borrow().contains(name)
+    }
+
+    /// Whether a bare read of `name` (not a call target, which is read through
+    /// `compile_variable_get` alone) may hold a zero-argument def or builtin
+    /// the tree-walker would call: a global read that is not one of this
+    /// program's variables nor capitalised (a class or constant), or, in a
+    /// view, one of its free names. `Op::AutoInvoke` decides at run time.
+    ///
+    /// Without it the VM read `signed_in?` as the function itself, always
+    /// truthy: `return redirect("/login") unless signed_in?` served the page
+    /// in production while --dev redirected.
+    fn bare_read_may_call(&mut self, name: &str) -> bool {
+        if self.template_mode {
+            return self
+                .template_free_names
+                .as_ref()
+                .is_some_and(|names| names.contains(name));
+        }
+        !name.starts_with(|c: char| c.is_ascii_uppercase())
+            && matches!(self.resolve_variable(name), VariableAccess::Global(_))
+            && !self.program_variables.borrow().contains(name)
+            && !self.implicit_self_candidate(name)
     }
 
     /// Inside an instance method, or a block within one: could the bare `name`
@@ -1299,6 +1323,7 @@ impl Compiler {
                         if self.scope_depth == 0 {
                             self.known_globals.borrow_mut().insert(name.clone());
                             self.program_globals.borrow_mut().insert(name.clone());
+                            self.program_variables.borrow_mut().insert(name.clone());
                         }
                         let idx = self.add_string_constant(&name);
                         self.emit(Op::SetGlobal(idx), line);

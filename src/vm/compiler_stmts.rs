@@ -267,6 +267,7 @@ impl Compiler {
             // …and record that *this program* declared it, which is what tells
             // a user's `next` from the builtin.
             self.program_globals.borrow_mut().insert(name.to_string());
+            self.program_variables.borrow_mut().insert(name.to_string());
             let idx = self.add_string_constant(name);
             self.emit(Op::DefineGlobal(idx), line);
         }

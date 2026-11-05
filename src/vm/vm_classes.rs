@@ -895,10 +895,7 @@ impl Vm {
                 // VM never compiled) is compiled here too: the tree-walker
                 // auto-invokes it (`@kpis = @_kpis`), and returning the unbound
                 // `Function` left a function in the field instead.
-                let lookup = match class.find_vm_method_with_class(name) {
-                    Some(found) => Some(found),
-                    None => self.compile_tree_walking_method(&class, name)?,
-                };
+                let lookup = self.resolve_instance_method(&class, name)?;
                 let inst_ref = inst.borrow();
                 if let Some((closure, defining_class)) = lookup {
                     drop(inst_ref);
@@ -1012,16 +1009,24 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         match object {
+            // The tree-walker's rules for `obj.name = value`: a value object
+            // is frozen, a `const` field is refused, a model's `_`-prefixed
+            // metadata (`_key`, `_id`, …) is read-only — `post._key =
+            // params["id"]; post.save` would otherwise update another
+            // document — and a translated field is staged for the current
+            // locale instead of overwriting the default-language column.
+            // `set_instance_field` also runs the value-object freeze check.
             Value::Instance(inst) => {
-                {
-                    let inst_ref = inst.borrow();
-                    crate::interpreter::domain::check_writable(inst, &inst_ref.class, name)
-                        .map_err(|e| RuntimeError::type_error(e, span))?;
-                }
-                inst.borrow_mut().fields.insert(name.into(), value);
-                Ok(())
+                crate::interpreter::executor::set_instance_field(inst, name, value)
+                    .map_err(|message| RuntimeError::type_error(message, span))
             }
             Value::Class(class) => {
+                if class.static_const_fields.contains(name) {
+                    return Err(RuntimeError::type_error(
+                        format!("cannot reassign static const field '{}'", name),
+                        span,
+                    ));
+                }
                 class
                     .static_fields
                     .borrow_mut()
@@ -1737,5 +1742,203 @@ refused = node._hidden() rescue "refused"
                 "n = {n}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod field_write_rules_tests {
+    //! A field write from VM code obeys the rules the tree-walker's
+    //! `set_instance_field` applies: the classes here are built the way the
+    //! tree-walker builds them (`soli serve` loads models and services on the
+    //! tree-walker), and the write comes from bytecode.
+    use crate::interpreter::value::{Class, Instance, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn run(src: &str, bindings: Vec<(&str, Value)>) -> Result<Vm, String> {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        for (name, value) in bindings {
+            vm.globals.insert(name.to_string(), value);
+        }
+        vm.execute(&module.main).map_err(|e| e.to_string())?;
+        Ok(vm)
+    }
+
+    fn model_class(name: &str) -> Rc<Class> {
+        let model = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        Rc::new(Class {
+            name: name.to_string(),
+            superclass: Some(model),
+            ..Default::default()
+        })
+    }
+
+    fn instance_of(class: Rc<Class>, fields: &[(&str, Value)]) -> Rc<RefCell<Instance>> {
+        let inst = Rc::new(RefCell::new(Instance::new(class)));
+        for (name, value) in fields {
+            inst.borrow_mut()
+                .fields
+                .insert((*name).into(), value.clone());
+        }
+        inst
+    }
+
+    #[test]
+    fn a_models_key_is_read_only() {
+        let post = instance_of(
+            model_class("VmRulesPost"),
+            &[("_key", Value::String("mine".into()))],
+        );
+        // Through a function too: its write is the general SetProperty arm.
+        for src in [
+            "post._key = \"victim\"",
+            "def forge(p, key)\n  p._key = key\nend\nforge(post, \"victim\")",
+        ] {
+            let err = run(src, vec![("post", Value::Instance(post.clone()))])
+                .err()
+                .unwrap_or_else(|| panic!("`_key` write must be refused: {src}"));
+            assert!(err.contains("read-only field '_key'"), "{err}");
+        }
+        assert_eq!(
+            post.borrow().fields.get("_key").cloned(),
+            Some(Value::String("mine".into()))
+        );
+    }
+
+    #[test]
+    fn a_models_translated_field_is_staged() {
+        crate::interpreter::builtins::model::register_translation("VmRulesDoc", "title");
+        let doc = instance_of(
+            model_class("VmRulesDoc"),
+            &[("title", Value::String("Hello".into()))],
+        );
+        run(
+            "doc.title = \"Bonjour\"",
+            vec![("doc", Value::Instance(doc.clone()))],
+        )
+        .expect("staged write");
+        let doc = doc.borrow();
+        assert_eq!(
+            doc.fields.get("title").cloned(),
+            Some(Value::String("Hello".into())),
+            "the default-language value is untouched"
+        );
+        let Some(Value::Hash(pending)) = doc.fields.get("_pending_translations") else {
+            panic!("the write is staged in _pending_translations");
+        };
+        assert_eq!(pending.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_const_field_and_a_static_const_are_refused() {
+        let mut class = Class {
+            name: "VmRulesLimits".to_string(),
+            ..Default::default()
+        };
+        class.const_fields.insert("ident".to_string());
+        class.static_const_fields.insert("MAX".to_string());
+        class
+            .static_fields
+            .borrow_mut()
+            .insert("MAX".to_string(), Value::Int(3));
+        let class = Rc::new(class);
+        let limits = instance_of(class.clone(), &[("ident", Value::Int(1))]);
+
+        let err = run(
+            "limits.ident = 5",
+            vec![("limits", Value::Instance(limits.clone()))],
+        )
+        .err()
+        .expect("const field write must be refused");
+        assert!(err.contains("cannot reassign const field 'ident'"), "{err}");
+        assert_eq!(
+            limits.borrow().fields.get("ident").cloned(),
+            Some(Value::Int(1))
+        );
+
+        let err = run(
+            "Limits.MAX = 9",
+            vec![("Limits", Value::Class(class.clone()))],
+        )
+        .err()
+        .expect("static const write must be refused");
+        assert!(err.contains("static const field 'MAX'"), "{err}");
+        assert_eq!(
+            class.static_fields.borrow().get("MAX").cloned(),
+            Some(Value::Int(3))
+        );
+    }
+
+    #[test]
+    fn a_preloaded_relation_reads_as_an_instance() {
+        use crate::interpreter::builtins::model::{
+            build_relation, register_model_class, register_relation, RelationOptions, RelationType,
+        };
+        register_model_class("VmRulesUser", model_class("VmRulesUser"));
+        let options = RelationOptions {
+            class_name: Some("VmRulesUser".to_string()),
+            ..Default::default()
+        };
+        register_relation(
+            "VmRulesPost",
+            build_relation("VmRulesPost", "author", RelationType::BelongsTo, &options),
+        );
+        let preloaded = || {
+            let mut row = crate::interpreter::value::HashPairs::default();
+            for (key, value) in [
+                ("_key", "u1"),
+                ("name", "Ann"),
+                ("password_digest", "SECRET"),
+            ] {
+                row.insert(
+                    crate::interpreter::value::HashKey::String(key.into()),
+                    Value::String(value.into()),
+                );
+            }
+            Value::Hash(Rc::new(RefCell::new(row)))
+        };
+        // `post.author` (GetProperty) and `p.author` on a local
+        // (GetLocalProperty): both answered the stored hash.
+        for src in [
+            "let out = post.author",
+            "def read(p)\n  p.author\nend\nlet out = read(post)",
+        ] {
+            let post = instance_of(model_class("VmRulesPost"), &[("author", preloaded())]);
+            let vm = run(src, vec![("post", Value::Instance(post))]).expect(src);
+            let out = vm.globals.get("out").cloned().expect("out");
+            let Value::Instance(author) = &out else {
+                panic!("`{src}` gave {out:?}, not an instance");
+            };
+            assert_eq!(author.borrow().class.name, "VmRulesUser");
+            let json = crate::interpreter::value::stringify_to_string(&out).expect("json");
+            assert!(!json.contains("SECRET"), "{json}");
+        }
+    }
+
+    #[test]
+    fn a_plain_objects_fields_are_still_written() {
+        let plain = Rc::new(Class {
+            name: "VmRulesPlain".to_string(),
+            ..Default::default()
+        });
+        let rec = instance_of(plain, &[("n", Value::Int(1))]);
+        run(
+            "rec.n = 2\nrec._hidden = 3",
+            vec![("rec", Value::Instance(rec.clone()))],
+        )
+        .expect("plain writes");
+        assert_eq!(rec.borrow().fields.get("n").cloned(), Some(Value::Int(2)));
+        assert_eq!(
+            rec.borrow().fields.get("_hidden").cloned(),
+            Some(Value::Int(3))
+        );
     }
 }

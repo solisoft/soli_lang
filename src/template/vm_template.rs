@@ -11,7 +11,10 @@
 //! a partial or component) the controller's `@ivar` of that name, else the
 //! template env's (a helper, a builtin), else nil — the order the
 //! tree-walker's scope chain resolves them in, with its lenient undefined
-//! read. A bare-call builtin (`clock`) stays a global, which the bytecode
+//! read. A bare read of one (`<% if signed_in? %>`) calls a zero-argument
+//! helper or builtin it holds, as the tree-walker does (`Op::AutoInvoke`);
+//! `bind` passes the function itself, so the call happens where the view
+//! reads it. A bare-call builtin (`clock`) stays a global, which the bytecode
 //! calls where it is read bare, as in an action.
 //!
 //! A `form_with` / `fields_for` block and `<%= render "partial" %>` compile
@@ -92,7 +95,7 @@ impl VmTemplate {
         // globals. The second compiles them as parameters, all but the
         // bare-call builtins.
         let seen = Rc::new(RefCell::new(HashSet::new()));
-        compile_function(&body, &[], Some(seen.clone()))?;
+        compile_function(&body, &[], Some(seen.clone()), None)?;
         // A bare-call builtin the view does not assign stays a global: the
         // compiler calls it where it is read bare, as it does in an action, so
         // `clock - start` is the time here as on the tree-walker. As a
@@ -110,7 +113,11 @@ impl VmTemplate {
         params.extend(all_assigned);
         params.sort();
         params.dedup();
-        let proto = compile_function(&body, &params, None)?;
+        // A bare read of a parameter calls a zero-argument helper it holds
+        // (`<% if signed_in? %>`), as the tree-walker's renderer does. The
+        // bare-call builtins kept as globals are called by the compiler.
+        let free_names = Rc::new(params.iter().cloned().collect::<HashSet<String>>());
+        let proto = compile_function(&body, &params, None, Some(free_names))?;
         Ok(Self {
             closure: Value::VmClosure(Rc::new(VmClosure::new(proto, Vec::new()))),
             params,
@@ -286,6 +293,7 @@ fn compile_function(
     body: &[Stmt],
     params: &[String],
     seen: Option<Rc<RefCell<HashSet<String>>>>,
+    free_names: Option<Rc<HashSet<String>>>,
 ) -> Result<Arc<FunctionProto>, String> {
     let span = Span::default();
     let decl = FunctionDecl {
@@ -305,7 +313,8 @@ fn compile_function(
         span,
     };
     let program = Program::new(vec![Stmt::new(StmtKind::function(decl), span, None)]);
-    let module = Compiler::compile_template(&program, seen).map_err(|e| format!("compile: {e}"))?;
+    let module = Compiler::compile_template(&program, seen, free_names)
+        .map_err(|e| format!("compile: {e}"))?;
     module
         .main
         .chunk
@@ -1426,19 +1435,81 @@ mod tests {
         Ok(())
     }
 
-    /// A function written bare is called by the tree-walker's renderer; the
-    /// VM refuses it so the caller renders there instead.
+    /// Globals defined by `source` on the tree-walker, as a worker loads its
+    /// helpers.
+    fn defined(source: &str, names: &[&str]) -> Result<Vec<(String, Value)>, String> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).map_err(|e| e.to_string())?;
+        let env = interpreter.environment.borrow();
+        names
+            .iter()
+            .map(|name| {
+                env.get(name)
+                    .map(|value| (name.to_string(), value))
+                    .ok_or_else(|| format!("`{name}` is not defined"))
+            })
+            .collect()
+    }
+
+    /// A zero-argument helper read bare is called, as the tree-walker's
+    /// renderer calls it. The VM used to bind the function itself, always
+    /// truthy, so `<% if signed_in? %>` rendered the signed-in branch for an
+    /// anonymous visitor in production while --dev rendered the other.
     #[test]
-    fn a_bare_function_output_falls_back() -> Result<(), String> {
-        let nodes = parse_template("<%= helper %>")?;
-        let compiled = VmTemplate::compile(&nodes)?;
+    fn a_bare_zero_argument_helper_is_called() -> Result<(), String> {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let mut vm = Vm::new();
+        for (name, value) in defined(
+            "def signed_in?\n  false\nend\ndef greeting\n  \"hi\"\nend\n",
+            &["signed_in?", "greeting"],
+        )? {
+            vm.globals.insert(name, value);
+        }
         let helper = Value::NativeFunction(crate::interpreter::value::NativeFunction::new(
             "helper",
             Some(0),
             |_| Ok(Value::String("x".into())),
         ));
-        let Err(err) = compiled.render(&mut Vm::new(), &hash(vec![("helper", helper)])) else {
-            return Err("a bare function was written instead of refused".to_string());
+        let data = hash(vec![("helper", helper)]);
+        let cases = [
+            ("<% if signed_in? %>member<% else %>guest<% end %>", "guest"),
+            ("<% unless signed_in? %>login<% end %>", "login"),
+            ("<%= greeting %>|<%= greeting.upcase %>", "hi|HI"),
+            ("<%= helper %>", "x"),
+            (
+                "<% [1].each do |i| %><% if signed_in? %>in<% else %>out<% end %><% end %>",
+                "out",
+            ),
+        ];
+        for (source, expected) in cases {
+            let nodes = parse_template(source)?;
+            let compiled = VmTemplate::compile(&nodes)?;
+            let html = compiled
+                .render(&mut vm, &data)
+                .map_err(|e| format!("{source}: {e}"))?
+                .html;
+            assert_eq!(html, expected, "{source}");
+        }
+        Ok(())
+    }
+
+    /// A lambda is not a helper: read bare it stays a function, which the VM
+    /// refuses to write, so the caller renders on the tree-walker instead.
+    #[test]
+    fn a_bare_lambda_output_falls_back() -> Result<(), String> {
+        let nodes = parse_template("<%= callback %>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let (_, callback) = defined("callback = fn() { \"x\" }\n", &["callback"])?
+            .pop()
+            .ok_or("`callback` is not defined")?;
+        let Err(err) = compiled.render(&mut Vm::new(), &hash(vec![("callback", callback)])) else {
+            return Err("a bare lambda was called or written instead of refused".to_string());
         };
         assert!(err.is_engine_fallback(), "{err}");
         Ok(())

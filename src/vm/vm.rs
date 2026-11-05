@@ -556,6 +556,30 @@ impl Vm {
         Some((method, defining))
     }
 
+    /// Whether field `name`, present on `inst`, is read as its stored value.
+    /// It is not on a model whose declared relation or translated field it
+    /// is: `model_instance_member` turns a preloaded hash into an instance
+    /// (whose serializer drops `password_digest` and the other sensitive
+    /// fields) and reads a translation in the current locale. A plain object
+    /// pays one memoized flag read.
+    #[inline]
+    fn field_hit_is_raw(inst: &crate::interpreter::value::Instance, name: &str) -> bool {
+        !inst.class.is_model_subclass()
+            || !crate::interpreter::builtins::model::member_needs_model_resolution(
+                &inst.class.name,
+                name,
+            )
+    }
+
+    /// Whether a field write on an instance of `class` needs
+    /// `set_instance_field`'s rules: a model (read-only `_key`/`_id`
+    /// metadata, translated fields staged per locale) or a class with `const`
+    /// fields. A plain object pays one memoized flag read and a length check.
+    #[inline]
+    fn has_checked_writes(class: &Class) -> bool {
+        class.is_model_subclass() || !class.const_fields.is_empty()
+    }
+
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(256),
@@ -1647,6 +1671,12 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
+                    // The handler budget, as `ensure_call_depth` checks it
+                    // for the general arm — which raises it (expiry is
+                    // sticky). Nothing is touched yet, so it can take over.
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     if from_function {
                         self.stack[callee] = Value::VmClosure(closure.clone());
                     }
@@ -1677,6 +1707,11 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
+                    // The handler budget, before the stack is touched (see
+                    // `Op::Call` above).
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     // The general arm inserts the callee below the arguments.
                     let insert_at = self.stack.len() - argc;
                     self.stack
@@ -2707,7 +2742,15 @@ impl Vm {
                     let name = name.as_str();
                     let this = self.pop();
                     if let Some(value) = self.global_or_namespaced(name) {
+                        // A zero-argument def read bare is called, as
+                        // `Op::AutoInvoke` does for a global known at
+                        // compile time.
+                        let call = auto_invocable(&value);
                         self.push(value);
+                        if call {
+                            let span = self.current_span();
+                            self.call_value(0, span)?;
+                        }
                     } else if Self::has_instance_method(&this, name) {
                         let span = self.current_span();
                         let value = self.op_get_property_member(&this, name, span)?;
@@ -3827,13 +3870,22 @@ impl Vm {
                     // (op_get_property's documented order), so a present key
                     // fully decides the access — no name copy, no span, and
                     // a single ahash probe instead of the contains_key +
-                    // method-walk + re-probe of the general path.
+                    // method-walk + re-probe of the general path. A model's
+                    // relation or translated field is not its stored value:
+                    // that read goes to the general path.
                     if let Value::Instance(inst) = &object {
                         let hit = {
                             let frame = self.frames.last().unwrap();
                             match &frame.closure.proto.chunk.constants[idx as usize] {
                                 Constant::String(name) => {
-                                    inst.borrow().fields.get(name.as_ref()).cloned()
+                                    let inst_ref = inst.borrow();
+                                    inst_ref
+                                        .fields
+                                        .get(name.as_ref())
+                                        .filter(|_| {
+                                            Self::field_hit_is_raw(&inst_ref, name.as_ref())
+                                        })
+                                        .cloned()
                                 }
                                 _ => None,
                             }
@@ -3954,7 +4006,9 @@ impl Vm {
                     // Fast path: in-place update of an EXISTING instance
                     // field — no name copy, no span. First-time sets (key
                     // absent) fall through to the general path, which needs
-                    // the owned name for the insert anyway.
+                    // the owned name for the insert anyway. A model, or a
+                    // class with `const` fields, goes to the general path,
+                    // which applies `set_instance_field`'s rules.
                     let updated = {
                         let object = self.stack.last().unwrap();
                         if let Value::Hash(hash) = object {
@@ -3966,26 +4020,30 @@ impl Vm {
                             hash.borrow_mut().set_str(name, value.clone());
                             true
                         } else if let Value::Instance(inst) = object {
-                            let frame = self.frames.last().unwrap();
-                            match &frame.closure.proto.chunk.constants[idx as usize] {
-                                Constant::String(name) => {
-                                    let mut inst_mut = inst.borrow_mut();
-                                    if let Some(slot) = inst_mut.fields.get_mut(name.as_ref()) {
-                                        *slot = value.clone();
-                                    } else {
-                                        // First write to this field. The general
-                                        // path below allocates the name *twice* —
-                                        // once in `read_string_constant_owned`,
-                                        // once in `op_set_property`'s
-                                        // `name.to_string()` — and every field of
-                                        // every constructor is a first write, so
-                                        // that second allocation sat on the path
-                                        // of every object Soli creates.
-                                        inst_mut.fields.insert(name.clone(), value.clone());
+                            if Self::has_checked_writes(&inst.borrow().class) {
+                                false
+                            } else {
+                                let frame = self.frames.last().unwrap();
+                                match &frame.closure.proto.chunk.constants[idx as usize] {
+                                    Constant::String(name) => {
+                                        let mut inst_mut = inst.borrow_mut();
+                                        if let Some(slot) = inst_mut.fields.get_mut(name.as_ref()) {
+                                            *slot = value.clone();
+                                        } else {
+                                            // First write to this field. The general
+                                            // path below allocates the name *twice* —
+                                            // once in `read_string_constant_owned`,
+                                            // once in `op_set_property`'s
+                                            // `name.to_string()` — and every field of
+                                            // every constructor is a first write, so
+                                            // that second allocation sat on the path
+                                            // of every object Soli creates.
+                                            inst_mut.fields.insert(name.clone(), value.clone());
+                                        }
+                                        true
                                     }
-                                    true
+                                    _ => false,
                                 }
-                                _ => false,
                             }
                         } else {
                             false
@@ -4000,6 +4058,18 @@ impl Vm {
                     let object = self.stack.last().unwrap().clone();
                     let span = self.current_span();
                     self.op_set_property(&object, &name, value.clone(), span)?;
+                    self.stack.pop(); // pop object
+                    self.stack.push(value);
+                }
+
+                // A constructor's field default: stored as is, the way the
+                // tree-walker's `initialize_instance_fields` does.
+                Op::InitProperty(idx) => {
+                    let value = self.stack.pop().unwrap();
+                    let name = self.read_string_constant(idx);
+                    if let Some(Value::Instance(inst)) = self.stack.last() {
+                        inst.borrow_mut().fields.insert(name, value.clone());
+                    }
                     self.stack.pop(); // pop object
                     self.stack.push(value);
                 }
@@ -4134,20 +4204,16 @@ impl Vm {
                     // copied into the error on a miss.
                     let name = self.read_string_constant(name_idx);
                     let superclass = self.frame_superclass(span)?;
+                    // The nearest definition above the defining class, level
+                    // by level: an ancestor's compiled method must not beat
+                    // a nearer override that is still AST. A tree-walker one
+                    // (a class copied from interpreter globals) is compiled
+                    // as a method of the class that declares it, so its own
+                    // `super` resolves from there.
                     if let Some((closure, defining_class)) =
-                        superclass.find_vm_method_with_class(&name)
+                        self.resolve_instance_method(&superclass, &name)?
                     {
                         self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
-                    } else if let Some((method, defining_class)) =
-                        superclass.find_method_with_class(&name)
-                    {
-                        // Tree-walking method (e.g. a class copied from
-                        // interpreter globals): JIT and run re-entrantly, as
-                        // the class that declares it — a `super` inside it
-                        // then goes one level further up the chain.
-                        let result =
-                            self.run_jit_method_to_completion(&method, argc, span, defining_class)?;
-                        self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
                         let receiver = self.stack[receiver_idx].clone();
                         if let Value::Instance(ref inst) = receiver {
@@ -4455,6 +4521,16 @@ impl Vm {
                 }
 
                 Op::Nop => {}
+
+                // A bare read of a name that may hold a zero-argument def or
+                // builtin: call it, as the tree-walker does (see
+                // `Op::AutoInvoke`). Anything else stays as read.
+                Op::AutoInvoke => {
+                    if auto_invocable(self.stack.last().unwrap()) {
+                        let span = self.current_span();
+                        self.call_value(0, span)?;
+                    }
+                }
 
                 // Line coverage (only compiled in under a coverage tracker —
                 // see `Op::CoverLine`). The fast tier does not handle it, so
@@ -5443,7 +5519,13 @@ impl Vm {
                             &frame.closure.proto.chunk.constants[idx as usize],
                         ) {
                             (Value::Instance(inst), Constant::String(name)) => {
-                                (inst.borrow().fields.get(name.as_ref()).cloned(), None)
+                                let inst_ref = inst.borrow();
+                                let hit = inst_ref
+                                    .fields
+                                    .get(name.as_ref())
+                                    .filter(|_| Self::field_hit_is_raw(&inst_ref, name.as_ref()))
+                                    .cloned();
+                                (hit, None)
                             }
                             // `row.title` on a hash: the key, unless a user
                             // method on Hash outranks it (as in GetProperty).
@@ -6560,6 +6642,19 @@ pub(crate) fn discard(value: Value) {
     }
 }
 
+/// Whether a bare read of `value` calls it, the tree-walker's rule for a
+/// bare name (`can_auto_invoke_with_no_args`): a def that takes no arguments
+/// (all defaulted counts), or a builtin that is called bare. A lambda kept in
+/// a variable is left alone — `<lambda>` is the name both engines give one.
+pub(crate) fn auto_invocable(value: &Value) -> bool {
+    match value {
+        Value::Function(func) => func.name != "<lambda>" && func.arity() == 0,
+        Value::VmClosure(closure) => closure.proto.name != "<lambda>" && closure.proto.arity == 0,
+        Value::NativeFunction(func) => func.is_auto_invocable || func.arity == Some(0),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 thread_local! {
     /// Test-only: the instance `GetProperty`, `GetLocalProperty` and
@@ -7082,6 +7177,64 @@ let result = "#{g.x} #{h.x} #{l.n}"
         );
         vm.execute(&module.main).expect("vm error");
         vm.globals.get(name).cloned().unwrap_or(Value::Null)
+    }
+
+    /// A name a function both bare-assigns and binds with `catch`, `for`, a
+    /// comprehension or a nested `let` is a local of that function. It was
+    /// left out of hoisting, so its assignment compiled to `SetGlobal`: a
+    /// recursive call overwrote the caller's value, and under `soli serve`
+    /// the worker VM kept it for the next request (`e = params["secret"]`
+    /// in an action that also has `catch e`).
+    #[test]
+    fn test_vm_local_also_bound_by_an_inner_binding_is_not_a_global() {
+        let source = r##"
+def summary(items, depth)
+  item = items[0]
+  if depth > 0
+    summary(["inner"], depth - 1)
+  end
+  names = [item.upcase for item in items]
+  "#{item}:#{names.length}"
+end
+def guarded(secret)
+  e = secret
+  try
+    throw "boom"
+  catch e
+    nil
+  end
+  for i in [1, 2]
+    nil
+  end
+  i = 5
+  if true
+    let n = 1
+  end
+  n = 2
+  "#{e}:#{i}:#{n}"
+end
+let s = summary(["outer", "b"], 1)
+let g = guarded("alice-password")
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(
+            vm.globals.get("s").cloned(),
+            Some(Value::String("outer:2".into()))
+        );
+        assert_eq!(
+            vm.globals.get("g").cloned(),
+            Some(Value::String("alice-password:5:2".into()))
+        );
+        for leaked in ["item", "e", "i", "n"] {
+            assert!(
+                !vm.globals.contains_key(leaked),
+                "`{leaked}` leaked into the VM globals"
+            );
+        }
     }
 
     #[test]

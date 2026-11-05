@@ -82,6 +82,9 @@ pub(super) fn reset_worker_thread_locals(dev_mode: bool) {
 ///   `redirect(:back)` sent them to the previous visitor's referer;
 /// - the action name: `authorize(record)` in middleware checked the policy of
 ///   the previous request's action;
+/// - the `req`/`params`/`session`/`cookies`/`headers` view helpers read: a
+///   custom 404 page or a view rendered by middleware showed the previous
+///   visitor's `req["current_user"]`;
 /// - a transaction or `grouped` batch a panic interrupted: the next request
 ///   wrote into the dead request's uncommitted transaction, or deferred its
 ///   reads into its batch;
@@ -96,6 +99,7 @@ pub(super) fn forget_unfinished_request() {
     server::take_fast_path_response();
     template::clear_current_request();
     template::clear_current_headers();
+    template::clear_helper_request_context();
     set_current_action("");
     super::forget_possible_divergence();
 

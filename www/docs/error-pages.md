@@ -217,6 +217,8 @@ If your application already uses Tailwind CSS, you can use Tailwind classes:</``
 
 4. **Template Features**: Error templates support all template features including conditionals, loops, and partials.
 
+5. **No request on a route miss**: a 404 for a path no route matches renders before any request exists, so in the page and in the helpers it calls, `req`, `params`, `session`, `cookies` and `headers` are nil. Guard a helper that reads them (`return "guest" if req.nil?`). Before 2.29.4 such a helper could read the previous visitor's request there.
+
 ## Error Handling in Controllers
 
 You can also handle errors explicitly in your controllers by returning appropriate responses:

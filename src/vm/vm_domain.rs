@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::domain;
-use crate::interpreter::value::{Class, Instance, SoliStr, Value};
+use crate::interpreter::value::{Class, Instance, InstanceMethodDef, SoliStr, Value};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -204,15 +204,15 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         for invariant in domain::invariants_of(class) {
-            let held = if let Some((method, defining)) =
-                class.find_vm_method_with_class(&invariant.method)
-            {
+            // Level by level, as instance dispatch: a subclass's override
+            // beats an ancestor's compiled method.
+            let nearest = class.find_instance_method_level(&invariant.method);
+            let held = if let Some((InstanceMethodDef::Compiled(method), defining)) = nearest {
                 self.push(Value::Instance(instance.clone()));
                 self.run_to_completion(|vm| {
                     vm.call_closure_in_class(method, 0, span, Some(defining))
                 })?
-            } else if let Some((method, defining)) = class.find_method_with_class(&invariant.method)
-            {
+            } else if let Some((InstanceMethodDef::Source(method), defining)) = nearest {
                 // An invariant is a private method of the class that declares
                 // it; it runs as that class's.
                 self.push(Value::Instance(instance.clone()));

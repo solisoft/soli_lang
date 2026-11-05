@@ -34,6 +34,9 @@ pub mod vm_string_methods;
 pub mod vm_upvalues;
 pub mod vm_view_helpers;
 
+#[cfg(test)]
+mod deadline_tests;
+
 pub use chunk::{CompiledModule, FunctionProto};
 pub use compiler::Compiler;
 pub use disassembler::disassemble;

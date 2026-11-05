@@ -5726,6 +5726,61 @@ for ch in word
 end
 print(seen, word)"##,
     ),
+    // A zero-argument def read bare is called on both engines. The VM read
+    // `signed_in?` as the function itself, always truthy, so an auth guard
+    // `return … unless signed_in?` let everyone through on the VM.
+    (
+        "bare_zero_argument_def_is_called",
+        r##"def signed_in?
+  false
+end
+def greeting(name = "you")
+  "hi #{name}"
+end
+def guard
+  return "redirect" unless signed_in?
+  "page"
+end
+print(guard())
+state = signed_in?
+print(state, greeting, greeting.upcase)
+cb = fn() { 7 }
+print(cb())"##,
+    ),
+    (
+        // A bare local whose name the function also binds with a
+        // comprehension variable compiled to a VM global: the recursive call
+        // overwrote the caller's `item`.
+        "local_also_bound_by_comprehension_survives_recursion",
+        r##"def summary(items, depth)
+  item = items[0]
+  if depth > 0
+    summary(["inner"], depth - 1)
+  end
+  names = [item.upcase for item in items]
+  "#{item}: #{names}"
+end
+print(summary(["outer", "b"], 1))"##,
+    ),
+    (
+        // Same with a `catch` and a `for` variable.
+        "local_also_bound_by_catch_and_for_survives_recursion",
+        r##"def guarded(secret, depth)
+  e = secret
+  i = depth
+  guarded("inner", depth - 1) if depth > 0
+  try
+    throw "boom"
+  catch e
+    nil
+  end
+  for i in [7, 8]
+    nil
+  end
+  "#{e}:#{i}"
+end
+print(guarded("alice-password", 1))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
@@ -6749,4 +6804,62 @@ fn app_loaded_classes_agree_on_both_engines() {
         ));
     }
     assert!(msg.is_empty(), "\n{msg}");
+}
+
+/// `sort_by` (block and string-key forms) and `order` over keys of mixed
+/// types, NaN and nil. Their comparator is no total order — values of
+/// different types and NaN compare Equal — and std's sort panics on that
+/// past 20 elements: the script died with exit 101, a served request with a
+/// panic `rescue` could not catch. Each form must return, on both engines,
+/// the same deterministic and stable order. (The differential cases above
+/// cannot pin this: two engines that both crash agree.)
+#[test]
+fn sort_by_over_mixed_type_and_nan_keys_returns_on_both_engines() {
+    let source = r#"
+pool = [3, "b", 1.5, 2, "a", 7, 0.25, "c", 5, 1, "NaN".to_f, nil]
+rows = (0..72).map { |i| {"k": pool[(i * 7 + i / 3) % 12], "i": i} }
+def stable(sorted)
+  (1..sorted.length).all? do |j|
+    a = sorted[j - 1]
+    b = sorted[j]
+    same = type(a["k"]) == type(b["k"]) && a["k"] == b["k"]
+    !same || a["i"] < b["i"]
+  end
+end
+def ids(sorted)
+  sorted.map { |r| r["i"] }.join(",")
+end
+by_block = rows.sort_by { |r| r["k"] }
+by_key = rows.sort_by("k")
+by_order = rows.order("k")
+print(ids(by_block))
+print(ids(by_key))
+print(ids(by_order))
+print(stable(by_block), stable(by_key), stable(by_order))
+"#;
+    let tree = run(source, 90_000, false);
+    let vm = run(source, 90_001, true);
+    assert_ne!(
+        tree, "<non-success>",
+        "sort_by must not crash the tree-walker"
+    );
+    assert_ne!(vm, "<non-success>", "sort_by must not crash the VM");
+    assert_eq!(tree, vm, "both engines must give the same order");
+    assert_eq!(
+        tree,
+        run(source, 90_002, false),
+        "the order is deterministic"
+    );
+
+    let lines: Vec<&str> = tree.lines().collect();
+    assert_eq!(lines.len(), 4, "{tree}");
+    for line in &lines[..3] {
+        let mut ids: Vec<usize> = line.split(',').map(|n| n.parse().unwrap()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, (0..72).collect::<Vec<_>>(), "every row once: {line}");
+    }
+    assert_eq!(
+        lines[3], "true true true",
+        "rows with equal keys keep their order"
+    );
 }

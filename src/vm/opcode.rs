@@ -166,6 +166,12 @@ pub enum Op {
     GetPropertyOrNull(u16),
     /// Set a property by name constant index.
     SetProperty(u16),
+    /// A declared field's default, written by the constructor before its
+    /// body runs: a plain store, without `SetProperty`'s write rules (a
+    /// `const` field takes its value here; on a model, a `_`-prefixed or
+    /// translated field is set as the tree-walker's field initialisation
+    /// sets it). Same stack effect as `SetProperty`.
+    InitProperty(u16),
 
     // --- Classes ---
     /// Create a class with the given name constant index.
@@ -396,6 +402,11 @@ pub enum Op {
     /// method): (name_constant_idx, argc, names_idx). A global takes them as
     /// `CallNamed` would; otherwise they bind as for `CallMethodNamed`.
     CallSelfOrGlobalNamed(u16, u8, u16),
+    /// Follows a bare read (`signed_in?`, no parens) that may hold a function:
+    /// a zero-argument def, or a builtin the tree-walker calls bare, is called
+    /// with no arguments and its result replaces it; any other value — a
+    /// lambda (`<lambda>`) among them — is left as read.
+    AutoInvoke,
     /// No-op: does nothing (placeholder after peephole optimization)
     Nop,
     /// Line coverage: record a hit for this line of the function's source file.

@@ -8,8 +8,8 @@ use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    Class, FieldInit, Function, HashKey, Instance, NativeFunction, NativeSpecial, Value,
-    NATIVE_CONSTRUCTOR,
+    Class, FieldInit, Function, HashKey, Instance, InstanceMethodDef, NativeFunction,
+    NativeSpecial, Value, NATIVE_CONSTRUCTOR,
 };
 use crate::span::Span;
 
@@ -18,7 +18,7 @@ use super::chunk::{Constant, FunctionProto};
 /// A compiled method and the class that defines it (for `super`).
 type MethodWithClass = (Rc<VmClosure>, Rc<Class>);
 use super::compiler::Compiler;
-use super::upvalue::VmClosure;
+use super::upvalue::{Upvalue, VmClosure};
 use super::vm::{positional_supplied_mask, CallFrame, Vm};
 
 /// The constructor a construction runs, as the VM runs it
@@ -515,6 +515,12 @@ impl Vm {
     /// iterative (deep recursion grows `frames` on the heap), but builtins
     /// that call back into Soli recurse natively — and a stack overflow
     /// aborts without unwinding, so it must be prevented, not caught.
+    ///
+    /// Every call that opens a frame passes here, so it is also where the
+    /// handler budget is checked for calls — `Op::Loop` alone missed a
+    /// program that loops without a backward jump: recursion, and the
+    /// blocks a native iterator (`n.times`, `upto`, `each`…) calls once per
+    /// element. A countdown decrement, reading the clock every few thousand.
     #[inline]
     pub(crate) fn ensure_call_depth(
         &self,
@@ -537,6 +543,9 @@ impl Vm {
                 ),
                 at,
             ));
+        }
+        if crate::interpreter::deadline::expired() {
+            return Err(crate::interpreter::deadline::timeout_error(span));
         }
         Ok(())
     }
@@ -1058,10 +1067,18 @@ impl Vm {
         let target: Option<MethodWithClass> = match &self.stack[receiver_idx] {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();
-                match class.find_vm_method_with_class(name) {
-                    Some(found) => Some(found),
-                    None if inst.borrow().fields.contains_key(name) => None,
-                    None => self.compile_tree_walking_method(&class, name)?,
+                // As `call_method_slow_path`: a field of that name shadows a
+                // method not compiled yet; otherwise the nearest definition
+                // wins, level by level.
+                if inst.borrow().fields.contains_key(name) {
+                    match class.find_instance_method_level(name) {
+                        Some((InstanceMethodDef::Compiled(closure), defining)) => {
+                            Some((closure, defining))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    self.resolve_instance_method(&class, name)?
                 }
             }
             Value::Class(class) => {
@@ -1465,10 +1482,9 @@ impl Vm {
         use crate::interpreter::executor::calls::function::callback_names_for;
         for events in event_sets {
             for cb_name in callback_names_for(&class.name, events) {
-                if class.find_vm_method_with_class(&cb_name).is_some() {
-                    continue;
-                }
-                if let Some(method) = class.find_method(&cb_name) {
+                if let Some((InstanceMethodDef::Source(method), _)) =
+                    class.find_instance_method_level(&cb_name)
+                {
                     self.callback_proto(&method, span)?;
                 }
             }
@@ -1507,7 +1523,10 @@ impl Vm {
         span: Span,
     ) -> Result<bool, RuntimeError> {
         for cb_name in callback_names {
-            if let Some((closure, defining)) = class.find_vm_method_with_class(cb_name) {
+            // Level by level, as instance dispatch: a subclass's own callback
+            // beats an ancestor's compiled one.
+            let nearest = class.find_instance_method_level(cb_name);
+            if let Some((InstanceMethodDef::Compiled(closure), defining)) = nearest {
                 let result =
                     self.invoke_zero_arg_instance_method(instance, closure, defining, span)?;
                 if matches!(result, Value::Bool(false)) {
@@ -1515,7 +1534,7 @@ impl Vm {
                 }
                 continue;
             }
-            if let Some((method, declaring)) = class.find_method_with_class(cb_name) {
+            if let Some((InstanceMethodDef::Source(method), declaring)) = nearest {
                 // Compiled as a method with the instance in the callee slot, so
                 // `this` inside the callback is the record — see `callback_proto`.
                 // A callback inherited from a parent model runs as that
@@ -2138,7 +2157,9 @@ impl Vm {
         let name_val = Value::String(name.to_string().into());
         let args_arr = Value::Array(Rc::new(RefCell::new(user_args.clone())));
 
-        if let Some(closure) = class.find_vm_static_method("method_missing") {
+        if let Some((InstanceMethodDef::Compiled(closure), _)) =
+            class.find_static_method_level("method_missing")
+        {
             self.stack.truncate(receiver_idx);
             self.push(Value::Class(class));
             self.push(name_val);
@@ -2787,16 +2808,17 @@ impl Vm {
         let compiled = match &self.stack[receiver_idx] {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();
-                match class.find_vm_method_with_class(name) {
-                    Some(found) => Some(found),
-                    None => {
-                        let shadowed_by_field = inst.borrow().fields.contains_key(name);
-                        if shadowed_by_field {
-                            None
-                        } else {
-                            self.compile_tree_walking_method(&class, name)?
+                // A field of that name shadows a method not compiled yet,
+                // as before; otherwise the nearest definition wins.
+                if inst.borrow().fields.contains_key(name) {
+                    match class.find_instance_method_level(name) {
+                        Some((InstanceMethodDef::Compiled(closure), defining)) => {
+                            Some((closure, defining))
                         }
+                        _ => None,
                     }
+                } else {
+                    self.resolve_instance_method(&class, name)?
                 }
             }
             // A class receiver's statics were resolved above.
@@ -2910,10 +2932,7 @@ impl Vm {
                 // as on the tree-walker.
                 if let Value::Instance(inst) = &object {
                     let class = inst.borrow().class.clone();
-                    let found = match class.find_vm_method_with_class("method_missing") {
-                        Some(found) => Some(found),
-                        None => self.compile_tree_walking_method(&class, "method_missing")?,
-                    };
+                    let found = self.resolve_instance_method(&class, "method_missing")?;
                     if let Some((closure, defining_class)) = found {
                         return self.call_instance_method_missing(
                             closure,
@@ -3039,7 +3058,8 @@ impl Vm {
         Ok(())
     }
 
-    /// Compile an instance method that exists only as AST — one inherited from
+    /// The instance method `name` of `class`, compiled. One that exists only
+    /// as AST — such as one inherited from
     /// a class the VM never compiled, such as a controller's base class — as
     /// a *method* and register the bytecode on the class that defines it, so
     /// later calls take the compiled-method hot path.
@@ -3049,21 +3069,24 @@ impl Vm {
     /// function and put the closure in the callee slot — the slot a method
     /// reads as `this`. `this._base()` inside it then failed with
     /// "Cannot access property '_base' on Function".
-    pub(crate) fn compile_tree_walking_method(
+    ///
+    /// The lookup goes class by class from the receiver's up — that class's
+    /// compiled method, then its AST one — so a subclass override that was
+    /// never compiled still beats an ancestor's method that was. Taking the
+    /// first compiled method anywhere in the chain before compiling the
+    /// receiver's own skipped the override for good once the parent had been
+    /// called on that worker (an authorization fail-open for policies).
+    pub(crate) fn resolve_instance_method(
         &self,
         class: &Rc<Class>,
         name: &str,
     ) -> Result<Option<MethodWithClass>, RuntimeError> {
-        let mut defining = class.clone();
-        let method = loop {
-            let own = defining.methods.borrow().get(name).cloned();
-            if let Some(method) = own {
-                break method;
+        let (method, defining) = match class.find_instance_method_level(name) {
+            None => return Ok(None),
+            Some((InstanceMethodDef::Compiled(closure), defining)) => {
+                return Ok(Some((closure, defining)))
             }
-            match defining.superclass.clone() {
-                Some(superclass) => defining = superclass,
-                None => return Ok(None),
-            }
+            Some((InstanceMethodDef::Source(method), defining)) => (method, defining),
         };
         let proto = jit_compile_method(&method, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(
@@ -3372,16 +3395,34 @@ impl Vm {
         // matching the layout the method bytecode expects. Omitted parameters
         // are padded with null (and their defaults applied) by call_closure
         // itself.
-        self.push(instance);
-        for arg in args {
-            self.push(arg.clone());
-        }
-        self.call_closure_in_class(closure, args.len(), span, class)?;
-        self.run()
+        //
+        // Run to completion at this depth: called while the VM is already
+        // running (a bare `Post.recent` static that reads `this`), a plain
+        // `self.run()` kept going past this frame's return into the caller's
+        // frames — running the rest of the action inside this call, side
+        // effects included — and the outer loop then panicked on an empty
+        // frame stack. At the top of a request the depth is 0, as before.
+        self.run_to_completion(|vm| {
+            vm.push(instance);
+            for arg in args {
+                vm.push(arg.clone());
+            }
+            vm.call_closure_in_class(closure, args.len(), span, class)
+        })
     }
 
     /// Reset VM state between requests (preserves globals).
+    ///
+    /// Upvalues still open are closed first, over the value their slot holds
+    /// now. A request that ended with an error (or a panic) leaves its frames
+    /// on the VM, and a closure it stored somewhere that outlives it
+    /// (`const STORE = []`) still points at an absolute stack slot: once the
+    /// stack is cleared, that slot belongs to whatever request runs next, so
+    /// the closure read and wrote another visitor's locals.
     pub fn reset(&mut self) {
+        if !self.open_upvalues.is_empty() {
+            self.close_all_upvalues();
+        }
         self.stack.clear();
         self.frames.clear();
         self.open_upvalues.clear();
@@ -3389,6 +3430,44 @@ impl Vm {
         self.exception_handlers.clear();
         self.iter_stack.clear();
         self.return_depth = 0;
+    }
+
+    /// Close every open upvalue over its slot's current value. Tolerates a
+    /// stack shorter than a slot (a panic can stop the VM anywhere): the cell
+    /// is closed over `nil` rather than left pointing past the end.
+    ///
+    /// A cell nothing else holds can never be read again: it is dropped, as
+    /// `close_upvalues` would pool it, rather than given a value.
+    fn close_all_upvalues(&mut self) {
+        for (slot, upvalue) in std::mem::take(&mut self.open_upvalues) {
+            if Rc::strong_count(&upvalue) == 1 && Rc::weak_count(&upvalue) == 0 {
+                continue;
+            }
+            let Ok(mut cell) = upvalue.try_borrow_mut() else {
+                continue;
+            };
+            if matches!(*cell, Upvalue::Open(_)) {
+                *cell = Upvalue::Closed(self.stack.get(slot).cloned().unwrap_or(Value::Null));
+            }
+        }
+        self.open_upvalue_top = 0;
+    }
+
+    /// Put the VM back in a state a new request can run on after a handler
+    /// panicked somewhere inside it.
+    ///
+    /// A panic unwinds past every `vm.reset()` the serve paths make after a
+    /// call, so the stack, the frames, `iter_stack` and `return_depth` of the
+    /// dead request stayed. The next request's action frame then returned
+    /// *into* the dead request's frames: its remaining code ran under the new
+    /// request and its value became the new request's response. Also drops
+    /// what a loop or a render had in hand when it stopped.
+    pub fn recover_after_panic(&mut self) {
+        self.reset();
+        self.spare_callback_loop = None;
+        self.template_out.clear();
+        self.template_captures.clear();
+        self.template_content_before = None;
     }
 
     /// Invoke a callable synchronously from within a native method.
@@ -3729,6 +3808,63 @@ result = new Probe().run
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A VM seeded with the globals `source` defines, as a serve worker seeds
+    /// its VM from the loaded app.
+    fn vm_for(source: &str) -> (crate::interpreter::Interpreter, Vm) {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .expect("lexer error");
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .expect("parser error");
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).expect("program runs");
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        (interpreter, vm)
+    }
+
+    /// A closure that escaped a request which then failed must not read or
+    /// write the next request's stack. The request's frames stay on the VM
+    /// after an uncaught error, so the closure's upvalue was still open on an
+    /// absolute slot when `reset` cleared the stack — and that slot was the
+    /// next visitor's local.
+    #[test]
+    fn reset_closes_the_upvalues_a_failed_request_left_open() {
+        let (interpreter, mut vm) = vm_for(
+            r#"
+const STORE = []
+def leak()
+  secret = "alice-secret"
+  STORE.push(fn() { secret })
+  throw "boom"
+end
+def read()
+  bob_token = "bob-token-123"
+  STORE[0]()
+end
+"#,
+        );
+        let leak = interpreter.global_env().borrow().get("leak").expect("leak");
+        let read = interpreter.global_env().borrow().get("read").expect("read");
+
+        assert!(vm.call_value_direct(leak, &[], Span::default()).is_err());
+        vm.reset();
+        assert!(vm.open_upvalues.is_empty());
+
+        let seen = vm
+            .call_value_direct(read, &[], Span::default())
+            .expect("read runs");
+        vm.reset();
+        assert_eq!(
+            seen,
+            Value::String("alice-secret".into()),
+            "the stored closure must keep its own request's value, not read the next request's local"
+        );
+    }
 
     /// A model callback must see the record as `this`.
     ///
