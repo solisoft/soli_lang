@@ -2,8 +2,98 @@
 
 ## [Unreleased]
 
+## [2.29.4] - 2026-11-05
+
+A security patch: fixes from a review of the production engine (the VM) and of
+`soli serve`'s per-worker state. Several let one visitor's data reach another,
+or let an authorization check pass in production that failed under `--dev`.
+
+### Security
+
+- **A worker resets both engines after a request that panicked.** A handler
+  stopped by a Rust panic (a 500) left its state on the worker: the VM resumed
+  the dead frames, the interpreter kept the swapped environment and call stack,
+  and `params` stayed the attacker's, so the next visitor could get the
+  previous one's page. `run_request_caught` now restores the interpreter's root
+  environment and call depth and resets the VM after every request (streaming
+  blocks, LiveView events and background jobs too). `Vm::reset` closes the
+  upvalues still open, so a closure kept past a failed request keeps its own
+  values instead of reading the next request's stack.
+- **`sort_by`, `order` and `respond_to` no longer panic.** `sort_by` (block or
+  field name) and `order` over keys of mixed types, NaN or nil hit Rust's
+  "comparator does not implement a total order" panic, the trigger above; an
+  `Accept` header with `q=NaN` did the same through `respond_to`, without
+  authentication. User-keyed sorts now use the tolerant stable merge sort, and
+  a non-finite `q` counts as 0. The order of keys that do not compare is
+  unspecified but stable and the same on both engines.
+- **Views never read the previous visitor's request.** The view helpers'
+  `req`, `params`, `session`, `cookies` and `headers` were bound per request
+  but never cleared, so a custom 404 for an unrouted path, a view rendered by
+  middleware, a LiveView frame or a job's mailer view showed the last
+  visitor's (their `current_user`, say). They are cleared at the start of each
+  request, socket event, LiveView event and job, and bound before middleware
+  runs. A view rendered by middleware now has `req` in its data, and so in its
+  response-cache key (it was cached without it). On a route-miss 404 there is
+  no request: helpers read nil. A worker that restarts after a panic also
+  resets its template environment.
+- **Templates and helpers can no longer overwrite the shared environments.**
+  `<% url = … %>` in a view, or `h = url.index_of("#")` in a helper (the
+  starter `application_helper.sl` did that), replaced the builtin or helper
+  for every later render on the worker: values leaked between users, and the
+  next `h(x)` answered 500. The shared template and helper environments are
+  now read-only to a bare assignment, which defines a local of that render or
+  call; the scaffold's helper locals are renamed (`slash_at`, `query_at`,
+  `fragment_at`).
+- **A subclass override wins on the VM.** Once a parent's instance method or
+  `static def` had run (and been compiled) on a worker, a subclass that
+  overrode it was skipped there and the parent's body ran — a stricter
+  `show?` in a policy subclass, or a narrower scope like
+  `Note.visible_to(user)`, answered the parent's way in production while
+  `--dev` was right. Dispatch, `send`, `super`, `method_missing`, model
+  callbacks and inline job `perform` now resolve the nearest definition level
+  by level.
+- **A zero-argument helper read without `()` is called on the VM.** In
+  compiled views and actions `signed_in?` read as the function itself, always
+  truthy, so `<% if signed_in? %>` showed the members' branch and
+  `return redirect("/login") unless signed_in?` let everyone through in
+  production. Bare zero-argument defs, helpers and builtins are now called, as
+  the tree-walker calls them; a lambda kept in a variable is still not.
+- **A bare static that reads `this` returns to its caller.** `Post.recent`
+  (no parentheses) ran the rest of the action a second time — database writes
+  included — then answered 500; it now returns like `Post.recent()`.
+- **The handler budget holds on the VM.** `SOLI_HANDLER_TIMEOUT_SECS` is now
+  checked on every call (recursion included), on each element a block
+  iterator hands its block (`n.times`, `upto`, `downto`, `each`, …) and in the
+  tree-walker's comprehensions, so `params["n"].to_i.times { … }` no longer
+  holds a worker past the budget. Once spent it stays spent for the request (a `rescue`
+  cannot keep looping), and an action, hook or middleware that timed out is
+  neither re-run on the interpreter nor demoted.
+- **Model fields follow the model rules on the VM.** A preloaded relation
+  (`Post.includes("user")`) read as a raw hash, so its JSON carried the
+  user's `password_digest`; translated fields ignored the locale; and writes
+  to `_key`/`_id`, `const` fields and `static const` fields went through. Reads
+  and writes now take the tree-walker's path for models and const-field
+  classes; plain objects keep the fast path.
+- **A local stays local on the VM.** A function that also bound a name with
+  `let`, `for`, `catch` or a comprehension compiled its bare assignment of
+  that name as a global: recursion overwrote it, and under `soli serve` it
+  outlived the request (`e = params["secret"]` in an action with a
+  `catch e`).
+- **`sanitize_html` drops `style`, and keeps `class` only for `language-*`.**
+  User content could lay a fixed, full-page box over the app (a fake sign-in
+  form); on a page with a utility CSS framework `class="fixed inset-0 z-50"`
+  did the same. `class` survives only as the names Markdown puts on fenced
+  code blocks.
+
 ### Changed
 
+- `soli run --vm`: a zero-argument def read without `()` is called, as
+  `--tree` calls it (`state = signed_in?`, `f = my_def`); a lambda kept in a
+  variable still reads as the function.
+- The background-job claim names `idx_jobs_claim` in its `OPTIONS`: SoliDB
+  2.6.3 serves `state IN [...] AND run_at <= now` from it as one bounded range
+  per state (390 ms → 0.21 ms on a 172k-job queue). Older servers ignore the
+  hint.
 - The Benchmarks page (`www/docs/benchmarks.md` and its `.html.slv`), the home
   page's load ramp and stats, the README and both OpenGraph cards carry Soli
   2.29.3's numbers, re-measured on 2026-11-03 on the 9950X box with SoliDB
@@ -13,6 +103,12 @@
   (11.2x), create 218,618, update 146,114, delete 164,110. The write rows
   dropped against the September figures while SoliDB's CPU per write rose;
   the page says the two SoliDB versions were not A/B'd.
+
+### Fixed
+
+- A spec given as a relative path (`soli test tests/billing/a_spec.sl` from
+  the project root) imports `../support/…` again; the entry sits under 2.29.0,
+  next to the change it completes.
 
 ## [2.29.3] - 2026-11-01
 

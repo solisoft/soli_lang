@@ -246,7 +246,7 @@ this.after_action(:create, :update) = fn(req, response) {
 
 ### Which engine runs a hook
 
-In production, hooks run on the bytecode VM, like actions: each `fn(...) { ... }` is compiled once per worker and runs bound to the controller, so `@foo = ...`, `this`, `halt(...)` and a returned response behave as they do in an action. A hook the VM cannot compile, or that fails on it before writing anything, is re-run on the tree-walking interpreter and stays there for that worker, the way an action falls back; it is counted in `soli_vm_handler_demotions_total` (see [Observability](observability.md)). Under `soli serve --dev` they run on the interpreter, as everything does.
+In production, hooks run on the bytecode VM, like actions: each `fn(...) { ... }` is compiled once per worker and runs bound to the controller, so `@foo = ...`, `this`, `halt(...)` and a returned response behave as they do in an action. A hook the VM cannot compile, or that fails on it before writing anything, is re-run on the tree-walking interpreter and stays there for that worker, the way an action falls back; it is counted in `soli_vm_handler_demotions_total` (see [Observability](observability.md)). A hook, action or middleware that ran out of the request's time budget ([`SOLI_HANDLER_TIMEOUT_SECS`](configuration.md)) is neither re-run nor moved: the request answers with the timeout error. Under `soli serve --dev` they run on the interpreter, as everything does.
 
 ## Request Object
 
