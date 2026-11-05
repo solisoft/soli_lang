@@ -305,8 +305,9 @@ impl Compiler {
                 self.emit(Op::Pop, line);
                 self.compile_expr(fallback)?;
                 self.patch_jump(rescue_jump);
+                let catch_offset = self.proto.chunk.jump_operand(catch_start - try_begin - 1);
                 if let Op::TryBegin(ref mut co, _) = self.proto.chunk.code[try_begin] {
-                    *co = (catch_start - try_begin - 1) as u16;
+                    *co = catch_offset;
                 }
             }
             ExprKind::CompoundAssign {

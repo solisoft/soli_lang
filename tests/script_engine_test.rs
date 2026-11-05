@@ -347,3 +347,32 @@ fn a_function_read_without_parentheses_keeps_the_tree_walker() {
     let run = soli(dir.path(), &["s.sl"], true);
     assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
 }
+
+/// A function body longer than a 16-bit jump can span: the VM refuses to
+/// compile it, and the script runs on the tree-walker, with the same output.
+/// Jump and loop offsets were truncated to 16 bits, so the `if` jumped into
+/// the middle of its own body (`f(false)` answered 65535, not 0) and the loop
+/// back to the wrong instruction, where the VM's unchecked stack reads could
+/// read past the stack.
+#[test]
+fn a_body_too_long_for_a_jump_runs_on_the_tree_walker() {
+    let body = "    x = x + 1\n".repeat(20_000);
+    let branch = format!(
+        "def f(flag)\n  x = 0\n  if flag\n{body}  end\n  x\nend\nprint(f(false), f(true))\n"
+    );
+    let looped = format!(
+        "def g(n)\n  i = 0\n  x = 0\n  while i < n\n{body}    i = i + 1\n  end\n  x\nend\nprint(g(3))\n"
+    );
+    for (source, expected) in [(branch, "0 20000\n"), (looped, "60000\n")] {
+        let dir = script(&source);
+        let run = soli(dir.path(), &["s.sl"], true);
+        assert_eq!(run.stdout, expected, "{}", run.stderr);
+        assert!(
+            run.stderr.contains("the VM cannot compile it")
+                && run.stderr.contains("too long for the VM"),
+            "{}",
+            run.stderr
+        );
+        assert_same(&source);
+    }
+}

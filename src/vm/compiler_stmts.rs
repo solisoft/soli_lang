@@ -534,9 +534,9 @@ impl Compiler {
             for (i, clause) in catch_clauses.iter().enumerate() {
                 for patch_idx in next_clause_patches.drain(..) {
                     let target = self.current_offset();
-                    let jump_offset = target - patch_idx - 1;
+                    let jump_offset = self.proto.chunk.jump_operand(target - patch_idx - 1);
                     if let Op::CatchMatch(_, ref mut off) = self.proto.chunk.code[patch_idx] {
-                        *off = jump_offset as u16;
+                        *off = jump_offset;
                     }
                 }
 
@@ -565,9 +565,9 @@ impl Compiler {
             if !next_clause_patches.is_empty() {
                 for patch_idx in next_clause_patches.drain(..) {
                     let target = self.current_offset();
-                    let jump_offset = target - patch_idx - 1;
+                    let jump_offset = self.proto.chunk.jump_operand(target - patch_idx - 1);
                     if let Op::CatchMatch(_, ref mut off) = self.proto.chunk.code[patch_idx] {
-                        *off = jump_offset as u16;
+                        *off = jump_offset;
                     }
                 }
                 self.emit(Op::Rethrow, line);
@@ -583,9 +583,11 @@ impl Compiler {
 
         self.patch_jump(no_exception_jump);
 
+        let catch_offset = self.proto.chunk.jump_operand(catch_offset);
+        let finally_offset = self.proto.chunk.jump_operand(finally_offset);
         if let Op::TryBegin(ref mut co, ref mut fo) = self.proto.chunk.code[try_begin] {
-            *co = catch_offset as u16;
-            *fo = finally_offset as u16;
+            *co = catch_offset;
+            *fo = finally_offset;
         }
 
         Ok(())
@@ -674,9 +676,10 @@ impl Compiler {
 
         self.patch_jump(end_jump);
 
+        let pad_offset = self.proto.chunk.jump_operand(pad_offset);
         if let Op::TryBegin(ref mut co, ref mut fo) = self.proto.chunk.code[outer] {
-            *co = pad_offset as u16;
-            *fo = pad_offset as u16;
+            *co = pad_offset;
+            *fo = pad_offset;
         }
 
         Ok(())
