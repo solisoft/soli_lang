@@ -223,3 +223,40 @@ fn a_bare_zero_argument_global_is_called_in_a_vm_action() {
         "a lambda kept in a variable is read as the function"
     );
 }
+
+/// A zero-parameter static that reads `this`, read bare (`Post.recent`, the
+/// house style), runs once and returns to the action. It ran through
+/// `call_method_bound_args`, whose `run()` did not stop at its own frame: the
+/// rest of the action ran inside it (its side effects twice), and the outer
+/// dispatch loop then panicked on an empty frame stack — a 500.
+#[test]
+fn a_bare_static_reading_this_returns_to_the_action() {
+    let mut app = ServedApp::load(
+        r##"
+hits = []
+
+class Probe
+  static def me
+    this
+  end
+end
+
+class BareStaticController
+  def index
+    klass = Probe.me
+    hits.push("after")
+    "#{klass} #{hits.length}"
+  end
+end
+"##,
+    );
+    assert_eq!(
+        app.call("BareStaticController", "index"),
+        Value::String("<class Probe> 1".into())
+    );
+    let hits = app.interpreter.environment.borrow().get("hits").unwrap();
+    let Value::Array(hits) = hits else {
+        panic!("hits is not an array: {hits:?}")
+    };
+    assert_eq!(hits.borrow().len(), 1, "the action's side effect ran twice");
+}

@@ -2481,12 +2481,20 @@ impl Vm {
         // matching the layout the method bytecode expects. Omitted parameters
         // are padded with null (and their defaults applied) by call_closure
         // itself.
-        self.push(instance);
-        for arg in args {
-            self.push(arg.clone());
-        }
-        self.call_closure(closure, args.len(), span)?;
-        self.run()
+        //
+        // Run to completion at this depth: called while the VM is already
+        // running (a bare `Post.recent` static that reads `this`), a plain
+        // `self.run()` kept going past this frame's return into the caller's
+        // frames — running the rest of the action inside this call, side
+        // effects included — and the outer loop then panicked on an empty
+        // frame stack. At the top of a request the depth is 0, as before.
+        self.run_to_completion(|vm| {
+            vm.push(instance);
+            for arg in args {
+                vm.push(arg.clone());
+            }
+            vm.call_closure(closure, args.len(), span)
+        })
     }
 
     /// Reset VM state between requests (preserves globals).
