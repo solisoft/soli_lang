@@ -76,6 +76,8 @@ pub mod project;
 pub mod serialize;
 pub mod tree;
 
+#[cfg(test)]
+mod tests;
 
 pub use error::{line_col, XmlError, XmlErrorKind};
 pub use parse::{parse, parse_bytes, EventLoop, NsScope, Sink, StartTag, Step, TreeSink};
