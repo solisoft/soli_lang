@@ -3223,9 +3223,9 @@ impl Vm {
                 // tree-walker's `initialize_instance_fields` does.
                 Op::InitProperty(idx) => {
                     let value = self.stack.pop().unwrap();
-                    let name = self.read_string_constant_owned(idx);
+                    let name = self.read_string_constant(idx);
                     if let Some(Value::Instance(inst)) = self.stack.last() {
-                        inst.borrow_mut().fields.insert(name.into(), value.clone());
+                        inst.borrow_mut().fields.insert(name, value.clone());
                     }
                     self.stack.pop(); // pop object
                     self.stack.push(value);
