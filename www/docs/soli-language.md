@@ -5023,9 +5023,10 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`.
   Three places keep them: **`Klass.new()`** — a bare `Post.new` reads the
   class's `new` without calling it, so it is no instance; a **bare function**
-  (`current_user()`, `session_destroy()`), so a call reads as one — and a
-  lambda kept in a variable needs them: production leaves a bare one
-  uncalled; and **before an index** — `list.sort()[0]`: the type checker
+  (`current_user()`, `session_destroy()`), so a call reads as one — both
+  engines call a zero-argument def, helper or builtin read bare, but a lambda
+  kept in a variable needs them: production leaves a bare one uncalled; and
+  **before an index** — `list.sort()[0]`: the type checker
   refuses `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
