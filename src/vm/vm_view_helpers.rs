@@ -625,10 +625,16 @@ mod tests {
             on_both(&helpers["link_to"], &[s("Go"), s("javascript:x")]),
             s("<a href=\"#\">Go</a>")
         );
+        // `_is_safe_link_url` with them: its locals (`slash_at`, `query_at`,
+        // `fragment_at`) no longer take a name the shared env holds. It
+        // assigned `h = lower.index_of("#")`, which overwrote the `h` builtin
+        // for every later helper on the worker; this test used to pin that
+        // clobber.
         for name in [
             "link_to",
             "link_to_class",
             "_safe_link_url",
+            "_is_safe_link_url",
             "pluralize",
             "pluralize_simple",
             "truncate_text",
@@ -637,11 +643,10 @@ mod tests {
         ] {
             assert_eq!(decided(&helpers[name]), Some(true), "{name}");
         }
-        // Its local `h = lower.index_of("#")` is the closure's `h` builtin:
-        // the tree-walker overwrites it in the shared closure, so the helper
-        // stays there, and a sibling calling it reaches it as before.
-        assert_eq!(decided(&helpers["_is_safe_link_url"]), Some(false));
-        assert_eq!(env.borrow().get("h"), Some(Value::Int(-1)));
+        assert!(
+            matches!(env.borrow().get("h"), Some(Value::NativeFunction(_))),
+            "the helpers' `h` is still the builtin"
+        );
     }
 
     /// `req` is rebound on the closure for every request: a compiled helper
