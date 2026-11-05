@@ -759,7 +759,10 @@ mod tests {
             .split('.')
             .nth(1)
             .map_or(0, |digits| digits.len() as u32);
-        Value::Decimal(DecimalValue(text.parse().unwrap(), precision))
+        let parsed = text
+            .parse()
+            .unwrap_or_else(|e| panic!("{text} is a decimal: {e}"));
+        Value::Decimal(DecimalValue(parsed, precision))
     }
 
     /// A record from `Post.all` (any object) has no signature, so its page is
@@ -801,7 +804,10 @@ mod tests {
     /// `3.25D`.
     #[test]
     fn decimals_and_datetimes_are_hashed_by_value() {
-        let sig = |value: Value| data_signature(&hash(vec![("v", value)])).unwrap();
+        let sig = |value: Value| {
+            data_signature(&hash(vec![("v", value)]))
+                .unwrap_or_else(|| panic!("a value has a signature"))
+        };
         assert_ne!(sig(decimal("3.25")), sig(decimal("6.25")));
         assert_eq!(sig(decimal("3.25")), sig(decimal("3.25")));
         // Equal, but printed differently.
@@ -945,7 +951,8 @@ mod tests {
                 vec![("title", string(title)), ("views", Value::Int(3))],
             )
         };
-        let sig = |value: &Value| content_signature(value).expect("an object has one");
+        let sig =
+            |value: &Value| content_signature(value).unwrap_or_else(|| panic!("an object has one"));
         assert_eq!(sig(&card("alpha")), sig(&card("alpha")));
         assert_ne!(sig(&card("alpha")), sig(&card("beta")));
 

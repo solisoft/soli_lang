@@ -3264,7 +3264,7 @@ mod tests {
     /// A fragment (an htmx swap, a `layout: false` render) has no `</body>`:
     /// its scripts go at the end, in the order the injectors always used.
     #[test]
-    fn a_fragment_gets_its_scripts_at_the_end_in_order() {
+    fn a_fragment_gets_its_scripts_at_the_end_in_order() -> Result<(), String> {
         let fragment = "<div data-soli-camera></div><input data-soli-pow=\"x\">";
         let response = html_response(fragment.to_string(), 200);
         let Value::Hash(map) = &response else {
@@ -3276,8 +3276,8 @@ mod tests {
         };
         assert!(body.starts_with(fragment), "{body}");
         assert!(body.ends_with("</script>"), "{body}");
-        let camera = body.find("/__soli/camera.js").expect("camera.js");
-        let pow = body.find("/__soli/pow.js").expect("pow.js");
+        let camera = body.find("/__soli/camera.js").ok_or("no camera.js")?;
+        let pow = body.find("/__soli/pow.js").ok_or("no pow.js")?;
         assert!(camera < pow, "{body}");
         // nav.js, or prefetch.js with `SOLI_NAV=off`, whichever this test
         // run's environment selects, goes first.
@@ -3286,6 +3286,7 @@ mod tests {
                 assert!(at < camera, "{body}");
             }
         }
+        Ok(())
     }
 
     /// A page rendered from an object is rendered again for the next object.
@@ -3295,19 +3296,19 @@ mod tests {
     /// (dev mode, auto-render, mailers) and `render_html_response`
     /// (production `render()`).
     #[test]
-    fn render_data_holding_an_object_is_rendered_every_time() {
+    fn render_data_holding_an_object_is_rendered_every_time(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::interpreter::value::{Class, Instance};
 
         response_cache::reset_for_new_request();
         response_cache::clear_cache();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir()?;
         let views = dir.path().join("views");
-        fs::create_dir_all(views.join("cards")).unwrap();
+        fs::create_dir_all(views.join("cards"))?;
         fs::write(
             views.join("cards/show.html.slv"),
             "<p><%= card.title %></p>",
-        )
-        .unwrap();
+        )?;
         let cache = TemplateCache::new(&views);
 
         let data = |card: Value| {
@@ -3325,29 +3326,27 @@ mod tests {
             data(Value::Instance(Rc::new(RefCell::new(instance))))
         };
 
-        let render = |data: &Value| cache.render("cards/show", data, Some(None)).unwrap();
-        assert!(render(&card("first")).contains("first"));
-        let second = render(&card("second"));
+        let render = |data: &Value| cache.render("cards/show", data, Some(None));
+        assert!(render(&card("first"))?.contains("first"));
+        let second = render(&card("second"))?;
         assert!(
             second.contains("second"),
             "render() answered with the first card's page: {second}"
         );
 
-        let response_body = |data: &Value| {
-            let response = cache
-                .render_html_response("cards/show", data, Some(None), 200)
-                .unwrap();
+        let response_body = |data: &Value| -> Result<String, String> {
+            let response = cache.render_html_response("cards/show", data, Some(None), 200)?;
             let Value::Hash(map) = &response else {
                 panic!("a response is a hash, got {response:?}");
             };
             let body = map.borrow().get(&HashKey::String("body".into())).cloned();
             match body {
-                Some(Value::String(body)) => body.to_string(),
-                other => panic!("the response has no body: {other:?}"),
+                Some(Value::String(body)) => Ok(body.to_string()),
+                other => Err(format!("the response has no body: {other:?}")),
             }
         };
-        assert!(response_body(&card("third")).contains("third"));
-        let fourth = response_body(&card("fourth"));
+        assert!(response_body(&card("third"))?.contains("third"));
+        let fourth = response_body(&card("fourth"))?;
         assert!(
             fourth.contains("fourth"),
             "render_html_response answered with the third card's page: {fourth}"
@@ -3355,7 +3354,7 @@ mod tests {
 
         // The refusal belongs to those renders, not to the site: the same view
         // rendered from plain values is still kept and found.
-        let path = cache.resolve_template_path("cards/show").unwrap();
+        let path = cache.resolve_template_path("cards/show")?;
         assert!(!response_cache::is_known_uncacheable(&path, None));
         let mut fields = HashPairs::default();
         fields.insert(
@@ -3363,11 +3362,12 @@ mod tests {
             Value::String("plain".into()),
         );
         let plain = data(Value::Hash(Rc::new(RefCell::new(fields))));
-        let signature = response_cache::data_signature(&plain).expect("plain data has one");
-        assert!(render(&plain).contains("plain"));
+        let signature = response_cache::data_signature(&plain).ok_or("plain data has one")?;
+        assert!(render(&plain)?.contains("plain"));
         assert!(
             response_cache::get(path, None, signature, false).is_some(),
             "a page rendered from plain values must still be cached"
         );
+        Ok(())
     }
 }

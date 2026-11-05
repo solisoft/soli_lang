@@ -1331,7 +1331,9 @@ mod tests {
     fn decimals_and_array_difference_render_on_the_vm() {
         let decimal = |digits: &str, precision: u32| {
             Value::Decimal(crate::interpreter::value::DecimalValue(
-                digits.parse().expect("a decimal"),
+                digits
+                    .parse()
+                    .unwrap_or_else(|e| panic!("{digits} is a decimal: {e}")),
                 precision,
             ))
         };

@@ -638,8 +638,11 @@ fn html_entity(b: u8) -> &'static str {
 fn next_html_special(bytes: &[u8], from: usize) -> Option<usize> {
     const BLOCK: usize = 16;
     let mut i = from;
-    while let Some(block) = bytes.get(i..i + BLOCK) {
-        let block: &[u8; BLOCK] = block.try_into().unwrap();
+    // `get` hands back exactly `BLOCK` bytes, so the conversion never fails.
+    while let Some(block) = bytes
+        .get(i..i + BLOCK)
+        .and_then(|block| <&[u8; BLOCK]>::try_from(block).ok())
+    {
         if block
             .iter()
             .fold(false, |found, &b| found | is_html_special(b))
@@ -1137,7 +1140,9 @@ mod tests {
         assert_eq!(out, ":a<b");
 
         let decimal = Value::Decimal(crate::interpreter::value::DecimalValue(
-            "-1234.50".parse().unwrap(),
+            "-1234.50"
+                .parse()
+                .unwrap_or_else(|e| panic!("a decimal: {e}")),
             2,
         ));
         let mut expected = String::new();
@@ -1155,17 +1160,18 @@ mod tests {
     }
 
     #[test]
-    fn test_escaped_output_tag_renders_entities() {
-        let nodes = parse_template("<p><%= title %></p>").unwrap();
+    fn test_escaped_output_tag_renders_entities() -> Result<(), String> {
+        let nodes = parse_template("<p><%= title %></p>")?;
         let data = make_hash(vec![(
             "title",
             Value::String("O'Brien & \"Sons\" <ltd> — café".into()),
         )]);
-        let result = render_nodes(&nodes, &data, None).unwrap();
+        let result = render_nodes(&nodes, &data, None)?;
         assert_eq!(
             result,
             "<p>O&#x27;Brien &amp; &quot;Sons&quot; &lt;ltd&gt; — café</p>"
         );
+        Ok(())
     }
 
     #[test]
