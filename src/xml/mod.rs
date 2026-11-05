@@ -72,6 +72,7 @@ pub mod error;
 pub mod escape;
 pub mod parse;
 pub mod policy;
+pub mod project;
 pub mod serialize;
 pub mod tree;
 
@@ -82,6 +83,7 @@ pub use policy::{
     OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
     MAX_NAME_LEN,
 };
+pub use project::{soap_error_message, soap_shape, to_h, Proj};
 pub use serialize::{serialize, serialize_children, SerializeOptions};
 pub use tree::{Attr, ElementRef, Kind, NodeData, NodeId, NsDecl, XmlDecl, XmlTree, XML_NS};
 
@@ -93,6 +95,7 @@ mod send_check {
     fn the_core_types_are_send() {
         assert_send::<super::XmlTree>();
         assert_send::<super::XmlError>();
+        assert_send::<super::Proj>();
         assert_send::<super::ParsePolicy>();
     }
 }
