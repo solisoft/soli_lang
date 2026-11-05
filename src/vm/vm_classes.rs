@@ -908,12 +908,8 @@ impl Vm {
             // params["id"]; post.save` would otherwise update another
             // document — and a translated field is staged for the current
             // locale instead of overwriting the default-language column.
+            // `set_instance_field` also runs the value-object freeze check.
             Value::Instance(inst) => {
-                {
-                    let inst_ref = inst.borrow();
-                    crate::interpreter::domain::check_writable(inst, &inst_ref.class, name)
-                        .map_err(|e| RuntimeError::type_error(e, span))?;
-                }
                 crate::interpreter::executor::set_instance_field(inst, name, value)
                     .map_err(|message| RuntimeError::type_error(message, span))
             }
