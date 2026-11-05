@@ -2074,8 +2074,7 @@ mod tests {
     /// deadline) and returned the whole page, then kept the view on the
     /// tree-walker for good, as if the engines disagreed about it.
     #[test]
-    fn a_view_past_the_budget_fails_and_stays_compiled() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn a_view_past_the_budget_fails_and_stays_compiled() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let views = dir.path().join("views");
         std::fs::create_dir_all(&views)?;
