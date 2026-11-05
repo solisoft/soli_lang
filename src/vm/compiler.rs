@@ -466,6 +466,7 @@ impl Compiler {
 
         let mut proto = compiler.proto;
         proto.upvalue_descriptors = compiler.upvalues;
+        check_jump_offsets(&proto)?;
 
         // Run peephole optimization on all functions
         peephole_optimize_proto(&mut proto);
@@ -604,6 +605,7 @@ impl Compiler {
         let mut proto = compiler.proto;
         proto.upvalue_descriptors = compiler.upvalues;
         proto.is_method = true;
+        check_jump_offsets(&proto)?;
 
         peephole_optimize_proto(&mut proto);
 
@@ -668,7 +670,8 @@ impl Compiler {
 
     pub fn emit_loop(&mut self, loop_start: usize, line: usize) {
         let offset = self.proto.chunk.len() - loop_start + 1;
-        self.emit(Op::Loop(offset as u16), line);
+        let offset = self.proto.chunk.jump_operand(offset);
+        self.emit(Op::Loop(offset), line);
     }
 
     pub fn add_constant(&mut self, constant: Constant) -> u16 {
@@ -1293,6 +1296,35 @@ pub enum VariableAccess {
     Global(String),
 }
 
+/// Refuse `proto`, or a function nested in it, when one of its jump, loop or
+/// handler offsets did not fit its operand (`Chunk::offset_overflow`): a body
+/// of more than [`super::chunk::MAX_JUMP_OFFSET`] instructions. The error
+/// hands the code to the tree-walker, as any compile error does; bytecode
+/// with a truncated offset would jump to the wrong instruction. Runs before
+/// the peephole, whose fused offsets assume the originals fit.
+fn check_jump_offsets(proto: &FunctionProto) -> CompileResult<()> {
+    if proto.chunk.offset_overflow {
+        let name = if proto.name.is_empty() {
+            "the script"
+        } else {
+            proto.name.as_str()
+        };
+        return Err(CompileError::new(
+            format!(
+                "`{name}` is too long for the VM: a jump spans more than {} instructions",
+                super::chunk::MAX_JUMP_OFFSET
+            ),
+            Span::default(),
+        ));
+    }
+    for constant in &proto.chunk.constants {
+        if let Constant::Function(nested) = constant {
+            check_jump_offsets(nested)?;
+        }
+    }
+    Ok(())
+}
+
 /// Peephole optimization: scan bytecode for common patterns and replace with super-instructions.
 /// This runs after compilation on a FunctionProto (recursively for nested functions).
 fn peephole_optimize_proto(proto: &mut FunctionProto) {
@@ -1417,6 +1449,7 @@ fn stack_effect(op: Op) -> i32 {
         // pushes the element on the continue path — loops resync regardless).
         GetIter => -1,
         GetIterRange => -2,
+        PopRangeComprehension(_) => -1,
         ForIter(_) | ForIterRange(_) => 1,
         // I/O: pop n, push the Null result.
         Print(n) => 1 - n as i32,
@@ -4203,6 +4236,7 @@ mod stack_effect_tests {
             // Iterators (the iterator itself lives on `iter_stack`).
             (&[GetLocal(KEYS)], GetIter),
             (&[Constant(ZERO), Constant(INT)], GetIterRange),
+            (&[Constant(INT)], PopRangeComprehension(KEYS)),
             (&[GetLocal(KEYS), GetIter], ForIter(0)),
             (
                 &[Constant(ZERO), Constant(INT), GetIterRange],
@@ -4254,5 +4288,62 @@ mod stack_effect_tests {
             "stack_effect disagrees with the VM:\n{}",
             wrong.join("\n")
         );
+    }
+}
+
+#[cfg(test)]
+mod jump_offset_tests {
+    use super::*;
+    use crate::vm::chunk::MAX_JUMP_OFFSET;
+
+    fn compile(source: &str) -> CompileResult<CompiledModule> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| CompileError::new(e.to_string(), Span::default()))?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| CompileError::new(e.to_string(), Span::default()))?;
+        Compiler::compile(&program)
+    }
+
+    /// A loop whose body is longer than `Op::Loop`'s operand can jump back
+    /// over marks the chunk, as a forward jump does.
+    #[test]
+    fn a_loop_too_long_for_its_operand_marks_the_chunk() {
+        for (body, overflows) in [(MAX_JUMP_OFFSET - 1, false), (MAX_JUMP_OFFSET, true)] {
+            let mut compiler = Compiler::new(FunctionType::Function, "f".to_string());
+            let start = compiler.current_offset();
+            for _ in 0..body {
+                compiler.emit(Op::Nop, 1);
+            }
+            compiler.emit_loop(start, 1);
+            assert_eq!(compiler.proto.chunk.offset_overflow, overflows, "{body}");
+        }
+    }
+
+    /// A function, a nested one or the script itself with a jump past the
+    /// limit is a compile error, so it runs on the tree-walker; up to 2.29.3
+    /// its offsets were truncated and it jumped to the wrong instruction.
+    #[test]
+    fn code_with_a_jump_past_the_limit_does_not_compile() {
+        let body = "    x = x + 1\n".repeat(20_000);
+        let sources = [
+            format!("def f(flag)\n  x = 0\n  if flag\n{body}  end\n  x\nend\n"),
+            format!(
+                "def g(n)\n  i = 0\n  x = 0\n  while i < n\n{body}    i = i + 1\n  end\n  x\nend\n"
+            ),
+            format!("def h\n  k = fn(x) {{\n    if x\n{body}    end\n    x\n  }}\n  k\nend\n"),
+            format!("x = 0\ntry\n{body}catch e\n  x = -1\nend\nprint(x)\n"),
+        ];
+        for source in &sources {
+            match compile(source) {
+                Err(err) => assert!(err.to_string().contains("too long for the VM"), "{err}"),
+                Ok(_) => panic!("a jump past the limit must not compile"),
+            }
+        }
+        // The same shapes with a short body compile.
+        let short = "    x = x + 1\n".repeat(10);
+        let fits = format!("def f(flag)\n  x = 0\n  if flag\n{short}  end\n  x\nend\n");
+        assert!(compile(&fits).is_ok());
     }
 }

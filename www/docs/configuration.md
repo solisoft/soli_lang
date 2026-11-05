@@ -422,7 +422,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_MAX_PARAM_PAIRS` | Maximum `key=value` pairs parsed from a query string or urlencoded body, and plain (non-file) fields from a multipart body. Bounded only by the body cap, `a=&a=&…` produced millions of string pairs per request. Pairs past the cap are dropped. | `4096` |
 | `SOLI_HANDLER_TIMEOUT_SECS` | Wall-clock budget for executing one request handler. A runaway loop used to hold a worker forever, since the 504 the client receives does not stop the handler. Checked on loop iterations, statements, calls (recursion included), each element a block iterator hands its block (`n.times`, `upto`, `each`, …) and each comprehension element, on both engines, so it costs nothing measurable. Once spent it stays spent for the rest of the request — a `rescue` cannot keep the handler running — and the request answers with the error rather than being run again on the interpreter (before 2.29.4, an action, hook or middleware that timed out on the VM was re-run there and kept on the interpreter for that worker). `0` disables it. | `30` |
 | `SOLI_WORKER_STACK_MB` | Stack size for threads that run Soli code. The interpreter recurses on the native stack and its 256-frame budget does not fit the 2 MiB default, where an overflow aborts the whole process instead of failing one request. Virtual address space, committed only as used. | `64` |
-| `SOLI_MAX_RANGE_LEN` | Maximum elements a single `range(a, b)` / `a..b` may materialise. Both collect eagerly, so a request-supplied bound could ask the allocator for gigabytes — and an allocation failure aborts the process rather than the request. A `for` loop or a comprehension over `a..b`, in parentheses or not, counts through it without building it, so the limit does not apply there. | `16777216` |
+| `SOLI_MAX_RANGE_LEN` | Maximum elements a single `range(a, b)` / `a..b` may materialise. Both collect eagerly, so a request-supplied bound could ask the allocator for gigabytes — and an allocation failure aborts the process rather than the request. A `for` loop or a comprehension over `a..b`, in parentheses or not, counts through it without building it, so the length of the range is not limited there; a comprehension's result is, since it is built: `[f(i) for i in 0..n]` is refused once it would hold more than this many elements (a filter that keeps fewer is not). | `16777216` |
 | `SOLI_MAX_STRING_ALLOC_BYTES` | Maximum size of a string built by `"x" * n`. Same reasoning as `SOLI_MAX_RANGE_LEN`; a negative count is refused outright. | `67108864` (64 MiB) |
 | `SOLI_MAX_PAGE_SIZE` | Ceiling on `paginate({"per": n})` and vector-search `top_k`. `per` comes straight from request params, and an unbounded page loads the whole collection into one request. | `1000` |
 | `SOLI_RATE_LIMIT_IPV6_PREFIX` | Prefix length IPv6 clients are aggregated to for per-IP rate limiting. A residential allocation is a 64-bit prefix, so keying on the full address let one host take a fresh bucket per request and never trip the login throttle. Use 56 or 48 to aggregate a whole site. | `64` |
@@ -554,16 +554,16 @@ Read by the [`ES` class](builtins.md#es-class), per application; `ES.configure` 
 `soli script.sl`, `soli -e "…"` and executables from `soli build tool.sl` run on the bytecode VM —
 the engine `soli serve` uses in production — unless the script needs the tree-walking interpreter.
 That is decided from the source before the first line runs. The interpreter takes a script that
-uses class reflection (`class_eval`, `instance_eval`, `methods`, or `respond_to?`, `inspect`,
+uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`, `inspect`,
 `to_s`, `to_string` on a class name), `method_missing`, model batch iteration
 (`find_each`, `in_batches`, `find_in_batches`), a model
 lifecycle callback (`before_save`, `after_create`, …), a state machine (`state_machine`,
 `before_transition`, `after_transition`) or `subscribe` with a block; one that reads a function
 with no required parameter without parentheses (`x = helper`, `print(helper)`: the interpreter
-calls it, the VM would hand over the function); and one the VM cannot compile. `send` called on an
-instance or a class stays on the VM, and so does a bare `clock`, which both engines call. A name
-the script defines itself — a variable `methods`, a `def subscribe(topic)` — is the script's own
-and does not count. `soli test`, the REPL and `soli serve --dev`
+calls it, the VM would hand over the function); and one the VM cannot compile. Those names count
+wherever they appear, even where the script defines one itself (a variable `methods`, a
+`def subscribe(topic)`), since the same name may be the builtin elsewhere in the script. A bare
+`clock`, which both engines call, stays on the VM. `soli test`, the REPL and `soli serve --dev`
 always use the interpreter. See [Running Soli Code](soli-language.md#running-soli-code).
 
 | Variable / flag | Purpose | Default |

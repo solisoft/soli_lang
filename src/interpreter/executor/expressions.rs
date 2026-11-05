@@ -680,12 +680,14 @@ impl Interpreter {
 
     /// The elements a comprehension walks: a copy of an array's, or for a
     /// range `a..b`, with or without parentheses around it, its integers
-    /// counted one at a time as a `for` loop does, with no array built and
-    /// no `SOLI_MAX_RANGE_LEN` limit. The VM's comprehensions do the same.
+    /// counted one at a time as a `for` loop does, with no array built. For a
+    /// range it also returns the range's span: the result is then held to
+    /// `SOLI_MAX_RANGE_LEN` elements (`limits::check_comprehension_len`),
+    /// refused there. The VM's comprehensions do the same.
     fn comprehension_items(
         &mut self,
         iterable: &Expr,
-    ) -> RuntimeResult<Box<dyn Iterator<Item = Value>>> {
+    ) -> RuntimeResult<(Box<dyn Iterator<Item = Value>>, Option<Span>)> {
         let range = iterable.without_parens();
         if let ExprKind::Binary {
             left,
@@ -694,12 +696,12 @@ impl Interpreter {
         } = &range.kind
         {
             let (start, end) = self.evaluate_range_bounds(left, right, range.span)?;
-            return Ok(Box::new((start..end).map(Value::Int)));
+            return Ok((Box::new((start..end).map(Value::Int)), Some(range.span)));
         }
         match self.evaluate(iterable)? {
             Value::Array(arr) => {
                 let items: Vec<Value> = arr.borrow().iter().cloned().collect();
-                Ok(Box::new(items.into_iter()))
+                Ok((Box::new(items.into_iter()), None))
             }
             _ => Err(RuntimeError::type_error("expected array", iterable.span)),
         }
@@ -713,7 +715,7 @@ impl Interpreter {
         iterable: &Expr,
         condition: Option<&Expr>,
     ) -> RuntimeResult<Value> {
-        let items = self.comprehension_items(iterable)?;
+        let (items, capped_at) = self.comprehension_items(iterable)?;
 
         let mut result = Vec::new();
         for item in items {
@@ -743,6 +745,10 @@ impl Interpreter {
 
             if pass_condition {
                 result.push(elem_value);
+                if let Some(span) = capped_at {
+                    crate::interpreter::limits::check_comprehension_len(result.len())
+                        .map_err(|message| RuntimeError::General { message, span })?;
+                }
             }
         }
 
@@ -758,7 +764,7 @@ impl Interpreter {
         iterable: &Expr,
         condition: Option<&Expr>,
     ) -> RuntimeResult<Value> {
-        let items = self.comprehension_items(iterable)?;
+        let (items, capped_at) = self.comprehension_items(iterable)?;
 
         let mut result: crate::interpreter::value::HashPairs =
             crate::interpreter::value::HashPairs::default();
@@ -789,6 +795,10 @@ impl Interpreter {
             if should_include {
                 if let Some(hash_key) = key_value.to_hash_key() {
                     result.insert(hash_key, val_value);
+                    if let Some(span) = capped_at {
+                        crate::interpreter::limits::check_comprehension_len(result.len())
+                            .map_err(|message| RuntimeError::General { message, span })?;
+                    }
                 } else {
                     return Err(RuntimeError::type_error(
                         format!("Cannot use {} as hash key", key_value.type_name()),

@@ -305,8 +305,9 @@ impl Compiler {
                 self.emit(Op::Pop, line);
                 self.compile_expr(fallback)?;
                 self.patch_jump(rescue_jump);
+                let catch_offset = self.proto.chunk.jump_operand(catch_start - try_begin - 1);
                 if let Op::TryBegin(ref mut co, _) = self.proto.chunk.code[try_begin] {
-                    *co = (catch_start - try_begin - 1) as u16;
+                    *co = catch_offset;
                 }
             }
             ExprKind::CompoundAssign {
@@ -1708,13 +1709,13 @@ impl Compiler {
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(element)?;
             self.emit(Op::ArrayPush, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
             self.patch_jump(skip);
         } else {
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(element)?;
             self.emit(Op::ArrayPush, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
         }
 
         self.end_scope(line); // pop loop var (closes upvalue if a closure captured it)
@@ -1726,6 +1727,31 @@ impl Compiler {
         self.locals.pop();
         self.stack_height = result_slot as usize + 1;
         Ok(())
+    }
+
+    /// End a comprehension's element: drop what the push or insert left on
+    /// the stack. Over a range, which is counted rather than built,
+    /// `PopRangeComprehension` also holds the result in `result_slot` to
+    /// `SOLI_MAX_RANGE_LEN` elements, reported at the range as the
+    /// tree-walker reports it.
+    fn emit_comprehension_pop(
+        &mut self,
+        is_range: bool,
+        result_slot: u16,
+        iterable: &Expr,
+        line: usize,
+    ) {
+        if !is_range {
+            self.emit(Op::Pop, line);
+            return;
+        }
+        let range = iterable.without_parens();
+        let outer = std::mem::replace(&mut self.column, range.span.column);
+        self.emit(
+            Op::PopRangeComprehension(result_slot),
+            range.span.line as usize,
+        );
+        self.column = outer;
     }
 
     fn compile_hash_comprehension(
@@ -1771,14 +1797,14 @@ impl Compiler {
             self.compile_expr(key)?;
             self.compile_expr(value)?;
             self.emit(Op::SetIndex, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
             self.patch_jump(skip);
         } else {
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(key)?;
             self.compile_expr(value)?;
             self.emit(Op::SetIndex, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
         }
 
         self.end_scope(line);

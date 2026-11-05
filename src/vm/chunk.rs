@@ -132,7 +132,20 @@ pub struct Chunk {
     pub columns: Vec<u32>,
     /// Constant pool.
     pub constants: Vec<Constant>,
+    /// Set when a jump, loop or handler offset did not fit its 16-bit
+    /// operand ([`Chunk::jump_operand`]). The compiler refuses such a chunk
+    /// (`Compiler::check_jump_offsets`), so the code runs on the tree-walker
+    /// instead of jumping to a truncated target.
+    pub offset_overflow: bool,
 }
+
+/// The longest forward or backward distance a branch operand may hold.
+///
+/// Operands are `u16`, and the peephole adds up to 2 to a forward offset when
+/// it fuses the instructions before a jump into it (`JumpIfLocalTruthy(slot,
+/// offset + 2)`), so the limit leaves that room. `compact_nops` only shortens
+/// offsets.
+pub const MAX_JUMP_OFFSET: usize = u16::MAX as usize - 2;
 
 impl Chunk {
     pub fn new() -> Self {
@@ -141,7 +154,22 @@ impl Chunk {
             lines: Vec::new(),
             columns: Vec::new(),
             constants: Vec::new(),
+            offset_overflow: false,
         }
+    }
+
+    /// `distance` as a branch operand. A distance past [`MAX_JUMP_OFFSET`]
+    /// does not fit: it marks the chunk (`offset_overflow`), which the
+    /// compiler then refuses, and gives 0. Truncating it instead, as every
+    /// offset was up to 2.29.3, sent a body of more than 65,535 instructions
+    /// to the wrong instruction, mid-expression, where the VM's unchecked
+    /// stack reads (`peek_two!`) read past the stack.
+    pub fn jump_operand(&mut self, distance: usize) -> u16 {
+        if distance > MAX_JUMP_OFFSET {
+            self.offset_overflow = true;
+            return 0;
+        }
+        distance as u16
     }
 
     /// Emit an instruction and record its source line.
@@ -187,7 +215,7 @@ impl Chunk {
     /// Patch a jump instruction at `offset` with the actual jump distance.
     pub fn patch_jump(&mut self, offset: usize) {
         let jump = self.code.len() - offset - 1;
-        let jump = jump as u16;
+        let jump = self.jump_operand(jump);
         match &mut self.code[offset] {
             // Single-target forward branches. `CatchMatch`, `RescueJump`
             // and `TryBegin` are patched by hand at their emit sites (the
@@ -321,6 +349,24 @@ mod tests {
         c.emit(Op::Null, 1);
         c.patch_jump(off);
         assert_eq!(c.code[off], Op::Jump(3));
+    }
+
+    /// A forward jump over more instructions than its 16-bit operand holds
+    /// marks the chunk, which the compiler refuses, instead of truncating
+    /// the distance and landing inside the body it skips.
+    #[test]
+    fn a_jump_too_long_for_its_operand_marks_the_chunk() {
+        for (body, overflows) in [(MAX_JUMP_OFFSET, false), (MAX_JUMP_OFFSET + 1, true)] {
+            let mut c = Chunk::new();
+            let off = c.emit(Op::JumpIfFalse(0), 1);
+            for _ in 0..body {
+                c.emit(Op::Nop, 1);
+            }
+            c.patch_jump(off);
+            assert_eq!(c.offset_overflow, overflows, "{body}");
+            let expected = if overflows { 0 } else { body as u16 };
+            assert_eq!(c.code[off], Op::JumpIfFalse(expected), "{body}");
+        }
     }
 
     #[test]

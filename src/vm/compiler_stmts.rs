@@ -449,7 +449,8 @@ impl Compiler {
     /// A range `a..b`, with or without parentheses around it, compiles to its
     /// two bounds and `GetIterRange`, which counts from one to the other: no
     /// array is built, so there is no allocation and no `SOLI_MAX_RANGE_LEN`
-    /// limit. `for i in (0..n)` used to compile `Op::Range` and walk the
+    /// limit on the range (a comprehension still holds its result to it, with
+    /// `PopRangeComprehension`). `for i in (0..n)` used to compile `Op::Range` and walk the
     /// array it built, 24 bytes an element. `GetIterRange` records the
     /// range's own line and column, so a bound that is not an integer is
     /// reported at the range, where `Op::Range` and the tree-walker report it.
@@ -533,9 +534,9 @@ impl Compiler {
             for (i, clause) in catch_clauses.iter().enumerate() {
                 for patch_idx in next_clause_patches.drain(..) {
                     let target = self.current_offset();
-                    let jump_offset = target - patch_idx - 1;
+                    let jump_offset = self.proto.chunk.jump_operand(target - patch_idx - 1);
                     if let Op::CatchMatch(_, ref mut off) = self.proto.chunk.code[patch_idx] {
-                        *off = jump_offset as u16;
+                        *off = jump_offset;
                     }
                 }
 
@@ -564,9 +565,9 @@ impl Compiler {
             if !next_clause_patches.is_empty() {
                 for patch_idx in next_clause_patches.drain(..) {
                     let target = self.current_offset();
-                    let jump_offset = target - patch_idx - 1;
+                    let jump_offset = self.proto.chunk.jump_operand(target - patch_idx - 1);
                     if let Op::CatchMatch(_, ref mut off) = self.proto.chunk.code[patch_idx] {
-                        *off = jump_offset as u16;
+                        *off = jump_offset;
                     }
                 }
                 self.emit(Op::Rethrow, line);
@@ -582,9 +583,11 @@ impl Compiler {
 
         self.patch_jump(no_exception_jump);
 
+        let catch_offset = self.proto.chunk.jump_operand(catch_offset);
+        let finally_offset = self.proto.chunk.jump_operand(finally_offset);
         if let Op::TryBegin(ref mut co, ref mut fo) = self.proto.chunk.code[try_begin] {
-            *co = catch_offset as u16;
-            *fo = finally_offset as u16;
+            *co = catch_offset;
+            *fo = finally_offset;
         }
 
         Ok(())
@@ -673,9 +676,10 @@ impl Compiler {
 
         self.patch_jump(end_jump);
 
+        let pad_offset = self.proto.chunk.jump_operand(pad_offset);
         if let Op::TryBegin(ref mut co, ref mut fo) = self.proto.chunk.code[outer] {
-            *co = pad_offset as u16;
-            *fo = pad_offset as u16;
+            *co = pad_offset;
+            *fo = pad_offset;
         }
 
         Ok(())

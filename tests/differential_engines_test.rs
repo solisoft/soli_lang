@@ -2826,13 +2826,11 @@ print([{"size": 3}, {"size": 4}].map(&:size))"##,
         "class Policy\n  def edit?\n    true\n  end\n  def scaled(n, k)\n    n * k\n  end\n  def check(action)\n    this.send(action + \"?\")\n  end\nend\np = new Policy()\nprint(p.send(\"edit?\"))\nprint(p.send(\"scaled\", 3, 4))\nprint(p.check(\"edit\"))",
     ),
     (
-        // `send` on a class calls the static it names, also through a
-        // variable holding the class; a class with a static `send` of its own
-        // keeps it; an unknown name is an error on both. The VM refused class
-        // `send` as reflection, so a script naming `send` ran on the
-        // tree-walker.
-        "class_send",
-        "class Maker\n  static def make(n)\n    n * 2\n  end\nend\nclass Mailer\n  static def send(to)\n    \"mail to #{to}\"\n  end\nend\nk = Maker\nprint(Maker.send(\"make\", 4))\nprint(k.send(\"make\", 5))\nprint(Mailer.send(\"bob\"))\nprint((Maker.send(\"nope\") rescue \"no such static\"))",
+        // A class with a static `send` of its own keeps it. The reflection
+        // `send` on a class is the tree-walker's alone: the VM refuses it,
+        // and `soli serve` re-runs the action on the tree-walker.
+        "class_own_static_send",
+        "class Mailer\n  static def send(to)\n    \"mail to #{to}\"\n  end\nend\nm = Mailer\nprint(Mailer.send(\"bob\"))\nprint(m.send(\"ann\"))",
     ),
     (
         // `contains?` is `contains`, named as the predicate it is, on strings
@@ -6070,11 +6068,12 @@ fn run_with_env(source: &str, tag: &str, vm: bool, env: &[(&str, &str)]) -> (boo
 }
 
 /// A range that a `for` loop or a comprehension counts through is never built,
-/// so `SOLI_MAX_RANGE_LEN` does not limit it, with or without parentheses
-/// around it, on either engine. Both engines used to build a parenthesized
-/// one as an array, and refuse it past the limit, and the tree-walker built a
-/// comprehension's bare one too. A range used as a value is still built, and
-/// still refused.
+/// so `SOLI_MAX_RANGE_LEN` does not limit the range itself, with or without
+/// parentheses around it, on either engine. Both engines used to build a
+/// parenthesized one as an array, and refuse it past the limit, and the
+/// tree-walker built a comprehension's bare one too. A range used as a value
+/// is still built, and still refused; a comprehension's result is held to the
+/// limit (`a_comprehension_over_a_range_is_held_to_the_range_limit`).
 #[test]
 fn ranges_that_loops_count_through_are_not_built() {
     let limit = [("SOLI_MAX_RANGE_LEN", "100")];
@@ -6119,6 +6118,57 @@ print({(i): i for i in (0..1000) if i % 400 == 0}.length, {(i): i for i in 0..10
             assert!(
                 !ok && stdout.is_empty() && stderr.contains("over the 100 limit"),
                 "{source} (vm: {vm}) must still be refused: {stdout}{stderr}"
+            );
+        }
+    }
+}
+
+/// A comprehension over a range counts through it, but it builds its result:
+/// past `SOLI_MAX_RANGE_LEN` elements both engines refuse it, at the range,
+/// as they refuse a range built as a value. Counting lazily had dropped the
+/// limit, so `[i * i for i in (0..params["n"].to_i)]` with a huge `n` grew
+/// until the allocator failed, which aborts every worker of the process. A
+/// filter that keeps few elements is not refused, however long the range.
+#[test]
+fn a_comprehension_over_a_range_is_held_to_the_range_limit() {
+    let limit = [("SOLI_MAX_RANGE_LEN", "100")];
+    let kept = "print([i for i in 0..100].length, {(i): i for i in (0..100)}.length)\n\
+                print([i for i in 0..100000 if i % 1000 == 0].length)\n";
+    for vm in [false, true] {
+        let (ok, stdout, stderr) = run_with_env(kept, &format!("compr_kept_{vm}"), vm, &limit);
+        assert!(ok, "vm: {vm}: {stderr}");
+        assert_eq!(stdout, "100 100\n100\n", "vm: {vm}");
+    }
+
+    let refused = [
+        ("print([i for i in 0..101].length)\n", "1:19"),
+        (
+            "def f(n)\n  [i * i for i in (0..n)]\nend\nprint(f(1000).length)\n",
+            "2:20",
+        ),
+        (
+            "def f(n)\n  [i for i in 0..n if i >= 0]\nend\nprint(f(1000).length)\n",
+            "2:15",
+        ),
+        ("print({(i): i for i in ((0..1000))}.length)\n", "1:26"),
+        (
+            "def f(n)\n  h = {(i): 1 for i in 0..n}\n  h\nend\nprint(f(1000).length)\n",
+            "2:24",
+        ),
+    ];
+    for (idx, (source, at)) in refused.iter().enumerate() {
+        for vm in [false, true] {
+            let tag = format!("compr_refused_{idx}_{vm}");
+            let (ok, stdout, stderr) = run_with_env(source, &tag, vm, &limit);
+            let error = stderr
+                .lines()
+                .find(|line| line.starts_with("Error:"))
+                .unwrap_or_default();
+            assert!(
+                !ok && stdout.is_empty()
+                    && error.contains("would build more than 100 elements, over the 100 limit")
+                    && error.ends_with(&format!(" at {at}")),
+                "{source} (vm: {vm}) must be refused at {at}: {stdout}{stderr}"
             );
         }
     }

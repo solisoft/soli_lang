@@ -236,6 +236,13 @@ pub enum Op {
     GetIter,
     /// Pop two ints (start, end), push IterState::Range directly (zero allocation).
     GetIterRange,
+    /// Pop what the element's `ArrayPush` / `SetIndex` left on the stack,
+    /// then refuse once the result of a comprehension over a range, the
+    /// array or hash in local `slot`, holds more than `SOLI_MAX_RANGE_LEN`
+    /// elements (`limits::check_comprehension_len`): the range is counted,
+    /// not built, so this is what bounds the allocation. Takes the place of
+    /// the `Pop` that ends each element.
+    PopRangeComprehension(u16),
     /// Advance iterator or jump to exit offset.
     ForIter(u16),
     /// Specialized ForIter for ranges: inline range check + increment, no method call.

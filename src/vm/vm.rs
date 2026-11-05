@@ -4528,6 +4528,21 @@ impl Vm {
                 Op::PopIter => {
                     self.iter_stack.pop();
                 }
+                Op::PopRangeComprehension(slot) => {
+                    self.stack.pop();
+                    let base = self.frames.last().unwrap().stack_base;
+                    let len = match &self.stack[base + slot as usize] {
+                        Value::Array(arr) => arr.borrow().len(),
+                        Value::Hash(hash) => hash.borrow().len(),
+                        _ => 0,
+                    };
+                    crate::interpreter::limits::check_comprehension_len(len).map_err(
+                        |message| RuntimeError::General {
+                            message,
+                            span: self.current_span(),
+                        },
+                    )?;
+                }
                 Op::ForIter(exit_offset) => {
                     let next_val = self.iter_next();
                     if let Some(val) = next_val {

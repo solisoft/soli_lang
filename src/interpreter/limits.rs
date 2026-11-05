@@ -88,6 +88,34 @@ pub fn check_range(start: i64, end: i64, what: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate the result of a comprehension over a range once it holds `len`
+/// elements.
+///
+/// `[f(i) for i in 0..n]` counts through its range instead of building it
+/// (so a filter that keeps nothing, as in `[i for i in 0..n if i < 0]`, has
+/// nothing to refuse), but it builds its result, one element per kept item:
+/// a request-supplied `n` could grow it until the allocator fails, which
+/// aborts the process. Up to 2.29.3 the range itself was built and refused by
+/// [`check_range`] past [`max_range_len`]; the result is held to the same
+/// limit. Both engines call this after each element they add, list and hash
+/// comprehensions alike.
+#[inline]
+pub fn check_comprehension_len(len: usize) -> Result<(), String> {
+    let max = max_range_len();
+    if len as u64 > max {
+        return Err(comprehension_too_long(max));
+    }
+    Ok(())
+}
+
+#[cold]
+fn comprehension_too_long(max: u64) -> String {
+    format!(
+        "a comprehension over a range (..) would build more than {max} elements, over the \
+         {max} limit. Iterate lazily or raise SOLI_MAX_RANGE_LEN if you really need it."
+    )
+}
+
 /// Validate a `string * count` repetition before it is materialised.
 pub fn check_string_repeat(len: usize, count: i64, what: &str) -> Result<(), String> {
     if count < 0 {
