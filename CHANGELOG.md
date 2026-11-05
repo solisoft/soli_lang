@@ -2,7 +2,20 @@
 
 ## [Unreleased]
 
-## [2.29.4] - 2026-11-05
+## [2.29.5] - 2026-11-05
+
+Publishes the 2.29.4 security patch. The v2.29.4 tag's release build stopped
+on two CI checks, so no 2.29.4 binaries, GitHub release or Docker image were
+published: install 2.29.5, which carries every 2.29.4 entry below.
+
+### Changed
+
+- async-executor 1.14.1. 1.14.0 was yanked upstream on 2026-11-02, and
+  `cargo audit --deny warnings` refuses a yanked crate.
+- The tests added in 2.29.4 under `src/template` return `Result` instead of
+  unwrapping, so `scripts/lint_unwraps.sh` is back at its baseline (241).
+
+## [2.29.4] - 2026-11-05 (tagged, not published)
 
 A security patch: fixes from a review of the production engine (the VM) and of
 `soli serve`'s per-worker state. Several let one visitor's data reach another,

@@ -20,11 +20,16 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.4.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.5.</p>
+    </section>
+
+    <section id="v2-29-5" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.29.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-05</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">The 2.29.4 security patch, published. The v2.29.4 release build stopped on two checks &mdash; a dependency yanked upstream (<code class="text-cyan-400">async-executor</code> 1.14.0) and a lint on the new tests &mdash; so no 2.29.4 binaries or Docker image exist. Install 2.29.5: it carries everything listed under v2.29.4 below.</p>
     </section>
 
     <section id="v2-29-4" class="mb-16 scroll-mt-24">
-        <h2 class="text-3xl font-bold text-white mb-4">v2.29.4 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-05</span></h2>
+        <h2 class="text-3xl font-bold text-white mb-4">v2.29.4 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-05, tagged but not published</span></h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">A security patch for production: one visitor&rsquo;s request, page or data no longer reaches the next, and authorization checks answer in production as they do under <code class="text-cyan-400">--dev</code>. Upgrade.</p>
         <h3 id="v2-29-4-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
