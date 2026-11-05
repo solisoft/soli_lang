@@ -992,15 +992,25 @@ mod tests {
 
     /// Globals defined by `source` on the tree-walker, as a worker loads its
     /// helpers.
-    fn defined(source: &str, names: &[&str]) -> Vec<(String, Value)> {
-        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
-        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+    fn defined(source: &str, names: &[&str]) -> Result<Vec<(String, Value)>, String> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
         let mut interpreter = crate::interpreter::Interpreter::new();
-        interpreter.interpret(&program).unwrap();
+        interpreter
+            .interpret(&program)
+            .map_err(|e| e.to_string())?;
         let env = interpreter.environment.borrow();
         names
             .iter()
-            .map(|name| (name.to_string(), env.get(name).unwrap()))
+            .map(|name| {
+                env.get(name)
+                    .map(|value| (name.to_string(), value))
+                    .ok_or_else(|| format!("`{name}` is not defined"))
+            })
             .collect()
     }
 
@@ -1015,7 +1025,7 @@ mod tests {
         for (name, value) in defined(
             "def signed_in?\n  false\nend\ndef greeting\n  \"hi\"\nend\n",
             &["signed_in?", "greeting"],
-        ) {
+        )? {
             vm.globals.insert(name, value);
         }
         let helper = Value::NativeFunction(crate::interpreter::value::NativeFunction::new(
@@ -1052,9 +1062,9 @@ mod tests {
     fn a_bare_lambda_output_falls_back() -> Result<(), String> {
         let nodes = parse_template("<%= callback %>")?;
         let compiled = VmTemplate::compile(&nodes)?;
-        let (_, callback) = defined("callback = fn() { \"x\" }\n", &["callback"])
+        let (_, callback) = defined("callback = fn() { \"x\" }\n", &["callback"])?
             .pop()
-            .unwrap();
+            .ok_or("`callback` is not defined")?;
         let Err(err) = compiled.render(&mut Vm::new(), &hash(vec![("callback", callback)])) else {
             return Err("a bare lambda was called or written instead of refused".to_string());
         };
