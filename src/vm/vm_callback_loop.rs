@@ -864,6 +864,8 @@ enum KernelRun {
     Done,
     /// The element at `index` needs the frame path (not consumed).
     Fallback,
+    /// The handler budget ran out before the element at `index`.
+    Expired,
 }
 
 /// Run the loop's template over its elements from `index`, recording each
@@ -983,6 +985,12 @@ fn run_kernel(
         Source::Ints { start, step, .. } => {
             let (start, step) = (*start, *step);
             while *index < *len {
+                // The handler budget, once per element: unlike an array or a
+                // hash, a count (`params["n"].to_i.times { … }`) is as large
+                // as the request makes it, and the template runs no frame.
+                if crate::interpreter::deadline::expired() {
+                    return Ok(KernelRun::Expired);
+                }
                 let n = Value::Int(int_at(start, step, *index));
                 let Some(out) = evaluate_value!(|_| ArgRef::Val(&n)) else {
                     return Ok(KernelRun::Fallback);
@@ -1530,7 +1538,7 @@ impl Vm {
     fn next_callback(&mut self) -> Result<(), RuntimeError> {
         // The handler budget, once per element: a callback run in a loop
         // never reaches `Op::Loop`, and `n.times`/`each` over a request-sized
-        // count pinned the worker past it.
+        // count pinned the worker past it. No frame is open yet.
         if crate::interpreter::deadline::expired() {
             self.iter_stack.pop();
             return Err(crate::interpreter::deadline::timeout_error(
@@ -1545,6 +1553,12 @@ impl Vm {
             match run_kernel(state, kernel, &mut self.stack) {
                 Ok(KernelRun::Done) => return self.finish_callback_loop(),
                 Ok(KernelRun::Fallback) => {}
+                Ok(KernelRun::Expired) => {
+                    self.iter_stack.pop();
+                    return Err(crate::interpreter::deadline::timeout_error(
+                        self.current_span(),
+                    ));
+                }
                 Err(message) => {
                     self.iter_stack.pop();
                     return Err(RuntimeError::type_error(message, self.current_span()));
@@ -1613,6 +1627,18 @@ impl Vm {
         RuntimeError::type_error(message, self.current_span())
     }
 
+    /// [`Vm::rerun_loop_failed`] for a spent handler budget: the callback's
+    /// frame and the loop go, and the timeout points at the method's call
+    /// site. Expiry is sticky, so a `rescue` around the call cannot resume
+    /// the loop's work.
+    #[cold]
+    fn rerun_loop_timed_out(&mut self, stack_base: usize) -> RuntimeError {
+        self.frames.pop();
+        self.stack.truncate(stack_base);
+        self.iter_stack.pop();
+        crate::interpreter::deadline::timeout_error(self.current_span())
+    }
+
     /// The loop callback on top of the frame stack returned `result`, and
     /// its locals above the arguments are already gone: record the result
     /// and run the same frame again for the next element — its argument
@@ -1626,12 +1652,10 @@ impl Vm {
         stack_base: usize,
     ) -> Result<bool, RuntimeError> {
         // The handler budget, once per element (see `next_callback`): this
-        // reruns the frame at ip 0 and never reaches `Op::Loop`.
+        // reruns the frame at ip 0 and never reaches `Op::Loop`. The
+        // callback's frame goes with the loop, as on the other errors here.
         if crate::interpreter::deadline::expired() {
-            self.iter_stack.pop();
-            return Err(crate::interpreter::deadline::timeout_error(
-                self.current_span(),
-            ));
+            return Err(self.rerun_loop_timed_out(stack_base));
         }
         // One lookup of the loop for the whole step — record the result, then
         // write the next element into the argument slots — with `iter_stack`
@@ -1683,6 +1707,7 @@ impl Vm {
                     return Ok(false);
                 }
                 Ok(KernelRun::Fallback) => {}
+                Ok(KernelRun::Expired) => return Err(self.rerun_loop_timed_out(stack_base)),
                 Err(message) => return Err(self.rerun_loop_failed(message, stack_base)),
             }
         }
