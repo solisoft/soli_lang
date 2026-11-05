@@ -62,23 +62,32 @@ pub(crate) fn is_missing_collection(error: &str) -> bool {
         || error.contains("no such table")
 }
 
+// The writes below are the framework's own bookkeeping: they run
+// `without_durable_mark`, so a slow-query or error record written while a
+// handler runs does not count as the handler's durable write (which would
+// stop its re-run on the tree-walker and demote it).
+
 pub(crate) fn insert(collection: &str, key: &str, doc: serde_json::Value) -> Result<(), String> {
-    if db::is_sql() {
-        db::sql::insert(collection, Some(key), doc)?;
-    } else {
-        crud::exec_insert(collection, Some(key), doc)?;
-    }
-    Ok(())
+    crud::without_durable_mark(|| {
+        if db::is_sql() {
+            db::sql::insert(collection, Some(key), doc)?;
+        } else {
+            crud::exec_insert(collection, Some(key), doc)?;
+        }
+        Ok(())
+    })
 }
 
 /// Merge `fields` into the document.
 pub(crate) fn patch(collection: &str, key: &str, fields: serde_json::Value) -> Result<(), String> {
-    if db::is_sql() {
-        db::sql::update(collection, key, fields, true)?;
-    } else {
-        crud::exec_update(collection, key, fields, true)?;
-    }
-    Ok(())
+    crud::without_durable_mark(|| {
+        if db::is_sql() {
+            db::sql::update(collection, key, fields, true)?;
+        } else {
+            crud::exec_update(collection, key, fields, true)?;
+        }
+        Ok(())
+    })
 }
 
 /// Forget a document. `false` when it did not exist.
@@ -86,12 +95,14 @@ pub(crate) fn delete(collection: &str, key: &str) -> Result<bool, String> {
     if get(collection, key)?.is_none() {
         return Ok(false);
     }
-    if db::is_sql() {
-        db::sql::delete(collection, key)?;
-    } else {
-        crud::exec_delete(collection, key)?;
-    }
-    Ok(true)
+    crud::without_durable_mark(|| {
+        if db::is_sql() {
+            db::sql::delete(collection, key)?;
+        } else {
+            crud::exec_delete(collection, key)?;
+        }
+        Ok(true)
+    })
 }
 
 /// Documents stored in `collection`.

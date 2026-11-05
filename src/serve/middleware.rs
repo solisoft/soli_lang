@@ -727,7 +727,7 @@ fn invoke_middleware_with_frame(
             interpreter.pop_frame();
             // The VM failed where the tree-walker succeeds: the VM's gap, so
             // the middleware leaves it. A failure both engines share does not.
-            if fell_back && super::settle_engine_divergence(result.is_ok()) {
+            if fell_back && super::settle_engine_divergence(super::tree_walker_answered(&result)) {
                 demote_middleware(name);
             }
             result
@@ -760,7 +760,7 @@ enum VmAttempt {
 thread_local! {
     /// Middleware this worker moved off the VM — the VM refused it, failed
     /// where the tree-walker then succeeded, or failed after a durable write
-    /// (`super::demote_on_vm_failure`): run on the tree-walker from then on,
+    /// (`super::vm_failure_verdict`): run on the tree-walker from then on,
     /// like a demoted action (`Vm::failed_handlers`). Kept apart so a
     /// middleware and an action that share a name cannot demote each other.
     static DEMOTED_MIDDLEWARE: std::cell::RefCell<ahash::AHashSet<String>> =
@@ -872,8 +872,9 @@ fn bare_call_in(handler: &Value, interpreter: &Interpreter) -> Option<String> {
 /// else re-runs the middleware on the tree-walker — unless the VM run already
 /// committed a transaction, where a re-run would repeat the write. It leaves
 /// the VM for good when the VM refused it, when it wrote before failing, or
-/// when the re-run succeeds (`super::demote_on_vm_failure`); an error both
-/// engines raise (a `throw` on a bad header) keeps it on the VM.
+/// when the re-run answers (`super::vm_failure_verdict`); an error both
+/// engines raise (a `throw` on a bad header) keeps it on the VM, and is
+/// answered from the VM, without a re-run, the next time it happens.
 fn call_on_vm(
     vm: &mut crate::vm::Vm,
     interpreter: &mut Interpreter,
@@ -902,10 +903,12 @@ fn call_on_vm(
         // tree-walker (see `call_handler`).
         Err(err) if crate::interpreter::deadline::exhausted() => VmAttempt::Done(Err(err)),
         Err(err) => {
-            if super::demote_on_vm_failure(name, &err) {
+            let verdict = super::vm_failure_verdict(super::HandlerKind::Middleware, name, &err);
+            if verdict.demotes() {
                 demote_middleware(name);
             }
-            if crate::interpreter::builtins::model::crud::had_durable_commit() {
+            // It wrote first, or both engines were seen to raise this error.
+            if !verdict.reruns() {
                 return VmAttempt::Done(Err(err));
             }
             VmAttempt::FellBack

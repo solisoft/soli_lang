@@ -2035,16 +2035,21 @@ fn worker_loop(
             crate::template::response_cache::clear_cache();
         }
 
+        let code_changed = current_controllers != last_controllers_version
+            || current_middleware != last_middleware_version
+            || current_helpers != last_helpers_version
+            || current_models != last_models_version
+            || current_jobs != last_jobs_version;
+        // A failure settled as the app's own was about the old code: the
+        // new code is re-run once before it is trusted to fail the same way.
+        if code_changed {
+            forget_settled_app_errors();
+        }
+
         // An edit that declares a name another file already declares: the
         // reload below would let one silently replace the other. Said once
         // (worker 0), as a warning — the next boot refuses it.
-        if worker_id == 0
-            && (current_controllers != last_controllers_version
-                || current_middleware != last_middleware_version
-                || current_helpers != last_helpers_version
-                || current_models != last_models_version
-                || current_jobs != last_jobs_version)
-        {
+        if worker_id == 0 && code_changed {
             if let Some(root) = routes_file.parent().and_then(Path::parent) {
                 for duplicate in global_names::find_in_app(root) {
                     eprintln!("\x1b[33m[warning]\x1b[0m {}", duplicate.message(root));
@@ -4382,32 +4387,169 @@ fn render_and_send_patch(
     Ok(())
 }
 
-/// What a VM failure does to the handler that failed — an action, a
-/// controller hook or a middleware — once it is known not to be the request's
-/// answer (a raised 404/403/halt/`DomainError`, which the caller maps first).
-/// Returns `true` when the handler leaves the VM for the rest of the worker's
-/// life now:
-///
-/// * the VM refused it ([`RuntimeError::EngineFallback`]): the code is the
-///   reason, and the next request would be refused again;
-/// * it failed after a durable write. It is not re-run then
-///   (`no_retry_after_commit`), so nothing can tell a VM gap from the app's
-///   own error, and a VM gap must cost one 500 per worker, not one per request.
-///
-/// Any other error is noted for the re-run to settle: the handler leaves the
-/// VM only if the tree-walker then succeeds where the VM failed
-/// ([`settle_engine_divergence`]). An error both engines raise — a `throw`, a
-/// nil read from a missing parameter, a `JSON.parse` of a bad body — belongs
-/// to the app or its data, and the handler stays on the VM, as a view does
-/// (`template::vm_template`). It used to demote too, so one bad request moved
-/// a handler to the slower engine for good (3.2x on a compute-heavy action).
-fn demote_on_vm_failure(handler: &str, err: &RuntimeError) -> bool {
-    if err.is_engine_fallback() || crate::interpreter::builtins::model::crud::had_durable_commit() {
-        record_vm_demotion(handler, err);
-        return true;
+/// Which kind of handler failed on the VM. Each kind has its own demotion set
+/// (`Vm::failed_handlers`, the hook registry, `middleware::DEMOTED_MIDDLEWARE`)
+/// and its own settled verdicts, so a middleware and an action that share a
+/// name cannot answer for each other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum HandlerKind {
+    Action,
+    Hook,
+    Middleware,
+}
+
+/// What a VM failure does to the handler that failed and to the request, once
+/// the failure is known not to be the request's answer (a raised
+/// 404/403/halt/`DomainError`, which the caller maps first).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum VmFailure {
+    /// The VM refused the handler before it wrote anything: it leaves the VM,
+    /// and the tree-walker answers this request.
+    DemoteAndRerun,
+    /// It failed after a durable write: it leaves the VM, and its error is
+    /// the answer — a re-run would repeat the write.
+    DemoteAndAnswer,
+    /// The same failure was settled before as the app's own error (both
+    /// engines raised it): the error is the answer, with no re-run.
+    Answer,
+    /// Not known yet: the tree-walker re-runs the handler, and its outcome
+    /// settles the failure ([`settle_engine_divergence`]).
+    Rerun,
+}
+
+impl VmFailure {
+    pub(super) fn demotes(self) -> bool {
+        matches!(self, VmFailure::DemoteAndRerun | VmFailure::DemoteAndAnswer)
     }
-    note_possible_divergence(handler, err);
-    false
+
+    pub(super) fn reruns(self) -> bool {
+        matches!(self, VmFailure::DemoteAndRerun | VmFailure::Rerun)
+    }
+}
+
+/// Decide what a VM failure of `handler` does ([`VmFailure`]):
+///
+/// * the VM refused it ([`RuntimeError::EngineFallback`]): it leaves the VM
+///   for the rest of the worker's life — the code is the reason, and the next
+///   request would be refused again;
+/// * it failed after a durable write (`crud::had_durable_commit`: a model
+///   write, an `increment`, a bulk write, a raw write query, a job enqueue, a
+///   mail sent): it is not re-run (`no_retry_after_commit`), so nothing can
+///   tell a VM gap from the app's own error, and it leaves the VM too — a VM
+///   gap must cost one 500 per worker, not one per request;
+/// * the same error was settled before as the app's own: answered as it is,
+///   without a re-run;
+/// * anything else is noted for the re-run to settle: the handler leaves the
+///   VM only if the tree-walker then succeeds where the VM failed. An error
+///   both engines raise — a `throw`, a nil read from a missing parameter, a
+///   `JSON.parse` of a bad body — belongs to the app or its data: the handler
+///   stays on the VM, as a view does (`template::vm_template`), and the
+///   verdict is remembered ([`settle_app_error`]).
+///
+/// Remembering the verdict is what bounds the re-runs. Without it every
+/// failing request ran the handler twice, once per engine, for the worker's
+/// life — and with it every side effect before the error that the tripwire
+/// above does not see (outbound HTTP, a cache write, a push notification).
+pub(super) fn vm_failure_verdict(
+    kind: HandlerKind,
+    handler: &str,
+    err: &RuntimeError,
+) -> VmFailure {
+    let wrote = crate::interpreter::builtins::model::crud::had_durable_commit();
+    if err.is_engine_fallback() || wrote {
+        record_vm_demotion(handler, err);
+        return if wrote {
+            VmFailure::DemoteAndAnswer
+        } else {
+            VmFailure::DemoteAndRerun
+        };
+    }
+    if raised_response(err).is_some() {
+        return VmFailure::Answer;
+    }
+    let vm_error = err.to_string();
+    if is_settled_app_error(kind, handler, &vm_error) {
+        return VmFailure::Answer;
+    }
+    PENDING_DIVERGENCE.with(|p| {
+        *p.borrow_mut() = Some(PendingDivergence {
+            kind,
+            handler: handler.to_string(),
+            vm_error,
+        })
+    });
+    VmFailure::Rerun
+}
+
+/// How many distinct VM errors of one handler are remembered as the app's
+/// own before every error of that handler is: a message that carries request
+/// data (`"no user 42"`) would otherwise re-run each new value once.
+const MAX_SETTLED_ERRORS_PER_HANDLER: usize = 8;
+
+/// The VM errors of one handler that both engines raised.
+#[derive(Default)]
+struct SettledErrors {
+    messages: ahash::AHashSet<String>,
+    /// More than [`MAX_SETTLED_ERRORS_PER_HANDLER`] were settled: every
+    /// error of the handler is its own.
+    every: bool,
+}
+
+thread_local! {
+    /// Failures the tree-walker's re-run settled as the app's own, per
+    /// handler, for this worker's life (or until the code reloads,
+    /// [`forget_settled_app_errors`]). A worker thread serves one tenant, and
+    /// the coroutines of a worker share its thread, so they share this too.
+    static SETTLED_APP_ERRORS: RefCell<ahash::AHashMap<(HandlerKind, String), SettledErrors>> =
+        RefCell::new(ahash::AHashMap::new());
+}
+
+fn is_settled_app_error(kind: HandlerKind, handler: &str, vm_error: &str) -> bool {
+    SETTLED_APP_ERRORS.with(|settled| {
+        let settled = settled.borrow();
+        if settled.is_empty() {
+            return false;
+        }
+        settled
+            .get(&(kind, handler.to_string()))
+            .is_some_and(|errors| errors.every || errors.messages.contains(vm_error))
+    })
+}
+
+/// Remember that `handler`'s `vm_error` is the app's own: both engines raised
+/// an error for it. Later requests failing the same way are answered from the
+/// VM, without the tree-walker's re-run.
+fn settle_app_error(kind: HandlerKind, handler: String, vm_error: String) {
+    SETTLED_APP_ERRORS.with(|settled| {
+        let mut settled = settled.borrow_mut();
+        let errors = settled.entry((kind, handler)).or_default();
+        if errors.every {
+            return;
+        }
+        if errors.messages.len() >= MAX_SETTLED_ERRORS_PER_HANDLER {
+            errors.every = true;
+            errors.messages = ahash::AHashSet::new();
+            return;
+        }
+        errors.messages.insert(vm_error);
+    });
+}
+
+/// Forget every settled verdict: the code they were about changed (a hot
+/// reload of controllers, middleware, helpers, models or jobs).
+pub(super) fn forget_settled_app_errors() {
+    SETTLED_APP_ERRORS.with(|settled| settled.borrow_mut().clear());
+}
+
+/// Whether the tree-walker's re-run answered the request: it returned, or it
+/// raised a deliberate response (a 404, a 403, a `halt`, a `DomainError`).
+/// Either way it did what the VM failed to do — an engine divergence, not the
+/// app's own error.
+pub(super) fn tree_walker_answered<T>(outcome: &Result<T, RuntimeError>) -> bool {
+    match outcome {
+        Ok(_) => true,
+        Err(err) => raised_response(err).is_some(),
+    }
 }
 
 /// Record a VM→interpreter handler demotion ([`count_vm_demotion`]) and, under
@@ -4472,7 +4614,14 @@ fn count_vm_demotion(handler: &str, reason: &dyn std::fmt::Display) {
 crate::request_local! {
     /// The VM's error for the handler being re-run on the tree-walker, until
     /// the re-run's outcome is known (`settle_engine_divergence`).
-    static PENDING_DIVERGENCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    static PENDING_DIVERGENCE: RefCell<Option<PendingDivergence>> = const { RefCell::new(None) };
+}
+
+/// A VM failure waiting for the tree-walker's re-run to settle it.
+struct PendingDivergence {
+    kind: HandlerKind,
+    handler: String,
+    vm_error: String,
 }
 
 /// Dev hot reload: when a `config/locales/*.yml` file changed, reload the
@@ -4495,23 +4644,15 @@ fn reload_locales_if_changed(
     }
 }
 
-/// Remember why the VM failed a handler that is about to be re-run on the
-/// tree-walker. A refusal (`EngineFallback`) is already reported by
-/// `record_vm_demotion`, and a 404/403 is the app's own outcome; any other
-/// error may be the handler's (`throw`) — or a VM bug, and only the re-run
-/// can tell.
-fn note_possible_divergence(handler: &str, err: &RuntimeError) {
-    if matches!(err, RuntimeError::EngineFallback(..)) || raised_response(err).is_some() {
-        return;
-    }
-    PENDING_DIVERGENCE.with(|p| *p.borrow_mut() = Some((handler.to_string(), err.to_string())));
-}
-
 /// The tree-walker's re-run is done. Returns `true` when the handler must
-/// leave the VM: a failure was noted for it (`note_possible_divergence`) and
-/// the re-run succeeded. The caller then demotes it, each kind of handler in
-/// its own set. When the re-run fails too, the error is the app's own and the
-/// handler stays on the VM.
+/// leave the VM: a failure was noted for it ([`vm_failure_verdict`]) and the
+/// re-run answered — it succeeded, or raised a deliberate response
+/// ([`tree_walker_answered`]). The caller then demotes it, each kind of
+/// handler in its own set. When the re-run fails too, the error is the app's
+/// own: the handler stays on the VM, and the verdict is remembered so the
+/// next request failing the same way is not re-run ([`settle_app_error`]) —
+/// unless the re-run ran out of the request's time budget, which says nothing
+/// about the error.
 ///
 /// Success where the VM failed means the two engines disagree on the same
 /// code: a VM bug, whatever the error said — or a transient error the re-run
@@ -4521,11 +4662,19 @@ fn note_possible_divergence(handler: &str, err: &RuntimeError) {
 /// `SOLI_ENGINE_LOG=1`, counted on `/_metrics` (as a divergence and as a
 /// demotion), and a hard stop under `SOLI_FAIL_ON_VM_DEMOTION=1` so a test
 /// suite cannot pass over it.
-fn settle_engine_divergence(tree_walker_succeeded: bool) -> bool {
-    let Some((handler, vm_error)) = PENDING_DIVERGENCE.with(|p| p.borrow_mut().take()) else {
+fn settle_engine_divergence(tree_walker_answered: bool) -> bool {
+    let Some(PendingDivergence {
+        kind,
+        handler,
+        vm_error,
+    }) = PENDING_DIVERGENCE.with(|p| p.borrow_mut().take())
+    else {
         return false;
     };
-    if !tree_walker_succeeded {
+    if !tree_walker_answered {
+        if !crate::interpreter::deadline::exhausted() {
+            settle_app_error(kind, handler, vm_error);
+        }
         return false;
     }
     crate::metrics::Metrics::global()
@@ -5053,8 +5202,26 @@ fn call_handler(
                         // on the tree-walker would start the request over
                         // past its deadline, and demoting would move the
                         // handler there for good. Answer the timeout.
-                        if crate::interpreter::deadline::exhausted() {
-                            vm.reset();
+                        let timed_out = crate::interpreter::deadline::exhausted();
+                        let verdict = if timed_out {
+                            VmFailure::Answer
+                        } else {
+                            vm_failure_verdict(HandlerKind::Action, handler_name, &err)
+                        };
+                        if verdict.demotes() {
+                            vm.failed_handlers.insert(handler_name.to_string());
+                        }
+                        vm.reset();
+                        if !timed_out {
+                            if let Some(resp) =
+                                no_retry_after_commit(handler_name, &err, request_data)
+                            {
+                                return resp;
+                            }
+                        }
+                        // A timeout, or an error both engines were seen to
+                        // raise: the VM's error is the answer.
+                        if !verdict.reruns() {
                             let request_id = Uuid::new_v4().to_string();
                             return error_response::handler_failure(
                                 dev_mode,
@@ -5066,14 +5233,6 @@ fn call_handler(
                                 &request_id,
                                 false,
                             );
-                        }
-                        if demote_on_vm_failure(handler_name, &err) {
-                            vm.failed_handlers.insert(handler_name.to_string());
-                        }
-                        vm.reset();
-                        if let Some(resp) = no_retry_after_commit(handler_name, &err, request_data)
-                        {
-                            return resp;
                         }
                     }
                 }
@@ -5094,7 +5253,7 @@ fn call_handler(
             let outcome = interpreter.call_value(handler_value, args, Span::default());
             // The VM failed where the tree-walker succeeds: the VM's gap, so
             // the handler leaves it. A failure both engines share does not.
-            if settle_engine_divergence(outcome.is_ok()) {
+            if settle_engine_divergence(tree_walker_answered(&outcome)) {
                 if let Some(vm) = vm {
                     vm.failed_handlers.insert(handler_name.to_string());
                 }
@@ -5431,6 +5590,37 @@ thread_local! {
     static HANDLER_KEY_BUF: RefCell<String> = RefCell::new(String::with_capacity(64));
 }
 
+/// A VM error that is the action's answer, given the stack the tree-walker's
+/// run of the action would have reported: the action's frame
+/// (`Class#action at <file>:<line>`) and the environment the caller would
+/// capture. The VM's error carries no frame, so without this the error was
+/// logged with `<no stack frames captured>`, and the error tracker — which
+/// groups by message and innermost frame — filed a settled app error answered
+/// from the VM apart from its first occurrence, re-run on the tree-walker.
+/// Only on the failure path.
+fn with_action_frame(
+    interpreter: &mut Interpreter,
+    err: RuntimeError,
+    class: &crate::interpreter::value::Class,
+    method_name: &str,
+    method: &crate::interpreter::value::Function,
+) -> RuntimeError {
+    if err.breakpoint_stack_trace().is_some() {
+        return err;
+    }
+    interpreter.push_frame(
+        &format!("{}#{}", class.name, method_name),
+        method
+            .span
+            .unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1)),
+        method.source_path.clone(),
+    );
+    let stack_trace = interpreter.get_stack_trace();
+    interpreter.pop_frame();
+    let env_json = interpreter.serialize_environment_for_debug();
+    RuntimeError::with_env(err.to_string(), err.span(), env_json, stack_trace)
+}
+
 /// Call a method on a class instance.
 fn call_class_method(
     interpreter: &mut Interpreter,
@@ -5490,20 +5680,34 @@ fn call_class_method(
                         // no demotion, no re-run on the tree-walker.
                         if crate::interpreter::deadline::exhausted() {
                             vm.reset();
-                            return Err(err);
+                            return Err(with_action_frame(
+                                interpreter,
+                                err,
+                                class,
+                                method_name,
+                                &method,
+                            ));
                         }
                         // Demoted now only when the VM refused the action or
                         // it wrote first; otherwise the re-run below decides.
                         let handler_key = format!("{}#{}", class.name, method_name);
-                        if demote_on_vm_failure(&handler_key, &err) {
+                        let verdict = vm_failure_verdict(HandlerKind::Action, &handler_key, &err);
+                        if verdict.demotes() {
                             vm.failed_handlers.insert(handler_key);
                         }
                         vm.reset();
-                        // Committed already — re-running the action on the
-                        // tree-walker would repeat the committed writes. See
-                        // `no_retry_after_commit`.
-                        if crate::interpreter::builtins::model::crud::had_durable_commit() {
-                            return Err(err);
+                        // Written already — re-running the action on the
+                        // tree-walker would repeat the write (see
+                        // `no_retry_after_commit`) — or an error both engines
+                        // were seen to raise: the VM's error is the answer.
+                        if !verdict.reruns() {
+                            return Err(with_action_frame(
+                                interpreter,
+                                err,
+                                class,
+                                method_name,
+                                &method,
+                            ));
                         }
                     }
                 }
@@ -5558,7 +5762,7 @@ fn call_class_method(
             interpreter.call_value(Value::Function(bound_method), action_args, method_span);
         // The VM failed where the tree-walker succeeds: the VM's gap, so the
         // action leaves it. A failure both engines share leaves it there.
-        if settle_engine_divergence(result.is_ok()) {
+        if settle_engine_divergence(tree_walker_answered(&result)) {
             if let Some(vm) = vm {
                 vm.failed_handlers
                     .insert(format!("{}#{}", class.name, method_name));
@@ -5623,7 +5827,7 @@ fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
 /// or it was demoted on this worker), or it failed on the VM before writing
 /// anything — the interpreter then re-runs it from a clean slate, as
 /// `call_class_method` does for an action, and the hook is demoted if the VM
-/// refused it or the re-run succeeds (`demote_on_vm_failure`).
+/// refused it or the re-run answers (`vm_failure_verdict`).
 fn run_hook_on_vm(
     vm: Option<&mut crate::vm::Vm>,
     class_name: &str,
@@ -5650,12 +5854,15 @@ fn run_hook_on_vm(
     if raised_response(&err).is_some() || crate::interpreter::deadline::exhausted() {
         return Some(Err(err));
     }
-    let handler = format!("{class_name}#{kind}");
-    if demote_on_vm_failure(&handler, &err) {
+    // The line tells two hooks of one kind on a controller apart.
+    let handler = format!("{class_name}#{kind}:{source_line}");
+    let verdict = vm_failure_verdict(HandlerKind::Hook, &handler, &err);
+    if verdict.demotes() {
         registry::demote_hook_function(source, source_line);
     }
-    if crud::had_durable_commit() {
-        // Re-running would repeat the committed writes (see `no_retry_after_commit`).
+    if !verdict.reruns() {
+        // Re-running would repeat the write (see `no_retry_after_commit`), or
+        // the error was seen on both engines before.
         return Some(Err(err));
     }
     None
@@ -5718,7 +5925,11 @@ fn execute_before_actions(
             interpreter,
             req.clone(),
         );
-        if settle_engine_divergence(result.is_ok()) {
+        let answered = match &result {
+            Ok(_) => true,
+            Err(e) => raised_response(&RuntimeError::new(e.clone(), Span::default())).is_some(),
+        };
+        if settle_engine_divergence(answered) {
             crate::interpreter::builtins::controller::registry::demote_hook_function(
                 &before_action.handler_source,
                 before_action.source_line,
@@ -5822,7 +6033,13 @@ fn execute_after_actions(
                         req.clone(),
                         response_value.clone(),
                     );
-                if settle_engine_divergence(result.is_ok()) {
+                let answered = match &result {
+                    Ok(_) => true,
+                    Err(e) => {
+                        raised_response(&RuntimeError::new(e.clone(), Span::default())).is_some()
+                    }
+                };
+                if settle_engine_divergence(answered) {
                     crate::interpreter::builtins::controller::registry::demote_hook_function(
                         &after_action.handler_source,
                         after_action.source_line,
@@ -7331,7 +7548,8 @@ end
 
     /// The rule itself, without a construct the compiler still has to refuse:
     /// a refusal demotes at once; any other error is noted and demotes only
-    /// when the re-run succeeds; a note is settled once.
+    /// when the re-run answers; a note is settled once, and an error the
+    /// re-run raised too is answered from the VM the next time.
     #[test]
     fn a_refusal_demotes_at_once_and_other_errors_wait_for_the_rerun() {
         // A refusal and a divergence are both hard stops under the strict
@@ -7339,12 +7557,16 @@ end
         if engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
             return;
         }
+        forget_settled_app_errors();
         crate::interpreter::builtins::model::crud::clear_durable_commit();
         let refusal = RuntimeError::EngineFallback(
             "a construct the VM cannot run".to_string(),
             Span::default(),
         );
-        assert!(demote_on_vm_failure("Probe#refused", &refusal));
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Probe#refused", &refusal),
+            VmFailure::DemoteAndRerun
+        );
         assert!(
             !settle_engine_divergence(true),
             "a refusal leaves nothing for the re-run to settle"
@@ -7354,18 +7576,205 @@ end
             value: Value::String("bad input".into()),
             span: Span::default(),
         };
-        assert!(!demote_on_vm_failure("Probe#thrown", &thrown));
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Probe#thrown", &thrown),
+            VmFailure::Rerun
+        );
         assert!(
             !settle_engine_divergence(false),
             "the re-run failed too: the app's own error"
         );
         assert!(!settle_engine_divergence(true), "a note is settled once");
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Probe#thrown", &thrown),
+            VmFailure::Answer,
+            "the same error again is answered without a re-run"
+        );
+        let other = RuntimeError::Thrown {
+            value: Value::String("another error".into()),
+            span: Span::default(),
+        };
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Probe#thrown", &other),
+            VmFailure::Rerun,
+            "a new error of the handler is re-run: it may be a VM gap"
+        );
+        assert!(!settle_engine_divergence(false));
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Middleware, "Probe#thrown", &thrown),
+            VmFailure::Rerun,
+            "a middleware of the same name has verdicts of its own"
+        );
+        let _ = settle_engine_divergence(false);
 
-        assert!(!demote_on_vm_failure("Probe#flaky", &thrown));
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Probe#flaky", &thrown),
+            VmFailure::Rerun
+        );
         assert!(
             settle_engine_divergence(true),
             "the re-run succeeded where the VM failed"
         );
+
+        forget_settled_app_errors();
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Probe#thrown", &thrown),
+            VmFailure::Rerun,
+            "a code reload forgets the verdicts"
+        );
+        let _ = settle_engine_divergence(false);
+        forget_settled_app_errors();
+    }
+
+    /// A handler whose errors carry request data (`"no user 42"`) settles one
+    /// message at a time; past a handful, every error of it is its own, so
+    /// each new value does not cost a re-run.
+    #[test]
+    fn a_handler_with_many_distinct_app_errors_settles_as_a_whole() {
+        forget_settled_app_errors();
+        crate::interpreter::builtins::model::crud::clear_durable_commit();
+        let error = |n: usize| RuntimeError::Thrown {
+            value: Value::String(format!("no user {n}").into()),
+            span: Span::default(),
+        };
+        for n in 0..=MAX_SETTLED_ERRORS_PER_HANDLER {
+            assert_eq!(
+                vm_failure_verdict(HandlerKind::Action, "Users#show", &error(n)),
+                VmFailure::Rerun,
+                "message {n}"
+            );
+            assert!(!settle_engine_divergence(false));
+        }
+        assert_eq!(
+            vm_failure_verdict(HandlerKind::Action, "Users#show", &error(1000)),
+            VmFailure::Answer
+        );
+        forget_settled_app_errors();
+    }
+
+    /// The failure the review found (#643): an error both engines raise kept
+    /// the action on the VM — and re-ran it on the tree-walker on *every*
+    /// failing request, repeating whatever it did before the error. The
+    /// first failure is re-run and settles the error as the app's own; the
+    /// next ones are answered from the VM, the side effect running once each.
+    #[test]
+    fn an_app_error_is_rerun_once_then_answered_from_the_vm() {
+        forget_settled_app_errors();
+        let effects = Rc::new(std::cell::Cell::new(0));
+        let counter = effects.clone();
+        let effect = crate::interpreter::value::NativeFunction::new("effect", Some(0), move |_| {
+            counter.set(counter.get() + 1);
+            Ok(Value::Null)
+        });
+        let source =
+            "class Boom {\n    fn action(req) {\n        effect()\n        throw \"bad input\"\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) = served_class(
+            source,
+            "Boom",
+            vec![("effect", Value::NativeFunction(effect))],
+        );
+        for request in 1..=4 {
+            let err = call_class_method(
+                &mut interpreter,
+                Some(&mut vm),
+                &class_rc,
+                &instance,
+                "action",
+                &empty_request(),
+            )
+            .expect_err("the action fails on both engines");
+            assert!(err.to_string().contains("bad input"), "{request}: {err}");
+        }
+        assert_eq!(
+            effects.get(),
+            5,
+            "four requests on the VM, one re-run on the tree-walker for the first"
+        );
+        assert!(
+            !vm.failed_handlers.contains("Boom#action"),
+            "an app error must not move the action off the VM"
+        );
+        forget_settled_app_errors();
+    }
+
+    /// A settled app error answered from the VM is reported with the stack
+    /// its first occurrence (re-run on the tree-walker) had: the action's
+    /// frame. It was answered with no frame at all, so the log said
+    /// `<no stack frames captured>` and the error tracker, which groups by
+    /// message and innermost frame, filed one bug as two.
+    #[test]
+    fn a_settled_app_error_answered_from_the_vm_keeps_its_stack() {
+        forget_settled_app_errors();
+        let source = "class Boom {\n    fn action(req) {\n        throw \"bad input\"\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) = served_class(source, "Boom", vec![]);
+        let mut fingerprints = Vec::new();
+        for request in 1..=3 {
+            let err = call_class_method(
+                &mut interpreter,
+                Some(&mut vm),
+                &class_rc,
+                &instance,
+                "action",
+                &empty_request(),
+            )
+            .expect_err("the action fails on both engines");
+            let stack = err.breakpoint_stack_trace().unwrap_or(&[]).to_vec();
+            let frame = stack
+                .iter()
+                .rev()
+                .find(|frame| !frame.starts_with("Error:"))
+                .cloned()
+                .unwrap_or_default();
+            assert!(
+                frame.starts_with("Boom#action at "),
+                "request {request}: no action frame in {stack:?} ({err})"
+            );
+            fingerprints.push(error_tracker::fingerprint(&err.to_string(), &frame));
+        }
+        assert!(
+            fingerprints.iter().all(|fp| *fp == fingerprints[0]),
+            "one error, one group: {fingerprints:?}"
+        );
+        assert!(!vm.failed_handlers.contains("Boom#action"));
+        forget_settled_app_errors();
+    }
+
+    /// A re-run that answers with a deliberate response (`halt`, a `find`
+    /// miss, `forbidden()`) where the VM raised an error did what the VM
+    /// could not: an engine divergence, as a plain success is. It was read
+    /// as "both failed", so the VM gap stayed hidden, uncounted, and every
+    /// such request ran twice.
+    #[test]
+    fn a_rerun_that_halts_where_the_vm_failed_is_a_divergence() {
+        if engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
+            return;
+        }
+        forget_settled_app_errors();
+        let (flaky, calls) = fails_once();
+        let source =
+            "class Halter {\n    fn action(req) {\n        flaky()\n        halt(403, \"denied\")\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) =
+            served_class(source, "Halter", vec![("flaky", flaky)]);
+        let err = call_class_method(
+            &mut interpreter,
+            Some(&mut vm),
+            &class_rc,
+            &instance,
+            "action",
+            &empty_request(),
+        )
+        .expect_err("the re-run halts");
+        assert_eq!(
+            raised_response(&err).map(|r| r.status),
+            Some(403),
+            "the halt is the answer: {err}"
+        );
+        assert_eq!(calls.get(), 2, "once on the VM, once on the re-run");
+        assert!(
+            vm.failed_handlers.contains("Halter#action"),
+            "the VM failed where the tree-walker answered"
+        );
+        forget_settled_app_errors();
     }
 
     // SEC-014 — `check_csrf_origin` regression coverage.

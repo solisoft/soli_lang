@@ -420,6 +420,7 @@ impl SoliDBClient {
     /// Prune a (timeseries) collection: delete documents older than the
     /// RFC3339 cutoff. Returns the number of deleted documents.
     pub fn prune_collection(&self, name: &str, older_than_iso: &str) -> Result<u64, SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
         let db = self.get_db()?;
         let body = serde_json::json!({ "older_than": older_than_iso });
         let response: Value = self.request(
@@ -437,12 +438,17 @@ impl SoliDBClient {
             .unwrap_or_default())
     }
 
+    // Each write below arms the durable-write tripwire
+    // (`crud::mark_durable_write`): a served handler that wrote through a
+    // `Solidb` client and then failed on the VM is not re-run on the
+    // tree-walker, which would write again.
     pub fn insert(
         &self,
         collection: &str,
         key: Option<&str>,
         mut document: Value,
     ) -> Result<Value, SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
         let db = self.get_db()?;
         if let Some(k) = key {
             if let Some(obj) = document.as_object_mut() {
@@ -472,6 +478,7 @@ impl SoliDBClient {
         document: Value,
         _merge: bool,
     ) -> Result<Value, SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
         let db = self.get_db()?;
         let path = format!(
             "/_api/database/{}/document/{}/{}",
@@ -484,6 +491,7 @@ impl SoliDBClient {
     }
 
     pub fn delete(&self, collection: &str, key: &str) -> Result<(), SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
         let db = self.get_db()?;
         let path = format!(
             "/_api/database/{}/document/{}/{}",
@@ -519,6 +527,7 @@ impl SoliDBClient {
         sdbql: &str,
         bind_vars: Option<HashMap<String, Value>>,
     ) -> Result<Vec<Value>, SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_if_sdbql_writes(sdbql);
         let db = self.get_db()?;
         let mut payload = serde_json::json!({
             "query": sdbql
@@ -765,6 +774,7 @@ impl SoliDBClient {
         filename: &str,
         content_type: &str,
     ) -> Result<String, SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
         let db = self.get_db()?.to_string();
         let url = format!(
             "{}/_api/blob/{}/{}",
@@ -959,6 +969,7 @@ impl SoliDBClient {
     }
 
     pub fn delete_blob(&self, collection: &str, blob_id: &str) -> Result<(), SoliDBError> {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
         let db = self.get_db()?;
         let path = format!(
             "/_api/database/{}/document/{}/{}",

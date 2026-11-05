@@ -3312,6 +3312,53 @@ mod tests {
         });
     }
 
+    /// Every write of the SQL facade arms the durable-write tripwire, reads
+    /// do not. Only the bulk writes did: an action that bumped a counter
+    /// (`increment_field`) or enqueued a job (an `insert` into `_jobs`) and
+    /// then failed on the VM was re-run on the tree-walker, writing twice.
+    #[test]
+    fn every_facade_write_arms_the_durable_write_tripwire() {
+        use crate::interpreter::builtins::model::crud::{clear_durable_commit, had_durable_commit};
+
+        with_sqlite("tripwire", || {
+            let table = "counters";
+            ensure_table(table).expect("table");
+            let wrote = |what: &str, run: &dyn Fn()| {
+                clear_durable_commit();
+                run();
+                assert!(had_durable_commit(), "{what} must arm the tripwire");
+            };
+            wrote("insert", &|| {
+                crate::db::sql::insert(table, Some("c"), serde_json::json!({ "hits": 0 }))
+                    .expect("insert");
+            });
+            wrote("increment_field", &|| {
+                let hits = crate::db::sql::increment_field(table, "c", "hits", 1).expect("bump");
+                assert_eq!(hits, Some(1));
+            });
+            wrote("update", &|| {
+                crate::db::sql::update(table, "c", serde_json::json!({ "hits": 5 }), true)
+                    .expect("update");
+            });
+            wrote("insert_new", &|| {
+                crate::db::sql::insert_new(table, "d", serde_json::json!({ "hits": 0 }))
+                    .expect("insert_new");
+            });
+            wrote("delete", &|| {
+                crate::db::sql::delete(table, "d").expect("delete");
+            });
+            wrote("execute_raw", &|| {
+                crate::db::sql::execute_raw("DELETE FROM counters WHERE 1 = 0")
+                    .expect("execute_raw");
+            });
+
+            clear_durable_commit();
+            crate::db::sql::get(table, "c").expect("get");
+            crate::db::sql::count(&list_query(table, &[])).expect("count");
+            assert!(!had_durable_commit(), "a read must not arm the tripwire");
+        });
+    }
+
     /// `create_many` used to cost one statement (and on SQLite one transaction)
     /// per row. The query log makes the improvement checkable rather than
     /// assumed.

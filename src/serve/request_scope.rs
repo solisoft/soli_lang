@@ -264,7 +264,9 @@ mod tests {
         assert!(batch::begin());
         batch::enter_block();
         // A VM failure noted for a re-run that a panic cut short.
-        crate::serve::note_possible_divergence(
+        crate::interpreter::builtins::model::crud::clear_durable_commit();
+        crate::serve::vm_failure_verdict(
+            crate::serve::HandlerKind::Action,
             "PostsController#destroy",
             &crate::error::RuntimeError::new("boom", crate::span::Span::default()),
         );

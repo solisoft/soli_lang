@@ -175,6 +175,7 @@ pub fn insert_rows(
         }
         other => other?,
     };
+    super::crud::mark_durable_write();
     let mut pairs = crate::interpreter::value::HashPairs::default();
     pairs.insert(
         HashKey::String("inserted".into()),
