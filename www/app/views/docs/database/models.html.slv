@@ -194,6 +194,26 @@ user._key    # => "abc123" (auto-generated)
 user._errors # => nil</code></pre>
         </div>
 
+        <div id="building-without-saving" class="mb-6">
+            <h4 class="text-base font-semibold text-white mb-2">Building without saving</h4>
+            <p class="text-gray-300 mb-3">
+                <code>User.new(attrs)</code> builds an instance without writing it: the attributes, plus
+                the fields declared with a literal default (<code>views: Int = 0</code>). A declared field
+                it is not given and that has no literal default stays unset &mdash; not <code>nil</code>
+                &mdash; so a later <code>save</code> treats it as <code>User.create(attrs)</code> would: no
+                <code>nil</code> is validated or written for it, and the column's own default applies.
+            </p>
+            <pre><code class="language-soli text-sm">class User < Model
+  name: String
+  age: Int
+  views: Int = 0
+end
+
+user = User.new({"name": "Ann"})
+user.to_h        # {name => Ann, views => 0} — no `age`
+user.save        # writes name and views; the column default fills age</code></pre>
+        </div>
+
         <div id="choosing-the-key">
             <h4 class="text-base font-semibold text-white mb-2">Choosing the key</h4>
             <p class="text-gray-300 mb-3">

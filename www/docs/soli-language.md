@@ -2319,6 +2319,9 @@ Savings.new("cy").balance    # 100 — the subclass's default wins
   it, or any field with a literal default of its class or its parents.
 - `super(...)` runs the parent's constructor body only. It does not set the
   fields again, so what a constructor assigned before calling it stays.
+- A model's `Post.new(attrs)` is the ORM's: it sets the literal defaults and
+  the attributes, and leaves any other field unset (see
+  [Models](models.md#building-without-saving)).
 
 ```soli
 class Basket

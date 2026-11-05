@@ -1832,6 +1832,16 @@ impl FieldInit {
             instance.fields.insert(name.clone(), fresh_copy(value));
         }
     }
+
+    /// [`Self::start`] for the fields that start with something other than
+    /// `nil`: the literal defaults, as a model's `Model.new(attrs)` sets them.
+    pub fn start_literals(&self, instance: &mut Instance) {
+        for (name, value) in &self.fields {
+            if !matches!(value, Value::Null) {
+                instance.fields.insert(name.clone(), fresh_copy(value));
+            }
+        }
+    }
 }
 
 /// How the VM starts every declared field of a new instance of one class —

@@ -3279,10 +3279,14 @@ pub(crate) fn class_universal_member(
 /// internal `_`-prefixed keys are skipped. The shape `Klass.new(args)` with
 /// other arguments runs the constructor instead (`Interpreter::class_new`).
 ///
-/// The fields start as [`start_declared_fields`] sets them: this path has no
-/// engine to evaluate a default that is not a literal. The engines' own
-/// `class_new` start them in full, as `new Klass()` does, then assign the
-/// attributes with [`assign_attributes`].
+/// A model's `Model.new(attrs)` sets only its literal defaults
+/// ([`start_literal_defaults`]): a declared field it is not given and that
+/// has no default stays unset, so `save` neither validates nor writes a
+/// `nil` nobody assigned, and a column's own default applies. Any other
+/// class's fields start as [`start_declared_fields`] sets them: this path
+/// has no engine to evaluate a default that is not a literal. The engines'
+/// own `class_new` start them in full, as `new Klass()` does, then assign
+/// the attributes with [`assign_attributes`].
 pub fn new_with_attributes(
     class: &Rc<crate::interpreter::value::Class>,
     args: &[Value],
@@ -3291,9 +3295,47 @@ pub fn new_with_attributes(
     let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
         class.clone(),
     )));
-    start_declared_fields(class, &mut instance.borrow_mut());
+    if class.is_model_subclass() {
+        start_literal_defaults(class, &mut instance.borrow_mut());
+    } else {
+        start_declared_fields(class, &mut instance.borrow_mut());
+    }
     assign_attributes(&instance, args);
     Ok(Value::Instance(instance))
+}
+
+/// The declared fields of `class` and its ancestors that have a literal
+/// default, set to it — the farthest class first, so a subclass's wins. A
+/// model's `Model.new(attrs)` starts these and no other: a field without a
+/// default, or with one that is not a literal, is left unset, as through
+/// 2.29.3. Setting it to `nil` made `save` validate that `nil` (a
+/// `numericality` rule failed on a field nobody assigned) and write it,
+/// replacing a column's SQL `DEFAULT` with `NULL`.
+pub(crate) fn start_literal_defaults(
+    class: &crate::interpreter::value::Class,
+    instance: &mut crate::interpreter::value::Instance,
+) {
+    if let Some(superclass) = &class.superclass {
+        start_literal_defaults(superclass, instance);
+    }
+    if class.fields.is_empty() {
+        // A model the VM compiled keeps its starts in `field_init`, where a
+        // field without a literal default starts as `nil`.
+        if let Some(init) = class.field_init.borrow().as_ref() {
+            init.start_literals(instance);
+        }
+        return;
+    }
+    for name in declared_field_order(class) {
+        if let Some(value) = class
+            .fields
+            .get(&name)
+            .and_then(Option::as_ref)
+            .and_then(literal_value)
+        {
+            instance.set(name, value);
+        }
+    }
 }
 
 /// The attribute form's arguments: none, `nil` or one hash, on a class.
