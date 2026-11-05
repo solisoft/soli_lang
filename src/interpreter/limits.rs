@@ -37,6 +37,38 @@ fn env_u64(name: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+/// Largest XML input `Xml.parse` / `Xml.parse_file` (and one streamed
+/// subtree, and one `to_xml` output) may hold, in bytes.
+/// `SOLI_MAX_XML_BYTES` overrides it; a per-call option may only lower it.
+pub fn max_xml_bytes() -> u64 {
+    env_u64("SOLI_MAX_XML_BYTES", 64 * 1024 * 1024)
+}
+
+/// Deepest element nesting an XML parse accepts. A deeply nested document is
+/// the classic XML denial of service. `SOLI_MAX_XML_DEPTH` overrides it (the
+/// parser still clamps it to a hard ceiling it can recurse within).
+pub fn max_xml_depth() -> u64 {
+    env_u64("SOLI_MAX_XML_DEPTH", 256)
+}
+
+/// Most nodes one XML tree may hold — parsed, built and removed (tombstoned)
+/// nodes alike. `SOLI_MAX_XML_NODES` overrides it.
+pub fn max_xml_nodes() -> u64 {
+    env_u64("SOLI_MAX_XML_NODES", 1_000_000)
+}
+
+/// Most attributes one XML element may carry (namespace declarations are
+/// capped separately, by quick-xml, at 256). `SOLI_MAX_XML_ATTRS` overrides it.
+pub fn max_xml_attrs() -> u64 {
+    env_u64("SOLI_MAX_XML_ATTRS", 1024)
+}
+
+/// Most node visits one XPath evaluation may make before it is abandoned.
+/// `SOLI_MAX_XPATH_VISITS` overrides it.
+pub fn max_xpath_visits() -> u64 {
+    env_u64("SOLI_MAX_XPATH_VISITS", 10_000_000)
+}
+
 /// Largest page a `paginate({"per": n})` call may request.
 ///
 /// `per` came straight from request params with no ceiling, so `?per=100000000`
@@ -239,5 +271,31 @@ mod page_size_tests {
         assert_eq!(clamp_page_size(25), 25);
         assert_eq!(clamp_page_size(100), 100);
         assert_eq!(clamp_page_size(max_page_size()), max_page_size());
+    }
+}
+
+#[cfg(test)]
+mod xml_limit_tests {
+    use super::*;
+
+    /// The documented defaults hold when no `SOLI_MAX_XML_*` variable is set
+    /// (the test environment sets none). A variable may raise or lower them.
+    #[test]
+    fn xml_limits_have_their_documented_defaults() {
+        if crate::platform::env::var("SOLI_MAX_XML_BYTES").is_err() {
+            assert_eq!(max_xml_bytes(), 64 * 1024 * 1024);
+        }
+        if crate::platform::env::var("SOLI_MAX_XML_DEPTH").is_err() {
+            assert_eq!(max_xml_depth(), 256);
+        }
+        if crate::platform::env::var("SOLI_MAX_XML_NODES").is_err() {
+            assert_eq!(max_xml_nodes(), 1_000_000);
+        }
+        if crate::platform::env::var("SOLI_MAX_XML_ATTRS").is_err() {
+            assert_eq!(max_xml_attrs(), 1024);
+        }
+        if crate::platform::env::var("SOLI_MAX_XPATH_VISITS").is_err() {
+            assert_eq!(max_xpath_visits(), 10_000_000);
+        }
     }
 }
