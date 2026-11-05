@@ -1728,10 +1728,19 @@ impl Vm {
             LoopKind::ArrayCount => Value::Int(state.count),
             LoopKind::ArraySortBy => {
                 // The native driver's sort, on the same pairs: the same order.
+                // `compare_sort_values` is no total order (values of
+                // different types and NaN compare Equal), and std's
+                // `slice::sort_by` panics on that past 20 elements: the
+                // tolerant stable sort both drivers and the tree-walker use.
                 let mut keyed = std::mem::take(&mut state.keyed);
-                keyed.sort_by(|a, b| {
-                    crate::interpreter::executor::calls::array_ops::compare_sort_values(&a.1, &b.1)
-                });
+                crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                    &mut keyed,
+                    |a, b| {
+                        crate::interpreter::executor::calls::array_ops::compare_sort_values(
+                            &a.1, &b.1,
+                        )
+                    },
+                );
                 let sorted: Vec<Value> = keyed.into_iter().map(|(item, _)| item).collect();
                 Value::Array(Rc::new(RefCell::new(sorted)))
             }
