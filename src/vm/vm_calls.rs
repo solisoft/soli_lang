@@ -1608,7 +1608,9 @@ impl Vm {
         let name_val = Value::String(name.to_string().into());
         let args_arr = Value::Array(Rc::new(RefCell::new(user_args.clone())));
 
-        if let Some(closure) = class.find_vm_static_method("method_missing") {
+        if let Some((InstanceMethodDef::Compiled(closure), _)) =
+            class.find_static_method_level("method_missing")
+        {
             self.stack.truncate(receiver_idx);
             self.push(Value::Class(class));
             self.push(name_val);
@@ -2070,7 +2072,12 @@ impl Vm {
                 // A field of that name shadows a method not compiled yet,
                 // as before; otherwise the nearest definition wins.
                 if inst.borrow().fields.contains_key(name) {
-                    class.find_vm_method_with_class(name)
+                    match class.find_instance_method_level(name) {
+                        Some((InstanceMethodDef::Compiled(closure), defining)) => {
+                            Some((closure, defining))
+                        }
+                        _ => None,
+                    }
                 } else {
                     self.resolve_instance_method(&class, name)?
                 }
@@ -2079,10 +2086,7 @@ impl Vm {
             // the callee slot is ignored by the bytecode — except by a
             // tree-walker `static def` that reads `this`, compiled as a
             // method of the class it is called on.
-            Value::Class(class) => match class.find_vm_static_method(name) {
-                Some(closure) => Some((closure, class.clone())),
-                None => self.compile_tree_walking_static(class, name)?,
-            },
+            Value::Class(class) => self.resolve_static_method(class, name)?,
             _ => None,
         };
         if let Some((closure, defining_class)) = compiled {
@@ -2306,25 +2310,31 @@ impl Vm {
         Ok(Some((closure, defining)))
     }
 
-    /// A tree-walker `static def` that reads `this`, compiled as a method:
-    /// the class it is called on, in the callee slot, is its `this`. The
-    /// other tree-walker statics keep the plain-function path.
-    fn compile_tree_walking_static(
+    /// The static `name` a call on `class` runs, resolved level by level
+    /// (`find_static_method_level`): a compiled static, or a tree-walker
+    /// `static def` that reads `this`, compiled as a method on the class
+    /// that declares it — the class it is called on, in the callee slot, is
+    /// its `this`. The other tree-walker statics answer `None` and keep the
+    /// plain-function path, which finds the nearest definition too.
+    ///
+    /// Taking the first compiled static anywhere up the chain ran a parent's
+    /// cached body for a subclass override (`Note.visible_to(user)` answered
+    /// `Post`'s wider scope once any request had called `Post.visible_to`).
+    fn resolve_static_method(
         &self,
         class: &Rc<Class>,
         name: &str,
     ) -> Result<Option<MethodWithClass>, RuntimeError> {
-        let mut defining = class.clone();
-        let method = loop {
-            if let Some(method) = defining.static_methods.get(name) {
-                break method.clone();
+        let (method, defining) = match class.find_static_method_level(name) {
+            None => return Ok(None),
+            Some((InstanceMethodDef::Compiled(closure), _)) => {
+                return Ok(Some((closure, class.clone())))
             }
-            match defining.superclass.clone() {
-                Some(superclass) => defining = superclass,
-                None => return Ok(None),
-            }
+            Some((InstanceMethodDef::Source(method), defining)) => (method, defining),
         };
-        if !method.binds_this {
+        // A mixin's static (not in `static_methods`) keeps the
+        // plain-function path, as before.
+        if !method.binds_this || !defining.static_methods.contains_key(name) {
             return Ok(None);
         }
         let proto = jit_compile_method(&method, self.globals.keys().cloned()).map_err(|e| {

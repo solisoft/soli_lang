@@ -1651,9 +1651,9 @@ pub const PRIM_TYPE_COUNT: usize = 9;
 /// dropped and the instance came back empty.
 pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 
-/// An instance method as `Class::find_instance_method_level` finds it on the
-/// class that declares it: already compiled to bytecode, or still the
-/// tree-walker's AST.
+/// A method as `Class::find_instance_method_level` (or
+/// `find_static_method_level`) finds it on the class that declares it:
+/// already compiled to bytecode, or still the tree-walker's AST.
 pub enum InstanceMethodDef {
     Compiled(Rc<VmClosure>),
     Source(Rc<Function>),
@@ -1986,7 +1986,41 @@ impl Class {
         }
     }
 
+    /// The nearest definition of static method `name`, and the class that
+    /// declares it: each class from this one up is asked for its compiled
+    /// static, then for its tree-walker one (its own, then a mixin's), before
+    /// its superclass is.
+    ///
+    /// `find_vm_static_method` alone looks at compiled statics only, and the
+    /// VM caches a compiled tree-walker static on the class that declares it,
+    /// so once `Parent.m(...)` had run, `Child.m(...)` ran Parent's body over
+    /// Child's override. Dispatch must resolve through this instead.
+    pub fn find_static_method_level(
+        self: &Rc<Self>,
+        name: &str,
+    ) -> Option<(InstanceMethodDef, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let compiled = current.vm_static_methods.borrow().get(name).cloned();
+            if let Some(closure) = compiled {
+                return Some((InstanceMethodDef::Compiled(closure), current));
+            }
+            let source = current
+                .static_methods
+                .get(name)
+                .cloned()
+                .or_else(|| current.mixin_static_methods.borrow().get(name).cloned());
+            if let Some(method) = source {
+                return Some((InstanceMethodDef::Source(method), current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
     /// Find a bytecode static method in this class or its superclass chain.
+    /// It answers whether one exists; to pick the one a call runs, use
+    /// `find_static_method_level`, which a nearer tree-walker override beats.
     pub fn find_vm_static_method(&self, name: &str) -> Option<Rc<VmClosure>> {
         if let Some(closure) = self.vm_static_methods.borrow().get(name) {
             return Some(closure.clone());

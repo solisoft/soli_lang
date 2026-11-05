@@ -313,3 +313,95 @@ end
     };
     assert_eq!(hits.borrow().len(), 1, "the action was run a second time");
 }
+
+const STATICS: &str = r##"
+class Post
+  static def visible_to(user)
+    "#{this}:parent-allows:#{user}"
+  end
+
+  static def scope_name
+    "#{this}:parent-scope"
+  end
+end
+
+class Note < Post
+  static def visible_to(user)
+    "child-denies:#{user}"
+  end
+
+  static def scope_name
+    "child-scope"
+  end
+end
+
+class Draft < Post
+  static def visible_to(user)
+    "#{this}:draft-denies:#{user}"
+  end
+
+  static def scope_name
+    "#{this}:draft-scope"
+  end
+end
+
+class Reply < Note
+end
+
+class ScopesController
+  def parent
+    "#{Post.visible_to(1)} #{Post.scope_name()} #{Post.scope_name}"
+  end
+
+  def child
+    "#{Note.visible_to(1)} #{Note.scope_name()} #{Note.scope_name}"
+  end
+
+  def draft
+    "#{Draft.visible_to(1)} #{Draft.scope_name()} #{Draft.scope_name}"
+  end
+
+  def reply
+    "#{Reply.visible_to(1)} #{Reply.scope_name()} #{Reply.scope_name}"
+  end
+end
+"##;
+
+/// A subclass's static override must win after the parent's static was
+/// compiled. A tree-walker `static def` that reads `this` is compiled on the
+/// class that declares it, and the VM's static dispatch took the first
+/// compiled static anywhere up the chain: once `Post.visible_to(user)` had
+/// run on a worker, `Note.visible_to(user)` — a narrower scope — ran Post's
+/// body. Checked with and without parentheses, for an override that reads
+/// `this` and one that does not, and through an intermediate class.
+#[test]
+fn a_subclass_static_override_wins_after_the_parent_static_was_compiled() {
+    let mut app = ServedApp::load(STATICS);
+    assert_eq!(
+        app.call("ScopesController", "parent"),
+        Value::String(
+            "<class Post>:parent-allows:1 <class Post>:parent-scope <class Post>:parent-scope"
+                .into()
+        )
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            app.call("ScopesController", "child"),
+            Value::String("child-denies:1 child-scope child-scope".into()),
+            "an override that does not read `this` must win"
+        );
+        assert_eq!(
+            app.call("ScopesController", "draft"),
+            Value::String(
+                "<class Draft>:draft-denies:1 <class Draft>:draft-scope <class Draft>:draft-scope"
+                    .into()
+            ),
+            "an override that reads `this` must win"
+        );
+        assert_eq!(
+            app.call("ScopesController", "reply"),
+            Value::String("child-denies:1 child-scope child-scope".into()),
+            "the nearest override must win through an intermediate class"
+        );
+    }
+}
