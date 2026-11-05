@@ -62,6 +62,7 @@ pub mod types;
 pub mod update;
 pub mod virtual_fs;
 pub mod vm;
+pub mod xml;
 
 use ast::expr::Argument;
 use error::SolilangError;
