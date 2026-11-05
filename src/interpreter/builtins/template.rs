@@ -342,6 +342,12 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         }
     });
 
+    // Every helper call on this thread encloses this env: a helper body's
+    // `h = ...` must define a local, not overwrite `h` for every later helper
+    // (see `Environment::freeze`). The request context is bound with
+    // `define_or_update`, which a frozen env still takes.
+    helper_env.borrow_mut().freeze();
+
     // Stash the env so the request lifecycle can rebind `req`/`params`/etc.
     // on it (see `set_helper_request_context`).
     VIEW_HELPER_ENV.with(|cell| {

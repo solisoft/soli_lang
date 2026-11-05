@@ -25,12 +25,12 @@ def _is_safe_link_url(url)
   # scheme separator (`:`) before the first /?#. Anything else is a
   # custom scheme like javascript:/data: and must be refused.
   cut = len(lower)
-  s = lower.index_of("/")
-  cut = s if s != -1 && s < cut
-  q = lower.index_of("?")
-  cut = q if q != -1 && q < cut
-  h = lower.index_of("#")
-  cut = h if h != -1 && h < cut
+  slash_at = lower.index_of("/")
+  cut = slash_at if slash_at != -1 && slash_at < cut
+  query_at = lower.index_of("?")
+  cut = query_at if query_at != -1 && query_at < cut
+  fragment_at = lower.index_of("#")
+  cut = fragment_at if fragment_at != -1 && fragment_at < cut
   !lower.substring(0, cut).contains(":")
 end
 

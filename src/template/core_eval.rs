@@ -60,6 +60,10 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&env_rc) {
                 eprintln!("[WARN] Retry stdlib failed to load: {}", e);
             }
+            // Every render on this thread encloses this env: a template's
+            // `<% url = ... %>` must define a local, not overwrite the
+            // builtin for every later render (see `Environment::freeze`).
+            env_rc.borrow_mut().freeze();
             *opt = Some(env_rc);
         }
         opt.as_ref().unwrap().clone()
@@ -427,6 +431,103 @@ mod tests {
         let v = eval("__spec_helper_uppercase", &mut interp).unwrap();
         assert!(matches!(v, Value::NativeFunction(_)));
 
+        clear_view_helpers();
+        reset_builtins_rc();
+    }
+
+    /// Render `source` on the tree-walker, as a layout or a small view is.
+    fn render(source: &str, data: &Value) -> String {
+        let nodes = crate::template::parser::parse_template(source).expect("template parses");
+        crate::template::renderer::render_nodes(&nodes, data, None).expect("template renders")
+    }
+
+    /// A bare assignment in a template assigned up the scope chain into the
+    /// per-thread env every render encloses: `<% type = ... %>` replaced the
+    /// `type` builtin, and a helper's name assigned in a partial rendered with
+    /// that name in its data replaced the helper, for every later render on
+    /// the worker — the next visitor read the value, or a call failed.
+    #[test]
+    fn a_template_assignment_stays_in_its_render() {
+        use crate::interpreter::builtins::template::{clear_view_helpers, register_view_helper};
+        use crate::interpreter::value::NativeFunction;
+
+        clear_view_helpers();
+        reset_builtins_rc();
+        register_view_helper(
+            "page_title".to_string(),
+            Value::NativeFunction(NativeFunction::new("page_title", Some(0), |_| {
+                Ok(Value::String("MyApp".into()))
+            })),
+        );
+        reset_builtins_rc();
+
+        let alice = make_hash(vec![
+            ("owner", Value::String("alice".into())),
+            ("page_title", Value::String("Partial".into())),
+        ]);
+        let first = render(
+            "<% type = \"ALICE\" %><% page_title = \"Diary of \" + owner %><%= type %>|<%= page_title %>",
+            &alice,
+        );
+        assert_eq!(
+            first, "ALICE|Diary of alice",
+            "the render sees its own assignments"
+        );
+
+        let second = render("<%= type(1) %>|<%= page_title() %>", &make_hash(vec![]));
+        assert_eq!(second, "int|MyApp", "a later render sees the originals");
+
+        clear_view_helpers();
+        reset_builtins_rc();
+    }
+
+    /// The scaffolded `_is_safe_link_url` did `h = lower.index_of("#")`. The
+    /// helpers' env is shared by every helper call on the thread, so after one
+    /// `link_to` every helper calling `h(x)` raised until the worker
+    /// restarted.
+    #[test]
+    fn a_helper_assignment_does_not_overwrite_the_helpers_env() {
+        use crate::interpreter::builtins::template::{
+            clear_view_helpers, get_view_helper, load_view_helpers, set_helper_request_context,
+            set_view_helper_env_for_test,
+        };
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let helpers = dir.path().join("helpers");
+        std::fs::create_dir(&helpers).expect("helpers dir");
+        std::fs::write(
+            helpers.join("application_helper.sl"),
+            "def fragment_at(url)\n  h = url.index_of(\"#\")\n  h\nend\n\
+             def escape_it(text)\n  h(text)\nend\n\
+             def who()\n  req[\"user\"]\nend\n",
+        )
+        .expect("write helper");
+        clear_view_helpers();
+        load_view_helpers(&helpers).expect("helpers load");
+
+        let mut interp = Interpreter::new();
+        let mut call = |name: &str, args: Vec<Value>| {
+            let helper = get_view_helper(name).expect("helper registered");
+            interp
+                .call_value(helper, args, crate::span::Span::default())
+                .expect("helper runs")
+        };
+        assert_eq!(
+            call("fragment_at", vec![Value::String("a#b".into())]),
+            Value::Int(1)
+        );
+        assert_eq!(
+            call("escape_it", vec![Value::String("<b>".into())]),
+            Value::String("&lt;b&gt;".into())
+        );
+
+        // The framework still binds the request context on the frozen env.
+        let req = make_hash(vec![("user", Value::String("bob".into()))]);
+        let empty = make_hash(vec![]);
+        set_helper_request_context(&req, &empty, &Value::Null, &empty, &Value::Null);
+        assert_eq!(call("who", vec![]), Value::String("bob".into()));
+
+        set_view_helper_env_for_test(None);
         clear_view_helpers();
         reset_builtins_rc();
     }
