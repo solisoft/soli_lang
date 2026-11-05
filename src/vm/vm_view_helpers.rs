@@ -786,6 +786,81 @@ mod tests {
         assert_eq!(decided(&count), Some(false));
     }
 
+    /// A-2 (2.29.4) on the view VM's helpers: a zero-argument helper read
+    /// bare is called, as the tree-walker calls it — in a helper's `if` and
+    /// in a compiled view's `<% if signed_in? %>` alike. `signed_in?` read as
+    /// the function itself is always truthy: the signed-in branch rendered
+    /// for every visitor. A lambda follows the tree-walker too: called when
+    /// a helper reads its parameter bare (on the tree-walker), not called by
+    /// a compiled view, which refuses to write it.
+    #[test]
+    fn a_bare_zero_argument_helper_is_called_as_on_the_tree_walker() {
+        let env = builtins_env();
+        let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
+        let helpers = define_helpers(
+            "def signed_in?()\n  false\nend\n\
+             def nav()\n  if signed_in?\n    \"member\"\n  else\n    \"guest\"\n  end\nend\n\
+             def kept(callback)\n  holder = callback\n  holder\nend\n",
+            &env,
+        );
+        env.borrow_mut().freeze();
+        assert_eq!(on_both(&helpers["nav"], &[]), Value::str("guest"));
+        assert_eq!(decided(&helpers["nav"]), Some(false));
+
+        // A lambda handed to a helper that reads its parameter bare: the
+        // tree-walker calls any zero-argument function read bare from a
+        // variable, so that call goes there and both engines answer the
+        // lambda's value; the helper itself stays compiled.
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        let tokens = Scanner::new("callback = fn() { \"called\" }\n")
+            .scan_tokens()
+            .expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        interpreter.interpret(&program).expect("runs");
+        let callback = interpreter
+            .environment
+            .borrow()
+            .get("callback")
+            .expect("the lambda");
+        assert_eq!(
+            on_both(&helpers["kept"], &[callback.clone()]),
+            Value::str("called")
+        );
+        assert_eq!(decided(&helpers["kept"]), Some(true));
+
+        // A compiled view reading the helper bare calls it.
+        let mut vm = Vm::new();
+        vm.tree_walk_functions = true;
+        for (name, value) in env.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = crate::template::parser::parse_template(
+            "<% if signed_in? %>member<% else %>guest<% end %>|<%= nav %>",
+        )
+        .expect("parses");
+        let compiled = crate::template::vm_template::VmTemplate::compile(&nodes).expect("compiles");
+        let data = Value::Hash(Rc::new(RefCell::new(
+            crate::interpreter::value::HashPairs::default(),
+        )));
+        let rendered = compiled.render(&mut vm, &data).expect("renders");
+        assert_eq!(rendered.html, "guest|guest");
+
+        // A lambda the view reads bare is not a helper: the VM does not call
+        // it, and writing a function refuses the render, which then goes to
+        // the tree-walker.
+        let nodes = crate::template::parser::parse_template("<%= callback %>").expect("parses");
+        let compiled = crate::template::vm_template::VmTemplate::compile(&nodes).expect("compiles");
+        let mut data = crate::interpreter::value::HashPairs::default();
+        data.insert(
+            crate::interpreter::value::HashKey::String("callback".into()),
+            callback,
+        );
+        let data = Value::Hash(Rc::new(RefCell::new(data)));
+        let refused = compiled.render(&mut vm, &data).err().expect("refused");
+        assert!(refused.is_engine_fallback(), "{refused}");
+    }
+
     /// A function declared in the body, or a lambda kept in a local, is a
     /// function a bare read calls on the tree-walker and not on the VM.
     #[test]
