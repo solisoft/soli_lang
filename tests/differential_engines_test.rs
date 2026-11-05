@@ -6585,7 +6585,9 @@ class Probe
 end"##,
     ),
     (
-        // Tracked in KNOWN_APP_DIVERGENT.
+        // A parent's compiled method must not hide the subclass's own
+        // (was tracked in KNOWN_APP_DIVERGENT until 2.29.4's level-by-level
+        // dispatch).
         "app_a_compiled_parent_method_hides_the_override",
         r##"class Pa
   def m
@@ -6711,11 +6713,12 @@ end"##,
 
 /// APP_CASES that still diverge, with KNOWN_DIVERGENT's contract.
 const KNOWN_APP_DIVERGENT: &[&str] = &[
-    // The VM looks a method up in the compiled tables of the whole chain
-    // (`find_vm_method_with_class`) before it compiles a tree-walker one
-    // (`compile_tree_walking_method`): once a parent's method has been
-    // compiled, a subclass's own definition is no longer reached.
-    "app_a_compiled_parent_method_hides_the_override",
+    // Empty. Fixed and locked in by this harness:
+    //   app_a_compiled_parent_method_hides_the_override — dispatch resolves
+    //   the nearest definition level by level (2.29.4's
+    //   `resolve_instance_method`, and on this branch the per-site method
+    //   cache and `SelfOrGlobalCallee`), so a parent's compiled method no
+    //   longer hides a subclass's own.
 ];
 
 fn parse(source: &str) -> solilang::ast::Program {
