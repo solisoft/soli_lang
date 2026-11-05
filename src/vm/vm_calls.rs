@@ -17,7 +17,7 @@ use super::chunk::{Constant, FunctionProto};
 /// A compiled method and the class that defines it (for `super`).
 type MethodWithClass = (Rc<VmClosure>, Rc<Class>);
 use super::compiler::Compiler;
-use super::upvalue::VmClosure;
+use super::upvalue::{Upvalue, VmClosure};
 use super::vm::{CallFrame, Vm};
 
 /// JIT-compile a tree-walking [`Function`] to a bytecode [`FunctionProto`] and
@@ -2490,7 +2490,17 @@ impl Vm {
     }
 
     /// Reset VM state between requests (preserves globals).
+    ///
+    /// Upvalues still open are closed first, over the value their slot holds
+    /// now. A request that ended with an error (or a panic) leaves its frames
+    /// on the VM, and a closure it stored somewhere that outlives it
+    /// (`const STORE = []`) still points at an absolute stack slot: once the
+    /// stack is cleared, that slot belongs to whatever request runs next, so
+    /// the closure read and wrote another visitor's locals.
     pub fn reset(&mut self) {
+        if !self.open_upvalues.is_empty() {
+            self.close_all_upvalues();
+        }
         self.stack.clear();
         self.frames.clear();
         self.open_upvalues.clear();
@@ -2498,6 +2508,38 @@ impl Vm {
         self.exception_handlers.clear();
         self.iter_stack.clear();
         self.return_depth = 0;
+    }
+
+    /// Close every open upvalue over its slot's current value. Tolerates a
+    /// stack shorter than a slot (a panic can stop the VM anywhere): the cell
+    /// is closed over `nil` rather than left pointing past the end.
+    fn close_all_upvalues(&mut self) {
+        for upvalue in std::mem::take(&mut self.open_upvalues) {
+            let Ok(mut cell) = upvalue.try_borrow_mut() else {
+                continue;
+            };
+            if let Upvalue::Open(slot) = *cell {
+                *cell = Upvalue::Closed(self.stack.get(slot).cloned().unwrap_or(Value::Null));
+            }
+        }
+        self.open_upvalue_top = 0;
+    }
+
+    /// Put the VM back in a state a new request can run on after a handler
+    /// panicked somewhere inside it.
+    ///
+    /// A panic unwinds past every `vm.reset()` the serve paths make after a
+    /// call, so the stack, the frames, `iter_stack` and `return_depth` of the
+    /// dead request stayed. The next request's action frame then returned
+    /// *into* the dead request's frames: its remaining code ran under the new
+    /// request and its value became the new request's response. Also drops
+    /// what a loop or a render had in hand when it stopped.
+    pub fn recover_after_panic(&mut self) {
+        self.reset();
+        self.spare_callback_loop = None;
+        self.template_out.clear();
+        self.template_captures.clear();
+        self.template_content_before = None;
     }
 
     /// Invoke a callable synchronously from within a native method.
@@ -2637,6 +2679,63 @@ pub struct CallableBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A VM seeded with the globals `source` defines, as a serve worker seeds
+    /// its VM from the loaded app.
+    fn vm_for(source: &str) -> (crate::interpreter::Interpreter, Vm) {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .expect("lexer error");
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .expect("parser error");
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).expect("program runs");
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        (interpreter, vm)
+    }
+
+    /// A closure that escaped a request which then failed must not read or
+    /// write the next request's stack. The request's frames stay on the VM
+    /// after an uncaught error, so the closure's upvalue was still open on an
+    /// absolute slot when `reset` cleared the stack — and that slot was the
+    /// next visitor's local.
+    #[test]
+    fn reset_closes_the_upvalues_a_failed_request_left_open() {
+        let (interpreter, mut vm) = vm_for(
+            r#"
+const STORE = []
+def leak()
+  secret = "alice-secret"
+  STORE.push(fn() { secret })
+  throw "boom"
+end
+def read()
+  bob_token = "bob-token-123"
+  STORE[0]()
+end
+"#,
+        );
+        let leak = interpreter.global_env().borrow().get("leak").expect("leak");
+        let read = interpreter.global_env().borrow().get("read").expect("read");
+
+        assert!(vm.call_value_direct(leak, &[], Span::default()).is_err());
+        vm.reset();
+        assert!(vm.open_upvalues.is_empty());
+
+        let seen = vm
+            .call_value_direct(read, &[], Span::default())
+            .expect("read runs");
+        vm.reset();
+        assert_eq!(
+            seen,
+            Value::String("alice-secret".into()),
+            "the stored closure must keep its own request's value, not read the next request's local"
+        );
+    }
 
     /// A model callback must see the record as `this`.
     ///

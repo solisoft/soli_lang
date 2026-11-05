@@ -3544,9 +3544,12 @@ fn handle_liveview_event_caught(
     interpreter: &mut Interpreter,
     data: &LiveViewEventData,
 ) -> Result<(), String> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let engine_mark = interpreter.engine_mark();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         handle_liveview_event(interpreter, data)
-    })) {
+    }));
+    recover_engines(interpreter, None, engine_mark, outcome.is_err());
+    match outcome {
         Ok(result) => result,
         Err(_) => {
             crate::metrics::Metrics::global()
@@ -4660,6 +4663,59 @@ where
     }
 }
 
+/// Put the worker's engines back where the request found them.
+///
+/// Always run after a request, so whatever path the request ended on — a
+/// response, an error, a panic `run_caught` turned into a 500 — the next one
+/// starts on the root scope, at the worker's own call depth, and on an empty
+/// VM. After a finished request this changes nothing: every scope swap was
+/// undone, every frame popped, and the serve paths reset the VM after each
+/// call. A panic skips all of that (see `Interpreter::restore_engine_mark`
+/// and `Vm::recover_after_panic` for what was left behind and what it did to
+/// the next visitor).
+fn recover_engines(
+    interpreter: &mut Interpreter,
+    vm: Option<&mut crate::vm::Vm>,
+    mark: crate::interpreter::executor::EngineMark,
+    panicked: bool,
+) {
+    interpreter.restore_engine_mark(mark);
+    if let Some(vm) = vm {
+        if panicked {
+            vm.recover_after_panic();
+        } else {
+            vm.reset();
+        }
+    }
+}
+
+/// [`run_caught`] for a request on this worker's engines, which it leaves
+/// ready for the next request whatever happened (see [`recover_engines`]).
+fn run_request_caught<F>(
+    interpreter: &mut Interpreter,
+    vm: &mut Option<crate::vm::Vm>,
+    handler: F,
+    method: &str,
+    path: &str,
+) -> ResponseData
+where
+    F: FnOnce(&mut Interpreter, &mut Option<crate::vm::Vm>) -> ResponseData,
+{
+    let engine_mark = interpreter.engine_mark();
+    let mut finished = false;
+    let resp = run_caught(
+        || {
+            let resp = handler(interpreter, vm);
+            finished = true;
+            resp
+        },
+        method,
+        path,
+    );
+    recover_engines(interpreter, vm.as_mut(), engine_mark, !finished);
+    resp
+}
+
 /// Run one HTTP request on this worker and reply on its response channel.
 ///
 /// Shared by `worker_loop`'s two dispatch arms — the non-blocking batch drain
@@ -4686,8 +4742,10 @@ fn dispatch_http_request(
 
     let method = data.method.to_string();
     let path = data.path.clone();
-    let mut resp_data = run_caught(
-        || handle_request(interpreter, vm, &mut data, dev_mode),
+    let mut resp_data = run_request_caught(
+        interpreter,
+        vm,
+        |interpreter, vm| handle_request(interpreter, vm, &mut data, dev_mode),
         &method,
         &path,
     );
@@ -4720,6 +4778,7 @@ fn dispatch_http_request(
             } else {
                 let id = crate::interpreter::builtins::streaming::register_sender(tx);
                 let _ = data.response_tx.send(resp);
+                let engine_mark = interpreter.engine_mark();
                 let streamed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     crate::interpreter::builtins::streaming::run_stream_block(
                         interpreter,
@@ -4727,6 +4786,7 @@ fn dispatch_http_request(
                         id,
                     );
                 }));
+                recover_engines(interpreter, vm.as_mut(), engine_mark, streamed.is_err());
                 if streamed.is_err() {
                     crate::metrics::Metrics::global()
                         .handler_panics_total
@@ -6465,6 +6525,72 @@ mod tests {
             vec![200, 200, 500, 200, 200],
             "only the panicking request may fail; the loop must keep serving"
         );
+    }
+
+    /// A panic in the middle of a request must not leave that request on the
+    /// worker's engines. It used to: the VM kept the dead request's frames,
+    /// so the next request's action returned *into* them and answered with the
+    /// dead request's page; the interpreter stayed in the dead request's
+    /// innermost scope, and its call stack grew by the frames the unwind
+    /// skipped popping.
+    #[test]
+    fn a_caught_panic_leaves_the_engines_clean_for_the_next_request() {
+        let source = r#"
+def alice_page()
+  owner = "SECRET-OF-alice"
+  "victim page for " + owner
+end
+def bob_page()
+  "page for bob"
+end
+"#;
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+        let mut worker_vm = crate::vm::Vm::new();
+        for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+            worker_vm.globals.insert(name, value);
+        }
+        let alice = interpreter.global_env().borrow().get("alice_page").unwrap();
+        let bob = interpreter.global_env().borrow().get("bob_page").unwrap();
+        let root = interpreter.global_env().clone();
+        let depth = interpreter.call_stack.len();
+        let mut vm = Some(worker_vm);
+
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let resp = run_request_caught(
+            &mut interpreter,
+            &mut vm,
+            |interpreter, vm| {
+                // Enter alice's action on the VM, open a scope and a frame on
+                // the interpreter, then die mid-request.
+                let vm = vm.as_mut().unwrap();
+                vm.push(alice);
+                vm.call_value(0, Span::default()).unwrap();
+                interpreter.push_frame("alice_page", Span::default(), None);
+                let scope = crate::interpreter::environment::Environment::with_enclosing(
+                    interpreter.environment.clone(),
+                );
+                interpreter.environment = Rc::new(RefCell::new(scope));
+                panic!("boom mid-request");
+            },
+            "GET",
+            "/alice",
+        );
+        std::panic::set_hook(previous);
+        assert_eq!(resp.status, 500);
+
+        assert!(
+            Rc::ptr_eq(interpreter.global_env(), &root),
+            "the interpreter must be back on its root scope"
+        );
+        assert_eq!(interpreter.call_stack.len(), depth);
+        let vm = vm.as_mut().unwrap();
+        assert!(vm.frames.is_empty() && vm.stack.is_empty() && vm.return_depth == 0);
+        let page = vm.call_value_direct(bob, &[], Span::default()).unwrap();
+        assert_eq!(page, Value::String("page for bob".into()));
     }
 
     /// `catch_unwind` is only a guard if panics actually unwind.

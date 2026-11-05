@@ -339,9 +339,14 @@ fn run_one(job: &BackgroundJob, interpreter: &mut Interpreter, runner: &Value) -
     super::slow_queries::set_context(&format!("job {}", job.class_name));
     let start = Instant::now();
     let call_args = vec![Value::String(job.class_name.clone().into()), args];
+    // A panic unwinds past the scope swaps and frame pops of the job's code;
+    // without the mark the next job on this thread would run inside the dead
+    // job's innermost scope, a few frames deeper each time.
+    let engine_mark = interpreter.engine_mark();
     let result = catch_unwind(AssertUnwindSafe(|| {
         interpreter.call_value(runner.clone(), call_args, Span::default())
     }));
+    interpreter.restore_engine_mark(engine_mark);
     super::slow_queries::end_unit();
 
     let error = match result {
