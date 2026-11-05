@@ -70,11 +70,13 @@
 
 pub mod error;
 pub mod escape;
+pub mod parse;
 pub mod policy;
 pub mod tree;
 
 
 pub use error::{line_col, XmlError, XmlErrorKind};
+pub use parse::{parse, parse_bytes, EventLoop, NsScope, Sink, StartTag, Step, TreeSink};
 pub use policy::{
     OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
     MAX_NAME_LEN,
