@@ -697,8 +697,11 @@ impl Vm {
         }
         let stack_base = self.stack.len() - total_params - 1;
         // The span only on the cold branch: building it every call showed
-        // in profiles.
-        if self.frames.len() >= MAX_CALL_DEPTH {
+        // in profiles. The handler budget is checked on every frame, as
+        // `ensure_call_depth` does: recursion through a method has no
+        // backward jump, so this is where it stops (expiry is sticky, so
+        // `ensure_call_depth` reports it).
+        if self.frames.len() >= MAX_CALL_DEPTH || crate::interpreter::deadline::expired() {
             self.ensure_call_depth(&closure.proto, self.current_span())?;
         }
         self.frames.push(CallFrame::new(
@@ -3044,8 +3047,11 @@ impl Vm {
             self.stack.push(value);
         }
         // The span only on the cold branch: building it every call showed
-        // in profiles.
-        if self.frames.len() >= MAX_CALL_DEPTH {
+        // in profiles. The handler budget is checked on every frame, as
+        // `ensure_call_depth` does: recursion through a method has no
+        // backward jump, so this is where it stops (expiry is sticky, so
+        // `ensure_call_depth` reports it).
+        if self.frames.len() >= MAX_CALL_DEPTH || crate::interpreter::deadline::expired() {
             self.ensure_call_depth(&closure.proto, self.current_span())?;
         }
         self.frames.push(CallFrame::new(
@@ -3125,8 +3131,11 @@ impl Vm {
         }
         let stack_base = self.stack.len() - total_params - 1;
         // The span only on the cold branch: building it every call showed
-        // in profiles.
-        if self.frames.len() >= MAX_CALL_DEPTH {
+        // in profiles. The handler budget is checked on every frame, as
+        // `ensure_call_depth` does: recursion through a method has no
+        // backward jump, so this is where it stops (expiry is sticky, so
+        // `ensure_call_depth` reports it).
+        if self.frames.len() >= MAX_CALL_DEPTH || crate::interpreter::deadline::expired() {
             self.ensure_call_depth(&closure.proto, self.current_span())?;
         }
         self.frames.push(CallFrame::new(

@@ -1753,6 +1753,12 @@ impl Vm {
                     let Some((method, defining)) = self.fast_method(site, argc, name) else {
                         break Some(op);
                     };
+                    // The handler budget, before the stack is touched (see
+                    // `Op::Call` above): recursion through a method has no
+                    // backward jump, so this is where it stops.
+                    if crate::interpreter::deadline::expired() {
+                        break Some(op);
+                    }
                     enter_closure!(method, argc, argc, Some(defining));
                 }
                 Op::Return => {
