@@ -8,10 +8,18 @@
 //! that function versus assignments to an existing global.
 //!
 //! This pass collects the names that are introduced by a plain `=` assignment
-//! somewhere in the body and are not otherwise declared (`let`/`const`, loop
-//! variables, catch bindings). The compiler then declares those as locals at
+//! somewhere in the body. The compiler then declares those as locals at
 //! function entry — except names that are parameters, captured from an
 //! enclosing scope (upvalues), or already known globals.
+//!
+//! A name the body *also* binds with `let`/`const`, a `for` variable, a
+//! `catch` variable or a comprehension variable is hoisted all the same. Those
+//! bindings open their own scope (or, for a `let` at the body's top level,
+//! write the hoisted slot), so the inner binding shadows the hoisted local the
+//! way the tree-walker's nested environment does. Leaving such a name out made
+//! its bare assignment compile to `SetGlobal`: the "local" then lived in the
+//! VM's globals, where recursion clobbered it and, under `soli serve`, the next
+//! request on the worker could read it.
 //!
 //! Scope model: this is *function*-scoped (it ignores `{ }` block boundaries
 //! within the body), which is a safe superset of the tree-walker's
@@ -27,18 +35,15 @@ use crate::ast::expr::{Argument, Expr, ExprKind, InterpolatedPart};
 use crate::ast::stmt::{Stmt, StmtKind};
 
 /// Collect names that should be declared as function-scoped locals because a
-/// bare `name = value` assignment introduces them in `body`. Names that are
-/// `let`/`const`-declared, loop variables, or catch bindings are excluded —
-/// those manage their own bindings.
+/// bare `name = value` assignment introduces them in `body` — including names
+/// the body also binds with `let`/`const`, a loop, a `catch` or a
+/// comprehension (see the module docs).
 pub(super) fn collect_hoisted_locals(body: &[Stmt]) -> Vec<String> {
     let mut scan = Scan::default();
     for stmt in body {
         scan.stmt(stmt);
     }
     scan.assigned
-        .into_iter()
-        .filter(|name| !scan.declared.contains(name))
-        .collect()
 }
 
 #[derive(Default)]
@@ -46,8 +51,6 @@ struct Scan {
     /// Plain-assignment targets, in first-seen order, deduped via `seen`.
     assigned: Vec<String>,
     seen: HashSet<String>,
-    /// Names with their own binding mechanism (let/const/loop var/catch var).
-    declared: HashSet<String>,
 }
 
 impl Scan {
@@ -60,19 +63,13 @@ impl Scan {
     fn stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
             StmtKind::Expression(e) => self.expr(e),
-            StmtKind::Let {
-                name, initializer, ..
-            } => {
-                self.declared.insert(name.clone());
+            StmtKind::Let { initializer, .. } => {
                 if let Some(init) = initializer {
                     self.expr(init);
                 }
             }
             StmtKind::Break => {}
-            StmtKind::Const {
-                name, initializer, ..
-            } => {
-                self.declared.insert(name.clone());
+            StmtKind::Const { initializer, .. } => {
                 self.expr(initializer);
             }
             StmtKind::Block(stmts) => {
@@ -101,16 +98,7 @@ impl Scan {
                 self.expr(condition);
                 self.stmt(body);
             }
-            StmtKind::For {
-                variable,
-                index_variable,
-                iterable,
-                body,
-            } => {
-                self.declared.insert(variable.clone());
-                if let Some(iv) = index_variable {
-                    self.declared.insert(iv.clone());
-                }
+            StmtKind::For { iterable, body, .. } => {
                 self.expr(iterable);
                 self.stmt(body);
             }
@@ -124,9 +112,6 @@ impl Scan {
             } => {
                 self.stmt(try_block);
                 for clause in catch_clauses {
-                    if let Some(var) = &clause.var_name {
-                        self.declared.insert(var.clone());
-                    }
                     self.stmt(&clause.body);
                 }
                 if let Some(fb) = finally_block {
@@ -229,11 +214,10 @@ impl Scan {
             }
             ExprKind::ListComprehension {
                 element,
-                variable,
                 iterable,
                 condition,
+                ..
             } => {
-                self.declared.insert(variable.clone());
                 self.expr(element);
                 self.expr(iterable);
                 if let Some(c) = condition {
@@ -243,11 +227,10 @@ impl Scan {
             ExprKind::HashComprehension {
                 key,
                 value,
-                variable,
                 iterable,
                 condition,
+                ..
             } => {
-                self.declared.insert(variable.clone());
                 self.expr(key);
                 self.expr(value);
                 self.expr(iterable);

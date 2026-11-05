@@ -5721,6 +5721,64 @@ mod tests {
         vm.globals.get(name).cloned().unwrap_or(Value::Null)
     }
 
+    /// A name a function both bare-assigns and binds with `catch`, `for`, a
+    /// comprehension or a nested `let` is a local of that function. It was
+    /// left out of hoisting, so its assignment compiled to `SetGlobal`: a
+    /// recursive call overwrote the caller's value, and under `soli serve`
+    /// the worker VM kept it for the next request (`e = params["secret"]`
+    /// in an action that also has `catch e`).
+    #[test]
+    fn test_vm_local_also_bound_by_an_inner_binding_is_not_a_global() {
+        let source = r##"
+def summary(items, depth)
+  item = items[0]
+  if depth > 0
+    summary(["inner"], depth - 1)
+  end
+  names = [item.upcase for item in items]
+  "#{item}:#{names.length}"
+end
+def guarded(secret)
+  e = secret
+  try
+    throw "boom"
+  catch e
+    nil
+  end
+  for i in [1, 2]
+    nil
+  end
+  i = 5
+  if true
+    let n = 1
+  end
+  n = 2
+  "#{e}:#{i}:#{n}"
+end
+let s = summary(["outer", "b"], 1)
+let g = guarded("alice-password")
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(
+            vm.globals.get("s").cloned(),
+            Some(Value::String("outer:2".into()))
+        );
+        assert_eq!(
+            vm.globals.get("g").cloned(),
+            Some(Value::String("alice-password:5:2".into()))
+        );
+        for leaked in ["item", "e", "i", "n"] {
+            assert!(
+                !vm.globals.contains_key(leaked),
+                "`{leaked}` leaked into the VM globals"
+            );
+        }
+    }
+
     #[test]
     fn test_vm_arithmetic() {
         let result = compile_and_get_global("let x = 2 + 3 * 4;", "x");
