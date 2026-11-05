@@ -1871,7 +1871,15 @@ impl Vm {
                     let name = self.read_string_constant_owned(name_idx);
                     let this = self.pop();
                     if let Some(value) = self.global_or_namespaced(&name) {
+                        // A zero-argument def read bare is called, as
+                        // `Op::AutoInvoke` does for a global known at
+                        // compile time.
+                        let call = auto_invocable(&value);
                         self.push(value);
+                        if call {
+                            let span = self.current_span();
+                            self.call_value(0, span)?;
+                        }
                     } else if Self::has_instance_method(&this, &name) {
                         let span = self.current_span();
                         let value = self.op_get_property_member(&this, &name, span)?;

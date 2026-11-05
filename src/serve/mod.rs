@@ -5502,7 +5502,9 @@ fn run_hook_on_vm(
         Ok(value) => return Some(Ok(value)),
         Err(err) => err,
     };
-    if raised_response(&err).is_some() {
+    // A deliberate response, or the handler budget ran out (see
+    // `call_handler`): no demotion, no re-run on the tree-walker.
+    if raised_response(&err).is_some() || crate::interpreter::deadline::exhausted() {
         return Some(Err(err));
     }
     let handler = format!("{class_name}#{kind}");
