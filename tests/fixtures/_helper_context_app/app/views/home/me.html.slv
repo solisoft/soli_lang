@@ -1,0 +1,1 @@
+<p>me: <%= current_user_name() %></p>

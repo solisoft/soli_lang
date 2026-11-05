@@ -1373,11 +1373,17 @@ impl Interpreter {
         match &arguments[0] {
             Value::String(key) => {
                 let hash_key = HashKey::String(key.clone());
-                result.sort_by(|a, b| {
-                    let val_a = Self::extract_hash_value(a, &hash_key);
-                    let val_b = Self::extract_hash_value(b, &hash_key);
-                    Self::compare_sort_values(&val_a, &val_b)
-                });
+                // The tolerant merge sort, not std's: the keys are user data,
+                // `compare_sort_values` is no total order over mixed types or
+                // NaN, and std's sort panics on that — past rescue's reach.
+                crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                    &mut result,
+                    |a, b| {
+                        let val_a = Self::extract_hash_value(a, &hash_key);
+                        let val_b = Self::extract_hash_value(b, &hash_key);
+                        Self::compare_sort_values(&val_a, &val_b)
+                    },
+                );
             }
             Value::Function(func) => {
                 let func = func.clone();
@@ -1425,7 +1431,10 @@ impl Interpreter {
                     keyed.push((item, key_val));
                 }
 
-                keyed.sort_by(|a, b| Self::compare_sort_values(&a.1, &b.1));
+                crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                    &mut keyed,
+                    |a, b| Self::compare_sort_values(&a.1, &b.1),
+                );
                 result = keyed.into_iter().map(|(item, _)| item).collect();
             }
             _ => {

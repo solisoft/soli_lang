@@ -81,7 +81,15 @@ pub fn parse_accept_header(header: &str) -> Vec<(String, f32)> {
         for param in parts {
             if let Some(rest) = param.strip_prefix("q=") {
                 if let Ok(parsed) = rest.parse::<f32>() {
-                    q = parsed.clamp(0.0, 1.0);
+                    // `clamp` keeps a NaN (`q=NaN` parses), and a NaN in the
+                    // sort below broke its total order: std's sort panics on
+                    // such a comparator past 20 entries, so one request
+                    // header turned into a handler panic. Treat it as q=0.
+                    q = if parsed.is_finite() {
+                        parsed.clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
                 }
             }
         }
@@ -90,7 +98,7 @@ pub fn parse_accept_header(header: &str) -> Vec<(String, f32)> {
         }
     }
     // Stable sort by descending q so first-source-wins on ties.
-    entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    entries.sort_by(|a, b| b.1.total_cmp(&a.1));
     entries
 }
 
@@ -323,6 +331,34 @@ mod tests {
         let got = parse_accept_header("text/html;q=0.5,application/json;q=0.9");
         assert_eq!(got[0].0, "json");
         assert_eq!(got[1].0, "html");
+    }
+
+    /// `q=NaN` parses as an f32, and `clamp` keeps it: the sort compared it
+    /// as Equal to everything, which is no total order, and std's sort
+    /// panics on that past 20 entries. This 33-range header did it — one
+    /// unauthenticated request header, one handler panic.
+    #[test]
+    fn a_nan_q_value_sorts_last_without_panicking() {
+        let header = "text/html;q=NaN,application/pdf;q=1,text/plain;q=NaN,text/xml;q=0.9,\
+            text/csv;q=1,*/*;q=0.8,application/pdf;q=0.7,text/plain;q=0,application/pdf;q=0.5,\
+            */*;q=0.8,text/csv;q=0.3,text/xml;q=NaN,application/pdf;q=NaN,application/pdf;q=1,\
+            text/csv;q=0.7,*/*;q=0.5,application/pdf;q=0.7,text/csv;q=0.6,application/xml;q=0.3,\
+            application/xml;q=NaN,application/xml;q=0.5,application/xml;q=0.7,application/pdf;q=0.8,\
+            application/xml;q=0.3,application/pdf;q=0.2,text/plain;q=0.7,text/plain;q=0.8,\
+            */*;q=0.3,application/xml;q=1,application/json;q=0.5,text/html;q=0.3,\
+            application/json;q=NaN,text/html;q=NaN";
+        let got = parse_accept_header(header);
+        assert_eq!(got.len(), 33);
+        assert!(got.iter().all(|(_, q)| q.is_finite()));
+        assert!(got.windows(2).all(|pair| pair[0].1 >= pair[1].1));
+        // Stable: the first q=1 range in the header comes first.
+        assert_eq!(got[0], ("pdf".to_string(), 1.0));
+
+        let picked = parse_accept_header("text/html;q=NaN,application/json;q=0.5");
+        assert_eq!(picked[0], ("json".to_string(), 0.5));
+        assert_eq!(picked[1], ("html".to_string(), 0.0));
+        let inf = parse_accept_header("text/html;q=inf,application/json");
+        assert_eq!(inf[0].0, "json");
     }
 
     #[test]

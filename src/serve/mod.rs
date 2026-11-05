@@ -1853,6 +1853,11 @@ fn worker_loop(
             eprintln!("Worker {}: Error loading view helpers: {}", worker_id, e);
         }
     }
+    // The template env caches the helpers it was built with. When a panic
+    // escaped this loop and the worker restarted, that cache (thread-local,
+    // so it survived) still held the previous run's helpers, bound to the
+    // previous helper env — and to the `req` the last request left on it.
+    crate::template::core_eval::reset_builtins_rc();
 
     // Set dev mode for file hash caching (production = permanent cache, dev = check mtime)
     crate::interpreter::builtins::template::set_dev_mode(dev_mode);
@@ -3544,9 +3549,12 @@ fn handle_liveview_event_caught(
     interpreter: &mut Interpreter,
     data: &LiveViewEventData,
 ) -> Result<(), String> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let engine_mark = interpreter.engine_mark();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         handle_liveview_event(interpreter, data)
-    })) {
+    }));
+    recover_engines(interpreter, None, engine_mark, outcome.is_err());
+    match outcome {
         Ok(result) => result,
         Err(_) => {
             crate::metrics::Metrics::global()
@@ -3590,6 +3598,9 @@ fn handle_liveview_event(
         .map(|id| id.to_string());
     set_current_session_id(socket_session);
     let _session_guard = RealtimeSessionGuard;
+    // A frame renders on a worker that served HTTP requests: its helpers must
+    // not read the last request's `req`.
+    crate::interpreter::builtins::template::clear_helper_request_context();
     // The socket's own locale, from its session — a realtime worker serves
     // many sessions and would otherwise render this frame in whatever
     // language the last frame on this thread used. An EUI session is pinned
@@ -4660,6 +4671,59 @@ where
     }
 }
 
+/// Put the worker's engines back where the request found them.
+///
+/// Always run after a request, so whatever path the request ended on — a
+/// response, an error, a panic `run_caught` turned into a 500 — the next one
+/// starts on the root scope, at the worker's own call depth, and on an empty
+/// VM. After a finished request this changes nothing: every scope swap was
+/// undone, every frame popped, and the serve paths reset the VM after each
+/// call. A panic skips all of that (see `Interpreter::restore_engine_mark`
+/// and `Vm::recover_after_panic` for what was left behind and what it did to
+/// the next visitor).
+fn recover_engines(
+    interpreter: &mut Interpreter,
+    vm: Option<&mut crate::vm::Vm>,
+    mark: crate::interpreter::executor::EngineMark,
+    panicked: bool,
+) {
+    interpreter.restore_engine_mark(mark);
+    if let Some(vm) = vm {
+        if panicked {
+            vm.recover_after_panic();
+        } else {
+            vm.reset();
+        }
+    }
+}
+
+/// [`run_caught`] for a request on this worker's engines, which it leaves
+/// ready for the next request whatever happened (see [`recover_engines`]).
+fn run_request_caught<F>(
+    interpreter: &mut Interpreter,
+    vm: &mut Option<crate::vm::Vm>,
+    handler: F,
+    method: &str,
+    path: &str,
+) -> ResponseData
+where
+    F: FnOnce(&mut Interpreter, &mut Option<crate::vm::Vm>) -> ResponseData,
+{
+    let engine_mark = interpreter.engine_mark();
+    let mut finished = false;
+    let resp = run_caught(
+        || {
+            let resp = handler(interpreter, vm);
+            finished = true;
+            resp
+        },
+        method,
+        path,
+    );
+    recover_engines(interpreter, vm.as_mut(), engine_mark, !finished);
+    resp
+}
+
 /// Run one HTTP request on this worker and reply on its response channel.
 ///
 /// Shared by `worker_loop`'s two dispatch arms — the non-blocking batch drain
@@ -4686,8 +4750,10 @@ fn dispatch_http_request(
 
     let method = data.method.to_string();
     let path = data.path.clone();
-    let mut resp_data = run_caught(
-        || handle_request(interpreter, vm, &mut data, dev_mode),
+    let mut resp_data = run_request_caught(
+        interpreter,
+        vm,
+        |interpreter, vm| handle_request(interpreter, vm, &mut data, dev_mode),
         &method,
         &path,
     );
@@ -4720,6 +4786,7 @@ fn dispatch_http_request(
             } else {
                 let id = crate::interpreter::builtins::streaming::register_sender(tx);
                 let _ = data.response_tx.send(resp);
+                let engine_mark = interpreter.engine_mark();
                 let streamed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     crate::interpreter::builtins::streaming::run_stream_block(
                         interpreter,
@@ -4727,6 +4794,7 @@ fn dispatch_http_request(
                         id,
                     );
                 }));
+                recover_engines(interpreter, vm.as_mut(), engine_mark, streamed.is_err());
                 if streamed.is_err() {
                     crate::metrics::Metrics::global()
                         .handler_panics_total
@@ -6277,9 +6345,15 @@ fn handle_request(
         );
     }
 
+    // A view a middleware renders (a halt page) reads `req` — its own and its
+    // helpers': bind this request now, before `call_handler` rebinds it
+    // post-middleware.
+    publish_request_to_views(&request_hash);
+
     // Scoped and global middleware, merged and sorted by `# order:`.
     let global_middleware = get_middleware();
     for (handler, name) in middleware::plan(&scoped_middleware, &global_middleware) {
+        let given = hash_ptr(&request_hash);
         match middleware::run(
             interpreter,
             vm.as_mut(),
@@ -6289,7 +6363,16 @@ fn handle_request(
             request_hash,
             dev_mode,
         ) {
-            middleware::Step::Continue(modified_request) => request_hash = modified_request,
+            middleware::Step::Continue(modified_request) => {
+                // A middleware that hands back another hash (rather than the
+                // one it was given, mutated) changed the request the next
+                // middleware's views must see.
+                let replaced = hash_ptr(&modified_request) != given;
+                request_hash = modified_request;
+                if replaced {
+                    publish_request_to_views(&request_hash);
+                }
+            }
             middleware::Step::Halt(response) => {
                 return finalize::finish(&finalizer, method, path, response)
             }
@@ -6311,6 +6394,42 @@ fn handle_request(
             false,
         ),
     )
+}
+
+/// The allocation behind a hash value, to tell a middleware that returned the
+/// request it was given from one that built another. (`publish_request_to_views`
+/// keeps the given hash alive, so its address cannot be reused meanwhile.)
+fn hash_ptr(value: &Value) -> Option<*const RefCell<HashPairs>> {
+    match value {
+        Value::Hash(hash) => Some(Rc::as_ptr(hash)),
+        _ => None,
+    }
+}
+
+/// Make `request_hash` the request views see, as `call_handler` does once
+/// middleware has run: the `req` a render injects into its data (and keys
+/// the response cache with), and the names on the view helpers' shared env.
+///
+/// Before middleware ran, neither was set: a view a middleware rendered had
+/// no `req` (so the response cache served one visitor's page to the next)
+/// and its helpers read the previous request's.
+fn publish_request_to_views(request_hash: &Value) {
+    crate::interpreter::builtins::template::set_current_request(request_hash.clone());
+    if !crate::interpreter::builtins::template::helper_env_loaded() {
+        return;
+    }
+    let empty_hash = || Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+    let params_value = get_hash_field(request_hash, "all").unwrap_or_else(empty_hash);
+    let cookies_value = get_hash_field(request_hash, "cookies").unwrap_or_else(empty_hash);
+    let session_value = get_hash_field(request_hash, "session").unwrap_or(Value::Null);
+    let headers_value = get_hash_field(request_hash, "headers").unwrap_or(Value::Null);
+    crate::interpreter::builtins::template::set_helper_request_context(
+        request_hash,
+        &params_value,
+        &session_value,
+        &cookies_value,
+        &headers_value,
+    );
 }
 
 /// May this request read `/_metrics`?
@@ -6465,6 +6584,72 @@ mod tests {
             vec![200, 200, 500, 200, 200],
             "only the panicking request may fail; the loop must keep serving"
         );
+    }
+
+    /// A panic in the middle of a request must not leave that request on the
+    /// worker's engines. It used to: the VM kept the dead request's frames,
+    /// so the next request's action returned *into* them and answered with the
+    /// dead request's page; the interpreter stayed in the dead request's
+    /// innermost scope, and its call stack grew by the frames the unwind
+    /// skipped popping.
+    #[test]
+    fn a_caught_panic_leaves_the_engines_clean_for_the_next_request() {
+        let source = r#"
+def alice_page()
+  owner = "SECRET-OF-alice"
+  "victim page for " + owner
+end
+def bob_page()
+  "page for bob"
+end
+"#;
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+        let mut worker_vm = crate::vm::Vm::new();
+        for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+            worker_vm.globals.insert(name, value);
+        }
+        let alice = interpreter.global_env().borrow().get("alice_page").unwrap();
+        let bob = interpreter.global_env().borrow().get("bob_page").unwrap();
+        let root = interpreter.global_env().clone();
+        let depth = interpreter.call_stack.len();
+        let mut vm = Some(worker_vm);
+
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let resp = run_request_caught(
+            &mut interpreter,
+            &mut vm,
+            |interpreter, vm| {
+                // Enter alice's action on the VM, open a scope and a frame on
+                // the interpreter, then die mid-request.
+                let vm = vm.as_mut().unwrap();
+                vm.push(alice);
+                vm.call_value(0, Span::default()).unwrap();
+                interpreter.push_frame("alice_page", Span::default(), None);
+                let scope = crate::interpreter::environment::Environment::with_enclosing(
+                    interpreter.environment.clone(),
+                );
+                interpreter.environment = Rc::new(RefCell::new(scope));
+                panic!("boom mid-request");
+            },
+            "GET",
+            "/alice",
+        );
+        std::panic::set_hook(previous);
+        assert_eq!(resp.status, 500);
+
+        assert!(
+            Rc::ptr_eq(interpreter.global_env(), &root),
+            "the interpreter must be back on its root scope"
+        );
+        assert_eq!(interpreter.call_stack.len(), depth);
+        let vm = vm.as_mut().unwrap();
+        assert!(vm.frames.is_empty() && vm.stack.is_empty() && vm.return_depth == 0);
+        let page = vm.call_value_direct(bob, &[], Span::default()).unwrap();
+        assert_eq!(page, Value::String("page for bob".into()));
     }
 
     /// `catch_unwind` is only a guard if panics actually unwind.

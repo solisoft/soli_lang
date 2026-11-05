@@ -46,6 +46,10 @@ pub struct Environment {
     /// Checked during get() before walking the enclosing chain.
     /// Avoids copying all data fields into the HashMap.
     data_hash: Option<Rc<RefCell<HashPairs>>>,
+    /// Shared by every render or helper call on a worker thread (the
+    /// template builtins, the view helpers' env): user code never writes it.
+    /// See [`Environment::freeze`].
+    frozen: bool,
 }
 
 impl Environment {
@@ -55,6 +59,7 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: None,
             data_hash: None,
+            frozen: false,
         }
     }
 
@@ -66,6 +71,7 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: None,
             data_hash: None,
+            frozen: false,
         }
     }
 
@@ -75,6 +81,7 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: Some(enclosing),
             data_hash: None,
+            frozen: false,
         }
     }
 
@@ -90,6 +97,7 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: Some(enclosing),
             data_hash: Some(data_hash),
+            frozen: false,
         }
     }
 
@@ -114,6 +122,22 @@ impl Environment {
         self.consts.clear();
         self.data_hash = data_hash;
         self.values.insert("locals".to_string(), locals);
+    }
+
+    /// Stop user assignments from writing this scope's bindings.
+    ///
+    /// For an env every render (or every helper call) on a worker thread
+    /// encloses. A bare `name = v` assigns up the scope chain, so a template
+    /// `<% type = ... %>` or a helper's `h = s.index_of("#")` overwrote the
+    /// builtin for every later render on the worker: the next visitor read
+    /// the previous one's value, and every later `h(x)` failed until restart.
+    /// Once frozen, `assign` and `append_string` report the name as not found
+    /// here (a const still reports `IsConst`), so the assignment defines a
+    /// local in the innermost scope instead. `define` / `define_or_update` —
+    /// the framework's own writes, such as the helpers' request context —
+    /// are unaffected.
+    pub fn freeze(&mut self) {
+        self.frozen = true;
     }
 
     /// Define a new variable in the current scope.
@@ -198,6 +222,9 @@ impl Environment {
         if !self.consts.is_empty() && self.consts.contains_key(name) {
             return AppendString::IsConst;
         }
+        if self.frozen {
+            return AppendString::NotFound;
+        }
         if let Some(slot) = self.values.get_mut(name) {
             if let Value::String(text) = slot {
                 text.push_str(extra);
@@ -224,6 +251,9 @@ impl Environment {
     pub fn assign(&mut self, name: &str, value: Value) -> AssignResult {
         if !self.consts.is_empty() && self.consts.contains_key(name) {
             return AssignResult::IsConst;
+        }
+        if self.frozen {
+            return AssignResult::NotFound;
         }
         if let Some(slot) = self.values.get_mut(name) {
             *slot = value;
