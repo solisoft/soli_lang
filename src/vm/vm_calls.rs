@@ -3866,6 +3866,66 @@ end
         );
     }
 
+    /// The same through the branch's reuse paths: the closures escape from
+    /// a block the in-VM callback loop reruns in place (its argument slot
+    /// overwritten per element), the request fails mid-loop, and the next
+    /// request makes capturing blocks of its own, which take cells from
+    /// `upvalue_pool` and closures from `closure_spares`. Neither `reset`
+    /// nor `recover_after_panic` may leave a cell open on a slot, pool a cell
+    /// a stored closure still holds, or keep the dead loop.
+    #[test]
+    fn a_failed_block_loop_leaves_no_cell_open_or_pooled_for_the_next_request() {
+        let (interpreter, mut vm) = vm_for(
+            r##"
+const STORE = []
+def leak()
+  secret = "alice-secret"
+  [1, 2, 3].each do |n|
+    STORE.push(fn() { "#{secret}-#{n}" })
+    throw "boom" if n == 2
+  end
+end
+def read()
+  bob_token = "bob-token-123"
+  shown = [10, 20].map { |k| "#{bob_token}:#{k}" }
+  "#{STORE[0]()} #{STORE[1]()} #{shown.join(",")}"
+end
+"##,
+        );
+        let leak = interpreter.global_env().borrow().get("leak").expect("leak");
+        let read = interpreter.global_env().borrow().get("read").expect("read");
+        let expected =
+            "alice-secret-1 alice-secret-2 bob-token-123:10,bob-token-123:20".to_string();
+
+        for recover in [false, true] {
+            if let Value::Array(store) = vm.globals.get("STORE").cloned().expect("STORE") {
+                store.borrow_mut().clear();
+            }
+            assert!(vm.call_value_direct(leak.clone(), &[], Span::default()).is_err());
+            if recover {
+                vm.recover_after_panic();
+                assert!(vm.spare_callback_loop.is_none());
+            } else {
+                vm.reset();
+            }
+            assert!(vm.open_upvalues.is_empty());
+            assert!(vm.iter_stack.is_empty());
+            assert!(vm.frames.is_empty() && vm.stack.is_empty());
+            for _ in 0..2 {
+                let seen = vm
+                    .call_value_direct(read.clone(), &[], Span::default())
+                    .expect("read runs");
+                vm.reset();
+                assert_eq!(seen, Value::String(expected.clone().into()));
+                assert!(
+                    vm.upvalue_pool.iter().all(|cell| Rc::strong_count(cell) == 1
+                        && matches!(*cell.borrow(), Upvalue::Open(_))),
+                    "a pooled cell is held by nothing else"
+                );
+            }
+        }
+    }
+
     /// A model callback must see the record as `this`.
     ///
     /// The previous `bind_callback_method` defined `this` in a bound
