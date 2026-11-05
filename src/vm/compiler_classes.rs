@@ -349,7 +349,7 @@ impl Compiler {
                     self.emit(Op::GetLocal(0), line); // this
                     self.compile_expr(init)?;
                     let name_idx = self.add_string_constant(&field.name);
-                    self.emit(Op::SetProperty(name_idx), line);
+                    self.emit(Op::InitProperty(name_idx), line);
                     self.emit(Op::Pop, line);
                 }
             }
