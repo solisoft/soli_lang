@@ -429,8 +429,8 @@ entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> 
 print("ff".to_i(16));      # 255
 print("1010".to_i(2));     # 10
 print("-ff".to_i(16));     # -255
-print("4.88".to_i());      # 4   (base 10 is lenient; other bases parse strictly)
-print("nope".to_i());      # 0
+print("4.88".to_i);        # 4   (base 10 is lenient; other bases parse strictly)
+print("nope".to_i);        # 0
 
 # Character-set variants
 print("aaabbb".squeeze());       # "ab"   (collapse every run)
@@ -4852,8 +4852,7 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
   `Post.delete_all()`, `Post.new()`: bare, a write skips its lifecycle
   callbacks and a static returns the function. Keep them on a **bare function** (`current_user()`, `session_destroy()`), so a
   call reads as one — and a lambda kept in a variable needs them: production
-  leaves a bare one uncalled. Keep them before an index too — `list.sort()[0]`: the type checker refuses
-  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+  leaves a bare one uncalled. `.any?`, `.all?` and `.none?` take a block
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.

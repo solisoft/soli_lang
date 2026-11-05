@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`"12".to_i + 1` type-checks.** `soli check` and `soli script.sl` refused
+  it ("cannot add (Any) -> Int and Int") though both engines answer 13: the
+  checker typed a bare read of a built-in method whose signature lists an
+  optional parameter as a function value, while the runtime calls it. A bare
+  member read on a String, Array or Hash is now typed as that call whenever
+  the runtime's method registry calls it bare (`to_i`/`to_int`, `split`,
+  `camelize`, `squeeze`, `empty?`; Array `sort`, `reverse`, `uniq`,
+  `compact`, `compact_blank`, `flatten`, `shuffle`, `all`, `rotate`, `count`,
+  and `each_with_index`, whose bare form is the `[item, index]` pairs). A call
+  with arguments (`"ff".to_i(16)`, `xs.sort { |a, b| … }`) is still checked
+  against the signature, so `list.sort[0]` no longer needs `()`.
+- The checker's signatures now match the runtime for `to_i` (the radix must
+  be an `Int`), String `empty?` (takes nothing), and String `insert`,
+  `delete`, `substring`, `match` and Array `get`, which take arguments and are
+  not called when read bare.
+
 ## [2.29.5] - 2026-11-05
 
 Publishes the 2.29.4 security patch. The v2.29.4 tag's release build stopped

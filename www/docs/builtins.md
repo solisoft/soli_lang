@@ -6552,12 +6552,12 @@ args = System.argv
 if args.length == 0
   print("usage: tool N")
 else
-  n = args[0].to_i()
+  n = args[0].to_i
   print("n = #{n}")
 end
 ```
 
-The values are always Strings; convert them yourself (`to_i()`, `to_f()`). Under `soli serve` and `soli test` it is `[]`. See [Script executables](deploy.md#script-executables).
+The values are always Strings; convert them yourself (`to_i`, `to_f`). Under `soli serve` and `soli test` it is `[]`. See [Script executables](deploy.md#script-executables).
 
 ---
 

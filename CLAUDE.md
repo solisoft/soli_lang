@@ -191,8 +191,7 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
   call reads as one: both engines call a zero-argument def, helper or builtin
   read bare (the VM passed the function itself until 2.29.4), but only the
   tree-walker calls a lambda kept in a variable — the VM leaves it a
-  function. Keep them before an index too — `list.sort()[0]`: the type checker refuses
-  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+  function. `.any?`, `.all?` and `.none?` take a block
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
