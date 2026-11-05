@@ -622,7 +622,7 @@ end
     assert_eq!(metric(&server, "soli_vm_engine_divergences_total"), 2);
     drop(server);
     let log = std::fs::read_to_string(root.join("stderr.log")).expect("server stderr");
-    for handler in ["FlakyController#before_action", "FlakyController#show"] {
+    for handler in ["FlakyController#before_action:5", "FlakyController#show"] {
         assert_eq!(
             log.matches(&format!("handler '{handler}' demoted to the interpreter"))
                 .count(),
