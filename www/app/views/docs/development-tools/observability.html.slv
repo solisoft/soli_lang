@@ -162,7 +162,7 @@ curl -s localhost:5011/_metrics</code></pre>
         <li>the re-run succeeded where the VM failed, an engine divergence, also counted in <code>soli_vm_engine_divergences_total</code>, which should stay at zero.</li>
     </ul>
     <p class="text-gray-400 mb-12">
-        An error both engines raise, such as a <code>throw</code>, a nil read from a missing parameter or a <code>JSON.parse</code> of a bad body, is the app&rsquo;s own. The request answers 500 and the handler stays on the VM, so a bad request cannot move it to the slower engine. A handler that fails after a database write is not re-run, since the write would happen twice. Its error is the answer, and it is demoted, since nothing can tell a VM gap from the app&rsquo;s error.
+        An error both engines raise, such as a <code>throw</code>, a nil read from a missing parameter or a <code>JSON.parse</code> of a bad body, is the app&rsquo;s own. The request answers 500 and the handler stays on the VM, so a bad request cannot move it to the slower engine. A handler that fails after a database write is not re-run, since the write would happen twice. Its error is the answer, and it is demoted, since nothing can tell a VM gap from the app&rsquo;s error. A handler that ran out of the request&rsquo;s time budget (<code>SOLI_HANDLER_TIMEOUT_SECS</code>) is neither re-run nor demoted: the timeout is the answer.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Structured logs</h2>
