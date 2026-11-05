@@ -403,8 +403,9 @@ impl Vm {
     /// pushes, when that hit completes with no error and no side effect.
     /// The receiver is an instance holding the field (a field shadows a
     /// method, so a present key decides the read), the value is no
-    /// `grouped {}` placeholder still to force, and the privacy check lets
-    /// the read through. `None` hands the op to the general arm, which
+    /// `grouped {}` placeholder still to force, the field is no model's
+    /// relation or translated field (`field_hit_is_raw`), and the privacy
+    /// check lets the read through. `None` hands the op to the general arm, which
     /// raises a refused read after checking it again.
     ///
     /// `slot_zero`: the receiver is the running frame's slot 0. In a method
@@ -415,9 +416,15 @@ impl Vm {
         let Value::Instance(inst) = receiver else {
             return None;
         };
-        let value = match inst.borrow().fields.get(name) {
-            None | Some(Value::Deferred(_)) => return None,
-            Some(value) => clone_scalar_fast(value),
+        let value = {
+            let instance = inst.borrow();
+            match instance.fields.get(name) {
+                None | Some(Value::Deferred(_)) => return None,
+                // A model's relation or translated field is resolved by the
+                // general arm (`model_instance_member`), not read raw.
+                Some(_) if !Self::field_hit_is_raw(&instance, name) => return None,
+                Some(value) => clone_scalar_fast(value),
+            }
         };
         if crate::interpreter::value::restricted_methods_declared()
             && !(slot_zero && self.slot_zero_is_this())
@@ -463,8 +470,9 @@ impl Vm {
     /// `receiver.name = value` for the fast tier's `SetProperty`: the general
     /// arm's instance-field write — an existing field overwritten in place, a
     /// new one inserted — when it completes with no error. The receiver is an
-    /// instance, the privacy check lets the write through and the instance
-    /// is no constructed value object. A hash's `h.key = v` always sets the
+    /// instance of a class with no checked writes (no model, no `const`
+    /// field: `has_checked_writes`), the privacy check lets the write
+    /// through and the instance is no constructed value object. A hash's `h.key = v` always sets the
     /// key (no method precedence, no privacy, nothing frozen), so it is done
     /// here too, keyed by the pool's own `SoliStr`. `false` touches nothing
     /// and hands the op to the general arm, which raises the refusal.
@@ -483,6 +491,11 @@ impl Vm {
             }
             _ => return false,
         };
+        // A model (read-only metadata, translated fields) or a class with
+        // `const` fields: the general arm applies `set_instance_field`.
+        if Self::has_checked_writes(&inst.borrow().class) {
+            return false;
+        }
         if crate::interpreter::value::restricted_methods_declared()
             && self.check_private_value(receiver, name).is_err()
         {
