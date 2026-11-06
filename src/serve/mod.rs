@@ -119,6 +119,7 @@ pub mod tus;
 #[cfg(not(target_arch = "wasm32"))]
 mod upgrade;
 pub(crate) mod uploads_prelude;
+pub(crate) mod usage;
 pub mod vhost;
 pub mod view_log;
 pub mod websocket;
@@ -4750,6 +4751,9 @@ fn dispatch_http_request(
 
     let method = data.method.to_string();
     let path = data.path.clone();
+    // Usage for the overview: a clock read here, the route slot noted by the
+    // route match, a counter bump at the end. See `usage`.
+    let usage_started = usage::begin_request();
     let mut resp_data = run_request_caught(
         interpreter,
         vm,
@@ -4757,6 +4761,7 @@ fn dispatch_http_request(
         &method,
         &path,
     );
+    usage::finish_request(usage_started, &path, resp_data.status);
     slow_queries::end_unit();
 
     // `solidb_blob_response` parked a blob for the async side to relay. The

@@ -99,7 +99,36 @@ thread_local! {
     // Method-indexed route cache for O(1) method lookup + O(m) route search
     // where m = routes for that method, instead of O(n) for all routes
     static ROUTE_INDEX: RefCell<RouteIndex> = RefCell::new(RouteIndex::new());
+    // Bumped whenever this thread's route table or its index changes, so a
+    // cache keyed by route position (the usage recorder's) knows when the
+    // positions it saw mean something else.
+    static ROUTES_GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
+
+fn bump_routes_generation() {
+    ROUTES_GENERATION.with(|g| g.set(g.get().wrapping_add(1)));
+}
+
+/// Changes whenever this thread's route table does: a position returned by
+/// [`find_route`] names the same route for as long as this stays the same.
+pub fn routes_generation() -> u64 {
+    ROUTES_GENERATION.with(|g| g.get())
+}
+
+/// `GET /posts/:id`: the method and the pattern of the route at `index`, as
+/// [`find_route`] returned it.
+pub fn route_label(index: usize) -> Option<String> {
+    ROUTES.with(|routes| {
+        routes
+            .borrow()
+            .get(index)
+            .map(|route| format!("{} {}", route.method, route.path_pattern))
+    })
+}
+
+/// What [`find_route`] hands back: the handler name, the route's own
+/// middleware, the captured params, and the route's position in the table.
+pub type FoundRoute = (String, Vec<Value>, HashMap<String, String>, usize);
 
 /// Method-indexed route cache for faster lookups.
 /// Groups routes by HTTP method and provides fast exact-match lookup.
@@ -156,6 +185,7 @@ impl RouteIndex {
 
 /// Clear all registered routes (useful for testing or restarting).
 pub fn clear_routes() {
+    bump_routes_generation();
     ROUTES.with(|routes| routes.borrow_mut().clear());
     ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
 }
@@ -163,6 +193,7 @@ pub fn clear_routes() {
 /// Take all routes (consumes and returns them), leaving empty routes.
 /// Used for hot reload to save routes before reloading.
 pub fn take_routes() -> Vec<Route> {
+    bump_routes_generation();
     ROUTES.with(|routes| {
         let mut r = routes.borrow_mut();
         std::mem::take(&mut *r)
@@ -171,6 +202,7 @@ pub fn take_routes() -> Vec<Route> {
 
 /// Restore routes from a previous state (after failed reload).
 pub fn restore_routes(routes: Vec<Route>) {
+    bump_routes_generation();
     ROUTES.with(|r| *r.borrow_mut() = routes);
     ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
 }
@@ -228,6 +260,7 @@ pub fn get_routes() -> Vec<Route> {
 /// Rebuild the route index from current routes.
 /// Call this after modifying routes to enable fast lookups.
 pub fn rebuild_route_index() {
+    bump_routes_generation();
     ROUTES.with(|routes| {
         ROUTE_INDEX.with(|index| {
             index.borrow_mut().rebuild(&routes.borrow());
@@ -236,12 +269,10 @@ pub fn rebuild_route_index() {
 }
 
 /// Find a matching route by method and path using the index.
-/// Returns only the needed fields (handler_name, middleware, params) to avoid
-/// cloning the entire Route struct (which includes method and path_pattern we don't need).
-pub fn find_route(
-    method: &str,
-    path: &str,
-) -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+/// Returns only the needed fields (handler_name, middleware, params, and the
+/// route's position) to avoid cloning the entire Route struct (which includes
+/// method and path_pattern we don't need).
+pub fn find_route(method: &str, path: &str) -> Option<FoundRoute> {
     ROUTES.with(|routes| {
         ROUTE_INDEX.with(|index| {
             let routes = routes.borrow();
@@ -260,7 +291,7 @@ pub fn find_route(
                               exact_map: Option<&std::collections::HashMap<String, usize>>,
                               pattern_indices: Option<&Vec<usize>>,
                               path: &str|
-             -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+             -> Option<FoundRoute> {
                 if let Some(result) = try_find_route(routes, exact_map, pattern_indices, path) {
                     return Some(result);
                 }
@@ -311,13 +342,13 @@ fn try_find_route(
     exact_map: Option<&std::collections::HashMap<String, usize>>,
     pattern_indices: Option<&Vec<usize>>,
     path: &str,
-) -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+) -> Option<FoundRoute> {
     // Fast path: nested HashMap lookup for exact matches
     if let Some(path_map) = exact_map {
         if let Some(&idx) = path_map.get(path) {
             if let Some(route) = routes.get(idx) {
                 let middleware = resolve_middleware(route);
-                return Some((route.handler_name.clone(), middleware, HashMap::new()));
+                return Some((route.handler_name.clone(), middleware, HashMap::new(), idx));
             }
         }
     }
@@ -328,7 +359,7 @@ fn try_find_route(
             if let Some(route) = routes.get(idx) {
                 if let Some(params) = match_path(&route.path_pattern, path) {
                     let middleware = resolve_middleware(route);
-                    return Some((route.handler_name.clone(), middleware, params));
+                    return Some((route.handler_name.clone(), middleware, params, idx));
                 }
             }
         }
@@ -467,6 +498,7 @@ fn register_route(
     middleware: Vec<Value>,
     middleware_names: Vec<String>,
 ) {
+    bump_routes_generation();
     ROUTES.with(|routes| {
         routes.borrow_mut().push(Route {
             method: method.to_string(),
