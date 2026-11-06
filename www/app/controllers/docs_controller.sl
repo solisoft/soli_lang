@@ -733,6 +733,11 @@ def builtins_soap
   render_docs("docs/builtins/soap", "SOAP Class", "builtins", "soap")
 end
 
+# GET /docs/builtins/xml
+def builtins_xml
+  render_docs("docs/builtins/xml", "XML", "builtins", "xml")
+end
+
 def builtins_pop3
   render_docs("docs/builtins/pop3", "POP3 Email Class", "builtins", "pop3")
 end

@@ -863,7 +863,7 @@ Xml.c14n_exclusive(xml)
 
 # Canonicalize the SAML-referenced element with its signature stripped:
 Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": true})</code></pre>
-                <p class="text-sm text-gray-500 mt-3">Comments are omitted (the no-comments form).</p>
+                <p class="text-sm text-gray-500 mt-3">Comments are omitted (the no-comments form). The input is read with the same parser as <a href="/docs/builtins/xml" class="text-cyan-400 hover:text-cyan-300 underline">Xml.parse</a>; to query or change a document rather than canonicalise it, use that.</p>
             </div>
         </section>
 

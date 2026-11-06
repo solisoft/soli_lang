@@ -38,6 +38,10 @@
                 <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-xs font-bold">SO</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">SOAP</span>
             </a>
+            <a href="/docs/builtins/xml" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-xs font-bold">XML</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">XML</span>
+            </a>
             <a href="/docs/builtins/json" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold">J</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">JSON</span>
@@ -187,6 +191,12 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
                     <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">SOAP Class</h3>
                 </a>
                 <p class="text-gray-400 mt-2">SOAP web service calls, XML envelope wrapping, parsing, and XML escaping.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="/docs/builtins/xml" class="group">
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">XML</h3>
+                </a>
+                <p class="text-gray-400 mt-2">Parse, query (find and an XPath subset), build, change and stream XML documents, with namespaces.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/json" class="group">

@@ -2413,8 +2413,17 @@ Xml.c14n_exclusive(xml)
 Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": true})
 ```
 
-> **Note:** comments are omitted (the no-comments form). See the source for full
-> notes on attribute-value whitespace handling.
+> **Note:** comments are omitted (the no-comments form). Line endings are
+> normalised before parsing (CRLF and a lone CR become LF).
+>
+> These three functions read their input with the same parser as
+> [`Xml.parse`](xml.md) and give byte-for-byte the output they gave before. Newly
+> refused: binding the reserved `xml`/`xmlns` prefixes or their namespace URIs,
+> more than 4096 namespace declarations on one element or in scope, names over
+> 4096 bytes, more than 1024 attributes on one element. Relaxed: a trailing root
+> element they ignore is no longer checked, so `<a/><b x="&foo;"/>` canonicalises
+> to `<a></a>` instead of raising. For a parsed tree you can query and change,
+> use [`Xml.parse`](xml.md).
 
 #### Xml.get_element_by_id(xml, id)
 
@@ -3301,11 +3310,34 @@ html = Markdown.to_html("# #{title}\n\nSome content here.")
 
 ---
 
+## XML
+
+`Xml.parse`, `Xml.parse_file`, `Xml.document` / `Xml.element` / `Xml.build`,
+`Xml.each` / `Xml.reader` and the `XmlNode` / `XmlDocument` / `XmlReader`
+classes parse, query, build, change and stream XML. The full reference is
+[XML](xml.md) (on the site: `/docs/builtins/xml`).
+
+```soli
+doc = Xml.parse("<rss><channel><item id=\"1\"><title>First</title></item></channel></rss>")
+doc.find("channel/item/title").text      # => "First"
+doc.find_all("//item/@id")               # => ["1"]
+feed = Xml.build("rss", version: "2.0") do |rss|
+  rss.add("channel") do |channel|
+    channel.add("title", "News & views")
+  end
+end
+feed.to_xml   # => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\"><channel><title>News &amp; views</title></channel></rss>"
+```
+
+---
+
 ## SOAP Class
 
 The `SOAP` class provides methods for making SOAP (Simple Object Access Protocol) calls and working with XML data.
 
-> **Security — XML hardening.** The XML parser used by `SOAP.call` and `SOAP.parse` rejects DOCTYPE declarations outright (XXE / billion-laughs vector), caps element-nesting depth at 64, and caps accumulated text per element at 1 MiB. Legitimate SOAP responses are well below these limits; payloads that hit any cap return a parser error rather than risk runaway memory.
+> **Security — XML hardening.** `SOAP.call` and `SOAP.parse` read XML with the same parser as [`Xml.parse`](xml.md). It rejects DOCTYPE declarations outright (XXE / billion-laughs vector), caps element-nesting depth at 64, caps the text directly inside one element at 1 MiB (text before the root included), caps names at 4096 bytes and namespace declarations at 4096 on one element and 4096 in scope, and refuses binding the reserved `xml` and `xmlns` prefixes (or binding a prefix to their namespace URIs). Legitimate SOAP responses are well below these limits; payloads that hit any cap return a parser error rather than risk runaway memory.
+>
+> For anything beyond a Hash of the reply — attributes, XPath, namespaces — parse the body with `Xml.parse(result["body"])`: see [XML](xml.md).
 
 ### SOAP.call(url, action, envelope, headers?)
 
@@ -3372,6 +3404,19 @@ Parses an XML string into a nested Hash structure for easy access.
 - an empty element is `nil`;
 - a repeated element becomes an Array, in document order;
 - attributes are dropped, and namespace prefixes stay in the keys (`"soap:Body"`).
+
+How text is read:
+
+- entities are decoded and the whitespace around them is kept: `<a>Tom &amp; Jerry</a>` gives `"Tom & Jerry"`; an unknown entity (`&nbsp;`) is dropped;
+- CDATA is text: `<a><![CDATA[<b>raw</b>]]></a>` gives `"<b>raw</b>"`;
+- CRLF and a lone CR become LF;
+- text on both sides of a child element is joined, then trimmed, into `"_text"`: `<r>one <b>1</b> two</r>` gives `{"r": {"_text": "one  two", "b": "1"}}`. Text around a self-closing child, a comment or a processing instruction is trimmed piece by piece: `<r>a <c/> b</r>` gives `{"r": {"c": nil, "_text": "ab"}}`;
+- a self-closing element is `nil`, also as the root (`<a/>` gives `{"a": nil}`) and inside a repeat (`<r><x>1</x><x/></r>` gives `{"r": {"x": ["1", nil]}}`);
+- text before the root, and anything after the first root element, is ignored; empty input or plain text gives `nil`.
+
+Errors raise `XML parsing error: …`. Truncated input is an error: `SOAP.parse("<r><a>1</a>")` raises `XML parsing error: <r> is not closed at the end of the input`, and `SOAP.call` gives `parsed: nil` for a truncated reply.
+
+> **Changed in this release.** `SOAP.parse` and `SOAP.call` moved to the parser behind `Xml.parse`. Six bugs are fixed — whitespace around entities was lost (`"Tom&Jerry"`), CDATA was dropped, a self-closing repeat was lost from its Array, a self-closing root gave `nil`, only the last piece of text beside child elements was kept, and truncated XML returned a partial Hash — and CRLF is now normalised. Newly refused: binding the reserved `xml`/`xmlns` prefixes or their namespace URIs, more than 4096 namespace declarations on one element or in scope, and names over 4096 bytes. Everything else returns what it returned before; some error messages for input that was already refused are worded differently.
 
 **Example:**
 ```soli
@@ -6353,7 +6398,9 @@ Parses a SOAP XML response into a Hash.
 - `xml_string` (String) - The SOAP response XML
 
 **Returns:** Hash - keyed by the root element, prefixes included; see
-`SOAP.parse(xml)` under "SOAP Class" above for the full shape.
+`SOAP.parse(xml)` under "SOAP Class" above for the full shape, and what changed
+when it moved to the `Xml.parse` parser. For attributes or XPath, use
+[`Xml.parse`](xml.md) instead.
 
 **Example:**
 ```soli

@@ -70,6 +70,7 @@
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; the canonical UTF-8 serialization (the no-comments form).</div>
+                <p class="text-sm text-gray-500 mt-3">Line endings are normalised before parsing (CRLF and a lone CR become LF). The three <code>Xml</code> canonicalisation functions read their input with the same parser as <a href="/docs/builtins/xml" class="text-cyan-400 hover:text-cyan-300 underline">Xml.parse</a> and give byte-for-byte the output they gave before. Newly refused: binding the reserved <code>xml</code>/<code>xmlns</code> prefixes or their namespace URIs, more than 4096 namespace declarations on one element or in scope, names over 4096 bytes, more than 1024 attributes on one element. Relaxed: a trailing root element they ignore is no longer checked, so <code>&lt;a/&gt;&lt;b x="&amp;foo;"/&gt;</code> canonicalises to <code>&lt;a&gt;&lt;/a&gt;</code> instead of raising. To query or change a document, use <a href="/docs/builtins/xml" class="text-cyan-400 hover:text-cyan-300 underline">Xml.parse</a>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">Xml.c14n_exclusive("&lt;?xml version=\"1.0\"?&gt;&lt;doc b='2' a='1'/&gt;")
 # =&gt; "&lt;doc a=\"1\" b=\"2\"&gt;&lt;/doc&gt;"
 

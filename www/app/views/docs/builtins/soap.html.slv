@@ -21,7 +21,10 @@
         <div class="rounded-xl bg-rose-500/10 border border-rose-500/20 p-5">
             <h2 class="text-xl font-bold text-rose-200 mb-2">XML hardening</h2>
             <p class="text-gray-300 text-sm">
-                The XML parser used by <code class="text-amber-400">SOAP.call</code> and <code class="text-amber-400">SOAP.parse</code> rejects <code class="text-amber-400">DOCTYPE</code> declarations outright (XXE / billion-laughs vector), caps element-nesting depth at 64, and caps accumulated text per element at 1&nbsp;MiB. Legitimate SOAP responses are well below these limits; payloads that hit any cap return a parser error rather than risk runaway memory.
+                <code class="text-amber-400">SOAP.call</code> and <code class="text-amber-400">SOAP.parse</code> read XML with the same parser as <a href="/docs/builtins/xml" class="text-cyan-400 hover:text-cyan-300 underline">Xml.parse</a>. It rejects <code class="text-amber-400">DOCTYPE</code> declarations outright (XXE / billion-laughs vector), caps element-nesting depth at 64, caps the text directly inside one element at 1&nbsp;MiB (text before the root included), caps names at 4096 bytes and namespace declarations at 4096 on one element and 4096 in scope, and refuses binding the reserved <code class="text-amber-400">xml</code> and <code class="text-amber-400">xmlns</code> prefixes (or binding a prefix to their namespace URIs). Legitimate SOAP responses are well below these limits; payloads that hit any cap return a parser error rather than risk runaway memory.
+            </p>
+            <p class="text-gray-300 text-sm mt-2">
+                For anything beyond a Hash of the reply &mdash; attributes, XPath, namespaces &mdash; parse the body with <code class="text-amber-400">Xml.parse(result["body"])</code>: see <a href="/docs/builtins/xml" class="text-cyan-400 hover:text-cyan-300 underline">XML</a>.
             </p>
         </div>
     </section>
@@ -159,6 +162,19 @@ parsed = SOAP.parse(xml)
 
 SOAP.parse("&lt;a&gt;&lt;b&gt;t&lt;c&gt;u&lt;/c&gt;&lt;/b&gt;&lt;/a&gt;")
 # { "a" =&gt; { "b" =&gt; { "_text" =&gt; "t", "c" =&gt; "u" } } }</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">How text is read</h4>
+                <ul class="text-sm text-gray-400 space-y-1 list-disc pl-6">
+                    <li>Entities are decoded and the whitespace around them is kept: <code class="text-amber-400">&lt;a&gt;Tom &amp;amp; Jerry&lt;/a&gt;</code> gives <code class="text-amber-400">"Tom &amp; Jerry"</code>. An unknown entity (<code class="text-amber-400">&amp;nbsp;</code>) is dropped.</li>
+                    <li>CDATA is text: <code class="text-amber-400">&lt;a&gt;&lt;![CDATA[&lt;b&gt;raw&lt;/b&gt;]]&gt;&lt;/a&gt;</code> gives <code class="text-amber-400">"&lt;b&gt;raw&lt;/b&gt;"</code>.</li>
+                    <li>CRLF and a lone CR become LF.</li>
+                    <li>Text on both sides of a child element is joined, then trimmed, into <code class="text-amber-400">"_text"</code>: <code class="text-amber-400">&lt;r&gt;one &lt;b&gt;1&lt;/b&gt; two&lt;/r&gt;</code> gives <code class="text-amber-400">{"r": {"_text": "one  two", "b": "1"}}</code>. Text around a self-closing child, a comment or a processing instruction is trimmed piece by piece: <code class="text-amber-400">&lt;r&gt;a &lt;c/&gt; b&lt;/r&gt;</code> gives <code class="text-amber-400">{"r": {"c": nil, "_text": "ab"}}</code>.</li>
+                    <li>A self-closing element is <code class="text-amber-400">nil</code>, also as the root (<code class="text-amber-400">&lt;a/&gt;</code> gives <code class="text-amber-400">{"a": nil}</code>) and inside a repeat (<code class="text-amber-400">&lt;r&gt;&lt;x&gt;1&lt;/x&gt;&lt;x/&gt;&lt;/r&gt;</code> gives <code class="text-amber-400">{"r": {"x": ["1", nil]}}</code>).</li>
+                    <li>Text before the root, and anything after the first root element, is ignored. Empty input or plain text gives <code class="text-amber-400">nil</code>.</li>
+                    <li>Errors raise <code class="text-amber-400">XML parsing error: &hellip;</code>. Truncated input is an error: <code class="text-amber-400">SOAP.parse("&lt;r&gt;&lt;a&gt;1&lt;/a&gt;")</code> raises <code class="text-amber-400">XML parsing error: &lt;r&gt; is not closed at the end of the input</code>, and <code class="text-amber-400">SOAP.call</code> gives <code class="text-amber-400">parsed: nil</code> for a truncated reply.</li>
+                </ul>
+                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 mt-4 text-sm text-gray-300">
+                    <strong class="text-amber-200">Changed in this release.</strong> <code class="text-amber-400">SOAP.parse</code> and <code class="text-amber-400">SOAP.call</code> moved to the parser behind <code class="text-amber-400">Xml.parse</code>. Six bugs are fixed &mdash; whitespace around entities was lost (<code class="text-amber-400">"Tom&amp;Jerry"</code>), CDATA was dropped, a self-closing repeat was lost from its Array, a self-closing root gave <code class="text-amber-400">nil</code>, only the last piece of text beside child elements was kept, and truncated XML returned a partial Hash &mdash; and CRLF is now normalised. Newly refused: binding the reserved <code class="text-amber-400">xml</code>/<code class="text-amber-400">xmlns</code> prefixes or their namespace URIs, more than 4096 namespace declarations on one element or in scope, and names over 4096 bytes. Everything else returns what it returned before; some error messages for input that was already refused are worded differently.
+                </div>
             </div>
         </section>
     </section>

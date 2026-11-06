@@ -238,9 +238,13 @@ emit them.
 
 ```soli
 # Pull the embedded EN 16931 XML out of an invoice you received.
-let xml = pdf_extract_facturx("inbox/supplier-invoice.pdf")
+xml = pdf_extract_facturx("inbox/supplier-invoice.pdf")
 if xml.present?
-  let invoice = Xml.parse(xml)   # then read totals, VAT, line items…
+  invoice = Xml.parse(xml)
+  # the ram: prefix resolves through the declarations on the root element
+  seller = invoice.at_xpath("//ram:SellerTradeParty/ram:Name").text
+  total = invoice.at_xpath("//ram:GrandTotalAmount/text()")
+  print("#{seller}: #{total}")
 end
 
 # Or list every embedded file.

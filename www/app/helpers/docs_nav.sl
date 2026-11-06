@@ -173,6 +173,7 @@ def docs_nav_sections()
         { "path": "/docs/builtins/http", "label": "HTTP" },
         { "path": "/docs/builtins/s3", "label": "S3" },
         { "path": "/docs/builtins/soap", "label": "SOAP" },
+        { "path": "/docs/builtins/xml", "label": "XML" },
         { "path": "/docs/builtins/pop3", "label": "POP3 (Email)" },
         { "path": "/docs/builtins/imap", "label": "IMAP (Email)" },
         { "path": "/docs/builtins/mailer", "label": "Mailer" },

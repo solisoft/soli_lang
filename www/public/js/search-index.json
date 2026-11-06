@@ -1308,6 +1308,139 @@
       ]
     },
     {
+      "title": "XML",
+      "type": "page",
+      "category": "Built-in Functions",
+      "path": "/docs/builtins/xml",
+      "signature": "Xml · XmlNode · XmlDocument · XmlReader",
+      "description": "Parse, query (find and an XPath 1.0 subset), build, change, serialise and stream XML documents, with namespaces; DOCTYPE refused, every limit capped",
+      "keywords": [
+        "xml",
+        "parser",
+        "xpath",
+        "rss",
+        "atom",
+        "feed",
+        "namespace",
+        "sax",
+        "streaming",
+        "nokogiri",
+        "elementtree",
+        "dom",
+        "factur-x",
+        "ubl"
+      ]
+    },
+    {
+      "title": "Xml.parse",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#xml-parse-xml-options-nil",
+      "signature": "Xml.parse(xml, options = nil)",
+      "description": "Parse an XML string into an XmlDocument (strip_blank, max_depth, max_nodes, max_bytes)",
+      "keywords": [
+        "xml",
+        "parse",
+        "document",
+        "strip_blank"
+      ]
+    },
+    {
+      "title": "Xml.parse_file",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#xml-parse-file-path-options-nil",
+      "signature": "Xml.parse_file(path, options = nil)",
+      "description": "Read and parse an XML file, inside the application-root jail",
+      "keywords": [
+        "xml",
+        "parse",
+        "file"
+      ]
+    },
+    {
+      "title": "find / find_all",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#queries-find-and-xpath",
+      "signature": "node.find(expr, ns = nil) · node.find_all(expr, ns = nil)",
+      "description": "Lenient XML queries: from the root element, unprefixed names match in any namespace",
+      "keywords": [
+        "xml",
+        "find",
+        "find_all",
+        "query",
+        "elementtree"
+      ]
+    },
+    {
+      "title": "xpath / at_xpath",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#the-xpath-subset",
+      "signature": "node.xpath(expr, ns = nil) · node.at_xpath(expr, ns = nil)",
+      "description": "Strict XPath 1.0 queries over a documented subset: predicates, positions, contains, starts-with, unions",
+      "keywords": [
+        "xml",
+        "xpath",
+        "at_xpath",
+        "query",
+        "predicate",
+        "namespace"
+      ]
+    },
+    {
+      "title": "Xml.build / node.add",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#building",
+      "signature": "Xml.document(root, attrs) · Xml.element(name, content, attrs) · Xml.build(root) do |root| … end · node.add(name, content, attrs)",
+      "description": "Build XML with a validated, escaping builder; blocks for nesting",
+      "keywords": [
+        "xml",
+        "build",
+        "builder",
+        "generate",
+        "rss",
+        "sitemap",
+        "add",
+        "element"
+      ]
+    },
+    {
+      "title": "Xml.each / Xml.reader",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#streaming-large-files",
+      "signature": "Xml.each(path, match) do |node| … end · Xml.reader(path, match)",
+      "description": "Stream a large XML file one matching element at a time, in bounded memory",
+      "keywords": [
+        "xml",
+        "stream",
+        "streaming",
+        "reader",
+        "each",
+        "large file",
+        "sax",
+        "pull"
+      ]
+    },
+    {
+      "title": "node.to_h",
+      "type": "method",
+      "category": "XML",
+      "path": "/docs/builtins/xml#to-h",
+      "signature": "node.to_h",
+      "description": "A lossy Hash view of an element: attributes under @name, repeats as Arrays",
+      "keywords": [
+        "xml",
+        "to_h",
+        "hash",
+        "json",
+        "convert"
+      ]
+    },
+    {
       "title": "Crypto.sha256",
       "type": "method",
       "category": "Crypto",
