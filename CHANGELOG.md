@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.29.6] - 2026-11-06
+
 ### Fixed
 
 - **`"12".to_i + 1` type-checks.** `soli check` and `soli script.sl` refused
