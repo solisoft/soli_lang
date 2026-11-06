@@ -13,20 +13,34 @@
   p95 and 5xx rate, over `?range=1h|24h|7d`. Rows are tiered critical / warning /
   info, then scored 40·recency + 35·growth + 25·volume; each links to its page or
   offers that page's own action (Retry for a single dead job). Gate: opens for
-  anyone who may open any operator page and shows each source only to who may
-  open its page; usage and engine rows need `SOLI_OVERVIEW_*` or `SOLI_ADMIN_*`.
-  "Overview" is the first item of the operator bar. Opt-in auto-refresh
-  (`?refresh=30`).
+  anyone who may open any operator page (`/__soli/mobile` included) and shows
+  each source only to who may open its page; usage and engine rows need
+  `SOLI_OVERVIEW_*` or `SOLI_ADMIN_*`. "Overview" is the first item of the
+  operator bar. Opt-in auto-refresh (`?refresh=30`). Sent with
+  `Cache-Control: no-store` and `X-Frame-Options: SAMEORIGIN`; a tracker that is
+  switched off is not read.
+- **The queue's own read for the overview** (`jobs::store::attention`): the
+  unfinished jobs (oldest `run_at` first) and those dead in the last 24 h
+  (newest first) as two filtered, bounded queries, plus `COUNT`s of the due
+  backlog and the day's dead jobs, on SoliDB and SQL alike. Not the jobs page's
+  500-row window, which a week of retained `done` rows fills.
 - **Usage recorder** (`serve::usage`): per worker-thread shards of per-route,
   per-five-minute cells (status classes and a power-of-two latency histogram),
   folded into a per-app ring every five minutes and on read; 1 h and 24 h from
-  memory, hourly rollups written to `_soli_usage` once a minute and read back on
-  start for 7 d. At most 64 route slots per app (the rest fold into "other
-  routes"). Framework endpoints, probes and asset-looking misses are not
-  counted. `SOLI_USAGE=off` disables it; off under `APP_ENV=test`.
+  memory; when the app has a database configured, hourly rollups written to
+  `_soli_usage` once a minute and read back before the first write for 7 d (an
+  unreachable store is retried with backoff, holding the hours, and the
+  read-back is retried until it works). Without a database, memory only. At
+  most 64 route slots per app (the rest fold into "other routes"). Replies the
+  response cache answers are counted under their route. Framework endpoints,
+  probes and asset-looking misses are not counted. `SOLI_USAGE=off` disables
+  it; off under `APP_ENV=test`.
 - **Engine events** (`serve::engine_events`): VM refusals, engine divergences and
   handler panics are kept per handler/route (64 at most) for the overview, next to
   the existing `/_metrics` counters.
+- Writer counters (`tenant_writer::Stats`) remember when the last item was
+  dropped, failed or lost; the overview's recording row is a warning for an
+  hour after that, then info.
 - `find_route` also returns the matched route's position, and the route table
   carries a generation counter, so the recorder maps a route to its slot once per
   worker.
