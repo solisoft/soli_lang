@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.31.0] - 2026-11-06
+
 ### Added
 
 - **HTTP responses can be received as bytes: the `response` option.** Every
@@ -27,10 +29,6 @@
   result `Any` (it may be an Array). Same code path on the edge build.
 - **`mock_http_route(path, status, body)` takes an `Array<Int>` body**, sent as
   raw bytes, so a spec can serve 0x89, NUL, CR LF or 0xFF 0xFE.
-
-## [2.31.0] - 2026-11-06
-
-### Added
 
 - **`Xml.parse(src, doctype: "skip")` reads past a `<!DOCTYPE …>`** instead of
   refusing it (card #660). Qualys v2 puts
