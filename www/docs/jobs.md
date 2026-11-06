@@ -201,7 +201,17 @@ Set these env vars (typically in `.env`):
 | `SOLI_WEBHOOK_SECRET`     | Default HMAC key for **outgoing** `Webhook.*` deliveries                      | unset     |
 | `SOLI_JOB_VIEW_HELPERS`   | Set `0` to skip loading view helpers/i18n into job interpreters (saves memory) | enabled   |
 
-The engine starts with `soli serve` when the app has jobs — `app/jobs/` exists, or a mailer is configured (so `deliver_later` works). `SOLI_JOB_WORKERS=0` disables it in that process; enqueued rows wait for a process that does run workers — typically `soli jobs` (see [Standalone worker](#standalone-worker)).
+The engine starts with `soli serve` when the app has something to run: `app/jobs/` holds at least one job class (a `*_job.sl` file, subdirectories included — which is also where `static cron` lives), or a mailer is configured (`SOLI_SMTP_HOST`, so `deliver_later` works). An empty `app/jobs/` — what `soli new` scaffolds — does not start it. An app without job files that enqueues anyway (`Webhook.enqueue`, `Cron.schedule`) starts the engine on that first enqueue. `SOLI_JOB_WORKERS=0` disables it in that process; enqueued rows wait for a process that does run workers — typically `soli jobs` (see [Standalone worker](#standalone-worker)), which always starts its poller.
+
+### When the database is unreachable
+
+The poller does not print a line per tick when it cannot reach the database. It says so once:
+
+```text
+[jobs] database unreachable at localhost:6745: HTTP error: …; retrying with backoff (up to 300s between attempts)
+```
+
+then waits twice the poll interval after the first failed attempt, doubling after each one up to five minutes, and prints `[jobs] database reachable again at … after N failed attempt(s)` when the database answers. Errors the database does return (a refused query, say) still print, at most once a minute per kind, with a count of the ones not shown. The `Warning: JWT login failed (…)` line from the SoliDB login prints once per run of identical failures, again for a different error, and a note when a login succeeds again.
 
 There is **no** callback URL and **no** required secret any more. `SOLI_JOBS_CALLBACK_URL`, `SOLI_JOBS_SECRET`, and `SOLI_JOBS_DATABASE` are no longer read; `SOLI_WEBHOOK_SECRET` now only signs outgoing webhook deliveries.
 

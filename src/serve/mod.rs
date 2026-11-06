@@ -1575,15 +1575,18 @@ fn run_hyper_server_worker_pool(
 
     // Background job engine: a poller claims due rows from `_jobs` and hands
     // them to this worker pool, so job code never runs on a web worker and a
-    // slow handler can't delay requests. Started when the app actually has jobs
-    // — `app/jobs` exists (handlers to run) or a mailer is configured
-    // (`deliver_later` enqueues the built-in delivery job). `SOLI_JOB_WORKERS`
-    // sizes the pool (default 1); 0 disables the engine entirely, leaving
-    // enqueued rows for `soli jobs` (or another serve process) to pick up.
-    // Under `--dev` the poller ticks every `jobs::DEV_POLL_MS` instead of every
-    // second: `soli new` scaffolds `app/jobs/`, so every dev app starts an
-    // engine whether or not it uses one, and several open at once would
-    // otherwise hammer a shared dev database with idle claim round-trips.
+    // slow handler can't delay requests. Started at boot when the app has
+    // something to run — a job class under `app/jobs` (where `static cron`
+    // lives too) or a configured mailer (`deliver_later` enqueues the built-in
+    // delivery job); see `jobs::engine::wanted_at_boot`. `soli new` scaffolds
+    // an empty `app/jobs/`, and starting on the directory alone gave every app
+    // — one with no database included — a poller failing every tick. Any other
+    // app gets the same start deferred to its first enqueue (`Webhook.enqueue`,
+    // `Cron.schedule`). `SOLI_JOB_WORKERS` sizes the pool (default 1); 0
+    // disables the engine entirely, leaving enqueued rows for `soli jobs` (or
+    // another serve process) to pick up. Under `--dev` the poller ticks every
+    // `jobs::DEV_POLL_MS` instead of every second, so several dev servers do
+    // not hammer a shared dev database with idle claim round-trips.
     {
         let mailer_configured = crate::platform::env::var("SOLI_SMTP_HOST")
             .ok()
@@ -1593,8 +1596,8 @@ fn run_hyper_server_worker_pool(
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(server_constants::DEFAULT_JOB_WORKERS);
-        if (jobs_dir.exists() || mailer_configured) && num_job_workers > 0 {
-            background_jobs::start_pool(background_jobs::PoolConfig {
+        if num_job_workers > 0 {
+            let pool = background_jobs::PoolConfig {
                 models_dir: models_dir.clone(),
                 helpers_dir: helpers_dir.clone(),
                 views_dir: views_dir.clone(),
@@ -1603,8 +1606,30 @@ fn run_hyper_server_worker_pool(
                 runtime_handle: runtime_handle.clone(),
                 dev_mode,
                 num_workers: num_job_workers,
-            });
-            crate::jobs::engine::start(num_job_workers, runtime_handle.clone(), dev_mode);
+            };
+            let engine_handle = runtime_handle.clone();
+            let start_engine = move || {
+                background_jobs::start_pool(pool);
+                crate::jobs::engine::start(num_job_workers, engine_handle, dev_mode);
+            };
+            if crate::jobs::engine::wanted_at_boot(&jobs_dir, mailer_configured) {
+                start_engine();
+            } else {
+                // The first enqueue runs on a request worker: start from a
+                // thread bound to this application, as boot would have.
+                let tenant = crate::serve::tenant::current_id();
+                crate::jobs::engine::defer_start(Box::new(move || {
+                    let spawned = std::thread::Builder::new()
+                        .name("jobs-start".to_string())
+                        .spawn(move || {
+                            crate::serve::tenant::bind_current(tenant);
+                            start_engine();
+                        });
+                    if let Err(e) = spawned {
+                        eprintln!("[jobs] could not start the job engine: {e}");
+                    }
+                }));
+            }
         }
     }
 

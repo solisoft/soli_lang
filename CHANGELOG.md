@@ -389,6 +389,21 @@
 
 ### Fixed
 
+- **An app without a database no longer fills the log with job-engine
+  errors.** `soli new` scaffolds an empty `app/jobs/`, and `soli serve` started
+  the job engine on the directory alone, so every app ran a poller that printed
+  `[cron] tick failed`, `[jobs] poll failed` and `Warning: JWT login failed` on
+  every tick when no database answered. The engine now starts at boot only when
+  `app/jobs/` holds a job class (`*_job.sl`, subdirectories included) or
+  `SOLI_SMTP_HOST` is set, and otherwise on the app's first enqueue
+  (`Webhook.enqueue`, `Cron.schedule`, a `static cron` added under `--dev`).
+  An unreachable database is reported once (`[jobs] database unreachable at
+  <host>: …; retrying with backoff`), the poller doubles its wait after each
+  failed attempt up to 5 minutes, and says once when the database is back;
+  other cron and claim errors print at most once a minute per kind, with a count
+  of the ones not shown. The JWT login warning prints once per failure streak,
+  again for a different error, and a note on recovery. `soli jobs` is unchanged
+  (it always starts its poller).
 - `Xml.parse_file` refuses a FIFO or a device before opening it, as `Xml.each`
   and `Xml.reader` do, instead of blocking until a writer comes.
 - VM: a safe-navigation call with named arguments or a block
