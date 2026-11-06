@@ -3973,3 +3973,24 @@ Xml.escape("<&>")
 Xml.well_formed?("<a>")
 Xml.parse("<a><b></a>")
 json_stringify(Xml.element("a"))
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").find("i")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").find("r")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").find_all("//i/@id")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").xpath("r/i[2]")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").at_xpath("//i[t='x']/t/text()")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").at_xpath("i")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").xpath("//i[last()] | //t")
+Xml.parse("<r><i id=\"1\"><t>x</t></i><i id=\"2\"/></r>").root.find_all("i[not(t)]")
+Xml.parse("<r xmlns=\"urn:a\"><i/></r>").find_all("i").length
+Xml.parse("<r xmlns=\"urn:a\"><i/></r>").xpath("//i")
+Xml.parse("<r xmlns=\"urn:a\"><i/></r>").xpath("//xmlns:i").length
+Xml.parse("<r xmlns=\"urn:a\"><i/></r>").xpath("//p:i", {"p": "urn:a"}).length
+Xml.parse("<r xmlns=\"urn:a\"><i/></r>").xpath("//p:i", p: "urn:a").length
+Xml.parse("<r xmlns=\"urn:a\"><i/></r>").xpath("//i", {"": "urn:a"}).length
+Xml.parse("<a/>").xpath("sum(//a)")
+Xml.parse("<a/>").xpath("//q:a")
+Xml.parse("<a/>").find("'abc")
+Xml.parse("<a/>").find(42)
+Xml.parse("<a/>").find
+Xml.parse("<a/>").xpath("a", {}, {})
+Xml.element("a").at_xpath("/a")
