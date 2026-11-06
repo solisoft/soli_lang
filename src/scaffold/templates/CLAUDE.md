@@ -103,6 +103,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | Raw queries (SDBQL) | `@sdbql{}` | `docs/solidb-reference.md` |
 | AI: embeddings, LLM calls | `embed`, `embed_batch`, `llm_generate` | `docs/builtins.md` → AI Functions |
 | HTTP client, SOAP, JSON, Markdown, TOML/YAML | `HTTP.*`, `SOAP`, `JSON`, `Markdown`, `Toml`, `Yaml` | `docs/builtins.md` |
+| XML: parse, query (`find`, an XPath subset), build, stream large files | `Xml.parse`, `node.find` / `xpath`, `Xml.build`, `Xml.each` / `Xml.reader` | `docs/xml.md` |
 | Legacy text encodings, Base64 | `Encoding`, `Base64` | `docs/encoding.md`, `docs/base64.md` |
 | Metrics, structured logs, traces | opt-in via env | `docs/observability.md` |
 | Error tracking (Sentry-like, self-hosted) | on by default: failed requests grouped at `/__soli/errors` | `docs/observability.md` → Error tracking |
