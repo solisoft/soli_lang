@@ -28,10 +28,14 @@ end
 describe("SOAP.parse compatibility") do
   describe("entities and character references") do
     test("entity between words") do
-      assert_eq(soap_json("<a>x &amp; y</a>"), "{\"a\":\"x&y\"}")
+      # fix: whitespace around entities is kept (bug 1)
+      # was: {"a":"x&y"}
+      assert_eq(soap_json("<a>x &amp; y</a>"), "{\"a\":\"x & y\"}")
     end
     test("entity in child") do
-      assert_eq(soap_json("<a><b>Tom &amp; Jerry</b></a>"), "{\"a\":{\"b\":\"Tom&Jerry\"}}")
+      # fix: whitespace around entities is kept (bug 1)
+      # was: {"a":{"b":"Tom&Jerry"}}
+      assert_eq(soap_json("<a><b>Tom &amp; Jerry</b></a>"), "{\"a\":{\"b\":\"Tom & Jerry\"}}")
     end
     test("entities only") do
       assert_eq(soap_json("<a>&lt;tag&gt;</a>"), "{\"a\":\"<tag>\"}")
@@ -40,16 +44,22 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<a>&quot;&apos;</a>"), "{\"a\":\"\\\"'\"}")
     end
     test("decimal charref mid-word") do
-      assert_eq(soap_json("<a>caf&#233; ok</a>"), "{\"a\":\"caf\u{e9}ok\"}")
+      # fix: whitespace around entities is kept (bug 1)
+      # was: {"a":"caféok"}
+      assert_eq(soap_json("<a>caf&#233; ok</a>"), "{\"a\":\"caf\u{e9} ok\"}")
     end
     test("hex and decimal charrefs") do
       assert_eq(soap_json("<a>&#x41;&#66;</a>"), "{\"a\":\"AB\"}")
     end
     test("entity at start and end") do
-      assert_eq(soap_json("<a>&amp; x &amp;</a>"), "{\"a\":\"&x&\"}")
+      # fix: whitespace around entities is kept (bug 1)
+      # was: {"a":"&x&"}
+      assert_eq(soap_json("<a>&amp; x &amp;</a>"), "{\"a\":\"& x &\"}")
     end
     test("unknown entity between words") do
-      assert_eq(soap_json("<a>x &foo; y</a>"), "{\"a\":\"xy\"}")
+      # fix: whitespace around entities is kept (bug 1); the unknown entity is still dropped
+      # was: {"a":"xy"}
+      assert_eq(soap_json("<a>x &foo; y</a>"), "{\"a\":\"x  y\"}")
     end
     test("unknown entity alone") do
       assert_eq(soap_json("<a>&foo;</a>"), "{\"a\":null}")
@@ -109,49 +119,69 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("&#0;<a>x</a>"), "{\"a\":\"x\"}")
     end
     test("entity in nested text") do
-      assert_eq(soap_json("<r><a>1 &lt; 2</a><b>3 &gt; 2</b></r>"), "{\"r\":{\"a\":\"1<2\",\"b\":\"3>2\"}}")
+      # fix: whitespace around entities is kept (bug 1)
+      # was: {"r":{"a":"1<2","b":"3>2"}}
+      assert_eq(soap_json("<r><a>1 &lt; 2</a><b>3 &gt; 2</b></r>"), "{\"r\":{\"a\":\"1 < 2\",\"b\":\"3 > 2\"}}")
     end
   end
 
   describe("CDATA") do
     test("cdata only") do
-      assert_eq(soap_json("<a><![CDATA[ <b>raw</b> ]]></a>"), "{\"a\":null}")
+      # fix: CDATA is kept (bug 2)
+      # was: {"a":null}
+      assert_eq(soap_json("<a><![CDATA[ <b>raw</b> ]]></a>"), "{\"a\":\"<b>raw</b>\"}")
     end
     test("cdata between text") do
-      assert_eq(soap_json("<a>x<![CDATA[y]]>z</a>"), "{\"a\":\"xz\"}")
+      # fix: CDATA is kept (bug 2)
+      # was: {"a":"xz"}
+      assert_eq(soap_json("<a>x<![CDATA[y]]>z</a>"), "{\"a\":\"xyz\"}")
     end
     test("cdata spaced") do
-      assert_eq(soap_json("<a>x <![CDATA[ y ]]> z</a>"), "{\"a\":\"xz\"}")
+      # fix: CDATA is kept (bug 2)
+      # was: {"a":"xz"}
+      assert_eq(soap_json("<a>x <![CDATA[ y ]]> z</a>"), "{\"a\":\"x  y  z\"}")
     end
     test("empty cdata") do
       assert_eq(soap_json("<a><![CDATA[]]></a>"), "{\"a\":null}")
     end
     test("cdata before child") do
-      assert_eq(soap_json("<r><![CDATA[x]]><c>1</c></r>"), "{\"r\":{\"c\":\"1\"}}")
+      # fix: CDATA is kept (bug 2)
+      # was: {"r":{"c":"1"}}
+      assert_eq(soap_json("<r><![CDATA[x]]><c>1</c></r>"), "{\"r\":{\"_text\":\"x\",\"c\":\"1\"}}")
     end
     test("cdata before root") do
       assert_eq(soap_json("<![CDATA[x]]><a>y</a>"), "{\"a\":\"y\"}")
     end
     test("cdata with entity text") do
-      assert_eq(soap_json("<a><![CDATA[&amp;]]></a>"), "{\"a\":null}")
+      # fix: CDATA is kept (bug 2), literally
+      # was: {"a":null}
+      assert_eq(soap_json("<a><![CDATA[&amp;]]></a>"), "{\"a\":\"&amp;\"}")
     end
   end
 
   describe("self-closing elements") do
     test("self-closing root") do
-      assert_eq(soap_json("<a/>"), "null")
+      # fix: a self-closing root gives {name => nil} (bug 4)
+      # was: null
+      assert_eq(soap_json("<a/>"), "{\"a\":null}")
     end
     test("empty root pair") do
       assert_eq(soap_json("<a></a>"), "{\"a\":null}")
     end
     test("self-closing root with attr") do
-      assert_eq(soap_json("<a x=\"1\"/>"), "null")
+      # fix: a self-closing root gives {name => nil} (bug 4)
+      # was: null
+      assert_eq(soap_json("<a x=\"1\"/>"), "{\"a\":null}")
     end
     test("self-closing root then root") do
-      assert_eq(soap_json("<a/><b>2</b>"), "{\"b\":\"2\"}")
+      # fix: a self-closing root is the root (bug 4); nothing after it is read
+      # was: {"b":"2"}
+      assert_eq(soap_json("<a/><b>2</b>"), "{\"a\":null}")
     end
     test("self-closing root after junk") do
-      assert_eq(soap_json("junk<a/>"), "null")
+      # fix: a self-closing root is the root (bug 4); text before it starts its text, as for any root
+      # was: null
+      assert_eq(soap_json("junk<a/>"), "{\"a\":\"junk\"}")
     end
     test("self-closing child") do
       assert_eq(soap_json("<r><x/></r>"), "{\"r\":{\"x\":null}}")
@@ -163,16 +193,24 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<r><x/><x>1</x></r>"), "{\"r\":{\"x\":[null,\"1\"]}}")
     end
     test("text then self-closing repeat") do
-      assert_eq(soap_json("<r><x>1</x><x/></r>"), "{\"r\":{\"x\":null}}")
+      # fix: a self-closing repeat is appended (bug 3)
+      # was: {"r":{"x":null}}
+      assert_eq(soap_json("<r><x>1</x><x/></r>"), "{\"r\":{\"x\":[\"1\",null]}}")
     end
     test("two self-closing repeats") do
-      assert_eq(soap_json("<r><x/><x/></r>"), "{\"r\":{\"x\":null}}")
+      # fix: a self-closing repeat is appended (bug 3)
+      # was: {"r":{"x":null}}
+      assert_eq(soap_json("<r><x/><x/></r>"), "{\"r\":{\"x\":[null,null]}}")
     end
     test("list then self-closing") do
-      assert_eq(soap_json("<r><x>1</x><x>2</x><x/></r>"), "{\"r\":{\"x\":null}}")
+      # fix: a self-closing repeat is appended (bug 3)
+      # was: {"r":{"x":null}}
+      assert_eq(soap_json("<r><x>1</x><x>2</x><x/></r>"), "{\"r\":{\"x\":[\"1\",\"2\",null]}}")
     end
     test("self-closing in list middle") do
-      assert_eq(soap_json("<r><x>1</x><x/><x>2</x></r>"), "{\"r\":{\"x\":[null,\"2\"]}}")
+      # fix: a self-closing repeat is appended (bug 3)
+      # was: {"r":{"x":[null,"2"]}}
+      assert_eq(soap_json("<r><x>1</x><x/><x>2</x></r>"), "{\"r\":{\"x\":[\"1\",null,\"2\"]}}")
     end
     test("self-closing among others") do
       assert_eq(soap_json("<r><a>1</a><b/><c>3</c></r>"), "{\"r\":{\"a\":\"1\",\"b\":null,\"c\":\"3\"}}")
@@ -229,16 +267,24 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<a xmlns:xml=\"http://www.w3.org/XML/1998/namespace\">x</a>"), "{\"a\":\"x\"}")
     end
     test("xml prefix rebound") do
-      assert_eq(soap_json("<a xmlns:xml=\"other\">x</a>"), "{\"a\":\"x\"}")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: {"a":"x"}
+      assert_eq(soap_json("<a xmlns:xml=\"other\">x</a>"), "ERR XML parsing error: the namespace prefix 'xml' cannot be bound to '\"other\"'")
     end
     test("xmlns prefix declared") do
-      assert_eq(soap_json("<a xmlns:xmlns=\"u\">x</a>"), "{\"a\":\"x\"}")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: {"a":"x"}
+      assert_eq(soap_json("<a xmlns:xmlns=\"u\">x</a>"), "ERR XML parsing error: the namespace prefix 'xmlns' cannot be bound to '\"u\"'")
     end
     test("prefix bound to xml uri") do
-      assert_eq(soap_json("<a xmlns:p=\"http://www.w3.org/XML/1998/namespace\">x</a>"), "{\"a\":\"x\"}")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: {"a":"x"}
+      assert_eq(soap_json("<a xmlns:p=\"http://www.w3.org/XML/1998/namespace\">x</a>"), "ERR XML parsing error: the namespace prefix '\"p\"' cannot be bound to 'http://www.w3.org/XML/1998/namespace'")
     end
     test("prefix bound to xmlns uri") do
-      assert_eq(soap_json("<a xmlns:p=\"http://www.w3.org/2000/xmlns/\">x</a>"), "{\"a\":\"x\"}")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: {"a":"x"}
+      assert_eq(soap_json("<a xmlns:p=\"http://www.w3.org/2000/xmlns/\">x</a>"), "ERR XML parsing error: the namespace prefix '\"p\"' cannot be bound to 'http://www.w3.org/2000/xmlns/'")
     end
     test("element named with xmlns prefix") do
       assert_eq(soap_json("<xmlns:a>x</xmlns:a>"), "{\"xmlns:a\":\"x\"}")
@@ -247,22 +293,30 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<a " + (0..300).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + ">x</a>"), "{\"a\":\"x\"}")
     end
     test("4097 declarations on one element") do
-      assert_eq(soap_json("<a " + (0..4097).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + ">x</a>"), "{\"a\":\"x\"}")
+      # limit: at most 4096 namespace declarations live at once (MAX_NS_BINDINGS)
+      # was: {"a":"x"}
+      assert_eq(soap_json("<a " + (0..4097).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + ">x</a>"), "ERR XML parsing error: start tag declares more than 4096 namespace bindings; raise the limit with NamespaceResolver::set_max_declarations_per_element")
     end
   end
 
   describe("mixed content") do
     test("mixed head child tail") do
-      assert_eq(soap_json("<r>head<c>1</c>tail</r>"), "{\"r\":{\"_text\":\"tail\",\"c\":\"1\"}}")
+      # fix: mixed-content runs are joined, then trimmed (bug 5)
+      # was: {"r":{"_text":"tail","c":"1"}}
+      assert_eq(soap_json("<r>head<c>1</c>tail</r>"), "{\"r\":{\"_text\":\"headtail\",\"c\":\"1\"}}")
     end
     test("mixed head mid tail") do
-      assert_eq(soap_json("<r>head<c>1</c>mid<d>2</d>tail</r>"), "{\"r\":{\"_text\":\"tail\",\"c\":\"1\",\"d\":\"2\"}}")
+      # fix: mixed-content runs are joined, then trimmed (bug 5)
+      # was: {"r":{"_text":"tail","c":"1","d":"2"}}
+      assert_eq(soap_json("<r>head<c>1</c>mid<d>2</d>tail</r>"), "{\"r\":{\"_text\":\"headmidtail\",\"c\":\"1\",\"d\":\"2\"}}")
     end
     test("mixed around self-closing") do
       assert_eq(soap_json("<r>head<c/>tail</r>"), "{\"r\":{\"c\":null,\"_text\":\"headtail\"}}")
     end
     test("mixed spaced") do
-      assert_eq(soap_json("<r>head <c>1</c> tail</r>"), "{\"r\":{\"_text\":\"tail\",\"c\":\"1\"}}")
+      # fix: mixed-content runs are joined, then trimmed (bug 5)
+      # was: {"r":{"_text":"tail","c":"1"}}
+      assert_eq(soap_json("<r>head <c>1</c> tail</r>"), "{\"r\":{\"_text\":\"head  tail\",\"c\":\"1\"}}")
     end
     test("mixed tail only") do
       assert_eq(soap_json("<r><c>1</c>tail</r>"), "{\"r\":{\"c\":\"1\",\"_text\":\"tail\"}}")
@@ -271,7 +325,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<r>head<c>1</c></r>"), "{\"r\":{\"_text\":\"head\",\"c\":\"1\"}}")
     end
     test("mixed repeated text and children") do
-      assert_eq(soap_json("<r>a<c>1</c>a<c>2</c></r>"), "{\"r\":{\"_text\":\"a\",\"c\":[\"1\",\"2\"]}}")
+      # fix: mixed-content runs are joined, then trimmed (bug 5)
+      # was: {"r":{"_text":"a","c":["1","2"]}}
+      assert_eq(soap_json("<r>a<c>1</c>a<c>2</c></r>"), "{\"r\":{\"_text\":\"aa\",\"c\":[\"1\",\"2\"]}}")
     end
     test("text before self-closing then child") do
       assert_eq(soap_json("<r>x<b/><c>2</c></r>"), "{\"r\":{\"b\":null,\"_text\":\"x\",\"c\":\"2\"}}")
@@ -298,7 +354,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<a>x <!-- c --> y</a>"), "{\"a\":\"xy\"}")
     end
     test("entity and comment") do
-      assert_eq(soap_json("<a>x &amp; <!-- c --> y</a>"), "{\"a\":\"x&y\"}")
+      # fix: whitespace around entities is kept (bug 1); the comment still cuts the text
+      # was: {"a":"x&y"}
+      assert_eq(soap_json("<a>x &amp; <!-- c --> y</a>"), "{\"a\":\"x &y\"}")
     end
     test("comment only") do
       assert_eq(soap_json("<a><!-- only --></a>"), "{\"a\":null}")
@@ -322,7 +380,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<r><!-- c --><a>1</a></r>"), "{\"r\":{\"a\":\"1\"}}")
     end
     test("comment in mixed content") do
-      assert_eq(soap_json("<r>a<!--c-->b<c>1</c>d</r>"), "{\"r\":{\"_text\":\"d\",\"c\":\"1\"}}")
+      # fix: mixed-content runs are joined, then trimmed (bug 5)
+      # was: {"r":{"_text":"d","c":"1"}}
+      assert_eq(soap_json("<r>a<!--c-->b<c>1</c>d</r>"), "{\"r\":{\"_text\":\"abd\",\"c\":\"1\"}}")
     end
     test("xml-named pi") do
       assert_eq(soap_json("<a><?xml-stylesheet href=\"x\"?>t</a>"), "{\"a\":\"t\"}")
@@ -394,16 +454,24 @@ describe("SOAP.parse compatibility") do
 
   describe("truncated and malformed input") do
     test("truncated after child") do
-      assert_eq(soap_json("<r><a>1</a>"), "{\"r\":{\"a\":\"1\"}}")
+      # fix: truncated input raises (bug 6)
+      # was: {"r":{"a":"1"}}
+      assert_eq(soap_json("<r><a>1</a>"), "ERR XML parsing error: <r> is not closed at the end of the input")
     end
     test("truncated deep") do
-      assert_eq(soap_json("<r><a>1</a><b><c>2</c>"), "{\"b\":{\"c\":\"2\"}}")
+      # fix: truncated input raises (bug 6)
+      # was: {"b":{"c":"2"}}
+      assert_eq(soap_json("<r><a>1</a><b><c>2</c>"), "ERR XML parsing error: <b> is not closed at the end of the input")
     end
     test("truncated in text") do
-      assert_eq(soap_json("<r>text"), "{\"r\":{}}")
+      # fix: truncated input raises (bug 6)
+      # was: {"r":{}}
+      assert_eq(soap_json("<r>text"), "ERR XML parsing error: <r> is not closed at the end of the input")
     end
     test("truncated root only") do
-      assert_eq(soap_json("<r>"), "{\"r\":{}}")
+      # fix: truncated input raises (bug 6)
+      # was: {"r":{}}
+      assert_eq(soap_json("<r>"), "ERR XML parsing error: <r> is not closed at the end of the input")
     end
     test("truncated tag") do
       assert_eq(soap_json("<r"), "ERR XML parsing error: syntax error: tag not closed: `>` not found before end of input")
@@ -484,10 +552,14 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<a>\n line1\n line2\n</a>"), "{\"a\":\"line1\\n line2\"}")
     end
     test("CRLF inside text") do
-      assert_eq(soap_json("<a>l1\r\nl2</a>"), "{\"a\":\"l1\\r\\nl2\"}")
+      # fix: line endings are normalised (CRLF)
+      # was: {"a":"l1\r\nl2"}
+      assert_eq(soap_json("<a>l1\r\nl2</a>"), "{\"a\":\"l1\\nl2\"}")
     end
     test("lone CR inside text") do
-      assert_eq(soap_json("<a>l1\rl2</a>"), "{\"a\":\"l1\\rl2\"}")
+      # fix: line endings are normalised (CRLF)
+      # was: {"a":"l1\rl2"}
+      assert_eq(soap_json("<a>l1\rl2</a>"), "{\"a\":\"l1\\nl2\"}")
     end
     test("CRLF around text") do
       assert_eq(soap_json("<a>\r\n x \r\n</a>"), "{\"a\":\"x\"}")
@@ -520,7 +592,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soap:Body>\n    <m:GetPriceResponse xmlns:m=\"urn:x\">\n      <m:Price>1.90</m:Price>\n      <m:Name>Tea</m:Name>\n    </m:GetPriceResponse>\n  </soap:Body>\n</soap:Envelope>"), "{\"soap:Envelope\":{\"soap:Body\":{\"m:GetPriceResponse\":{\"m:Price\":\"1.90\",\"m:Name\":\"Tea\"}}}}")
     end
     test("soap fault") do
-      assert_eq(soap_json("<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><soap:Fault><faultcode>soap:Server</faultcode><faultstring>Boom &amp; bust</faultstring><detail/></soap:Fault></soap:Body></soap:Envelope>"), "{\"soap:Envelope\":{\"soap:Body\":{\"soap:Fault\":{\"faultcode\":\"soap:Server\",\"faultstring\":\"Boom&bust\",\"detail\":null}}}}")
+      # fix: whitespace around entities is kept (bug 1)
+      # was: {"soap:Envelope":{"soap:Body":{"soap:Fault":{"faultcode":"soap:Server","faultstring":"Boom&bust","detail":null}}}}
+      assert_eq(soap_json("<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><soap:Fault><faultcode>soap:Server</faultcode><faultstring>Boom &amp; bust</faultstring><detail/></soap:Fault></soap:Body></soap:Envelope>"), "{\"soap:Envelope\":{\"soap:Body\":{\"soap:Fault\":{\"faultcode\":\"soap:Server\",\"faultstring\":\"Boom & bust\",\"detail\":null}}}}")
     end
     test("wrap round trip") do
       assert_eq(soap_json(SOAP.wrap("<Ping>ok</Ping>")), "{\"soap:Envelope\":{\"soap:Body\":{\"Ping\":\"ok\"}}}")
@@ -565,7 +639,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_summary((0..64).map { |i| "<n#{i}>" }.join("") + "<leaf/>" + (0..64).map { |i| "</n#{63 - i}>" }.join("")), "515:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
     end
     test("depth 65 self-closing leaf twice") do
-      assert_eq(soap_summary((0..64).map { |i| "<n#{i}>" }.join("") + "<leaf/><leaf/>" + (0..64).map { |i| "</n#{63 - i}>" }.join("")), "515:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
+      # fix: a self-closing repeat is appended (bug 3)
+      # was: 515:{"n0":{"n1":{"n2":{"n3":{"n4":{"n5":{"n6":{"n7":{"n8":{"n9":{"n10":{"n11":{"n12"
+      assert_eq(soap_summary((0..64).map { |i| "<n#{i}>" }.join("") + "<leaf/><leaf/>" + (0..64).map { |i| "</n#{63 - i}>" }.join("")), "522:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
     end
     test("text of exactly 1 MiB") do
       assert_eq(soap_summary("<a>" + "A" * 1048576 + "</a>"), "1048584:{\"a\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
@@ -577,7 +653,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_summary("<a>" + "A" * 600000 + "<!--c-->" + "A" * 600000 + "</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
     end
     test("1 MiB split by a child") do
-      assert_eq(soap_summary("<a>" + "A" * 600000 + "<c>1</c>" + "A" * 600000 + "</a>"), "600026:{\"a\":{\"_text\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+      # fix: mixed-content runs are joined (bug 5), so the 1 MiB text cap now counts the element's whole text, not the run since the last child
+      # was: 600026:{"a":{"_text":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      assert_eq(soap_summary("<a>" + "A" * 600000 + "<c>1</c>" + "A" * 600000 + "</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
     end
     test("1 MiB split by a self-closing child") do
       assert_eq(soap_summary("<a>" + "A" * 600000 + "<c/>" + "A" * 600000 + "</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
@@ -589,7 +667,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_summary("<a>" + "&amp;" * 1048577 + "</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
     end
     test("name of 5000 bytes") do
-      assert_eq(soap_summary("<" + "n" * 5000 + ">x</" + "n" * 5000 + ">"), "5008:{\"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn")
+      # limit: names are at most 4096 bytes (MAX_NAME_LEN)
+      # was: 5008:{"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+      assert_eq(soap_summary("<" + "n" * 5000 + ">x</" + "n" * 5000 + ">"), "50:ERR XML parsing error: name longer than 4096 bytes")
     end
     test("attribute name of 5000 bytes") do
       assert_eq(soap_summary("<a " + "n" * 5000 + "=\"1\">x</a>"), "9:{\"a\":\"x\"}")
