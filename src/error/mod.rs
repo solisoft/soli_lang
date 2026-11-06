@@ -257,6 +257,31 @@ pub(crate) fn render_thrown(value: &crate::interpreter::value::Value) -> String 
     }
 }
 
+/// The error class an error *message* reports as, for the paths that only
+/// kept the text (a middleware's `Error(String)`, a handler that failed to
+/// resolve). Mirrors [`RuntimeError::exception_type`] on the prefixes its
+/// `Display` writes; anything else is a `RuntimeError`.
+pub fn classify_error_message(message: &str) -> &'static str {
+    let m = message.trim_start();
+    if m.starts_with("Unhandled exception:") {
+        "Error"
+    } else if m.starts_with("Type error:") || m.starts_with("Cannot call non-function") {
+        "TypeError"
+    } else if m.starts_with("Division by zero") {
+        "ZeroDivisionError"
+    } else if m.starts_with("Undefined variable") {
+        "NameError"
+    } else if m.starts_with("Wrong number of arguments") {
+        "ArgumentError"
+    } else if m.starts_with("Index out of bounds") {
+        "IndexError"
+    } else if m.starts_with("Cannot access property") {
+        "NoMethodError"
+    } else {
+        "RuntimeError"
+    }
+}
+
 /// Runtime errors.
 #[derive(Debug, Error)]
 pub enum RuntimeError {
@@ -384,6 +409,10 @@ pub struct DebugCapture {
     pub env_json: String,
     /// Stack trace captured at the moment of the error or breakpoint
     pub stack_trace: Vec<String>,
+    /// The error class of the error this one wraps (see
+    /// [`RuntimeError::with_env_from`]), which `message` alone has lost:
+    /// a thrown `PaymentError` renders as its message only.
+    pub exception_type: Option<String>,
 }
 
 // The point of the boxing above. 48 = the widest remaining variants (a
@@ -598,7 +627,56 @@ impl RuntimeError {
             span,
             env_json: env_json.into(),
             stack_trace,
+            exception_type: None,
         }))
+    }
+
+    /// [`Self::with_env`] wrapping `err`: its message and span, and its
+    /// error class kept for [`Self::exception_type`].
+    pub fn with_env_from(
+        err: &RuntimeError,
+        env_json: impl Into<String>,
+        stack_trace: Vec<String>,
+    ) -> Self {
+        Self::WithEnv(Box::new(DebugCapture {
+            message: err.to_string(),
+            span: err.span(),
+            env_json: env_json.into(),
+            stack_trace,
+            exception_type: Some(err.exception_type()),
+        }))
+    }
+
+    /// The Soli error class this error reports as — `exception.type` on a
+    /// trace, `error_type` in a JSON error log.
+    ///
+    /// A thrown instance is its class (`PaymentError`, `DomainError`); any
+    /// other thrown value is `Error`, the base class. Built-in failures map
+    /// to the class name a Ruby / Python developer would look for.
+    pub fn exception_type(&self) -> String {
+        match self {
+            Self::Thrown {
+                value: crate::interpreter::value::Value::Instance(inst),
+                ..
+            } => inst.borrow().class.name.clone(),
+            Self::Thrown { .. } => "Error".into(),
+            Self::DivisionByZero(_) => "ZeroDivisionError".into(),
+            Self::UndefinedVariable(..) => "NameError".into(),
+            Self::NotCallable(_) | Self::NotAClass(..) | Self::TypeError { .. } => {
+                "TypeError".into()
+            }
+            Self::WrongArity { .. } => "ArgumentError".into(),
+            Self::IndexOutOfBounds { .. } => "IndexError".into(),
+            Self::NoSuchProperty(_) => "NoMethodError".into(),
+            Self::Breakpoint(_) => "Breakpoint".into(),
+            Self::WithEnv(capture) => capture
+                .exception_type
+                .clone()
+                .unwrap_or_else(|| classify_error_message(&capture.message).to_string()),
+            Self::EngineFallback(..) | Self::General { .. } => {
+                classify_error_message(&self.to_string()).to_string()
+            }
+        }
     }
 
     /// Create a breakpoint error with captured environment and stack trace
@@ -608,6 +686,7 @@ impl RuntimeError {
             span,
             env_json,
             stack_trace,
+            exception_type: None,
         }))
     }
 
@@ -1082,5 +1161,75 @@ mod tests {
         let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "nope");
         let outer: SolilangError = inner.into();
         assert!(outer.to_string().starts_with("IO error:"));
+    }
+
+    #[test]
+    fn exception_type_of_builtin_failures() {
+        let s = Span::default();
+        assert_eq!(
+            RuntimeError::DivisionByZero(s).exception_type(),
+            "ZeroDivisionError"
+        );
+        assert_eq!(
+            RuntimeError::UndefinedVariable("x".into(), s).exception_type(),
+            "NameError"
+        );
+        assert_eq!(
+            RuntimeError::TypeError {
+                message: "m".into(),
+                span: s
+            }
+            .exception_type(),
+            "TypeError"
+        );
+        assert_eq!(
+            RuntimeError::new("boom", s).exception_type(),
+            "RuntimeError"
+        );
+        assert_eq!(
+            RuntimeError::Thrown {
+                value: crate::interpreter::value::Value::String("bad".into()),
+                span: s
+            }
+            .exception_type(),
+            "Error"
+        );
+    }
+
+    /// The controller boundary flattens an error into `WithEnv`; the class
+    /// must survive it, or every trace would say `RuntimeError`.
+    #[test]
+    fn with_env_from_keeps_the_wrapped_class() {
+        let s = Span::default();
+        let inner = RuntimeError::DivisionByZero(s);
+        let wrapped = RuntimeError::with_env_from(&inner, "{}", vec![]);
+        assert_eq!(wrapped.exception_type(), "ZeroDivisionError");
+        assert_eq!(wrapped.to_string(), inner.to_string());
+        let twice = RuntimeError::with_env_from(&wrapped, "{}", vec![]);
+        assert_eq!(twice.exception_type(), "ZeroDivisionError");
+        // A bare `with_env` falls back to the message.
+        let bare = RuntimeError::with_env("Type error: nope at 1:1", s, "{}", vec![]);
+        assert_eq!(bare.exception_type(), "TypeError");
+    }
+
+    #[test]
+    fn classify_error_message_prefixes() {
+        assert_eq!(
+            classify_error_message("Unhandled exception: x at 1:1"),
+            "Error"
+        );
+        assert_eq!(
+            classify_error_message("Division by zero at 1:1"),
+            "ZeroDivisionError"
+        );
+        assert_eq!(
+            classify_error_message("Undefined variable 'y' at 1:1"),
+            "NameError"
+        );
+        assert_eq!(
+            classify_error_message("Cannot access property 'a' on Int at 1:1"),
+            "NoMethodError"
+        );
+        assert_eq!(classify_error_message("something else"), "RuntimeError");
     }
 }

@@ -221,11 +221,24 @@ SOLI_LOG=query,http,timing soli serve</code></pre>
   "duration_ms": 4.2,
   "total_ms": 4.2,
   "request_id": "&hellip;",
-  "trace_id": "&hellip;",
-  "span_id": "&hellip;"
+  "trace_id": "0af7651916cd43dd8448eb211c80319c",
+  "span_id": "b7ad6b7169203331",
+  "service": "shop",
+  "env": "production",
+  "version": "1.4.2",
+  "dd": {
+    "trace_id": "9532127138774266268",
+    "span_id": "13235353014750950193",
+    "service": "shop",
+    "env": "production",
+    "version": "1.4.2"
+  }
 }</code></pre>
+    <p class="text-gray-400 mb-4">
+        Detail channels (or a slow hit) grow nested <code>db</code> / <code>http</code> / <code>kv</code> / <code>timing</code> arrays on the same object. Production errors use <code>level: "error"</code> and <code>msg: "request_error"</code> with a redacted request snapshot, stack, env, the error class as <code>error_type</code>, and the same <code>trace_id</code> / <code>span_id</code> / <code>dd</code> correlation as the access line. No file rotation in-process &mdash; use your supervisor or container log driver.
+    </p>
     <p class="text-gray-400 mb-12">
-        Detail channels (or a slow hit) grow nested <code>db</code> / <code>http</code> / <code>kv</code> / <code>timing</code> arrays on the same object. Production errors use <code>level: "error"</code> and <code>msg: "request_error"</code> with a redacted request snapshot, stack, and env. No file rotation in-process &mdash; use your supervisor or container log driver.
+        <code>service</code> / <code>env</code> / <code>version</code> (top level and inside <code>dd</code>) appear only when configured &mdash; <code>OTEL_SERVICE_NAME</code> / <code>DD_SERVICE</code>, <code>DD_ENV</code>, <code>DD_VERSION</code> or <code>OTEL_RESOURCE_ATTRIBUTES</code> (see <a href="#datadog" class="text-amber-400 hover:underline">Datadog</a>) &mdash; so an unconfigured app never overrides the service your log shipper derives from container labels. <code>dd</code> holds the Datadog form of the ids and is present whenever there is a trace or a configured tag.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Distributed tracing (OpenTelemetry)</h2>
@@ -254,18 +267,65 @@ soli serve</code></pre>
                 <tr><td class="py-3 px-4"><code>SOLI_OTEL</code></td><td class="py-3 px-4">Force tracing on (<code>1</code> / <code>true</code> / <code>yes</code>)</td><td class="py-3 px-4">unset</td></tr>
                 <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td><td class="py-3 px-4">Collector base URL; enables tracing. Appends <code>/v1/traces</code> unless already present.</td><td class="py-3 px-4">unset</td></tr>
                 <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code></td><td class="py-3 px-4">Full traces URL override</td><td class="py-3 px-4">derived</td></tr>
-                <tr><td class="py-3 px-4"><code>OTEL_SERVICE_NAME</code></td><td class="py-3 px-4"><code>service.name</code> resource attribute</td><td class="py-3 px-4"><code>soli</code></td></tr>
-                <tr><td class="py-3 px-4"><code>OTEL_RESOURCE_ATTRIBUTES</code></td><td class="py-3 px-4">Extra <code>key=value</code> pairs, comma-separated</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_SERVICE_NAME</code></td><td class="py-3 px-4"><code>service.name</code> resource attribute</td><td class="py-3 px-4"><code>DD_SERVICE</code>, else <code>soli</code></td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_RESOURCE_ATTRIBUTES</code></td><td class="py-3 px-4">Extra <code>key=value</code> pairs, comma-separated, percent-decoded</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_HEADERS</code></td><td class="py-3 px-4">Headers on every export POST: <code>k=v,k2=v2</code>, values percent-decoded</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_TRACES_HEADERS</code></td><td class="py-3 px-4">Same, traces only; a key here replaces the generic one</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_LOGS_HEADERS</code></td><td class="py-3 px-4">Same, logs only</td><td class="py-3 px-4">unset</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_TIMEOUT</code></td><td class="py-3 px-4">Per-POST timeout, milliseconds</td><td class="py-3 px-4"><code>2000</code></td></tr>
+                <tr><td class="py-3 px-4"><code>SOLI_OTEL_LOGS</code> / <code>OTEL_LOGS_EXPORTER=otlp</code></td><td class="py-3 px-4">Also export log records over OTLP (<a href="#log-export-otlp" class="text-amber-400 hover:underline">Log export</a>)</td><td class="py-3 px-4">off</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</code></td><td class="py-3 px-4">Full <code>/v1/logs</code> URL</td><td class="py-3 px-4">derived from base</td></tr>
+                <tr><td class="py-3 px-4"><code>DD_SERVICE</code> / <code>DD_ENV</code> / <code>DD_VERSION</code></td><td class="py-3 px-4">Datadog unified service tagging, used when the OTel equivalents are unset</td><td class="py-3 px-4">unset</td></tr>
                 <tr><td class="py-3 px-4"><code>OTEL_SDK_DISABLED</code></td><td class="py-3 px-4">Force off when <code>true</code></td><td class="py-3 px-4">unset</td></tr>
             </tbody>
         </table>
     </div>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Precedence.</strong> <code>service.name</code>: <code>OTEL_SERVICE_NAME</code> &gt; <code>service.name</code> in <code>OTEL_RESOURCE_ATTRIBUTES</code> &gt; <code>DD_SERVICE</code> &gt; <code>soli</code>. Environment: <code>deployment.environment.name</code> / <code>deployment.environment</code> in <code>OTEL_RESOURCE_ATTRIBUTES</code> &gt; <code>DD_ENV</code> (exported as both keys). Version: <code>service.version</code> in <code>OTEL_RESOURCE_ATTRIBUTES</code> &gt; <code>DD_VERSION</code>; Soli does not invent one &mdash; its own version is on <code>telemetry.sdk.version</code>.
+    </p>
+    <p class="text-gray-400 mb-8">
+        <strong class="text-white">Headers.</strong> Values are credentials (<code>dd-api-key</code>, <code>Authorization</code>), so they are never printed: the startup banner lists header <em>names</em> only, and a malformed entry (no <code>=</code>, an invalid name, a value holding CR/LF after decoding) is skipped with a warning naming the variable and key, not the value. <code>https://</code> endpoints work out of the box (rustls with the Mozilla root set).
+    </p>
 
     <h3 class="text-xl font-semibold text-white mb-4">What is exported</h3>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-4">
         <li>A <strong class="text-white">SERVER</strong> root span (<code>GET /path</code>) with <code>http.request.method</code>, <code>url.path</code>, <code>http.response.status_code</code>, <code>soli.request_id</code>.</li>
         <li>Nested middleware / before-after actions / controller actions / views / DB / outgoing HTTP spans &mdash; the same tree the flamegraph shows under <code>--dev</code>.</li>
         <li>Export is <strong class="text-white">async</strong> on a dedicated background thread. A full queue drops batches rather than stalling web workers; the first drop and the first POST failure print a one-time warning on stderr.</li>
+    </ul>
+
+    <h3 id="exceptions-on-spans" class="text-xl font-semibold text-white mb-4">Exceptions on spans</h3>
+    <p class="text-gray-400 mb-4">
+        When a request ends with an uncaught error &mdash; the ones <code>/__soli/errors</code> groups and the production error block logs &mdash; the <strong class="text-white">SERVER</strong> root span gets status <code>ERROR</code> with the message and an OTel <code>exception</code> event:
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Attribute</th>
+                    <th class="py-3 px-4 font-semibold">Value</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>exception.type</code></td><td class="py-3 px-4">The class of a thrown instance (<code>PaymentError</code>), <code>Error</code> for a thrown string or hash; for an error Soli raises itself, a descriptive name &mdash; <code>TypeError</code>, <code>IndexError</code>, <code>NameError</code>, <code>ArgumentError</code>, <code>NoMethodError</code>, <code>ZeroDivisionError</code>, else <code>RuntimeError</code></td></tr>
+                <tr><td class="py-3 px-4"><code>exception.message</code></td><td class="py-3 px-4">The error message</td></tr>
+                <tr><td class="py-3 px-4"><code>exception.stacktrace</code></td><td class="py-3 px-4">The production error log's stack, one frame per line, paths relative to the app</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-8">
+        The handler span the error unwound out of (the action, a before/after action or a middleware) is marked <code>ERROR</code> too. A deliberate outcome &mdash; a <code>find</code> miss's 404, <code>forbidden()</code>, <code>halt(&hellip;)</code>, a <code>DomainError</code> &mdash; is an answer, not a failure: no exception, as on <code>/__soli/errors</code>.
+    </p>
+
+    <h3 id="log-export-otlp" class="text-xl font-semibold text-white mb-4">Log export (OTLP)</h3>
+    <p class="text-gray-400 mb-4">
+        Opt-in: <code>SOLI_OTEL_LOGS=1</code> (or the standard <code>OTEL_LOGS_EXPORTER=otlp</code>) sends the events Soli logs &mdash; the access line (when <code>SOLI_LOG</code> asks for it) and <code>request_error</code> &mdash; as OTLP/HTTP JSON LogRecords to <code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</code>, or the base endpoint + <code>/v1/logs</code>, or <code>http://127.0.0.1:4318/v1/logs</code>.
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-8">
+        <li><code>msg</code> becomes the body, <code>level</code> the severity (<code>info</code> 9, <code>warn</code> 13, <code>error</code> 17), <code>trace_id</code> / <code>span_id</code> the record's correlation; every other field is an attribute (nested arrays and objects included).</li>
+        <li>The resource is the traces' resource (<code>service.name</code>, environment, version).</li>
+        <li>Records are batched (up to 512, at least once a second) on their own thread behind a bounded queue (4096): a full queue drops records with a one-time warning; requests never wait.</li>
+        <li>stdout / stderr logging is unchanged, and export works with <code>SOLI_LOG_FORMAT=text</code> too.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">W3C Trace Context</h3>
@@ -278,11 +338,45 @@ soli serve</code></pre>
     <h3 class="text-xl font-semibold text-white mb-4">Log &harr; trace joins</h3>
     <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_LOG=access SOLI_LOG_FORMAT=json SOLI_OTEL=1 soli serve</code></pre>
     <p class="text-gray-400 mb-4">
-        JSON access lines include <code>trace_id</code> and <code>span_id</code> matching the exported root span. In Grafana / Datadog / Jaeger, jump from a log line to the full span tree.
+        JSON access lines and <code>request_error</code> lines include <code>trace_id</code> and <code>span_id</code> matching the exported root span, plus <code>dd.trace_id</code> / <code>dd.span_id</code> &mdash; the lower 64 bits of each id as an unsigned decimal string, which is how Datadog joins a log to an OTel trace. In Grafana / Datadog / Jaeger, jump from a log line to the full span tree.
     </p>
     <p class="text-gray-400 mb-12">
         Soli always samples when tracing is enabled (flags bit <code>0x01</code>). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, &hellip;) rather than in the Soli process.
     </p>
+
+    <h2 id="datadog" class="text-2xl font-bold text-white mb-6">Datadog</h2>
+    <p class="text-gray-400 mb-4">
+        Soli speaks OpenTelemetry, which Datadog ingests natively. Two setups:
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Through the Datadog Agent</strong> (recommended &mdash; the agent adds host tags and handles retries). Turn on its OTLP receiver (<code>DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318</code>, or <code>otlp_config.receiver.protocols.http.endpoint</code> in <code>datadog.yaml</code>), then:
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>OTEL_EXPORTER_OTLP_ENDPOINT=http://datadog-agent:4318 \
+DD_SERVICE=shop DD_ENV=production DD_VERSION=1.4.2 \
+SOLI_LOG=access SOLI_LOG_FORMAT=json \
+soli serve</code></pre>
+    <p class="text-gray-400 mb-4">
+        Logs go to stdout/stderr as usual; the agent's log collection (container or file) parses the JSON and joins each line to its trace through <code>dd.trace_id</code> / <code>dd.span_id</code>. Add <code>SOLI_OTEL_LOGS=1</code> instead if you would rather ship logs over OTLP (set <code>otlp_config.logs.enabled: true</code> in the agent).
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Agentless</strong> &mdash; straight to Datadog's OTLP intake, with the API key as a header:
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://otlp.datadoghq.com/v1/traces \
+OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=https://otlp.datadoghq.com/v1/logs \
+OTEL_EXPORTER_OTLP_HEADERS=dd-api-key=$DD_API_KEY \
+SOLI_OTEL_LOGS=1 \
+DD_SERVICE=shop DD_ENV=production DD_VERSION=1.4.2 \
+soli serve</code></pre>
+    <p class="text-gray-400 mb-4">
+        The URLs above are an example: use the OTLP intake endpoints Datadog documents for your site (<code>datadoghq.eu</code>, <code>us3.datadoghq.com</code>, &hellip;) and check which signals it accepts agentless. Any <code>https://</code> endpoint works.
+    </p>
+    <p class="text-gray-400 mb-4">What you get:</p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-12">
+        <li><strong class="text-white">Unified service tagging</strong> &mdash; <code>DD_SERVICE</code> / <code>DD_ENV</code> / <code>DD_VERSION</code> become <code>service.name</code> / <code>deployment.environment(.name)</code> / <code>service.version</code> on the resource and <code>service</code> / <code>env</code> / <code>version</code> on every JSON log line. The OTel variables win when both are set.</li>
+        <li><strong class="text-white">APM traces</strong> &mdash; the per-request span tree; the root span is the service entry span.</li>
+        <li><strong class="text-white">Log &harr; trace correlation</strong> &mdash; <code>dd.trace_id</code> / <code>dd.span_id</code> on JSON logs (both forms of the id are kept, so other backends still join on the hex <code>trace_id</code>).</li>
+        <li><strong class="text-white">Error Tracking</strong> &mdash; the <code>exception</code> event's <code>exception.type</code> / <code>exception.message</code> / <code>exception.stacktrace</code> map to Datadog's <code>error.type</code> / <code>error.message</code> / <code>error.stack</code>, so uncaught errors group in Error Tracking by class &mdash; throw your own <code>Error</code> subclasses to get distinct groups. JSON <code>request_error</code> lines carry <code>error_type</code>; remap <code>error</code> &rarr; <code>error.message</code>, <code>error_type</code> &rarr; <code>error.kind</code> and <code>stack</code> &rarr; <code>error.stack</code> in a log pipeline if you want log-based error tracking as well.</li>
+    </ul>
 
     <h2 id="overview" class="text-2xl font-bold text-white mb-6">Overview (<code>/__soli/</code>)</h2>
     <p class="text-gray-400 mb-4">
@@ -527,7 +621,8 @@ end</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Limits (honest)</h2>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-12">
         <li>No auto-instrumentation of every third-party client library &mdash; only Soli's own request path, ORM, and <code>HTTP.*</code> client.</li>
-        <li>OTLP export is <strong class="text-white">traces only</strong> (not metrics or logs pipelines). Metrics stay on Prometheus <code>/_metrics</code>; logs stay on stdout.</li>
+        <li>OTLP export covers <strong class="text-white">traces</strong> and, opt-in, <strong class="text-white">logs</strong> (<code>SOLI_OTEL_LOGS=1</code>) &mdash; not metrics, which stay on Prometheus <code>/_metrics</code>. Logs always stay on stdout/stderr too.</li>
+        <li>Background job logs have no JSON mode, so they carry no <code>dd</code> correlation.</li>
         <li>Outbound <code>traceparent</code> injection on every <code>HTTP.*</code> call is not yet automatic; inbound propagation and response echo are.</li>
         <li>No in-process sampling UI &mdash; put that on the collector.</li>
     </ul>

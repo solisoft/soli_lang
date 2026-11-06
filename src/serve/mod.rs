@@ -1478,6 +1478,24 @@ fn run_hyper_server_worker_pool(
                 ),
             }
         }
+        if let Some(ep) = &otel::config().logs_endpoint {
+            println!("OpenTelemetry logs export enabled → {}", ep);
+        }
+        {
+            let cfg = otel::config();
+            // Names only: these headers carry API keys.
+            let mut names: Vec<&str> = cfg
+                .traces_headers
+                .iter()
+                .chain(cfg.logs_headers.iter())
+                .map(|(k, _)| k.as_str())
+                .collect();
+            names.sort_unstable();
+            names.dedup();
+            if !names.is_empty() && (otel::enabled() || otel::logs_enabled()) {
+                println!("OTLP export headers: {} (values hidden)", names.join(", "));
+            }
+        }
         if prod_log::format() == prod_log::LogFormat::Json {
             println!("Production logs: JSON (SOLI_LOG_FORMAT=json)");
         }
@@ -4791,7 +4809,14 @@ fn no_retry_after_commit(
         "[soli engine] handler '{handler}' failed after committing a transaction on the VM \
          — not retrying on the interpreter (that would repeat the committed writes)"
     );
-    error_logging::log_production_error(&request_id, request_data, &error_msg, &[], None);
+    error_logging::log_production_error(
+        &request_id,
+        request_data,
+        &error_msg,
+        &[],
+        None,
+        Some(&err.exception_type()),
+    );
     Some(panic_response())
 }
 
@@ -5295,6 +5320,7 @@ fn call_handler(
                                 None,
                                 &request_id,
                                 false,
+                                Some(&err.exception_type()),
                             );
                         }
                     }
@@ -5362,6 +5388,7 @@ fn call_handler(
                         env_json.as_deref(),
                         &request_id,
                         e.is_breakpoint(),
+                        Some(&e.exception_type()),
                     )
                 }
             }
@@ -5384,6 +5411,7 @@ fn call_handler(
                 // `e` is the `String` `resolve_handler` returns; a breakpoint
                 // cannot arrive through it.
                 false,
+                None,
             )
         }
     }
@@ -5511,6 +5539,7 @@ fn call_oop_controller_action(
                 // `e` is the `String` `create_controller_instance` returns; a
                 // breakpoint cannot arrive through it.
                 false,
+                None,
             ));
         }
     };
@@ -5626,6 +5655,7 @@ fn call_oop_controller_action(
                     env_json.as_deref(),
                     &request_id,
                     e.is_breakpoint(),
+                    Some(&e.exception_type()),
                 )
             }
         }
@@ -5681,7 +5711,7 @@ fn with_action_frame(
     let stack_trace = interpreter.get_stack_trace();
     interpreter.pop_frame();
     let env_json = interpreter.serialize_environment_for_debug();
-    RuntimeError::with_env(err.to_string(), err.span(), env_json, stack_trace)
+    RuntimeError::with_env_from(&err, env_json, stack_trace)
 }
 
 /// Call a method on a class instance.
@@ -5851,12 +5881,7 @@ fn call_class_method(
                 } else {
                     let env_json = interpreter.serialize_environment_for_debug();
                     let stack_trace = interpreter.get_stack_trace();
-                    Err(RuntimeError::with_env(
-                        e.to_string(),
-                        e.span(),
-                        env_json,
-                        stack_trace,
-                    ))
+                    Err(RuntimeError::with_env_from(&e, env_json, stack_trace))
                 }
             }
         };

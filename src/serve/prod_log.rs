@@ -93,6 +93,7 @@ pub struct EmitMeta<'a> {
 }
 
 /// Fields shared by the text and JSON emit paths.
+#[derive(Clone, Copy)]
 struct EmitRequest<'a> {
     method: &'a str,
     path: &'a str,
@@ -334,8 +335,67 @@ pub fn emit_with_meta(
         meta,
     };
     match format() {
-        LogFormat::Json => emit_json(req),
-        LogFormat::Text => emit_text(req),
+        LogFormat::Json => {
+            let obj = build_json(&req);
+            println!("{}", serde_json::Value::Object(obj.clone()));
+            super::otel::export_log(&obj);
+        }
+        LogFormat::Text => {
+            emit_text(req);
+            // OTLP log export is independent of the stdout format.
+            if super::otel::logs_enabled() {
+                super::otel::export_log(&build_json(&req));
+            }
+        }
+    }
+}
+
+/// Add the Datadog / unified-service-tagging fields to a JSON log line.
+///
+/// - top-level `service` / `env` / `version` — Datadog's reserved
+///   attributes — when configured (`OTEL_SERVICE_NAME` / `DD_SERVICE`,
+///   `DD_ENV`, `DD_VERSION`, or `OTEL_RESOURCE_ATTRIBUTES`);
+/// - a nested `dd` object, the shape the dd-trace libraries emit:
+///   `trace_id` / `span_id` as the lower 64 bits of the W3C ids in unsigned
+///   decimal (Datadog's convention), plus the same service / env / version.
+///
+/// The hex `trace_id` / `span_id` stay as they were, for every other
+/// backend. Nothing is added when there is neither a trace nor a
+/// configured identity.
+pub(crate) fn add_correlation(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    trace_id: Option<&str>,
+    span_id: Option<&str>,
+) {
+    add_correlation_with(obj, super::otel::identity(), trace_id, span_id);
+}
+
+fn add_correlation_with(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    identity: &super::otel::ServiceIdentity,
+    trace_id: Option<&str>,
+    span_id: Option<&str>,
+) {
+    use serde_json::{json, Map, Value};
+    let mut dd = Map::new();
+    if let Some(id) = trace_id.and_then(super::otel::datadog_id) {
+        dd.insert("trace_id".into(), json!(id));
+    }
+    if let Some(id) = span_id.and_then(super::otel::datadog_id) {
+        dd.insert("span_id".into(), json!(id));
+    }
+    for (key, value) in [
+        ("service", &identity.service),
+        ("env", &identity.env),
+        ("version", &identity.version),
+    ] {
+        if let Some(v) = value {
+            obj.insert(key.into(), json!(v));
+            dd.insert(key.into(), json!(v));
+        }
+    }
+    if !dd.is_empty() {
+        obj.insert("dd".into(), Value::Object(dd));
     }
 }
 
@@ -479,7 +539,7 @@ fn emit_text(req: EmitRequest<'_>) {
     println!("{}", out);
 }
 
-fn emit_json(req: EmitRequest<'_>) {
+fn build_json(req: &EmitRequest<'_>) -> serde_json::Map<String, serde_json::Value> {
     use serde_json::{json, Map, Value};
 
     let mut obj = Map::new();
@@ -524,6 +584,7 @@ fn emit_json(req: EmitRequest<'_>) {
     if let Some(sid) = req.meta.span_id {
         obj.insert("span_id".into(), json!(sid));
     }
+    add_correlation(&mut obj, req.meta.trace_id, req.meta.span_id);
 
     if req.ch.query {
         let queries = crate::interpreter::builtins::model::query_log::snapshot();
@@ -643,7 +704,7 @@ fn emit_json(req: EmitRequest<'_>) {
         }
     }
 
-    println!("{}", Value::Object(obj));
+    obj
 }
 
 fn redacted_binds_value(
@@ -818,5 +879,56 @@ mod tests {
         assert_eq!(ts.len(), 24, "{ts}");
         assert_eq!(&ts[4..5], "-");
         assert_eq!(&ts[10..11], "T");
+    }
+
+    #[test]
+    fn correlation_adds_dd_block_and_reserved_attributes() {
+        let identity = crate::serve::otel::ServiceIdentity {
+            service: Some("shop".into()),
+            env: Some("prod".into()),
+            version: Some("1.2.3".into()),
+        };
+        let mut obj = serde_json::Map::new();
+        add_correlation_with(
+            &mut obj,
+            &identity,
+            Some("0af7651916cd43dd0000000000000001"),
+            Some("00000000000000ff"),
+        );
+        let v = serde_json::Value::Object(obj);
+        assert_eq!(v["service"], "shop");
+        assert_eq!(v["env"], "prod");
+        assert_eq!(v["version"], "1.2.3");
+        assert_eq!(v["dd"]["trace_id"], "1");
+        assert_eq!(v["dd"]["span_id"], "255");
+        assert_eq!(v["dd"]["service"], "shop");
+        assert_eq!(v["dd"]["env"], "prod");
+        assert_eq!(v["dd"]["version"], "1.2.3");
+    }
+
+    #[test]
+    fn correlation_adds_nothing_without_trace_or_identity() {
+        let mut obj = serde_json::Map::new();
+        add_correlation_with(
+            &mut obj,
+            &crate::serve::otel::ServiceIdentity::default(),
+            None,
+            None,
+        );
+        assert!(obj.is_empty());
+    }
+
+    #[test]
+    fn correlation_without_identity_has_only_ids() {
+        let mut obj = serde_json::Map::new();
+        add_correlation_with(
+            &mut obj,
+            &crate::serve::otel::ServiceIdentity::default(),
+            Some("00000000000000000000000000000001"),
+            None,
+        );
+        let v = serde_json::Value::Object(obj);
+        assert_eq!(v["dd"], serde_json::json!({"trace_id": "1"}));
+        assert!(v.get("service").is_none());
     }
 }

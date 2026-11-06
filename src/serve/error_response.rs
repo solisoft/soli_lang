@@ -111,6 +111,8 @@ pub(super) fn production(
 /// in `--dev` — the debugger UI is the page. Two of this function's four callers
 /// pass a hard `false`: their errors are `String`s from `resolve_handler` and
 /// `create_controller_instance`, which have no breakpoint channel to carry one.
+/// They pass `None` for `error_type` too (derived from the message); the
+/// others pass the `RuntimeError`'s class.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handler_failure(
     dev_mode: bool,
@@ -121,6 +123,7 @@ pub(super) fn handler_failure(
     env_json: Option<&str>,
     request_id: &str,
     breakpoint: bool,
+    error_type: Option<&str>,
 ) -> ResponseData {
     if !breakpoint {
         error_logging::log_production_error(
@@ -129,6 +132,7 @@ pub(super) fn handler_failure(
             error_msg,
             stack_trace,
             env_json,
+            error_type,
         );
     }
     if dev_mode {

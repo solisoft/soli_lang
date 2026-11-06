@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Datadog log ↔ trace correlation.** JSON access and `request_error` lines
+  (`SOLI_LOG_FORMAT=json`) gain a nested `dd` object — `dd.trace_id` /
+  `dd.span_id` are the lower 64 bits of the W3C ids as unsigned decimal
+  strings, Datadog's join key — next to the hex `trace_id` / `span_id`.
+  `request_error` lines now carry the trace ids (from a request-local set in
+  `otel::begin_request`) and the error class as `error_type`.
+- **Unified service tagging from `DD_SERVICE` / `DD_ENV` / `DD_VERSION`.**
+  Fallbacks for `service.name`, `deployment.environment(.name)` and
+  `service.version` on the OTLP resource (`OTEL_SERVICE_NAME` >
+  `service.name` in `OTEL_RESOURCE_ATTRIBUTES` > `DD_SERVICE`; the resource
+  attributes win over `DD_ENV` / `DD_VERSION`). Configured tags also go on every
+  JSON log line as top-level `service` / `env` / `version` and inside `dd`; an
+  unconfigured app adds none. Resolved even when tracing is off.
+  `OTEL_RESOURCE_ATTRIBUTES` values are now percent-decoded, and
+  `service.name` there is no longer exported twice.
+- **OTLP export headers.** `OTEL_EXPORTER_OTLP_HEADERS`,
+  `OTEL_EXPORTER_OTLP_TRACES_HEADERS` and `OTEL_EXPORTER_OTLP_LOGS_HEADERS`
+  (`k=v,k2=v2`, percent-decoded; signal-specific keys override generic ones)
+  are sent on every export POST — Datadog agentless intake (`dd-api-key`) or
+  any hosted collector over `https://`. Values are never printed; malformed
+  entries and values with CR/LF are skipped with a warning naming only the key.
+  `OTEL_EXPORTER_OTLP_TIMEOUT` (ms) sets the per-POST timeout.
+- **Exceptions on spans.** An uncaught request error (exactly the ones the
+  production error log and `/__soli/errors` record — not a `find` 404,
+  `forbidden()`, `halt` or `DomainError`) sets the SERVER span's status to
+  ERROR and adds an OTel `exception` event with `exception.type` (the Soli
+  class, kept across the controller boundary by
+  `RuntimeError::with_env_from` / `exception_type`), `exception.message` and
+  `exception.stacktrace` (app-relative frames); the handler span it unwound out
+  of is marked ERROR too. Datadog maps them to Error Tracking.
+- **OTLP log export (opt-in).** `SOLI_OTEL_LOGS=1` or `OTEL_LOGS_EXPORTER=otlp`
+  exports the JSON log events as OTLP/HTTP JSON LogRecords to
+  `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` (or base + `/v1/logs`), with trace/span
+  ids, mapped severity and the traces' resource; batched (512 records / 1 s) on
+  a background thread behind a bounded queue that drops with a one-time
+  warning. stdout logging is unchanged.
+
 ## [2.31.0] - 2026-11-06
 
 ### Added

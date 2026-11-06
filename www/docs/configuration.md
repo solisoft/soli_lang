@@ -40,8 +40,14 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_OTEL` | Set to `1`/`true`/`yes` to enable OpenTelemetry tracing. Reuses the same per-request span tree the dev-bar flamegraph builds (middleware, action, views, DB, HTTP). Honours inbound W3C `traceparent`, echoes it on the response, and exports spans over OTLP/HTTP JSON. When set without an endpoint, defaults to `http://127.0.0.1:4318/v1/traces` (sidecar collector). | unset |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector base URL (e.g. `http://otel-collector:4318`). Enables tracing even when `SOLI_OTEL` is unset. Soli appends `/v1/traces` unless the value already ends with it. | unset |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL override (takes precedence over `OTEL_EXPORTER_OTLP_ENDPOINT`). | unset |
-| `OTEL_SERVICE_NAME` | `service.name` resource attribute on exported spans. | `soli` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes as comma-separated `key=value` pairs (e.g. `deployment.environment=prod,service.namespace=shop`). | unset |
+| `OTEL_SERVICE_NAME` | `service.name` resource attribute on exported spans; also `service` on JSON log lines. Wins over `service.name` in `OTEL_RESOURCE_ATTRIBUTES` and over `DD_SERVICE`. | `DD_SERVICE`, else `soli` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes as comma-separated `key=value` pairs, percent-decoded (e.g. `deployment.environment=prod,service.namespace=shop`). `deployment.environment(.name)` and `service.version` here win over `DD_ENV` / `DD_VERSION`. | unset |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Headers sent on every OTLP export POST, `key=value,key2=value2` with percent-decoded values (e.g. `dd-api-key=…` for Datadog's agentless intake). Never printed; an entry with no `=`, an invalid name or a CR/LF in its value is skipped with a warning. | unset |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` / `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | Per-signal headers; a key here replaces the same key from `OTEL_EXPORTER_OTLP_HEADERS`. | unset |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | Timeout of one export POST, in milliseconds. | `2000` |
+| `SOLI_OTEL_LOGS` | `1`/`true`/`yes` exports the JSON log events (access lines, `request_error`) as OTLP/HTTP LogRecords, with trace correlation. `OTEL_LOGS_EXPORTER=otlp` does the same. stdout logging is unchanged. | unset |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full logs URL. Default: `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/logs`, else `http://127.0.0.1:4318/v1/logs`. | derived |
+| `DD_SERVICE` / `DD_ENV` / `DD_VERSION` | Datadog unified service tagging: fill `service.name` / `deployment.environment` / `service.version` when the OTel variables leave them unset, and add `service` / `env` / `version` (top level and in `dd`) to JSON log lines. | unset |
 | `OTEL_SDK_DISABLED` | Set to `true` to force tracing off regardless of the other OTEL vars. | unset |
 | `SOLI_DB_POOL_IDLE_SECS` | Idle lifetime (seconds) of pooled SoliDB connections. A retired idle connection means the next query pays a fresh DNS + TCP (+ TLS) connect mid-request. Two defaults, because the two clients can afford different windows: the shared client holds a connection for 90s (its reactor runs continuously, so it sees the server close one and drops it), while a per-worker pool holds one for 25s — a worker's reactor only runs during a query, so between requests nothing notices the peer closing an idle connection and the pool must retire it first. SoliDB closes idle keep-alives after 30s. Setting this overrides both; keep it below the idle-close of whatever is on the other end. | `90` shared, `25` per-worker |
 | `SOLI_DB_KEEP_WARM` | Set to `0` to disable the periodic keep-warm ping that holds a live SoliDB connection in the pool between sparse requests. Only spawned when a DB is configured (`SOLIDB_HOST` or credentials set). | enabled |
@@ -65,7 +71,7 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 
 Production logs and distributed traces have a dedicated operator guide:
 
-**[Observability](observability.md)** — metrics (`/_metrics`), `SOLI_LOG` channels, `SOLI_LOG_FORMAT=json`, slow-request mode, W3C `traceparent`, OTLP export, and log↔trace joins.
+**[Observability](observability.md)** — metrics (`/_metrics`), `SOLI_LOG` channels, `SOLI_LOG_FORMAT=json`, slow-request mode, W3C `traceparent`, OTLP export (traces, opt-in logs), log↔trace joins, and the Datadog setup.
 
 Quick enable:
 

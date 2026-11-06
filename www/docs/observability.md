@@ -139,12 +139,24 @@ Example access line:
   "duration_ms": 4.2,
   "total_ms": 4.2,
   "request_id": "…",
-  "trace_id": "…",
-  "span_id": "…"
+  "trace_id": "0af7651916cd43dd8448eb211c80319c",
+  "span_id": "b7ad6b7169203331",
+  "service": "shop",
+  "env": "production",
+  "version": "1.4.2",
+  "dd": {
+    "trace_id": "9532127138774266268",
+    "span_id": "13235353014750950193",
+    "service": "shop",
+    "env": "production",
+    "version": "1.4.2"
+  }
 }
 ```
 
-With detail channels (or a slow hit) the same object grows nested `db` / `http` / `kv` / `timing` arrays. Production errors use `level: "error"` and `msg: "request_error"` with redacted request snapshot, stack, and env.
+With detail channels (or a slow hit) the same object grows nested `db` / `http` / `kv` / `timing` arrays. Production errors use `level: "error"` and `msg: "request_error"` with redacted request snapshot, stack, env, the error class as `error_type`, and the same `trace_id` / `span_id` / `dd` correlation as the access line.
+
+`service` / `env` / `version` (top level and inside `dd`) appear only when configured — `OTEL_SERVICE_NAME` / `DD_SERVICE`, `DD_ENV`, `DD_VERSION` or `OTEL_RESOURCE_ATTRIBUTES` (see [Datadog](#datadog)) — so an unconfigured app never overrides the service your log shipper derives from container labels. `dd` holds the Datadog form of the ids and is present whenever there is a trace or a configured tag.
 
 Ship stdout/stderr to Loki, CloudWatch, Datadog, Elastic, etc. No file rotation in-process — use your supervisor or container log driver.
 
@@ -175,9 +187,20 @@ soli serve
 | `SOLI_OTEL` | Force tracing on (`1` / `true` / `yes`) | unset |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL; enables tracing | unset |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full `/v1/traces` URL | derived from base |
-| `OTEL_SERVICE_NAME` | `service.name` resource attribute | `soli` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Extra `key=value` pairs, comma-separated | unset |
+| `OTEL_SERVICE_NAME` | `service.name` resource attribute | `DD_SERVICE`, else `soli` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra `key=value` pairs, comma-separated, percent-decoded | unset |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Headers on every export POST: `k=v,k2=v2`, values percent-decoded | unset |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | Same, traces only; a key here replaces the generic one | unset |
+| `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | Same, logs only | unset |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | Per-POST timeout, milliseconds | `2000` |
+| `SOLI_OTEL_LOGS` / `OTEL_LOGS_EXPORTER=otlp` | Also export log records over OTLP ([Log export](#log-export-otlp)) | off |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full `/v1/logs` URL | derived from base |
+| `DD_SERVICE` / `DD_ENV` / `DD_VERSION` | Datadog unified service tagging, used when the OTel equivalents are unset | unset |
 | `OTEL_SDK_DISABLED` | Force off when `true` | unset |
+
+**Precedence.** `service.name`: `OTEL_SERVICE_NAME` > `service.name` in `OTEL_RESOURCE_ATTRIBUTES` > `DD_SERVICE` > `soli`. Environment: `deployment.environment.name` / `deployment.environment` in `OTEL_RESOURCE_ATTRIBUTES` > `DD_ENV` (exported as both keys). Version: `service.version` in `OTEL_RESOURCE_ATTRIBUTES` > `DD_VERSION`; Soli does not invent one — its own version is on `telemetry.sdk.version`.
+
+**Headers.** Values are credentials (`dd-api-key`, `Authorization`), so they are never printed: the startup banner lists header *names* only, and a malformed entry (no `=`, an invalid name, a value holding CR/LF after decoding) is skipped with a warning naming the variable and key, not the value. `https://` endpoints work out of the box (rustls with the Mozilla root set).
 
 ### What is exported
 
@@ -187,6 +210,27 @@ Per request:
 2. Nested **INTERNAL** / **CLIENT** spans for middleware, before/after actions, controller actions, views/partials/components, DB queries, and outgoing HTTP — the same tree the flamegraph shows under `--dev`.
 
 Export is **async** on a dedicated background thread. A full queue drops batches rather than stalling web workers; the first drop and the first POST failure print a one-time warning on stderr.
+
+### Exceptions on spans
+
+When a request ends with an uncaught error — the ones `/__soli/errors` groups and the production error block logs — the **SERVER** root span gets status `ERROR` with the message and an OTel `exception` event:
+
+| Attribute | Value |
+|-----------|-------|
+| `exception.type` | The class of a thrown instance (`PaymentError`), `Error` for a thrown string or hash; for an error Soli raises itself, a descriptive name — `TypeError`, `IndexError`, `NameError`, `ArgumentError`, `NoMethodError`, `ZeroDivisionError`, else `RuntimeError` |
+| `exception.message` | The error message |
+| `exception.stacktrace` | The production error log's stack, one frame per line, paths relative to the app |
+
+The handler span the error unwound out of (the action, a before/after action or a middleware) is marked `ERROR` too. A deliberate outcome — a `find` miss's 404, `forbidden()`, `halt(…)`, a `DomainError` — is an answer, not a failure: no exception, as on `/__soli/errors`.
+
+### Log export (OTLP)
+
+Opt-in: `SOLI_OTEL_LOGS=1` (or the standard `OTEL_LOGS_EXPORTER=otlp`) sends the events Soli logs — the access line (when `SOLI_LOG` asks for it) and `request_error` — as OTLP/HTTP JSON LogRecords to `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, or the base endpoint + `/v1/logs`, or `http://127.0.0.1:4318/v1/logs`.
+
+- `msg` becomes the body, `level` the severity (`info` 9, `warn` 13, `error` 17), `trace_id` / `span_id` the record's correlation; every other field is an attribute (nested arrays and objects included).
+- The resource is the traces' resource (`service.name`, environment, version).
+- Records are batched (up to 512, at least once a second) on their own thread behind a bounded queue (4096): a full queue drops records with a one-time warning; requests never wait.
+- stdout / stderr logging is unchanged, and export works with `SOLI_LOG_FORMAT=text` too.
 
 ### W3C Trace Context
 
@@ -202,11 +246,46 @@ Turn on both:
 SOLI_LOG=access SOLI_LOG_FORMAT=json SOLI_OTEL=1 soli serve
 ```
 
-JSON access lines include `trace_id` and `span_id` matching the exported root span. In Grafana / Datadog / Jaeger UI, jump from a log line to the full span tree.
+JSON access lines and `request_error` lines include `trace_id` and `span_id` matching the exported root span, plus `dd.trace_id` / `dd.span_id` — the lower 64 bits of each id as an unsigned decimal string, which is how Datadog joins a log to an OTel trace. In Grafana / Datadog / Jaeger UI, jump from a log line to the full span tree.
 
 ### Sampling
 
 Soli always samples when tracing is enabled (flags bit `0x01`). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, …) rather than in the Soli process.
+
+## Datadog
+
+Soli speaks OpenTelemetry, which Datadog ingests natively. Two setups:
+
+**Through the Datadog Agent** (recommended — the agent adds host tags and handles retries). Turn on its OTLP receiver (`DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318`, or `otlp_config.receiver.protocols.http.endpoint` in `datadog.yaml`), then:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://datadog-agent:4318 \
+DD_SERVICE=shop DD_ENV=production DD_VERSION=1.4.2 \
+SOLI_LOG=access SOLI_LOG_FORMAT=json \
+soli serve
+```
+
+Logs go to stdout/stderr as usual; the agent's log collection (container or file) parses the JSON and joins each line to its trace through `dd.trace_id` / `dd.span_id`. Add `SOLI_OTEL_LOGS=1` instead if you would rather ship logs over OTLP (set `otlp_config.logs.enabled: true` in the agent).
+
+**Agentless** — straight to Datadog's OTLP intake, with the API key as a header:
+
+```bash
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://otlp.datadoghq.com/v1/traces \
+OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=https://otlp.datadoghq.com/v1/logs \
+OTEL_EXPORTER_OTLP_HEADERS=dd-api-key=$DD_API_KEY \
+SOLI_OTEL_LOGS=1 \
+DD_SERVICE=shop DD_ENV=production DD_VERSION=1.4.2 \
+soli serve
+```
+
+The URLs above are an example: use the OTLP intake endpoints Datadog documents for your site (`datadoghq.eu`, `us3.datadoghq.com`, …) and check which signals it accepts agentless. Any `https://` endpoint works.
+
+What you get:
+
+- **Unified service tagging** — `DD_SERVICE` / `DD_ENV` / `DD_VERSION` become `service.name` / `deployment.environment(.name)` / `service.version` on the resource and `service` / `env` / `version` on every JSON log line. The OTel variables win when both are set.
+- **APM traces** — the per-request span tree; the root span is the service entry span.
+- **Log ↔ trace correlation** — `dd.trace_id` / `dd.span_id` on JSON logs (both forms of the id are kept, so other backends still join on the hex `trace_id`).
+- **Error Tracking** — the `exception` event's `exception.type` / `exception.message` / `exception.stacktrace` map to Datadog's `error.type` / `error.message` / `error.stack`, so uncaught errors group in Error Tracking by class — throw your own `Error` subclasses to get distinct groups. JSON `request_error` lines carry `error_type`; remap `error` → `error.message`, `error_type` → `error.kind` and `stack` → `error.stack` in a log pipeline if you want log-based error tracking as well.
 
 ## Overview (`/__soli/`)
 
@@ -437,7 +516,8 @@ Production logging reuses the same channel buffers as the dev bar (`query`, `htt
 ## Limits (honest)
 
 - No auto-instrumentation of every third-party client library — only Soli's own request path, ORM, and `HTTP.*` client.
-- OTLP export is **traces only** (not metrics or logs pipelines). Metrics stay on Prometheus `/_metrics`; logs stay on stdout.
+- OTLP export covers **traces** and, opt-in, **logs** (`SOLI_OTEL_LOGS=1`) — not metrics, which stay on Prometheus `/_metrics`. Logs always stay on stdout/stderr too.
+- Background job logs have no JSON mode, so they carry no `dd` correlation.
 - Outbound `traceparent` injection on every `HTTP.*` call is not yet automatic; inbound propagation and response echo are.
 - No in-process sampling UI — put that on the collector.
 
