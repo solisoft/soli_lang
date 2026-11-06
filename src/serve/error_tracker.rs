@@ -309,7 +309,7 @@ impl<'a> Flusher<'a> {
                     fold_into_overflow(&mut overflow, refused);
                 }
                 Err(e) => {
-                    self.stats.failed.fetch_add(count, Ordering::Relaxed);
+                    self.stats.note_failed(count);
                     eprintln!("[errors] could not record error group {fingerprint}: {e}");
                 }
             }
@@ -317,7 +317,7 @@ impl<'a> Flusher<'a> {
         if let Some(group) = overflow {
             let count = group.count;
             if let Err(e) = self.write_fenced(OVERFLOW_FINGERPRINT, group) {
-                self.stats.failed.fetch_add(count, Ordering::Relaxed);
+                self.stats.note_failed(count);
                 eprintln!("[errors] could not record the overflow group: {e}");
             }
         }

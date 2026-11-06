@@ -77,6 +77,8 @@ struct Entry {
     body: Bytes,
     expires: Instant,
     size: usize,
+    /// The usage slot its worker counted it under (see `usage::SLOT_HEADER`).
+    usage_slot: Option<u16>,
 }
 
 struct Entries {
@@ -193,7 +195,7 @@ impl Store {
         None
     }
 
-    fn get(&self, ticket: &Ticket) -> Option<ResponseData> {
+    fn get(&self, ticket: &Ticket) -> Option<(ResponseData, Option<u16>)> {
         let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         if entries.generation != ticket.generation {
             return None;
@@ -202,14 +204,17 @@ impl Store {
         if entry.expires <= Instant::now() {
             return None;
         }
-        Some(ResponseData {
-            status: entry.status,
-            headers: (*entry.headers).clone(),
-            body: entry.body.clone(),
-        })
+        Some((
+            ResponseData {
+                status: entry.status,
+                headers: (*entry.headers).clone(),
+                body: entry.body.clone(),
+            },
+            entry.usage_slot,
+        ))
     }
 
-    fn put(&self, ticket: Ticket, response: &ResponseData, ttl: Duration) {
+    fn put(&self, ticket: Ticket, response: &ResponseData, ttl: Duration, usage_slot: Option<u16>) {
         let size = response.body.len()
             + ticket.key.len()
             + response
@@ -252,6 +257,7 @@ impl Store {
                 body: response.body.clone(),
                 expires: Instant::now() + ttl,
                 size,
+                usage_slot,
             },
         );
     }
@@ -275,14 +281,16 @@ pub(crate) fn begin(
     Some(Ticket { key, generation })
 }
 
-/// The kept reply for this ticket, if there is a live one.
-pub(crate) fn lookup(ticket: &Ticket) -> Option<ResponseData> {
+/// The kept reply for this ticket, if there is a live one, and the usage slot
+/// it is counted under.
+pub(crate) fn lookup(ticket: &Ticket) -> Option<(ResponseData, Option<u16>)> {
     store()?.get(ticket)
 }
 
 /// Strip the application's cache header from a reply, and keep the reply when
 /// it asked to be kept and the database did not change while it was made.
 pub(crate) fn admit(ticket: Option<Ticket>, response: &mut ResponseData) {
+    let usage_slot = usage_slot_of(&response.headers);
     let Some(ttl) = take_ttl(&mut response.headers) else {
         return;
     };
@@ -293,15 +301,26 @@ pub(crate) fn admit(ticket: Option<Ticket>, response: &mut ResponseData) {
         return;
     }
     if store.version() == Some(ticket.generation) {
-        store.put(ticket, response, ttl);
+        store.put(ticket, response, ttl, usage_slot);
     }
 }
 
-/// Remove every `Soli-Response-Cache` header, returning the time-to-live the
-/// last one asked for (`None` without one, or for zero or garbage).
+fn usage_slot_of(headers: &[(String, String)]) -> Option<u16> {
+    headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(super::usage::SLOT_HEADER))
+        .and_then(|(_, v)| v.trim().parse().ok())
+}
+
+/// Remove every `Soli-Response-Cache` header (and the usage slot a worker
+/// tags such a reply with), returning the time-to-live the last one asked for
+/// (`None` without one, or for zero or garbage).
 pub(crate) fn take_ttl(headers: &mut Vec<(String, String)>) -> Option<Duration> {
     let mut ttl = None;
     headers.retain(|(k, v)| {
+        if k.eq_ignore_ascii_case(super::usage::SLOT_HEADER) {
+            return false;
+        }
         if !k.eq_ignore_ascii_case(HEADER) {
             return true;
         }
@@ -488,6 +507,27 @@ mod tests {
         assert!(zero.is_empty());
     }
 
+    /// A worker tags a reply it was asked to keep with the usage slot it
+    /// counted it under; the tag is read for the entry and never sent.
+    #[test]
+    fn the_usage_slot_is_kept_with_the_reply_and_never_sent() {
+        let mut headers = vec![
+            ("Content-Type".to_string(), "text/html".to_string()),
+            ("Soli-Response-Cache".to_string(), "30".to_string()),
+        ];
+        super::super::usage::tag_cacheable(&mut headers, Some(5));
+        assert_eq!(usage_slot_of(&headers), Some(5));
+        assert_eq!(take_ttl(&mut headers), Some(Duration::from_secs(30)));
+        assert_eq!(
+            headers,
+            vec![("Content-Type".to_string(), "text/html".to_string())]
+        );
+        // A reply nobody asked to keep is not tagged.
+        let mut plain = vec![("Content-Type".to_string(), "text/html".to_string())];
+        super::super::usage::tag_cacheable(&mut plain, Some(5));
+        assert_eq!(plain.len(), 1);
+    }
+
     #[test]
     fn only_a_reusable_200_is_kept() {
         assert!(keepable(&reply(
@@ -527,11 +567,15 @@ mod tests {
 
         let first = ticket("k");
         assert!(store.get(&first).is_none());
-        store.put(ticket("k"), &reply(200, &[]), Duration::from_secs(60));
-        assert_eq!(
-            &store.get(&ticket("k")).unwrap().body[..],
-            b"<html>page</html>"
+        store.put(
+            ticket("k"),
+            &reply(200, &[]),
+            Duration::from_secs(60),
+            Some(7),
         );
+        let (kept, slot) = store.get(&ticket("k")).unwrap();
+        assert_eq!(&kept.body[..], b"<html>page</html>");
+        assert_eq!(slot, Some(7), "a hit is counted under its worker's route");
 
         // Another connection commits: the entry no longer answers.
         writer.execute("INSERT INTO t VALUES (1)", []).unwrap();
@@ -542,11 +586,16 @@ mod tests {
             key: "k".to_string(),
             generation: first.generation,
         };
-        store.put(stale, &reply(200, &[]), Duration::from_secs(60));
+        store.put(stale, &reply(200, &[]), Duration::from_secs(60), None);
         assert!(store.get(&ticket("k")).is_none());
 
         // An expired entry does not answer either.
-        store.put(ticket("e"), &reply(200, &[]), Duration::from_millis(1));
+        store.put(
+            ticket("e"),
+            &reply(200, &[]),
+            Duration::from_millis(1),
+            None,
+        );
         std::thread::sleep(Duration::from_millis(5));
         assert!(store.get(&ticket("e")).is_none());
 
@@ -572,7 +621,7 @@ mod tests {
             generation,
         };
         for key in ["a", "b", "c", "d", "e", "f"] {
-            store.put(t(key), &reply(200, &[]), Duration::from_secs(60));
+            store.put(t(key), &reply(200, &[]), Duration::from_secs(60), None);
         }
         assert!(store.get(&t("a")).is_none());
         assert!(store.get(&t("f")).is_some());

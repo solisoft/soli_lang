@@ -729,6 +729,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
                 "preview view components",
                 ""
             ),
+            ("/__soli/", "overview", "what needs attention, usage", ""),
             ("/__soli/jobs", "jobs", "queue, cancel, retry", ""),
             ("/__soli/errors", "errors", "grouped failures, triage", ""),
             (
@@ -1819,6 +1820,7 @@ mod tests {
         let out = inject_dev_bar("<html><body></body></html>", &ctx("GET", "/"));
         assert!(out.contains("__solidev_tb"), "tools button present");
         for href in [
+            "/__soli/",
             "/__soli/inbox",
             "/__soli/mailers",
             "/__soli/components",

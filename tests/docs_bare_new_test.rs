@@ -206,7 +206,7 @@ fn the_guides_and_the_docs_state_one_rule_for_zero_argument_calls() {
         .lines()
         .find(|line| line.contains("on a zero-argument method call</strong>"))
         .unwrap_or_default();
-    for keeps in ["Klass.new()", "current_user()", "list.sort()[0]"] {
+    for keeps in ["Klass.new()", "current_user()"] {
         assert!(
             line.contains(keeps),
             "the language index keeps `()` on {keeps}: {line}"

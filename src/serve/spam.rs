@@ -26,7 +26,6 @@
 //! The checks themselves and the in-memory model work either way.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, OnceLock};
 use web_time::{Duration, Instant};
@@ -595,9 +594,7 @@ fn run_writer(receiver: Receiver<Item>, stats: &Stats) {
                 Ok(()) => ensured = true,
                 Err(e) => {
                     eprintln!("[spam] could not prepare {QUARANTINE_COLLECTION}: {e}");
-                    stats
-                        .failed
-                        .fetch_add(entries.len() as u64, Ordering::Relaxed);
+                    stats.note_failed(entries.len() as u64);
                     continue;
                 }
             }
@@ -609,7 +606,7 @@ fn run_writer(receiver: Receiver<Item>, stats: &Stats) {
                 Ok(()) => since_trim += 1,
                 Err(e) => {
                     eprintln!("[spam] could not store a submission: {e}");
-                    stats.failed.fetch_add(1, Ordering::Relaxed);
+                    stats.note_failed(1);
                 }
             }
         }
@@ -618,7 +615,7 @@ fn run_writer(receiver: Receiver<Item>, stats: &Stats) {
             let doc = MODEL.read(|slot| slot.model.to_json());
             if let Err(e) = tenant_writer::fenced(|| store_model(doc)) {
                 eprintln!("[spam] could not store the model: {e}");
-                stats.failed.fetch_add(1, Ordering::Relaxed);
+                stats.note_failed(1);
             }
         }
 

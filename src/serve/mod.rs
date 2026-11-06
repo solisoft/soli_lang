@@ -62,6 +62,7 @@ pub(crate) mod coroutine {
         }
     }
 }
+mod attention;
 pub mod cors;
 mod coverage;
 mod csrf;
@@ -77,6 +78,7 @@ mod dev_routes;
 mod dev_slow_queries;
 mod dev_spam;
 pub mod dev_store;
+mod engine_events;
 mod error_response;
 #[cfg(not(target_arch = "wasm32"))]
 mod file_watcher;
@@ -96,6 +98,7 @@ pub mod openapi;
 mod operator_shell;
 mod origin;
 pub mod otel;
+mod overview;
 pub mod phase_log;
 mod pipeline;
 pub mod pow;
@@ -120,6 +123,7 @@ pub mod tus;
 #[cfg(not(target_arch = "wasm32"))]
 mod upgrade;
 pub(crate) mod uploads_prelude;
+pub(crate) mod usage;
 pub mod vhost;
 pub mod view_log;
 pub mod websocket;
@@ -2606,6 +2610,20 @@ async fn handle_hyper_request(
         return Ok(response);
     }
 
+    // The overview at `/__soli/`: what needs attention across the pages
+    // below, and app usage. Opens for anyone who may open one of them, and
+    // shows each source only to who may open its page. See `overview`.
+    if let Some(resp) = overview::dispatch(
+        &method,
+        &path,
+        req.uri().query(),
+        req.headers(),
+        dev_mode,
+        peer_addr.ip(),
+    ) {
+        return Ok(resp);
+    }
+
     // Job dashboard: open in --dev to a local request (loopback peer, local
     // host name); otherwise, and in production, only when credentials
     // are configured (Basic and/or Bearer). Unconfigured production 404s
@@ -2736,7 +2754,11 @@ async fn handle_hyper_request(
     } else {
         response_cache::begin(&method, &path, raw_query.as_deref(), req.headers())
     };
-    if let Some(kept) = cache_ticket.as_ref().and_then(response_cache::lookup) {
+    if let Some((kept, usage_slot)) = cache_ticket.as_ref().and_then(response_cache::lookup) {
+        // Counted like the worker counted the reply it keeps.
+        if let Some(slot) = usage_slot {
+            usage::record_cache_hit(request_start, slot, kept.status);
+        }
         let headers = req.headers();
         let if_none_match = header_str(headers, "if-none-match").map(str::to_owned);
         let is_prefetch = prefetch::is_prefetch_request(|name| header_str(headers, name));
@@ -4577,6 +4599,11 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     if !matches!(err, RuntimeError::EngineFallback(..)) {
         return;
     }
+    engine_events::record(
+        engine_events::EngineKind::Refused,
+        handler,
+        &err.to_string(),
+    );
     static FAIL: OnceLock<bool> = OnceLock::new();
     let fail = *FAIL.get_or_init(|| {
         crate::platform::env::var("SOLI_FAIL_ON_VM_DEMOTION")
@@ -4681,6 +4708,7 @@ fn settle_engine_divergence(tree_walker_answered: bool) -> bool {
         .vm_engine_divergences_total
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     count_vm_demotion(&handler, &vm_error);
+    engine_events::record(engine_events::EngineKind::Divergence, &handler, &vm_error);
     let message = format!(
         "handler '{handler}' failed on the VM and succeeded on the interpreter — engine divergence: {vm_error}"
     );
@@ -4866,6 +4894,11 @@ where
                 "[soli] handler panicked serving {} {} — returning 500 (worker survived)",
                 method, path
             );
+            // For the overview: the route pattern, never the raw path — not
+            // even masked, since a path can carry a token no mask recognises.
+            let subject = usage::current_route_label()
+                .unwrap_or_else(|| format!("{method} (route not recorded)"));
+            engine_events::record(engine_events::EngineKind::Panic, &subject, "");
             crate::interpreter::builtins::streaming::clear_pending_stream();
             blob_stream::clear_pending();
             panic_response()
@@ -4952,6 +4985,9 @@ fn dispatch_http_request(
 
     let method = data.method.to_string();
     let path = data.path.clone();
+    // Usage for the overview: a clock read here, the route slot noted by the
+    // route match, a counter bump at the end. See `usage`.
+    let usage_started = usage::begin_request();
     let mut resp_data = run_request_caught(
         interpreter,
         vm,
@@ -4959,6 +4995,8 @@ fn dispatch_http_request(
         &method,
         &path,
     );
+    let usage_slot = usage::finish_request(usage_started, &path, resp_data.status);
+    usage::tag_cacheable(&mut resp_data.headers, usage_slot);
     slow_queries::end_unit();
 
     // `solidb_blob_response` parked a blob for the async side to relay. The

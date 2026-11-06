@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Observability</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Metrics, structured logs, and OpenTelemetry traces &mdash; opt-in so a quiet process pays nothing until you turn a channel on. The same span tree that powers the dev-bar flamegraph exports to your collector in production. Alongside them, <strong class="text-white">error tracking</strong> groups every failed request into a triage page inside the app, <strong class="text-white">slow-query tracking</strong> does the same for database queries over a threshold, and <strong class="text-white">notifications</strong> tell someone by webhook, email or a job of your own.
+            Metrics, structured logs, and OpenTelemetry traces &mdash; opt-in so a quiet process pays nothing until you turn a channel on. The same span tree that powers the dev-bar flamegraph exports to your collector in production. Alongside them, an <strong class="text-white">overview</strong> at <code>/__soli/</code> ranks what needs attention and shows app usage, <strong class="text-white">error tracking</strong> groups every failed request into a triage page inside the app, <strong class="text-white">slow-query tracking</strong> does the same for database queries over a threshold, and <strong class="text-white">notifications</strong> tell someone by webhook, email or a job of your own.
         </p>
     </div>
 
@@ -74,6 +74,11 @@
                     <td class="py-3 px-4 text-white font-medium">Notifications</td>
                     <td class="py-3 px-4"><code>SOLI_NOTIFY_WEBHOOKS</code> / <code>SOLI_NOTIFY_EMAILS</code> / a <code>SoliNotificationJob</code> / &ldquo;Notify this device&rdquo;</td>
                     <td class="py-3 px-4">Slack, Teams, Discord, Google Chat, Campfire, any URL, email, your job, Web Push</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white font-medium">Overview and usage</td>
+                    <td class="py-3 px-4">on (<code>SOLI_USAGE=off</code> stops the usage counts)</td>
+                    <td class="py-3 px-4"><code>/__soli/</code>, hourly usage in <code>_soli_usage</code></td>
                 </tr>
             </tbody>
         </table>
@@ -279,6 +284,57 @@ soli serve</code></pre>
         Soli always samples when tracing is enabled (flags bit <code>0x01</code>). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, &hellip;) rather than in the Soli process.
     </p>
 
+    <h2 id="overview" class="text-2xl font-bold text-white mb-6">Overview (<code>/__soli/</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        <code>/__soli/</code> is the page to open first: what needs dealing with most urgently across every operator page, and how the app is being used. It is the first item of the operator pages' top bar.
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-6">
+        <li><strong class="text-white">Health at a glance.</strong> Six tiles, each a link: requests over the chosen range with the change against the range before it, the share of server errors (5xx), latency p95 (p50 underneath), open error groups (and how many are new this hour), jobs (dead in the last 24&nbsp;h, how many wait and for how long the oldest has), and slow-query shapes seen in the last 24&nbsp;h (and how many are new).</li>
+        <li><strong class="text-white">Needs attention.</strong> One ranked list built from every source the page can read &mdash; tiers in the table below. Each row shows its tier, its source, what it is, the detail in monospace (the message, the query, the handler), why it is listed (counts, last seen, trend) and a metric. Its button links to the item on its page, or &mdash; for a single dead job &mdash; is that page's own <strong class="text-white">Retry</strong> form, which keeps the same-origin POST rule. Nothing on the overview changes state on a <code>GET</code>. Resolved and ignored error groups never appear; with nothing to show, it says so.</li>
+        <li><strong class="text-white">Usage.</strong> Requests per hour as a bar chart (per 5 minutes for 1&nbsp;h, per 6 hours for 7&nbsp;d), responses by status class and the top routes &mdash; by route <strong class="text-white">pattern</strong> (<code>GET /posts/:id</code>), never the raw path &mdash; with requests, share, p95 and 5xx rate; a p95 of a second or more and a 5xx rate of 1&nbsp;% or more are highlighted. <code>?range=1h</code>, <code>24h</code> (the default) and <code>7d</code> pick the window. A reply the response cache answers (<code>Soli-Response-Cache</code>) is counted under the route its worker counted it for. The framework's own endpoints, static files and a miss for an asset-looking path are not counted. Times are UTC.</li>
+        <li><strong class="text-white">Refreshing.</strong> <em>Updated N s ago</em> says how old the page is; <strong class="text-white">Refresh</strong> reloads it, <strong class="text-white">Auto-refresh</strong> reloads it every 30 seconds (<code>?refresh=30</code>, a <code>&lt;meta&gt;</code> refresh &mdash; off by default).</li>
+    </ul>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Source</th>
+                    <th class="py-3 px-4 font-semibold">Critical</th>
+                    <th class="py-3 px-4 font-semibold">Warning</th>
+                    <th class="py-3 px-4 font-semibold">Info</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4" text-white">Error groups (open only)</td><td class="py-3 px-4">new within the hour; came back after being resolved and seen within the hour; rising (10+ in the last hour and 3&times; the hourly average before)</td><td class="py-3 px-4">seen in the last 24&nbsp;h</td><td class="py-3 px-4">open, quiet for over a day</td></tr>
+                <tr><td class="py-3 px-4" text-white">Jobs</td><td class="py-3 px-4">dead within the hour; the oldest due job has waited 30&nbsp;min</td><td class="py-3 px-4">dead in the last 24&nbsp;h; failing and waiting for a retry; running past its lease; 100+ waiting or the oldest waited 5&nbsp;min</td><td class="py-3 px-4"></td></tr>
+                <tr><td class="py-3 px-4" text-white">Slow queries (seen in 24&nbsp;h, 5 at most)</td><td class="py-3 px-4"></td><td class="py-3 px-4">new within the hour; seen within the hour with an all-time mean of twice the threshold</td><td class="py-3 px-4">the rest of the day's</td></tr>
+                <tr><td class="py-3 px-4" text-white">Spam</td><td class="py-3 px-4"></td><td class="py-3 px-4">a spike: 20+ refused in the last hour and 5&times; the average before</td><td class="py-3 px-4">refused in the last 24&nbsp;h (<code>200+</code> when the newest 200 all fall in the day)</td></tr>
+                <tr><td class="py-3 px-4" text-white">Engine</td><td class="py-3 px-4">a handler panicked within the hour</td><td class="py-3 px-4">a panic in the last 24&nbsp;h</td><td class="py-3 px-4">an older panic; a handler the VM refused (it runs on the slower interpreter); a handler the two engines disagree on &mdash; the framework&rsquo;s to fix, worth reporting</td></tr>
+                <tr><td class="py-3 px-4" text-white">Traffic</td><td class="py-3 px-4">5xx on 5&nbsp;% of the last hour's requests (10+)</td><td class="py-3 px-4">5xx on 1&nbsp;% (5+); a route with a p95 of 2&nbsp;s or more over 50+ requests</td><td class="py-3 px-4"></td></tr>
+                <tr><td class="py-3 px-4" text-white">Recording</td><td class="py-3 px-4"></td><td class="py-3 px-4">a tracker dropped or failed to write samples within the hour; a store could not be read</td><td class="py-3 px-4">a tracker&rsquo;s misses, the last over an hour ago</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Within a tier, rows are ordered by a score out of 100: <strong class="text-white">40 &times; recency</strong> (<code>1 / (1 + hours since last seen)</code>), <strong class="text-white">35 &times; growth</strong> (<code>(last hour &minus; hourly average of the 23 before) / (the two added)</code>, never below 0) and <strong class="text-white">25 &times; volume</strong> (<code>log10(1 + count over 24 h) / 4</code>, at most 1). Rows with no hourly history to compare (a job, a queue, the last hour&rsquo;s traffic) score no growth. Ties go to the most recent, then alphabetically, so a refresh does not reshuffle them.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Access</strong> is the gate of the pages it summarises, and never wider: it opens for anyone who may open at least one of them (<code>/__soli/mobile</code> included &mdash; every page&rsquo;s logo links here), and shows each source only to a caller who may open that source's page &mdash; credentials for <code>/__soli/jobs</code> alone show the jobs tile and the job rows, nothing else. Usage and the engine rows are the overview's own, under <code>SOLI_OVERVIEW_*</code> or the shared set. In <code>--dev</code> it is open to this machine (and linked from the dev bar's tools panel); in production with nothing configured it answers <code>404</code>. A tracker that is switched off (<code>SOLI_ERRORS=off</code>, &hellip;) is not read. The page is sent with <code>Cache-Control: no-store</code> and <code>X-Frame-Options: SAMEORIGIN</code>.
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_OVERVIEW_USER=ops
+SOLI_OVERVIEW_PASSWORD=&lt;long random string&gt;
+SOLI_OVERVIEW_TOKEN=&lt;long random string&gt;   # Authorization: Bearer &hellip;
+
+# or the shared set, accepted by every operator page
+SOLI_ADMIN_USER=ops
+SOLI_ADMIN_PASSWORD=&lt;long random string&gt;</code></pre>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Cost.</strong> The page reads what the pages already read &mdash; the open error groups, the slow-query groups, the refused posts &mdash; each a bounded list, plus memory. From the queue it reads its own two bounded lists, filtered by the database: the jobs not finished yet (oldest first) and those that died in the last 24 hours (newest first), 500 at most each, and it counts the due backlog and the day&rsquo;s dead jobs with two <code>COUNT</code> queries, so a week of finished jobs never hides them. Usage is counted on the worker around each request: a monotonic clock read at each end, then two counter increments on a table that worker owns, behind a lock no other worker takes (about 15 ns for the counting and 65 ns with the clock reads, measured with eight threads recording at once). Each worker folds its counts into the shared table once every five minutes, and the page folds them all when it renders, so what it shows is live. The 1&nbsp;h and 24&nbsp;h views come from memory; when the app has a database configured (a <code>config/database.toml</code>, a SQL adapter, or <code>SOLIDB_*</code> settings), hourly totals are also written to <code>_soli_usage</code> once a minute, one update per hour of data, never one per request, and read back before the first write, so 7&nbsp;d survives a restart. If the database does not answer yet, the hours are kept and the writer tries again with growing pauses (up to 30 minutes), reading the stored hours back as soon as it can. Without a database, usage stays in memory and the section says so. Stored hours are kept 15 days.
+    </p>
+    <p class="text-gray-400 mb-12">
+        <strong class="text-white">Limits.</strong> Usage counts what this process answered, all its workers together; the stored hours add up across processes that share a database, so with several processes the 24&nbsp;h and 7&nbsp;d views after a restart mix every process&rsquo;s past hours with this one&rsquo;s new hours, and the change against the range before can read as a drop. Up to 62 route patterns are tracked by name per app; past that, routes are counted together as <em>other routes</em>, and a request no route matched as <em>no route matched</em>. Percentiles come from power-of-two latency buckets, interpolated: close, not exact. The job totals are counted by the database; the per-handler groups are built from the 500 rows read, and <em>growing backlog</em> reads from how long the oldest job has waited. <code>SOLI_USAGE=off</code> stops counting; under <code>APP_ENV=test</code> it is off unless <code>SOLI_USAGE=on</code>.
+    </p>
+
     <h2 id="error-tracking" class="text-2xl font-bold text-white mb-6">Error tracking (<code>/__soli/errors</code>)</h2>
     <p class="text-gray-400 mb-4">
         Every request that ends in a 500 is recorded, grouped, and shown at <code>/__soli/errors</code> &mdash; a built-in, self-hosted stand-in for Sentry. No service to sign up for, no SDK: it is on by default and writes to the app's own database (SoliDB, Postgres, MySQL or SQLite), in a <code>_soli_errors</code> table.
@@ -458,6 +514,7 @@ end</code></pre>
                 <tr><td class="py-3 px-4 text-white">Span tree</td><td class="py-3 px-4">flamegraph</td><td class="py-3 px-4">OTLP when OTEL on</td></tr>
                 <tr><td class="py-3 px-4 text-white">Metrics</td><td class="py-3 px-4">opt-in</td><td class="py-3 px-4">opt-in</td></tr>
                 <tr><td class="py-3 px-4 text-white">Health endpoints</td><td class="py-3 px-4">on</td><td class="py-3 px-4">on</td></tr>
+                <tr><td class="py-3 px-4 text-white">Overview (<code>/__soli/</code>)</td><td class="py-3 px-4">on, open to this machine</td><td class="py-3 px-4">on, behind any operator page's credentials, each source shown only with its own</td></tr>
                 <tr><td class="py-3 px-4 text-white">Error tracking (<code>/__soli/errors</code>)</td><td class="py-3 px-4">on, open to this machine</td><td class="py-3 px-4">on, behind <code>SOLI_ERRORS_*</code> / <code>SOLI_ADMIN_*</code></td></tr>
                 <tr><td class="py-3 px-4 text-white">Slow queries (<code>/__soli/slow_queries</code>)</td><td class="py-3 px-4">on, open to this machine</td><td class="py-3 px-4">on, behind <code>SOLI_SLOW_QUERIES_*</code> / <code>SOLI_ADMIN_*</code></td></tr>
                 <tr><td class="py-3 px-4 text-white">Notifications</td><td class="py-3 px-4">when <code>SOLI_NOTIFY_*</code> is set (emails go to the dev inbox without SMTP)</td><td class="py-3 px-4">when <code>SOLI_NOTIFY_*</code> is set</td></tr>

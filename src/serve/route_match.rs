@@ -56,29 +56,34 @@ pub(super) fn resolve(
     log_start: Option<Instant>,
 ) -> Result<Matched, ResponseData> {
     // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
-    let (route_handler_name, scoped_middleware, params) = match find_route(method, path) {
-        Some(found) => found,
-        None => {
-            // Nothing in this application answers here. If it serves EUI and
-            // the caller is a browser, that is not a missing page — it is
-            // somebody who arrived over the wrong protocol, and a 404 teaches
-            // them nothing. An application that *does* define a route for
-            // this path never reaches this branch, so its own page always
-            // wins; this is only what happens when nothing is defined.
-            #[cfg(feature = "eui")]
-            if let Some(resp) = eui_browser_fallback(method, data) {
-                return Err(resp);
+    let (route_handler_name, scoped_middleware, params, route_index) =
+        match find_route(method, path) {
+            Some(found) => found,
+            None => {
+                // Nothing in this application answers here. If it serves EUI and
+                // the caller is a browser, that is not a missing page — it is
+                // somebody who arrived over the wrong protocol, and a 404 teaches
+                // them nothing. An application that *does* define a route for
+                // this path never reaches this branch, so its own page always
+                // wins; this is only what happens when nothing is defined.
+                #[cfg(feature = "eui")]
+                if let Some(resp) = eui_browser_fallback(method, data) {
+                    return Err(resp);
+                }
+                return Err(not_found(
+                    method,
+                    path,
+                    "The page you're looking for doesn't exist.",
+                    scope,
+                    cookie_secure,
+                    log_start,
+                ));
             }
-            return Err(not_found(
-                method,
-                path,
-                "The page you're looking for doesn't exist.",
-                scope,
-                cookie_secure,
-                log_start,
-            ));
-        }
-    };
+        };
+
+    // The pattern answered, whatever the action turns out to be: usage is
+    // counted per route pattern, never per raw path.
+    super::usage::note_route(route_index);
 
     // Expand wildcard action pattern (e.g., "docs#*" → "docs#routing")
     // Skip expansion entirely when handler doesn't use wildcards (common case)

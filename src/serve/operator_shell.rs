@@ -1,5 +1,6 @@
-//! The one look every built-in `/__soli/*` page shares: errors, slow queries, jobs, mobile, the mail
-//! inbox, and the mailer and component catalogs.
+//! The one look every built-in `/__soli/*` page shares: the overview, errors,
+//! slow queries, jobs, mobile, the mail inbox, and the mailer and component
+//! catalogs.
 //!
 //! Each page used to carry its own copy of a dark stylesheet, and the copies
 //! had drifted — different paddings, different buttons, a different header on
@@ -16,6 +17,7 @@ use super::dev_bar::html_escape;
 /// Which page is rendering, for the bar's current item.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Section {
+    Overview,
     Errors,
     SlowQueries,
     Spam,
@@ -29,6 +31,7 @@ pub(crate) enum Section {
 impl Section {
     fn href(self) -> &'static str {
         match self {
+            Section::Overview => "/__soli/",
             Section::Errors => "/__soli/errors",
             Section::SlowQueries => "/__soli/slow_queries",
             Section::Spam => "/__soli/spam",
@@ -42,6 +45,7 @@ impl Section {
 
     fn label(self) -> &'static str {
         match self {
+            Section::Overview => "Overview",
             Section::Errors => "Errors",
             Section::SlowQueries => "Queries",
             Section::Spam => "Spam",
@@ -61,7 +65,8 @@ impl Section {
     }
 }
 
-const SECTIONS: [Section; 8] = [
+const SECTIONS: [Section; 9] = [
+    Section::Overview,
     Section::Errors,
     Section::SlowQueries,
     Section::Spam,
@@ -84,7 +89,27 @@ pub(crate) fn page(section: Section, title: &str, intro: &str, body: &str) -> St
     )
 }
 
+/// What a page adds to the shell beyond its heading and body.
+#[derive(Default)]
+pub(crate) struct Extras<'a> {
+    /// Trusted markup for `<head>` (a `<meta http-equiv="refresh">`).
+    pub head: &'a str,
+    /// Trusted markup beside the heading (the overview's refresh controls).
+    pub aside: &'a str,
+}
+
 fn page_with(section: Section, title: &str, intro: &str, body: &str, dev_mode: bool) -> String {
+    render(section, title, intro, body, &Extras::default(), dev_mode)
+}
+
+pub(crate) fn render(
+    section: Section,
+    title: &str,
+    intro: &str,
+    body: &str,
+    extras: &Extras<'_>,
+    dev_mode: bool,
+) -> String {
     let mut nav = String::new();
     for item in SECTIONS {
         if item.dev_only() && !dev_mode {
@@ -106,20 +131,36 @@ fn page_with(section: Section, title: &str, intro: &str, body: &str, dev_mode: b
     } else {
         format!("<p class=\"intro\">{intro}</p>")
     };
+    let head = if extras.aside.is_empty() {
+        format!(
+            "<div class=\"head\"><h1>{}</h1>{intro}</div>",
+            html_escape(title)
+        )
+    } else {
+        format!(
+            "<div class=\"head split\"><div class=\"head-text\"><h1>{}</h1>{intro}</div>\
+<div class=\"head-aside\">{}</div></div>",
+            html_escape(title),
+            extras.aside
+        )
+    };
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
 <meta name=\"robots\" content=\"noindex\">\
-<title>{title_text} \u{b7} Soli</title><style>{STYLE}</style></head><body>\
+<title>{title_text} \u{b7} Soli</title>{head_extra}<style>{STYLE}</style></head><body>\
 <header class=\"top\"><div class=\"top-in\">\
 <a class=\"brand\" href=\"{home}\"><span class=\"mark\" aria-hidden=\"true\"></span>soli</a>\
 <nav class=\"sections\" aria-label=\"Soli pages\">{nav}</nav>\
 <a class=\"to-app\" href=\"/\">Back to app <span aria-hidden=\"true\">\u{2197}</span></a>\
 </div></header>\
-<main class=\"wrap\"><div class=\"head\"><h1>{title_text}</h1>{intro}</div>{body}</main>\
+<main class=\"wrap\">{head}{body}</main>\
 </body></html>",
         title_text = html_escape(title),
-        home = section.href(),
+        head_extra = extras.head,
+        // The brand goes to the overview, which opens for anyone who can
+        // open any page here.
+        home = Section::Overview.href(),
     )
 }
 
@@ -282,6 +323,88 @@ pre,code,.mono,.meta,.msg.query{font-variant-ligatures:none}
 .row.spam-lo .count{color:var(--green)}
 .trend .tag{cursor:help}
 
+/* the overview */
+.head.split{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.head-text{display:grid;gap:6px}
+.head-aside{display:flex;flex-wrap:wrap;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+.head-aside .btn{height:32px}
+.ov{display:flex;flex-direction:column;gap:28px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;color:var(--text);min-width:0}
+.tile:hover{text-decoration:none;border-color:var(--line-2);background:var(--panel-2)}
+.tile-label{color:var(--text-2);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.tile-value{font-size:26px;line-height:1.2;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em;overflow-wrap:anywhere}
+.tile-note{font-size:12px;display:flex;align-items:center;gap:6px;color:var(--text-2)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto;background:var(--muted)}
+.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}
+.attn{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.attn-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.attn-head h2{font-size:17px;font-weight:700}
+.counts{display:flex;flex-wrap:wrap;gap:8px;font-size:12px}
+.pill{display:inline-flex;align-items:center;border-radius:999px;padding:3px 10px;font-weight:600}
+.crit{background:var(--red-bg);color:var(--red)}
+.warn{background:var(--amber-bg);color:var(--amber)}
+.info{background:#0f1d2e;color:var(--blue)}
+.attn ol{list-style:none;margin:0;padding:0}
+.item{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:14px 20px;border-bottom:1px solid #1a1f27}
+.badge{flex:0 0 auto;width:76px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-radius:6px;padding:5px 0}
+.item-main{flex:999 1 420px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.item-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+.item-title b{font-weight:600;overflow-wrap:anywhere}
+.chip{font-size:12px;color:var(--muted);border:1px solid var(--line-2);border-radius:4px;padding:0 6px}
+.item-detail{font:12.5px/1.45 var(--mono);color:var(--text-2);overflow-wrap:anywhere;font-variant-ligatures:none}
+.item-why{font-size:12.5px;color:var(--muted)}
+.item-metric{flex:1 1 140px;display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+.item-metric b{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.item-metric span{font-size:12px;color:var(--text-2)}
+.item .btn,.item button{height:36px;padding:0 12px;font-size:13px}
+.attn-empty{padding:28px 20px;display:grid;gap:4px;border-bottom:1px solid #1a1f27}
+.attn-empty b{font-size:15px}
+.attn-empty span{color:var(--muted)}
+.attn-foot{padding:12px 20px;font-size:13px;color:var(--muted)}
+.usage{display:flex;flex-direction:column;gap:12px}
+.usage-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.usage-head h2{font-size:17px;font-weight:700}
+.range{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px}
+.range a{color:var(--text-2);border-radius:6px;padding:6px 12px;min-height:32px;display:inline-flex;align-items:center}
+.range a:hover{text-decoration:none;color:var(--text)}
+.range a[aria-current]{background:var(--panel-2);color:var(--text);font-weight:600}
+.usage-grid{display:flex;flex-wrap:wrap;gap:12px}
+.ucard{flex:999 1 560px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.ucard.routes{flex:1 1 380px;padding:18px 0 8px;gap:10px}
+.ucard-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px}
+.ucard.routes .ucard-head{padding:0 20px}
+.ucard h3{margin:0;font-size:14px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:0}
+.ucard-head span{font-size:12px;color:var(--muted)}
+.chart{display:flex;gap:8px}
+.yaxis{display:flex;flex-direction:column;justify-content:space-between;height:180px;font-size:11px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.cols{flex:1 1 auto;min-width:0;height:180px;display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--line-2);background-image:linear-gradient(#1a1f27 1px,transparent 1px);background-size:100% 60px}
+.cols .c{flex:1 1 0;min-width:0;background:var(--primary);border-radius:3px 3px 0 0;opacity:.9}
+.cols .c.now{background:#a5d6ff}
+.cols .c:hover{opacity:1;outline:2px solid var(--text);outline-offset:1px}
+.xaxis{display:flex;justify-content:space-between;padding-left:32px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.status-mix{display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px solid #1a1f27}
+.seg{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden;background:var(--sunken)}
+.seg span{min-width:2px}
+.s2{background:var(--green)}.s3{background:var(--blue)}.s4{background:var(--amber)}.s5{background:var(--red)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.ucard .scroll{overflow-x:auto}
+.rt{font-variant-numeric:tabular-nums}
+.rt th,.rt td{background:transparent;padding:8px;text-align:right;border-bottom:0;border-top:1px solid #1a1f27}
+.rt thead th{border-top:0;font-size:11px;padding:6px 8px}
+.rt th:first-child,.rt td:first-child{text-align:left;padding-left:20px}
+.rt th:last-child,.rt td:last-child{padding-right:20px}
+.rt .route{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rt .route code{background:none;border:0;padding:0;font-size:12.5px;white-space:nowrap;color:var(--text)}
+.share{height:3px;border-radius:2px;background:#1a1f27;display:block}
+.share span{display:block;height:3px;border-radius:2px;background:var(--primary)}
+.rt .slow{color:var(--amber);font-weight:600}
+.rt .bad{color:var(--red);font-weight:600}
+.rt .ok{color:var(--text-2)}
+.usage-empty{color:var(--muted);font-size:13px;padding:24px 0;text-align:center}
+
 @media (max-width:760px){
   .top-in{padding:0 16px;gap:14px}
   .to-app{display:none}
@@ -293,6 +416,12 @@ pre,code,.mono,.meta,.msg.query{font-variant-ligatures:none}
   .actions{justify-content:flex-start}
   dl{grid-template-columns:1fr;gap:2px}
   dd{margin-bottom:8px}
+  .item{padding:14px 16px}
+  .item-metric{align-items:flex-start;text-align:left}
+  .attn-head,.attn-foot,.attn-empty{padding-left:16px;padding-right:16px}
+  .ucard{padding:16px}
+  .yaxis{display:none}
+  .xaxis{padding-left:0}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 "#;
@@ -315,6 +444,16 @@ mod tests {
     fn the_current_page_is_marked_and_the_title_escaped() {
         let html = page_with(Section::Jobs, "<Jobs>", "", "", true);
         assert!(html.contains("<a href=\"/__soli/jobs\" aria-current=\"page\">Jobs</a>"));
+        // The overview is the bar's first item, in production too.
+        let prod = page_with(Section::Errors, "Errors", "", "", false);
+        let nav = prod
+            .split("aria-label=\"Soli pages\">")
+            .nth(1)
+            .unwrap_or("");
+        assert!(
+            nav.starts_with("<a href=\"/__soli/\">Overview</a>"),
+            "{nav}"
+        );
         assert!(html.contains("&lt;Jobs&gt;"));
         assert!(!html.contains("<Jobs>"));
     }

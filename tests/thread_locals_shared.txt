@@ -19,6 +19,8 @@ src/interpreter/builtins/model/state_machine.rs SM_BUILDER_STACK
 src/interpreter/builtins/template.rs VIEW_HELPER_ENV
 src/interpreter/executor/statements.rs NAMESPACE
 src/serve/query_stats.rs LOCAL
+src/serve/usage.rs LOCAL
+src/serve/usage.rs ROUTE_CACHE
 src/serve/slow_queries.rs SUPPRESSED
 src/serve/tenant.rs CURRENT
 src/solidb_driver.rs CLIENT
@@ -144,6 +146,7 @@ src/interpreter/builtins/router.rs ROUTER_CONTEXT
 src/interpreter/builtins/router.rs OPENAPI_SCOPE
 src/interpreter/builtins/server.rs ROUTES
 src/interpreter/builtins/server.rs ROUTE_INDEX
+src/interpreter/builtins/server.rs ROUTES_GENERATION
 src/interpreter/builtins/spreadsheet.rs CLASS
 src/interpreter/builtins/streaming.rs OUT_CLASS
 src/interpreter/builtins/template.rs VIEW_HELPERS
