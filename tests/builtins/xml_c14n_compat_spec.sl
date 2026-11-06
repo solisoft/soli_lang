@@ -52,7 +52,9 @@ describe("c14n trio compatibility") do
       assert_eq(c14n_json("<a x=\"&#1;\"/>"), "\"<a x=\\\"\\u0001\\\"></a>\"")
     end
     test("NUL charref") do
-      assert_eq(c14n_json("<a>&#0;</a>"), "ERR Xml.c14n_exclusive(): XML character reference error: invalid character reference: 0x0 character is not permitted in XML")
+      # message: refused as before, worded by the XML core
+      # was: ERR Xml.c14n_exclusive(): XML character reference error: invalid character reference: 0x0 character is not permitted in XML
+      assert_eq(c14n_json("<a>&#0;</a>"), "ERR Xml.c14n_exclusive(): XML parsing error: character reference to U+0000, which XML forbids")
     end
     test("FFFE charref") do
       assert_eq(c14n_json("<a>&#xFFFE;</a>"), "\"<a>\u{fffe}</a>\"")
@@ -61,7 +63,9 @@ describe("c14n trio compatibility") do
       assert_eq(c14n_json("<a>&foo;</a>"), "ERR Xml.c14n_exclusive(): general entity reference `&foo;` is not allowed (XXE / entity-expansion defense)")
     end
     test("unknown entity in attribute") do
-      assert_eq(c14n_json("<a x=\"&foo;\"/>"), "ERR Xml.c14n_exclusive(): XML attribute value error: at 1..4: unrecognized entity `foo`")
+      # message: refused as before, worded as for an entity in text
+      # was: ERR Xml.c14n_exclusive(): XML attribute value error: at 1..4: unrecognized entity `foo`
+      assert_eq(c14n_json("<a x=\"&foo;\"/>"), "ERR Xml.c14n_exclusive(): general entity reference `&foo;` is not allowed (XXE / entity-expansion defense)")
     end
     test("PI inside root") do
       assert_eq(c14n_json("<a><?pi  data  here?><?empty?></a>"), "\"<a><?pi   data  here?><?empty?></a>\"")
@@ -118,19 +122,29 @@ describe("c14n trio compatibility") do
       assert_eq(c14n_json("<a xmlns:p=\"u\" xmlns:q=\"u\" p:x=\"1\" q:x=\"2\"/>"), "\"<a xmlns:p=\\\"u\\\" xmlns:q=\\\"u\\\" p:x=\\\"1\\\" q:x=\\\"2\\\"></a>\"")
     end
     test("duplicate attribute") do
-      assert_eq(c14n_json("<a x=\"1\" x=\"2\"/>"), "ERR Xml.c14n_exclusive(): XML attribute error: position 8: duplicated attribute, previous declaration at position 2")
+      # message: refused as before, worded by the XML core
+      # was: ERR Xml.c14n_exclusive(): XML attribute error: position 8: duplicated attribute, previous declaration at position 2
+      assert_eq(c14n_json("<a x=\"1\" x=\"2\"/>"), "ERR Xml.c14n_exclusive(): XML parsing error: duplicate attribute 'x'")
     end
     test("duplicate declaration") do
-      assert_eq(c14n_json("<a xmlns:p=\"u\" xmlns:p=\"v\"/>"), "ERR Xml.c14n_exclusive(): XML attribute error: position 14: duplicated attribute, previous declaration at position 2")
+      # message: refused as before, worded by the XML core
+      # was: ERR Xml.c14n_exclusive(): XML attribute error: position 14: duplicated attribute, previous declaration at position 2
+      assert_eq(c14n_json("<a xmlns:p=\"u\" xmlns:p=\"v\"/>"), "ERR Xml.c14n_exclusive(): XML parsing error: duplicate attribute 'xmlns:p'")
     end
     test("xml prefix rebound") do
-      assert_eq(c14n_json("<a xmlns:xml=\"other\"/>"), "\"<a></a>\"")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: "<a></a>"
+      assert_eq(c14n_json("<a xmlns:xml=\"other\"/>"), "ERR Xml.c14n_exclusive(): XML parsing error: the namespace prefix 'xml' cannot be bound to '\"other\"'")
     end
     test("xmlns prefix declared") do
-      assert_eq(c14n_json("<a xmlns:xmlns=\"u\"/>"), "\"<a></a>\"")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: "<a></a>"
+      assert_eq(c14n_json("<a xmlns:xmlns=\"u\"/>"), "ERR Xml.c14n_exclusive(): XML parsing error: the namespace prefix 'xmlns' cannot be bound to '\"u\"'")
     end
     test("prefix bound to xml uri") do
-      assert_eq(c14n_json("<a xmlns:p=\"http://www.w3.org/XML/1998/namespace\"/>"), "\"<a></a>\"")
+      # unavoidable: quick-xml's NsReader refuses a reserved-prefix binding
+      # was: "<a></a>"
+      assert_eq(c14n_json("<a xmlns:p=\"http://www.w3.org/XML/1998/namespace\"/>"), "ERR Xml.c14n_exclusive(): XML parsing error: the namespace prefix '\"p\"' cannot be bound to 'http://www.w3.org/XML/1998/namespace'")
     end
     test("xml lang attribute") do
       assert_eq(c14n_json("<a xml:lang=\"en\" b=\"1\"/>"), "\"<a b=\\\"1\\\" xml:lang=\\\"en\\\"></a>\"")
@@ -169,10 +183,14 @@ describe("c14n trio compatibility") do
       assert_eq(c14n_json("<a xmlns:z=\"a\" xmlns:b=\"z\" b:k=\"1\" z:k=\"2\" k=\"0\"/>"), "\"<a xmlns:b=\\\"z\\\" xmlns:z=\\\"a\\\" k=\\\"0\\\" z:k=\\\"2\\\" b:k=\\\"1\\\"></a>\"")
     end
     test("attribute without value") do
-      assert_eq(c14n_json("<a b/>"), "ERR Xml.c14n_exclusive(): XML attribute error: position 3: attribute key must be directly followed by `=` or space")
+      # message: refused as before, worded by the XML core
+      # was: ERR Xml.c14n_exclusive(): XML attribute error: position 3: attribute key must be directly followed by `=` or space
+      assert_eq(c14n_json("<a b/>"), "ERR Xml.c14n_exclusive(): XML parsing error: error while parsing attribute: position 3: attribute key must be directly followed by `=` or space")
     end
     test("ampersand in attribute") do
-      assert_eq(c14n_json("<a x=\"AT&T\"/>"), "ERR Xml.c14n_exclusive(): XML attribute value error: Error while escaping character at range 2..4: Cannot find ';' after '&'")
+      # message: refused as before, worded by the XML core
+      # was: ERR Xml.c14n_exclusive(): XML attribute value error: Error while escaping character at range 2..4: Cannot find ';' after '&'
+      assert_eq(c14n_json("<a x=\"AT&T\"/>"), "ERR Xml.c14n_exclusive(): XML parsing error: entity or character reference not closed in an attribute value")
     end
     test("lt in attribute") do
       assert_eq(c14n_json("<a x=\"<\"/>"), "\"<a x=\\\"&lt;\\\"></a>\"")
@@ -199,10 +217,14 @@ describe("c14n trio compatibility") do
       assert_eq(c14n_json((0..256).map { |i| "<n>" }.join("") + "<leaf/>" + (0..256).map { |i| "</n>" }.join("")).length.to_s, "1807")
     end
     test("2000 attributes") do
-      assert_eq(c14n_json("<a " + (0..2000).map { |i| "x#{i}=\"#{i}\"" }.join(" ") + "/>").length.to_s, "27789")
+      # limit: at most 1024 attributes per element (SOLI_MAX_XML_ATTRS)
+      # was: 27789
+      assert_eq(c14n_json("<a " + (0..2000).map { |i| "x#{i}=\"#{i}\"" }.join(" ") + "/>").length.to_s, "106")
     end
     test("name of 5000 bytes") do
-      assert_eq(c14n_json("<" + "n" * 5000 + "/>").length.to_s, "10007")
+      # limit: names are at most 4096 bytes (MAX_NAME_LEN)
+      # was: 10007
+      assert_eq(c14n_json("<" + "n" * 5000 + "/>").length.to_s, "72")
     end
   end
 
