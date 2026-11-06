@@ -37,8 +37,8 @@
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr>
                     <td class="py-3 px-4 text-white font-medium">Metrics</td>
-                    <td class="py-3 px-4"><code>SOLI_METRICS=1</code></td>
-                    <td class="py-3 px-4">Prometheus text at <code>GET /_metrics</code></td>
+                    <td class="py-3 px-4"><code>SOLI_METRICS=1</code>, <code>DD_AGENT_HOST</code> / <code>SOLI_STATSD</code>, <code>SOLI_OTEL_METRICS=1</code></td>
+                    <td class="py-3 px-4">Prometheus text at <code>GET /_metrics</code>, DogStatsD to a Datadog agent, OTLP/HTTP JSON</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4 text-white font-medium">Logs</td>
@@ -129,9 +129,9 @@ soli serve</code></pre>
         <a href="/docs/getting-started/configuration#health-checks-and-graceful-shutdown" class="text-amber-400 hover:underline">Configuration &rarr; Health checks</a>.
     </p>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Metrics (<code>/_metrics</code>)</h2>
+    <h2 id="metrics" class="text-2xl font-bold text-white mb-6">Metrics (<code>/_metrics</code>)</h2>
     <p class="text-gray-400 mb-4">
-        Collection is opt-in via <code>SOLI_METRICS=1</code> (or <code>true</code>). Until that is set, counters stay at zero and the hot path skips the per-operation clocks.
+        Collection is opt-in: <code>SOLI_METRICS=1</code> (or <code>true</code>), a DogStatsD target or OTLP metrics export each turn it on. Until one is set, counters stay at zero, the hot path skips the per-operation clocks, and an app metric call is validated and dropped. <code>/_metrics</code> is always served.
     </p>
     <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_METRICS=1 soli serve
 curl -s localhost:5011/_metrics</code></pre>
@@ -145,17 +145,28 @@ curl -s localhost:5011/_metrics</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr><td class="py-3 px-4"><code>soli_http_requests_total</code></td><td class="py-3 px-4">Requests handled</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_lexing_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Time in the lexer</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_parsing_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Time in the parser</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_vm_execution_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Bytecode VM wall time, one sample per entry into the VM (a handler, a middleware, a view, a script). Blocks, paren-less method calls and constructors run inside that entry are part of its time, not samples of their own</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_template_render_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Views, layouts, partials</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_middleware_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Middleware totals</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_db_query_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">SoliDB / SolidB query time</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_http_request_duration_seconds</code></td><td class="py-3 px-4">Histogram of request time, from routing to response, labelled <code>method</code> (<code>GET</code>&hellip;, anything else <code>OTHER</code>), <code>route</code> (the matched <code>controller#action</code>, <code>unmatched</code> for a 404) and <code>status_class</code> (<code>2xx</code>&hellip;). <code>/_metrics</code>, <code>/_health</code>, <code>/_ready</code> and <code>/up</code> are not counted</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_lexing_duration_seconds</code></td><td class="py-3 px-4">Time in the lexer</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_parsing_duration_seconds</code></td><td class="py-3 px-4">Time in the parser</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_vm_execution_seconds</code></td><td class="py-3 px-4">Bytecode VM wall time, one sample per entry into the VM (a handler, a middleware, a view, a script). Blocks, paren-less method calls and constructors run inside that entry are part of its time, not samples of their own</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_template_render_duration_seconds</code></td><td class="py-3 px-4">Views, layouts, partials</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_middleware_duration_seconds</code></td><td class="py-3 px-4">Middleware totals, per request</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_db_query_duration_seconds</code></td><td class="py-3 px-4">SoliDB / SolidB query time, per request</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_vm_handler_demotions_total</code></td><td class="py-3 px-4">Actions, controller hooks and middleware that fell back from the VM to the tree-walker (cached per worker). <code>SOLI_ENGINE_LOG=1</code> prints one line per unique handler (for a script, it prints which engine runs it and why &mdash; see <a href="/docs/getting-started/configuration#script-engine" class="text-amber-400 hover:underline">Configuration</a>); <code>SOLI_FAIL_ON_VM_DEMOTION=1</code> exits the process when the VM <em>refuses</em> a handler, so CI cannot ship a new refuse. Views are not counted: <code>SOLI_ENGINE_LOG=1</code> also names, once each, the templates the interpreter renders and why (see <a href="/docs/core-concepts/views#view-engine" class="text-amber-400 hover:underline">Views</a>). The bytecode VM only runs outside <code>--dev</code>, so neither applies to <code>soli serve --dev</code> or <code>soli test</code></td></tr>
                 <tr><td class="py-3 px-4"><code>soli_handler_panics_total</code></td><td class="py-3 px-4">Panics contained by the per-request <code>catch_unwind</code> (client got 500; worker stayed up)</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_metrics_dropped_total</code></td><td class="py-3 px-4">App metric samples dropped: past a cardinality cap, or a full DogStatsD queue</td></tr>
             </tbody>
         </table>
     </div>
+    <p class="text-gray-400 mb-4">
+        Every <code>*_seconds</code> series is a <strong class="text-white">histogram</strong>: <code>_bucket{le="…"}</code> (cumulative), <code>_sum</code> and <code>_count</code>. The buckets are seconds &mdash; <code>0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10</code> &mdash; and <code>SOLI_METRICS_BUCKETS="0.01,0.1,1"</code> replaces them (increasing, comma-separated; a bad list warns and keeps the defaults). They apply to app histograms too. A p95 in PromQL:
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>histogram_quantile(0.95,
+  sum by (le, route) (rate(soli_http_request_duration_seconds_bucket[5m])))</code></pre>
+    <div class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-gray-300 mb-8">
+        <strong class="text-white">Upgrading from 2.31.0 or earlier.</strong> The duration series used to be a counter pair: the bare name was the total seconds and <code>_count</code> the count. The total is now <code>&lt;name&gt;_sum</code> (the bare name no longer exists), <code>_count</code> is unchanged, and <code>_bucket</code> is new. Replace <code>rate(soli_db_query_duration_seconds[5m])</code> with <code>rate(soli_db_query_duration_seconds_sum[5m])</code>.
+    </div>
+
     <p class="text-gray-400 mb-4">
         <code>soli_handler_panics_total</code> and <code>soli_vm_handler_demotions_total</code> are counted even when <code>SOLI_METRICS</code> is off &mdash; rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance. Access: with <code>SOLI_METRICS_TOKEN</code> set, the endpoint wants <code>Authorization: Bearer &lt;token&gt;</code>. Unset, it answers only loopback and private-range peers &mdash; and <strong class="text-white">refuses (404) any request carrying <code>X-Forwarded-For</code>, <code>X-Real-IP</code> or <code>Forwarded</code>, or any request while <code>trust_proxy</code> is on</strong>, since behind a reverse proxy every peer looks local. A deployment behind a proxy must set <code>SOLI_METRICS_TOKEN</code> and have the scraper send it.
     </p>
@@ -168,6 +179,67 @@ curl -s localhost:5011/_metrics</code></pre>
     </ul>
     <p class="text-gray-400 mb-12">
         An error both engines raise, such as a <code>throw</code>, a nil read from a missing parameter or a <code>JSON.parse</code> of a bad body, is the app&rsquo;s own. The request answers 500 and the handler stays on the VM, so a bad request cannot move it to the slower engine. The worker remembers it: the next requests failing with the same error are answered from the VM without a re-run, so whatever the handler did before the error (an outbound HTTP call, a cache write) runs once per request, not twice. A new error of the same handler is re-run once again, for up to eight distinct errors per handler; past that, every error of the handler is answered from the VM without a re-run, so a handler that keeps failing with new messages (one that carries request data, say) cannot double its side effects either. A handler that fails after a write, an enqueue or a mail is not re-run, since it would happen twice. Its error is the answer, and it is demoted, since nothing can tell a VM gap from the app&rsquo;s error. A handler that ran out of the request&rsquo;s time budget (<code>SOLI_HANDLER_TIMEOUT_SECS</code>) is neither re-run nor demoted: the timeout is the answer.
+    </p>
+
+    <h3 id="app-metrics" class="text-xl font-semibold text-white mb-4">App metrics</h3>
+    <p class="text-gray-400 mb-4">
+        Your own counters, gauges and histograms, with the <a href="/docs/builtins/metrics" class="text-amber-400 hover:underline"><code>Metrics</code> class</a>:
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code class="language-soli">Metrics.increment(&quot;orders.created&quot;, tags: {&quot;plan&quot;: order.plan})
+Metrics.gauge(&quot;queue.depth&quot;, pending_jobs.length)
+Metrics.histogram(&quot;cart.items&quot;, cart.items.length)
+total = Metrics.time(&quot;checkout.duration&quot;, {&quot;step&quot;: &quot;charge&quot;}) do
+  Payments.charge(order)
+end</code></pre>
+    <p class="text-gray-400 mb-8">
+        They are shared by every worker and appear on <code>/_metrics</code> after the built-in series (<code>orders.created</code> is scraped as <code>orders_created</code>), go to DogStatsD and OTLP when those are set up, and are capped at 1,000 tag combinations per metric and 1,000 metric names (a sample past a cap is dropped and counted in <code>soli_metrics_dropped_total</code>). Under <code>soli test</code> they are kept even with no sink, so a spec reads them back with <code>Metrics.value</code>.
+    </p>
+
+    <h3 id="dogstatsd" class="text-xl font-semibold text-white mb-4">DogStatsD (Datadog)</h3>
+    <p class="text-gray-400 mb-4">Set any of these and every app sample is also sent to a Datadog agent, together with each request's duration:</p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Variable</th>
+                    <th class="py-3 px-4 font-semibold">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>SOLI_STATSD</code></td><td class="py-3 px-4"><code>host:port</code> (port 8125 if left out), <code>udp://host:port</code> or <code>unix:///path</code>. Wins over the two below; <code>SOLI_STATSD=off</code> turns DogStatsD off even when <code>DD_AGENT_HOST</code> is set</td></tr>
+                <tr><td class="py-3 px-4"><code>DD_DOGSTATSD_URL</code></td><td class="py-3 px-4"><code>udp://host:port</code> or <code>unix:///var/run/datadog/dsd.socket</code></td></tr>
+                <tr><td class="py-3 px-4"><code>DD_AGENT_HOST</code> (+ <code>DD_DOGSTATSD_PORT</code>, default 8125)</td><td class="py-3 px-4">The agent host the Datadog tracers use</td></tr>
+                <tr><td class="py-3 px-4"><code>DD_ENV</code>, <code>DD_SERVICE</code>, <code>DD_VERSION</code></td><td class="py-3 px-4">Sent as <code>env:</code>, <code>service:</code>, <code>version:</code> on every line</td></tr>
+                <tr><td class="py-3 px-4"><code>DD_TAGS</code></td><td class="py-3 px-4">More global tags, <code>team:web,region:eu</code> (comma- or space-separated)</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-8">
+        Lines follow the DogStatsD format &mdash; <code>orders.created:1|c|#plan:pro,env:prod,service:shop</code>: <code>increment</code> sends <code>|c</code>, <code>gauge</code> <code>|g</code>, <code>histogram</code> <code>|h</code>, <code>distribution</code> and <code>time</code> <code>|d</code>. Built in, one line per request: <code>soli.http.request.duration</code> (seconds, <code>|d</code>) tagged <code>method</code>, <code>route</code>, <code>status_class</code>. Workers never touch the socket: they queue each line (16,384 at most, then drop and count), and a background thread packs them into datagrams of at most 1,432 bytes (8&nbsp;KB on a Unix socket). Nothing waits for, or hears back from, the agent. On Kubernetes the agent's host IP usually arrives as <code>DD_AGENT_HOST</code> through the downward API, so the variable that points the tracer at the agent turns DogStatsD on too.
+    </p>
+
+    <h3 id="otlp-metrics" class="text-xl font-semibold text-white mb-4">OTLP metrics</h3>
+    <p class="text-gray-400 mb-4">
+        <code>SOLI_OTEL_METRICS=1</code> (or <code>OTEL_METRICS_EXPORTER=otlp</code>) starts a background thread that POSTs every metric &mdash; built-in and app &mdash; as OTLP/HTTP JSON every <code>OTEL_METRIC_EXPORT_INTERVAL</code> ms (default 60000). Counters are cumulative monotonic sums, gauges gauges, the <code>*_seconds</code> series and app histograms explicit-bucket histograms, all cumulative since the process started; built-in names are dotted (<code>soli.http.request.duration</code>, unit <code>s</code>; <code>soli.http.requests</code>).
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="border-b border-white/10 text-gray-400">
+                    <th class="py-3 px-4 font-semibold">Variable</th>
+                    <th class="py-3 px-4 font-semibold">Meaning</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_METRICS_ENDPOINT</code></td><td class="py-3 px-4">Full URL. Otherwise <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> + <code>/v1/metrics</code>, otherwise <code>http://127.0.0.1:4318/v1/metrics</code></td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_EXPORTER_OTLP_HEADERS</code>, <code>OTEL_EXPORTER_OTLP_METRICS_HEADERS</code></td><td class="py-3 px-4"><code>key=value,key2=value2</code>, percent-decoded; the metrics list wins on the same key. Never logged &mdash; put the API key here (<code>DD-API-KEY=…</code> for Datadog's OTLP intake)</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_METRIC_EXPORT_INTERVAL</code>, <code>OTEL_METRIC_EXPORT_TIMEOUT</code></td><td class="py-3 px-4">Milliseconds (defaults 60000 and 10000)</td></tr>
+                <tr><td class="py-3 px-4"><code>OTEL_SERVICE_NAME</code> (else <code>DD_SERVICE</code>), <code>DD_ENV</code>, <code>DD_VERSION</code>, <code>OTEL_RESOURCE_ATTRIBUTES</code></td><td class="py-3 px-4">The resource: <code>service.name</code>, <code>deployment.environment.name</code>, <code>service.version</code>, anything else</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-8">
+        <code>OTEL_SDK_DISABLED=true</code> or <code>SOLI_OTEL_METRICS=0</code> keeps it off. A failed export warns once and is retried with the next interval's (cumulative) values; a <code>429</code> is not an error.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Structured logs</h2>
@@ -527,7 +599,9 @@ end</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Limits (honest)</h2>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-12">
         <li>No auto-instrumentation of every third-party client library &mdash; only Soli's own request path, ORM, and <code>HTTP.*</code> client.</li>
-        <li>OTLP export is <strong class="text-white">traces only</strong> (not metrics or logs pipelines). Metrics stay on Prometheus <code>/_metrics</code>; logs stay on stdout.</li>
+        <li>OTLP export covers traces and, opt-in, metrics &mdash; HTTP/JSON only, no gRPC or protobuf. The last metrics interval before the process exits is not flushed; DogStatsD lines still queued at exit are lost too.</li>
+        <li>Metrics are per process: several processes (or hosts) each expose their own <code>/_metrics</code> and send their own series &mdash; aggregate in Prometheus or Datadog.</li>
+        <li><code>Metrics.time</code> takes its tags positionally (<code>Metrics.time("x", {"k": "v"}) do … end</code>): the bytecode VM refuses a labelled call that also carries a block.</li>
         <li>Outbound <code>traceparent</code> injection on every <code>HTTP.*</code> call is not yet automatic; inbound propagation and response echo are.</li>
         <li>No in-process sampling UI &mdash; put that on the collector.</li>
     </ul>

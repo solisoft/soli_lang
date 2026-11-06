@@ -2093,3 +2093,109 @@ fn view_helpers_never_see_the_previous_visitors_request() {
     assert!(bob.contains("blocked for: bob@example.com"), "{bob}");
     assert!(get_page(&server, "/me", None).contains("me: guest"));
 }
+
+/// App metrics and the per-route request histogram, end to end: a controller
+/// calls `Metrics.*`, `/_metrics` shows them next to
+/// `soli_http_request_duration_seconds{method,route,status_class}`, and a
+/// DogStatsD agent on a loopback UDP socket receives the same samples with
+/// the `DD_*` global tags.
+#[test]
+fn app_metrics_reach_prometheus_and_dogstatsd() {
+    let agent = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind agent");
+    agent
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("timeout");
+    let agent_addr = agent.local_addr().expect("agent addr").to_string();
+    let app = tempfile::tempdir().expect("temp app dir");
+    let server = serve_app_in(
+        app.path(),
+        &[
+            (
+                "config/routes.sl",
+                "get(\"/ping\", \"home#ping\")\nget(\"/order\", \"home#order\")\n",
+            ),
+            (
+                "app/controllers/home_controller.sl",
+                "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /order
+  def order(req)
+    Metrics.increment(\"orders.created\", tags: {\"plan\": \"pro\"})
+    Metrics.gauge(\"queue.depth\", 4)
+    total = Metrics.time(\"checkout.duration\", {\"step\": \"pay\"}) do
+      21 * 2
+    end
+    {\"status\": 201, \"body\": \"total #{total}\"}
+  end
+end
+",
+            ),
+        ],
+        &[
+            ("SOLI_METRICS", "1"),
+            // The action must run on the VM, not quietly on the interpreter.
+            ("SOLI_FAIL_ON_VM_DEMOTION", "1"),
+            ("SOLI_STATSD", &agent_addr),
+            ("DD_SERVICE", "shop"),
+            ("DD_ENV", "e2e"),
+        ],
+    );
+    for _ in 0..2 {
+        let resp = ureq::get(&server.url("/order"))
+            .timeout(Duration::from_secs(5))
+            .call()
+            .expect("order request");
+        assert_eq!(resp.status(), 201);
+        assert_eq!(body_string(resp), "total 42");
+    }
+    assert_eq!(status_of(&server, "/nowhere", None), 404);
+
+    let body = body_string(
+        ureq::get(&server.url("/_metrics"))
+            .timeout(Duration::from_secs(3))
+            .call()
+            .expect("metrics request"),
+    );
+    for expected in [
+        "# TYPE orders_created counter\norders_created{plan=\"pro\"} 2\n",
+        "# TYPE queue_depth gauge\nqueue_depth 4\n",
+        "checkout_duration_count{step=\"pay\"} 2\n",
+        "soli_http_request_duration_seconds_count{method=\"GET\",route=\"home#order\",status_class=\"2xx\"} 2\n",
+        "soli_http_request_duration_seconds_count{method=\"GET\",route=\"unmatched\",status_class=\"4xx\"} 1\n",
+        "soli_http_request_duration_seconds_bucket{method=\"GET\",route=\"home#order\",status_class=\"2xx\",le=\"+Inf\"} 2\n",
+    ] {
+        assert!(body.contains(expected), "missing {expected:?} in:\n{body}");
+    }
+
+    let mut lines = Vec::new();
+    let mut buf = [0u8; 65536];
+    while let Ok(n) = agent.recv(&mut buf) {
+        let text = String::from_utf8_lossy(&buf[..n]).into_owned();
+        lines.extend(text.lines().map(str::to_string));
+    }
+    let has = |prefix: &str| lines.iter().filter(|l| l.starts_with(prefix)).count();
+    assert_eq!(
+        has("orders.created:1|c|#plan:pro,env:e2e,service:shop"),
+        2,
+        "{lines:#?}"
+    );
+    assert_eq!(
+        has("queue.depth:4|g|#env:e2e,service:shop"),
+        2,
+        "{lines:#?}"
+    );
+    assert_eq!(has("checkout.duration:"), 2, "{lines:#?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("soli.http.request.duration:")
+                && l.ends_with(
+                    "|d|#method:GET,route:home#order,status_class:2xx,env:e2e,service:shop"
+                )),
+        "{lines:#?}"
+    );
+}

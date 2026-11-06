@@ -358,6 +358,9 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&helper_env) {
         eprintln!("[WARN] Retry stdlib failed to load for helpers: {}", e);
     }
+    if let Err(e) = crate::interpreter::builtins::metrics::register_metrics_class(&helper_env) {
+        eprintln!("[WARN] Metrics stdlib failed to load for helpers: {}", e);
+    }
 
     let entries = if has_helpers {
         crate::platform::fs::read_dir(helpers_dir)

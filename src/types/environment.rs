@@ -2269,6 +2269,43 @@ impl TypeEnvironment {
             self.classes.insert(class.name.clone(), class);
         }
 
+        // Metrics (`builtins/metrics.sl`): app metrics. Values and tags are
+        // `Any` — a number or, for `increment`, the tags hash in the value's
+        // place; tags a Hash or named (`tags: {…}`). `time` takes its block
+        // last.
+        let mut metrics_class = ClassType::new("Metrics".to_string());
+        let metric_methods: [(&str, &[&str], Type); 8] = [
+            ("increment", &["name", "value", "tags"], Type::Null),
+            ("gauge", &["name", "value", "tags"], Type::Null),
+            ("histogram", &["name", "value", "tags"], Type::Null),
+            ("distribution", &["name", "value", "tags"], Type::Null),
+            ("time", &["name", "tags", "block"], Type::Any),
+            ("value", &["name", "tags"], Type::Any),
+            ("enabled?", &[], Type::Bool),
+            ("reset", &[], Type::Null),
+        ];
+        for (name, params, return_type) in metric_methods {
+            metrics_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params: params
+                        .iter()
+                        .enumerate()
+                        .map(|(i, p)| {
+                            let ty = if i == 0 { Type::String } else { Type::Any };
+                            (p.to_string(), ty)
+                        })
+                        .collect(),
+                    return_type,
+                    is_private: false,
+                    is_protected: false,
+                    is_static: true,
+                },
+            );
+        }
+        self.classes.insert("Metrics".to_string(), metrics_class);
+
         // JSON class
         let mut json_class = ClassType::new("JSON".to_string());
         json_class.methods.insert(

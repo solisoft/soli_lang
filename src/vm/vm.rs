@@ -12108,7 +12108,6 @@ let x = Mailer.welcome()
     /// two shared atomic adds each, and counted their time twice.
     #[test]
     fn metrics_time_only_the_outermost_run() {
-        use std::sync::atomic::Ordering;
         let source = r##"
 class Widget
   def one
@@ -12146,9 +12145,9 @@ end
 
         let mut vm = Vm::new();
         vm.time_runs = true;
-        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let before = metrics.vm_execution.count();
         vm.execute(&module.main).expect("script runs");
-        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let after = metrics.vm_execution.count();
         assert_eq!(after - before, 1, "one outermost run, one record");
         assert!(!vm.timed_run_open);
         assert!(matches!(vm.globals.get("x"), Some(Value::Int(10))));
@@ -12161,19 +12160,19 @@ end
         // A call into the VM from outside is an outermost run of its own,
         // and an error escaping it still closes the timing.
         let explode = vm.globals.get("explode").cloned().expect("explode");
-        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let before = metrics.vm_execution.count();
         let err = vm.call_value_direct(explode, &[], Span::default());
         assert!(err.is_err(), "an uncaught throw escapes");
-        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let after = metrics.vm_execution.count();
         assert_eq!(after - before, 1);
         assert!(!vm.timed_run_open, "an escaping error closes the timing");
 
         // Metrics off: nothing is recorded.
         let mut quiet = Vm::new();
         quiet.time_runs = false;
-        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let before = metrics.vm_execution.count();
         quiet.execute(&module.main).expect("script runs");
-        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let after = metrics.vm_execution.count();
         assert_eq!(after, before);
     }
 }

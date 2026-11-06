@@ -205,6 +205,7 @@ def docs_nav_sections()
         { "path": "/docs/builtins/rate-limit", "label": "Rate Limit" },
         { "path": "/docs/builtins/url", "label": "Url" },
         { "path": "/docs/builtins/logger", "label": "Logger" },
+        { "path": "/docs/builtins/metrics", "label": "Metrics" },
         { "path": "/docs/builtins/resilience", "label": "Retry & Circuit Breaker" },
         { "path": "/docs/builtins/toml-yaml", "label": "TOML / YAML" },
         { "path": "/docs/builtins/semaphore", "label": "Semaphore" },

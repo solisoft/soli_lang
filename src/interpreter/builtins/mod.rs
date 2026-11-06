@@ -142,6 +142,7 @@ pub mod mailer {
 }
 pub mod markdown;
 pub mod math;
+pub mod metrics;
 pub mod mock;
 pub mod mock_http;
 pub mod model;
@@ -550,6 +551,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register Logger class (leveled structured logging to stderr)
     logger::register_logger_class(env);
+    // The natives behind the `Metrics` class (`metrics.sl`). Global, not
+    // only in the class's home environment: the VM compiles the class's
+    // methods and resolves their names against its own globals.
+    metrics::register_metrics_natives(env);
 
     // Register Toml/Yaml classes (config-format parse/stringify)
     toml_yaml::register_toml_yaml_classes(env);

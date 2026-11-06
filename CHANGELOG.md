@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+### Added
+
+- **App metrics: the `Metrics` class.** `Metrics.increment(name, value = 1,
+  tags: {})`, `Metrics.gauge`, `Metrics.histogram`, `Metrics.distribution` and
+  `Metrics.time(name, tags) do … end` (seconds, recorded also when the block
+  raises, answers the block's value) record app-defined series in a global
+  registry shared by every worker (`src/metrics/registry.rs`: `RwLock`ed maps,
+  atomics per series). Names `[a-zA-Z_][a-zA-Z0-9_.]*` (dots become `_` on the
+  scrape; `soli.`/`soli_` reserved), tag keys likewise (`le`, `__*` reserved),
+  tag values String/number/Bool/nil, ≤ 20 tags; a bad name, tag or value
+  raises, and a name keeps its first kind. Cardinality is capped at 1,000 tag
+  combinations per metric and 1,000 names: a sample past a cap is dropped,
+  counted in the new `soli_metrics_dropped_total` and warned about once.
+  Samples are stored only when a sink is configured (`SOLI_METRICS`,
+  DogStatsD, OTLP) or under `APP_ENV=test`; otherwise validated and dropped.
+  `Metrics.value(name, tags)` reads a series back, `Metrics.enabled?`,
+  `Metrics.reset` (tests only). The class is engine-embedded Soli
+  (`builtins/metrics.sl`, like `Retry`) over `__metrics_*` natives; typed in
+  the checker; both engines covered by the differential corpus.
+- **`soli_http_request_duration_seconds{method,route,status_class}`**, a
+  histogram per matched `controller#action` (`unmatched` for a 404; methods
+  outside the standard set become `OTHER`), recorded when any metrics sink is
+  on.
+- **DogStatsD.** `SOLI_STATSD` (`host:port`, `udp://…`, `unix://…`, or `off`),
+  `DD_DOGSTATSD_URL`, or `DD_AGENT_HOST` + `DD_DOGSTATSD_PORT` sends app
+  samples (`|c`, `|g`, `|h`, `|d`) and `soli.http.request.duration` (`|d`,
+  tagged method/route/status_class) to a Datadog agent, with `env:`,
+  `service:`, `version:` from `DD_ENV`/`DD_SERVICE`/`DD_VERSION` and `DD_TAGS`.
+  Workers queue lines on a bounded channel (16,384; full drops and counts); one
+  background thread packs datagrams ≤ 1,432 bytes (8 KB on a Unix socket).
+- **OTLP metrics export.** `SOLI_OTEL_METRICS=1` or
+  `OTEL_METRICS_EXPORTER=otlp`: a background thread POSTs every family
+  (cumulative sums, gauges, explicit-bucket histograms) as OTLP/HTTP JSON every
+  `OTEL_METRIC_EXPORT_INTERVAL` ms (default 60000) to
+  `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` or base + `/v1/metrics`, with
+  `OTEL_EXPORTER_OTLP_HEADERS` / `_METRICS_HEADERS` (percent-decoded, never
+  logged) and a `service.name` / `deployment.environment.name` /
+  `service.version` resource (`OTEL_SERVICE_NAME` → `DD_SERVICE`, `DD_ENV`,
+  `DD_VERSION`, `OTEL_RESOURCE_ATTRIBUTES`).
+- `SOLI_METRICS_BUCKETS` overrides the histogram buckets (seconds; default
+  0.001 … 10).
+
+### Changed
+
+- **The built-in duration series are Prometheus histograms.**
+  `soli_lexing_duration_seconds`, `soli_parsing_duration_seconds`,
+  `soli_vm_execution_seconds`, `soli_template_render_duration_seconds`,
+  `soli_middleware_duration_seconds` and `soli_db_query_duration_seconds` now
+  expose `_bucket{le=…}`, `_sum` and `_count` under `# TYPE … histogram`.
+  **Rename:** the bare-name sample (total seconds, typed `counter`) is gone —
+  it is `<name>_sum`; `<name>_count` keeps its name. Queries on the bare name
+  must move to `_sum`.
+- Metrics collection (the built-in timers) is on when any sink is configured —
+  `SOLI_METRICS`, DogStatsD or OTLP metrics — not only `SOLI_METRICS`.
+
 ## [2.31.0] - 2026-11-06
 
 ### Added
