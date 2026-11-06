@@ -13,6 +13,11 @@ def capture(f)
   result
 end
 
+# `depth` nested <n> elements around `inner`.
+def deep(depth, inner)
+  "<n>" * depth + inner + "</n>" * depth
+end
+
 def c14n_json(xml, opts = nil)
   capture(fn() { json_stringify(Xml.c14n_exclusive(xml, opts)) })
 end
@@ -208,13 +213,13 @@ describe("c14n trio compatibility") do
       assert_eq(c14n_json("<a " + (0..300).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + "/>").length.to_s, "9")
     end
     test("depth 256") do
-      assert_eq(c14n_json((0..256).map { |i| "<n>" }.join("") + (0..256).map { |i| "</n>" }.join("")).length.to_s, "1794")
+      assert_eq(c14n_json(deep(256, "")).length.to_s, "1794")
     end
     test("depth 257") do
-      assert_eq(c14n_json((0..257).map { |i| "<n>" }.join("") + (0..257).map { |i| "</n>" }.join("")), "ERR Xml.c14n_exclusive(): nesting depth exceeded 256 levels")
+      assert_eq(c14n_json(deep(257, "")), "ERR Xml.c14n_exclusive(): nesting depth exceeded 256 levels")
     end
     test("depth 256 plus self-closing leaf") do
-      assert_eq(c14n_json((0..256).map { |i| "<n>" }.join("") + "<leaf/>" + (0..256).map { |i| "</n>" }.join("")).length.to_s, "1807")
+      assert_eq(c14n_json(deep(256, "<leaf/>")).length.to_s, "1807")
     end
     test("2000 attributes") do
       # limit: at most 1024 attributes per element (SOLI_MAX_XML_ATTRS)

@@ -19,6 +19,13 @@ def soap_json(xml)
   result
 end
 
+# `depth` elements <n0>..<n{depth-1}> around `inner`.
+def nested(depth, inner)
+  opens = (0..depth).map { |i| "<n#{i}>" }.join("")
+  closes = (0..depth).map { |i| "</n#{depth - 1 - i}>" }.join("")
+  opens + inner + closes
+end
+
 # Large outputs are compared by length and their first 80 characters.
 def soap_summary(xml)
   out = soap_json(xml)
@@ -630,18 +637,18 @@ describe("SOAP.parse compatibility") do
 
   describe("depth and size limits") do
     test("depth 64") do
-      assert_eq(soap_summary((0..64).map { |i| "<n#{i}>" }.join("") + "x" + (0..64).map { |i| "</n#{63 - i}>" }.join("")), "505:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
+      assert_eq(soap_summary(nested(64, "x")), "505:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
     end
     test("depth 65") do
-      assert_eq(soap_summary((0..65).map { |i| "<n#{i}>" }.join("") + "x" + (0..65).map { |i| "</n#{64 - i}>" }.join("")), "76:ERR XML parsing error: nesting depth exceeded 64 levels (likely DoS payload)")
+      assert_eq(soap_summary(nested(65, "x")), "76:ERR XML parsing error: nesting depth exceeded 64 levels (likely DoS payload)")
     end
     test("depth 64 plus self-closing leaf") do
-      assert_eq(soap_summary((0..64).map { |i| "<n#{i}>" }.join("") + "<leaf/>" + (0..64).map { |i| "</n#{63 - i}>" }.join("")), "515:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
+      assert_eq(soap_summary(nested(64, "<leaf/>")), "515:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
     end
     test("depth 65 self-closing leaf twice") do
       # fix: a self-closing repeat is appended (bug 3)
       # was: 515:{"n0":{"n1":{"n2":{"n3":{"n4":{"n5":{"n6":{"n7":{"n8":{"n9":{"n10":{"n11":{"n12"
-      assert_eq(soap_summary((0..64).map { |i| "<n#{i}>" }.join("") + "<leaf/><leaf/>" + (0..64).map { |i| "</n#{63 - i}>" }.join("")), "522:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
+      assert_eq(soap_summary(nested(64, "<leaf/><leaf/>")), "522:{\"n0\":{\"n1\":{\"n2\":{\"n3\":{\"n4\":{\"n5\":{\"n6\":{\"n7\":{\"n8\":{\"n9\":{\"n10\":{\"n11\":{\"n12\"")
     end
     test("text of exactly 1 MiB") do
       assert_eq(soap_summary("<a>" + "A" * 1048576 + "</a>"), "1048584:{\"a\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
