@@ -758,12 +758,7 @@ impl Interpreter {
                 }
                 stack_trace.push(format!("{} at {}:{}", func_name, file_path, e.span().line));
 
-                Err(RuntimeError::with_env(
-                    e.to_string(),
-                    e.span(),
-                    env_json,
-                    stack_trace,
-                ))
+                Err(RuntimeError::with_env_from(&e, env_json, stack_trace))
             }
             other => other,
         };
@@ -924,12 +919,7 @@ impl Interpreter {
                         ));
                     }
 
-                    Err(RuntimeError::with_env(
-                        e.to_string(),
-                        e.span(),
-                        env_json,
-                        stack_trace,
-                    ))
+                    Err(RuntimeError::with_env_from(&e, env_json, stack_trace))
                 }
             }
         };

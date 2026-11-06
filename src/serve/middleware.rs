@@ -546,6 +546,7 @@ pub(crate) fn run(
                         &err,
                         &stack_trace,
                         Some(&env_json),
+                        None,
                     );
                     let error_html =
                         error_pages::render_error_page(&err, interpreter, data, &stack_trace, None);
@@ -598,6 +599,7 @@ pub(crate) fn run(
                         &e.to_string(),
                         &stack_trace,
                         env_for_log,
+                        Some(&e.exception_type()),
                     );
                 }
                 let error_html = error_pages::render_error_page(
@@ -931,7 +933,14 @@ fn middleware_prod_error_string(
     let request_id = Uuid::new_v4().to_string();
     let stack_trace = middleware_fallback_stack(mw_name, mw_source);
     let env_json = interpreter.serialize_environment_for_debug();
-    error_logging::log_production_error(&request_id, data, err, &stack_trace, Some(&env_json));
+    error_logging::log_production_error(
+        &request_id,
+        data,
+        err,
+        &stack_trace,
+        Some(&env_json),
+        None,
+    );
     error_response::html(
         500,
         error_pages::render_production_error_page(500, err, &request_id),
@@ -965,6 +974,7 @@ fn middleware_prod_error_runtime(
         &error_msg,
         &stack_trace,
         Some(&env_json),
+        Some(&e.exception_type()),
     );
     error_response::html(
         500,

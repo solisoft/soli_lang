@@ -14,8 +14,10 @@
 //! (a link does not make a parent, as the OTel spec has it).
 //!
 //! The OTLP body is the request exporter's (`otel::build_otlp_body`, so
-//! resource attributes and span conversion stay in one place), with the root
-//! span then turned from a SERVER span into this CONSUMER one.
+//! resource attributes — `service.name`, the Datadog `DD_*` tags — and span
+//! conversion stay in one place), with the root span then turned from a
+//! SERVER span into this CONSUMER one. A failed job's span is marked with
+//! `otel::ExceptionInfo`, as a request's uncaught error is.
 
 use super::{otel, otel_propagation, span_log};
 use serde_json::{json, Value};
@@ -136,11 +138,7 @@ fn as_job_body(body: &str, trace: &JobSpan, error: Option<&str>) -> String {
             .push(json!({"key": "soli.job.attempt", "value": {"intValue": attempt.to_string()}}));
     }
     root.insert("attributes".into(), Value::Array(attributes));
-    let status = match error {
-        Some(message) => json!({"code": 2, "message": clip(message, 512)}),
-        None => json!({"code": 1}),
-    };
-    root.insert("status".into(), status);
+    root.insert("status".into(), json!({"code": 1}));
     if let Some((trace_id, span_id)) = &trace.link {
         root.insert(
             "links".into(),
@@ -151,23 +149,27 @@ fn as_job_body(body: &str, trace: &JobSpan, error: Option<&str>) -> String {
             }]),
         );
     }
+    if let Some(message) = error {
+        // The job's failure reaches the runner as a string: an `Error` with
+        // no frames, marked the way a request's uncaught error is (status
+        // ERROR, `error.type`, the `exception` event).
+        let end_ns = root
+            .get("endTimeUnixNano")
+            .and_then(Value::as_str)
+            .and_then(|t| t.parse::<u64>().ok())
+            .unwrap_or(0);
+        let exception = otel::ExceptionInfo::new("Error", message, &[], "");
+        let mut span = Value::Object(std::mem::take(root));
+        exception.apply(&mut span, end_ns, true);
+        if let Value::Object(map) = span {
+            *root = map;
+        }
+    }
     payload.to_string()
 }
 
 fn attr_str(key: &str, value: &str) -> Value {
     json!({"key": key, "value": {"stringValue": value}})
-}
-
-/// At most `max` bytes of `s`, cut on a character boundary.
-fn clip(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        return s.to_string();
-    }
-    let mut cut = max;
-    while !s.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    format!("{}…", &s[..cut])
 }
 
 #[cfg(test)]
@@ -239,6 +241,9 @@ mod tests {
         let root = root(&out);
         assert_eq!(root["status"]["code"], 2);
         assert_eq!(root["status"]["message"], "boom");
+        let attrs = root["attributes"].to_string();
+        assert!(attrs.contains("error.type"), "{attrs}");
+        assert_eq!(root["events"][0]["name"], "exception");
     }
 
     #[test]
@@ -249,13 +254,5 @@ mod tests {
         assert_eq!(root["links"][0]["traceId"], link.0);
         assert_eq!(root["links"][0]["spanId"], link.1);
         assert!(root.get("parentSpanId").is_none());
-    }
-
-    #[test]
-    fn a_long_error_is_clipped_on_a_char_boundary() {
-        let long = "é".repeat(400);
-        let clipped = clip(&long, 511);
-        assert!(clipped.len() <= 511 + "…".len());
-        assert!(clipped.ends_with('…'));
     }
 }
