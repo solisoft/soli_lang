@@ -43,7 +43,7 @@ use super::tree::{Attr, Kind, NodeId, NsDecl, XmlDecl, XmlTree};
 const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
 
 /// How often (in events) [`Pull::next_checked`] asks whether to stop.
-const INTERRUPT_EVERY: u32 = 1024;
+const INTERRUPT_EVERY: u32 = 256;
 
 /// The message of the error [`Pull::next_checked`] returns when its
 /// `interrupted` callback said stop. The binding replaces it with its own

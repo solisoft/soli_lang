@@ -11,7 +11,7 @@
 //! do: the engines intercept it by name with the block builder's sites
 //! (`block::takes_block`) and [`each`] drives the stream, calling the block
 //! with each match. No tree or reader borrow is held while the block runs.
-//! The deadline is checked before each block call and every 1024 events
+//! The deadline is checked before each block call and every 256 events
 //! while scanning; an error raised by the block propagates; the file is
 //! closed when the driver returns, on every path. `break` in the block acts
 //! as `next` (the native-iterator rule): use `Xml.reader` to stop early.
@@ -113,6 +113,14 @@ fn open(args: &[Value], who: &str) -> Result<StreamState, String> {
     let table = ns_table(args.get(2), who)?;
     let matcher = Matcher::compile(expr, &table).map_err(|e| format!("{who}: {e}"))?;
     let resolved = crate::interpreter::builtins::file::resolve_readable_path(path, who)?;
+    // Refuse a FIFO or a device before opening it: opening a FIFO for
+    // reading blocks until a writer comes. The check after the open below
+    // is the one that counts (the path could change in between).
+    if let Ok(meta) = std::fs::symlink_metadata(&resolved) {
+        if !meta.is_file() && !meta.file_type().is_symlink() {
+            return Err(format!("{who}: cannot read {path}: not a file"));
+        }
+    }
     let file = crate::interpreter::builtins::file::open_for_read(&resolved, false)
         .map_err(|e| format!("{who}: cannot open {path}: {e}"))?;
     let is_file = file
@@ -135,7 +143,10 @@ fn next_match(state: &mut StreamState, who: &str) -> Result<Option<Value>, Strin
     let Some(pull) = state.pull.as_mut() else {
         return Ok(None);
     };
-    match pull.next_checked(&mut crate::interpreter::deadline::expired) {
+    // `exhausted` reads the clock on each call; the stream calls it every
+    // 256 events. (`expired` is itself throttled to one clock read every
+    // few thousand calls, which would let a scan run far past the budget.)
+    match pull.next_checked(&mut crate::interpreter::deadline::exhausted) {
         Ok(Some((tree, id))) => {
             state.count += 1;
             Ok(Some(wrap(XmlRef::new(tree, id))))
