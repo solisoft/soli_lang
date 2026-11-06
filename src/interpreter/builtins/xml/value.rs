@@ -97,12 +97,15 @@ impl XmlRef {
 pub enum XmlPayload {
     /// A node (or the document node) of a tree.
     Node(XmlRef),
+    /// An `XmlReader`'s open stream (`reader.rs`).
+    Reader(RefCell<super::reader::StreamState>),
 }
 
 impl fmt::Debug for XmlPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             XmlPayload::Node(node) => write!(f, "XmlPayload::Node({})", node.id.0),
+            XmlPayload::Reader(_) => f.write_str("XmlPayload::Reader"),
         }
     }
 }
@@ -268,6 +271,7 @@ pub fn as_xml(inst: &Instance) -> Option<XmlRef> {
     match inst.fields.get(HANDLE_FIELD) {
         Some(Value::Xml(payload)) => match &**payload {
             XmlPayload::Node(node) => Some(node.clone()),
+            XmlPayload::Reader(_) => None,
         },
         _ => None,
     }
@@ -289,6 +293,10 @@ pub fn value_as_xml(value: &Value) -> Option<XmlRef> {
 /// `node["k"]` and `node.get("k")`: the attribute by qname, or `nil` (also on
 /// a non-element, and for `node["__xml"]`: the handle is never reachable).
 pub fn index_get(inst: &Instance, key: &str) -> Option<Value> {
+    if super::reader::is_reader_class(&inst.class) {
+        // An `XmlReader` has no attributes, and its handle stays hidden.
+        return Some(Value::Null);
+    }
     let node = as_xml(inst)?;
     Some(
         node.read(|tree, id| tree.attribute(id, key).map(|v| Value::String(v.into())))
@@ -300,6 +308,9 @@ pub fn index_get(inst: &Instance, key: &str) -> Option<Value> {
 
 /// `node["k"] = v`: set (or, with `nil`, remove) an attribute.
 pub fn index_set(inst: &Instance, key: &str, value: &Value) -> Option<Result<(), String>> {
+    if super::reader::is_reader_class(&inst.class) {
+        return Some(Err(format!("XmlReader has no writable property '{key}'")));
+    }
     let node = as_xml(inst)?;
     Some(super::node::set_attribute(&node, key, value))
 }
@@ -307,6 +318,9 @@ pub fn index_set(inst: &Instance, key: &str, value: &Value) -> Option<Result<(),
 /// `node.text = s`, `node.name = s`; any other dot write is refused. No field
 /// is ever created on an XML handle.
 pub fn field_write(inst: &Instance, name: &str, value: &Value) -> Option<Result<(), String>> {
+    if super::reader::is_reader_class(&inst.class) {
+        return Some(Err(format!("XmlReader has no writable property '{name}'")));
+    }
     let node = as_xml(inst)?;
     Some(super::node::write_property(
         &node,
@@ -318,7 +332,9 @@ pub fn field_write(inst: &Instance, name: &str, value: &Value) -> Option<Result<
 
 /// `print(node)`, `"#{node}"`, `inspect`, JSON: the compact `to_xml`.
 pub fn display(inst: &Instance) -> Option<String> {
-    let node = as_xml(inst)?;
+    let Some(node) = as_xml(inst) else {
+        return super::reader::display(inst);
+    };
     Some(
         node.compact_xml()
             .unwrap_or_else(|e| format!("<{} error: {e}>", inst.class.name)),

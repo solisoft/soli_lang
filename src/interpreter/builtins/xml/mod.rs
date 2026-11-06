@@ -1,9 +1,11 @@
-//! The `Xml`, `XmlNode` and `XmlDocument` classes: Soli's XML parser, tree,
+//! The `Xml`, `XmlNode`, `XmlDocument` and `XmlReader` classes: Soli's XML parser, tree,
 //! builder and serialiser, over the pure-Rust core in `crate::xml`.
 //!
 //! - `value.rs` — the handle (`Value::Xml` inside an `XmlNode` instance), the
 //!   thread-local classes, the method-table helpers and the engine hooks.
 //! - `node.rs` — the node methods and the `Xml` statics that build trees.
+//! - `reader.rs` — streaming: `Xml.each` (run by the engines through the
+//!   block builder's sites) and `Xml.reader` / `XmlReader`.
 //! - `block.rs` — the block builder (`Xml.build … do`, `node.add … do`), run
 //!   by the engines.
 //! - `c14n.rs` — exclusive canonicalisation and the `get_element_by_id` /
@@ -12,6 +14,7 @@
 pub mod block;
 pub mod c14n;
 pub mod node;
+pub mod reader;
 pub mod value;
 
 use crate::interpreter::environment::Environment;
@@ -19,7 +22,7 @@ use crate::interpreter::value::{Class, Value};
 use std::rc::Rc;
 
 /// Define `Xml` (the c14n trio plus this module's statics, in one class),
-/// `XmlNode` and `XmlDocument`.
+/// `XmlNode`, `XmlDocument` and `XmlReader`.
 pub fn register_xml_builtins(env: &mut Environment) {
     // The c14n module defines its own `Xml` class; take its statics from a
     // scratch environment so `Xml` is defined once, with every static.
@@ -30,6 +33,7 @@ pub fn register_xml_builtins(env: &mut Environment) {
         _ => value::MethodTable::new(),
     };
     node::xml_statics(&mut statics);
+    reader::xml_statics(&mut statics);
 
     let xml_class = Class {
         name: "Xml".to_string(),
@@ -41,5 +45,9 @@ pub fn register_xml_builtins(env: &mut Environment) {
     env.define(
         "XmlDocument".to_string(),
         Value::Class(value::document_class()),
+    );
+    env.define(
+        "XmlReader".to_string(),
+        Value::Class(reader::reader_class()),
     );
 }

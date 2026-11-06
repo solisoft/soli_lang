@@ -1,5 +1,7 @@
 //! The block builder: `Xml.build(name, attrs) do |root| … end` and
-//! `node.add(name, content, attrs) do |child| … end`.
+//! `node.add(name, content, attrs) do |child| … end`; and streaming's
+//! `Xml.each(path, match) do |node| … end`, whose block runs once per match
+//! (`reader::each`).
 //!
 //! A native cannot call Soli code, so the engines intercept these natives
 //! by name at every site where a native is invoked with its arguments
@@ -25,7 +27,11 @@ use crate::span::Span;
 /// class table's own entry after `XmlNode`.
 #[inline]
 pub fn takes_block(name: &str) -> bool {
-    name.starts_with("Xml") && matches!(name, "Xml.build" | "XmlNode.add" | "XmlDocument.add")
+    name.starts_with("Xml")
+        && matches!(
+            name,
+            "Xml.build" | "Xml.each" | "XmlNode.add" | "XmlDocument.add"
+        )
 }
 
 fn is_callable(value: &Value) -> bool {
@@ -65,15 +71,21 @@ fn block_argument(name: &str, result: &Value) -> Result<Value, String> {
 }
 
 /// Run a block-taking XML native. `call` runs the native on the arguments
-/// (block removed); `invoke` calls the block with one argument.
+/// (block removed); `invoke` calls the block with one argument. `Xml.each`
+/// calls it once per match; without a block, its native raises.
 pub fn run(
     name: &str,
     mut args: Vec<Value>,
     call: impl FnOnce(&[Value]) -> Result<Value, String>,
-    invoke: impl FnOnce(Value, Value) -> Result<Value, RuntimeError>,
+    mut invoke: impl FnMut(Value, Value) -> Result<Value, RuntimeError>,
     span: Span,
 ) -> Result<Value, RuntimeError> {
     let block = split_block(&mut args);
+    if name == "Xml.each" {
+        if let Some(block) = block {
+            return super::reader::each(args, block, invoke, span);
+        }
+    }
     let result = call(&args).map_err(|message| RuntimeError::General { message, span })?;
     let Some(block) = block else {
         return Ok(result);
