@@ -1164,8 +1164,15 @@ impl Vm {
             return self.call_method_slow_path(receiver_idx, argc, name);
         }
 
+        // A native static (`Xml.document("rss", version: "2.0")`) is bound,
+        // not read: a read runs a native that is called when read bare, and
+        // the labelled arguments then had nothing to go to (`Op::GetMethod`'s
+        // rule).
         let object = self.stack[receiver_idx].clone();
-        let callee = self.op_get_property_member(&object, name, span)?;
+        let callee = match Self::callee_native(&object, name) {
+            Some(bound) => bound,
+            None => self.op_get_property_member(&object, name, span)?,
+        };
         self.stack[receiver_idx] = callee;
         let labels = without_block_label(labels);
         self.call_value_named(labels.len(), &labels, span)
