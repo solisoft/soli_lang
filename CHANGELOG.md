@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### Added
+
+- **An overview at `/__soli/`.** Health tiles (requests over the range and their
+  change, 5xx rate, p95 with p50, open errors, jobs dead/queued/oldest wait, slow
+  queries), a ranked *Needs attention* list across every operator source (error
+  groups, jobs, slow queries, spam, VM refusals/divergences/panics, the last
+  hour's 5xx rate and slow routes, trackers that dropped samples), and app usage:
+  requests per hour, responses by status class and the top route patterns with
+  p95 and 5xx rate, over `?range=1h|24h|7d`. Rows are tiered critical / warning /
+  info, then scored 40·recency + 35·growth + 25·volume; each links to its page or
+  offers that page's own action (Retry for a single dead job). Gate: opens for
+  anyone who may open any operator page and shows each source only to who may
+  open its page; usage and engine rows need `SOLI_OVERVIEW_*` or `SOLI_ADMIN_*`.
+  "Overview" is the first item of the operator bar. Opt-in auto-refresh
+  (`?refresh=30`).
+- **Usage recorder** (`serve::usage`): per worker-thread shards of per-route,
+  per-five-minute cells (status classes and a power-of-two latency histogram),
+  folded into a per-app ring every five minutes and on read; 1 h and 24 h from
+  memory, hourly rollups written to `_soli_usage` once a minute and read back on
+  start for 7 d. At most 64 route slots per app (the rest fold into "other
+  routes"). Framework endpoints, probes and asset-looking misses are not
+  counted. `SOLI_USAGE=off` disables it; off under `APP_ENV=test`.
+- **Engine events** (`serve::engine_events`): VM refusals, engine divergences and
+  handler panics are kept per handler/route (64 at most) for the overview, next to
+  the existing `/_metrics` counters.
+- `find_route` also returns the matched route's position, and the route table
+  carries a generation counter, so the recorder maps a route to its slot once per
+  worker.
+
 ## [2.29.6] - 2026-11-06
 
 ### Fixed

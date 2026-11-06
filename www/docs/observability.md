@@ -1,6 +1,6 @@
 # Observability
 
-Soli ships three production signals out of the box: **metrics**, **structured logs**, and **distributed traces**. All are opt-in so a quiet process pays nothing until you turn a channel on. Alongside them, **error tracking** groups every failed request into a triage page inside the app, **slow-query tracking** does the same for database queries over a threshold, and **notifications** tell someone by webhook, email or a job of your own.
+Soli ships three production signals out of the box: **metrics**, **structured logs**, and **distributed traces**. All are opt-in so a quiet process pays nothing until you turn a channel on. Alongside them, an **overview** at `/__soli/` ranks what needs attention and shows app usage, **error tracking** groups every failed request into a triage page inside the app, **slow-query tracking** does the same for database queries over a threshold, and **notifications** tell someone by webhook, email or a job of your own.
 
 | Signal | Enable | Where it goes |
 |--------|--------|---------------|
@@ -12,6 +12,7 @@ Soli ships three production signals out of the box: **metrics**, **structured lo
 | Query time | on (`SOLI_QUERY_STATS=off` to stop) | `_soli_query_stats` table, shown at `/__soli/slow_queries` |
 | Slow queries | on at 200 ms (`SOLI_SLOW_QUERY_MS`, `SOLI_SLOW_QUERIES=off`) | `_soli_slow_queries` table, shown at `/__soli/slow_queries` |
 | Notifications | `SOLI_NOTIFY_WEBHOOKS` / `SOLI_NOTIFY_EMAILS` / a `SoliNotificationJob` / "Notify this device" | Slack, Teams, Discord, Google Chat, Campfire, any URL, email, your job, Web Push |
+| Overview and usage | on (`SOLI_USAGE=off` stops the usage counts) | `/__soli/`, hourly usage in `_soli_usage` |
 
 For the full env-var table see [Configuration](configuration.md). This page is the operator guide: what each signal means, how to turn it on, and how the pieces correlate.
 
@@ -200,6 +201,48 @@ JSON access lines include `trace_id` and `span_id` matching the exported root sp
 
 Soli always samples when tracing is enabled (flags bit `0x01`). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, …) rather than in the Soli process.
 
+## Overview (`/__soli/`)
+
+`/__soli/` is the page to open first: what needs dealing with most urgently across every operator page, and how the app is being used. It is the first item of the operator pages' top bar.
+
+**Health at a glance.** Six tiles, each a link: requests over the chosen range with the change against the range before it, the share of server errors (5xx), latency p95 (p50 underneath), open error groups (and how many are new this hour), jobs (dead in the last 24 h, how many are waiting and how long the oldest has), and slow-query shapes seen in the last 24 h (and how many are new).
+
+**Needs attention.** One ranked list built from every source the page can read:
+
+| Source | Critical | Warning | Info |
+|--------|----------|---------|------|
+| Error groups (open only) | new within the hour; came back after being resolved and seen within the hour; rising (10+ in the last hour and 3× the hourly average before) | seen in the last 24 h | open, quiet for over a day |
+| Jobs | dead within the hour; the oldest due job has waited 30 min | dead in the last 24 h; failing and waiting for a retry; running past its lease; 100+ waiting or the oldest waited 5 min | |
+| Slow queries (seen in 24 h, 5 at most) | | new within the hour; mean twice the threshold within the hour | the rest of the day's |
+| Spam | | a spike: 20+ refused in the last hour and 5× the average before | refused in the last 24 h |
+| Engine | a handler panicked within the hour | an older panic; a handler the VM refused (it runs on the slower interpreter); a handler the two engines disagree on | |
+| Traffic | 5xx on 5 % of the last hour's requests (10+) | 5xx on 1 % (5+); a route with a p95 of 2 s or more over 50+ requests | |
+| Recording | | a tracker dropped or failed to write samples; a store could not be read | |
+
+Within a tier, rows are ordered by a score out of 100: **40 × recency** (`1 / (1 + hours since last seen)`), **35 × growth** (`(last hour − hourly average of the 23 before) / (the two added)`, never below 0) and **25 × volume** (`log10(1 + count over 24 h) / 4`, at most 1). Ties go to the most recent, then alphabetically, so a refresh does not reshuffle them. Resolved and ignored error groups never appear. Each row shows its tier, its source, what it is, the detail in monospace (the message, the query, the handler), why it is listed (counts, last seen, trend) and a metric; its button is a link to the item on its page, or — for a single dead job — that page's own **Retry** form, which keeps the same-origin POST rule. Nothing on the overview changes state on a `GET`. With nothing to show, it says so.
+
+**Usage.** Requests per hour as a bar chart (per 5 minutes for 1 h, per 6 hours for 7 d), responses by status class (2xx, 3xx, 4xx, 5xx) and the top routes — by route **pattern** (`GET /posts/:id`), never the raw path — with requests, share, p95 and 5xx rate; a p95 of a second or more and a 5xx rate of 1 % or more are highlighted. `?range=1h`, `24h` (the default) and `7d` pick the window. The framework's own endpoints (`/__soli/*`, `/__solidev/*`, `/_health`, `/_ready`, `/_metrics`, `/up`), static files and a miss for an asset-looking path (`/favicon.ico`) are not counted. Times are UTC.
+
+**Refreshing.** *Updated N s ago* says how old the page is; **Refresh** reloads it, **Auto-refresh** reloads it every 30 seconds (`?refresh=30`, a `<meta>` refresh — off by default).
+
+**Access.** The same gate as the pages it summarises, and never wider: it opens for anyone who may open at least one of them, and shows each source only to a caller who may open that source's page. Credentials for `/__soli/jobs` alone show the jobs tile and the job rows, nothing else. Usage and the engine rows are the overview's own, under `SOLI_OVERVIEW_*` or the shared set:
+
+```bash
+SOLI_OVERVIEW_USER=ops
+SOLI_OVERVIEW_PASSWORD=<long random string>
+SOLI_OVERVIEW_TOKEN=<long random string>   # Authorization: Bearer …
+
+# or the shared set, accepted by every operator page
+SOLI_ADMIN_USER=ops
+SOLI_ADMIN_PASSWORD=<long random string>
+```
+
+In `--dev` it is open to this machine (and linked from the dev bar's tools panel); in production with nothing configured `/__soli/` answers `404`.
+
+**Cost.** The page reads what the pages already read — the open error groups, the slow-query groups, the refused posts, the jobs page's 500-row queue window — each a bounded list, plus memory. Usage is counted on the worker around each request: a monotonic clock read at each end, then two counter increments on a table that worker owns, behind a lock no other worker takes (about 15 ns for the counting and 65 ns with the clock reads, measured with eight threads recording at once). Each worker folds its counts into the shared table once every five minutes, and the page folds them all when it renders, so what it shows is live. The 1 h and 24 h views come from memory; hourly totals are also written to `_soli_usage` once a minute, one update per hour of data, never one per request, and read back when the process starts, so 7 d survives a restart. Stored hours are kept 15 days.
+
+**Limits.** Usage counts what this process answered, all its workers together; the stored hours add up across processes that share a database. Up to 62 route patterns are tracked by name per app; past that, routes are counted together as *other routes*, and a request no route matched as *no route matched*. Percentiles come from power-of-two latency buckets, interpolated: close, not exact. Job rows are counted over the jobs page's first 500 rows. The overview does not keep its own history of backlog size, so *growing* reads from how long the oldest job has waited. `SOLI_USAGE=off` stops counting; under `APP_ENV=test` it is off unless `SOLI_USAGE=on`.
+
 ## Error tracking (`/__soli/errors`)
 
 Every request that ends in a 500 is recorded, grouped, and shown at `/__soli/errors` — a self-hosted, built-in stand-in for Sentry. There is no service to sign up for and no SDK: it is on by default and writes to the app's own database (SoliDB, Postgres, MySQL or SQLite), in a `_soli_errors` table.
@@ -375,6 +418,7 @@ end
 | Span tree | flamegraph | OTLP when OTEL on |
 | Metrics | opt-in | opt-in |
 | Health endpoints | on | on |
+| Overview (`/__soli/`) | on, open to this machine | on, behind any operator page's credentials, each source shown only with its own |
 | Error tracking (`/__soli/errors`) | on, open to this machine | on, behind `SOLI_ERRORS_*` / `SOLI_ADMIN_*` |
 | Slow queries (`/__soli/slow_queries`) | on, open to this machine | on, behind `SOLI_SLOW_QUERIES_*` / `SOLI_ADMIN_*` |
 | Notifications | when `SOLI_NOTIFY_*` is set (emails go to the dev inbox without SMTP) | when `SOLI_NOTIFY_*` is set |

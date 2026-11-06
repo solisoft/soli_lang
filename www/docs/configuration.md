@@ -486,6 +486,8 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_JOBS_USER` | HTTP Basic username for the production `/__soli/jobs` dashboard. Must be paired with `SOLI_JOBS_PASSWORD`. Unset (and no token, and no `SOLI_ADMIN_*`) means the route 404s outside `--dev`. | unset |
 | `SOLI_JOBS_PASSWORD` | HTTP Basic password for `/__soli/jobs`. | unset |
 | `SOLI_JOBS_TOKEN` | Optional bearer token for `/__soli/jobs` (`Authorization: Bearer …`). Accepted alongside Basic when both are set. | unset |
+| `SOLI_USAGE` | App usage counts (requests per route pattern, status classes, latency) for the [`/__soli/`](observability.md#overview-__soli) overview, kept hourly in `_soli_usage`. `off` stops counting; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
+| `SOLI_OVERVIEW_USER` / `SOLI_OVERVIEW_PASSWORD` / `SOLI_OVERVIEW_TOKEN` | Credentials for the usage and engine rows of the production `/__soli/` overview. The overview also opens with any other operator page's credentials, showing only that page's source. With none of them and no `SOLI_ADMIN_*`, it 404s outside `--dev`. | unset |
 | `SOLI_ERRORS` | Error tracking for [`/__soli/errors`](observability.md#error-tracking-__solierrors). `off` stops recording; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
 | `SOLI_ERRORS_USER` | HTTP Basic username for the production `/__soli/errors` page. Must be paired with `SOLI_ERRORS_PASSWORD`. With no errors credentials and no `SOLI_ADMIN_*`, the route 404s outside `--dev`. | unset |
 | `SOLI_ERRORS_PASSWORD` | HTTP Basic password for `/__soli/errors`. | unset |
@@ -504,7 +506,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_MOBILE_KEEP` | Builds kept per app (bundle id and platform); older ones are deleted with their files. | 20 |
 | `SOLI_MOBILE_PUBLIC_INSTALL` | `0` turns off the public install links (`/__soli/mobile/i/<token>`). | on |
 | `SOLI_ANDROID_KEYSTORE` | Release keystore for `soli mobile build android` (same as `--keystore`); its passwords come from `SOLI_ANDROID_KEYSTORE_PASSWORD`, `SOLI_ANDROID_KEY_PASSWORD` and `SOLI_ANDROID_KEY_ALIAS`. | unset (debug key) |
-| `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`, `/__soli/mobile`), in addition to each page's own. | unset |
+| `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/`, `/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`, `/__soli/spam`, `/__soli/mobile`), in addition to each page's own. | unset |
 | `SOLI_NOTIFY_WEBHOOKS` | Comma-separated URLs that receive [notifications](observability.md#notifications). Slack, Microsoft Teams, Discord, Google Chat and Campfire bot URLs get their own message format; any other URL gets the event as JSON. | unset |
 | `SOLI_NOTIFY_EMAILS` | Comma-separated addresses that receive notifications through the app's mailer (`SOLI_SMTP_*`). | unset |
 | `SOLI_NOTIFY_FROM` | Sender of notification emails. | `SOLI_SMTP_FROM` |
