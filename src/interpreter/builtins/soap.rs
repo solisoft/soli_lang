@@ -11,7 +11,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::builtins::http_class::{
-    get_user_http_client, read_capped_text_async, validate_url_for_ssrf,
+    get_user_http_client, header_map_pairs, read_capped_text_async, response_headers_hash,
+    validate_url_for_ssrf,
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
@@ -107,15 +108,7 @@ pub fn register_soap_class(env: &mut Environment) {
                         let status_text =
                             resp.status().canonical_reason().unwrap_or("").to_string();
 
-                        let mut resp_headers = HashPairs::default();
-                        for (name, value) in resp.headers().iter() {
-                            if let Ok(v) = value.to_str() {
-                                resp_headers.insert(
-                                    HashKey::String(name.to_string().into()),
-                                    Value::String(v.to_string().into()),
-                                );
-                            }
-                        }
+                        let resp_headers = response_headers_hash(header_map_pairs(resp.headers()));
 
                         let body = read_capped_text_async(resp).await?;
 

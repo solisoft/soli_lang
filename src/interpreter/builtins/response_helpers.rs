@@ -231,10 +231,10 @@ fn extract_header(response: &Value, name: &str) -> Result<Value, String> {
                             let headers_hash = headers.borrow();
                             for (hk, hv) in headers_hash.iter() {
                                 if let HashKey::String(header_name) = hk {
+                                    // A String, or for `set-cookie` the
+                                    // Array of every cookie line.
                                     if header_name.eq_ignore_ascii_case(name) {
-                                        if let Value::String(s) = hv {
-                                            return Ok(Value::String(s.clone()));
-                                        }
+                                        return Ok(hv.clone());
                                     }
                                 }
                             }

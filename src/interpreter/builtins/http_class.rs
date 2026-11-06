@@ -2570,19 +2570,11 @@ pub fn register_http_class(env: &mut Environment) {
                         let status_text =
                             resp.status().canonical_reason().unwrap_or("").to_string();
 
-                        let mut headers_map = serde_json::Map::new();
-                        for (name, value) in resp.headers().iter() {
-                            if let Ok(v) = value.to_str() {
-                                headers_map.insert(
-                                    name.to_string(),
-                                    serde_json::Value::String(v.to_string()),
-                                );
-                            }
-                        }
+                        let headers = response_headers_hash(header_map_pairs(resp.headers()));
 
                         let body = read_capped_text_async(resp).await?;
 
-                        create_http_response(status, status_text, headers_map, body)
+                        create_http_response(status, status_text, headers, body)
                     }) {
                         Ok(v) => Ok(v),
                         Err(e) => Err(e),
@@ -2627,15 +2619,8 @@ pub fn register_http_class(env: &mut Environment) {
                                 let status_text =
                                     resp.status().canonical_reason().unwrap_or("").to_string();
 
-                                let mut headers_map = serde_json::Map::new();
-                                for (name, value) in resp.headers().iter() {
-                                    if let Ok(v) = value.to_str() {
-                                        headers_map.insert(
-                                            name.to_string(),
-                                            serde_json::Value::String(v.to_string()),
-                                        );
-                                    }
-                                }
+                                let headers_map =
+                                    response_headers_json(header_map_pairs(resp.headers()));
 
                                 let body = read_capped_text_async(resp).await?;
 
@@ -2875,22 +2860,89 @@ pub fn register_http_class(env: &mut Environment) {
     env.define("HTTP".to_string(), Value::Class(Rc::new(http_class)));
 }
 
+/// The `(name, value)` pairs of a reqwest header map, in wire order. A value
+/// that is not visible ASCII is left out, as it always was.
+pub(crate) fn header_map_pairs(
+    headers: &reqwest::header::HeaderMap,
+) -> impl Iterator<Item = (&str, &str)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| value.to_str().ok().map(|v| (name.as_str(), v)))
+}
+
+/// Response headers grouped by lowercase name, in the order each name first
+/// appears, every value of a repeated header kept.
+fn group_response_headers<'a, I>(headers: I) -> Vec<(String, Vec<String>)>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut grouped: Vec<(String, Vec<String>)> = Vec::new();
+    for (name, value) in headers {
+        let name = name.to_ascii_lowercase();
+        match grouped.iter_mut().find(|(seen, _)| *seen == name) {
+            Some((_, values)) => values.push(value.to_string()),
+            None => grouped.push((name, vec![value.to_string()])),
+        }
+    }
+    grouped
+}
+
+/// The one header whose repeats cannot be joined: a cookie's `Expires`
+/// attribute holds a comma, so `set-cookie` stays a list (RFC 6265 §3).
+const SET_COOKIE: &str = "set-cookie";
+
+/// An HTTP response's headers as the Soli hash every client builtin answers:
+/// lowercase names; `set-cookie` is always an Array of strings, one per
+/// `Set-Cookie` line (even a single one); any other repeated header is
+/// joined with `", "` (RFC 9110 §5.3).
+pub(crate) fn response_headers_hash<'a, I>(headers: I) -> HashPairs
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    group_response_headers(headers)
+        .into_iter()
+        .map(|(name, values)| {
+            let value = if name == SET_COOKIE {
+                let cookies = values
+                    .into_iter()
+                    .map(|v| Value::String(v.into()))
+                    .collect();
+                Value::Array(Rc::new(RefCell::new(cookies)))
+            } else {
+                Value::String(values.join(", ").into())
+            };
+            (HashKey::String(name.into()), value)
+        })
+        .collect()
+}
+
+/// [`response_headers_hash`] as JSON, for the responses that cross a thread
+/// as text before they become a Soli value.
+fn response_headers_json<'a, I>(headers: I) -> serde_json::Map<String, serde_json::Value>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    group_response_headers(headers)
+        .into_iter()
+        .map(|(name, values)| {
+            let value = if name == SET_COOKIE {
+                serde_json::Value::Array(
+                    values.into_iter().map(serde_json::Value::String).collect(),
+                )
+            } else {
+                serde_json::Value::String(values.join(", "))
+            };
+            (name, value)
+        })
+        .collect()
+}
+
 fn create_http_response(
     status: u16,
     status_text: String,
-    headers_map: serde_json::Map<String, serde_json::Value>,
+    response_headers: HashPairs,
     body: String,
 ) -> Result<Value, String> {
-    let response_headers: HashPairs = headers_map
-        .into_iter()
-        .map(|(k, v)| {
-            (
-                HashKey::String(k.into()),
-                Value::String(v.as_str().unwrap_or("").to_string().into()),
-            )
-        })
-        .collect();
-
     let mut result: HashPairs = HashPairs::default();
     result.insert(HashKey::String("status".into()), Value::Int(status as i64));
     result.insert(
@@ -3298,12 +3350,9 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
 
         let status = resp.status().as_u16();
         let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
-        let mut headers = vec![];
-        for (name, value) in resp.headers().iter() {
-            if let Ok(v) = value.to_str() {
-                headers.push((name.to_string(), v.to_string()));
-            }
-        }
+        let headers = header_map_pairs(resp.headers())
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect();
         let body = read_capped_text_async(resp)
             .await
             .map_err(|e| format!("Failed to read response: {}", e))?;
@@ -3318,11 +3367,12 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
 }
 
 fn response_to_value(response: HttpResponse) -> Value {
-    let headers: HashPairs = response
-        .headers
-        .into_iter()
-        .map(|(k, v)| (HashKey::String(k.into()), Value::String(v.into())))
-        .collect();
+    let headers = response_headers_hash(
+        response
+            .headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str())),
+    );
 
     let mut result: HashPairs = HashPairs::default();
     result.insert(
@@ -3520,15 +3570,8 @@ fn open_stream(
         }
     })?;
     let status = response.status().as_u16();
-    let headers = response
-        .headers()
-        .iter()
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|v| (name.to_string(), v.to_string()))
-        })
+    let headers = header_map_pairs(response.headers())
+        .map(|(name, value)| (name.to_string(), value.to_string()))
         .collect();
     let id = NEXT_STREAM.with(|n| {
         let id = n.get();
@@ -3659,10 +3702,11 @@ fn http_stream(args: &[Value]) -> Result<Value, String> {
     let mut inst = crate::interpreter::value::Instance::new(class);
     inst.set("_id", Value::Int(id));
     inst.set("status", Value::Int(status as i64));
-    let pairs: HashPairs = response_headers
-        .into_iter()
-        .map(|(k, v)| (HashKey::String(k.into()), Value::String(v.into())))
-        .collect();
+    let pairs = response_headers_hash(
+        response_headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str())),
+    );
     inst.set("headers", Value::Hash(Rc::new(RefCell::new(pairs))));
     Ok(Value::Instance(Rc::new(RefCell::new(inst))))
 }
@@ -4911,5 +4955,143 @@ mod request_header_tests {
             head.contains("x-request-source: soli-test"),
             "missing custom header in request head:\n{head}"
         );
+    }
+}
+
+/// #659 — several `Set-Cookie` lines in one response all survive: `set-cookie`
+/// is an Array of strings (even with one cookie), any other repeated header
+/// is joined with `", "`.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod response_headers_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    fn header<'a>(hash: &'a HashPairs, name: &str) -> &'a Value {
+        hash.get(&HashKey::String(name.into()))
+            .unwrap_or_else(|| panic!("no {name} header"))
+    }
+
+    fn strings(value: &Value) -> Vec<String> {
+        match value {
+            Value::Array(items) => items.borrow().iter().map(string).collect(),
+            other => panic!("expected an Array, got {other:?}"),
+        }
+    }
+
+    fn string(value: &Value) -> String {
+        match value {
+            Value::String(s) => s.to_string(),
+            other => panic!("expected a String, got {other:?}"),
+        }
+    }
+
+    /// Answers every connection with `head` (the header lines) and a body.
+    fn server(head: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut s = stream;
+                let mut buf = [0u8; 4096];
+                let mut got = Vec::new();
+                while !got.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => got.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let _ = s.write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\n{head}Content-Length: 2\r\nConnection: close\r\n\r\nok"
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        format!("http://{addr}/")
+    }
+
+    const TWO_COOKIES: &str = "Set-Cookie: a=1; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT\r\n\
+        X-Thing: one\r\nSet-Cookie: b=2; HttpOnly\r\nX-Thing: two\r\n";
+
+    fn fetch(url: String) -> HashPairs {
+        let response = run_parallel_requests(vec![RequestConfig {
+            method: "GET".to_string(),
+            url,
+            headers: vec![],
+            body: None,
+            timeout: Some(std::time::Duration::from_secs(10)),
+        }])
+        .pop()
+        .unwrap()
+        .expect("the test server answers");
+        let Value::Hash(hash) = response_to_value(response) else {
+            panic!("a response is a hash")
+        };
+        let headers = header(&hash.borrow(), "headers").clone();
+        let Value::Hash(headers) = headers else {
+            panic!("headers is a hash")
+        };
+        let pairs = headers.borrow().clone();
+        pairs
+    }
+
+    #[test]
+    fn two_set_cookie_lines_are_a_two_element_array() {
+        let headers = fetch(server(TWO_COOKIES));
+        assert_eq!(
+            strings(header(&headers, "set-cookie")),
+            [
+                "a=1; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+                "b=2; HttpOnly"
+            ]
+        );
+        assert_eq!(string(header(&headers, "x-thing")), "one, two");
+        assert_eq!(string(header(&headers, "content-length")), "2");
+    }
+
+    #[test]
+    fn one_set_cookie_line_is_a_one_element_array() {
+        let headers = fetch(server("Set-Cookie: only=1\r\n"));
+        assert_eq!(strings(header(&headers, "set-cookie")), ["only=1"]);
+    }
+
+    #[test]
+    fn a_stream_keeps_every_cookie_too() {
+        let url = server(TWO_COOKIES);
+        let (_, _, raw) =
+            open_stream("GET", &url, &[], None, std::time::Duration::from_secs(5)).unwrap();
+        let headers = response_headers_hash(
+            raw.iter()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+        );
+        assert_eq!(strings(header(&headers, "set-cookie")).len(), 2);
+        assert_eq!(string(header(&headers, "x-thing")), "one, two");
+    }
+
+    /// The background path sends the response as JSON text; it parses back
+    /// to the same shape.
+    #[test]
+    fn the_json_form_parses_back_to_the_same_shape() {
+        let pairs = [
+            ("Set-Cookie", "a=1"),
+            ("vary", "accept"),
+            ("set-cookie", "b=2"),
+            ("Vary", "origin"),
+        ];
+        let json = serde_json::Value::Object(response_headers_json(pairs)).to_string();
+        let Value::Hash(parsed) = crate::interpreter::value::parse_json(&json).unwrap() else {
+            panic!("an object parses to a hash")
+        };
+        let parsed = parsed.borrow();
+        assert_eq!(strings(header(&parsed, "set-cookie")), ["a=1", "b=2"]);
+        assert_eq!(string(header(&parsed, "vary")), "accept, origin");
+
+        let direct = response_headers_hash(pairs);
+        assert_eq!(strings(header(&direct, "set-cookie")), ["a=1", "b=2"]);
+        assert_eq!(string(header(&direct, "vary")), "accept, origin");
+        let names: Vec<String> = direct.keys().map(|k| k.to_string()).collect();
+        assert_eq!(names, ["set-cookie", "vary"], "lowercase, first-seen order");
     }
 }

@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.30.1.</p>
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">An HTTP response keeps every <code class="text-cyan-400">Set-Cookie</code>.</strong> A header the server sent twice kept only its last value, so a login answering a session cookie and a CSRF cookie lost the first. <code class="text-cyan-400">response["headers"]["set-cookie"]</code> is now <strong class="text-white">always an Array of strings</strong>, one per line, even with a single cookie &mdash; it was a String, so code that read it as one needs <code class="text-cyan-400">[0]</code> or a loop. Any other repeated header is one String joined with <code class="text-cyan-400">", "</code>. This holds for <code class="text-cyan-400">HTTP.request</code>, <code class="text-cyan-400">HTTP.parallel</code>, <code class="text-cyan-400">stream.headers</code>, <code class="text-cyan-400">SOAP.call</code> and the spec client&rsquo;s responses; <code class="text-cyan-400">res_header(response, "set-cookie")</code> returns the Array, and <code class="text-cyan-400">mock_http_route</code> takes a fourth argument of response headers to play such a server (<a href="/docs/builtins/http#def-http-request" class="text-amber-400 hover:underline">HTTP</a>).</li>
+        </ul>
     </section>
 
     <section id="v2-30-1" class="mb-16 scroll-mt-24">

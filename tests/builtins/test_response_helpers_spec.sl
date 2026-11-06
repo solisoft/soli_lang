@@ -33,6 +33,11 @@ describe("res_* readers") do
     assert_null(res_header(response, "Missing"))
   end
 
+  test("res_header answers set-cookie as the array the response holds") do
+    response = {"status": 200, "headers": {"set-cookie": ["a=1", "b=2"]}}
+    assert_eq(res_header(response, "Set-Cookie"), ["a=1", "b=2"])
+  end
+
   test("res_location reads the Location header") do
     assert_eq(res_location({"status": 301, "headers": {"Location": "/new-home"}}), "/new-home")
   end

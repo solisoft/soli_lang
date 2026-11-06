@@ -340,6 +340,12 @@ me = HTTP.get_json("https://api.example.com/me", {
             </a>
             <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.). The headers hash accepts a <code class="text-amber-400">timeout</code> key (seconds) that is consumed as the per-call timeout rather than sent as a header. The body takes the same shapes as <code class="text-amber-400">HTTP.post</code> (string, hash as JSON, byte array, or multipart with <code class="text-amber-400">"multipart": true</code> in the headers hash), but no <code>Content-Type</code> is implied unless it is multipart.</p>
             <p class="text-gray-400 mb-3">Returns <code class="text-amber-400">{ "status", "status_text", "headers", "body" }</code>. Unlike the verb helpers it does <strong>not</strong> raise on a 4xx/5xx &mdash; branch on <code class="text-amber-400">resp["status"]</code>. Only a transport failure (DNS, refused connection, timeout, SSRF refusal) raises. <code class="text-amber-400">HTTP.parallel</code> returns one such hash per request.</p>
+            <p class="text-gray-400 mb-3"><strong class="text-white">Response headers.</strong> Names are lowercase. <code class="text-amber-400">set-cookie</code> is <strong>always an Array of strings</strong>, one per <code class="text-amber-400">Set-Cookie</code> line, even when the server sent a single cookie (a cookie&rsquo;s <code class="text-amber-400">Expires</code> attribute holds a comma, so the lines cannot be joined). Any other header sent more than once is one String, its values joined with <code class="text-amber-400">", "</code> (<code class="text-amber-400">"vary" =&gt; "accept, origin"</code>). The same shape holds for <code class="text-amber-400">HTTP.parallel</code>, <code class="text-amber-400">stream.headers</code> from <code class="text-amber-400">HTTP.stream</code> and <code class="text-amber-400">SOAP.call</code>; <code class="text-amber-400">res_header(resp, "set-cookie")</code> returns the same Array.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("POST", login_url, {}, credentials)
+resp["headers"]["set-cookie"]   # ["sid=abc; HttpOnly", "theme=dark; Path=/"]
+resp["headers"]["set-cookie"].each do |line|
+  print(line.split(";")[0])     # "sid=abc", then "theme=dark"
+end</code></pre>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("DELETE", "https://api.example.com/users/1")
 println("gone") if resp["status"] == 404
 resp = HTTP.request("PATCH", url, headers, json)
@@ -359,7 +365,7 @@ resp = HTTP.request("GET", url, { "Authorization": "Bearer " + token, "timeout":
             <p class="text-gray-400 mb-3">Parameters are <code class="text-amber-400">HTTP.request</code>&rsquo;s. The <code class="text-amber-400">timeout</code> (seconds, default 120) is the longest wait <strong>for the next bytes</strong>, not for the whole answer.</p>
             <p class="text-gray-400 mb-3">Returns an <code class="text-amber-400">HTTPStream</code>:</p>
             <ul class="list-disc list-inside text-gray-400 mb-3 space-y-1">
-                <li><code class="text-amber-400">stream.status</code> (Int) and <code class="text-amber-400">stream.headers</code> (Hash), read when it opened;</li>
+                <li><code class="text-amber-400">stream.status</code> (Int) and <code class="text-amber-400">stream.headers</code> (Hash, <code class="text-amber-400">HTTP.request</code>&rsquo;s shape: <code class="text-amber-400">set-cookie</code> an Array), read when it opened;</li>
                 <li><code class="text-amber-400">stream.next_line</code>: the next line, with its <code>\n</code> (and a <code>\r</code> before it) taken off, or <code class="text-amber-400">nil</code> once the body is over (an unended last line comes first). It raises when nothing arrives for <code class="text-amber-400">timeout</code> seconds, when the connection breaks, and past <code class="text-amber-400">SOLI_HTTP_MAX_RESPONSE_BYTES</code>; the stream is closed then;</li>
                 <li><code class="text-amber-400">stream.close</code> lets the connection go before the end.</li>
             </ul>

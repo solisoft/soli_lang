@@ -402,6 +402,20 @@ fn http_request(
         }
         header_pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
     }
+    // `set-cookie` is always an Array of strings, one per `Set-Cookie` line,
+    // as on an `HTTP.get` response (also under the Title-Case alias).
+    if !set_cookies.is_empty() {
+        let cookies: Vec<Value> = set_cookies
+            .iter()
+            .map(|c| Value::String(c.clone().into()))
+            .collect();
+        for name in ["set-cookie", "Set-Cookie"] {
+            header_pairs.insert(
+                HashKey::String(name.into()),
+                Value::Array(Rc::new(RefCell::new(cookies.clone()))),
+            );
+        }
+    }
     super::assigns_helpers::set_last_render(test_view_path, test_assigns_json);
 
     let mut response_hash: HashPairs = HashPairs::default();
@@ -620,9 +634,12 @@ fn raw_http_request(
             let key = k.trim();
             let value = v.trim();
             if key.eq_ignore_ascii_case("set-cookie") {
+                // Surfaced by the caller as an Array, never joined: a
+                // cookie's `Expires` attribute holds a comma.
                 set_cookies.push(value.to_string());
+                continue;
             }
-            response_headers.insert(key.to_string(), value.to_string());
+            append_header(&mut response_headers, key, value);
             // Hyper lowercases response header names on the wire, but CRM
             // scaffolded tests directly read `response["headers"]["HX-Redirect"]`
             // (case-sensitive hash lookup). Publish a canonical Title-Case
@@ -631,20 +648,28 @@ fn raw_http_request(
             // `hx-*` family that HTMX docs canonicalize as uppercase prefix.
             let title = canonicalize_header_name(key);
             if title != key {
-                response_headers
-                    .entry(title.clone())
-                    .or_insert_with(|| value.to_string());
+                append_header(&mut response_headers, &title, value);
             }
             if let Some(upper_alias) = uppercase_prefix_alias(key) {
                 if upper_alias != key && upper_alias != title {
-                    response_headers
-                        .entry(upper_alias)
-                        .or_insert_with(|| value.to_string());
+                    append_header(&mut response_headers, &upper_alias, value);
                 }
             }
         }
     }
     Ok((status_code, response_headers, set_cookies, body_text))
+}
+
+/// Record one header line: a header sent twice reads as both values joined
+/// with `", "`, as `HTTP.get` and friends answer it.
+fn append_header(headers: &mut HashMap<String, String>, name: &str, value: &str) {
+    headers
+        .entry(name.to_string())
+        .and_modify(|joined| {
+            joined.push_str(", ");
+            joined.push_str(value);
+        })
+        .or_insert_with(|| value.to_string());
 }
 
 /// Convert an HTTP header name to canonical Title-Case form, e.g.

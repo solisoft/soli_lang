@@ -4,7 +4,7 @@
 //! local TCP loopback is ~1000x faster, removes internet flakiness, and works
 //! offline. The server is intentionally minimal — it accepts any method and
 //! answers a fixed JSON payload, unless a spec has scripted the path with
-//! `mock_http_route(path, status, body)`.
+//! `mock_http_route(path, status, body, headers?)`.
 //!
 //! Scripted routes are what let a spec stand in for a *third-party* server:
 //! an OpenID provider's discovery document, key set and token endpoint, say.
@@ -18,12 +18,15 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 static MOCK_PORT: OnceLock<u16> = OnceLock::new();
 
-/// Scripted answers, by path (query string excluded): status and body.
-static ROUTES: OnceLock<Mutex<HashMap<String, (u16, String)>>> = OnceLock::new();
+/// A scripted answer: status, body, and extra header lines in order.
+type Route = (u16, String, Vec<(String, String)>);
+
+/// Scripted answers, by path (query string excluded).
+static ROUTES: OnceLock<Mutex<HashMap<String, Route>>> = OnceLock::new();
 
 /// The body of the last request received on each path.
 static LAST_BODIES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
@@ -31,7 +34,7 @@ static LAST_BODIES: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 /// Bodies are kept for inspection up to this size; the rest is drained unread.
 const KEPT_BODY_MAX: usize = 64 * 1024;
 
-fn routes() -> &'static Mutex<HashMap<String, (u16, String)>> {
+fn routes() -> &'static Mutex<HashMap<String, Route>> {
     ROUTES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -49,11 +52,19 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
         )),
     );
 
-    // mock_http_route(path, status, body) — answer `body` with `status` on
-    // `path`, for any method, until scripted again.
+    // mock_http_route(path, status, body, headers?) — answer `body` with
+    // `status` on `path`, for any method, until scripted again. `headers` adds
+    // header lines: a String value is one line, an Array one line per item
+    // (how a spec sends two `Set-Cookie`).
     env.define(
         "mock_http_route".to_string(),
-        Value::NativeFunction(NativeFunction::new("mock_http_route", Some(3), |args| {
+        Value::NativeFunction(NativeFunction::new("mock_http_route", None, |args| {
+            if !(3..=4).contains(&args.len()) {
+                return Err(format!(
+                    "mock_http_route(path, status, body, headers?) expects 3 or 4 arguments, got {}",
+                    args.len()
+                ));
+            }
             let path = match &args[0] {
                 Value::String(s) => s.to_string(),
                 other => {
@@ -76,8 +87,18 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
                 Value::String(s) => s.to_string(),
                 other => other.to_string(),
             };
+            let headers = match args.get(3) {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::Hash(hash)) => route_headers(&hash.borrow())?,
+                Some(other) => {
+                    return Err(format!(
+                        "mock_http_route: headers must be a hash, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
             if let Ok(mut map) = routes().lock() {
-                map.insert(path, (status, body));
+                map.insert(path, (status, body, headers));
             }
             Ok(Value::Null)
         })),
@@ -102,6 +123,32 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
             },
         )),
     );
+}
+
+/// The header lines of a scripted route: one per String value, one per item
+/// of an Array value.
+fn route_headers(hash: &HashPairs) -> Result<Vec<(String, String)>, String> {
+    let mut lines = Vec::new();
+    for (key, value) in hash.iter() {
+        let name = match key {
+            HashKey::String(s) => s.to_string(),
+            other => return Err(format!("mock_http_route: bad header name {}", other)),
+        };
+        match value {
+            Value::Array(items) => {
+                for item in items.borrow().iter() {
+                    lines.push((name.clone(), item.to_string()));
+                }
+            }
+            other => lines.push((name, other.to_string())),
+        }
+    }
+    for (name, value) in &lines {
+        if name.contains(['\r', '\n', ':']) || value.contains(['\r', '\n']) {
+            return Err(format!("mock_http_route: bad header line {name}: {value}"));
+        }
+    }
+    Ok(lines)
 }
 
 fn start_or_get_port() -> u16 {
@@ -190,15 +237,20 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
         map.insert(path.clone(), String::from_utf8_lossy(&kept).into_owned());
     }
 
-    let (status, body) = routes()
+    let (status, body, headers) = routes()
         .lock()
         .ok()
         .and_then(|map| map.get(&path).cloned())
-        .unwrap_or((200, "{\"ok\":true}".to_string()));
+        .unwrap_or((200, "{\"ok\":true}".to_string(), Vec::new()));
+    let extra: String = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\n{}Content-Length: {}\r\nConnection: close\r\n\r\n",
         status,
         reason_phrase(status),
+        extra,
         body.len()
     );
     stream.write_all(response.as_bytes())?;
@@ -254,12 +306,12 @@ mod tests {
         let port = super::start_or_get_port();
         super::routes().lock().unwrap().insert(
             "/scripted/.well-known/openid-configuration".to_string(),
-            (200, "{\"issuer\":\"x\"}".to_string()),
+            (200, "{\"issuer\":\"x\"}".to_string(), Vec::new()),
         );
-        super::routes()
-            .lock()
-            .unwrap()
-            .insert("/scripted/token".to_string(), (401, "{}".to_string()));
+        super::routes().lock().unwrap().insert(
+            "/scripted/token".to_string(),
+            (401, "{}".to_string(), Vec::new()),
+        );
 
         let discovery = exchange(
             port,
