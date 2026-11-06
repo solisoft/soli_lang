@@ -786,8 +786,13 @@ struct RouteCache {
 
 const NO_SLOT: u16 = u16::MAX;
 
-thread_local! {
+crate::request_local! {
+    /// The slot of the route the current request matched.
     static CURRENT: StdCell<u16> = const { StdCell::new(UNMATCHED) };
+}
+
+thread_local! {
+    /// Per worker, like the route table it caches positions of.
     static ROUTE_CACHE: RefCell<RouteCache> = const {
         RefCell::new(RouteCache { generation: u64::MAX, tenant: TenantId::PRIMARY, slots: Vec::new() })
     };
