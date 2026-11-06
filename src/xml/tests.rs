@@ -1635,7 +1635,9 @@ fn namespace_lookups_stay_fast_on_a_hostile_scope() -> TestResult {
 
     let elapsed = started.elapsed();
     ensure(
-        elapsed < std::time::Duration::from_secs(5),
+        // The quadratic scope took minutes; an unoptimised debug build (what
+        // `cargo test` runs in CI) needs about 10 s for the linear one.
+        elapsed < std::time::Duration::from_secs(if cfg!(debug_assertions) { 60 } else { 5 }),
         &format!("hostile namespace scope took {elapsed:?}"),
     )
 }

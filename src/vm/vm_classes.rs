@@ -1782,7 +1782,9 @@ refused = node._hidden() rescue "refused"
     #[test]
     fn an_unrestricted_name_scans_no_frames_at_any_depth() {
         let (shallow, refused_call, shallow_cost) = run(NODES, &[("DEPTH", 0), ("N", 3)]);
-        let (deep, _, deep_cost) = run(NODES, &[("DEPTH", 40), ("N", 30)]);
+        // 20 frames: deep enough to show the cost does not grow with depth, and
+        // under the debug build's 32-frame cap (`MAX_CALL_DEPTH`), which CI runs.
+        let (deep, _, deep_cost) = run(NODES, &[("DEPTH", 20), ("N", 30)]);
         assert_eq!(shallow, Value::Int(3));
         assert_eq!(deep, Value::Int(30));
         assert_eq!(refused_call, refused());
