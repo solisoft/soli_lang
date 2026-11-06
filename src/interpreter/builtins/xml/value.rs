@@ -97,8 +97,9 @@ impl XmlRef {
 pub enum XmlPayload {
     /// A node (or the document node) of a tree.
     Node(XmlRef),
-    /// An `XmlReader`'s open stream (`reader.rs`).
-    Reader(RefCell<super::reader::StreamState>),
+    /// An `XmlReader`'s open stream (`reader.rs`), boxed: the stream state
+    /// holds the read buffers, a node handle is two words.
+    Reader(Box<RefCell<super::reader::StreamState>>),
 }
 
 impl fmt::Debug for XmlPayload {

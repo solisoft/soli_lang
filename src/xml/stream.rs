@@ -743,7 +743,7 @@ impl Sink for StreamSink {
 
 // --------------------------------------------------------------------- pull
 
-/// A pull cursor: [`Pull::next`] reads until the next match closes and
+/// A pull cursor: [`Pull::next_match`] reads until the next match closes and
 /// returns it as a tree of its own (the match is the detached element whose
 /// id comes with it), or `None` at the end of the document.
 pub struct Pull<R: BufRead> {
@@ -772,11 +772,11 @@ impl<R: BufRead> Pull<R> {
 
     /// The next match, or `None` once the document has been read to its end
     /// (and found well-formed). After an error, `None`.
-    pub fn next(&mut self) -> Result<Option<(XmlTree, NodeId)>, XmlError> {
+    pub fn next_match(&mut self) -> Result<Option<(XmlTree, NodeId)>, XmlError> {
         self.next_checked(&mut || false)
     }
 
-    /// [`Pull::next`], asking `interrupted` every so often while it reads; a
+    /// [`Pull::next_match`], asking `interrupted` every so often while it reads; a
     /// `true` answer ends the stream with the error [`INTERRUPTED`].
     pub fn next_checked(
         &mut self,
@@ -785,7 +785,7 @@ impl<R: BufRead> Pull<R> {
         let mut steps: u32 = 0;
         while !self.finished {
             steps = steps.wrapping_add(1);
-            if steps % INTERRUPT_EVERY == 0 && interrupted() {
+            if steps.is_multiple_of(INTERRUPT_EVERY) && interrupted() {
                 self.finished = true;
                 return Err(XmlError::new(XmlErrorKind::Syntax(INTERRUPTED.to_string())));
             }

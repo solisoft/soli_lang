@@ -341,7 +341,7 @@ fn wrap_reader(state: StreamState) -> Value {
     let mut inst = Instance::new(reader_class());
     inst.set(
         HANDLE_FIELD,
-        Value::Xml(Rc::new(XmlPayload::Reader(RefCell::new(state)))),
+        Value::Xml(Rc::new(XmlPayload::Reader(Box::new(RefCell::new(state))))),
     );
     Value::Instance(Rc::new(RefCell::new(inst)))
 }

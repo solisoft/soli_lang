@@ -29,10 +29,15 @@ fn stream_with(
     let matcher = Matcher::compile(expr, &table(ns))?;
     let mut pull = Pull::new(input.as_bytes(), matcher, policy);
     let mut out = Vec::new();
-    while let Some((tree, id)) = pull.next()? {
+    while let Some((tree, id)) = pull.next_match()? {
         out.push(serialize(&tree, id, &SerializeOptions::compact())?);
     }
     Ok(out)
+}
+
+/// The next match, the error as a String.
+fn step<R: std::io::BufRead>(pull: &mut Pull<R>) -> Result<Option<(XmlTree, NodeId)>, String> {
+    pull.next_match().map_err(|e| e.to_string())
 }
 
 fn stream(input: &str, expr: &str) -> Result<Vec<String>, String> {
@@ -207,7 +212,7 @@ fn a_match_carries_the_namespaces_in_scope_where_it_stood() -> TestResult {
     )?;
     let matcher = Matcher::compile("entry", &[]).map_err(|e| e.to_string())?;
     let mut pull = Pull::new(ATOM.as_bytes(), matcher, policy());
-    let (tree, id) = pull.next().map_err(|e| e.to_string())?.ok_or("no match")?;
+    let (tree, id) = step(&mut pull)?.ok_or("no match")?;
     // A detached element: no document, no parent, and its prefixes resolve.
     eq(tree.parent(id), None)?;
     eq(tree.is_attached(id), false)?;
@@ -245,7 +250,7 @@ fn a_match_split_across_buffer_boundaries_is_whole() -> TestResult {
     let reader = BufReader::with_capacity(7, input.as_bytes());
     let mut pull = Pull::new(reader, matcher, policy());
     let mut n = 0;
-    while let Some((tree, id)) = pull.next().map_err(|e| e.to_string())? {
+    while let Some((tree, id)) = step(&mut pull)? {
         let xml = serialize(&tree, id, &SerializeOptions::compact()).map_err(|e| e.to_string())?;
         eq(
             xml,
@@ -312,7 +317,7 @@ fn a_huge_event_outside_matches_is_refused_before_it_is_buffered() -> TestResult
     ] {
         let matcher = Matcher::compile("i", &[]).map_err(|e| e.to_string())?;
         let mut pull = Pull::new(input.as_bytes(), matcher, small);
-        match pull.next() {
+        match pull.next_match() {
             Ok(found) => return Err(format!("expected a refusal, got {}", found.is_some())),
             Err(err) => eq(err.kind, XmlErrorKind::BytesExceeded(None, 1024))?,
         }
@@ -367,14 +372,14 @@ fn an_error_after_the_last_match_still_raises() -> TestResult {
     let input = "<r><i/><i/></r><second/>";
     let matcher = Matcher::compile("i", &[]).map_err(|e| e.to_string())?;
     let mut pull = Pull::new(input.as_bytes(), matcher, policy());
-    eq(pull.next().map_err(|e| e.to_string())?.is_some(), true)?;
-    eq(pull.next().map_err(|e| e.to_string())?.is_some(), true)?;
-    match pull.next() {
+    eq(step(&mut pull)?.is_some(), true)?;
+    eq(step(&mut pull)?.is_some(), true)?;
+    match pull.next_match() {
         Err(err) => eq(err.kind, XmlErrorKind::SecondRoot("second".to_string()))?,
         Ok(other) => return Err(format!("expected an error, got {}", other.is_some())),
     }
     // The stream is over after an error.
-    eq(pull.next().map_err(|e| e.to_string())?.is_none(), true)?;
+    eq(step(&mut pull)?.is_none(), true)?;
     let truncated = refused("<r><i/><i>", "i", policy())?;
     eq(truncated.kind, XmlErrorKind::Unclosed("i".to_string()))
 }
@@ -384,8 +389,8 @@ fn errors_on_a_seekable_input_get_their_line_and_column() -> TestResult {
     let input = "<r>\n  <i/>\n  <é><i></é>\n</r>";
     let matcher = Matcher::compile("i", &[]).map_err(|e| e.to_string())?;
     let mut pull = Pull::new(Cursor::new(input.as_bytes().to_vec()), matcher, policy());
-    eq(pull.next().map_err(|e| e.to_string())?.is_some(), true)?;
-    let err = match pull.next() {
+    eq(step(&mut pull)?.is_some(), true)?;
+    let err = match pull.next_match() {
         Err(err) => pull.locate(err),
         Ok(_) => return Err("expected an error".to_string()),
     };
@@ -405,8 +410,8 @@ fn a_bom_is_skipped_and_offsets_count_after_it() -> TestResult {
     let input = "\u{FEFF}<r>\r\n<i/>\r\n<x></y></r>";
     let matcher = Matcher::compile("i", &[]).map_err(|e| e.to_string())?;
     let mut pull = Pull::new(Cursor::new(input.as_bytes().to_vec()), matcher, policy());
-    eq(pull.next().map_err(|e| e.to_string())?.is_some(), true)?;
-    let err = match pull.next() {
+    eq(step(&mut pull)?.is_some(), true)?;
+    let err = match pull.next_match() {
         Err(err) => pull.locate(err),
         Ok(_) => return Err("expected an error".to_string()),
     };
@@ -445,7 +450,7 @@ fn an_interrupt_stops_a_long_scan() -> TestResult {
         Ok(_) => return Err("expected an interruption".to_string()),
     }
     eq(asked, 3)?;
-    eq(pull.next().map_err(|e| e.to_string())?.is_none(), true)
+    eq(step(&mut pull)?.is_none(), true)
 }
 
 #[test]
