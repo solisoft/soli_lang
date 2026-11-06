@@ -214,8 +214,9 @@ pub fn to_h(tree: &XmlTree, id: NodeId) -> Proj {
 /// `"_text"`, at the position where the old parser first flushed it (before
 /// the next non-self-closing child, or last); comments and PIs are skipped; a
 /// child named `_text` stays ambiguous. The old parser trimmed each text
-/// event, so a comment or PI still cuts the text into pieces trimmed one by
-/// one (`x <!--c--> y` is `"xy"`), and text before the root (kept by
+/// event, so a comment, a PI, a self-closing child or a misplaced `<?xml?>`
+/// still cuts the text into pieces trimmed one by one (`x <!--c--> y` and
+/// `x <c/> y` are `"xy"`), and text before the root (kept by
 /// `keep_text_before_root`) is read as the first pieces of the root's text
 /// (`junk<a>x</a>` is `"junkx"`). Within a piece, text, references and CDATA
 /// are joined (bugs 1 and 2), and so are the pieces either side of a child
@@ -243,9 +244,19 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
         };
         // The text as it stood when `_text` was placed, if it was.
         let mut placed: Option<String> = None;
+        let mut after_text = false;
         for child in tree.children(node) {
-            match tree.kind(*child) {
-                Kind::Text(s) | Kind::CData(s) => text.push(s),
+            let kind = tree.kind(*child);
+            match kind {
+                Kind::Text(s) => {
+                    // Two text nodes in a row were split by a misplaced
+                    // `<?xml?>`, which the old parser saw as an event.
+                    if after_text {
+                        text.cut();
+                    }
+                    text.push(s);
+                }
+                Kind::CData(s) => text.push(s),
                 Kind::Comment(_) | Kind::Pi { .. } => text.cut(),
                 Kind::Element {
                     qname,
@@ -254,7 +265,11 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
                 } => {
                     // The old parser flushed pending text when a child
                     // *started* (`Event::Start`); a self-closing child was an
-                    // `Event::Empty` and flushed nothing.
+                    // `Event::Empty` and flushed nothing, but still split the
+                    // text into two events trimmed one by one.
+                    if *self_closing {
+                        text.cut();
+                    }
                     if !self_closing && placed.is_none() && !text.is_blank() {
                         let so_far = text.joined();
                         map.insert("_text".to_string(), Proj::Str(so_far.clone()));
@@ -265,6 +280,7 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
                 }
                 _ => {}
             }
+            after_text = matches!(kind, Kind::Text(_));
         }
         let text = text.finish();
         let trimmed = text.trim();
@@ -288,8 +304,8 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
     Proj::Map(out)
 }
 
-/// An element's text as the old SOAP parser saw it: pieces cut at comments
-/// and PIs, each trimmed of XML whitespace (quick-xml's `trim_text`), joined.
+/// An element's text as the old SOAP parser saw it: pieces cut at comments,
+/// PIs, self-closing children and misplaced declarations, each trimmed of XML whitespace (quick-xml's `trim_text`), joined.
 #[derive(Debug, Default)]
 struct SoapText {
     done: String,

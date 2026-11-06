@@ -1485,13 +1485,14 @@ fn soap_shape_fixes_the_six_bugs_and_normalises_crlf() -> TestResult {
     );
     // Bug 4: a self-closing root.
     assert_eq!(soap("<a/>")?, map(vec![("a", Proj::Null)]));
-    // Bug 5: mixed-content runs are joined, then trimmed.
+    // Bug 5: mixed-content runs are joined, then trimmed. A self-closing
+    // child still cuts the text in pieces trimmed apart, as before.
     assert_eq!(
         soap("<a> one <b>1</b> two <c/> three </a>")?,
         map(vec![(
             "a",
             map(vec![
-                ("_text", st("one  two  three")),
+                ("_text", st("one  twothree")),
                 ("b", st("1")),
                 ("c", Proj::Null)
             ])
@@ -2134,6 +2135,66 @@ fn soap_text_is_trimmed_piece_by_piece_at_comments_and_pis() -> TestResult {
     assert_eq!(
         soap("<a>\u{a0}x\u{2003}<!--c-->y\u{a0}</a>")?,
         map(vec![("a", st("x\u{2003}y"))])
+    );
+    Ok(())
+}
+
+#[test]
+fn soap_text_is_also_cut_at_self_closing_children_and_misplaced_declarations() -> TestResult {
+    // Each was an event of its own for the old parser: the text either side
+    // was trimmed apart.
+    assert_eq!(
+        soap("<r>a <c/> b</r>")?,
+        map(vec![("r", map(vec![("c", Proj::Null), ("_text", st("ab"))]))])
+    );
+    assert_eq!(
+        soap("<r>a <c/> b<d>1</d></r>")?,
+        map(vec![(
+            "r",
+            map(vec![("c", Proj::Null), ("_text", st("ab")), ("d", st("1"))])
+        )])
+    );
+    assert_eq!(
+        soap("<a>y <?xml version=\"1.0\"?> x</a>")?,
+        map(vec![("a", st("yx"))])
+    );
+    // A misplaced declaration between two non-blank runs gives two nodes.
+    let tree = with("<a>y <?xml version=\"1.0\"?> x</a>", &ParsePolicy::soap())?;
+    let root = tree.root_element().ok_or("no root")?;
+    assert_eq!(tree.children(root).len(), 2);
+    Ok(())
+}
+
+#[test]
+fn soaps_text_cap_counts_the_text_kept_before_the_root() -> TestResult {
+    let mut policy = ParsePolicy::soap();
+    policy.max_text_run = Some(10);
+    with("12345<!--c-->678<a>90</a>", &policy)?;
+    let err = fails("12345<!--c-->678<a>901</a>", &policy)?;
+    assert_eq!(err.kind, XmlErrorKind::TextRunExceeded(10));
+    let err = fails("12345<!--c-->678901<a/>", &policy)?;
+    assert_eq!(err.kind, XmlErrorKind::TextRunExceeded(10));
+    fails("123456<a>78<b/>901</a>", &policy)?;
+    // Only the root starts with it: a child's text is its own.
+    with("123456<a><b>7890123456</b></a>", &policy)?;
+    // Blank text before the root is not kept, so it does not count.
+    with("          <a>1234567890</a>", &policy)?;
+    Ok(())
+}
+
+#[test]
+fn too_many_declarations_on_one_element_is_worded_for_users() -> TestResult {
+    let decls: Vec<String> = (0..3).map(|i| format!("xmlns:p{i}=\"u{i}\"")).collect();
+    let mut policy = ParsePolicy::soap();
+    policy.max_ns_decls_per_element = 2;
+    let err = fails(&format!("<a {}/>", decls.join(" ")), &policy)?;
+    assert_eq!(
+        err.kind,
+        XmlErrorKind::Syntax("more than 2 namespace declarations on one element".into())
+    );
+    assert_eq!(
+        soap_error_message(&err),
+        "XML parsing error: more than 2 namespace declarations on one element"
     );
     Ok(())
 }

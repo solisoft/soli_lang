@@ -26,6 +26,7 @@ use std::sync::Arc;
 
 use quick_xml::errors::{Error as QxError, IllFormedError};
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::name::NamespaceError;
 use quick_xml::reader::NsReader;
 
 use super::error::{XmlError, XmlErrorKind};
@@ -162,6 +163,9 @@ pub struct EventLoop<R: BufRead> {
     /// A reference was part of the pending run (references are not allowed
     /// outside the root).
     pending_ref: bool,
+    /// Bytes of text kept before the root (`keep_text_before_root`): they
+    /// count toward the root's `max_text_run`, as the root's text.
+    before_root_text: usize,
     seen_event: bool,
     done: bool,
 }
@@ -204,6 +208,10 @@ fn map_qx_error(err: QxError, offset: u64) -> XmlError {
         }
         QxError::IllFormed(IllFormedError::DoubleHyphenInComment) => XmlErrorKind::InvalidComment,
         QxError::Encoding(_) => XmlErrorKind::InvalidUtf8,
+        // quick-xml's own wording names a Rust API; users get ours.
+        QxError::Namespace(NamespaceError::TooManyDeclarations(limit)) => XmlErrorKind::Syntax(
+            format!("more than {limit} namespace declarations on one element"),
+        ),
         other => XmlErrorKind::Syntax(other.to_string()),
     };
     XmlError::at(kind, offset)
@@ -389,6 +397,7 @@ impl<R: BufRead> EventLoop<R> {
             pending: String::new(),
             pending_start: 0,
             pending_ref: false,
+            before_root_text: 0,
             seen_event: false,
             done: false,
         }
@@ -646,13 +655,23 @@ impl<R: BufRead> EventLoop<R> {
     /// `len` more bytes of text directly in the current element (or one run
     /// outside the root) would pass `max_text_run`.
     fn check_run(&self, len: usize, offset: u64) -> Result<(), XmlError> {
-        let held = self.open.last().map_or(0, |(_, _, held)| *held);
+        let held = match self.open.last() {
+            Some((_, _, held)) => *held,
+            None if self.keeps_text_here() => self.before_root_text,
+            None => 0,
+        };
         match self.policy.max_text_run {
             Some(limit) if held.saturating_add(len) > limit => {
                 Err(XmlError::at(XmlErrorKind::TextRunExceeded(limit), offset))
             }
             _ => Ok(()),
         }
+    }
+
+    /// Text outside any element is kept here: before the root, under
+    /// `keep_text_before_root`.
+    fn keeps_text_here(&self) -> bool {
+        self.state == RootState::Before && self.policy.keep_text_before_root
     }
 
     fn add_direct_text(&mut self, len: usize) {
@@ -685,7 +704,8 @@ impl<R: BufRead> EventLoop<R> {
         let blank = text.chars().all(is_xml_space);
         if self.outside_root() {
             if !blank || had_ref {
-                if self.state == RootState::Before && self.policy.keep_text_before_root {
+                if self.keeps_text_here() {
+                    self.before_root_text = self.before_root_text.saturating_add(text.len());
                     return sink.text(text);
                 }
                 return self.outside_content(self.pending_start);
@@ -742,6 +762,12 @@ impl<R: BufRead> EventLoop<R> {
             ));
         }
         let tag = self.build_tag(e, offset, empty)?;
+        // The root's text starts with the text kept before it.
+        let held = if self.keeps_text_here() {
+            self.before_root_text
+        } else {
+            0
+        };
         self.state = RootState::Inside;
         let qname = tag.qname.clone();
         sink.start_element(tag, &self.scope)?;
@@ -755,7 +781,7 @@ impl<R: BufRead> EventLoop<R> {
                 }
             }
         } else {
-            self.open.push((qname, offset, 0));
+            self.open.push((qname, offset, held));
         }
         Ok(())
     }
