@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.30.2] - 2026-11-06
+
 ### Fixed
 
 - **`idiom/manual-find-guard` only fires after `Model.find`.** It matched any
