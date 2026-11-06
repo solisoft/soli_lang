@@ -17,6 +17,10 @@
 //! - HTTP.get_all_json(urls) -> Array<Future<Value>>
 //! - HTTP.parallel(requests) -> Array<Future<HTTPResponse>>
 //!
+//! Every call that returns a body takes a `response` option — `"text"` (the
+//! default), `"binary"` (`Array<Int>`), `"base64"` or a charset label — read
+//! like `timeout`, never sent as a header: see [`ResponseMode`].
+//!
 //! Also provides helpers for working with HTTP responses.
 
 use std::cell::RefCell;
@@ -976,8 +980,13 @@ pub async fn read_capped_text_async(resp: reqwest::Response) -> Result<String, S
 /// `HTTP.download` exists for: a picture, a sound, a PDF. Same cap, same
 /// streaming, no decode.
 pub async fn read_capped_bytes_async(resp: reqwest::Response) -> Result<Vec<u8>, String> {
+    read_bytes_up_to(resp, http_max_response_bytes()).await
+}
+
+/// [`read_capped_bytes_async`] with the cap given, for a test that cannot
+/// set `SOLI_HTTP_MAX_RESPONSE_BYTES` (read once per process).
+async fn read_bytes_up_to(resp: reqwest::Response, cap: usize) -> Result<Vec<u8>, String> {
     use futures_util::StreamExt;
-    let cap = http_max_response_bytes();
     let mut buf: Vec<u8> = Vec::new();
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
@@ -991,6 +1000,172 @@ pub async fn read_capped_bytes_async(resp: reqwest::Response) -> Result<Vec<u8>,
         buf.extend_from_slice(&chunk);
     }
     Ok(buf)
+}
+
+/// How a response body is handed back: the `response` option of every
+/// `HTTP.*` call that returns a body. Consumed like `timeout`, never sent as
+/// a header.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum ResponseMode {
+    /// `"text"`, the default: the body is UTF-8, and anything else raises.
+    Text,
+    /// `"binary"`: the raw bytes, as an `Array<Int 0-255>` — the shape of
+    /// `slurp(path, "binary")`.
+    Binary,
+    /// `"base64"`: the raw bytes base64-encoded (standard alphabet, padded —
+    /// what `Base64.encode` gives), without the `Array<Int>` in between.
+    Base64,
+    /// A charset label (`"latin1"`, `"windows-1252"`, `"shift_jis"`, …): the
+    /// bytes decoded from that charset into a UTF-8 String.
+    Charset(&'static encoding_rs::Encoding),
+}
+
+/// Read the `response` key of an options hash. Missing / `null` is
+/// [`ResponseMode::Text`]; a value that is not a String, or a String that is
+/// neither a mode nor a charset label `encoding_rs` knows, is a hard error.
+fn extract_response_mode(options: Option<&Value>) -> Result<ResponseMode, String> {
+    let Some(Value::Hash(hash)) = options else {
+        return Ok(ResponseMode::Text);
+    };
+    match hash.borrow().get(&HashKey::String("response".into())) {
+        None | Some(Value::Null) => Ok(ResponseMode::Text),
+        Some(Value::String(mode)) => parse_response_mode(mode),
+        Some(other) => Err(format!(
+            "HTTP response must be a string (\"text\", \"binary\", \"base64\" or a charset label), got {}",
+            other.type_name()
+        )),
+    }
+}
+
+fn parse_response_mode(mode: &str) -> Result<ResponseMode, String> {
+    if mode.eq_ignore_ascii_case("text") {
+        return Ok(ResponseMode::Text);
+    }
+    if mode.eq_ignore_ascii_case("binary") {
+        return Ok(ResponseMode::Binary);
+    }
+    if mode.eq_ignore_ascii_case("base64") {
+        return Ok(ResponseMode::Base64);
+    }
+    encoding_rs::Encoding::for_label(mode.as_bytes())
+        .map(ResponseMode::Charset)
+        .ok_or_else(|| {
+            format!(
+                "HTTP response must be \"text\", \"binary\", \"base64\" or a charset label like \"latin1\", got {:?}",
+                mode
+            )
+        })
+}
+
+/// Refuse a byte mode where the body has to be parsed as text (the `*_json`
+/// helpers, `HTTP.stream_to`): there is no JSON in a PNG. `"text"` and a
+/// charset are fine.
+fn refuse_byte_mode(mode: ResponseMode, caller: &str) -> Result<(), String> {
+    match mode {
+        ResponseMode::Binary | ResponseMode::Base64 => Err(format!(
+            "{caller} parses the body as text; {{\"response\": \"binary\"|\"base64\"}} applies to HTTP.get, HTTP.request and the other calls that return the body"
+        )),
+        ResponseMode::Text | ResponseMode::Charset(_) => Ok(()),
+    }
+}
+
+/// A response body read in a [`ResponseMode`]: a String (text, a decoded
+/// charset, or base64), or raw bytes.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ResponseBody {
+    Text(String),
+    Bytes(Vec<u8>),
+}
+
+impl ResponseBody {
+    /// The Soli value: a String, or an `Array<Int 0-255>`.
+    fn into_value(self) -> Value {
+        match self {
+            ResponseBody::Text(text) => Value::String(text.into()),
+            ResponseBody::Bytes(bytes) => byte_array(&bytes),
+        }
+    }
+
+    /// The form that crosses a thread boundary in a Future's String channel:
+    /// the text itself, or the bytes as base64 (turned back into bytes by
+    /// [`HttpFutureKind::Bytes`] / [`HttpFutureKind::FullResponseBytes`]).
+    fn into_wire(self) -> String {
+        match self {
+            ResponseBody::Text(text) => text,
+            ResponseBody::Bytes(bytes) => base64_encode(&bytes),
+        }
+    }
+}
+
+impl PartialEq<&str> for ResponseBody {
+    fn eq(&self, other: &&str) -> bool {
+        matches!(self, ResponseBody::Text(text) if text == other)
+    }
+}
+
+/// The future kind of a body-returning call in `mode`.
+fn body_future_kind(mode: ResponseMode) -> HttpFutureKind {
+    match mode {
+        ResponseMode::Binary => HttpFutureKind::Bytes,
+        _ => HttpFutureKind::String,
+    }
+}
+
+/// Bytes as an `Array<Int 0-255>`, the shape of `slurp(path, "binary")`.
+fn byte_array(bytes: &[u8]) -> Value {
+    Value::Array(Rc::new(RefCell::new(
+        bytes.iter().map(|&b| Value::Int(b as i64)).collect(),
+    )))
+}
+
+/// Base64 exactly as `Base64.encode` writes it (standard alphabet, padded).
+fn base64_encode(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// Bytes decoded from `encoding` into a UTF-8 String, as `Encoding.decode`
+/// does (a BOM wins; a malformed sequence becomes U+FFFD).
+fn decode_charset(bytes: &[u8], encoding: &'static encoding_rs::Encoding) -> String {
+    encoding.decode(bytes).0.into_owned()
+}
+
+/// Read a response body in `mode`, under the same cap as every other read
+/// ([`http_max_response_bytes`], `SOLI_HTTP_MAX_RESPONSE_BYTES`).
+async fn read_response_body(
+    resp: reqwest::Response,
+    mode: ResponseMode,
+) -> Result<ResponseBody, String> {
+    read_response_body_up_to(resp, mode, http_max_response_bytes()).await
+}
+
+/// [`read_response_body`] with the cap given.
+async fn read_response_body_up_to(
+    resp: reqwest::Response,
+    mode: ResponseMode,
+    cap: usize,
+) -> Result<ResponseBody, String> {
+    let bytes = read_bytes_up_to(resp, cap).await?;
+    Ok(match mode {
+        ResponseMode::Text => ResponseBody::Text(String::from_utf8(bytes).map_err(|e| {
+            format!(
+                "invalid UTF-8 in response body: {} (use {{\"response\": \"binary\"|\"base64\"}} for bytes, or a charset like {{\"response\": \"latin1\"}})",
+                e
+            )
+        })?),
+        ResponseMode::Binary => ResponseBody::Bytes(bytes),
+        ResponseMode::Base64 => ResponseBody::Text(base64_encode(&bytes)),
+        ResponseMode::Charset(encoding) => ResponseBody::Text(decode_charset(&bytes, encoding)),
+    })
+}
+
+/// [`read_response_body`] for a caller that parses the body as text: one
+/// that has already [`refuse_byte_mode`]d, so the body is never bytes.
+async fn read_response_text(resp: reqwest::Response, mode: ResponseMode) -> Result<String, String> {
+    match read_response_body(resp, mode).await? {
+        ResponseBody::Text(text) => Ok(text),
+        ResponseBody::Bytes(_) => Err("HTTP: a byte body where text was expected".to_string()),
+    }
 }
 
 /// Read a reqwest response body into bytes with an explicit `cap`, for
@@ -1293,6 +1468,8 @@ struct RequestOptions {
     headers: Vec<(String, String)>,
     /// `follow_redirects` (default true) — see [`extract_follow_redirects`].
     follow_redirects: bool,
+    /// `response` (default text) — see [`extract_response_mode`].
+    response: ResponseMode,
 }
 
 impl Default for RequestOptions {
@@ -1301,6 +1478,7 @@ impl Default for RequestOptions {
             timeout: None,
             headers: Vec::new(),
             follow_redirects: true,
+            response: ResponseMode::Text,
         }
     }
 }
@@ -1419,6 +1597,7 @@ fn extract_options(options: Option<&Value>) -> Result<RequestOptions, String> {
         timeout: extract_timeout(options)?,
         headers: extract_headers(options)?,
         follow_redirects: extract_follow_redirects(options)?,
+        response: extract_response_mode(options)?,
     })
 }
 
@@ -1753,6 +1932,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(1))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -1767,9 +1947,9 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        read_capped_text_async(resp).await
+                        read_response_body(resp, mode).await
                     }) {
-                        Ok(text) => Ok(Value::String(text.into())),
+                        Ok(body) => Ok(body.into_value()),
                         Err(e) => Err(e),
                     }
                 }
@@ -1791,10 +1971,12 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_body(resp, mode)
+                                .await
+                                .map(ResponseBody::into_wire)
                         })
                     },
-                    HttpFutureKind::String,
+                    body_future_kind(mode),
                 )),
             }
         })),
@@ -1822,6 +2004,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(2))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -1840,9 +2023,9 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        read_capped_text_async(resp).await
+                        read_response_body(resp, mode).await
                     }) {
-                        Ok(text) => Ok(Value::String(text.into())),
+                        Ok(body) => Ok(body.into_value()),
                         Err(e) => Err(e),
                     }
                 }
@@ -1865,10 +2048,12 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_body(resp, mode)
+                                .await
+                                .map(ResponseBody::into_wire)
                         })
                     },
-                    HttpFutureKind::String,
+                    body_future_kind(mode),
                 )),
             }
         })),
@@ -1896,6 +2081,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(2))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -1914,9 +2100,9 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        read_capped_text_async(resp).await
+                        read_response_body(resp, mode).await
                     }) {
-                        Ok(text) => Ok(Value::String(text.into())),
+                        Ok(body) => Ok(body.into_value()),
                         Err(e) => Err(e),
                     }
                 }
@@ -1939,10 +2125,12 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_body(resp, mode)
+                                .await
+                                .map(ResponseBody::into_wire)
                         })
                     },
-                    HttpFutureKind::String,
+                    body_future_kind(mode),
                 )),
             }
         })),
@@ -1970,6 +2158,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(2))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -1988,9 +2177,9 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        read_capped_text_async(resp).await
+                        read_response_body(resp, mode).await
                     }) {
-                        Ok(text) => Ok(Value::String(text.into())),
+                        Ok(body) => Ok(body.into_value()),
                         Err(e) => Err(e),
                     }
                 }
@@ -2013,10 +2202,12 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_body(resp, mode)
+                                .await
+                                .map(ResponseBody::into_wire)
                         })
                     },
-                    HttpFutureKind::String,
+                    body_future_kind(mode),
                 )),
             }
         })),
@@ -2042,6 +2233,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(1))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -2057,9 +2249,9 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        read_capped_text_async(resp).await
+                        read_response_body(resp, mode).await
                     }) {
-                        Ok(text) => Ok(Value::String(text.into())),
+                        Ok(body) => Ok(body.into_value()),
                         Err(e) => Err(e),
                     }
                 }
@@ -2074,10 +2266,12 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_body(resp, mode)
+                                .await
+                                .map(ResponseBody::into_wire)
                         })
                     },
-                    HttpFutureKind::String,
+                    body_future_kind(mode),
                 )),
             }
         })),
@@ -2228,6 +2422,8 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(1))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
+            refuse_byte_mode(mode, "HTTP.get_json()")?;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -2242,7 +2438,7 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = read_capped_text_async(resp).await?;
+                        let text = read_response_text(resp, mode).await?;
                         crate::interpreter::value::parse_json(&text)
                             .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
@@ -2265,7 +2461,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_text(resp, mode).await
                         })
                     },
                     HttpFutureKind::Json,
@@ -2297,6 +2493,8 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(1))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
+            refuse_byte_mode(mode, "HTTP.get_jsonp()")?;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -2311,7 +2509,7 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = read_capped_text_async(resp).await?;
+                        let text = read_response_text(resp, mode).await?;
                         let inner = crate::interpreter::jsonp::strip_jsonp_padding(&text)?;
                         crate::interpreter::value::parse_json(inner)
                             .map_err(|e| format!("Failed to parse JSONP: {}", e))
@@ -2338,7 +2536,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_text(resp, mode).await
                         })
                     },
                     HttpFutureKind::Jsonp,
@@ -2369,6 +2567,8 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(2))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
+            refuse_byte_mode(mode, "HTTP.post_json()")?;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -2386,7 +2586,7 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = read_capped_text_async(resp).await?;
+                        let text = read_response_text(resp, mode).await?;
                         crate::interpreter::value::parse_json(&text)
                             .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
@@ -2412,7 +2612,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_text(resp, mode).await
                         })
                     },
                     HttpFutureKind::Json,
@@ -2443,6 +2643,8 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(2))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
+            refuse_byte_mode(mode, "HTTP.put_json()")?;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -2460,7 +2662,7 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = read_capped_text_async(resp).await?;
+                        let text = read_response_text(resp, mode).await?;
                         crate::interpreter::value::parse_json(&text)
                             .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
@@ -2486,7 +2688,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_text(resp, mode).await
                         })
                     },
                     HttpFutureKind::Json,
@@ -2517,6 +2719,8 @@ pub fn register_http_class(env: &mut Environment) {
 
             let opts = extract_options(args.get(2))?;
             let follow = opts.follow_redirects;
+            let mode = opts.response;
+            refuse_byte_mode(mode, "HTTP.patch_json()")?;
 
             match get_tokio_handle() {
                 Some(_) => {
@@ -2534,7 +2738,7 @@ pub fn register_http_class(env: &mut Environment) {
                             return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                         }
 
-                        let text = read_capped_text_async(resp).await?;
+                        let text = read_response_text(resp, mode).await?;
                         crate::interpreter::value::parse_json(&text)
                             .map_err(|e| format!("Failed to parse JSON: {}", e))
                     }) {
@@ -2560,7 +2764,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 let body = read_capped_text_async(resp).await.unwrap_or_default();
                                 return Err(format!("HTTP {} error: {}", status.as_u16(), body));
                             }
-                            read_capped_text_async(resp).await
+                            read_response_text(resp, mode).await
                         })
                     },
                     HttpFutureKind::Json,
@@ -2604,6 +2808,7 @@ pub fn register_http_class(env: &mut Environment) {
             // shape as `HTTP.get(url, {"headers": ...})` works here too.
             let timeout = extract_timeout(args.get(2))?;
             let follow = extract_follow_redirects(args.get(2))?;
+            let mode = extract_response_mode(args.get(2))?;
 
             let mut headers_vec: Vec<(String, String)> = extract_headers(args.get(2))?;
             if args.len() > 2 {
@@ -2615,7 +2820,7 @@ pub fn register_http_class(env: &mut Environment) {
                         };
                         if matches!(
                             key_str.as_ref(),
-                            "timeout" | "headers" | "multipart" | "follow_redirects"
+                            "timeout" | "headers" | "multipart" | "follow_redirects" | "response"
                         ) {
                             continue;
                         }
@@ -2677,7 +2882,7 @@ pub fn register_http_class(env: &mut Environment) {
 
                         let headers = response_headers_hash(header_map_pairs(resp.headers()));
 
-                        let body = read_capped_text_async(resp).await?;
+                        let body = read_response_body(resp, mode).await?;
 
                         create_http_response(status, status_text, headers, body)
                     }) {
@@ -2727,7 +2932,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 let headers_map =
                                     response_headers_json(header_map_pairs(resp.headers()));
 
-                                let body = read_capped_text_async(resp).await?;
+                                let body = read_response_body(resp, mode).await?.into_wire();
 
                                 let result = serde_json::json!({
                                     "status": status,
@@ -2739,7 +2944,11 @@ pub fn register_http_class(env: &mut Environment) {
                                 Ok(result.to_string())
                             })
                         },
-                        HttpFutureKind::FullResponse,
+                        if mode == ResponseMode::Binary {
+                            HttpFutureKind::FullResponseBytes
+                        } else {
+                            HttpFutureKind::FullResponse
+                        },
                     ))
                 }
             }
@@ -2826,7 +3035,7 @@ pub fn register_http_class(env: &mut Environment) {
             let values: Vec<Value> = results
                 .into_iter()
                 .map(|r| match r {
-                    Ok(body) => Value::String(body.into()),
+                    Ok(body) => body.into_value(),
                     Err(e) => hash_from_pairs([("error".to_string(), Value::String(e.into()))]),
                 })
                 .collect();
@@ -2882,6 +3091,7 @@ pub fn register_http_class(env: &mut Environment) {
             // Optional trailing options hash applies one timeout / header set
             // to every request in the batch.
             let opts = extract_options(args.get(1))?;
+            refuse_byte_mode(opts.response, "HTTP.get_all_json()")?;
 
             let results = run_parallel_gets_json(urls, opts);
 
@@ -3046,7 +3256,7 @@ fn create_http_response(
     status: u16,
     status_text: String,
     response_headers: HashPairs,
-    body: String,
+    body: ResponseBody,
 ) -> Result<Value, String> {
     let mut result: HashPairs = HashPairs::default();
     result.insert(HashKey::String("status".into()), Value::Int(status as i64));
@@ -3058,7 +3268,7 @@ fn create_http_response(
         HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(response_headers))),
     );
-    result.insert(HashKey::String("body".into()), Value::String(body.into()));
+    result.insert(HashKey::String("body".into()), body.into_value());
 
     Ok(Value::Hash(Rc::new(RefCell::new(result))))
 }
@@ -3071,13 +3281,14 @@ struct RequestConfig {
     body: Option<String>,
     timeout: Option<std::time::Duration>,
     follow_redirects: bool,
+    response: ResponseMode,
 }
 
 struct HttpResponse {
     status: u16,
     status_text: String,
     headers: Vec<(String, String)>,
-    body: String,
+    body: ResponseBody,
 }
 
 fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
@@ -3089,6 +3300,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             body: None,
             timeout: None,
             follow_redirects: true,
+            response: ResponseMode::Text,
         }),
         Value::Hash(hash) => {
             let hash = hash.borrow();
@@ -3098,6 +3310,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             let mut body = None;
             let timeout = extract_timeout(Some(value))?;
             let follow_redirects = extract_follow_redirects(Some(value))?;
+            let response = extract_response_mode(Some(value))?;
 
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
@@ -3139,6 +3352,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
                 body: body.map(|s| s.to_string()),
                 timeout,
                 follow_redirects,
+                response,
             })
         }
         other => Err(format!(
@@ -3179,12 +3393,15 @@ fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
     }
 }
 
-fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<String, String>> {
+/// One GET of a batch: its status (0 when nothing answered) and its body.
+type GetOutcome = (u16, Result<ResponseBody, String>);
+
+fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<ResponseBody, String>> {
     // SEC-020: process at most `parallel_max_concurrency()` URLs at a time.
     // Each chunk fully completes before the next starts so we never hold
     // more than that many OS threads alive.
     let max_concurrency = parallel_max_concurrency();
-    let mut joined: Vec<(Result<String, String>, ParallelCallStats)> =
+    let mut joined: Vec<(Result<ResponseBody, String>, ParallelCallStats)> =
         Vec::with_capacity(urls.len());
     let mut iter = urls.into_iter();
     loop {
@@ -3202,35 +3419,30 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Stri
                     // SEC-015a: route through the SSRF-aware reqwest client so
                     // the connect-time DNS lookup goes through
                     // `SsrfBlockingResolver` (no equivalent on `ureq`).
-                    let (status, body): (u16, Result<String, String>) =
-                        match run_user_http_request_with::<_, _, (u16, Result<String, String>)>(
-                            opts.follow_redirects,
-                            move |client| async move {
-                                let resp = opts
-                                    .apply(client.get(&url_for_call), &[])
-                                    .send()
-                                    .await
-                                    .map_err(|e| {
-                                        format!("Request failed: {}", describe_request_error(&e))
-                                    })?;
-                                let code = resp.status().as_u16();
-                                if !resp.status().is_success() {
-                                    let body =
-                                        read_capped_text_async(resp).await.unwrap_or_default();
-                                    return Ok((
-                                        code,
-                                        Err(format!("HTTP {} error: {}", code, body)),
-                                    ));
-                                }
-                                let body = read_capped_text_async(resp)
-                                    .await
-                                    .map_err(|e| format!("Failed to read response: {}", e));
-                                Ok((code, body))
-                            },
-                        ) {
-                            Ok(pair) => pair,
-                            Err(e) => (0, Err(e)),
-                        };
+                    let (status, body): GetOutcome = match run_user_http_request_with(
+                        opts.follow_redirects,
+                        move |client| async move {
+                            let resp = opts
+                                .apply(client.get(&url_for_call), &[])
+                                .send()
+                                .await
+                                .map_err(|e| {
+                                    format!("Request failed: {}", describe_request_error(&e))
+                                })?;
+                            let code = resp.status().as_u16();
+                            if !resp.status().is_success() {
+                                let body = read_capped_text_async(resp).await.unwrap_or_default();
+                                return Ok((code, Err(format!("HTTP {} error: {}", code, body))));
+                            }
+                            let body = read_response_body(resp, opts.response)
+                                .await
+                                .map_err(|e| format!("Failed to read response: {}", e));
+                            Ok((code, body))
+                        },
+                    ) {
+                        Ok(pair) => pair,
+                        Err(e) => (0, Err(e)),
+                    };
                     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                     let stats = ParallelCallStats {
                         method: "GET".to_string(),
@@ -3312,7 +3524,7 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
                                         Err(format!("HTTP {} error: {}", code, body)),
                                     ));
                                 }
-                                let body = read_capped_text_async(resp)
+                                let body = read_response_text(resp, opts.response)
                                     .await
                                     .map_err(|e| format!("Failed to read response: {}", e));
                                 Ok((code, body))
@@ -3457,7 +3669,7 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
         let headers = header_map_pairs(resp.headers())
             .map(|(name, value)| (name.to_string(), value.to_string()))
             .collect();
-        let body = read_capped_text_async(resp)
+        let body = read_response_body(resp, config.response)
             .await
             .map_err(|e| format!("Failed to read response: {}", e))?;
 
@@ -3491,10 +3703,7 @@ fn response_to_value(response: HttpResponse) -> Value {
         HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(headers))),
     );
-    result.insert(
-        HashKey::String("body".into()),
-        Value::String(response.body.into()),
-    );
+    result.insert(HashKey::String("body".into()), response.body.into_value());
 
     Value::Hash(Rc::new(RefCell::new(result)))
 }
@@ -3533,6 +3742,9 @@ struct OpenStream {
     pending: Vec<u8>,
     read: usize,
     idle: std::time::Duration,
+    /// The `response` option: a charset decodes `next_line`, `"base64"` makes
+    /// `next_chunk` a String.
+    mode: ResponseMode,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -3552,13 +3764,29 @@ crate::request_local! {
 /// what stays after it; none while no `\n` has come.
 #[cfg(not(target_arch = "wasm32"))]
 fn take_line(pending: &mut Vec<u8>) -> Option<String> {
+    take_line_bytes(pending).map(|line| String::from_utf8_lossy(&line).into_owned())
+}
+
+/// [`take_line`] before any decoding: the line's bytes.
+#[cfg(not(target_arch = "wasm32"))]
+fn take_line_bytes(pending: &mut Vec<u8>) -> Option<Vec<u8>> {
     let at = pending.iter().position(|b| *b == b'\n')?;
     let mut line: Vec<u8> = pending.drain(..=at).collect();
     line.pop();
     if line.last() == Some(&b'\r') {
         line.pop();
     }
-    Some(String::from_utf8_lossy(&line).into_owned())
+    Some(line)
+}
+
+/// A line of a stream as `next_line` gives it: decoded from the stream's
+/// charset, else UTF-8 with an invalid sequence as U+FFFD.
+#[cfg(not(target_arch = "wasm32"))]
+fn decode_line(line: &[u8], mode: ResponseMode) -> String {
+    match mode {
+        ResponseMode::Charset(encoding) => decode_charset(line, encoding),
+        _ => String::from_utf8_lossy(line).into_owned(),
+    }
 }
 
 /// The request of a stream, its whole-answer timeout lifted. The client's own
@@ -3600,6 +3828,7 @@ struct StreamCall {
     headers: Vec<(String, String)>,
     body: Option<OutgoingBody>,
     follow_redirects: bool,
+    response: ResponseMode,
 }
 
 /// Reads `(method, url, options?, body?)`: `options` as `HTTP.request`'s
@@ -3619,13 +3848,14 @@ fn stream_call(args: &[Value], what: &str) -> Result<StreamCall, String> {
     let idle =
         extract_timeout(args.get(2))?.unwrap_or(std::time::Duration::from_secs(HTTP_STREAM_IDLE));
     let follow_redirects = extract_follow_redirects(args.get(2))?;
+    let response = extract_response_mode(args.get(2))?;
     let mut headers = extract_headers(args.get(2))?;
     if let Some(Value::Hash(options)) = args.get(2) {
         for (key, value) in options.borrow().iter() {
             let HashKey::String(key) = key else { continue };
             if matches!(
                 key.as_ref(),
-                "timeout" | "headers" | "multipart" | "follow_redirects"
+                "timeout" | "headers" | "multipart" | "follow_redirects" | "response"
             ) {
                 continue;
             }
@@ -3652,6 +3882,7 @@ fn stream_call(args: &[Value], what: &str) -> Result<StreamCall, String> {
         headers,
         body,
         follow_redirects,
+        response,
     })
 }
 
@@ -3659,9 +3890,8 @@ fn stream_call(args: &[Value], what: &str) -> Result<StreamCall, String> {
 #[cfg(not(target_arch = "wasm32"))]
 type OpenedStream = (i64, u16, Vec<(String, String)>);
 
-/// Opens a stream to `url` (checked by the caller) and keeps it under a new id:
-/// `(id, status, headers)`.
-#[cfg(not(target_arch = "wasm32"))]
+/// [`open_stream_as`] for text, as the tests read it.
+#[cfg(test)]
 fn open_stream(
     method: &str,
     url: &str,
@@ -3669,6 +3899,29 @@ fn open_stream(
     body: Option<OutgoingBody>,
     idle: std::time::Duration,
     follow_redirects: bool,
+) -> Result<OpenedStream, String> {
+    open_stream_as(
+        method,
+        url,
+        headers,
+        body,
+        idle,
+        follow_redirects,
+        ResponseMode::Text,
+    )
+}
+
+/// Opens a stream to `url` (checked by the caller) and keeps it under a new id:
+/// `(id, status, headers)`.
+#[cfg(not(target_arch = "wasm32"))]
+fn open_stream_as(
+    method: &str,
+    url: &str,
+    headers: &[(String, String)],
+    body: Option<OutgoingBody>,
+    idle: std::time::Duration,
+    follow_redirects: bool,
+    mode: ResponseMode,
 ) -> Result<OpenedStream, String> {
     let client = user_http_client(follow_redirects).clone();
     let (method, url, headers) = (method.to_string(), url.to_string(), headers.to_vec());
@@ -3697,6 +3950,7 @@ fn open_stream(
                 pending: Vec::new(),
                 read: 0,
                 idle,
+                mode,
             },
         )
     });
@@ -3707,23 +3961,54 @@ fn open_stream(
 /// bytes; none once the body is over (its last line, unended, given first).
 #[cfg(not(target_arch = "wasm32"))]
 fn stream_next_line(id: i64) -> Result<Option<String>, String> {
+    stream_next(id, |pending, mode, over| {
+        if over {
+            let rest = std::mem::take(pending);
+            return (!rest.is_empty()).then(|| decode_line(&rest, mode));
+        }
+        take_line_bytes(pending).map(|line| decode_line(&line, mode))
+    })
+}
+
+/// The next bytes of stream `id` as they came — what is buffered, else the
+/// next piece read, waiting at most its idle time; none once the body is over.
+/// Lines are not looked for, and no `\r\n` is taken off.
+#[cfg(not(target_arch = "wasm32"))]
+fn stream_next_chunk(id: i64) -> Result<Option<Vec<u8>>, String> {
+    stream_next(id, |pending, _, _| {
+        (!pending.is_empty()).then(|| std::mem::take(pending))
+    })
+}
+
+/// The mode stream `id` was opened in; text once it is forgotten.
+#[cfg(not(target_arch = "wasm32"))]
+fn stream_mode(id: i64) -> ResponseMode {
+    OPEN_STREAMS.with(|s| {
+        s.borrow()
+            .get(&id)
+            .map_or(ResponseMode::Text, |open| open.mode)
+    })
+}
+
+/// Reads stream `id` until `take` finds what it wants in the buffered bytes
+/// (`over` is true once the body has ended: the last call, on what is left).
+#[cfg(not(target_arch = "wasm32"))]
+fn stream_next<T>(
+    id: i64,
+    mut take: impl FnMut(&mut Vec<u8>, ResponseMode, bool) -> Option<T>,
+) -> Result<Option<T>, String> {
     loop {
         let (response, idle) = {
             let taken = OPEN_STREAMS.with(|s| {
                 let mut streams = s.borrow_mut();
                 let open = streams.get_mut(&id)?;
-                if let Some(line) = take_line(&mut open.pending) {
-                    return Some(Ok(Some(line)));
+                if let Some(found) = take(&mut open.pending, open.mode, false) {
+                    return Some(Ok(Some(found)));
                 }
                 match open.response.take() {
                     Some(response) => Some(Err((response, open.idle))),
-                    None => {
-                        // The body is over: what is left is the last line.
-                        let rest = std::mem::take(&mut open.pending);
-                        Some(Ok(
-                            (!rest.is_empty()).then(|| String::from_utf8_lossy(&rest).into_owned())
-                        ))
-                    }
+                    // The body is over: what is left is the last of it.
+                    None => Some(Ok(take(&mut open.pending, open.mode, true))),
                 }
             });
             match taken {
@@ -3800,13 +4085,14 @@ fn stream_id(args: &[Value], what: &str) -> Result<i64, String> {
 #[cfg(not(target_arch = "wasm32"))]
 fn http_stream(args: &[Value]) -> Result<Value, String> {
     let call = stream_call(args, "HTTP.stream")?;
-    let (id, status, response_headers) = open_stream(
+    let (id, status, response_headers) = open_stream_as(
         &call.method,
         &call.url,
         &call.headers,
         call.body,
         call.idle,
         call.follow_redirects,
+        call.response,
     )?;
     let class = STREAM_CLASS
         .with(|c| c.borrow().clone())
@@ -3840,6 +4126,26 @@ fn register_http_stream(static_methods: &mut HashMap<String, Rc<NativeFunction>>
             |args| {
                 let id = stream_id(args, "next_line")?;
                 Ok(stream_next_line(id)?.map_or(Value::Null, |line| Value::String(line.into())))
+            },
+        )),
+    );
+    // next_chunk: the next bytes as they came, an Array<Int 0-255> — or a
+    // base64 String when the stream was opened with {"response": "base64"}.
+    methods.insert(
+        "next_chunk".to_string(),
+        Rc::new(NativeFunction::new(
+            "HTTPStream.next_chunk",
+            Some(0),
+            |args| {
+                let id = stream_id(args, "next_chunk")?;
+                let mode = stream_mode(id);
+                Ok(match stream_next_chunk(id)? {
+                    None => Value::Null,
+                    Some(bytes) if mode == ResponseMode::Base64 => {
+                        Value::String(base64_encode(&bytes).into())
+                    }
+                    Some(bytes) => byte_array(&bytes),
+                })
             },
         )),
     );
@@ -4305,6 +4611,7 @@ mod parallel_logging_tests {
                 body: None,
                 timeout: None,
                 follow_redirects: true,
+                response: ResponseMode::Text,
             },
             RequestConfig {
                 method: "POST".to_string(),
@@ -4313,6 +4620,7 @@ mod parallel_logging_tests {
                 body: Some("{}".to_string()),
                 timeout: None,
                 follow_redirects: true,
+                response: ResponseMode::Text,
             },
         ];
         let _ = run_parallel_requests(configs);
@@ -5086,10 +5394,10 @@ mod request_header_tests {
             ..RequestOptions::default()
         };
         let results = run_parallel_gets(vec![url], opts);
-        let head = results[0]
-            .as_ref()
-            .expect("echo server answered")
-            .to_lowercase();
+        let head = match results[0].as_ref().expect("echo server answered") {
+            ResponseBody::Text(text) => text.to_lowercase(),
+            other => panic!("a text body, got {other:?}"),
+        };
         assert!(
             head.contains("authorization: bearer secret-token"),
             "missing Authorization in request head:\n{head}"
@@ -5166,6 +5474,7 @@ mod response_headers_tests {
             body: None,
             timeout: Some(std::time::Duration::from_secs(10)),
             follow_redirects: true,
+            response: ResponseMode::Text,
         }])
         .pop()
         .unwrap()
@@ -5301,6 +5610,7 @@ mod redirect_tests {
             body: None,
             timeout: Some(std::time::Duration::from_secs(10)),
             follow_redirects,
+            response: ResponseMode::Text,
         }])
         .pop()
         .expect("one request, one result")
@@ -5395,5 +5705,400 @@ mod redirect_tests {
         .unwrap();
         assert!(!call.follow_redirects);
         assert_eq!(call.headers, [("X-Thing".to_string(), "yes".to_string())]);
+    }
+}
+
+/// The `response` option: a body handed back as text (the default, UTF-8 or
+/// an error), bytes, base64 or a decoded charset — on every path a body takes.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod response_mode_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// What a text read chokes on: a PNG signature (0x89, CR LF, 0x1A), a
+    /// NUL, 0xFF 0xFE, and a Latin-1 é.
+    const BYTES: &[u8] = &[
+        0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0x00, 0xff, 0xfe, 0xe9,
+    ];
+
+    /// `/bytes` answers [`BYTES`], `/empty` nothing, `/latin1` "café\r\nà"
+    /// in Latin-1, `/big` 64 KiB of 0xFF, anything else "plain".
+    fn server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut s = stream;
+                let mut buf = [0u8; 4096];
+                let mut got = Vec::new();
+                while !got.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => got.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let request = String::from_utf8_lossy(&got);
+                let body: Vec<u8> = match request.split_whitespace().nth(1).unwrap_or("/") {
+                    "/bytes" => BYTES.to_vec(),
+                    "/empty" => Vec::new(),
+                    "/latin1" => b"caf\xe9\r\n\xe0".to_vec(),
+                    "/big" => vec![0xff; 64 * 1024],
+                    _ => b"plain".to_vec(),
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes());
+                // Two writes, so a stream reads more than one piece.
+                let (first, rest) = body.split_at(body.len() / 2);
+                let _ = s.write_all(first);
+                let _ = s.flush();
+                thread::sleep(std::time::Duration::from_millis(20));
+                let _ = s.write_all(rest);
+            }
+        });
+        enable_ssrf_test_mode();
+        format!("http://{addr}")
+    }
+
+    fn options(mode: &str) -> Value {
+        hash_from_pairs([("response".to_string(), Value::String(mode.into()))])
+    }
+
+    fn mode(name: &str) -> ResponseMode {
+        parse_response_mode(name).unwrap()
+    }
+
+    /// `HTTP.<name>(args…)`, its Future resolved.
+    fn call(name: &str, args: &[Value]) -> Result<Value, String> {
+        let mut env = Environment::new();
+        register_http_class(&mut env);
+        let Some(Value::Class(class)) = env.get("HTTP") else {
+            panic!("HTTP class registered")
+        };
+        let f = class.native_static_methods.get(name).cloned().unwrap();
+        (f.func)(args)?.resolve()
+    }
+
+    fn url(base: &str, path: &str) -> Value {
+        Value::String(format!("{base}{path}").into())
+    }
+
+    fn bytes_of(value: &Value) -> Vec<u8> {
+        match value {
+            Value::Array(items) => items
+                .borrow()
+                .iter()
+                .map(|item| match item {
+                    Value::Int(n) => u8::try_from(*n).expect("a byte"),
+                    other => panic!("a byte, got {other:?}"),
+                })
+                .collect(),
+            other => panic!("an Array of bytes, got {other:?}"),
+        }
+    }
+
+    fn string_of(value: &Value) -> String {
+        match value {
+            Value::String(s) => s.to_string(),
+            other => panic!("a String, got {other:?}"),
+        }
+    }
+
+    fn body_of(response: &Value) -> Value {
+        let Value::Hash(hash) = response else {
+            panic!("a response hash, got {response:?}")
+        };
+        let body = hash.borrow().get(&HashKey::String("body".into())).cloned();
+        body.expect("a body")
+    }
+
+    fn parallel(url: String, response: ResponseMode) -> Result<HttpResponse, String> {
+        run_parallel_requests(vec![RequestConfig {
+            method: "GET".to_string(),
+            url,
+            headers: vec![],
+            body: None,
+            timeout: Some(std::time::Duration::from_secs(10)),
+            follow_redirects: true,
+            response,
+        }])
+        .pop()
+        .expect("one request, one result")
+    }
+
+    #[test]
+    fn the_option_parses_and_refuses_what_it_does_not_know() {
+        assert_eq!(extract_response_mode(None), Ok(ResponseMode::Text));
+        assert_eq!(
+            extract_response_mode(Some(&hash_from_pairs([(
+                "response".to_string(),
+                Value::Null
+            )]))),
+            Ok(ResponseMode::Text)
+        );
+        assert_eq!(mode("text"), ResponseMode::Text);
+        assert_eq!(mode("binary"), ResponseMode::Binary);
+        assert_eq!(mode("BASE64"), ResponseMode::Base64);
+        assert_eq!(
+            mode("latin1"),
+            ResponseMode::Charset(encoding_rs::WINDOWS_1252)
+        );
+        assert_eq!(
+            mode("iso-8859-1"),
+            ResponseMode::Charset(encoding_rs::WINDOWS_1252)
+        );
+        assert_eq!(
+            mode("shift_jis"),
+            ResponseMode::Charset(encoding_rs::SHIFT_JIS)
+        );
+
+        let err = extract_response_mode(Some(&options("bytes"))).unwrap_err();
+        assert!(
+            err.contains("\"text\", \"binary\", \"base64\" or a charset label")
+                && err.contains("\"bytes\""),
+            "got: {err}"
+        );
+        let err = extract_response_mode(Some(&hash_from_pairs([(
+            "response".to_string(),
+            Value::Int(1),
+        )])))
+        .unwrap_err();
+        assert!(
+            err.contains("must be a string") && err.contains("int"),
+            "got: {err}"
+        );
+        assert_eq!(
+            extract_options(Some(&options("base64"))).unwrap().response,
+            ResponseMode::Base64
+        );
+    }
+
+    #[test]
+    fn the_option_is_not_sent_as_a_header() {
+        let call = stream_call(
+            &[
+                Value::String("GET".into()),
+                Value::String("https://example.com/".into()),
+                hash_from_pairs([
+                    ("response".to_string(), Value::String("binary".into())),
+                    ("X-Thing".to_string(), Value::String("yes".into())),
+                ]),
+            ],
+            "HTTP.stream",
+        )
+        .unwrap();
+        assert_eq!(call.response, ResponseMode::Binary);
+        assert_eq!(call.headers, [("X-Thing".to_string(), "yes".to_string())]);
+    }
+
+    #[test]
+    fn http_request_hands_back_bytes_base64_or_a_charset() {
+        let base = server();
+        let binary = call(
+            "request",
+            &[
+                Value::String("GET".into()),
+                url(&base, "/bytes"),
+                options("binary"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(bytes_of(&body_of(&binary)), BYTES);
+
+        let encoded = call(
+            "request",
+            &[
+                Value::String("GET".into()),
+                url(&base, "/bytes"),
+                options("base64"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(string_of(&body_of(&encoded)), base64_encode(BYTES));
+        assert_eq!(base64_encode(BYTES), "iVBORw0KGgoA//7p");
+
+        let latin1 = call(
+            "request",
+            &[
+                Value::String("GET".into()),
+                url(&base, "/latin1"),
+                options("latin1"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(string_of(&body_of(&latin1)), "café\r\nà");
+
+        let empty = call(
+            "request",
+            &[
+                Value::String("GET".into()),
+                url(&base, "/empty"),
+                options("binary"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(bytes_of(&body_of(&empty)), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn the_default_is_unchanged_and_its_error_names_the_option() {
+        let base = server();
+        let plain = call(
+            "request",
+            &[Value::String("GET".into()), url(&base, "/plain")],
+        )
+        .unwrap();
+        assert_eq!(string_of(&body_of(&plain)), "plain");
+        let err = call(
+            "request",
+            &[Value::String("GET".into()), url(&base, "/bytes")],
+        )
+        .expect_err("bytes are not UTF-8");
+        assert!(err.contains("invalid UTF-8 in response body"), "got: {err}");
+        assert!(
+            err.contains("{\"response\": \"binary\"|\"base64\"}"),
+            "got: {err}"
+        );
+        let err = call(
+            "request",
+            &[
+                Value::String("GET".into()),
+                url(&base, "/plain"),
+                options("utf-32"),
+            ],
+        )
+        .expect_err("an unknown mode");
+        assert!(err.contains("charset label"), "got: {err}");
+    }
+
+    #[test]
+    fn the_verb_helpers_take_it_and_the_json_ones_refuse_bytes() {
+        let base = server();
+        let got = call("get", &[url(&base, "/bytes"), options("binary")]).unwrap();
+        assert_eq!(bytes_of(&got), BYTES);
+        let got = call("get", &[url(&base, "/bytes"), options("base64")]).unwrap();
+        assert_eq!(string_of(&got), base64_encode(BYTES));
+        let got = call(
+            "post",
+            &[
+                url(&base, "/latin1"),
+                Value::String("".into()),
+                options("latin1"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(string_of(&got), "café\r\nà");
+        let got = call("delete", &[url(&base, "/empty"), options("base64")]).unwrap();
+        assert_eq!(string_of(&got), "");
+
+        let err = call("get_json", &[url(&base, "/plain"), options("binary")]).unwrap_err();
+        assert!(
+            err.contains("HTTP.get_json() parses the body as text"),
+            "got: {err}"
+        );
+        let err = call(
+            "get_all_json",
+            &[
+                Value::Array(Rc::new(RefCell::new(vec![url(&base, "/plain")]))),
+                options("base64"),
+            ],
+        )
+        .unwrap_err();
+        assert!(err.contains("HTTP.get_all_json()"), "got: {err}");
+
+        let all = call(
+            "get_all",
+            &[
+                Value::Array(Rc::new(RefCell::new(vec![
+                    url(&base, "/bytes"),
+                    url(&base, "/empty"),
+                ]))),
+                options("binary"),
+            ],
+        )
+        .unwrap();
+        let Value::Array(items) = all else {
+            panic!("an array")
+        };
+        assert_eq!(bytes_of(&items.borrow()[0]), BYTES);
+        assert_eq!(bytes_of(&items.borrow()[1]), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn http_parallel_items_take_it_each() {
+        let base = server();
+        let response = parallel(format!("{base}/bytes"), ResponseMode::Binary).unwrap();
+        assert_eq!(response.body, ResponseBody::Bytes(BYTES.to_vec()));
+        let response = parallel(format!("{base}/bytes"), ResponseMode::Base64).unwrap();
+        assert_eq!(response.body, base64_encode(BYTES).as_str());
+        let response = parallel(format!("{base}/plain"), ResponseMode::Text).unwrap();
+        assert_eq!(response.body, "plain");
+
+        let config = hash_from_pairs([
+            (
+                "url".to_string(),
+                Value::String(format!("{base}/bytes").into()),
+            ),
+            ("response".to_string(), Value::String("binary".into())),
+        ]);
+        assert_eq!(
+            parse_request_config(&config).unwrap().response,
+            ResponseMode::Binary
+        );
+    }
+
+    #[test]
+    fn the_response_cap_still_applies_to_bytes() {
+        let base = server();
+        let url = format!("{base}/big");
+        let err = run_user_http_request(move |client| async move {
+            let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+            read_response_body_up_to(resp, ResponseMode::Binary, 1024).await
+        })
+        .expect_err("64 KiB is over a 1 KiB cap");
+        assert!(
+            err.contains("exceeded 1024 bytes (SOLI_HTTP_MAX_RESPONSE_BYTES)"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn a_stream_gives_raw_chunks_and_decodes_lines_from_a_charset() {
+        let base = server();
+        let idle = std::time::Duration::from_secs(5);
+        let (id, _, _) = open_stream_as(
+            "GET",
+            &format!("{base}/bytes"),
+            &[],
+            None,
+            idle,
+            true,
+            ResponseMode::Binary,
+        )
+        .unwrap();
+        let mut got = Vec::new();
+        while let Some(chunk) = stream_next_chunk(id).unwrap() {
+            assert!(!chunk.is_empty(), "no empty chunk");
+            got.extend(chunk);
+        }
+        assert_eq!(got, BYTES, "every byte, CR LF included");
+
+        let (id, _, _) = open_stream_as(
+            "GET",
+            &format!("{base}/latin1"),
+            &[],
+            None,
+            idle,
+            true,
+            mode("latin1"),
+        )
+        .unwrap();
+        assert_eq!(stream_next_line(id).unwrap().as_deref(), Some("café"));
+        assert_eq!(stream_next_line(id).unwrap().as_deref(), Some("à"));
+        assert_eq!(stream_next_line(id).unwrap(), None);
     }
 }

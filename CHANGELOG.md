@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- **HTTP responses can be received as bytes: the `response` option.** Every
+  `HTTP.*` call that returns a body read it as UTF-8 and raised
+  `invalid UTF-8 in response body` on a PNG, a PDF, a ZIP or an Office file,
+  and `HTTP.stream` turned 0x89 into U+FFFD and dropped the `\r\n`. Now
+  `{"response": "binary"}` hands back the raw bytes as an `Array<Int 0-255>`
+  (what `slurp(path, "binary")` reads), `{"response": "base64"}` a base64
+  String byte-identical to `Base64.encode(bytes)` without the per-byte array in
+  between, and a charset label (`"latin1"`, `"windows-1252"`, `"shift_jis"`, any
+  WHATWG label `encoding_rs` knows) decodes into UTF-8. `"text"` is the default
+  and unchanged; the UTF-8 error now names the option. Read like `timeout`,
+  never sent as a header, by `HTTP.get`/`post`/`put`/`patch`/`delete`,
+  `HTTP.request` (headers hash), `HTTP.get_all` and each `HTTP.parallel` item;
+  the `*_json` helpers and `get_all_json` refuse `"binary"`/`"base64"`, an
+  unknown value or a non-String raises. Bytes go through the same
+  `SOLI_HTTP_MAX_RESPONSE_BYTES` cap (50 MiB by default); a script's Future
+  carries them as base64 across the thread and turns them into bytes when
+  read (`HttpFutureKind::Bytes` / `FullResponseBytes`). `HTTP.stream` gains
+  `stream.next_chunk` — the next bytes as they came, an `Array<Int>`, or base64
+  with `{"response": "base64"}` — and decodes `next_line` from a charset;
+  `HTTP.stream_to` refuses the option. The type checker types the body verbs'
+  result `Any` (it may be an Array). Same code path on the edge build.
+- **`mock_http_route(path, status, body)` takes an `Array<Int>` body**, sent as
+  raw bytes, so a spec can serve 0x89, NUL, CR LF or 0xFF 0xFE.
+
 ## [2.31.0] - 2026-11-06
 
 ### Added

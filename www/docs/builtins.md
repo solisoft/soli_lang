@@ -913,13 +913,18 @@ Performs an HTTP GET request.
     it. Anything but a Bool raises (`"false"` is a String, not `false`). Not
     available on the Cloudflare edge build, whose `fetch` always follows:
     `false` raises there.
+  - `response` (String, default `"text"`) - how the body comes back:
+    `"text"` (UTF-8, raises otherwise), `"binary"` (Array of Ints 0–255),
+    `"base64"` (String) or a charset label such as `"latin1"`. See
+    [Response bodies](#response-bodies-text-bytes-base64-charset).
 
 The same options hash is accepted, in the same position, by every `HTTP.*`
 verb: `get`, `post`, `put`, `patch`, `delete`, `head`, `get_json`,
 `get_jsonp`, `post_json`, `put_json`, `patch_json`, and (applied to every URL
 in the batch) `get_all` / `get_all_json`.
 
-**Returns:** String - the response body. A non-2xx response **raises**
+**Returns:** String - the response body (an Array of bytes with
+`"response": "binary"`). A non-2xx response **raises**
 `HTTP <status> error: <body>` (e.g. `HTTP 404 error: {"error": "nope"}`).
 To read the status of a non-2xx response instead, use `HTTP.request` (below),
 which returns `{ "status", "status_text", "headers", "body" }` and does not
@@ -1110,6 +1115,96 @@ HTTP.request("POST", url, { "Authorization": "Bearer " + token, "multipart": tru
 Before, there was no multipart support and no way to send binary bytes: an
 Array body was refused by `HTTP.post` and stringified by `HTTP.request`.
 
+### Response bodies: text, bytes, base64, charset
+
+By default a body comes back as a UTF-8 String, and a body that is not UTF-8
+— a PNG, a PDF, a ZIP, an Office file, a Latin-1 page — raises
+`invalid UTF-8 in response body: … (use {"response": "binary"|"base64"} for
+bytes, or a charset like {"response": "latin1"})`. The `response` option
+chooses another shape. Like `timeout`, it is read and removed from the options
+hash, **never sent as a header**, and it is taken in the same place by every
+call that returns a body: `HTTP.get`, `post`, `put`, `patch`, `delete`,
+`HTTP.request` (in its headers hash), `HTTP.get_all` (for the whole batch),
+each item of `HTTP.parallel`, and `HTTP.stream` (see `next_chunk`). It is the
+receiving twin of `slurp(path, mode)`.
+
+| `response` | `body` is | Same as |
+|------------|-----------|---------|
+| `"text"` (default) | String, UTF-8; anything else raises | `slurp(path)` |
+| `"binary"` | Array of Ints 0–255, the raw bytes | `slurp(path, "binary")` |
+| `"base64"` | String, the raw bytes base64-encoded | `Base64.encode(slurp(path, "binary"))` |
+| a charset label (`"latin1"`, …) | String, the bytes decoded into UTF-8 | `slurp(path, "latin1")` |
+
+Any other value raises before anything is sent —
+`HTTP response must be "text", "binary", "base64" or a charset label like "latin1", got "bytes"`
+— as does a value that is not a String. The `*_json` helpers (`get_json`,
+`get_jsonp`, `post_json`, `put_json`, `patch_json`, `get_all_json`) parse the
+body as text: they take `"text"` or a charset and refuse `"binary"` and
+`"base64"`. `HTTP.head` has no body and `HTTP.download` always writes raw bytes,
+so both ignore it.
+
+**Size limit.** Every mode reads through the same cap as a text body:
+`SOLI_HTTP_MAX_RESPONSE_BYTES`, **50 MiB (52428800 bytes) by default**. A
+longer body raises `HTTP response exceeded 52428800 bytes
+(SOLI_HTTP_MAX_RESPONSE_BYTES)`; set the variable (in bytes) to raise it. The
+cap counts the bytes received, before any base64 or charset conversion. Keep in
+mind that `"binary"` makes one Array element per byte; for a file of several MB
+headed to another API, `"base64"` is far lighter.
+
+The error body of a verb helper's non-2xx (`HTTP 404 error: …`) is always read
+as text, whatever the mode. The option works the same on the Cloudflare edge
+build (which has no `HTTP.stream`).
+
+#### `"text"` — the default
+
+```soli
+html = HTTP.get("https://example.com/")            # String
+same = HTTP.get("https://example.com/", {"response": "text"})
+```
+
+Unchanged from before: a body that is not valid UTF-8 raises, and the message
+names the option to use instead.
+
+#### `"binary"` — the raw bytes
+
+```soli
+response = HTTP.request("GET", attachment_url, {"Authorization": auth, "response": "binary"})
+bytes = response["body"]                 # [137, 80, 78, 71, 13, 10, 26, 10, …]
+barf("storage/report.pdf", bytes)        # written byte for byte
+bytes == slurp("storage/report.pdf", "binary")   # true
+```
+
+An empty body is `[]`.
+
+#### `"base64"` — the raw bytes as base64
+
+Base64 with the standard alphabet and padding, byte-identical to
+`Base64.encode(bytes)` — without the `Array<Int>` in between, so a
+several-megabyte attachment costs its size and the base64 text, not one Soli
+value per byte:
+
+```soli
+# Download a Jira attachment and forward it to another API.
+content = HTTP.get(attachment["content"], {"headers": {"Authorization": auth}, "response": "base64"})
+HTTP.post_json(upload_url, {"filename": attachment["filename"], "data": content})
+```
+
+An empty body is `""`.
+
+#### A charset — decoded into UTF-8
+
+Any label the [WHATWG Encoding Standard](https://encoding.spec.whatwg.org/#names-and-labels)
+knows, as `Encoding.decode` and `slurp(path, label)` take it: `"latin1"` /
+`"iso-8859-1"` (both read as `windows-1252`, a superset), `"windows-1252"`,
+`"iso-8859-15"`, `"shift_jis"`, `"euc-jp"`, `"gbk"`, `"big5"`, `"koi8-r"`,
+`"utf-16le"`, … Labels are case-insensitive. `"utf-8"` is accepted too and is
+the lenient form of `"text"`: an invalid sequence becomes U+FFFD instead of
+raising.
+
+```soli
+page = HTTP.get("https://legacy.example.com/", {"response": "latin1"})   # "café", not an error
+```
+
 ### HTTP.request(method, url, headers?, body?)
 
 Performs a custom HTTP request.
@@ -1119,7 +1214,9 @@ Performs a custom HTTP request.
 - `url` (String) - The URL
 - `headers` (Hash, optional) - Request headers. A `timeout` key (Int|Float
   seconds) in this hash is consumed as the per-call timeout rather than being
-  sent as a header, as is `follow_redirects` (Bool, see `HTTP.get`), and a nested `headers` hash is merged in — so the
+  sent as a header, as are `follow_redirects` (Bool, see `HTTP.get`) and
+  `response` (`"text"`, `"binary"`, `"base64"` or a charset — see
+  [Response bodies](#response-bodies-text-bytes-base64-charset)), and a nested `headers` hash is merged in — so the
   `{ "headers": {...}, "timeout": n }` options shape the other verbs take
   works here too. Both the flat and the nested pairs go through the same
   validation as `HTTP.get`'s `headers` (bad name/value and framing
@@ -1128,7 +1225,8 @@ Performs a custom HTTP request.
   `HTTP.post` (see [Request bodies](#request-bodies-bytes-and-multipart)), but
   no `Content-Type` is implied unless it is multipart
 
-**Returns:** Hash - `{ "status": Int, "status_text": String, "headers": Hash, "body": String }`.
+**Returns:** Hash - `{ "status": Int, "status_text": String, "headers": Hash, "body": String }`
+(`body` an Array of bytes with `"response": "binary"`).
 Unlike the verb helpers it does **not** raise on a 4xx/5xx — branch on
 `response["status"]`. Only a transport failure (DNS, refused connection,
 timeout, SSRF refusal) raises.
@@ -1183,7 +1281,7 @@ server-sent events, a long export, a log tail. `HTTP.request` waits for the
 whole body, and its timeout counts from the start; a stream runs as long as it
 keeps sending.
 
-**Parameters:** as `HTTP.request`'s, `follow_redirects` included. The `timeout`
+**Parameters:** as `HTTP.request`'s, `follow_redirects` and `response` included. The `timeout`
 (Int|Float seconds, default 120) is the longest wait **for the next bytes**,
 not for the whole answer.
 
@@ -1194,7 +1292,18 @@ not for the whole answer.
   off; `nil` once the body is over (an unended last line comes first). Raises
   when nothing arrives for `timeout` seconds, when the connection breaks, and
   past `SOLI_HTTP_MAX_RESPONSE_BYTES` — the stream is closed then.
+- `stream.next_chunk` - the next bytes **as they came**, with no line
+  splitting and nothing taken off (`\r\n` included): an Array of Ints 0–255,
+  or a base64 String when the stream was opened with `{"response": "base64"}`;
+  `nil` once the body is over. Same idle timeout and size limit as
+  `next_line`. Use it — not `next_line`, which decodes text — for a binary
+  download you want to process piece by piece. Each base64 chunk is encoded on
+  its own, so decode them one by one rather than concatenating the strings.
 - `stream.close` - lets the connection go before the end
+
+`next_line` decodes each line as UTF-8 (an invalid sequence becomes U+FFFD),
+or from the charset given as `{"response": "latin1"}`. `HTTP.stream_to` reads
+text events and refuses the `response` option.
 
 A non-2xx status does not raise: check `stream.status`, its body is readable.
 The SSRF check, the header checks and the redirect policy are `HTTP.request`'s.
@@ -1325,8 +1434,10 @@ Performs multiple GET requests in parallel.
   batch
   - `headers` (Hash) - Request headers sent with every URL (see `HTTP.get`)
   - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
+  - `response` (String) - `"text"`, `"binary"`, `"base64"` or a charset, for
+    every body (see [Response bodies](#response-bodies-text-bytes-base64-charset))
 
-**Returns:** Array - Array of response bodies as strings (or `{"error": ...}` hashes for failed requests)
+**Returns:** Array - Array of response bodies as strings (byte Arrays with `"response": "binary"`), or `{"error": ...}` hashes for failed requests
 
 **Example:**
 ```soli
@@ -1374,8 +1485,9 @@ Performs multiple custom requests in parallel.
 **Parameters:**
 - `requests` (Array) - Array of request hashes with `method`, `url`, optional
   `headers`, optional `body`, an optional per-request `timeout` (Int|Float
-  seconds) and an optional per-request `follow_redirects` (Bool, see
-  `HTTP.get`)
+  seconds), an optional per-request `follow_redirects` (Bool, see
+  `HTTP.get`) and an optional per-request `response` (see
+  [Response bodies](#response-bodies-text-bytes-base64-charset))
 
 **Returns:** Array - one `{ "status", "status_text", "headers", "body" }` hash
 per request, in order (no raise on 4xx/5xx, as with `HTTP.request`)

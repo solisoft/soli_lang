@@ -624,6 +624,11 @@ pub enum HttpFutureKind {
     Jsonp,
     /// Returns full response hash (status, headers, body)
     FullResponse,
+    /// Returns the body as bytes (`Array<Int>`); the raw data is their base64,
+    /// which is what crosses the thread boundary (`{"response": "binary"}`)
+    Bytes,
+    /// `FullResponse` whose `body` is carried as base64 and handed out as bytes
+    FullResponseBytes,
     /// Returns SystemResult (for System.run())
     SystemResult,
 }
@@ -658,6 +663,8 @@ impl std::fmt::Debug for HttpFutureKind {
             HttpFutureKind::Json => write!(f, "Json"),
             HttpFutureKind::Jsonp => write!(f, "Jsonp"),
             HttpFutureKind::FullResponse => write!(f, "FullResponse"),
+            HttpFutureKind::Bytes => write!(f, "Bytes"),
+            HttpFutureKind::FullResponseBytes => write!(f, "FullResponseBytes"),
             HttpFutureKind::SystemResult => write!(f, "SystemResult"),
         }
     }
@@ -3105,6 +3112,17 @@ impl Instance {
     }
 }
 
+/// The bytes a base64 string carries, as an `Array<Int 0-255>`.
+fn base64_to_byte_array(encoded: &str) -> Result<Value, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| format!("Failed to decode response bytes: {}", e))?;
+    Ok(Value::Array(Rc::new(RefCell::new(
+        bytes.into_iter().map(|b| Value::Int(b as i64)).collect(),
+    ))))
+}
+
 /// Convert raw HTTP response data to a Value based on the future kind.
 /// For FullResponse, the raw_data is a JSON-encoded response object.
 fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value, String> {
@@ -3122,6 +3140,20 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
         HttpFutureKind::FullResponse => {
             // Parse the JSON-encoded full response
             parse_json(raw_data).map_err(|e| format!("Failed to parse response: {}", e))
+        }
+        HttpFutureKind::Bytes => base64_to_byte_array(raw_data),
+        HttpFutureKind::FullResponseBytes => {
+            let response =
+                parse_json(raw_data).map_err(|e| format!("Failed to parse response: {}", e))?;
+            if let Value::Hash(hash) = &response {
+                let key = HashKey::String("body".into());
+                let body = hash.borrow().get(&key).cloned();
+                if let Some(Value::String(encoded)) = body {
+                    let bytes = base64_to_byte_array(&encoded)?;
+                    hash.borrow_mut().insert(key, bytes);
+                }
+            }
+            Ok(response)
         }
         HttpFutureKind::SystemResult => {
             // Parse JSON: {"stdout": "...", "stderr": "...", "exit_code": N}

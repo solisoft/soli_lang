@@ -1027,6 +1027,21 @@ print(HTTP.get_json("https://x")["body"]["name"])
         )
         .expect("indexing the returned Future must type-check");
     }
+
+    /// `{"response": "binary"}` makes the body an Array<Int>, so the verbs
+    /// that return a body cannot be typed String.
+    #[test]
+    fn a_binary_body_is_used_as_an_array() {
+        check(
+            r#"bytes = HTTP.get("https://x", {"response": "binary"})
+print(bytes.length)
+total = bytes.map { |b| b + 1 }
+print(Base64.encode(bytes))
+print(total)
+"#,
+        )
+        .expect("a binary body must type-check as an array");
+    }
 }
 
 /// A built-in method whose signature lists optional parameters but which the

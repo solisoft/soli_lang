@@ -22,8 +22,8 @@ use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
 static MOCK_PORT: OnceLock<u16> = OnceLock::new();
 
-/// A scripted answer: status, body, and extra header lines in order.
-type Route = (u16, String, Vec<(String, String)>);
+/// A scripted answer: status, body bytes, and extra header lines in order.
+type Route = (u16, Vec<u8>, Vec<(String, String)>);
 
 /// Scripted answers, by path (query string excluded).
 static ROUTES: OnceLock<Mutex<HashMap<String, Route>>> = OnceLock::new();
@@ -53,9 +53,11 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
     );
 
     // mock_http_route(path, status, body, headers?) — answer `body` with
-    // `status` on `path`, for any method, until scripted again. `headers` adds
-    // header lines: a String value is one line, an Array one line per item
-    // (how a spec sends two `Set-Cookie`).
+    // `status` on `path`, for any method, until scripted again. `body` is a
+    // String (sent as its UTF-8 bytes) or an Array of Ints 0..=255 (sent as
+    // those raw bytes — how a spec serves a PNG or a Latin-1 page). `headers`
+    // adds header lines: a String value is one line, an Array one line per
+    // item (how a spec sends two `Set-Cookie`).
     env.define(
         "mock_http_route".to_string(),
         Value::NativeFunction(NativeFunction::new("mock_http_route", None, |args| {
@@ -84,8 +86,9 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
                 }
             };
             let body = match &args[2] {
-                Value::String(s) => s.to_string(),
-                other => other.to_string(),
+                Value::String(s) => s.as_bytes().to_vec(),
+                Value::Array(items) => route_bytes(&items.borrow())?,
+                other => other.to_string().into_bytes(),
             };
             let headers = match args.get(3) {
                 None | Some(Value::Null) => Vec::new(),
@@ -123,6 +126,20 @@ pub fn register_mock_http_builtins(env: &mut Environment) {
             },
         )),
     );
+}
+
+/// The raw bytes of a scripted route's Array body: Ints 0..=255.
+fn route_bytes(items: &[Value]) -> Result<Vec<u8>, String> {
+    items
+        .iter()
+        .map(|item| match item {
+            Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+            other => Err(format!(
+                "mock_http_route: an Array body holds bytes (Ints 0..=255), found {}",
+                other
+            )),
+        })
+        .collect()
 }
 
 /// The header lines of a scripted route: one per String value, one per item
@@ -241,7 +258,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
         .lock()
         .ok()
         .and_then(|map| map.get(&path).cloned())
-        .unwrap_or((200, "{\"ok\":true}".to_string(), Vec::new()));
+        .unwrap_or((200, b"{\"ok\":true}".to_vec(), Vec::new()));
     let extra: String = headers
         .iter()
         .map(|(name, value)| format!("{name}: {value}\r\n"))
@@ -254,7 +271,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
         body.len()
     );
     stream.write_all(response.as_bytes())?;
-    stream.write_all(body.as_bytes())?;
+    stream.write_all(&body)?;
     Ok(())
 }
 
@@ -306,11 +323,11 @@ mod tests {
         let port = super::start_or_get_port();
         super::routes().lock().unwrap().insert(
             "/scripted/.well-known/openid-configuration".to_string(),
-            (200, "{\"issuer\":\"x\"}".to_string(), Vec::new()),
+            (200, b"{\"issuer\":\"x\"}".to_vec(), Vec::new()),
         );
         super::routes().lock().unwrap().insert(
             "/scripted/token".to_string(),
-            (401, "{}".to_string(), Vec::new()),
+            (401, b"{}".to_vec(), Vec::new()),
         );
 
         let discovery = exchange(

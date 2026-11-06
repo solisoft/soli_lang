@@ -2591,11 +2591,12 @@ impl TypeEnvironment {
         let future_any = || Type::Future(Box::new(Type::Any));
         type HttpMethodSig = (&'static str, Vec<(String, Type)>, Type);
         let http_methods: Vec<HttpMethodSig> = vec![
-            ("get", vec![url(), options()], future_string()),
-            ("post", vec![url(), body(), options()], future_string()),
-            ("put", vec![url(), body(), options()], future_string()),
-            ("patch", vec![url(), body(), options()], future_string()),
-            ("delete", vec![url(), options()], future_string()),
+            // A String, or an Array<Int> under `{"response": "binary"}`.
+            ("get", vec![url(), options()], future_any()),
+            ("post", vec![url(), body(), options()], future_any()),
+            ("put", vec![url(), body(), options()], future_any()),
+            ("patch", vec![url(), body(), options()], future_any()),
+            ("delete", vec![url(), options()], future_any()),
             ("head", vec![url(), options()], future_string()),
             (
                 "download",

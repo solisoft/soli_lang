@@ -830,6 +830,12 @@ assert(sent.includes?("code_verifier="))
   302, "", {"Location": "/home", "Set-Cookie": ["sid=1", "theme=dark"]})`. A
   String value sends one line, an Array one line per item — how to stand in
   for a server that sets two cookies.
+- The body can be raw bytes: an Array of Ints 0–255 goes out byte for byte
+  (an Int outside that range raises), so a spec can serve a PNG, a PDF or a
+  Latin-1 page and check what `HTTP.get(url, {"response": "binary"})` reads:
+  `mock_http_route("/files/logo.png", 200, slurp("spec/fixtures/logo.png",
+  "binary"))`. A String body is sent as its UTF-8 bytes. Every answer carries
+  `Content-Type: application/json`.
 - The server is a real socket on `127.0.0.1`, so the app's **test server** —
   a separate process — reaches it exactly as it would reach the real service.
   Point the app at `base` through whatever configuration it reads.

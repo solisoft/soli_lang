@@ -7,6 +7,11 @@ port = mock_http_server_start()
 base = "http://127.0.0.1:" + str(port)
 const OK_BODY = "{\"ok\":true}"
 
+# Bytes a text read chokes on — a PNG signature (0x89, CR LF, 0x1A), NUL,
+# 0xFF 0xFE, a Latin-1 é — then every byte value once.
+const BINARY_BYTES = [137, 80, 78, 71, 13, 10, 26, 10, 0, 255, 254, 233, ...(0..256).map { |i| i }]
+const BINARY_PATH = "/tmp/soli_http_spec_binary.png"
+
 def url(path)
   "#{base}/http-spec/#{path}"
 end
@@ -173,6 +178,112 @@ describe("HTTP") do
     test("follow_redirects must be a bool") do
       assert_raises("HTTP follow_redirects must be true or false, got string") do
         HTTP.request("GET", url("moved"), {"follow_redirects": "false"})
+      end
+    end
+  end
+
+  describe("response option") do
+    before_each() do
+      barf(BINARY_PATH, BINARY_BYTES)
+      mock_http_route("/http-spec/file.png", 200, slurp(BINARY_PATH, "binary"))
+      mock_http_route("/http-spec/empty", 200, [])
+      mock_http_route("/http-spec/latin1", 200, Encoding.encode("café\r\nà", "latin1"))
+    end
+
+    after_each() do
+      File.delete(BINARY_PATH) if file_exists(BINARY_PATH)
+    end
+
+    test("binary: the body is the bytes, as slurp(path, \"binary\") reads them") do
+      response = HTTP.request("GET", url("file.png"), {"Authorization": "Bearer t", "response": "binary"})
+      assert_eq(response["status"], 200)
+      assert_eq(response["body"], slurp(BINARY_PATH, "binary"))
+      assert_eq(response["body"].length, 268)
+      assert_eq(HTTP.get(url("file.png"), {"response": "binary"}), slurp(BINARY_PATH, "binary"))
+    end
+
+    test("base64: the body is Base64.encode of the bytes") do
+      expected = Base64.encode(slurp(BINARY_PATH, "binary"))
+      response = HTTP.request("GET", url("file.png"), {"response": "base64"})
+      assert_eq(response["body"], expected)
+      assert_eq(HTTP.get(url("file.png"), {"response": "base64"}), expected)
+      assert_eq(HTTP.post(url("file.png"), "", {"response": "base64"}), expected)
+    end
+
+    test("a charset: the body is decoded into UTF-8") do
+      response = HTTP.request("GET", url("latin1"), {"response": "latin1"})
+      assert_eq(response["body"], "café\r\nà")
+      assert_eq(HTTP.get(url("latin1"), {"response": "iso-8859-1"}), "café\r\nà")
+    end
+
+    test("an empty body is an empty array, or an empty string") do
+      assert_eq(HTTP.request("GET", url("empty"), {"response": "binary"})["body"], [])
+      assert_eq(HTTP.get(url("empty"), {"response": "base64"}), "")
+      assert_eq(HTTP.get(url("empty"), {"response": "latin1"}), "")
+    end
+
+    test("without it the body is UTF-8 text, as before") do
+      assert_eq(HTTP.request("GET", url("hello"))["body"], "hello")
+      assert_eq(HTTP.get(url("hello"), {"response": "text"}), "hello")
+      assert_raises("invalid UTF-8 in response body") do
+        HTTP.request("GET", url("file.png"))
+      end
+      assert_raises("use {\"response\": \"binary\"|\"base64\"}") do
+        HTTP.get(url("latin1"))
+      end
+    end
+
+    test("an unknown value, or one that is not a string, raises") do
+      assert_raises("HTTP response must be \"text\", \"binary\", \"base64\" or a charset label like \"latin1\", got \"bytes\"") do
+        HTTP.request("GET", url("hello"), {"response": "bytes"})
+      end
+      assert_raises("HTTP response must be a string") do
+        HTTP.get(url("hello"), {"response": true})
+      end
+    end
+
+    test("the JSON helpers refuse a byte mode") do
+      assert_raises("HTTP.get_json() parses the body as text") do
+        HTTP.get_json(url("hello"), {"response": "binary"})
+      end
+    end
+
+    test("HTTP.parallel takes it per request, HTTP.get_all for the batch") do
+      results = HTTP.parallel([
+        {"url": url("file.png"), "response": "binary"},
+        {"url": url("hello")}
+      ])
+      assert_eq(results[0]["body"], slurp(BINARY_PATH, "binary"))
+      assert_eq(results[1]["body"], "hello")
+      bodies = HTTP.get_all([url("file.png"), url("empty")], {"response": "base64"})
+      assert_eq(bodies, [Base64.encode(slurp(BINARY_PATH, "binary")), ""])
+    end
+
+    test("a stream gives its raw bytes with next_chunk") do
+      stream = HTTP.stream("GET", url("file.png"), {"response": "binary"})
+      bytes = []
+      chunk = stream.next_chunk
+      while !chunk.nil?
+        bytes = [...bytes, ...chunk]
+        chunk = stream.next_chunk
+      end
+      assert_eq(bytes, slurp(BINARY_PATH, "binary"))
+      assert_null(stream.next_chunk)
+    end
+
+    test("a base64 stream gives its chunks as strings, a charset stream its lines decoded") do
+      stream = HTTP.stream("GET", url("file.png"), {"response": "base64"})
+      assert_eq(type(stream.next_chunk), "string")
+      stream.close
+      stream = HTTP.stream("GET", url("latin1"), {"response": "latin1"})
+      assert_eq(stream.next_line, "café")
+      assert_eq(stream.next_line, "à")
+      assert_null(stream.next_line)
+    end
+
+    test("mock_http_route refuses an array that is not bytes") do
+      assert_raises("mock_http_route: an Array body holds bytes (Ints 0..=255)") do
+        mock_http_route("/http-spec/bad", 200, [256])
       end
     end
   end

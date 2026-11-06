@@ -98,14 +98,15 @@ resp = HTTP.get("https://api.example.com/slow", { "timeout": 5 })</code></pre>
                 <code class="text-amber-400">delete</code>, <code class="text-amber-400">head</code>, the
                 <code class="text-amber-400">*_json</code> / <code class="text-amber-400">get_jsonp</code> variants and
                 (applied to every URL) <code class="text-amber-400">get_all</code> / <code class="text-amber-400">get_all_json</code>
-                all take the same trailing options hash with three keys:
+                all take the same trailing options hash with four keys:
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-2">
                     <li><code class="text-amber-400">headers</code> &mdash; a hash of <code>name =&gt; value</code>. Strings go out as-is, numbers and booleans are stringified, a <code>null</code> value skips that header. A header you set <strong>replaces</strong> the builtin's own default (<code class="text-amber-400">Content-Type</code> on <code class="text-amber-400">post</code>/<code class="text-amber-400">put</code>/<code class="text-amber-400">patch</code>, <code class="text-amber-400">Accept</code> on the JSON variants), matched case-insensitively, so you never send two. A name or value the client would refuse (spaces in the name, a CR/LF in the value) raises before anything is sent &mdash; the message names the header but never echoes the value, so a rejected token stays out of the error page and logs. <code class="text-amber-400">Content-Length</code> and <code class="text-amber-400">Transfer-Encoding</code> are refused outright: they are derived from the body, and a caller-supplied length would be sent verbatim and desync the upstream connection. <strong>Redirects:</strong> the client drops <code class="text-amber-400">Authorization</code>, <code class="text-amber-400">Cookie</code> and <code class="text-amber-400">Proxy-Authorization</code> when a redirect changes host or port, but any <em>other</em> header you set (an <code class="text-amber-400">X-Api-Key</code>, say) follows the redirect to the new host.</li>
                     <li><code class="text-amber-400">timeout</code> &mdash; per-call timeout in <strong>seconds</strong> (<code class="text-amber-400">Int</code> or <code class="text-amber-400">Float</code>). Overrides the default 30s client timeout for that one request; must be positive, fractions such as <code class="text-amber-400">0.5</code> are allowed.</li>
                     <li><code class="text-amber-400">follow_redirects</code> &mdash; <code class="text-amber-400">Bool</code>, default <code class="text-amber-400">true</code>. <code class="text-amber-400">false</code> returns the first answer as-is instead of following a 3xx: no hop is made, so you read the <code class="text-amber-400">location</code> header and decide yourself. With the verb helpers a 3xx is then a non-2xx and raises (<code class="text-amber-400">HTTP 302 error: &hellip;</code>) &mdash; use <code class="text-amber-400">HTTP.request</code> to read it. Anything but a Bool raises (<code class="text-amber-400">"false"</code> is a String). Not available on the Cloudflare edge build, whose <code>fetch</code> always follows: <code class="text-amber-400">false</code> raises there.</li>
+                    <li><code class="text-amber-400">response</code> &mdash; how the body comes back: <code class="text-amber-400">"text"</code> (default, UTF-8, raises otherwise), <code class="text-amber-400">"binary"</code> (Array of Ints 0&ndash;255), <code class="text-amber-400">"base64"</code> (String) or a charset label such as <code class="text-amber-400">"latin1"</code>. See <a href="#section-response-bodies" class="text-amber-400 hover:underline">Response bodies</a>.</li>
                 </ul>
                 For <code class="text-amber-400">HTTP.request</code>, the third argument is a flat headers hash: its
-                <code class="text-amber-400">timeout</code> and <code class="text-amber-400">follow_redirects</code> keys are consumed rather than sent as headers, and a nested
+                <code class="text-amber-400">timeout</code>, <code class="text-amber-400">follow_redirects</code> and <code class="text-amber-400">response</code> keys are consumed rather than sent as headers, and a nested
                 <code class="text-amber-400">headers</code> hash is merged in, so the same options shape works there too. Flat and nested pairs go through the same validation.
             </div>
         </section>
@@ -263,6 +264,63 @@ HTTP.put("https://storage.example.com/reports/q3.pdf", pdf, {
         <p class="text-gray-500 text-xs mt-3">Before, there was no multipart support and no way to send binary bytes: an array body was refused by <code>HTTP.post</code> and stringified by <code>HTTP.request</code>.</p>
     </section>
 
+    <!-- Response bodies: text, bytes, base64, charset -->
+    <section id="section-response-bodies" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Response bodies: text, bytes, base64, charset</h2>
+        <p class="text-gray-400 mb-4">
+            By default a body comes back as a UTF-8 String, and a body that is not UTF-8 &mdash; a PNG, a PDF, a ZIP, an Office file, a Latin-1 page &mdash; raises <code class="text-amber-400">invalid UTF-8 in response body: &hellip; (use {"response": "binary"|"base64"} for bytes, or a charset like {"response": "latin1"})</code>. The <code class="text-amber-400">response</code> option chooses another shape. Like <code class="text-amber-400">timeout</code>, it is read and removed from the options hash, <strong>never sent as a header</strong>, and every call that returns a body takes it in the same place: <code class="text-amber-400">HTTP.get</code>, <code class="text-amber-400">post</code>, <code class="text-amber-400">put</code>, <code class="text-amber-400">patch</code>, <code class="text-amber-400">delete</code>, <code class="text-amber-400">HTTP.request</code> (in its headers hash), <code class="text-amber-400">HTTP.get_all</code> (for the whole batch), each item of <code class="text-amber-400">HTTP.parallel</code>, and <code class="text-amber-400">HTTP.stream</code> (see <code class="text-amber-400">next_chunk</code>). It is the receiving twin of <code class="text-amber-400">slurp(path, mode)</code>.
+        </p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold"><code>response</code></th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold"><code>body</code> is</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Same as</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>"text"</code> (default)</td><td class="py-3 px-4">String, UTF-8; anything else raises</td><td class="py-3 px-4"><code>slurp(path)</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>"binary"</code></td><td class="py-3 px-4">Array of Ints 0&ndash;255, the raw bytes</td><td class="py-3 px-4"><code>slurp(path, "binary")</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>"base64"</code></td><td class="py-3 px-4">String, the raw bytes base64-encoded</td><td class="py-3 px-4"><code>Base64.encode(slurp(path, "binary"))</code></td></tr>
+                    <tr><td class="py-3 px-4">a charset label (<code>"latin1"</code>, &hellip;)</td><td class="py-3 px-4">String, the bytes decoded into UTF-8</td><td class="py-3 px-4"><code>slurp(path, "latin1")</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-3">
+            Any other value raises before anything is sent &mdash; <code class="text-amber-400">HTTP response must be "text", "binary", "base64" or a charset label like "latin1", got "bytes"</code> &mdash; as does a value that is not a String. The <code class="text-amber-400">*_json</code> helpers (<code class="text-amber-400">get_json</code>, <code class="text-amber-400">get_jsonp</code>, <code class="text-amber-400">post_json</code>, <code class="text-amber-400">put_json</code>, <code class="text-amber-400">patch_json</code>, <code class="text-amber-400">get_all_json</code>) parse the body as text: they take <code class="text-amber-400">"text"</code> or a charset and refuse <code class="text-amber-400">"binary"</code> and <code class="text-amber-400">"base64"</code>. <code class="text-amber-400">HTTP.head</code> has no body and <code class="text-amber-400">HTTP.download</code> always writes raw bytes, so both ignore it.
+        </p>
+        <p class="text-gray-400 mb-3">
+            <strong class="text-white">Size limit.</strong> Every mode reads through the same cap as a text body: <code class="text-amber-400">SOLI_HTTP_MAX_RESPONSE_BYTES</code>, <strong>50&nbsp;MiB (52428800 bytes) by default</strong>. A longer body raises <code class="text-amber-400">HTTP response exceeded 52428800 bytes (SOLI_HTTP_MAX_RESPONSE_BYTES)</code>; set the variable (in bytes) to raise it. The cap counts the bytes received, before any base64 or charset conversion. <code class="text-amber-400">"binary"</code> makes one Array element per byte; for a file of several MB headed to another API, <code class="text-amber-400">"base64"</code> is far lighter.
+        </p>
+        <p class="text-gray-400 mb-6">
+            The error body of a verb helper&rsquo;s non-2xx (<code class="text-amber-400">HTTP 404 error: &hellip;</code>) is always read as text, whatever the mode. The option works the same on the Cloudflare edge build (which has no <code class="text-amber-400">HTTP.stream</code>).
+        </p>
+
+        <h3 class="text-lg font-semibold text-white mb-3"><code>"text"</code> &mdash; the default</h3>
+        <pre data-filename="Example"><code class="language-soli text-sm">html = HTTP.get("https://example.com/")            # String
+same = HTTP.get("https://example.com/", {"response": "text"})</code></pre>
+        <p class="text-gray-400 mt-3 mb-6">Unchanged from before: a body that is not valid UTF-8 raises, and the message names the option to use instead.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-3"><code>"binary"</code> &mdash; the raw bytes</h3>
+        <pre data-filename="Example"><code class="language-soli text-sm">response = HTTP.request("GET", attachment_url, {"Authorization": auth, "response": "binary"})
+bytes = response["body"]                 # [137, 80, 78, 71, 13, 10, 26, 10, …]
+barf("storage/report.pdf", bytes)        # written byte for byte
+bytes == slurp("storage/report.pdf", "binary")   # true</code></pre>
+        <p class="text-gray-400 mt-3 mb-6">An empty body is <code class="text-amber-400">[]</code>.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-3"><code>"base64"</code> &mdash; the raw bytes as base64</h3>
+        <p class="text-gray-400 mb-3">Base64 with the standard alphabet and padding, byte-identical to <code class="text-amber-400">Base64.encode(bytes)</code> &mdash; without the <code class="text-amber-400">Array&lt;Int&gt;</code> in between, so a several-megabyte attachment costs its size and the base64 text, not one Soli value per byte:</p>
+        <pre data-filename="Example"><code class="language-soli text-sm"># Download a Jira attachment and forward it to another API.
+content = HTTP.get(attachment["content"], {"headers": {"Authorization": auth}, "response": "base64"})
+HTTP.post_json(upload_url, {"filename": attachment["filename"], "data": content})</code></pre>
+        <p class="text-gray-400 mt-3 mb-6">An empty body is <code class="text-amber-400">""</code>.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-3">A charset &mdash; decoded into UTF-8</h3>
+        <p class="text-gray-400 mb-3">Any label the <a href="https://encoding.spec.whatwg.org/#names-and-labels" class="text-amber-400 hover:underline">WHATWG Encoding Standard</a> knows, as <code class="text-amber-400">Encoding.decode</code> and <code class="text-amber-400">slurp(path, label)</code> take it: <code class="text-amber-400">"latin1"</code> / <code class="text-amber-400">"iso-8859-1"</code> (both read as <code>windows-1252</code>, a superset), <code class="text-amber-400">"windows-1252"</code>, <code class="text-amber-400">"iso-8859-15"</code>, <code class="text-amber-400">"shift_jis"</code>, <code class="text-amber-400">"euc-jp"</code>, <code class="text-amber-400">"gbk"</code>, <code class="text-amber-400">"big5"</code>, <code class="text-amber-400">"koi8-r"</code>, <code class="text-amber-400">"utf-16le"</code>, &hellip; Labels are case-insensitive. <code class="text-amber-400">"utf-8"</code> is accepted too and is the lenient form of <code class="text-amber-400">"text"</code>: an invalid sequence becomes U+FFFD instead of raising.</p>
+        <pre data-filename="Example"><code class="language-soli text-sm">page = HTTP.get("https://legacy.example.com/", {"response": "latin1"})   # "café", not an error</code></pre>
+    </section>
+
     <!-- JSON HTTP Methods -->
     <section id="section-json-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">JSON HTTP Methods</h2>
@@ -340,7 +398,7 @@ me = HTTP.get_json("https://api.example.com/me", {
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.). The headers hash accepts a <code class="text-amber-400">timeout</code> key (seconds) that is consumed as the per-call timeout rather than sent as a header. The body takes the same shapes as <code class="text-amber-400">HTTP.post</code> (string, hash as JSON, byte array, or multipart with <code class="text-amber-400">"multipart": true</code> in the headers hash), but no <code>Content-Type</code> is implied unless it is multipart.</p>
-            <p class="text-gray-400 mb-3">Returns <code class="text-amber-400">{ "status", "status_text", "headers", "body" }</code>. Unlike the verb helpers it does <strong>not</strong> raise on a 4xx/5xx &mdash; branch on <code class="text-amber-400">resp["status"]</code>. Only a transport failure (DNS, refused connection, timeout, SSRF refusal) raises. <code class="text-amber-400">HTTP.parallel</code> returns one such hash per request.</p>
+            <p class="text-gray-400 mb-3">Returns <code class="text-amber-400">{ "status", "status_text", "headers", "body" }</code> (<code class="text-amber-400">body</code> an Array of bytes with <code class="text-amber-400">"response": "binary"</code> &mdash; see <a href="#section-response-bodies" class="text-amber-400 hover:underline">Response bodies</a>). Unlike the verb helpers it does <strong>not</strong> raise on a 4xx/5xx &mdash; branch on <code class="text-amber-400">resp["status"]</code>. Only a transport failure (DNS, refused connection, timeout, SSRF refusal) raises. <code class="text-amber-400">HTTP.parallel</code> returns one such hash per request.</p>
             <p class="text-gray-400 mb-3"><strong class="text-white">Response headers.</strong> Names are lowercase. <code class="text-amber-400">set-cookie</code> is <strong>always an Array of strings</strong>, one per <code class="text-amber-400">Set-Cookie</code> line, even when the server sent a single cookie (a cookie&rsquo;s <code class="text-amber-400">Expires</code> attribute holds a comma, so the lines cannot be joined). Any other header sent more than once is one String, its values joined with <code class="text-amber-400">", "</code> (<code class="text-amber-400">"vary" =&gt; "accept, origin"</code>). The same shape holds for <code class="text-amber-400">HTTP.parallel</code>, <code class="text-amber-400">stream.headers</code> from <code class="text-amber-400">HTTP.stream</code> and <code class="text-amber-400">SOAP.call</code>; <code class="text-amber-400">res_header(resp, "set-cookie")</code> returns the same Array.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("POST", login_url, {}, credentials)
 resp["headers"]["set-cookie"]   # ["sid=abc; HttpOnly", "theme=dark; Path=/"]
@@ -368,13 +426,22 @@ end</code></pre>
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Opens a request and answers as soon as its headers are in, with an object the body is read from one line at a time, as it arrives: an AI model answering in server-sent events, a long export, a log tail. <code class="text-amber-400">HTTP.request</code> waits for the whole body, and its timeout counts from the start; a stream runs as long as it keeps sending.</p>
-            <p class="text-gray-400 mb-3">Parameters are <code class="text-amber-400">HTTP.request</code>&rsquo;s, <code class="text-amber-400">follow_redirects</code> included. The <code class="text-amber-400">timeout</code> (seconds, default 120) is the longest wait <strong>for the next bytes</strong>, not for the whole answer.</p>
+            <p class="text-gray-400 mb-3">Parameters are <code class="text-amber-400">HTTP.request</code>&rsquo;s, <code class="text-amber-400">follow_redirects</code> and <code class="text-amber-400">response</code> included. The <code class="text-amber-400">timeout</code> (seconds, default 120) is the longest wait <strong>for the next bytes</strong>, not for the whole answer.</p>
             <p class="text-gray-400 mb-3">Returns an <code class="text-amber-400">HTTPStream</code>:</p>
             <ul class="list-disc list-inside text-gray-400 mb-3 space-y-1">
                 <li><code class="text-amber-400">stream.status</code> (Int) and <code class="text-amber-400">stream.headers</code> (Hash, <code class="text-amber-400">HTTP.request</code>&rsquo;s shape: <code class="text-amber-400">set-cookie</code> an Array), read when it opened;</li>
                 <li><code class="text-amber-400">stream.next_line</code>: the next line, with its <code>\n</code> (and a <code>\r</code> before it) taken off, or <code class="text-amber-400">nil</code> once the body is over (an unended last line comes first). It raises when nothing arrives for <code class="text-amber-400">timeout</code> seconds, when the connection breaks, and past <code class="text-amber-400">SOLI_HTTP_MAX_RESPONSE_BYTES</code>; the stream is closed then;</li>
+                <li><code class="text-amber-400">stream.next_chunk</code>: the next bytes <strong>as they came</strong>, with no line splitting and nothing taken off (<code>\r\n</code> included) &mdash; an Array of Ints 0&ndash;255, or a base64 String when the stream was opened with <code class="text-amber-400">{"response": "base64"}</code>; <code class="text-amber-400">nil</code> once the body is over. Same idle timeout and size limit as <code class="text-amber-400">next_line</code>. Each base64 chunk is encoded on its own: decode them one by one rather than concatenating the strings;</li>
                 <li><code class="text-amber-400">stream.close</code> lets the connection go before the end.</li>
             </ul>
+            <p class="text-gray-400 mb-3"><code class="text-amber-400">next_line</code> decodes each line as UTF-8 (an invalid sequence becomes U+FFFD), or from the charset given as <code class="text-amber-400">{"response": "latin1"}</code>. Use <code class="text-amber-400">next_chunk</code> for a binary download read piece by piece. <code class="text-amber-400">HTTP.stream_to</code> reads text events and refuses the <code class="text-amber-400">response</code> option.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">stream = HTTP.stream("GET", file_url, {"Authorization": auth, "response": "binary"})
+received = 0
+chunk = stream.next_chunk
+while !chunk.nil?
+  received = received + chunk.length
+  chunk = stream.next_chunk
+end</code></pre>
             <p class="text-gray-400 mb-3">A non-2xx status does not raise: check <code class="text-amber-400">stream.status</code>, its body is readable. The SSRF check, the header checks and the redirect policy are <code class="text-amber-400">HTTP.request</code>&rsquo;s. The stream is read in a loop rather than with <code class="text-amber-400">do |line|</code>: plain natives cannot call a block.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">stream = HTTP.stream("POST", "https://api.example.com/v1/chat/completions",
   {"Authorization": "Bearer " + key, "content-type": "application/json", "timeout": 120},
@@ -503,7 +570,7 @@ es.addEventListener("done", () =&gt; es.close())</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (<code class="text-amber-400">headers</code>, <code class="text-amber-400">timeout</code>, <code class="text-amber-400">follow_redirects</code> &mdash; see <a href="#def-http-get" class="text-amber-400 hover:underline">HTTP.get</a>) applies to every request in the batch.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (<code class="text-amber-400">headers</code>, <code class="text-amber-400">timeout</code>, <code class="text-amber-400">follow_redirects</code>, <code class="text-amber-400">response</code> &mdash; see <a href="#def-http-get" class="text-amber-400 hover:underline">HTTP.get</a>) applies to every request in the batch; with <code class="text-amber-400">"response": "binary"</code> each body is a byte Array.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
@@ -546,7 +613,7 @@ if users.has_key("error") {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel. Each request hash accepts <code class="text-amber-400">method</code>, <code class="text-amber-400">url</code>, optional <code class="text-amber-400">headers</code>, optional <code class="text-amber-400">body</code>, an optional per-request <code class="text-amber-400">timeout</code> (seconds) and an optional per-request <code class="text-amber-400">follow_redirects</code> (Bool).</p>
+                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel. Each request hash accepts <code class="text-amber-400">method</code>, <code class="text-amber-400">url</code>, optional <code class="text-amber-400">headers</code>, optional <code class="text-amber-400">body</code>, an optional per-request <code class="text-amber-400">timeout</code> (seconds), an optional per-request <code class="text-amber-400">follow_redirects</code> (Bool) and an optional per-request <code class="text-amber-400">response</code> (see <a href="#section-response-bodies" class="text-amber-400 hover:underline">Response bodies</a>).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.parallel([
   { "method": "GET", "url": "https://api.example.com/users", "timeout": 5 },
   { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }
