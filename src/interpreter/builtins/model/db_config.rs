@@ -285,6 +285,43 @@ fn token_from_login_body(body: &str) -> Option<CachedJwt> {
     Some(CachedJwt { token, exp_epoch })
 }
 
+/// The JWT login error last warned about. Every database call that finds no
+/// cached token logs in again, so a store that is down used to print the same
+/// warning once per call — per poller tick, per request.
+static LOGIN_WARNED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// What to print about a login attempt, given the error last warned about:
+/// the first failure of a streak, a failure that differs from the last one,
+/// and the first success after a failure. Repeats of the same failure print
+/// nothing.
+fn login_warning(last_warned: &mut Option<String>, outcome: Result<(), &str>) -> Option<String> {
+    match outcome {
+        Ok(()) => last_warned
+            .take()
+            .map(|_| "Note: JWT login to SoliDB succeeded again".to_string()),
+        Err(error) => {
+            if last_warned.as_deref() == Some(error) {
+                return None;
+            }
+            *last_warned = Some(error.to_string());
+            Some(format!(
+                "Warning: JWT login failed ({error}), falling back \
+                 (repeats of this error are not shown)"
+            ))
+        }
+    }
+}
+
+fn note_login(outcome: Result<(), &str>) {
+    let line = match LOGIN_WARNED.lock() {
+        Ok(mut last_warned) => login_warning(&mut last_warned, outcome),
+        Err(_) => None,
+    };
+    if let Some(line) = line {
+        eprintln!("{line}");
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn login_for_token() -> Option<CachedJwt> {
     let (login_url, payload) = login_request()?;
@@ -297,9 +334,12 @@ fn login_for_token() -> Option<CachedJwt> {
         .set("Content-Type", "application/json")
         .send_string(&payload.to_string())
     {
-        Ok(r) => r,
+        Ok(r) => {
+            note_login(Ok(()));
+            r
+        }
         Err(e) => {
-            eprintln!("Warning: JWT login failed ({}), falling back", e);
+            note_login(Err(&e.to_string()));
             return None;
         }
     };
@@ -315,9 +355,12 @@ fn login_for_token() -> Option<CachedJwt> {
     let body = crate::interpreter::builtins::http_class::block_on_db(async move {
         let client = crate::interpreter::builtins::http_class::get_http_client();
         match client.post(&login_url).json(&payload).send().await {
-            Ok(resp) => resp.text().await.ok(),
+            Ok(resp) => {
+                note_login(Ok(()));
+                resp.text().await.ok()
+            }
             Err(e) => {
-                eprintln!("Warning: JWT login failed ({}), falling back", e);
+                note_login(Err(&e.to_string()));
                 None
             }
         }
@@ -713,6 +756,52 @@ pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod login_warning_tests {
+    use super::login_warning;
+
+    #[test]
+    fn the_same_failure_warns_once_per_streak() {
+        let mut last = None;
+        let refused = "Connection refused (os error 61)";
+        let first = login_warning(&mut last, Err(refused)).expect("first failure warns");
+        assert!(
+            first.contains("JWT login failed (Connection refused"),
+            "{first}"
+        );
+        for _ in 0..20 {
+            assert_eq!(login_warning(&mut last, Err(refused)), None);
+        }
+    }
+
+    #[test]
+    fn a_different_failure_warns_again() {
+        let mut last = None;
+        login_warning(&mut last, Err("Connection refused"));
+        let line = login_warning(&mut last, Err("dns error")).expect("a new error warns");
+        assert!(line.contains("dns error"), "{line}");
+        assert_eq!(login_warning(&mut last, Err("dns error")), None);
+    }
+
+    #[test]
+    fn recovery_is_noted_once_and_rearms_the_warning() {
+        let mut last = None;
+        assert_eq!(
+            login_warning(&mut last, Ok(())),
+            None,
+            "no failure, no note"
+        );
+        login_warning(&mut last, Err("Connection refused"));
+        let note = login_warning(&mut last, Ok(())).expect("recovery is noted");
+        assert!(note.contains("succeeded again"), "{note}");
+        assert_eq!(login_warning(&mut last, Ok(())), None);
+        assert!(
+            login_warning(&mut last, Err("Connection refused")).is_some(),
+            "a new streak warns again"
+        );
+    }
 }
 
 #[cfg(test)]
