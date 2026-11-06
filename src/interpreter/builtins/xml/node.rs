@@ -429,12 +429,23 @@ fn parse_file(args: &[Value]) -> Result<Value, String> {
     let path = string_arg(args, 0, WHO, "the path")?;
     let policy = parse_policy(args.get(1), WHO)?;
     let resolved = crate::interpreter::builtins::file::resolve_readable_path(&path, WHO)?;
+    // Refuse a FIFO or a device before opening it: opening a FIFO for
+    // reading blocks until a writer comes (as `Xml.each` / `Xml.reader` do).
+    // The check after the open is the one that counts.
+    if let Ok(meta) = std::fs::symlink_metadata(&resolved) {
+        if !meta.is_file() && !meta.file_type().is_symlink() {
+            return Err(format!("{WHO}: cannot read {path}: not a file"));
+        }
+    }
     let file = crate::interpreter::builtins::file::open_for_read(&resolved, false)
         .map_err(|e| format!("{WHO}: cannot open {path}: {e}"))?;
-    let size = file
+    let meta = file
         .metadata()
-        .map_err(|e| format!("{WHO}: cannot read {path}: {e}"))?
-        .len();
+        .map_err(|e| format!("{WHO}: cannot read {path}: {e}"))?;
+    if !meta.is_file() {
+        return Err(format!("{WHO}: cannot read {path}: not a file"));
+    }
+    let size = meta.len();
     let limit = policy.max_bytes;
     if size > limit as u64 {
         return Err(format!(

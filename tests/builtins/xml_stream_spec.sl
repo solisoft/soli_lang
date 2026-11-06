@@ -215,6 +215,12 @@ describe("Xml streaming") do
       assert_raises("Xml.reader: cannot read #{fifo}: not a file") do
         Xml.reader(fifo, "item")
       end
+      assert_raises("Xml.parse_file: cannot read #{fifo}: not a file") do
+        Xml.parse_file(fifo)
+      end
+      assert_raises("Xml.parse_file: cannot read #{SPEC_DIR}: not a file") do
+        Xml.parse_file(SPEC_DIR)
+      end
     end
 
     test("refuses a match streaming cannot do, naming the column") do
