@@ -495,6 +495,10 @@ pub enum Value {
     /// `builtins::model::batch`). Resolved transparently at read points
     /// (`evaluate_variable`, member access, `value_to_json`, `Display`).
     Deferred(Rc<RefCell<DeferredCell>>),
+    /// An XML node (or, later, reader) payload. It only ever sits in the
+    /// hidden `__xml` field of an `XmlNode` / `XmlDocument` instance: user
+    /// code holds the instance, never this value.
+    Xml(Rc<crate::interpreter::builtins::xml::value::XmlPayload>),
 }
 
 impl Value {
@@ -723,6 +727,7 @@ impl Value {
             Value::VmClosure(_) => "Function".to_string(),
             Value::Image(_) => "Image".to_string(),
             Value::ImagePlan(_) => "ImagePlan".to_string(),
+            Value::Xml(_) => "Xml".to_string(),
             Value::Deferred(_) => self.force_deferred().type_name(),
         }
     }
@@ -939,6 +944,7 @@ impl Value {
             Value::VmClosure(func) => func.proto.name.len() + 5,
             Value::Image(_) => 7,
             Value::ImagePlan(_) => 11,
+            Value::Xml(_) => 5,
             Value::Deferred(_) => self.force_deferred().display_len(),
         }
     }
@@ -1001,6 +1007,10 @@ impl Value {
             }
             Value::Instance(inst) => {
                 let inst = inst.borrow();
+                if let Some(xml) = crate::interpreter::builtins::xml::value::display(&inst) {
+                    s.push_str(&xml);
+                    return;
+                }
                 s.push('<');
                 s.push_str(&inst.class.name);
                 s.push_str(" instance>");
@@ -1018,6 +1028,7 @@ impl Value {
             }
             Value::Image(_) => s.push_str("<Image>"),
             Value::ImagePlan(_) => s.push_str("<ImagePlan>"),
+            Value::Xml(_) => s.push_str("<Xml>"),
             Value::Deferred(_) => self.force_deferred().write_to_string(s),
         }
     }
@@ -1093,7 +1104,10 @@ impl Value {
                 if let (Some(ts_a), Some(ts_b)) = (self.datetime_ts(), other.datetime_ts()) {
                     return ts_a == ts_b;
                 }
-                false
+                // Two handles on the same XML node are equal (identity, not
+                // structure).
+                crate::interpreter::builtins::xml::value::eq(&a.borrow(), &b.borrow())
+                    .unwrap_or(false)
             }
             (Value::Method(a), Value::Method(b)) => {
                 *a.receiver == *b.receiver && a.method_name == b.method_name
@@ -1316,6 +1330,9 @@ impl Value {
             Value::Class(class) => write!(f, "<class {}>", class.name),
             Value::Instance(inst) => {
                 let inst_ref = inst.borrow();
+                if let Some(xml) = crate::interpreter::builtins::xml::value::display(&inst_ref) {
+                    return f.write_str(&xml);
+                }
                 if crate::interpreter::domain::value_objects_declared()
                     && inst_ref.class.is_value_object()
                 {
@@ -1394,6 +1411,7 @@ impl Value {
                 let p = p.borrow();
                 write!(f, "<ImagePlan src=\"{}\" ops={}>", p.src, p.ops.len())
             }
+            Value::Xml(_) => write!(f, "<Xml>"),
             // Auto-resolve a `grouped {}` deferred when displaying.
             Value::Deferred(_) => write!(f, "{}", self.force_deferred()),
         }

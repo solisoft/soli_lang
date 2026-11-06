@@ -472,6 +472,7 @@ impl Interpreter {
             Value::VmClosure(c) => format!("\"<fn {}>\"", c.proto.name),
             Value::Image(_) => "\"<Image>\"".to_string(),
             Value::ImagePlan(_) => "\"<ImagePlan>\"".to_string(),
+            Value::Xml(_) => "\"<Xml>\"".to_string(),
             Value::Deferred(_) => self.value_to_json(&value.force_deferred()),
             other => crate::interpreter::value::stringify_to_string(other)
                 .unwrap_or_else(|_| format!("\"<{}>\"", other.type_name())),

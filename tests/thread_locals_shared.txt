@@ -111,6 +111,8 @@ src/interpreter/builtins/datetime_class.rs DURATION_INSTANCE_CLASS
 src/interpreter/builtins/http_class.rs STREAM_CLASS
 src/interpreter/builtins/image.rs CLASS
 src/interpreter/builtins/image.rs CLASS
+src/interpreter/builtins/xml/value.rs DOCUMENT_CLASS
+src/interpreter/builtins/xml/value.rs NODE_CLASS
 src/interpreter/builtins/jobs.rs JOB_CLASSES
 src/interpreter/builtins/model/registry.rs MODEL_CLASSES
 src/interpreter/builtins/model/registry.rs ENUM_FIELDS
