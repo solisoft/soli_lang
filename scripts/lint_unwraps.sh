@@ -28,6 +28,7 @@ src/interpreter/builtins/xml/mod.rs|XML binding: registration of Xml, XmlNode, X
 src/interpreter/builtins/xml/value.rs|XML binding: node handles and the engine hooks
 src/interpreter/builtins/xml/node.rs|XML binding: Xml.parse and the node methods (network bodies)
 src/interpreter/builtins/xml/block.rs|XML binding: the block builder the engines run
+src/interpreter/builtins/xml/query.rs|XML binding: find / find_all / xpath / at_xpath (untrusted expressions)
 "
 
 count() {
