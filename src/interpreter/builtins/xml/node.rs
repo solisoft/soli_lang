@@ -510,7 +510,12 @@ fn add(node: &XmlRef, args: &[Value]) -> Result<Value, String> {
         let child = tree
             .add_element(id, &name, &pairs(&attrs))
             .map_err(xml_err(WHO))?;
-        append_pieces(tree, node, child, &content, WHO)?;
+        // All or nothing: content that fails (a cycle, a bad piece) takes
+        // the new element back out rather than leaving it half-built.
+        if let Err(err) = append_pieces(tree, node, child, &content, WHO) {
+            let _ = tree.detach(child);
+            return Err(err);
+        }
         Ok::<_, String>(child)
     })??;
     Ok(wrap(node.at(child)))
