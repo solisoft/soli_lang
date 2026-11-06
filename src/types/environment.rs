@@ -2263,6 +2263,12 @@ impl TypeEnvironment {
         );
         self.classes.insert("SOAP".to_string(), soap_class);
 
+        // Xml, XmlNode, XmlDocument (< XmlNode) and XmlReader: every native,
+        // typed (`types::xml_classes`).
+        for class in crate::types::xml_classes::xml_classes() {
+            self.classes.insert(class.name.clone(), class);
+        }
+
         // JSON class
         let mut json_class = ClassType::new("JSON".to_string());
         json_class.methods.insert(

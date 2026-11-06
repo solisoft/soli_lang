@@ -31,6 +31,10 @@ pub(crate) struct RuntimeGlobal {
     /// When the global is a class, the verbs reachable on it — native statics
     /// and native instance methods. `None` for anything that is not a class.
     pub class_verbs: Option<Vec<String>>,
+    /// When the global is a class, the native verbs the engines *run* when
+    /// they are read bare (`is_auto_invocable` or zero arity) — statics first,
+    /// then instance methods. Empty for anything that is not a class.
+    pub bare_verbs: (Vec<String>, Vec<String>),
 }
 
 /// The runtime's global namespace. Computed once per process.
@@ -47,6 +51,13 @@ fn collect() -> Vec<RuntimeGlobal> {
     let mut globals: Vec<RuntimeGlobal> = registered(false)
         .into_iter()
         .map(|(name, value)| {
+            let bare_verbs = match &value {
+                Value::Class(class) => (
+                    bare_natives(&class.native_static_methods),
+                    bare_natives(&class.native_methods),
+                ),
+                _ => Default::default(),
+            };
             let class_verbs = match &value {
                 Value::Class(class) => {
                     let mut verbs: Vec<String> = class
@@ -61,7 +72,11 @@ fn collect() -> Vec<RuntimeGlobal> {
                 }
                 _ => None,
             };
-            RuntimeGlobal { name, class_verbs }
+            RuntimeGlobal {
+                name,
+                class_verbs,
+                bare_verbs,
+            }
         })
         .collect();
 
@@ -74,6 +89,7 @@ fn collect() -> Vec<RuntimeGlobal> {
         globals.extend(names.iter().map(|name| RuntimeGlobal {
             name: name.to_string(),
             class_verbs: None,
+            bare_verbs: Default::default(),
         }));
     }
 
@@ -81,6 +97,43 @@ fn collect() -> Vec<RuntimeGlobal> {
     globals.retain(|g| !REQUEST_ONLY.contains(&g.name.as_str()));
 
     globals
+}
+
+/// The natives of `table` that both engines run when read bare: the rule of
+/// `op_get_property_member` and the tree-walker's member auto-invoke.
+fn bare_natives(
+    table: &std::collections::HashMap<
+        String,
+        std::rc::Rc<crate::interpreter::value::NativeFunction>,
+    >,
+) -> Vec<String> {
+    let mut names: Vec<String> = table
+        .iter()
+        .filter(|(_, native)| native.is_auto_invocable || native.arity == Some(0))
+        .map(|(name, _)| name.clone())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Does the runtime run `class.name` when it is read bare (`doc.to_xml`,
+/// `Xml.document`)? `is_static` picks the static or the instance table.
+///
+/// The checker types a bare read of such a method as the call, even when its
+/// signature lists optional parameters — the rule 2.29.6 gave the String,
+/// Array and Hash methods through `method_registry`, here for the native
+/// classes, whose registry is their method table.
+pub(crate) fn runtime_calls_bare(class: &str, name: &str, is_static: bool) -> bool {
+    runtime_globals()
+        .iter()
+        .find(|global| global.name == class && global.class_verbs.is_some())
+        .is_some_and(|global| {
+            let (statics, methods) = &global.bare_verbs;
+            let table = if is_static { statics } else { methods };
+            table
+                .binary_search_by(|verb| verb.as_str().cmp(name))
+                .is_ok()
+        })
 }
 
 /// Names that only mean something while a request is being served.

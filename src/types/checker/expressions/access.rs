@@ -33,6 +33,21 @@ impl TypeChecker {
         self.check_member_access(span, object, name, true)
     }
 
+    /// [`Self::check_member_callee_with_args`], plus the receiver's type: a
+    /// call whose answer depends on its receiver and arguments (an XML query,
+    /// `checker::expressions::xml`) needs both, and checking the receiver a
+    /// second time would cost a chain of calls exponential time.
+    pub(crate) fn check_member_callee_and_receiver(
+        &mut self,
+        span: Span,
+        object: &Expr,
+        name: &str,
+    ) -> TypeResult<(Type, Type)> {
+        let obj_type = self.check_expr(object)?;
+        let member = self.member_of_type(span, object, obj_type.clone(), name, true)?;
+        Ok((member, obj_type))
+    }
+
     fn check_member_access(
         &mut self,
         span: Span,
@@ -41,7 +56,18 @@ impl TypeChecker {
         called_with_args: bool,
     ) -> TypeResult<Type> {
         let obj_type = self.check_expr(object)?;
+        self.member_of_type(span, object, obj_type, name, called_with_args)
+    }
 
+    /// `object.name`, `object` being of type `obj_type`.
+    fn member_of_type(
+        &mut self,
+        span: Span,
+        object: &Expr,
+        obj_type: Type,
+        name: &str,
+        called_with_args: bool,
+    ) -> TypeResult<Type> {
         // An unannotated `x = new C(...)` is typed loosely (members of `C`
         // are not checked), but which class built it is known: enough to
         // refuse a private or protected member, and nothing more.
@@ -104,6 +130,20 @@ impl TypeChecker {
                             (method.is_private, method.is_protected),
                             span,
                         )?;
+                        // A native the runtime runs when read bare, though its
+                        // signature lists optional parameters (`doc.to_xml`,
+                        // `Xml.document`): the bare read is that call, as for
+                        // the String/Array/Hash methods (`builtin_member_type`).
+                        if !called_with_args
+                            && !method.params.is_empty()
+                            && crate::types::runtime_globals::runtime_calls_bare(
+                                owner,
+                                name,
+                                method.is_static,
+                            )
+                        {
+                            return Ok(method.return_type.clone());
+                        }
                         return Ok(collapse_zero_arg_method(Type::Function {
                             params: method.params.iter().map(|(_, t)| t.clone()).collect(),
                             return_type: Box::new(method.return_type.clone()),
