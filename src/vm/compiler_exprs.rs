@@ -715,13 +715,13 @@ impl Compiler {
         if let ExprKind::SafeMember { object, name } = &callee.kind {
             let all_positional = arguments
                 .iter()
-                .all(|a| matches!(a, Argument::Positional(_)));
+                .all(|a| matches!(a, Argument::Positional(_) | Argument::Block(_)));
             if all_positional && arguments.len() <= 255 {
                 self.compile_expr(object)?;
                 let skip = self.emit_jump(Op::JumpIfNull(0), line);
                 let mut argc = 0u8;
                 for arg in arguments {
-                    if let Argument::Positional(expr) = arg {
+                    if let Argument::Positional(expr) | Argument::Block(expr) = arg {
                         self.compile_expr(expr)?;
                         argc += 1;
                     }
@@ -817,6 +817,18 @@ impl Compiler {
                 self.compile_expr(object)?;
                 let idx = self.add_string_constant(name);
                 self.emit(Op::GetMethod(idx), line);
+            }
+            // `a&.m(k: v)`: as above, behind the null test. `JumpIfNull`
+            // peeks, so a null receiver is the result and the arguments are
+            // never evaluated, as on the tree-walker.
+            ExprKind::SafeMember { object, name } => {
+                self.compile_expr(object)?;
+                let skip = self.emit_jump(Op::JumpIfNull(0), line);
+                let idx = self.add_string_constant(name);
+                self.emit(Op::GetMethod(idx), line);
+                self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)?;
+                self.patch_jump(skip);
+                return Ok(());
             }
             _ => self.compile_expr(callee)?,
         }
