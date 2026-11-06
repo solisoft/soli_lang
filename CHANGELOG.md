@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`soli fmt` no longer copies the end of a line whose interpolation holds a
+  string with `//` or `#`.** The formatter's comment scanner closed a literal
+  at the first quote inside `#{…}`, so in
+  `"#{doc.fetch(".//TEXT") ?? "x"} (code 1)"` it read `//TEXT") ?? "x"} (code
+  1)"` as a trailing comment and appended it after the statement, once more on
+  every run. The scanner now ends a `"…"`/`'…'` literal by the lexer's own rule
+  (a quote inside an interpolation belongs to it), and reads `r"…"` to its next
+  quote with no escapes, so `r"C:\" # note` keeps its comment once. The same
+  rule now applies in `soli fmt --migrate-raw-strings`. Tests:
+  `slashes_in_a_string_nested_in_an_interpolation_are_not_a_comment`,
+  `a_comment_after_an_interpolated_string_is_kept_once`,
+  `raw_and_triple_quoted_strings_hide_comment_markers` and their neighbours in
+  `src/fmt/tests.rs` and `src/fmt/comments.rs`.
+
 ## [2.30.1] - 2026-11-06
 
 ### Changed

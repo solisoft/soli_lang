@@ -1273,3 +1273,62 @@ fn a_private_nested_class_keeps_its_modifier() {
     assert!(out.contains("private class Ledger"), "{out}");
     assert_idempotent(src);
 }
+
+// ---- A string nested in `#{…}` is part of the literal, not code ----
+//
+// The comment scanner closed the outer literal at the first quote inside the
+// interpolation, read `//TEXT") …` as a comment, and the printer appended it
+// after the statement — once more on every run.
+
+fn assert_unchanged_and_idempotent(src: &str) {
+    let once = format_source(src).expect("format failed");
+    assert_eq!(once, src, "fmt changed the source");
+    let twice = format_source(&once).expect("second format failed");
+    assert_eq!(twice, once, "fmt is not idempotent");
+}
+
+#[test]
+fn slashes_in_a_string_nested_in_an_interpolation_are_not_a_comment() {
+    for src in [
+        "msg = \"#{doc.fetch(\".//TEXT\") ?? \"x\"} (code 1)\"\n",
+        "s = \"#{a[\"//\"]}\"\n",
+        "s = \"#{a[\"//\"]} // tail\"\n",
+        "s = \"#{a}#{b[\"//\"]}/* not a block */\"\n",
+        "s = \"a\\\"#{b}\\\" // not\"\n",
+    ] {
+        assert_unchanged_and_idempotent(src);
+    }
+}
+
+#[test]
+fn a_single_quoted_interpolated_string_hides_its_nested_strings() {
+    // Single quotes are normalized to double: the content stays one string.
+    let src = "s = '#{h['//']} // tail'\n";
+    assert_fmt(src, "s = \"#{h[\"//\"]} // tail\"\n");
+    assert_idempotent(src);
+    let src = "s = '#{h[\"#\"]} # tail'\n";
+    assert_fmt(src, "s = \"#{h[\"#\"]} # tail\"\n");
+    assert_idempotent(src);
+}
+
+#[test]
+fn hashes_in_a_string_nested_in_an_interpolation_are_not_a_comment() {
+    // All of it is one string: the `# real comment` is text.
+    assert_unchanged_and_idempotent("s = \"#{x ? \"#y\" : \"z\"} # real comment\"\n");
+}
+
+#[test]
+fn a_comment_after_an_interpolated_string_is_kept_once() {
+    assert_unchanged_and_idempotent("s = \"#{x ? \"#y\" : \"z\"}\"  # real comment\n");
+    assert_unchanged_and_idempotent(
+        "msg = \"#{doc.fetch(\".//TEXT\") ?? \"x\"} (code 1)\"  # why\n",
+    );
+}
+
+#[test]
+fn raw_and_triple_quoted_strings_hide_comment_markers() {
+    assert_unchanged_and_idempotent("p = r\"//x # y\"\n");
+    // A raw string's backslash escapes nothing: the comment after it is real.
+    assert_unchanged_and_idempotent("p = r\"C:\\\"  # trailing\nq = 1\n");
+    assert_unchanged_and_idempotent("t = \"\"\"a // \"#{b}\" # c\"\"\"\n");
+}
