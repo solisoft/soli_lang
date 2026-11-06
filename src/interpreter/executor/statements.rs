@@ -70,11 +70,7 @@ impl Interpreter {
                         .unwrap_or_else(|| "unknown".to_string());
                     stack_trace
                         .insert(0, format!("debug() at {}:{}", file, expr.span.line_usize()));
-                    return Err(RuntimeError::Breakpoint {
-                        span: expr.span,
-                        env_json,
-                        stack_trace,
-                    });
+                    return Err(RuntimeError::breakpoint(expr.span, env_json, stack_trace));
                 }
                 if matches!(value, Value::Continue) {
                     return Ok(ControlFlow::Continue);
@@ -422,43 +418,28 @@ impl Interpreter {
         iterable: &Expr,
         body: &Stmt,
     ) -> RuntimeResult<ControlFlow> {
-        // Range fast path: `for i in a..b` iterates directly instead of
+        // Range fast path: `for i in a..b`, with or without parentheses around
+        // the range, counts from one bound to the other instead of
         // materializing the range into an array first (eval_range collects
-        // the whole range into a Vec, which is wasteful for large ranges).
+        // the whole range into a Vec, which is wasteful for large ranges and
+        // refused past SOLI_MAX_RANGE_LEN). The VM does the same.
+        let range = iterable.without_parens();
         if let ExprKind::Binary {
             left,
             operator: BinaryOp::Range,
             right,
-        } = &iterable.kind
+        } = &range.kind
         {
-            let left_val = self.evaluate(left)?;
-            let right_val = self.evaluate(right)?;
-            match (&left_val, &right_val) {
-                (Value::Int(start), Value::Int(end)) => {
-                    let mut current = *start;
-                    let end = *end;
-                    return self.run_for_loop(variable, index_variable, body, || {
-                        if current < end {
-                            let val = Value::Int(current);
-                            current += 1;
-                            Some(val)
-                        } else {
-                            None
-                        }
-                    });
+            let (mut current, end) = self.evaluate_range_bounds(left, right, range.span)?;
+            return self.run_for_loop(variable, index_variable, body, || {
+                if current < end {
+                    let val = Value::Int(current);
+                    current += 1;
+                    Some(val)
+                } else {
+                    None
                 }
-                _ => {
-                    // Same error eval_range would produce for non-int operands.
-                    return Err(RuntimeError::type_error(
-                        format!(
-                            "range (..) expects two integers, got {} and {}",
-                            left_val.type_name(),
-                            right_val.type_name()
-                        ),
-                        iterable.span,
-                    ));
-                }
-            }
+            });
         }
 
         let iter_value = self.evaluate(iterable)?;
@@ -500,24 +481,24 @@ impl Interpreter {
                     }
                 })
             }
+            // `for ch in s` yields each character as a one-character string,
+            // as the VM's `IterState::String` does: walk a byte offset instead
+            // of collecting a `Vec<char>`, and encode each character on the
+            // stack. `s` is the loop's own handle, so reassigning the variable
+            // inside the body does not change what is iterated (same on both
+            // engines).
+            Value::String(s) => {
+                let mut byte_offset = 0usize;
+                self.run_for_loop(variable, index_variable, body, || {
+                    let ch = s[byte_offset..].chars().next()?;
+                    byte_offset += ch.len_utf8();
+                    Some(crate::interpreter::executor::calls::string_methods::char_to_value(ch))
+                })
+            }
             _ => {
                 // Include the offending value in the message so the user can
-                // see *which* string (or scalar) snuck into the iterable slot.
-                // Strings get truncated to keep the page readable; longer
-                // ones drop a trailing `…`. Other scalars are short enough
-                // to inline verbatim.
+                // see *which* scalar snuck into the iterable slot.
                 let message = match &iter_value {
-                    Value::String(s) => {
-                        const MAX: usize = 120;
-                        let preview: String = if s.chars().count() > MAX {
-                            let mut p: String = s.chars().take(MAX).collect();
-                            p.push('…');
-                            p
-                        } else {
-                            s.clone().to_string()
-                        };
-                        format!("cannot iterate over string {:?}", preview)
-                    }
                     Value::Null => "cannot iterate over null".to_string(),
                     Value::Int(n) => format!("cannot iterate over int {}", n),
                     Value::Float(n) => format!("cannot iterate over float {}", n),
@@ -746,6 +727,7 @@ impl Interpreter {
                 return_type: None,
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             })
@@ -792,6 +774,15 @@ impl Interpreter {
             crate::interpreter::value::note_restricted_methods_declared();
         }
 
+        // The defaults that are not literals are evaluated per instance, in
+        // the environment the methods see.
+        let defaults_env = decl
+            .fields
+            .iter()
+            .filter(|field| !field.is_static)
+            .filter_map(|field| field.initializer.as_ref())
+            .any(|init| !crate::interpreter::executor::access::member::is_literal_default(init))
+            .then(|| method_env.clone());
         let class = Class {
             name: qualified,
             superclass,
@@ -808,6 +799,7 @@ impl Interpreter {
             private_members: Rc::new(RefCell::new(private_members)),
             protected_members: Rc::new(RefCell::new(protected_members)),
             is_module: decl.is_module,
+            defaults_env,
             ..Default::default()
         };
 
@@ -851,6 +843,7 @@ impl Interpreter {
                 stored.insert(method_decl.name.clone(), func.clone());
                 on_module.insert(method_decl.name.clone(), func);
             }
+            crate::interpreter::value::note_static_methods_changed();
         }
         self.environment
             .borrow_mut()
@@ -1172,6 +1165,10 @@ impl Interpreter {
                         .private_members
                         .borrow_mut()
                         .insert(nested_decl.name.clone());
+                    // The set grew on a class that already exists. The flag
+                    // stays as it was: a private class is checked by name
+                    // (`check_nested_access`), not per member access.
+                    crate::interpreter::value::note_restricted_members_changed();
                     crate::interpreter::domain::note_private_class(
                         &parent_class,
                         &nested_decl.name,

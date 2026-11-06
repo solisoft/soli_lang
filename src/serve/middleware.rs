@@ -725,8 +725,10 @@ fn invoke_middleware_with_frame(
             };
             let result = interpreter.call_value(handler, args, span);
             interpreter.pop_frame();
-            if fell_back {
-                super::settle_engine_divergence(result.is_ok());
+            // The VM failed where the tree-walker succeeds: the VM's gap, so
+            // the middleware leaves it. A failure both engines share does not.
+            if fell_back && super::settle_engine_divergence(super::tree_walker_answered(&result)) {
+                demote_middleware(name);
             }
             result
         }
@@ -756,8 +758,10 @@ enum VmAttempt {
 }
 
 thread_local! {
-    /// Middleware the VM failed on in this worker: run on the tree-walker from
-    /// then on, like a demoted action (`Vm::failed_handlers`). Kept apart so a
+    /// Middleware this worker moved off the VM — the VM refused it, failed
+    /// where the tree-walker then succeeded, or failed after a durable write
+    /// (`super::vm_failure_verdict`): run on the tree-walker from then on,
+    /// like a demoted action (`Vm::failed_handlers`). Kept apart so a
     /// middleware and an action that share a name cannot demote each other.
     static DEMOTED_MIDDLEWARE: std::cell::RefCell<ahash::AHashSet<String>> =
         std::cell::RefCell::new(ahash::AHashSet::new());
@@ -765,6 +769,10 @@ thread_local! {
 
 fn middleware_demoted(name: &str) -> bool {
     DEMOTED_MIDDLEWARE.with(|demoted| demoted.borrow().contains(name))
+}
+
+fn demote_middleware(name: &str) {
+    DEMOTED_MIDDLEWARE.with(|demoted| demoted.borrow_mut().insert(name.to_string()));
 }
 
 thread_local! {
@@ -823,7 +831,9 @@ fn bare_call_in(handler: &Value, interpreter: &Interpreter) -> Option<String> {
                 && match env.borrow().get(candidate) {
                     Some(Value::Function(f)) => f.params.iter().all(|p| p.default_value.is_some()),
                     Some(Value::NativeFunction(native)) => {
-                        native.is_auto_invocable || native.arity == Some(0)
+                        crate::interpreter::builtins::bare_read_differs_between_engines(
+                            candidate, &native,
+                        )
                     }
                     _ => false,
                 }
@@ -859,9 +869,12 @@ fn bare_call_in(handler: &Value, interpreter: &Interpreter) -> Option<String> {
 /// (`req["started_at"] = DateTime.utc.to_unix`) cost 8% of a plaintext
 /// route's CPU, more than the action itself on the VM. The fallback rules are
 /// the action's (`call_handler`): a raised response is the answer, anything
-/// else demotes the middleware for good and re-runs it on the tree-walker —
-/// unless the VM run already committed a transaction, where a re-run would
-/// repeat the write.
+/// else re-runs the middleware on the tree-walker — unless the VM run already
+/// committed a transaction, where a re-run would repeat the write. It leaves
+/// the VM for good when the VM refused it, when it wrote before failing, or
+/// when the re-run answers (`super::vm_failure_verdict`); an error both
+/// engines raise (a `throw` on a bad header) keeps it on the VM, and is
+/// answered from the VM, without a re-run, the next time it happens.
 fn call_on_vm(
     vm: &mut crate::vm::Vm,
     interpreter: &mut Interpreter,
@@ -890,12 +903,14 @@ fn call_on_vm(
         // tree-walker (see `call_handler`).
         Err(err) if crate::interpreter::deadline::exhausted() => VmAttempt::Done(Err(err)),
         Err(err) => {
-            super::record_vm_demotion(name, &err);
-            DEMOTED_MIDDLEWARE.with(|demoted| demoted.borrow_mut().insert(name.to_string()));
-            if crate::interpreter::builtins::model::crud::had_durable_commit() {
+            let verdict = super::vm_failure_verdict(super::HandlerKind::Middleware, name, &err);
+            if verdict.demotes() {
+                demote_middleware(name);
+            }
+            // It wrote first, or both engines were seen to raise this error.
+            if !verdict.reruns() {
                 return VmAttempt::Done(Err(err));
             }
-            super::note_possible_divergence(name, &err);
             VmAttempt::FellBack
         }
     }
@@ -1548,8 +1563,37 @@ end
         assert!(bare_call_in(&handler, &interpreter).is_none());
     }
 
+    /// A failure both engines share is the app's own: the re-run answers with
+    /// the production error page, and the middleware stays on the VM. It used
+    /// to be demoted for the rest of the worker's life by one such request.
     #[test]
-    fn a_middleware_failing_on_the_vm_is_demoted_and_rerun_on_the_tree_walker() {
+    fn reading_clock_bare_keeps_the_vm() {
+        // Both engines call a bare `clock`; it is the time on the VM too.
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                req["stamp"] = clock
+                return req
+            }
+        "#,
+        );
+        assert!(bare_call_in(&handler, &interpreter).is_none());
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert!(matches!(stamp_of(&step), Some(Value::Float(_))));
+    }
+
+    #[test]
+    fn a_middleware_failing_on_both_engines_stays_on_the_vm() {
         let (mut interpreter, handler, request) = middleware_from(
             r#"
             fn mw(req) {
@@ -1574,9 +1618,58 @@ end
             Step::Continue(_) => panic!("an undefined function cannot pass"),
         }
         assert!(
-            middleware_demoted("mw"),
-            "the VM failure demotes the middleware"
+            !middleware_demoted("mw"),
+            "an error both engines raise keeps the middleware on the VM"
         );
+    }
+
+    /// A failure the tree-walker's re-run does not reproduce is the VM's: the
+    /// re-run's answer goes on, and the middleware leaves the VM.
+    #[test]
+    fn a_middleware_only_the_vm_fails_is_demoted() {
+        // A divergence is a hard stop under the strict flag: it would end
+        // this test binary.
+        if crate::platform::env::var("SOLI_FAIL_ON_VM_DEMOTION")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        {
+            return;
+        }
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                req["stamp"] = flaky()
+                return req
+            }
+        "#,
+        );
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let counter = calls.clone();
+        let flaky = crate::interpreter::value::NativeFunction::new("flaky", Some(0), move |_| {
+            counter.set(counter.get() + 1);
+            if counter.get() == 1 {
+                Err("the first call fails".to_string())
+            } else {
+                Ok(Value::Int(7))
+            }
+        });
+        interpreter
+            .environment
+            .borrow_mut()
+            .define("flaky".to_string(), Value::NativeFunction(flaky));
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert_eq!(stamp_of(&step), Some(Value::Int(7)));
+        assert_eq!(calls.get(), 2, "once on the VM, once on the re-run");
+        assert!(middleware_demoted("mw"), "the VM's gap demotes it");
     }
 
     fn body_of(step: &Step) -> String {

@@ -12,15 +12,21 @@ use std::collections::HashMap;
 
 use ahash::RandomState as AHasher;
 
-use crate::interpreter::value::{enum_aware_equal, Instance, SoliStr, Value};
+use crate::interpreter::value::{enum_aware_equal, map_hasher, Instance, SoliStr, Value};
 
 /// Shallow clone of the persistable (non-`_`) fields.
+/// Built with [`map_hasher`] and sized for every field: a `collect()` would
+/// seed a fresh `RandomState` through ahash's process-wide counter, once per
+/// loaded row.
 fn snapshot_fields(inst: &Instance) -> HashMap<SoliStr, Value, AHasher> {
-    inst.fields
-        .iter()
-        .filter(|(name, _)| !name.starts_with('_'))
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect()
+    let mut snapshot = HashMap::with_capacity_and_hasher(inst.fields.len(), map_hasher());
+    snapshot.extend(
+        inst.fields
+            .iter()
+            .filter(|(name, _)| !name.starts_with('_'))
+            .map(|(name, value)| (name.clone(), value.clone())),
+    );
+    snapshot
 }
 
 /// Reset the dirty baseline to the instance's current fields.
@@ -32,7 +38,7 @@ pub fn seed_snapshot(inst: &mut Instance) {
 /// differs from the baseline, sorted by name. A `None` baseline (new
 /// record) reports every non-`_` field as `[null, value]`.
 pub fn compute_changes(inst: &Instance) -> Vec<(SoliStr, Value, Value)> {
-    let empty = HashMap::default();
+    let empty = HashMap::with_hasher(map_hasher());
     let original: &HashMap<SoliStr, Value, AHasher> =
         inst.original_fields.as_deref().unwrap_or(&empty);
 

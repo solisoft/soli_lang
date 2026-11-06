@@ -2905,6 +2905,71 @@ mod tests {
         });
     }
 
+    /// A queue with a week of history: 600 finished rows ahead of a job that
+    /// died a minute ago and a backlog waiting 40 minutes. The jobs page's
+    /// 500-row window holds only the finished rows; the overview's own read
+    /// must still find the dead job and the backlog, and count them.
+    #[test]
+    fn the_overview_sees_past_the_queue_history() {
+        with_sqlite("jobs-attention", || {
+            use crate::jobs::{iso_from_unix, unix_now};
+            let now = unix_now();
+            let row = |key: String, state: &str, run_at: i64, finished_at: Option<i64>| {
+                (
+                    key.clone(),
+                    serde_json::json!({
+                        "_key": key,
+                        "handler": "MailJob",
+                        "queue": "default",
+                        "state": state,
+                        "run_at": iso_from_unix(run_at),
+                        "finished_at": finished_at.map(iso_from_unix),
+                        "attempts": 3,
+                        "max_retries": 2,
+                    }),
+                )
+            };
+            let mut rows: Vec<(String, serde_json::Value)> = (0..600)
+                .map(|i| {
+                    let at = now - 6 * 86_400 + i;
+                    row(format!("done-{i}"), "done", at, Some(at + 1))
+                })
+                .collect();
+            rows.push(row(
+                "old-dead".into(),
+                "dead",
+                now - 3 * 86_400,
+                Some(now - 3 * 86_400),
+            ));
+            rows.push(row("fresh-dead".into(), "dead", now - 120, Some(now - 60)));
+            rows.push(row("waiting".into(), "pending", now - 2400, None));
+            rows.push(row("later".into(), "scheduled", now + 3600, None));
+            ensure_table("_jobs").expect("table");
+            insert_many("_jobs", &rows).expect("rows");
+
+            // The trap: the page's window is all history.
+            let window = crate::jobs::store::list(None).expect("list");
+            assert_eq!(window.len(), 500);
+            assert!(window.iter().all(|r| r["state"] == "done"));
+
+            let seen = crate::jobs::store::attention(
+                &iso_from_unix(now),
+                &iso_from_unix(now - 86_400),
+                500,
+            )
+            .expect("attention");
+            let keys = |rows: &[serde_json::Value]| -> Vec<String> {
+                rows.iter()
+                    .map(|r| r["_key"].as_str().unwrap_or("").to_string())
+                    .collect()
+            };
+            assert_eq!(keys(&seen.open), ["waiting", "later"]);
+            assert_eq!(keys(&seen.dead), ["fresh-dead"]);
+            assert_eq!(seen.due, 1);
+            assert_eq!(seen.dead_since, 1);
+        });
+    }
+
     #[test]
     fn a_unique_document_index_rejects_a_duplicate() {
         with_sqlite("doc-index-unique", || {
@@ -3309,6 +3374,53 @@ mod tests {
             // with_deleted: no scope at all.
             let all = cols::ColumnQuery::new(schema);
             assert_eq!(col_count(&all).unwrap(), 2);
+        });
+    }
+
+    /// Every write of the SQL facade arms the durable-write tripwire, reads
+    /// do not. Only the bulk writes did: an action that bumped a counter
+    /// (`increment_field`) or enqueued a job (an `insert` into `_jobs`) and
+    /// then failed on the VM was re-run on the tree-walker, writing twice.
+    #[test]
+    fn every_facade_write_arms_the_durable_write_tripwire() {
+        use crate::interpreter::builtins::model::crud::{clear_durable_commit, had_durable_commit};
+
+        with_sqlite("tripwire", || {
+            let table = "counters";
+            ensure_table(table).expect("table");
+            let wrote = |what: &str, run: &dyn Fn()| {
+                clear_durable_commit();
+                run();
+                assert!(had_durable_commit(), "{what} must arm the tripwire");
+            };
+            wrote("insert", &|| {
+                crate::db::sql::insert(table, Some("c"), serde_json::json!({ "hits": 0 }))
+                    .expect("insert");
+            });
+            wrote("increment_field", &|| {
+                let hits = crate::db::sql::increment_field(table, "c", "hits", 1).expect("bump");
+                assert_eq!(hits, Some(1));
+            });
+            wrote("update", &|| {
+                crate::db::sql::update(table, "c", serde_json::json!({ "hits": 5 }), true)
+                    .expect("update");
+            });
+            wrote("insert_new", &|| {
+                crate::db::sql::insert_new(table, "d", serde_json::json!({ "hits": 0 }))
+                    .expect("insert_new");
+            });
+            wrote("delete", &|| {
+                crate::db::sql::delete(table, "d").expect("delete");
+            });
+            wrote("execute_raw", &|| {
+                crate::db::sql::execute_raw("DELETE FROM counters WHERE 1 = 0")
+                    .expect("execute_raw");
+            });
+
+            clear_durable_commit();
+            crate::db::sql::get(table, "c").expect("get");
+            crate::db::sql::count(&list_query(table, &[])).expect("count");
+            assert!(!had_durable_commit(), "a read must not arm the tripwire");
         });
     }
 

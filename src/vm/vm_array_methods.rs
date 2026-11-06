@@ -57,6 +57,10 @@ impl Vm {
             // RefCell borrow check per element. Iteration uses the live array,
             // matching Ruby's semantics; if the closure shrinks it past `i`,
             // we stop early.
+            //
+            // A compiled block usually runs these in the dispatch loop instead
+            // (`vm_callback_loop.rs`, which mirrors them element for element);
+            // the drivers here serve the other callees and shapes.
             "map" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
@@ -124,6 +128,12 @@ impl Vm {
                 }
                 expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
+                // A one-parameter callback gets the `[acc, item]` pair, which
+                // is what the tree-walker's `array_reduce` binds it. A
+                // one-parameter hash block gets its `[key, value]` pair the
+                // same way. With no parameter it gets nothing, and with two
+                // it gets both values.
+                let pair_arg = super::vm_calls::block_argc(&cb, 2) == 1;
                 let len = arr.borrow().len();
                 let seeded = args.len() == 2;
                 let mut acc = if seeded {
@@ -146,7 +156,12 @@ impl Vm {
                         }
                         let item = b[i].clone();
                         drop(b);
-                        acc = self.invoke_in_batch_two(&batch, &cb, acc.clone(), item, span)?;
+                        acc = if pair_arg {
+                            let pair = Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item])));
+                            self.invoke_in_batch_one(&batch, &cb, pair, span)?
+                        } else {
+                            self.invoke_in_batch_two(&batch, &cb, acc.clone(), item, span)?
+                        };
                     }
                     Ok(())
                 })();
@@ -533,26 +548,11 @@ impl Vm {
                     );
                     return Ok(Value::Array(Rc::new(RefCell::new(sorted))));
                 }
-                // Tolerant sort: the default ordering answers `Equal` across
-                // types, which is not transitive, and `slice::sort_by` panics
-                // when it detects that.
-                crate::interpreter::executor::calls::array_ops::stable_sort_by(
-                    &mut sorted,
-                    |a, b| match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-                        (Value::Float(x), Value::Float(y)) => {
-                            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-                        }
-                        (Value::String(x), Value::String(y)) => x.cmp(y),
-                        (Value::Int(x), Value::Float(y)) => (*x as f64)
-                            .partial_cmp(y)
-                            .unwrap_or(std::cmp::Ordering::Equal),
-                        (Value::Float(x), Value::Int(y)) => x
-                            .partial_cmp(&(*y as f64))
-                            .unwrap_or(std::cmp::Ordering::Equal),
-                        _ => std::cmp::Ordering::Equal,
-                    },
-                );
+                // Total-order fast path for homogeneous Int/String/Float
+                // arrays, the tolerant merge sort otherwise: the default
+                // ordering answers `Equal` across types, which is not
+                // transitive, and `slice::sort_by` panics when it detects that.
+                crate::interpreter::executor::calls::array_ops::sort_values_default(&mut sorted);
                 Ok(Value::Array(Rc::new(RefCell::new(sorted))))
             }
             // ActiveRecord-style chainable query methods that also work on a
@@ -596,7 +596,7 @@ impl Vm {
                     Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::type_error(
-                            "join expects a string separator",
+                            "join expects a string delimiter",
                             span,
                         ))
                     }
@@ -1320,11 +1320,11 @@ impl Vm {
                 let row: Vec<Value> = args.iter().map(|k| extract_pluck_field(first, k)).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(row))))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Array".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Array".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 }

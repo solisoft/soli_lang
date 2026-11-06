@@ -378,7 +378,7 @@ impl TypeChecker {
                 Ok(())
             }
 
-            MatchPattern::Array { elements, rest: _ } => {
+            MatchPattern::Array { elements, rest } => {
                 // Allow Type::Any to match array patterns (e.g., untyped function parameters)
                 if !matches!(input_type, Type::Array(_) | Type::Any) {
                     return Err(TypeError::mismatch(
@@ -391,10 +391,15 @@ impl TypeChecker {
                 for element_pattern in elements {
                     self.check_match_pattern(input_type, element_pattern)?;
                 }
+                // `...rest` is the leftover slice: an array of the same kind.
+                // Left undefined, any use of it was an "Undefined variable".
+                if let Some(rest_name) = rest {
+                    self.env.define(rest_name.clone(), input_type.clone());
+                }
                 Ok(())
             }
 
-            MatchPattern::Hash { fields, rest: _ } => {
+            MatchPattern::Hash { fields, rest } => {
                 // Allow Type::Any to match hash patterns (e.g., untyped function parameters)
                 if !matches!(input_type, Type::Hash { .. } | Type::Any) {
                     return Err(TypeError::mismatch(
@@ -406,6 +411,10 @@ impl TypeChecker {
 
                 for (_, field_pattern) in fields {
                     self.check_match_pattern(input_type, field_pattern)?;
+                }
+                // `...rest` is the hash minus the named keys.
+                if let Some(rest_name) = rest {
+                    self.env.define(rest_name.clone(), input_type.clone());
                 }
                 Ok(())
             }

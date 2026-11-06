@@ -302,7 +302,7 @@ class PostsController < Controller
 
   # GET /posts/new — implicit render of posts/new
   def new
-    @post = Post.new
+    @post = Post.new()
     @title = "New post"
   end
 

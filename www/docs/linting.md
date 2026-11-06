@@ -81,6 +81,13 @@ this.on_save = fn(record) { this.log(record) }
 this.on_save = "log"
 ```
 
+The rule only watches instance code. Where `this` is the class — a
+`static { … }` block, a `static def`, class-level statements — a closure stored
+on it is held by a class that lives as long as the process, so the documented
+controller hooks (`this.before_action = fn(req) { … }`,
+`this.after_action = fn(req, response) { … }`) are not flagged. The body of such
+a lambda is instance code again: a closure it stores on `this` is flagged.
+
 `smell/dangerous-server-builtin` fires on `db_query_raw`, `Trusted.*`,
 `System.shell` / `System.shell_sync`, and backtick command substitution, when
 called from `app/controllers/`, `app/middleware/` or `app/views/`. These are
@@ -128,6 +135,12 @@ Correct code that reads better with a builtin.
 | `idiom/prefer-includes` | three or more `==` on one value | `["up", "late"].includes?(status)` |
 | `idiom/prefer-to-s` | `record.title ?? ""` | `record.title.to_s` |
 | `idiom/manual-find-guard` | a nil-check after `Model.find` | nothing — `find` raises |
+
+`idiom/prefer-includes` costs nothing at run time. Where code runs on the
+bytecode VM (production `soli serve`, scripts), the list of literals in
+`["up", "late"].includes?(status)` is built once, when the code is compiled:
+each evaluation only compares `status` with its elements, which makes the
+rewrite faster than the `==` chain it replaces.
 
 `idiom/prefer-to-s` is about honesty as much as brevity. Coalescing to an empty
 string means "render this, and render nothing when it is nil", which `.to_s`

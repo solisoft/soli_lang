@@ -48,19 +48,17 @@ impl Interpreter {
                         span,
                     })
             }
+            // By character, negative from the end — the helper the VM's
+            // GetIndex uses, so both engines answer and fail alike. This
+            // used to offset a negative index from the byte length, so on
+            // non-ASCII text `"héllo"[-1]` raised and the error reported
+            // bytes where the VM reported characters.
             (Value::String(s), Value::Int(idx)) => {
-                let original_idx = *idx;
-                let idx_usize = if *idx < 0 {
-                    (s.len() as i64 + idx) as usize
-                } else {
-                    *idx as usize
-                };
-                s.chars()
-                    .nth(idx_usize)
-                    .map(crate::interpreter::executor::calls::string_methods::char_to_value)
-                    .ok_or(RuntimeError::IndexOutOfBounds {
-                        index: original_idx,
-                        length: s.len(),
+                crate::interpreter::executor::calls::string_methods::string_char_at(s, *idx)
+                    .ok_or_else(|| RuntimeError::IndexOutOfBounds {
+                        index: *idx,
+                        // Counted only on a miss: the hit path never needs it.
+                        length: s.chars().count(),
                         span,
                     })
             }

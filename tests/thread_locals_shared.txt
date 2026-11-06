@@ -19,6 +19,8 @@ src/interpreter/builtins/model/state_machine.rs SM_BUILDER_STACK
 src/interpreter/builtins/template.rs VIEW_HELPER_ENV
 src/interpreter/executor/statements.rs NAMESPACE
 src/serve/query_stats.rs LOCAL
+src/serve/usage.rs LOCAL
+src/serve/usage.rs ROUTE_CACHE
 src/serve/slow_queries.rs SUPPRESSED
 src/serve/tenant.rs CURRENT
 src/solidb_driver.rs CLIENT
@@ -53,8 +55,18 @@ src/interpreter/builtins/test_helpers.rs SOLIKV_PROBE
 src/interpreter/builtins/test_server.rs THREAD_TEST_SERVER_PORT
 src/interpreter/executor/calls/cascade.rs TEST_CASCADE_CHILDREN
 src/interpreter/executor/calls/cascade.rs TEST_LOADED_INSTANCES
+src/interpreter/executor/calls/user_methods.rs TEST_FLAGS
+src/interpreter/executor/mod.rs VM_FRAGMENTS_BUILT
+src/interpreter/value.rs RESTRICTED_LOOKUPS
 src/serve/compression.rs TEST_SETTINGS
 src/serve/repl_session.rs REPL_STORE
+src/vm/vm.rs GENERAL_FIELD_OPS
+src/vm/vm.rs GENERAL_MEMBER_OPS
+src/vm/vm_calls.rs PLAIN_NATIVE_CALLS
+src/vm/vm_calls.rs SLOW_PATH_CALLS
+src/vm/vm_classes.rs CLASS_MEMBER_HANDOFFS
+src/vm/vm_classes.rs THIS_SCANS
+src/vm/vm_domain.rs NESTED_RUNS
 
 # Boot-time flags
 src/serve/app_loader.rs LOAD_STATS
@@ -83,13 +95,17 @@ src/template/vm_template.rs POOL_GENERATION
 src/template/vm_template.rs WORKER_GLOBALS
 
 # Caches and memos
+src/interpreter/builtins/env.rs GETENV_CACHE
 src/interpreter/builtins/i18n/mod.rs TABLE_CACHE
 src/interpreter/builtins/security_headers.rs CACHED_SECURITY_HEADERS
 src/interpreter/builtins/template.rs FILE_MTIME_CACHE
+src/interpreter/builtins/template.rs PUBLIC_URL_CACHE
+src/interpreter/value.rs METHOD_EPOCH
 src/regex_cache.rs LOCAL_CACHE
 src/serve/eui/tree.rs MEMOS
 src/serve/eui/tree.rs SWEEP
 src/serve/middleware.rs DEMOTED_MIDDLEWARE
+src/serve/mod.rs SETTLED_APP_ERRORS
 src/serve/middleware.rs TREE_WALKER_ONLY
 src/serve/mod.rs CONTROLLERS_WITH_HOOKS
 src/serve/mod.rs PASCAL_CASE_CACHE
@@ -101,7 +117,7 @@ src/template/mod.rs INCLUDES
 src/template/response_cache.rs RESPONSE_CACHE
 src/template/response_cache.rs UNCACHEABLE
 src/template/vm_template.rs COMPILED
-src/vm/vm_calls.rs VIEW_HELPER_VM
+src/vm/vm_view_helpers.rs VIEW_HELPERS
 
 # Registries and interned classes
 src/interpreter/builtins/controller/registry.rs HOOK_FUNCTIONS
@@ -134,6 +150,7 @@ src/interpreter/builtins/router.rs ROUTER_CONTEXT
 src/interpreter/builtins/router.rs OPENAPI_SCOPE
 src/interpreter/builtins/server.rs ROUTES
 src/interpreter/builtins/server.rs ROUTE_INDEX
+src/interpreter/builtins/server.rs ROUTES_GENERATION
 src/interpreter/builtins/spreadsheet.rs CLASS
 src/interpreter/builtins/streaming.rs OUT_CLASS
 src/interpreter/builtins/template.rs VIEW_HELPERS

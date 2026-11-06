@@ -416,6 +416,7 @@ names.each_with_index |name, i| print("#{i}: #{name}") end
 names.each_with_index.map { |name, i| "#{i}: #{name}" }
 # => ["0: Alice", "1: Bob", "2: Charlie"]</code></pre>
                     <p class="text-gray-400 mt-3">A block that declares two or more parameters destructures an array element, as a Ruby block does: <code>[["Ann", 31], ["Bob", 42]].map { |name, age| "#{name} (#{age})" }</code>. A one-parameter block still receives the element whole.</p>
+                    <p class="text-gray-400 mt-3">A block may also declare fewer parameters than the iterator passes, and it receives only those. This holds for every iterator: <code>names.each_with_index { |name| … }</code> gets the element without its index, <code>names.each { print("tick") }</code> runs once per element, and <code>3.times { … }</code> drops the index. One exception: a one-parameter <code>reduce</code> callback receives the <code>[acc, x]</code> pair, just as a one-parameter hash block receives <code>[key, value]</code>. A direct call still checks its arity, so <code>f = fn() { 1 }</code> followed by <code>f(5)</code> raises.</p>
                 </div>
             </section>
 

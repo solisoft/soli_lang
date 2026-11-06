@@ -66,9 +66,24 @@ impl Compiler {
             has_superclass: decl.superclass.is_some(),
         });
 
-        // Compile fields with initializers
+        // Declare the fields. An instance field's literal default (or nil) is
+        // kept by `Op::Field`; the others are evaluated for each new
+        // instance by one method (see `FIELD_DEFAULTS_METHOD`).
         for field in &decl.fields {
             self.compile_field(field, line)?;
+        }
+        let computed: Vec<(String, crate::ast::Expr)> = decl
+            .fields
+            .iter()
+            .filter(|field| !field.is_static)
+            .filter_map(|field| {
+                let init = field.initializer.as_ref()?;
+                (!crate::interpreter::executor::access::member::is_literal_default(init))
+                    .then(|| (field.name.clone(), init.clone()))
+            })
+            .collect();
+        if !computed.is_empty() {
+            self.compile_field_defaults(&computed, line)?;
         }
 
         // Compile methods
@@ -113,22 +128,11 @@ impl Compiler {
             self.emit(Op::Extend, line);
         }
 
-        // Compile constructor. Field initializers are baked into the
-        // constructor bytecode, so a class without one but with instance
-        // field defaults gets a synthetic zero-arg init.
+        // Compile the constructor: its body only. The fields are set before
+        // any constructor runs (`Vm::init_fields`), so a `super(...)` into a
+        // parent's never sets them again, and a class without `new` has none.
         if let Some(ref ctor) = decl.constructor {
-            self.compile_constructor(ctor, &decl.fields, false, line)?;
-        } else if decl
-            .fields
-            .iter()
-            .any(|f| !f.is_static && f.initializer.is_some())
-        {
-            let synthetic = ConstructorDecl {
-                params: Vec::new(),
-                body: Default::default(),
-                span: decl.span,
-            };
-            self.compile_constructor(&synthetic, &decl.fields, true, line)?;
+            self.compile_constructor(ctor, line)?;
         }
 
         // Compile static block
@@ -232,10 +236,24 @@ impl Compiler {
     fn compile_field(&mut self, field: &FieldDecl, line: usize) -> CompileResult<()> {
         let name_idx = self.add_string_constant(&field.name);
 
-        if let Some(ref init) = field.initializer {
-            self.compile_expr(init)?;
-        } else {
-            self.emit(Op::Null, line);
+        // A static field holds its value. An instance field's `Op::Field`
+        // keeps the value each new instance starts with: its literal default
+        // or nil. A default that is not a literal must not run here, at class
+        // definition: it runs once per instance, as on the tree-walker.
+        let start = match &field.initializer {
+            Some(init)
+                if field.is_static
+                    || crate::interpreter::executor::access::member::is_literal_default(init) =>
+            {
+                Some(init)
+            }
+            _ => None,
+        };
+        match start {
+            Some(init) => self.compile_expr(init)?,
+            None => {
+                self.emit(Op::Null, line);
+            }
         }
 
         match (field.is_static, field.is_const) {
@@ -306,7 +324,7 @@ impl Compiler {
         self.end_scope(line);
 
         let mut proto = self.finish_function(line);
-        proto.return_type = method.return_type.clone();
+        proto.set_return_type(method.return_type.clone());
         proto.decl_span = method.span;
         let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(fn_idx), line);
@@ -329,32 +347,12 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_constructor(
-        &mut self,
-        ctor: &ConstructorDecl,
-        fields: &[FieldDecl],
-        defaults_only: bool,
-        line: usize,
-    ) -> CompileResult<()> {
+    fn compile_constructor(&mut self, ctor: &ConstructorDecl, line: usize) -> CompileResult<()> {
         let _dummy =
             self.start_function(FunctionType::Constructor, "init".to_string(), &ctor.params);
 
         self.begin_scope();
         self.emit_param_defaults(&ctor.params)?;
-
-        // Initialize instance fields that have initializers
-        for field in fields {
-            if !field.is_static {
-                if let Some(ref init) = field.initializer {
-                    self.emit(Op::GetLocal(0), line); // this
-                    self.compile_expr(init)?;
-                    let name_idx = self.add_string_constant(&field.name);
-                    self.emit(Op::InitProperty(name_idx), line);
-                    self.emit(Op::Pop, line);
-                }
-            }
-        }
-
         self.hoist_locals(&ctor.body, line);
         for stmt in &ctor.body {
             self.compile_stmt(stmt)?;
@@ -362,13 +360,61 @@ impl Compiler {
         self.end_scope(line);
 
         // Constructor always returns `this`
-        let mut proto = self.finish_constructor(line);
-        proto.defaults_only = defaults_only;
+        let proto = self.finish_constructor(line);
         let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(fn_idx), line);
 
-        let name_idx = self.add_string_constant("init");
+        // Registered apart from the methods (`Class::vm_init`): a user
+        // method named `init` is not the constructor.
+        let name_idx = self.add_string_constant(crate::interpreter::value::VM_CONSTRUCTOR);
         self.emit(Op::Method(name_idx), line);
+        Ok(())
+    }
+
+    /// The class's field defaults that are not literals, as one method
+    /// registered under [`FIELD_DEFAULTS_METHOD`]: run on a new instance as
+    /// the class, it stores each value in its field, in declaration order,
+    /// and returns nil. `op_add_method` keeps it in the class's `FieldInit`,
+    /// never among its methods.
+    ///
+    /// [`FIELD_DEFAULTS_METHOD`]: crate::interpreter::value::FIELD_DEFAULTS_METHOD
+    fn compile_field_defaults(
+        &mut self,
+        defaults: &[(String, crate::ast::Expr)],
+        line: usize,
+    ) -> CompileResult<()> {
+        let _dummy = self.start_function(
+            FunctionType::Method,
+            crate::interpreter::value::FIELD_DEFAULTS_METHOD.to_string(),
+            &[],
+        );
+        self.emit_field_defaults(defaults, line)?;
+        let proto = self.finish_function(line);
+        let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
+        self.emit(Op::Closure(fn_idx), line);
+        let name_idx = self.add_string_constant(crate::interpreter::value::FIELD_DEFAULTS_METHOD);
+        self.emit(Op::Method(name_idx), line);
+        Ok(())
+    }
+
+    /// The body of the field-defaults method: `this.<name> = <default>` for
+    /// each, as raw writes (`Op::InitProperty`) — a `const`, `private` or
+    /// frozen field takes its default, as on the tree-walker. Nothing is
+    /// collected: no hash per instance.
+    pub(super) fn emit_field_defaults(
+        &mut self,
+        defaults: &[(String, crate::ast::Expr)],
+        line: usize,
+    ) -> CompileResult<()> {
+        self.begin_scope();
+        for (name, init) in defaults {
+            self.emit(Op::GetLocal(0), line);
+            self.compile_expr(init)?;
+            let name_idx = self.add_string_constant(name);
+            self.emit(Op::InitProperty(name_idx), line);
+            self.emit(Op::Pop, line);
+        }
+        self.end_scope(line);
         Ok(())
     }
 

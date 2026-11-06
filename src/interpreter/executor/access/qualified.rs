@@ -35,11 +35,11 @@ impl Interpreter {
                     return Ok(value);
                 }
 
-                Err(RuntimeError::NoSuchProperty {
-                    value_type: class.name.clone(),
-                    property: name.to_string(),
+                Err(RuntimeError::no_such_property(
+                    class.name.clone(),
+                    name.to_string(),
                     span,
-                })
+                ))
             }
             _ => Err(RuntimeError::type_error(
                 format!("'{}' is not a class", qualifier_val.type_name()),

@@ -87,7 +87,10 @@ pub(super) fn reset_worker_thread_locals(dev_mode: bool) {
 ///   visitor's `req["current_user"]`;
 /// - a transaction or `grouped` batch a panic interrupted: the next request
 ///   wrote into the dead request's uncommitted transaction, or deferred its
-///   reads into its batch.
+///   reads into its batch;
+/// - a VM failure noted for a tree-walker re-run a panic interrupted: the next
+///   request's re-run would settle it as its own engine divergence, and demote
+///   its own handler.
 ///
 /// Also run by a socket event, which shares the worker threads.
 pub(super) fn forget_unfinished_request() {
@@ -98,6 +101,7 @@ pub(super) fn forget_unfinished_request() {
     template::clear_current_headers();
     template::clear_helper_request_context();
     set_current_action("");
+    super::forget_possible_divergence();
 
     if model::crud::has_active_tx() {
         // Rolled back rather than dropped, so a SQL connection goes back to its
@@ -259,6 +263,14 @@ mod tests {
         set_current_action("destroy");
         assert!(batch::begin());
         batch::enter_block();
+        // A VM failure noted for a re-run that a panic cut short.
+        crate::interpreter::builtins::model::crud::clear_durable_commit();
+        crate::serve::vm_failure_verdict(
+            crate::serve::HandlerKind::Action,
+            "PostsController#destroy",
+            &crate::error::RuntimeError::new("boom", crate::span::Span::default()),
+        );
+        assert!(crate::serve::PENDING_DIVERGENCE.with(|p| p.borrow().is_some()));
 
         forget_unfinished_request();
 
@@ -268,5 +280,9 @@ mod tests {
         assert_eq!(current_action_name(), "");
         assert!(!batch::is_active());
         assert!(!batch::in_block());
+        assert!(
+            crate::serve::PENDING_DIVERGENCE.with(|p| p.borrow().is_none()),
+            "the next request's re-run must not settle the dead one's VM failure"
+        );
     }
 }

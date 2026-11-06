@@ -321,7 +321,9 @@ the only added variable.
 The Template row's caveat applies here too: with the query cache off, Soli runs the query on
 every request, but the page rendered from its result can still come out of the response cache,
 because the result is the same each time. The uncached row therefore measures the database
-path in full and the render path at its best.
+path in full and the render path at its best. That holds because `pluck` returns plain hashes:
+a page rendered from model records (`Post.all`) is rendered on every request, since its view
+can call the records' methods and a relation reads the database behind the cache's back.
 
 Soli takes the row with or without its query cache — **9.4x Rails' throughput uncached**, and
 1.22x Kemal (192,564), ahead of Phoenix (72,263) and Express (70,143). What the render costs

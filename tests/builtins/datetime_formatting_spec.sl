@@ -38,6 +38,21 @@ describe("DateTime serialisation") do
     assert_eq("at #{utc}", "at 2024-01-15 10:30:00")
   end
 
+  test("the string form matches format() before 1970, on leap days and in both views") do
+    [-1, -86401, 0, 951782399, 951782400, 4107542399, -2203891200].each do |seconds|
+      instant = DateTime.from_unix(seconds)
+      [instant.utc, instant.local].each do |view|
+        expected = view.format("%Y-%m-%d %H:%M:%S")
+        assert_eq(view.to_s, expected)
+        assert_eq(str(view), expected)
+        assert_eq("[#{view}]", "[#{expected}]")
+      end
+    end
+    assert_eq(DateTime.from_unix(-1).utc.to_s, "1969-12-31 23:59:59")
+    assert_eq(DateTime.from_unix(951782400).utc.to_s, "2000-02-29 00:00:00")
+    assert_eq(DateTime.from_unix(4107542399).utc.to_s, "2100-02-28 23:59:59")
+  end
+
   test("JSON renders it as to_iso") do
     assert_eq({"at": moment}.to_json, "{\"at\":\"2024-01-15T10:30:00+00:00\"}")
   end

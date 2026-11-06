@@ -246,7 +246,7 @@ this.after_action(:create, :update) = fn(req, response) {
 
 ### Which engine runs a hook
 
-In production, hooks run on the bytecode VM, like actions: each `fn(...) { ... }` is compiled once per worker and runs bound to the controller, so `@foo = ...`, `this`, `halt(...)` and a returned response behave as they do in an action. A hook the VM cannot compile, or that fails on it before writing anything, is re-run on the tree-walking interpreter and stays there for that worker, the way an action falls back; it is counted in `soli_vm_handler_demotions_total` (see [Observability](observability.md)). A hook, action or middleware that ran out of the request's time budget ([`SOLI_HANDLER_TIMEOUT_SECS`](configuration.md)) is neither re-run nor moved: the request answers with the timeout error. Under `soli serve --dev` they run on the interpreter, as everything does.
+In production, hooks run on the bytecode VM, like actions: each `fn(...) { ... }` is compiled once per worker and runs bound to the controller, so `@foo = ...`, `this`, `halt(...)` and a returned response behave as they do in an action. A hook that fails on the VM before writing anything is re-run on the tree-walking interpreter, as an action is, and the re-run answers the request. It stays on the interpreter for that worker only when the VM was at fault: the VM cannot compile it, or the re-run answers (it succeeds, or halts) where the VM failed. An error both engines raise, such as a `throw` or a nil read from a missing parameter, is the app's own: the request answers 500 and the hook stays on the VM, and the next requests failing with that error are answered from the VM, without a re-run (a new error is re-run once, up to eight per hook; past that every error of the hook is answered from the VM). A hook that fails after writing (to the database, a job, a mail) is not re-run, since the write would happen twice; its error is the answer, and it moves to the interpreter, since nothing can tell whose error it was. Each move is counted in `soli_vm_handler_demotions_total` (see [Observability](observability.md)). A hook, action or middleware that ran out of the request's time budget ([`SOLI_HANDLER_TIMEOUT_SECS`](configuration.md)) is neither re-run nor moved: the request answers with the timeout error. Under `soli serve --dev` they run on the interpreter, as everything does.
 
 ## Request Object
 
@@ -434,7 +434,8 @@ Rules:
 - **Explicit render data wins.** `render("v", {"post": other})` overrides `@post`.
 - **Framework fields are never re-exposed** via this path: `req`, `params`, `session`, `headers` always flow through their normal channels, so an action can't accidentally shadow them.
 - **Scoped to the current action.** No cross-action, cross-controller, or cross-request leakage — a fresh controller instance is created per request.
-- **Partials are not auto-exposed.** Always pass data to `render_partial(...)` / `partial(...)` explicitly. Inside the partial, read keys as bare identifiers (`<%= name %>`) or via the `locals` hash (`<%= locals["class"] %>`) — see [Views → The `locals` hash](./views.md#the-locals-hash).
+- **The hash you pass stays yours.** `render("v", data)` adds `req`, `params`, `cookies` and the `@ivars` to a copy of `data`, and `render_partial(...)` / `partial(...)` add the request context to a copy too. A hash you read again after the call, or keep past the request (a `const` of defaults), holds only your keys, so it never carries one request's values into the next.
+- **Partials and components inherit them too**, after the locals passed to `render_partial(...)` / `partial(...)` / `component(...)`: an explicit local wins over an `@ivar` of the same name, and nothing is copied into the hash you pass. Inside the partial, read keys as bare identifiers (`<%= name %>`) or via the `locals` hash (`<%= locals["class"] %>`) — see [Views → Inherited instance variables](./views.md#inherited-instance-variables) and [Views → The `locals` hash](./views.md#the-locals-hash).
 
 > **Note on `@foo`:** `@foo` is a general language shorthand for `this.foo` inside any class method, not a controller-only feature. See [Soli Language → The `@` Sigil](./soli-language.md#the--sigil--shorthand-for-this) for the full rules.
 
@@ -524,6 +525,35 @@ Resolution rules:
 Edits to these declarations are picked up on the next request in `--dev` mode —
 no server restart required.
 
+### The response cache
+
+Each worker keeps the page a `render(...)` produced and gives it back, without
+rendering, to the next render of the same view, layout and locale with the same data.
+The action still runs; only the render is skipped. The data is the hash you pass, plus
+the `@fields` and the request (`req`, `params`, `cookies`), so a page is kept once per
+path, query, set of headers and client address. A worker holds 64 entries, and a hot
+reload in `--dev` empties them.
+
+A render is never kept, or answered from the cache, when:
+
+- the request has a session, because the layout may show who is signed in;
+- the action or the view sets a cookie, writes the session or the flash, puts a CSRF token
+  on the page (`csrf_meta_tag()`, a form), or calls `clock` or `Math.random`. A page that
+  did so once is not kept again until the next restart or hot reload;
+- the data holds an **object**: a model record (`Post.all`, `Post.find(id)`) or any class
+  instance. A view calls an object's methods, and they can read what the data does not
+  hold. A relation (`post.author`, `post.comments.count`) queries the database at render
+  time. The same goes for a query not run yet (`Post.where(...)` iterated by the view) and
+  for a pending future.
+
+Plain values are compared by what they hold: strings, numbers, `Decimal`, `DateTime`,
+arrays and hashes. `Post.pluck(:id, :title).all` returns hashes, so a page rendered from
+plucked rows is answered from the cache until the rows change.
+
+A view should take what it shows from its data. The cache does not see a view that reads
+the database, a file or the time itself (`<%= Post.count %>`, `DateTime.now`), and keeps
+the page as it was first rendered. Assign the value to an `@field` in the action instead.
+
 ### Redirect
 
 ```soli
@@ -573,7 +603,9 @@ def api_users
 end
 ```
 
-> **Security — instance serialisation.** `render_json(instance)` (and any code path that JSON-stringifies a `Value::Instance`, including `to_json` on a Model record) **omits sensitive fields by default**. Names matching `password*`, `*_token`, `*_digest`, `*_secret`, or `*_hash` are dropped, as are `_`-prefixed framework internals (`_errors`, `_text`, `_pending_translations`, …). The standard Model metadata (`_key`, `_id`, `_rev`, `_created_at`, `_updated_at`) is still included. If you need to expose a field whose name matches one of the patterns, build the response shape explicitly: `render_json({ "id": user._key, "email": user.email, "auth_token_count": user.auth_token_count })` instead of `render_json(user)`.
+The call is the response: an action that ends with `render_json`, `render_text` or `render_jsonp` never auto-renders a view of the same name, even when `app/views/<controller>/<action>.html.slv` exists.
+
+> **Security — instance serialisation.** `render_json(instance)` (and any code path that JSON-stringifies a `Value::Instance`, including `to_json` on a Model record) **omits sensitive fields by default**. Names matching `password*`, `*_token`, `*_digest`, `*_secret`, or `*_hash` are dropped, as are `_`-prefixed framework internals (`_errors`, `_text`, `_pending_translations`, …). The standard Model metadata (`_key`, `_id`, `_rev`, `_created_at`, `_updated_at`) is still included. The fields are written **sorted by name** (byte order, so `_key` comes before `body`), so the same data always gives the same bytes — stable ETags, cache keys and snapshot tests. A Hash keeps its insertion order; build one when the key order matters. If you need to expose a field whose name matches one of the patterns, build the response shape explicitly: `render_json({ "id": user._key, "email": user.email, "auth_token_count": user.auth_token_count })` instead of `render_json(user)`.
 
 For a reusable model-side shape, define an `as_json` method on the Model subclass:
 >

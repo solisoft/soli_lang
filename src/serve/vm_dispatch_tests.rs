@@ -117,6 +117,10 @@ class PagesController
   def leaf_m
     Leaf.new().m()
   end
+
+  def mid_m
+    Mid.new().m()
+  end
 end
 "#;
 
@@ -170,6 +174,20 @@ fn super_reaches_the_nearest_override_after_an_ancestor_was_compiled() {
     assert_eq!(app.call("PagesController", "base_m"), Value::Int(1));
     assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
     // And again, now that every level is compiled.
+    assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
+}
+
+/// The order the review found on a served app: the whole chain first, then
+/// its root alone, then the chain again. `Base#m` run alone must not make
+/// `Leaf#m`'s `super` skip `Mid#m` (it answered 101 on the branch before the
+/// 2.29.4 merge, for the rest of the worker's life).
+#[test]
+fn super_still_reaches_the_middle_override_after_the_root_ran_alone() {
+    let mut app = ServedApp::load(POLICIES);
+    assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
+    assert_eq!(app.call("PagesController", "base_m"), Value::Int(1));
+    assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
+    assert_eq!(app.call("PagesController", "mid_m"), Value::Int(11));
     assert_eq!(app.call("PagesController", "leaf_m"), Value::Int(111));
 }
 
@@ -402,6 +420,69 @@ fn a_subclass_static_override_wins_after_the_parent_static_was_compiled() {
             app.call("ScopesController", "reply"),
             Value::String("child-denies:1 child-scope child-scope".into()),
             "the nearest override must win through an intermediate class"
+        );
+    }
+}
+
+const LABELLED: &str = r##"
+class Greeter
+  def hello(name: String = "you")
+    "parent #{name}"
+  end
+
+  def wave
+    "parent wave"
+  end
+end
+
+class LoudGreeter < Greeter
+  def hello(name: String = "you")
+    "child #{name}"
+  end
+
+  def wave
+    "child wave"
+  end
+end
+
+class GreetController
+  def parent
+    "#{Greeter.new().hello(name: "a")} #{Greeter.new().wave()}"
+  end
+
+  def child
+    "#{LoudGreeter.new().hello(name: "b")} #{LoudGreeter.new().wave()}"
+  end
+
+  def child_loop
+    greeter = LoudGreeter.new()
+    out = []
+    3.times { |i| out.push(greeter.wave()) }
+    out.join(",")
+  end
+end
+"##;
+
+/// The branch's own call paths resolve the nearest definition too: a
+/// labelled call (`call_method_named`), and the fast tier's per-site method
+/// cache, which used to remember the first compiled method anywhere up the
+/// chain and so ran `Greeter#wave` for a `LoudGreeter` once the parent's had
+/// been compiled.
+#[test]
+fn labelled_and_cached_calls_reach_the_subclass_override() {
+    let mut app = ServedApp::load(LABELLED);
+    assert_eq!(
+        app.call("GreetController", "parent"),
+        Value::String("parent a parent wave".into())
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            app.call("GreetController", "child"),
+            Value::String("child b child wave".into())
+        );
+        assert_eq!(
+            app.call("GreetController", "child_loop"),
+            Value::String("child wave,child wave,child wave".into())
         );
     }
 }

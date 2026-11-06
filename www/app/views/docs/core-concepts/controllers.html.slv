@@ -8,7 +8,8 @@
             Soli supports both modern class-based controllers and simple function-based handlers.
             The request hash is automatically available as <code>req</code> — no parameter declaration needed.
             When no explicit <code>render</code> is called, the matching view template is auto-rendered
-            with all <code>@</code> instance variables exposed as view locals.
+            with all <code>@</code> instance variables exposed as view locals, and to the partials and
+            components it renders, after the locals passed to them.
         </p>
     </div>
 
@@ -82,7 +83,7 @@ end</code></pre>
 
     <h3 id="hook-engine" class="text-xl font-semibold text-white mt-8 mb-4 scroll-mt-24">Which engine runs a hook</h3>
     <p class="text-gray-400 mb-4">
-        In production, hooks run on the bytecode VM, like actions: each <code>fn(...) { ... }</code> is compiled once per worker and runs bound to the controller, so <code>@foo = ...</code>, <code>this</code>, <code>halt(...)</code> and a returned response behave as they do in an action. A hook the VM cannot compile, or that fails on it before writing anything, is re-run on the tree-walking interpreter and stays there for that worker, the way an action falls back; it is counted in <code>soli_vm_handler_demotions_total</code> (see <a href="/docs/development-tools/observability" class="text-cyan-400 hover:underline">Observability</a>). A hook, action or middleware that ran out of the request&rsquo;s time budget (<a href="/docs/getting-started/configuration" class="text-cyan-400 hover:underline"><code>SOLI_HANDLER_TIMEOUT_SECS</code></a>) is neither re-run nor moved: the request answers with the timeout error. Under <code>soli serve --dev</code> they run on the interpreter, as everything does.
+        In production, hooks run on the bytecode VM, like actions: each <code>fn(...) { ... }</code> is compiled once per worker and runs bound to the controller, so <code>@foo = ...</code>, <code>this</code>, <code>halt(...)</code> and a returned response behave as they do in an action. A hook that fails on the VM before writing anything is re-run on the tree-walking interpreter, as an action is, and the re-run answers the request. It stays on the interpreter for that worker only when the VM was at fault: the VM cannot compile it, or the re-run answers (it succeeds, or halts) where the VM failed. An error both engines raise, such as a <code>throw</code> or a nil read from a missing parameter, is the app&rsquo;s own: the request answers 500 and the hook stays on the VM, and the next requests failing with that error are answered from the VM, without a re-run (a new error is re-run once, up to eight per hook; past that every error of the hook is answered from the VM). A hook that fails after writing (to the database, a job, a mail) is not re-run, since the write would happen twice; its error is the answer, and it moves to the interpreter, since nothing can tell whose error it was. Each move is counted in <code>soli_vm_handler_demotions_total</code> (see <a href="/docs/development-tools/observability" class="text-cyan-400 hover:underline">Observability</a>). A hook, action or middleware that ran out of the request&rsquo;s time budget (<a href="/docs/getting-started/configuration" class="text-cyan-400 hover:underline"><code>SOLI_HANDLER_TIMEOUT_SECS</code></a>) is neither re-run nor moved: the request answers with the timeout error. Under <code>soli serve --dev</code> they run on the interpreter, as everything does.
     </p>
 
     <div class="my-8 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
@@ -343,6 +344,7 @@ theme = read_cookie("theme");                        # raw string or nil</code><
                     </svg>
                 </a>
                 <p class="text-gray-400 text-sm mb-3">Render an HTML view template with optional data.</p>
+                <p class="text-gray-400 text-sm mb-3">The view also gets <code>req</code>, <code>params</code>, <code>cookies</code> and the action's <code>@</code> fields. They are added to a copy of <code>data</code>, as <code>render_partial()</code> adds the request context to a copy: the hash you pass keeps only your keys, so one you read again after the call, or keep past the request (a <code>const</code> of defaults), never carries one request's values into the next.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">@title = "Welcome"
 render("home/index")   # @fields reach the view; bare `render` is implicit anyway</code></pre>
             </div>
@@ -359,10 +361,11 @@ render("home/index")   # @fields reach the view; bare `render` is implicit anywa
                 <p class="text-gray-400 text-sm mb-3">Render a JSON response with automatic <code class="text-amber-400">Content-Type: application/json</code> header. Data is automatically serialized to JSON.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">render_json({ "users": users })
 render_json({ "error": "Not found" }, 404)</code></pre>
+                <p class="text-gray-400 text-sm mb-3">The call is the response: an action that ends with <code class="text-amber-400">render_json</code>, <code class="text-amber-400">render_text</code> or <code class="text-amber-400">render_jsonp</code> never auto-renders a view of the same name, even when <code class="text-amber-400">app/views/&lt;controller&gt;/&lt;action&gt;.html.slv</code> exists.</p>
                 <div class="my-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
                     <p class="text-rose-200/80 text-sm">
                         <strong>Security — instance serialisation.</strong>
-                        <code class="text-amber-400">render_json(instance)</code> (and any code path that JSON-stringifies a model record) <strong>omits sensitive fields by default</strong>. Names matching <code class="text-amber-400">password*</code>, <code class="text-amber-400">*_token</code>, <code class="text-amber-400">*_digest</code>, <code class="text-amber-400">*_secret</code>, or <code class="text-amber-400">*_hash</code> are dropped, as are <code class="text-amber-400">_</code>-prefixed framework internals (<code class="text-amber-400">_errors</code>, <code class="text-amber-400">_text</code>, …). Standard model metadata (<code class="text-amber-400">_key</code>, <code class="text-amber-400">_id</code>, <code class="text-amber-400">_rev</code>, <code class="text-amber-400">_created_at</code>, <code class="text-amber-400">_updated_at</code>) is still included. To expose a field whose name matches a pattern, build the response shape explicitly: <code class="text-amber-400">render_json({ "id": user._key, "email": user.email })</code>.
+                        <code class="text-amber-400">render_json(instance)</code> (and any code path that JSON-stringifies a model record) <strong>omits sensitive fields by default</strong>. Names matching <code class="text-amber-400">password*</code>, <code class="text-amber-400">*_token</code>, <code class="text-amber-400">*_digest</code>, <code class="text-amber-400">*_secret</code>, or <code class="text-amber-400">*_hash</code> are dropped, as are <code class="text-amber-400">_</code>-prefixed framework internals (<code class="text-amber-400">_errors</code>, <code class="text-amber-400">_text</code>, …). Standard model metadata (<code class="text-amber-400">_key</code>, <code class="text-amber-400">_id</code>, <code class="text-amber-400">_rev</code>, <code class="text-amber-400">_created_at</code>, <code class="text-amber-400">_updated_at</code>) is still included. The fields are written <strong>sorted by name</strong> (byte order, so <code class="text-amber-400">_key</code> comes before <code class="text-amber-400">body</code>), so the same data always gives the same bytes: stable ETags, cache keys and snapshot tests. A Hash keeps its insertion order; build one when the key order matters. To expose a field whose name matches a pattern, build the response shape explicitly: <code class="text-amber-400">render_json({ "id": user._key, "email": user.email })</code>.
                     </p>
                     <p class="text-rose-200/80 text-sm mt-3">
                         For a reusable model-side shape, define an <code class="text-amber-400">as_json</code> method on the Model subclass &mdash; same convention as Rails' <code class="text-amber-400">ActiveModel::Serializers#as_json</code>:
@@ -526,6 +529,23 @@ end</code></pre>
             </div>
         </section>
     </div>
+
+    <h2 id="response-cache" class="text-2xl font-bold text-white mb-6 scroll-mt-24">The Response Cache</h2>
+    <p class="text-gray-400 mb-4">
+        Each worker keeps the page a <code>render(...)</code> produced and gives it back, without rendering, to the next render of the same view, layout and locale with the same data. The action still runs; only the render is skipped. The data is the hash you pass, plus the <code>@fields</code> and the request (<code>req</code>, <code>params</code>, <code>cookies</code>), so a page is kept once per path, query, set of headers and client address. A worker holds 64 entries, and a hot reload in <code>--dev</code> empties them.
+    </p>
+    <p class="text-gray-400 mb-2">A render is never kept, or answered from the cache, when:</p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-6">
+        <li>the request has a session, because the layout may show who is signed in;</li>
+        <li>the action or the view sets a cookie, writes the session or the flash, puts a CSRF token on the page (<code>csrf_meta_tag()</code>, a form), or calls <code>clock</code> or <code>Math.random</code>. A page that did so once is not kept again until the next restart or hot reload;</li>
+        <li>the data holds an <strong>object</strong>: a model record (<code>Post.all</code>, <code>Post.find(id)</code>) or any class instance. A view calls an object's methods, and they can read what the data does not hold. A relation (<code>post.author</code>, <code>post.comments.count</code>) queries the database at render time. The same goes for a query not run yet (<code>Post.where(...)</code> iterated by the view) and for a pending future.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">
+        Plain values are compared by what they hold: strings, numbers, <code>Decimal</code>, <code>DateTime</code>, arrays and hashes. <code>Post.pluck(:id, :title).all</code> returns hashes, so a page rendered from plucked rows is answered from the cache until the rows change.
+    </p>
+    <p class="text-gray-400 mb-12">
+        A view should take what it shows from its data. The cache does not see a view that reads the database, a file or the time itself (<code>&lt;%= Post.count %&gt;</code>, <code>DateTime.now</code>), and keeps the page as it was first rendered. Assign the value to an <code>@field</code> in the action instead.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Request-Context Helpers in Views</h2>
     <p class="text-gray-400 mb-4">

@@ -49,8 +49,27 @@ fn a_script_runs_on_the_vm_by_default() {
 
 #[test]
 fn reflection_sends_a_script_to_the_tree_walker() {
-    // `send` is one of the members the VM hands back at run time; a script
-    // cannot be replayed halfway, so the choice is made before it starts.
+    // `methods` is one of the members the VM hands back at run time; a
+    // script cannot be replayed halfway, so the choice is made before it
+    // starts.
+    let dir = script(
+        "class A\n  def hi\n    \"hi\"\n  end\nend\nnames = new A().methods rescue nil\nprint(new A().hi())\n",
+    );
+    let run = soli(dir.path(), &["s.sl"], true);
+    assert_eq!(run.stdout, "hi\n", "{}", run.stderr);
+    assert!(
+        run.stderr
+            .contains("engine: tree-walker — the script uses `methods`"),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn send_sends_a_script_to_the_tree_walker() {
+    // The VM's `send` is not the tree-walker's (extra arguments, fields,
+    // defaults, thrown values), and the VM refuses it on a class, so a script
+    // calling it runs on the tree-walker, as up to 2.29.3.
     let dir = script("class A\n  def hi\n    \"hi\"\n  end\nend\nprint(new A().send(\"hi\"))\n");
     let run = soli(dir.path(), &["s.sl"], true);
     assert_eq!(run.stdout, "hi\n", "{}", run.stderr);
@@ -60,6 +79,125 @@ fn reflection_sends_a_script_to_the_tree_walker() {
         "{}",
         run.stderr
     );
+}
+
+/// A script that calls `send` gives what `--tree` gives: on the VM, `send`
+/// answered a field, applied a default, kept an extra argument from being
+/// dropped and let a thrown value through unwrapped, and `Klass.send` called
+/// the static with full method semantics. A name the script binds in one
+/// function (`def describe(subscribe)`, `def configure(send = false)`) no
+/// longer keeps the builtin used elsewhere on the VM, where `subscribe` with a
+/// block stopped the script halfway, after its side effects.
+#[test]
+fn send_and_reflection_scripts_match_the_tree_walker() {
+    for source in [
+        r###"class Greeter
+  name: String = "bob"
+
+  def greet(who = "world")
+    "hi #{who}"
+  end
+
+  def boom()
+    throw "bad thing"
+  end
+end
+
+g = Greeter.new()
+print(g.send("name") rescue "ERR name")
+print(g.send("greet") rescue "ERR greet")
+try
+  g.send("boom")
+catch e
+  print("caught: #{e}")
+end
+"###,
+        r###"class A
+  def hi
+    "hi"
+  end
+end
+print(A.new().send("hi", 1))
+"###,
+        r###"class K
+  static def make(n = 5)
+    n * 2
+  end
+end
+print(K.send("make"))
+"###,
+        r###"class Insufficient < DomainError
+end
+class Account
+  def withdraw(n)
+    throw Insufficient.new("balance too low")
+  end
+  static def close(n)
+    throw Insufficient.new("cannot close")
+  end
+end
+try
+  Account.new().send("withdraw", 5)
+catch e
+  print("instance: #{type(e)}")
+end
+try
+  Account.send("close", 5)
+catch e
+  print("class: #{type(e)}")
+end
+try
+  Account.new().withdraw(5)
+catch e
+  print("direct: #{type(e)}")
+end
+"###,
+        r###"class OrderPaid < DomainEvent
+end
+
+def describe(subscribe)
+  "flag=#{subscribe}"
+end
+
+print(describe(true))
+subscribe(OrderPaid) do |e|
+  print("paid handler ran")
+end
+publish(OrderPaid.new())
+print("done")
+"###,
+        r###"class P
+  def hi()
+    "hi"
+  end
+
+  def go()
+    send("hi")
+  end
+end
+
+def configure(send = false)
+  send
+end
+
+print(configure())
+print(P.new().go())
+"###,
+        r###"class P
+  def hi()
+    "hi"
+  end
+
+  def list()
+    methods
+  end
+end
+
+print(P.new().list())
+"###,
+    ] {
+        assert_same(source);
+    }
 }
 
 /// Same stdout, same stderr, same exit code on the default engine and on
@@ -81,6 +219,42 @@ fn errors_point_where_the_tree_walker_points() {
 }
 
 #[test]
+fn decimal_and_array_difference_scripts_stay_on_the_vm() {
+    // Decimal arithmetic, a Money amount and an array difference raised a
+    // type error on the VM, which auto mode picks for these scripts: the
+    // script stopped halfway with exit 70.
+    let source = "price = 19.99D\ntotal = price * 3\nprint(total, total > 50, [1, 2, 3] - [2])\n\
+                  print(Money.new(19.99, \"EUR\")[\"amount\"] * 3)\n";
+    let dir = script(source);
+    let run = soli(dir.path(), &["s.sl"], true);
+    assert_eq!(run.stdout, "59.97 true [1, 3]\n59.97\n", "{}", run.stderr);
+    assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
+    assert_same(source);
+    // A zero Decimal divisor said "Cannot divide decimal by decimal".
+    assert_same("def split(total, parts)\n  total / parts\nend\nprint(split(10.00D, 0.00D))\n");
+}
+
+#[test]
+fn an_invalid_decimal_literal_raises_as_on_the_tree_walker() {
+    // `%n[abcD]` reads as the decimal literal `abc.00`, and an integer part
+    // past Decimal's range does not parse either. The VM loaded a silent 0
+    // for both. The compiler now refuses them, so the tree-walker runs the
+    // script and raises "Invalid decimal literal" where one is evaluated.
+    let source = "x = %n[abcD] rescue \"invalid\"\nprint(x)\n";
+    assert_same(source);
+    let dir = script(source);
+    let run = soli(dir.path(), &["s.sl"], true);
+    assert_eq!(run.stdout, "invalid\n", "{}", run.stderr);
+    assert!(
+        run.stderr
+            .contains("the VM cannot compile it (Invalid decimal literal: abc.00"),
+        "{}",
+        run.stderr
+    );
+    assert_same("price = 99999999999999999999999999999999.5D\nprint(price)\n");
+}
+
+#[test]
 fn a_declared_return_type_is_checked_on_the_vm_too() {
     let source = "def f(n: Int) -> Int\n  if n > 0\n    n\n  end\nend\nprint(f(1))\nprint(f(-1))\n";
     assert_same(source);
@@ -92,6 +266,35 @@ fn a_declared_return_type_is_checked_on_the_vm_too() {
         "{}",
         run.stderr
     );
+}
+
+#[test]
+fn a_non_primitive_return_type_is_checked_on_the_vm_too() {
+    // `-> Hash` and a class name took the allocating path; they now check
+    // against the type lowered at compile time, with the same error.
+    for (source, message) in [
+        (
+            "class Pt\nend\ndef f -> Pt\n  \"x\"\nend\nprint(f())\n",
+            "function 'f' expected to return Pt, got string at 3:1",
+        ),
+        (
+            "def f -> Hash\n  [1]\nend\nprint(f())\n",
+            "function 'f' expected to return Hash, got array at 1:1",
+        ),
+        (
+            "def f -> Function\n  return fn(x) { x }\nend\nprint(f()(7))\n",
+            "",
+        ),
+    ] {
+        assert_same(source);
+        let dir = script(source);
+        let run = soli(dir.path(), &["s.sl"], false);
+        if message.is_empty() {
+            assert_eq!(run.stdout, "7\n", "{}", run.stderr);
+        } else {
+            assert!(run.stderr.contains(message), "{}", run.stderr);
+        }
+    }
 }
 
 #[test]
@@ -143,4 +346,33 @@ fn a_function_read_without_parentheses_keeps_the_tree_walker() {
     let dir = script("def helper\n  \"called\"\nend\nprint(helper())\n");
     let run = soli(dir.path(), &["s.sl"], true);
     assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
+}
+
+/// A function body longer than a 16-bit jump can span: the VM refuses to
+/// compile it, and the script runs on the tree-walker, with the same output.
+/// Jump and loop offsets were truncated to 16 bits, so the `if` jumped into
+/// the middle of its own body (`f(false)` answered 65535, not 0) and the loop
+/// back to the wrong instruction, where the VM's unchecked stack reads could
+/// read past the stack.
+#[test]
+fn a_body_too_long_for_a_jump_runs_on_the_tree_walker() {
+    let body = "    x = x + 1\n".repeat(20_000);
+    let branch = format!(
+        "def f(flag)\n  x = 0\n  if flag\n{body}  end\n  x\nend\nprint(f(false), f(true))\n"
+    );
+    let looped = format!(
+        "def g(n)\n  i = 0\n  x = 0\n  while i < n\n{body}    i = i + 1\n  end\n  x\nend\nprint(g(3))\n"
+    );
+    for (source, expected) in [(branch, "0 20000\n"), (looped, "60000\n")] {
+        let dir = script(&source);
+        let run = soli(dir.path(), &["s.sl"], true);
+        assert_eq!(run.stdout, expected, "{}", run.stderr);
+        assert!(
+            run.stderr.contains("the VM cannot compile it")
+                && run.stderr.contains("too long for the VM"),
+            "{}",
+            run.stderr
+        );
+        assert_same(&source);
+    }
 }

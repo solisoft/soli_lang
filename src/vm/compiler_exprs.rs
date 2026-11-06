@@ -44,7 +44,7 @@ impl Compiler {
                 self.emit_constant(Constant::Float(*n), line);
             }
             ExprKind::DecimalLiteral(s) => {
-                self.emit_constant(Constant::Decimal(s.clone()), line);
+                self.emit_constant(Constant::Decimal(decimal_literal(s, expr.span)?), line);
             }
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone().into()), line);
@@ -57,7 +57,7 @@ impl Compiler {
                 self.emit(Op::GetGlobal(sys), line);
                 self.emit_constant(Constant::String(cmd.clone().into()), line);
                 let shell = self.add_string_constant("shell");
-                self.emit(Op::CallMethod(shell, 1), line);
+                self.emit(Op::CallMethod(shell, 1, false), line);
             }
             ExprKind::BoolLiteral(b) => {
                 self.emit(if *b { Op::True } else { Op::False }, line);
@@ -81,12 +81,14 @@ impl Compiler {
                 left,
                 operator,
                 right,
-            } => {
-                self.compile_binary(left, *operator, right, line)?;
-            }
-            ExprKind::Unary { operator, operand } => {
-                self.compile_unary(*operator, operand, line)?;
-            }
+            } => match self.folded(expr) {
+                Some(value) => self.emit_constant(value, line),
+                None => self.compile_binary(left, *operator, right, line)?,
+            },
+            ExprKind::Unary { operator, operand } => match self.folded(expr) {
+                Some(value) => self.emit_constant(value, line),
+                None => self.compile_unary(*operator, operand, line)?,
+            },
             ExprKind::Grouping(inner) => {
                 self.compile_expr(inner)?;
             }
@@ -98,8 +100,8 @@ impl Compiler {
             }
             ExprKind::Member { object, name } => {
                 self.compile_expr(object)?;
-                let idx = self.add_string_constant(name);
-                self.emit(Op::GetProperty(idx), line);
+                let op = self.get_property_op(name);
+                self.emit(op, line);
             }
             ExprKind::SafeMember { object, name } => {
                 // `a&.b` — null receiver yields null, otherwise an ordinary
@@ -112,14 +114,14 @@ impl Compiler {
                 // `&.`). Refusing was safe but demoted the whole handler.
                 self.compile_expr(object)?;
                 let skip = self.emit_jump(Op::JumpIfNull(0), line);
-                let idx = self.add_string_constant(name);
-                self.emit(Op::GetProperty(idx), line);
+                let op = self.get_property_op(name);
+                self.emit(op, line);
                 self.patch_jump(skip);
             }
             ExprKind::QualifiedName { qualifier, name } => {
                 self.compile_expr(qualifier)?;
-                let idx = self.add_string_constant(name);
-                self.emit(Op::GetProperty(idx), line);
+                let op = self.get_property_op(name);
+                self.emit(op, line);
             }
             ExprKind::Index { object, index } => {
                 // `req["params"]["id"]` — two literal keys on a variable.
@@ -303,8 +305,9 @@ impl Compiler {
                 self.emit(Op::Pop, line);
                 self.compile_expr(fallback)?;
                 self.patch_jump(rescue_jump);
+                let catch_offset = self.proto.chunk.jump_operand(catch_start - try_begin - 1);
                 if let Op::TryBegin(ref mut co, _) = self.proto.chunk.code[try_begin] {
-                    *co = (catch_start - try_begin - 1) as u16;
+                    *co = catch_offset;
                 }
             }
             ExprKind::CompoundAssign {
@@ -320,26 +323,36 @@ impl Compiler {
 
                 // `obj.x ||= v` on a property nothing has set yet: the read
                 // answers Null instead of raising, or `@items ||= []` could
-                // never initialise an instance variable. Same shape as the
-                // desugaring below — `obj.x = (obj.x || v)` — with only the
-                // read swapped for its lenient form.
+                // never initialise an instance variable.
+                //
+                // A short-circuit leaves the read value as the result and
+                // writes nothing, as on the tree-walker: `@total ||= 0` with
+                // `@total` set is one read, and a frozen value object or a
+                // getter (`b.label ||= "x"`) is not written back. Only the
+                // assigning path evaluates the receiver a second time, as
+                // `assign_to_target` does there:
+                //
+                //   obj; GetPropertyOrNull; jump-if-decided END;
+                //   Pop; obj; value; SetProperty; END:
                 if let ExprKind::Member { object, name } = &target.kind {
+                    // `JumpIfNotNull` rather than `NullishJump` for `??=`:
+                    // the same test, and the fast tier runs it.
                     let jump_op = match operator {
                         CompoundOp::Or => Some(Op::JumpIfTrueNoPop(0)),
                         CompoundOp::And => Some(Op::JumpIfFalseNoPop(0)),
-                        CompoundOp::Coalesce => Some(Op::NullishJump(0)),
+                        CompoundOp::Coalesce => Some(Op::JumpIfNotNull(0)),
                         _ => None,
                     };
                     if let Some(jump_op) = jump_op {
                         let idx = self.add_string_constant(name);
                         self.compile_expr(object)?;
-                        self.compile_expr(object)?;
                         self.emit(Op::GetPropertyOrNull(idx), line);
                         let jump = self.emit_jump(jump_op, line);
                         self.emit(Op::Pop, line);
+                        self.compile_expr(object)?;
                         self.compile_expr(value)?;
-                        self.patch_jump(jump);
                         self.emit(Op::SetProperty(idx), line);
+                        self.patch_jump(jump);
                         return Ok(());
                     }
                 }
@@ -577,6 +590,24 @@ impl Compiler {
         Ok(())
     }
 
+    /// Write a view's output: `arg`, escaped or raw, to the page. The ops push
+    /// nothing; a literal raw text is written from its constant.
+    pub(super) fn emit_template_write(
+        &mut self,
+        arg: &Expr,
+        escaped: bool,
+        line: usize,
+    ) -> CompileResult<()> {
+        if let (ExprKind::StringLiteral(text), false) = (&arg.kind, escaped) {
+            let idx = self.add_constant(Constant::String(text.as_str().into()));
+            self.emit(Op::TemplateWriteConst(idx), line);
+            return Ok(());
+        }
+        self.compile_expr(arg)?;
+        self.emit(Op::TemplateWrite(escaped), line);
+        Ok(())
+    }
+
     fn compile_call(
         &mut self,
         callee: &Expr,
@@ -630,19 +661,13 @@ impl Compiler {
                     return Ok(());
                 }
             }
-            if name == "__tpl_write" || name == "__tpl_write_raw" {
-                if let [Argument::Positional(arg)] = arguments {
-                    if let (ExprKind::StringLiteral(text), "__tpl_write_raw") =
-                        (&arg.kind, name.as_str())
-                    {
-                        let idx = self.add_constant(Constant::String(text.as_str().into()));
-                        self.emit(Op::TemplateWriteConst(idx), line);
-                        return Ok(());
-                    }
-                    self.compile_expr(arg)?;
-                    self.emit(Op::TemplateWrite(name == "__tpl_write"), line);
-                    return Ok(());
-                }
+            if let Some((arg, escaped)) = template_write_args(name, arguments) {
+                // Used as a value (a lambda's last statement, `x = …`): the
+                // write pushes nothing, so the call's value is pushed here. A
+                // write statement skips both (`compile_stmt`).
+                self.emit_template_write(arg, escaped, line)?;
+                self.emit(Op::Null, line);
+                return Ok(());
             }
         }
 
@@ -707,6 +732,46 @@ impl Compiler {
             }
         }
 
+        // A method call with a labelled argument (`obj.m(k: v)`, `@m(k: v)`,
+        // `obj&.m(k: v)`, the bare helper `m(k: v)` in a method) keeps its
+        // receiver: `CallMethodNamed` binds the labels against the method it
+        // resolves at run time, with the receiver as `this`. Reading `obj.m`
+        // first and calling the result lost the receiver — and ran a method of
+        // arity 0 on the read.
+        if arguments.iter().any(|a| matches!(a, Argument::Named(_))) && arguments.len() <= 255 {
+            match &callee.kind {
+                ExprKind::Member { object, name } => {
+                    self.compile_expr(object)?;
+                    let (argc, names_idx) = self.compile_labelled_method_arguments(arguments)?;
+                    let name_idx = self.add_string_constant(name);
+                    self.emit(Op::CallMethodNamed(name_idx, argc, names_idx), line);
+                    return Ok(());
+                }
+                ExprKind::SafeMember { object, name } => {
+                    // A nil receiver evaluates no argument, as positionally.
+                    self.compile_expr(object)?;
+                    let skip = self.emit_jump(Op::JumpIfNull(0), line);
+                    let (argc, names_idx) = self.compile_labelled_method_arguments(arguments)?;
+                    let name_idx = self.add_string_constant(name);
+                    self.emit(Op::CallMethodNamed(name_idx, argc, names_idx), line);
+                    self.patch_jump(skip);
+                    return Ok(());
+                }
+                ExprKind::Variable(name)
+                    if matches!(self.resolve_variable(name), VariableAccess::Global(_))
+                        && self.implicit_self_candidate(name) =>
+                {
+                    let idx = self.add_string_constant(name);
+                    self.compile_this(line)?;
+                    self.emit(Op::SelfOrGlobalCallee(idx), line);
+                    let (argc, names_idx) = self.compile_labelled_method_arguments(arguments)?;
+                    self.emit(Op::CallSelfOrGlobalNamed(idx, argc, names_idx), line);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         // `a&.foo(args)` — a call whose callee is a safe member. A null
         // receiver yields null *without evaluating the arguments*, which is
         // what the tree-walker does and what Ruby does: `nil&.foo(bar())`
@@ -729,9 +794,9 @@ impl Compiler {
                 let name_idx = self.add_string_constant(name);
                 let method_id = super::method_table::resolve_method_id(name);
                 if method_id != super::method_table::METHOD_UNKNOWN {
-                    self.emit(Op::CallMethodById(name_idx, argc, method_id), line);
+                    self.emit(Op::CallMethodById(name_idx, argc, method_id, false), line);
                 } else {
-                    self.emit(Op::CallMethod(name_idx, argc), line);
+                    self.emit(Op::CallMethod(name_idx, argc, false), line);
                 }
                 self.patch_jump(skip);
                 return Ok(());
@@ -745,6 +810,12 @@ impl Compiler {
                 .iter()
                 .all(|a| matches!(a, Argument::Positional(_) | Argument::Block(_)));
             if all_positional && arguments.len() <= 255 {
+                // `["up", "late"].includes?(status)`: the argument tested
+                // against a constant list, with no array built
+                // (`compiler_literal_arrays.rs`).
+                if self.try_compile_literal_membership(object, name, arguments, line)? {
+                    return Ok(());
+                }
                 if let Some(op) =
                     self.try_compile_hash_const_string_call(object, name, arguments, line)?
                 {
@@ -771,12 +842,16 @@ impl Compiler {
                         Argument::Named(_) => unreachable!(),
                     }
                 }
+                // A block argument is the one thing the opcode cannot see on
+                // the stack (it is a closure like any `fn(x) { … }`), yet it
+                // decides whether a primitive user method outranks the builtin.
+                let block = arguments.iter().any(|a| matches!(a, Argument::Block(_)));
                 let name_idx = self.add_string_constant(name);
                 let method_id = super::method_table::resolve_method_id(name);
                 if method_id != super::method_table::METHOD_UNKNOWN {
-                    self.emit(Op::CallMethodById(name_idx, argc, method_id), line);
+                    self.emit(Op::CallMethodById(name_idx, argc, method_id, block), line);
                 } else {
-                    self.emit(Op::CallMethod(name_idx, argc), line);
+                    self.emit(Op::CallMethod(name_idx, argc, block), line);
                 }
                 return Ok(());
             }
@@ -833,6 +908,39 @@ impl Compiler {
             _ => self.compile_expr(callee)?,
         }
         self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)
+    }
+
+    /// The arguments of a labelled method call, in source order, and the
+    /// `Constant::ArgNames` labelling their slots. A block's slot is labelled
+    /// [`super::chunk::BLOCK_LABEL`] so the binder can hand it to the method's
+    /// `&block` parameter (or drop it, as the tree-walker does, when the
+    /// method declares none). Only `CallMethodNamed` and
+    /// `CallSelfOrGlobalNamed` carry that label; `CallNamed` never does.
+    fn compile_labelled_method_arguments(
+        &mut self,
+        arguments: &[Argument],
+    ) -> CompileResult<(u8, u16)> {
+        let mut labels: Vec<Option<crate::interpreter::value::SoliStr>> =
+            Vec::with_capacity(arguments.len());
+        for arg in arguments {
+            match arg {
+                Argument::Positional(expr) => {
+                    self.compile_expr(expr)?;
+                    labels.push(None);
+                }
+                Argument::Named(named_arg) => {
+                    self.compile_expr(&named_arg.value)?;
+                    labels.push(Some(named_arg.name.clone().into()));
+                }
+                Argument::Block(expr) => {
+                    self.compile_expr(expr)?;
+                    labels.push(Some(super::chunk::BLOCK_LABEL.into()));
+                }
+            }
+        }
+        let argc = labels.len() as u8;
+        let idx = self.add_constant(Constant::ArgNames(std::sync::Arc::new(labels)));
+        Ok((argc, idx))
     }
 
     /// Compile a call's arguments (the callee is already on the stack) and emit
@@ -1035,6 +1143,11 @@ impl Compiler {
     }
 
     fn compile_array(&mut self, elements: &[Expr], line: usize) -> CompileResult<()> {
+        // `["draft", "sent"]`: one op builds it from a constant list
+        // (`compiler_literal_arrays.rs`).
+        if self.try_compile_literal_array(elements, line) {
+            return Ok(());
+        }
         // `[a, ...xs, b]`: the elements before the first spread build the
         // array, then each later one is pushed onto it — or, spread, has its
         // elements appended (`Op::Spread`), as the tree-walker does.
@@ -1101,11 +1214,7 @@ impl Compiler {
                 ExprKind::BoolLiteral(b) => HashKey::Bool(*b),
                 ExprKind::Null => HashKey::Null,
                 ExprKind::Symbol(s) => HashKey::Symbol(s.clone().into()),
-                ExprKind::DecimalLiteral(s) => {
-                    let d: rust_decimal::Decimal = s.parse().ok()?;
-                    let prec = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                    HashKey::Decimal(DecimalValue(d, prec))
-                }
+                ExprKind::DecimalLiteral(s) => HashKey::Decimal(DecimalValue::from_literal(s)?),
                 _ => return None,
             };
             keys.push(hk);
@@ -1147,9 +1256,12 @@ impl Compiler {
             ExprKind::Variable(name) => {
                 // `name = name + <expr>` (and `name += <expr>`, desugared to
                 // it): one op reads, adds and stores, so a string grows in
-                // place instead of being copied per iteration. A variable or
-                // literal right-hand side is left to the peepholes
-                // (`AddLocalsInPlace`, `AppendLocalConst`, `IncrLocal`, …).
+                // place instead of being copied per iteration. For a local or
+                // a global, a variable or literal right-hand side is left to
+                // the peepholes (`AddLocalsInPlace`, `AppendLocalConst`,
+                // `IncrLocal`, …). A captured variable has none: `total += x`
+                // and `count += 1` in a block take the fused op too, which
+                // the fast tier runs on numbers.
                 if let ExprKind::Binary {
                     left,
                     operator: BinaryOp::Add,
@@ -1165,7 +1277,9 @@ impl Compiler {
                             | ExprKind::FloatLiteral(_)
                             | ExprKind::StringLiteral(_)
                     );
-                    // `acc = acc + h[keys[k]]` over locals is `AddNestedIndex`'s.
+                    // `acc = acc + h[keys[k]]` over locals is `AddNestedIndex`'s
+                    // (whatever `acc` is: a captured one keeps `Add` and
+                    // `SetUpvalue` too).
                     let nested_index_of_variables = matches!(
                         &right.kind,
                         ExprKind::Index { object, index }
@@ -1174,7 +1288,11 @@ impl Compiler {
                                     if matches!(object.kind, ExprKind::Variable(_))
                                         && matches!(index.kind, ExprKind::Variable(_)))
                     );
-                    if self_add && !simple_rhs && !nested_index_of_variables {
+                    let fused = self_add
+                        && !nested_index_of_variables
+                        && (!simple_rhs
+                            || matches!(self.resolve_variable(name), VariableAccess::Upvalue(_)));
+                    if fused {
                         let add_assign = match self.resolve_variable(name) {
                             VariableAccess::Local(slot) => Op::AddAssignLocal(slot),
                             VariableAccess::Upvalue(idx) => Op::AddAssignUpvalue(idx),
@@ -1203,12 +1321,26 @@ impl Compiler {
                     VariableAccess::Global(name) => {
                         // A bare assignment to a name that is neither a local nor
                         // an upvalue. New in-function locals are hoisted to
-                        // function entry by `hoist_function_locals` before the
-                        // body is compiled, so by the time we get here the name
-                        // is either a real global (top level, or one we know
-                        // exists) — define-or-update it. `SetGlobal` upserts.
-                        // At top level it is the program's own binding, as a
-                        // `let` would be: `clock = 7` shadows the builtin.
+                        // function entry by `hoist_locals` before the body is
+                        // compiled, or declared by their first assignment, so by
+                        // the time we get here the name is either a real global
+                        // (top level, or one we know exists) — define-or-update
+                        // it. `SetGlobal` upserts. At top level it is the
+                        // program's own binding, as a `let` would be: `clock = 7`
+                        // shadows the builtin.
+                        //
+                        // A name still waiting for its in-place declaration is
+                        // not a global: storing to one here means that statement
+                        // was compiled some other way, and the function is
+                        // refused rather than leak the local into the globals.
+                        if self.in_place_pending(&name) {
+                            return Err(CompileError::new(
+                                format!(
+                                    "`{name}` is assigned before the statement that declares it"
+                                ),
+                                target.span,
+                            ));
+                        }
                         if self.scope_depth == 0 {
                             self.known_globals.borrow_mut().insert(name.clone());
                             self.program_globals.borrow_mut().insert(name.clone());
@@ -1231,11 +1363,11 @@ impl Compiler {
                 // path: `h.set("k", v)` already compiled to one dispatch while
                 // `h["k"] = v` — the far more common spelling — took two.
                 //
-                // Safe to swap because both sequences leave exactly one value:
-                // the generic form pops receiver+value and pushes Null, the
-                // fused form pops value and pushes Null. Only a plain variable
-                // receiver is fused, so skipping its evaluation cannot lose a
-                // side effect.
+                // Safe to swap because both sequences leave exactly one value,
+                // the assigned one: the generic form pops receiver+value and
+                // pushes the value, the fused form pops the value and pushes it
+                // back. Only a plain variable receiver is fused, so skipping
+                // its evaluation cannot lose a side effect.
                 if let ExprKind::StringLiteral(key) = &index.kind {
                     let key_idx = self.add_string_constant(key);
                     let fused = match &object.kind {
@@ -1306,8 +1438,7 @@ impl Compiler {
         else_branch: Option<&Expr>,
         line: usize,
     ) -> CompileResult<()> {
-        self.compile_expr(condition)?;
-        let then_jump = self.emit_jump(Op::JumpIfFalse(0), line);
+        let then_jump = self.compile_condition_jump(condition, false, line)?;
 
         self.compile_expr(then_branch)?;
 
@@ -1574,27 +1705,8 @@ impl Compiler {
         self.emit(Op::Array(0), line); // empty result array, at result_slot
         self.add_local(String::new(), false); // anonymous result-array local
 
-        // Iterator setup (mirrors compile_for's range optimization).
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        // Iterator setup, as `compile_for`'s: a range is counted, not built.
+        let is_range = self.compile_iterable(iterable, line)?;
         // The iterable/range now lives on the iter_stack; value stack is back at
         // the result-array baseline.
         self.resync_stack_height();
@@ -1613,18 +1725,17 @@ impl Compiler {
         // Append `element` to the result array: GetLocal(result); element;
         // ArrayPush (mutates in place, leaves the array copy); Pop.
         if let Some(cond) = condition {
-            self.compile_expr(cond)?;
-            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
+            let skip = self.compile_condition_jump(cond, false, line)?;
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(element)?;
             self.emit(Op::ArrayPush, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
             self.patch_jump(skip);
         } else {
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(element)?;
             self.emit(Op::ArrayPush, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
         }
 
         self.end_scope(line); // pop loop var (closes upvalue if a closure captured it)
@@ -1636,6 +1747,31 @@ impl Compiler {
         self.locals.pop();
         self.stack_height = result_slot as usize + 1;
         Ok(())
+    }
+
+    /// End a comprehension's element: drop what the push or insert left on
+    /// the stack. Over a range, which is counted rather than built,
+    /// `PopRangeComprehension` also holds the result in `result_slot` to
+    /// `SOLI_MAX_RANGE_LEN` elements, reported at the range as the
+    /// tree-walker reports it.
+    fn emit_comprehension_pop(
+        &mut self,
+        is_range: bool,
+        result_slot: u16,
+        iterable: &Expr,
+        line: usize,
+    ) {
+        if !is_range {
+            self.emit(Op::Pop, line);
+            return;
+        }
+        let range = iterable.without_parens();
+        let outer = std::mem::replace(&mut self.column, range.span.column);
+        self.emit(
+            Op::PopRangeComprehension(result_slot),
+            range.span.line as usize,
+        );
+        self.column = outer;
     }
 
     fn compile_hash_comprehension(
@@ -1658,26 +1794,7 @@ impl Compiler {
         self.emit(Op::Hash(0), line); // empty result hash, at result_slot
         self.add_local(String::new(), false); // anonymous result-hash local
 
-        let is_range = matches!(
-            &iterable.kind,
-            crate::ast::ExprKind::Binary {
-                operator: crate::ast::BinaryOp::Range,
-                ..
-            }
-        );
-        if let crate::ast::ExprKind::Binary {
-            left,
-            operator: crate::ast::BinaryOp::Range,
-            right,
-        } = &iterable.kind
-        {
-            self.compile_expr(left)?;
-            self.compile_expr(right)?;
-            self.emit(Op::GetIterRange, line);
-        } else {
-            self.compile_expr(iterable)?;
-            self.emit(Op::GetIter, line);
-        }
+        let is_range = self.compile_iterable(iterable, line)?;
         self.resync_stack_height();
 
         let loop_start = self.current_offset();
@@ -1695,20 +1812,19 @@ impl Compiler {
         // SetIndex (hash[key]=value, leaves the hash); Pop. SetIndex (not
         // HashSetConst) because the key is a runtime value, not a constant.
         if let Some(cond) = condition {
-            self.compile_expr(cond)?;
-            let skip = self.emit_jump(Op::JumpIfFalse(0), line);
+            let skip = self.compile_condition_jump(cond, false, line)?;
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(key)?;
             self.compile_expr(value)?;
             self.emit(Op::SetIndex, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
             self.patch_jump(skip);
         } else {
             self.emit(Op::GetLocal(result_slot), line);
             self.compile_expr(key)?;
             self.compile_expr(value)?;
             self.emit(Op::SetIndex, line);
-            self.emit(Op::Pop, line);
+            self.emit_comprehension_pop(is_range, result_slot, iterable, line);
         }
 
         self.end_scope(line);
@@ -1719,6 +1835,18 @@ impl Compiler {
         self.stack_height = result_slot as usize + 1;
         Ok(())
     }
+}
+
+/// The value of a Decimal literal, parsed here once so that loading it is a
+/// copy. Text that does not parse is refused, which hands the code to the
+/// tree-walker: it raises "Invalid decimal literal" where the literal is
+/// evaluated. The VM used to load a silent 0.
+pub(super) fn decimal_literal(
+    text: &str,
+    span: crate::span::Span,
+) -> CompileResult<crate::interpreter::value::DecimalValue> {
+    crate::interpreter::value::DecimalValue::from_literal(text)
+        .ok_or_else(|| CompileError::new(format!("Invalid decimal literal: {text}"), span))
 }
 
 #[cfg(test)]
@@ -1781,6 +1909,65 @@ mod subexpr_compile_tests {
         );
         vm.execute(&module.main).expect("vm");
         assert_eq!(vm.globals.get("out"), Some(&Value::String("hello".into())));
+    }
+}
+
+#[cfg(test)]
+mod block_call_flag_tests {
+    //! `CallMethod`/`CallMethodById` carry whether the call's last argument
+    //! was written as a block. The VM cannot tell a block from a `fn(x) { … }`
+    //! argument on the stack, yet the tree-walker lets a primitive user method
+    //! outrank the builtin only for the block form, so the bit has to be
+    //! compiled in.
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    /// The (block, has-id) shape of the first method call in `src`.
+    fn first_method_call(src: &str) -> (bool, bool) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        module
+            .main
+            .chunk
+            .code
+            .iter()
+            .find_map(|op| match op {
+                Op::CallMethod(_, _, block) => Some((*block, false)),
+                Op::CallMethodById(_, _, _, block) => Some((*block, true)),
+                _ => None,
+            })
+            .expect("a method call")
+    }
+
+    #[test]
+    fn a_block_argument_sets_the_flag() {
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.select { |x| x }"),
+            (true, false)
+        );
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.count { |x| x }"),
+            (true, true)
+        );
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.each do |x|\n  x\nend"),
+            (true, false)
+        );
+    }
+
+    #[test]
+    fn a_lambda_argument_does_not() {
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.select(fn(x) { x })"),
+            (false, false)
+        );
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.includes?(1)"),
+            (false, true)
+        );
+        assert_eq!(first_method_call("xs = [1]\nxs.sum()"), (false, true));
+        assert_eq!(first_method_call("xs = [1]\nxs&.first()"), (false, true));
     }
 }
 
@@ -1961,12 +2148,254 @@ mod named_args_compile_tests {
     }
 }
 
+#[cfg(test)]
+mod captured_add_assign_compile_tests {
+    //! `captured = captured + value` in a block compiles to one
+    //! `AddAssignUpvalue`, a variable or literal right-hand side included: a
+    //! captured variable has no peephole to fall back on, and the fused op
+    //! appends a string in place and runs numbers in the fast tier. Locals
+    //! keep their peepholes. The one exception is `acc = acc + h[keys[k]]`,
+    //! left to `AddNestedIndex` whatever `acc` is.
+    use crate::vm::chunk::Constant;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    /// The ops of the first function found inside function `f` of
+    /// `def f … end` with `body`: the block.
+    fn block_ops(body: &str) -> Vec<Op> {
+        let src = format!("def f\n{body}\nend\n");
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let nested = |constants: &[Constant]| {
+            constants.iter().find_map(|constant| match constant {
+                Constant::Function(proto) => Some(proto.clone()),
+                _ => None,
+            })
+        };
+        let f = nested(module.main.chunk.constants.as_slice()).expect("f");
+        nested(f.chunk.constants.as_slice())
+            .expect("the block")
+            .chunk
+            .code
+            .clone()
+    }
+
+    #[test]
+    fn a_captured_accumulator_compiles_to_add_assign_upvalue() {
+        for statement in [
+            "total += x",
+            "total = total + x",
+            "total += 1",
+            "total = total + 2.5",
+            "total += \"s\"",
+            "total += x * 2",
+            "total = total + x.abs",
+        ] {
+            let ops = block_ops(&format!(
+                "  total = 0\n  [1].each do |x|\n    {statement}\n    nil\n  end\n  total"
+            ));
+            let fused = ops
+                .iter()
+                .filter(|op| matches!(op, Op::AddAssignUpvalue(_)))
+                .count();
+            assert_eq!(fused, 1, "{statement}: {ops:?}");
+            assert!(
+                !ops.iter()
+                    .any(|op| matches!(op, Op::SetUpvalue(_) | Op::Add)),
+                "{statement}: {ops:?}"
+            );
+        }
+    }
+
+    /// Only the self-add is fused: anything else still assigns through
+    /// `SetUpvalue`. So does `total = total + h[keys[x]]`, the shape kept for
+    /// the locals-only `AddNestedIndex` peephole (`www/docs/internals/vm.md`
+    /// says so).
+    #[test]
+    fn other_captured_assignments_keep_set_upvalue() {
+        for statement in [
+            "total = x + total",
+            "total = x",
+            "total = total - x",
+            "total = total + h[keys[x]]",
+        ] {
+            let ops = block_ops(&format!(
+                "  total = 0\n  [1].each do |x|\n    {statement}\n    nil\n  end\n  total"
+            ));
+            assert!(
+                ops.iter().any(|op| matches!(op, Op::SetUpvalue(_))),
+                "{statement}: {ops:?}"
+            );
+            assert!(
+                !ops.iter().any(|op| matches!(op, Op::AddAssignUpvalue(_))),
+                "{statement}: {ops:?}"
+            );
+        }
+    }
+}
+
 /// In a view, `@name` is the local `name` (see `Compiler::template_mode`).
+/// The argument of a `__tpl_write(arg)` / `__tpl_write_raw(arg)` intrinsic
+/// call and whether it is escaped (`__tpl_write`, `<%= %>`).
+fn template_write_args<'a>(name: &str, arguments: &'a [Argument]) -> Option<(&'a Expr, bool)> {
+    let escaped = match name {
+        "__tpl_write" => true,
+        "__tpl_write_raw" => false,
+        _ => return None,
+    };
+    match arguments {
+        [Argument::Positional(arg)] => Some((arg, escaped)),
+        _ => None,
+    }
+}
+
+/// [`template_write_args`] for a whole expression: a direct call of either
+/// intrinsic, as `write_stmt` builds it.
+pub(super) fn template_write_call(expr: &Expr) -> Option<(&Expr, bool)> {
+    match &expr.kind {
+        ExprKind::Call { callee, arguments } => match &callee.kind {
+            ExprKind::Variable(name) => template_write_args(name, arguments),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn template_ivar(expr: &Expr) -> Option<Expr> {
     match &expr.kind {
         ExprKind::Member { object, name } if matches!(object.kind, ExprKind::This) => {
             Some(Expr::new(ExprKind::Variable(name.clone()), expr.span))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod labelled_method_call_compile_tests {
+    //! C583: a method call with a labelled argument compiles to
+    //! `CallMethodNamed` (or `CallSelfOrGlobalNamed` for the bare helper
+    //! call), which keeps the receiver. It used to read `obj.m` and call the
+    //! result with `CallNamed`, losing `this` — and a method of arity 0 ran on
+    //! that read.
+    use crate::interpreter::value::Value;
+    use crate::vm::chunk::{Constant, FunctionProto};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    fn compile(src: &str) -> std::sync::Arc<FunctionProto> {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        Compiler::compile(&program).expect("compile").main
+    }
+
+    /// Every op of `proto` and of the functions compiled inside it.
+    fn all_ops(proto: &FunctionProto, out: &mut Vec<Op>) {
+        out.extend(proto.chunk.code.iter().copied());
+        for constant in &proto.chunk.constants {
+            if let Constant::Function(inner) = constant {
+                all_ops(inner, out);
+            }
+        }
+    }
+
+    fn find_proto<'a>(proto: &'a FunctionProto, name: &str) -> Option<&'a FunctionProto> {
+        if proto.name == name {
+            return Some(proto);
+        }
+        proto
+            .chunk
+            .constants
+            .iter()
+            .find_map(|constant| match constant {
+                Constant::Function(inner) => find_proto(inner, name),
+                _ => None,
+            })
+    }
+
+    const CALC: &str = "class Calc\n  def plus(a, b = 5)\n    a + b\n  end\n\n  def via_self\n    \"#{this.plus(a: 1)} #{@plus(a: 2)} #{_half(n: 8)}\"\n  end\n\n  def _half(n)\n    n / 2\n  end\nend\nc = Calc.new()\nx = c.plus(b: 2, a: 1)\ny = c&.plus(a: 3)\n";
+
+    #[test]
+    fn a_labelled_method_call_keeps_its_receiver() {
+        let main = compile(CALC);
+        let mut ops = Vec::new();
+        all_ops(&main, &mut ops);
+        let method_named = ops
+            .iter()
+            .filter(|op| matches!(op, Op::CallMethodNamed(..)))
+            .count();
+        let self_named = ops
+            .iter()
+            .filter(|op| matches!(op, Op::CallSelfOrGlobalNamed(..)))
+            .count();
+        // `this.plus(a:)`, `@plus(a:)`, `c.plus(b:, a:)`, `c&.plus(a:)`.
+        assert_eq!(method_named, 4, "{ops:?}");
+        // `_half(n: 8)`.
+        assert_eq!(self_named, 1, "{ops:?}");
+        assert!(
+            !ops.iter().any(|op| matches!(op, Op::CallNamed(..))),
+            "no labelled method call may read the method and call it: {ops:?}"
+        );
+    }
+
+    #[test]
+    fn a_safe_navigation_labelled_call_tests_the_receiver_before_its_arguments() {
+        let main = compile("p = nil\nx = p&.m(a: 1)\n");
+        let code = &main.chunk.code;
+        let jump = code
+            .iter()
+            .position(|op| matches!(op, Op::JumpIfNull(_)))
+            .expect("a null test");
+        let call = code
+            .iter()
+            .position(|op| matches!(op, Op::CallMethodNamed(..)))
+            .expect("a labelled method call");
+        assert!(jump < call, "{code:?}");
+        let Op::JumpIfNull(offset) = code[jump] else {
+            unreachable!()
+        };
+        // The jump lands just past the call: a nil receiver skips the
+        // arguments and the call alike.
+        assert_eq!(jump + 1 + offset as usize, call + 1, "{code:?}");
+    }
+
+    #[test]
+    fn a_labelled_method_call_labels_its_block() {
+        let main = compile("def run(c)\n  c.amp(a: 4) do |x|\n    x + 1\n  end\nend\n");
+        let run = find_proto(&main, "run").expect("run");
+        let names_idx = run
+            .chunk
+            .code
+            .iter()
+            .find_map(|op| match op {
+                Op::CallMethodNamed(_, 2, names) => Some(*names),
+                _ => None,
+            })
+            .expect("a two-slot labelled method call");
+        let Constant::ArgNames(labels) = &run.chunk.constants[names_idx as usize] else {
+            panic!("labels")
+        };
+        let labels: Vec<Option<&str>> = labels.iter().map(|l| l.as_deref()).collect();
+        assert_eq!(labels, vec![Some("a"), Some(crate::vm::chunk::BLOCK_LABEL)]);
+    }
+
+    #[test]
+    fn a_block_parameter_is_recorded_on_the_proto() {
+        let main = compile(
+            "class C\n  def amp(a, &blk)\n    blk(a)\n  end\n\n  def plain(a)\n    a\n  end\nend\n",
+        );
+        assert_eq!(find_proto(&main, "amp").expect("amp").block_param, Some(1));
+        assert_eq!(find_proto(&main, "plain").expect("plain").block_param, None);
+    }
+
+    #[test]
+    fn a_labelled_method_call_runs_once_with_its_receiver() {
+        let src = "class Calc\n  calls: Int\n\n  new()\n    @calls = 0\n  end\n\n  def opt(a = 1, b = 2)\n    @calls = @calls + 1\n    a * 100 + b\n  end\n\n  def me(flag)\n    this\n  end\nend\nc = Calc.new()\nx = c.opt(b: 7)\nn = c.calls\nsame = c.me(flag: true) == c\n";
+        let main = compile(src);
+        let mut vm = crate::vm::Vm::new();
+        vm.execute(&main).expect("vm error");
+        assert_eq!(vm.globals.get("x").cloned(), Some(Value::Int(107)));
+        assert_eq!(vm.globals.get("n").cloned(), Some(Value::Int(1)));
+        assert_eq!(vm.globals.get("same").cloned(), Some(Value::Bool(true)));
     }
 }

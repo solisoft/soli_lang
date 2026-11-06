@@ -3169,6 +3169,11 @@ arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]
 ```
 
+A Hash is written in insertion order. A class instance or model record is written
+with its sensitive and `_`-internal fields left out (see
+[Controllers](controllers.md), "instance serialisation") and the rest **sorted by
+name**, so the same data always gives the same bytes.
+
 ### JSON.parse_jsonp(string)
 
 Unwraps a JSONP string — `callback({...});`, `callback([...])`, optionally with a
@@ -3881,7 +3886,8 @@ dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00
 Two `DateTime` instances can be compared with the standard operators (`<`,
 `<=`, `>`, `>=`, `==`, `!=`). Comparison is by absolute instant — equality
 holds when both refer to the same moment, regardless of which `DateTime`
-object you're holding.
+object you're holding. It is exact to the nanosecond on both engines: two
+instants 10 ns apart are ordered, not equal.
 
 ```soli
 let a = DateTime.from_unix(1700000000)
@@ -6552,12 +6558,12 @@ args = System.argv
 if args.length == 0
   print("usage: tool N")
 else
-  n = args[0].to_i()
+  n = args[0].to_i
   print("n = #{n}")
 end
 ```
 
-The values are always Strings; convert them yourself (`to_i()`, `to_f()`). Under `soli serve` and `soli test` it is `[]`. See [Script executables](deploy.md#script-executables).
+The values are always Strings; convert them yourself (`to_i`, `to_f`). Under `soli serve` and `soli test` it is `[]`. See [Script executables](deploy.md#script-executables).
 
 ---
 

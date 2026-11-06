@@ -26,8 +26,10 @@ use crate::span::Span;
 /// The wrapper builds a fresh environment parented to the function's closure,
 /// binds `this` and `self` to the receiver, binds positional args to params,
 /// then runs the body via a default `Interpreter`.
-/// The names `hash.name` reads as a builtin method rather than a key. Anything
-/// else is the key's value, or `null` when the key is absent. The ONE list,
+/// The names a bare `hash.name` reads as a builtin method when the hash has no
+/// such key (a key always wins: `{"size": 2048}.size` is 2048). Any other
+/// absent name is `null`. A call `hash.name(…)` resolves these names to the
+/// method even when the key exists (`hash_callee_value`). The ONE list,
 /// shared by the tree-walker (`hash_member_access`) and the VM
 /// (`op_get_property`): the VM used to answer a method for every absent key,
 /// so `if record._errors` was true on a hash with no `_errors` and a
@@ -353,6 +355,75 @@ pub(crate) fn parse_uploader_method_name(name: &str) -> Option<(UploaderMethod, 
     None
 }
 
+/// A model instance's uploader method, as a call to the app helper it
+/// forwards to: `attach_<field>(file)` → `attach_upload`, `detach_<field>`
+/// → `detach_upload`, `<field>_url` / `<field>_urls` → `upload_url`. Returns
+/// the kind, the field and the helper's name; the engine looks the helper up
+/// in its own globals (see [`uploader_helper_missing`]) and calls it with
+/// [`uploader_helper_args`].
+pub(crate) fn uploader_call(
+    method_name: &str,
+    span: Span,
+) -> RuntimeResult<(UploaderMethod, &str, &'static str)> {
+    let (kind, field) = parse_uploader_method_name(method_name).ok_or_else(|| {
+        RuntimeError::type_error(
+            format!("'{}' is not a recognized uploader method", method_name),
+            span,
+        )
+    })?;
+    let helper_name = match kind {
+        UploaderMethod::Attach => "attach_upload",
+        UploaderMethod::Detach => "detach_upload",
+        UploaderMethod::Url | UploaderMethod::Urls => "upload_url",
+    };
+    Ok((kind, field, helper_name))
+}
+
+/// The error for an uploader method whose app helper is not defined.
+pub(crate) fn uploader_helper_missing(
+    method_name: &str,
+    helper_name: &str,
+    span: Span,
+) -> RuntimeError {
+    RuntimeError::type_error(
+        format!(
+            "uploader method '{}' requires the '{}' helper to be defined \
+             (see app/controllers/support.sl)",
+            method_name, helper_name
+        ),
+        span,
+    )
+}
+
+/// The arguments an uploader method passes its helper: the record, the
+/// field, then the file (`attach_`, required) or the optional blob id.
+pub(crate) fn uploader_helper_args(
+    kind: UploaderMethod,
+    field: &str,
+    record: Value,
+    arguments: Vec<Value>,
+    span: Span,
+) -> RuntimeResult<Vec<Value>> {
+    let mut forwarded: Vec<Value> = Vec::with_capacity(arguments.len() + 2);
+    forwarded.push(record);
+    forwarded.push(Value::String(field.to_string().into()));
+    match kind {
+        UploaderMethod::Attach => {
+            if arguments.len() != 1 {
+                return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+            }
+            forwarded.extend(arguments);
+        }
+        UploaderMethod::Detach | UploaderMethod::Url | UploaderMethod::Urls => {
+            if arguments.len() > 1 {
+                return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
+            }
+            forwarded.push(arguments.into_iter().next().unwrap_or(Value::Null));
+        }
+    }
+    Ok(forwarded)
+}
+
 pub(crate) fn parse_dynamic_finder(name: &str) -> Result<(Vec<String>, usize), String> {
     let prefix = "find_by_";
     if !name.starts_with(prefix) {
@@ -446,7 +517,7 @@ impl Interpreter {
                     Some(Value::Instance(this)) => Some(this.borrow().class.clone()),
                     _ => None,
                 };
-                if !access.allows(&defining, false, caller.as_deref()) {
+                if !access.allows(defining, false, caller.as_deref()) {
                     let is_field = inst.fields.contains_key(name);
                     return Err(RuntimeError::General {
                         message: access.refusal(name, &inst.class.name, is_field),
@@ -595,11 +666,11 @@ impl Interpreter {
                             unreachable!()
                         }
                     }
-                    _ => Err(RuntimeError::NoSuchProperty {
-                        value_type: resolved.type_name(),
-                        property: name.to_string(),
+                    _ => Err(RuntimeError::no_such_property(
+                        resolved.type_name(),
+                        name.to_string(),
                         span,
-                    }),
+                    )),
                 }
             }
             Value::Instance(inst) => self.instance_member_access(inst, name, span),
@@ -623,11 +694,11 @@ impl Interpreter {
             Value::Function(_) | Value::NativeFunction(_) => {
                 Self::function_member_access(name, span, obj_val.type_name().to_string())
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: obj_val.type_name().to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                obj_val.type_name().to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -640,11 +711,11 @@ impl Interpreter {
             "present?" => Ok(Value::Bool(true)),
             "class" => Ok(Value::String("Function".into())),
             "inspect" => Ok(Value::String("<function>".into())),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: type_name,
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                type_name,
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -1178,7 +1249,7 @@ impl Interpreter {
                             .methods
                             .borrow_mut()
                             .insert(method_name.to_string(), func);
-                        class.all_methods_cache.borrow_mut().take();
+                        class.invalidate_method_cache();
 
                         Ok(Value::Null)
                     },
@@ -1220,7 +1291,7 @@ impl Interpreter {
                                 .methods
                                 .borrow_mut()
                                 .insert(new_name.to_string(), method);
-                            class.all_methods_cache.borrow_mut().take();
+                            class.invalidate_method_cache();
                             Ok(Value::Null)
                         } else {
                             Ok(Value::String(
@@ -1305,14 +1376,13 @@ impl Interpreter {
                     }
                 }
                 // Methods the VM compiled live in `vm_methods` only (the
-                // constructor is registered there as "init").
+                // constructor is not one of them: `Class::vm_init`).
                 let mut class_in_chain = Some(inst_ref.class.clone());
                 while let Some(class) = class_in_chain {
                     for k in class.vm_methods.borrow().keys() {
-                        if k != "init"
-                            && !method_names
-                                .iter()
-                                .any(|v| matches!(v, Value::String(s) if **s == **k))
+                        if !method_names
+                            .iter()
+                            .any(|v| matches!(v, Value::String(s) if **s == **k))
                         {
                             method_names.push(Value::String(k.clone().into()));
                         }
@@ -1838,6 +1908,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };
@@ -1897,11 +1968,11 @@ impl Interpreter {
             return Ok(Value::Null);
         }
 
-        Err(RuntimeError::NoSuchProperty {
-            value_type: class_name,
-            property: name.to_string(),
+        Err(RuntimeError::no_such_property(
+            class_name,
+            name.to_string(),
             span,
-        })
+        ))
     }
 
     fn class_member_access(
@@ -1959,6 +2030,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             })));
@@ -1975,19 +2047,6 @@ impl Interpreter {
         }
 
         // Check for static field (including inherited static fields)
-        fn find_static_field(
-            class: &crate::interpreter::value::Class,
-            name: &str,
-        ) -> Option<Value> {
-            if let Some(value) = class.static_fields.borrow().get(name) {
-                return Some(value.clone());
-            }
-            if let Some(ref superclass) = class.superclass {
-                return find_static_field(superclass, name);
-            }
-            None
-        }
-
         if let Some(value) = find_static_field(class, name) {
             return Ok(value);
         }
@@ -2024,24 +2083,15 @@ impl Interpreter {
         // `new_with_attributes`). With other arguments the call itself runs
         // the constructor (`Interpreter::class_new`); this is the bare read.
         if name == "new" {
-            let class_val = class_val.clone();
-            return Ok(Value::NativeFunction(NativeFunction::new(
-                "new",
-                None,
-                move |args| match &class_val {
-                    Value::Class(class) => new_with_attributes(class, args),
-                    _ => unreachable!(),
-                },
-            )));
+            return Ok(attribute_new_function(class_val));
         }
 
         // Universal methods on class values
+        if let Some(value) = class_universal_constant(name) {
+            return Ok(value);
+        }
         match name {
             "inspect" => return Ok(Value::String(format!("<class {}>", class.name).into())),
-            "class" => return Ok(Value::String("class".into())),
-            "nil?" => return Ok(Value::Bool(false)),
-            "blank?" => return Ok(Value::Bool(false)),
-            "present?" => return Ok(Value::Bool(true)),
             "to_s" | "to_string" => {
                 return Ok(Value::String(format!("<class {}>", class.name).into()))
             }
@@ -2166,7 +2216,7 @@ impl Interpreter {
                                 .methods
                                 .borrow_mut()
                                 .insert(method_name.to_string(), func);
-                            class_clone.all_methods_cache.borrow_mut().take();
+                            class_clone.invalidate_method_cache();
                         }
                         let _ = class_name;
                         Ok(Value::Null)
@@ -2218,7 +2268,7 @@ impl Interpreter {
                                     .methods
                                     .borrow_mut()
                                     .insert(new_name.to_string(), method);
-                                class_clone.all_methods_cache.borrow_mut().take();
+                                class_clone.invalidate_method_cache();
                                 Ok(Value::Null)
                             } else {
                                 Err(format!("alias_method: method '{}' not found", old_name))
@@ -2317,11 +2367,11 @@ impl Interpreter {
             return Ok(bound);
         }
 
-        Err(RuntimeError::NoSuchProperty {
-            value_type: class.name.clone(),
-            property: name.to_string(),
+        Err(RuntimeError::no_such_property(
+            class.name.clone(),
+            name.to_string(),
             span,
-        })
+        ))
     }
 
     fn super_member_access(
@@ -2365,6 +2415,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                jit_closure: RefCell::new(None),
                 binds_this: false,
                 kernel: None,
             };
@@ -2385,11 +2436,11 @@ impl Interpreter {
                 },
             )));
         }
-        Err(RuntimeError::NoSuchProperty {
-            value_type: superclass.name.clone(),
-            property: name.to_string(),
+        Err(RuntimeError::no_such_property(
+            superclass.name.clone(),
+            name.to_string(),
             span,
-        })
+        ))
     }
 
     fn array_member_access(&self, name: &str, span: Span, obj_val: Value) -> RuntimeResult<Value> {
@@ -2439,11 +2490,11 @@ impl Interpreter {
                     method_name: name.to_string(),
                 }))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Array".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Array".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2458,25 +2509,67 @@ impl Interpreter {
     }
 
     /// What `hash.name` reads, on both engines: the tree-walker above and the
-    /// VM's `op_get_property`. The VM took only the last two steps (method
-    /// list, then key), so `h.present?`, `h.blank?` and `h.nil?` read as the
-    /// absent keys — `null` — and `if bounce.present? return bounce end` let
-    /// a non-manager through a guard (2.6.4).
+    /// VM's `op_get_property`, whose key fast paths answer a hit before it by
+    /// the same rule. In order: a user-defined Hash method; the key `"name"`
+    /// when the hash has it — `{"size": 2048}.size` is 2048, as
+    /// `hash["size"]` is, the way an instance field shadows a method; the
+    /// universal members (`class`, `nil?`, `blank?`…); a builtin method name,
+    /// as the method (`{"a": 1}.size` is 1); otherwise `null`.
+    ///
+    /// The tree-walker used to answer the universal members and the builtin
+    /// names before the key, so a row with a `size`, `key` or `values` field
+    /// read the field under `soli serve` (the VM's fast paths) and the method
+    /// under `soli test` — and on the VM too once any Hash user method turned
+    /// the fast paths off, or in `row.size ||= 0`, which wrote the entry count
+    /// back over the field. Before that the VM skipped the universal members,
+    /// so `h.present?` read as an absent key — `null` — and
+    /// `if bounce.present? return bounce end` let a non-manager through a
+    /// guard (2.6.4).
     pub(crate) fn hash_member_value(
         hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
         name: &str,
         obj_val: Value,
     ) -> Value {
+        Self::hash_member(hash, name, obj_val, true)
+    }
+
+    /// The callee of a call `hash.name(…)` on the tree-walker. A call names
+    /// the method, so a builtin method or a universal member is resolved as
+    /// one even when the hash has that key — `{"key": "abc"}.key("abc")` calls
+    /// `Hash#key`, as the VM's `CallMethod` does — and any other name is the
+    /// key's value (a function stored there is then called) or `null`.
+    pub(crate) fn hash_callee_value(
+        hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+        name: &str,
+        obj_val: Value,
+    ) -> Value {
+        Self::hash_member(hash, name, obj_val, false)
+    }
+
+    /// `hash_member_value` (`key_first`) and `hash_callee_value` (not): the
+    /// same steps, the key probed before or after the method names.
+    fn hash_member(
+        hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+        name: &str,
+        obj_val: Value,
+        key_first: bool,
+    ) -> Value {
         use crate::interpreter::executor::calls::user_methods::{
             has_user_methods, lookup_user_method, PrimType,
         };
-        // User-defined methods on Hash win over both builtins and the
-        // hash-key fallback (i.e. `h.foo` first checks user methods, then
-        // builtin methods, then the literal key "foo"). This matches Ruby's
-        // monkey-patching precedence.
+        // User-defined methods on Hash win over the key and the builtins
+        // alike. This matches Ruby's monkey-patching precedence.
         if has_user_methods(PrimType::Hash) {
             if let Some(f) = lookup_user_method(PrimType::Hash, name) {
                 return bind_user_method_to_receiver(obj_val, f);
+            }
+        }
+        // StrKey: a zero-allocation lookup (hashes as HashKey::String does).
+        let key = crate::interpreter::value::StrKey(name);
+        if key_first {
+            let hit = hash.borrow().get(&key).cloned();
+            if let Some(value) = hit {
+                return value;
             }
         }
         // Universal methods
@@ -2490,19 +2583,17 @@ impl Interpreter {
             "present?" => return Value::Bool(!hash.borrow().is_empty()),
             _ => {}
         }
-        // First check if it's a known method
         if is_hash_method_name(name) {
             return Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             });
         }
-        // Try to access as a hash key (dot notation for hash access)
-        // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
-        hash.borrow()
-            .get(&crate::interpreter::value::StrKey(name))
-            .cloned()
-            .unwrap_or(Value::Null)
+        if key_first {
+            // Probed above: the hash has no such key.
+            return Value::Null;
+        }
+        hash.borrow().get(&key).cloned().unwrap_or(Value::Null)
     }
 
     pub(crate) fn query_builder_member_access(
@@ -2563,11 +2654,7 @@ impl Interpreter {
                     unreachable!()
                 }
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "QueryBuilder".to_string(),
-                property: name.to_string(),
-                span,
-            }),
+            _ => Err(RuntimeError::no_such_property("QueryBuilder".to_string(), name.to_string(), span)),
         }
     }
 
@@ -2624,11 +2711,7 @@ impl Interpreter {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "String".to_string(),
-                property: name.to_string(),
-                span,
-            }),
+            _ => Err(RuntimeError::no_such_property("String".to_string(), name.to_string(), span)),
         }
     }
 
@@ -2688,11 +2771,11 @@ impl Interpreter {
                         span,
                     )
                 }
-                _ => Err(RuntimeError::NoSuchProperty {
-                    value_type: "DateTime".to_string(),
-                    property: name.to_string(),
+                _ => Err(RuntimeError::no_such_property(
+                    "DateTime".to_string(),
+                    name.to_string(),
                     span,
-                }),
+                )),
             },
         }
     }
@@ -2761,11 +2844,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Int(n)),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "int".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "int".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2814,11 +2897,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Float(n)),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "float".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "float".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2844,11 +2927,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Bool(b)),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "bool".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "bool".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2876,11 +2959,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Null),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "null".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "null".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2907,11 +2990,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Symbol(s.to_string().into())),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "symbol".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "symbol".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2956,11 +3039,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Decimal(d.clone())),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "decimal".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "decimal".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -3125,86 +3208,262 @@ impl Interpreter {
     }
 }
 
+/// A static field of `class` or of an ancestor, the nearest first.
+fn find_static_field(class: &crate::interpreter::value::Class, name: &str) -> Option<Value> {
+    if let Some(value) = class.static_fields.borrow().get(name) {
+        return Some(value.clone());
+    }
+    class
+        .superclass
+        .as_ref()
+        .and_then(|superclass| find_static_field(superclass, name))
+}
+
+/// The bare `Klass.new` of the attribute form: a native that builds the
+/// instance with [`new_with_attributes`]. What `class_member_access` answers
+/// for `new` once nothing declared on the class has claimed the name.
+pub(crate) fn attribute_new_function(class_val: &Value) -> Value {
+    let class_val = class_val.clone();
+    Value::NativeFunction(NativeFunction::new(
+        "new",
+        None,
+        move |args| match &class_val {
+            Value::Class(class) => new_with_attributes(class, args),
+            _ => unreachable!(),
+        },
+    ))
+}
+
+/// The universal members a class value answers with a constant, whatever
+/// the class: `class`, `nil?`, `blank?`, `present?`.
+fn class_universal_constant(name: &str) -> Option<Value> {
+    Some(match name {
+        "class" => Value::String("class".into()),
+        "nil?" | "blank?" => Value::Bool(false),
+        "present?" => Value::Bool(true),
+        _ => return None,
+    })
+}
+
+/// Whether nothing declared on `class` claims `name` ahead of the built-in
+/// answers of `class_member_access` (`new`, the universal members): no
+/// scope, no static method (Soli, VM-compiled or native), no static field
+/// and no nested class of that name on the chain, and no test stub, which
+/// only the tree-walker's member access consults.
+fn class_member_unclaimed(class: &crate::interpreter::value::Class, name: &str) -> bool {
+    !crate::interpreter::builtins::mock::stubs_active()
+        && !(class.is_model_subclass()
+            && crate::interpreter::builtins::model::scopes::has_scope(&class.name, name))
+        && class.find_static_method(name).is_none()
+        && class.find_vm_static_method(name).is_none()
+        && class.find_native_static_method(name).is_none()
+        && find_static_field(class, name).is_none()
+        && !class.nested_classes.borrow().contains_key(name)
+}
+
+/// Whether `Model.new(...)` on `class` is the attribute form
+/// ([`new_with_attributes`]) — what `class_member_access` answers for a
+/// model's `new` — so an engine can build the instance without asking the
+/// tree-walker's member access for the native first. A model never runs a
+/// constructor for `.new` (`intercepts_new` is false for every model).
+pub(crate) fn model_attribute_new(class: &crate::interpreter::value::Class) -> bool {
+    class.is_model_subclass() && !class.is_value_object() && class_member_unclaimed(class, "new")
+}
+
+/// What `class_member_access` answers for a universal member (`class`,
+/// `nil?`, `blank?`, `present?`) of `class`, when nothing declared on the
+/// class claims the name; `None` otherwise.
+pub(crate) fn class_universal_member(
+    class: &crate::interpreter::value::Class,
+    name: &str,
+) -> Option<Value> {
+    let value = class_universal_constant(name)?;
+    class_member_unclaimed(class, name).then_some(value)
+}
+
 /// `Klass.new` / `Klass.new({...})` / `Klass.new(nil)`: an instance with the
 /// hash's entries assigned to its fields — no constructor runs. Framework-
 /// internal `_`-prefixed keys are skipped. The shape `Klass.new(args)` with
 /// other arguments runs the constructor instead (`Interpreter::class_new`).
+///
+/// A model's `Model.new(attrs)` sets only its literal defaults
+/// ([`start_literal_defaults`]): a declared field it is not given and that
+/// has no default stays unset, so `save` neither validates nor writes a
+/// `nil` nobody assigned, and a column's own default applies. Any other
+/// class's fields start as [`start_declared_fields`] sets them: this path
+/// has no engine to evaluate a default that is not a literal. The engines'
+/// own `class_new` start them in full, as `new Klass()` does, then assign
+/// the attributes with [`assign_attributes`].
 pub fn new_with_attributes(
     class: &Rc<crate::interpreter::value::Class>,
     args: &[Value],
 ) -> Result<Value, String> {
-    if class.is_module {
-        return Err(format!("cannot instantiate module {}", class.name));
-    }
-    if args.len() > 1 {
-        return Err(format!(
-            "new() expects 0 or 1 arguments, got {}",
-            args.len()
-        ));
-    }
+    check_attribute_args(class, args)?;
     let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
         class.clone(),
     )));
-    // Declared fields with a literal default (`items: Array = []`), the
-    // superclass's first — as `new Klass()` sets them. Without this the
-    // attribute form left them unset on the tree-walker, so reading one
-    // raised, while the VM had them.
-    literal_field_defaults(class, &mut instance.borrow_mut());
-    match args.first() {
-        None | Some(Value::Null) => {}
-        Some(Value::Hash(pairs)) => {
-            use crate::interpreter::value::HashKey;
-            let mut inst_mut = instance.borrow_mut();
-            for (k, v) in pairs.borrow().iter() {
-                if let HashKey::String(field) = k {
-                    if field.starts_with('_') {
-                        continue;
-                    }
-                    inst_mut.set(field.clone().to_string(), v.clone());
-                }
-            }
-        }
-        Some(other) => {
-            return Err(format!(
-                "new() expects a Hash of attributes, got {}",
-                other.type_name()
-            ));
-        }
+    if class.is_model_subclass() {
+        start_literal_defaults(class, &mut instance.borrow_mut());
+    } else {
+        start_declared_fields(class, &mut instance.borrow_mut());
     }
+    assign_attributes(&instance, args);
     Ok(Value::Instance(instance))
 }
 
-fn literal_field_defaults(
+/// The declared fields of `class` and its ancestors that have a literal
+/// default, set to it — the farthest class first, so a subclass's wins. A
+/// model's `Model.new(attrs)` starts these and no other: a field without a
+/// default, or with one that is not a literal, is left unset, as through
+/// 2.29.3. Setting it to `nil` made `save` validate that `nil` (a
+/// `numericality` rule failed on a field nobody assigned) and write it,
+/// replacing a column's SQL `DEFAULT` with `NULL`.
+pub(crate) fn start_literal_defaults(
     class: &crate::interpreter::value::Class,
     instance: &mut crate::interpreter::value::Instance,
 ) {
     if let Some(superclass) = &class.superclass {
-        literal_field_defaults(superclass, instance);
+        start_literal_defaults(superclass, instance);
     }
-    own_literal_field_defaults(class, instance);
-}
-
-/// `class`'s own literal field defaults, not its ancestors'.
-pub(crate) fn own_literal_field_defaults(
-    class: &crate::interpreter::value::Class,
-    instance: &mut crate::interpreter::value::Instance,
-) {
-    for (name, default) in &class.fields {
-        if let Some(value) = default.as_ref().and_then(literal_value) {
-            instance.set(name.clone(), value);
+    if class.fields.is_empty() {
+        // A model the VM compiled keeps its starts in `field_init`, where a
+        // field without a literal default starts as `nil`.
+        if let Some(init) = class.field_init.borrow().as_ref() {
+            init.start_literals(instance);
+        }
+        return;
+    }
+    for name in declared_field_order(class) {
+        if let Some(value) = class
+            .fields
+            .get(&name)
+            .and_then(Option::as_ref)
+            .and_then(literal_value)
+        {
+            instance.set(name, value);
         }
     }
 }
 
-/// The value of a literal expression — numbers, strings, booleans, `nil`,
-/// and arrays and hashes of literals — evaluated without an interpreter.
-fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
-    use crate::ast::ExprKind;
+/// The attribute form's arguments: none, `nil` or one hash, on a class.
+pub fn check_attribute_args(
+    class: &crate::interpreter::value::Class,
+    args: &[Value],
+) -> Result<(), String> {
+    if class.is_module {
+        return Err(format!("cannot instantiate module {}", class.name));
+    }
+    match args {
+        [] | [Value::Null] | [Value::Hash(_)] => Ok(()),
+        [other] => Err(format!(
+            "new() expects a Hash of attributes, got {}",
+            other.type_name()
+        )),
+        _ => Err(format!(
+            "new() expects 0 or 1 arguments, got {}",
+            args.len()
+        )),
+    }
+}
+
+/// The attribute hash, if `args` holds one, assigned to the instance's
+/// fields: string keys only, `_`-prefixed ones skipped. Checked first by
+/// [`check_attribute_args`].
+pub fn assign_attributes(
+    instance: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    args: &[Value],
+) {
+    use crate::interpreter::value::HashKey;
+    let Some(Value::Hash(pairs)) = args.first() else {
+        return;
+    };
+    let mut inst_mut = instance.borrow_mut();
+    for (k, v) in pairs.borrow().iter() {
+        if let HashKey::String(field) = k {
+            if field.starts_with('_') {
+                continue;
+            }
+            inst_mut.set(field.clone(), v.clone());
+        }
+    }
+}
+
+/// Every declared instance field of `class` and its ancestors — the farthest
+/// first, so a subclass's default wins — set to its literal default, or to
+/// `nil`. The part of field initialization that needs no engine: a default
+/// that is not a literal starts as `nil` here. The engines evaluate it
+/// (`Interpreter::initialize_instance_fields`, `Vm::init_fields`).
+pub(crate) fn start_declared_fields(
+    class: &crate::interpreter::value::Class,
+    instance: &mut crate::interpreter::value::Instance,
+) {
+    if let Some(superclass) = &class.superclass {
+        start_declared_fields(superclass, instance);
+    }
+    // A class the VM compiled keeps its literal defaults here.
+    if let Some(init) = class.field_init.borrow().as_ref() {
+        init.start(instance);
+        return;
+    }
+    for (name, default) in &class.fields {
+        let value = default
+            .as_ref()
+            .and_then(literal_value)
+            .unwrap_or(Value::Null);
+        instance.set(name.clone(), value);
+    }
+}
+
+/// The instance fields `class` itself declares, in declaration order, then
+/// any it lists without declaring them in order (sorted) — the order both
+/// engines start them and evaluate their defaults in.
+pub(crate) fn declared_field_order(class: &crate::interpreter::value::Class) -> Vec<String> {
+    let declared = class.declared_fields.borrow();
+    let mut names: Vec<String> = declared
+        .iter()
+        .filter(|name| class.fields.contains_key(*name))
+        .cloned()
+        .collect();
+    let mut rest: Vec<String> = class
+        .fields
+        .keys()
+        .filter(|name| !declared.contains(*name))
+        .cloned()
+        .collect();
+    rest.sort();
+    names.extend(rest);
+    names
+}
+
+/// Whether a field's default is a literal (see [`literal_value`]): a value
+/// computed once and copied into each instance, not an expression the
+/// engine evaluates for each one.
+pub(crate) fn is_literal_default(expr: &crate::ast::Expr) -> bool {
+    literal_value(expr).is_some()
+}
+
+/// The value of a literal expression — numbers (negative ones too, and
+/// Decimals), strings, symbols, booleans, `nil`, and arrays and hashes of
+/// literals — evaluated without an interpreter.
+pub(crate) fn literal_value(expr: &crate::ast::Expr) -> Option<Value> {
+    use crate::ast::{ExprKind, UnaryOp};
     use crate::interpreter::value::{HashKey, HashPairs};
     Some(match &expr.kind {
         ExprKind::IntLiteral(n) => Value::Int(*n),
         ExprKind::FloatLiteral(f) => Value::Float(*f),
+        ExprKind::Unary {
+            operator: UnaryOp::Negate,
+            operand,
+        } => match &operand.kind {
+            ExprKind::IntLiteral(n) => Value::Int(n.checked_neg()?),
+            ExprKind::FloatLiteral(f) => Value::Float(-*f),
+            _ => return None,
+        },
         ExprKind::StringLiteral(s) => Value::String(s.clone().into()),
+        ExprKind::Symbol(s) => Value::Symbol(s.clone().into()),
+        ExprKind::DecimalLiteral(s) => {
+            Value::Decimal(crate::interpreter::value::DecimalValue::from_literal(s)?)
+        }
         ExprKind::BoolLiteral(b) => Value::Bool(*b),
         ExprKind::Null => Value::Null,
         ExprKind::Array(items) => Value::Array(Rc::new(RefCell::new(
@@ -3243,24 +3502,109 @@ pub fn is_attribute_new(positional: &[Value], has_named: bool) -> bool {
 /// engine: a class with one builds every `Klass.new(...)` through it, as
 /// `new Klass(...)` does — the attribute form is for classes without.
 pub fn has_constructor(class: &crate::interpreter::value::Class) -> bool {
-    class.find_vm_method("init").is_some() || class.find_constructor().is_some()
+    class.has_vm_init() || class.find_constructor().is_some()
 }
 
 /// Whether `Klass.new(...)` on `class` is answered by the engines' call
 /// interceptors: not a model (its `new` is the ORM's), not a class with its
-/// own static `new`.
+/// own static `new`. Memoized per class ([`Class::intercepts_new`]).
+///
+/// [`Class::intercepts_new`]: crate::interpreter::value::Class::intercepts_new
 pub fn intercepts_new(class: &crate::interpreter::value::Class) -> bool {
-    !class.is_model_subclass()
-        && !class.is_module
-        && class.find_static_method("new").is_none()
-        && class.find_vm_static_method("new").is_none()
-        && !has_native_static_new(class)
+    class.intercepts_new()
 }
 
-fn has_native_static_new(class: &crate::interpreter::value::Class) -> bool {
-    class.native_static_methods.contains_key("new")
-        || class
-            .superclass
-            .as_ref()
-            .is_some_and(|superclass| has_native_static_new(superclass))
+#[cfg(test)]
+mod hash_member_tests {
+    use super::*;
+    use crate::interpreter::value::{HashKey, HashPairs};
+
+    /// A row whose keys are named like a builtin method and a universal member.
+    fn row() -> (Rc<RefCell<HashPairs>>, Value) {
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("size".into()), Value::Int(2048));
+        pairs.insert(HashKey::String("key".into()), Value::String("abc".into()));
+        pairs.insert(HashKey::String("class".into()), Value::String("btn".into()));
+        pairs.insert(HashKey::String("values".into()), Value::Null);
+        pairs.insert(HashKey::String("title".into()), Value::String("x".into()));
+        let hash = Rc::new(RefCell::new(pairs));
+        (hash.clone(), Value::Hash(hash))
+    }
+
+    fn method_name(value: &Value) -> Option<&str> {
+        match value {
+            Value::Method(method) => Some(method.method_name.as_str()),
+            _ => None,
+        }
+    }
+
+    /// A bare `row.size` is the key, as production's VM fast paths always
+    /// answered; the tree-walker answered the method (`soli test` read 5).
+    #[test]
+    fn a_bare_read_answers_a_key_named_like_a_method() {
+        let (hash, row) = row();
+        let read = |name: &str| Interpreter::hash_member_value(&hash, name, row.clone());
+        assert_eq!(read("size"), Value::Int(2048));
+        assert_eq!(read("key"), Value::String("abc".into()));
+        assert_eq!(read("class"), Value::String("btn".into()));
+        // A key holding nil is nil, not the method of that name.
+        assert_eq!(read("values"), Value::Null);
+        assert_eq!(read("title"), Value::String("x".into()));
+        // Without the key: the builtin method, the universal answer, or nil.
+        assert_eq!(method_name(&read("keys")), Some("keys"));
+        assert_eq!(method_name(&read("length")), Some("length"));
+        assert_eq!(read("nil?"), Value::Bool(false));
+        assert_eq!(read("present?"), Value::Bool(true));
+        assert_eq!(read("missing"), Value::Null);
+    }
+
+    /// `row.key("abc")` calls `Hash#key` even on a row with a `key` field, as
+    /// the VM's CallMethod does; a name that is no method is still the key.
+    #[test]
+    fn a_call_resolves_a_method_name_to_the_method() {
+        let (hash, row) = row();
+        let callee = |name: &str| Interpreter::hash_callee_value(&hash, name, row.clone());
+        assert_eq!(method_name(&callee("size")), Some("size"));
+        assert_eq!(method_name(&callee("key")), Some("key"));
+        assert_eq!(method_name(&callee("values")), Some("values"));
+        assert_eq!(callee("class"), Value::String("hash".into()));
+        assert_eq!(callee("title"), Value::String("x".into()));
+        assert_eq!(callee("missing"), Value::Null);
+    }
+
+    /// The same rules end to end on the tree-walker: a bare read is the key,
+    /// parentheses (with arguments, a block, or none) are the method, and a
+    /// compound assignment reads — and writes back — the key.
+    #[test]
+    fn the_tree_walker_reads_the_key_and_calls_the_method() {
+        let source = r#"
+row = {"size": 2048, "key": "abc", "update": 5}
+counts = {"size": nil}
+counts.size ||= 7
+row.size ||= 0
+result = [row.size, row.key, row.size(), row.key("abc"), row.update({"z": 1}).length, row.key { |v| v }, counts.size, {"a": 1}.size]
+"#;
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+        let result = interpreter.environment.borrow().get("result");
+        let items = match result {
+            Some(Value::Array(items)) => items,
+            other => panic!("expected an array, got {other:?}"),
+        };
+        assert_eq!(
+            *items.borrow(),
+            vec![
+                Value::Int(2048),
+                Value::String("abc".into()),
+                Value::Int(3),
+                Value::String("key".into()),
+                Value::Int(4),
+                Value::Null,
+                Value::Int(7),
+                Value::Int(1),
+            ]
+        );
+    }
 }

@@ -429,6 +429,7 @@
 &lt;%= substring(post["content"], 0, 100) %&gt;...</code></pre>
         </div>
     </div>
+    <p class="text-gray-400 mb-8"><code>substring(...)</code> exists in templates only: a helper in <code>app/helpers</code> calls the string method, <code>text.substring(0, 100)</code>.</p>
 
     <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-8">
         <p class="text-sm text-amber-200"><strong>Pick the helper that matches the output context.</strong> <code>h()</code> is for element bodies, <code>attr()</code> for attribute values, <code>j()</code> for JS string literals, <code>url()</code> for URL query/path parts. Using the wrong one &mdash; e.g. <code>h()</code> inside a <code>&lt;script&gt;</code> &mdash; leaves XSS gaps.</p>
@@ -704,21 +705,33 @@ SOLI_NAV=morph soli serve .</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Application Helpers</h2>
     <p class="text-gray-400 mb-6">When you create a new app with <code>soli new</code>, a starter helper file is generated at <code>app/helpers/application_helper.sl</code>. These helpers are automatically available in all templates.</p>
+    <p class="text-gray-400 mb-6">A helper you define wins over a framework function of the same name &mdash; a route helper (<code>posts_path</code>), the form builder&rsquo;s <code>form_with</code>, <code>button_to</code> or <code>csrf_field</code>, <code>Retry</code>, a builtin &mdash; in every view, partial and component, <code>&lt;%= render "x" %&gt;</code> partials included. A local, or a controller <code>@ivar</code>, of the same name wins over the helper. Helpers are looked up where the view looks names up; nothing copies them into a partial&rsquo;s data. The framework&rsquo;s own code keeps its own: a <code>csrf_field</code> helper of yours changes what <code>&lt;%- csrf_field() %&gt;</code> prints, not the token <code>form_with</code> and <code>button_to</code> embed.</p>
+
+    <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-8">
+        <p class="text-sm text-amber-200"><strong>A helper runs in the helpers&rsquo; own scope, not the view&rsquo;s.</strong> It sees the builtins a script sees (<code>len</code>, <code>html_escape</code>, <code>h</code>, <code>time_ago</code>, <code>partial</code>, &hellip;), the other helpers and the request (<code>req</code>, <code>params</code>, <code>session</code>, <code>cookies</code>, <code>headers</code>). It does not see the functions only a view has: <code>substring(...)</code>, <code>t(...)</code>, <code>l(...)</code>, <code>datetime_format(...)</code>, <code>public_path(...)</code>, <code>number_with_delimiter(...)</code>, <code>paginate(...)</code>, <code>component(...)</code>, the form builder and the route helpers. A helper called from a view reads such a name as nil, so calling it fails with &ldquo;Cannot call non-function value&rdquo; and the page answers 500. Call the string methods instead (<code>text.substring(0, 3)</code>, <code>text.upcase</code>), or compute the value in the view and pass it to the helper.</p>
+    </div>
 
     <h3 class="text-xl font-semibold text-white mb-4">Text Helpers</h3>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Text helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Truncate text with ellipsis --&gt
-&lt;%= truncate(post["content"], 100) %&gt
+<pre><code class="language-erb text-sm">&lt;!-- Cut text to at most 100 characters, the "..." included --&gt
+&lt;%= truncate_text(post["content"], 100, "...") %&gt
 &lt;!-- "This is a very long article that..." --&gt
 
-&lt;%= truncate(title, 50, " [more]") %&gt
+&lt;%= truncate_text(title, 50, " [more]") %&gt
 &lt;!-- "This is a long title that gets cut [more]" --&gt
 
-&lt;!-- Capitalize first letter --&gt
+&lt;!-- Characters, not bytes --&gt
+&lt;%= truncate_text("héllo wörld", 8, "…") %&gt
+&lt;!-- "héllo w…" --&gt
+
+&lt;!-- Capitalize the first letter, leave the rest as it is --&gt
 &lt;%= capitalize("hello world") %&gt
 &lt;!-- "Hello world" --&gt
+
+&lt;%= capitalize("hello WORLD") %&gt
+&lt;!-- "Hello WORLD" ("hello WORLD".capitalize gives "Hello world") --&gt
 
 &lt;%= capitalize(user["status"]) %&gt
 &lt;!-- "Active" (if status was "active") --&gt
@@ -825,12 +838,12 @@ SOLI_NAV=morph soli serve .</code></pre>
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-amber-400">truncate(text, length, suffix?)</td>
-                    <td class="py-3 px-4">Truncate text to length with suffix (default: "...")</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">truncate_text(text, length, suffix)</td>
+                    <td class="py-3 px-4">Cut text to at most <code>length</code> characters, the suffix included (a suffix longer than <code>length</code> comes back alone)</td>
                 </tr>
                 <tr class="border-b border-white/5">
                     <td class="py-3 px-4 font-mono text-amber-400">capitalize(text)</td>
-                    <td class="py-3 px-4">Capitalize first letter of string</td>
+                    <td class="py-3 px-4">Capitalize the first letter, leave the rest as it is</td>
                 </tr>
                 <tr class="border-b border-white/5">
                     <td class="py-3 px-4 font-mono text-amber-400">pluralize(count, singular, plural?)</td>
@@ -889,7 +902,7 @@ SOLI_NAV=morph soli serve .</code></pre>
   &lt;% end %&gt
 
   &lt;div class="content"&gt
-    &lt;%= truncate(post["content"], 500) %&gt
+    &lt;%= truncate_text(post["content"], 500, "...") %&gt
   &lt;/div&gt
 
   &lt;div class="stats"&gt
@@ -1024,7 +1037,10 @@ SOLI_NAV=morph soli serve .</code></pre>
 
     <h3 class="text-xl font-semibold text-white mb-4">Inherited instance variables</h3>
     <p class="text-gray-400 mb-8">
-        Partials <strong class="text-white">and</strong> components inherit the current controller's <code>@instance</code> variables, just like the main view &mdash; so a partial can read <code>@current_user</code> or <code>@posts</code> without passing them through the locals hash. An explicit local always wins over an inherited ivar of the same name, and framework internals (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are never injected.
+        Partials <strong class="text-white">and</strong> components inherit the current controller's <code>@instance</code> variables, just like the main view &mdash; so a partial can read <code>@current_user</code> or <code>@posts</code> without passing them through the locals hash. A partial reads them as names in its scope, after its own locals: nothing is copied into the hash you pass, and <code>partial()</code> / <code>component()</code> leave that hash as it was. An explicit local always wins over an inherited ivar of the same name, an inherited ivar wins over a helper of the same name (as it does in the view), and the framework internals (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are not inherited.
+    </p>
+    <p class="text-gray-400 mb-8">
+        Called from a helper, a service or an action rather than from a view, <code>partial()</code> / <code>render_partial()</code> also gives the partial <code>req</code>, <code>params</code> and <code>cookies</code>. Those go into a copy, so your hash keeps only your keys there too: a <code>json_script(opts)</code> after the call shows no request.
     </p>
 
     <h3 class="text-xl font-semibold text-white mb-4">The <code>locals</code> hash</h3>
@@ -1048,6 +1064,7 @@ SOLI_NAV=morph soli serve .</code></pre>
         Missing keys return <code>null</code>, so the usual <code>.nil?</code> pattern applies with no extra guards:
         <code class="block mt-2 px-3 py-2 rounded bg-[#171412] text-amber-300 font-mono text-xs">&lt;% let css = locals["class"].nil? ? "h-5 w-5" : locals["class"] %&gt;</code>
         <code>locals</code> is always defined — even when a partial is rendered without a data hash it's an empty hash, so <code>locals[anything]</code> is safe.
+        Besides the keys you passed, <code>locals</code> holds the controller&rsquo;s inherited <code>@ivars</code> (your keys win over them), so <code>locals["current_user_id"]</code> reads an <code>@current_user_id</code> the caller did not pass. View helpers are not in it.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Components</h2>
@@ -1210,6 +1227,9 @@ end</code></pre>
     <h3 class="text-xl font-semibold text-white mb-4">Caching a component</h3>
     <p class="text-gray-400 mb-4">
       Pass a <code>"cache"</code> option to memoize a component's rendered HTML in the KV cache. <code>"cache": true</code> derives the key from the data; a string sets an explicit key; <code>"cache_ttl"</code> sets the lifetime (seconds). Renders that set a cookie/session or read the clock/random are never cached, and a cache-backend outage falls back to a normal render.
+    </p>
+    <p class="text-gray-400 mb-4">
+      A derived key follows the values in the data, and a record (any object) by its class and its fields: edit the plan and its table gets a new key. What the record's methods read is not part of the key: a relation (<code>plan.features</code>) queries the database, and the cached table keeps the features it was rendered with until <code>cache_ttl</code> runs out. Pass the related data in the hash when it should count. Data the key cannot be derived from, such as a query not run yet (<code>Plan.where(...)</code>), renders the component uncached.
     </p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
@@ -1473,14 +1493,21 @@ end</code></pre>
     <p class="text-gray-400 mb-4">A template too small to gain from it stays on the interpreter as well: one with no loop and fewer than eight dynamic parts (outputs, <code>&lt;% %&gt;</code> code, conditions, slots). A render on the VM has a fixed cost that a two-line component never earns back.</p>
     <p class="text-gray-400 mb-3">The rules are the tree-walker&rsquo;s:</p>
     <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
-        <li>A name a view reads is its data first (the <code>render</code> hash and the controller&rsquo;s <code>@ivars</code>), then a builtin or a helper, and nil when it is neither. <code>@title</code> reads <code>title</code>.</li>
+        <li>A name a view reads is its data first (the <code>render</code> hash and the controller&rsquo;s <code>@ivars</code>), then a helper or a builtin (a helper wins over a builtin of the same name), and nil when it is neither. In a partial or component it is the locals passed, then the controller&rsquo;s <code>@ivars</code>, then a helper or a builtin. <code>@title</code> reads <code>title</code>.</li>
+        <li>A bare <code>clock</code> is the time, as <code>clock()</code> is: <code>&lt;%= ((clock - @started) * 1000).round(2) %&gt;</code> stays on the VM. A render whose data has a <code>clock</code> of its own (a controller&rsquo;s <code>@clock</code>), or an app that defines <code>clock</code> itself (a helper or a top-level function), is rendered on the tree-walker instead, which resolves <code>clock</code> as it always has.</li>
         <li>A variable a view assigns (<code>&lt;% heading = &quot;Posts&quot; %&gt;</code>) is still there for its layout, and only for that render: one that reuses a builtin&rsquo;s or a helper&rsquo;s name (<code>&lt;% url = &hellip; %&gt;</code>, <code>&lt;% h = &hellip; %&gt;</code>) no longer replaces it for the renders that follow on the worker. A bare assignment in a helper body is a local of that call in the same way.</li>
         <li>A zero-argument helper or builtin read without <code>()</code> is called where the view reads it &mdash; <code>&lt;% if signed_in? %&gt;</code>, <code>&lt;%= current_user %&gt;</code> &mdash; as on the tree-walker. Before 2.29.4 a compiled view read the function itself, which is always truthy.</li>
         <li>A <code>for</code> over a hash yields <code>[key, value]</code> pairs.</li>
-        <li>A helper from <code>app/helpers</code> whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name &mdash; <code>req</code>, <code>params</code>, <code>session</code>, <code>cookies</code>, <code>headers</code>, <code>flash</code>, another helper, a builtin &mdash; or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.</li>
+        <li>A helper from <code>app/helpers</code> runs on the VM with the view. The names it reads from its closure &mdash; builtins, the other helpers, component classes, <code>req</code>, <code>params</code>, <code>session</code>, <code>cookies</code>, <code>headers</code> &mdash; are read from that closure on every call, so a helper still sees the current request. A helper stays on the interpreter when it assigns a name its closure holds (<code>req = &hellip;</code>, a local of that call there, as above), names something its closure does not hold (a model class), calls <code>respond_to</code>, <code>render_json</code>, <code>grouped</code>, <code>with_transaction</code>, <code>after_commit</code>, <code>with_tenant</code>, <code>assert_raises</code>, <code>event</code> or <code>Factory</code>, reads a zero-argument helper or builtin without parentheses (<code>site_name</code> rather than <code>site_name()</code>: the interpreter calls it), or declares a function or keeps a lambda anywhere but in a call&rsquo;s arguments. A call that passes a zero-argument function to a parameter the helper reads bare runs on the interpreter too.</li>
+        <li>A function the view calls that returns a value its declared return type does not admit (<code>def label(n) -&gt; String</code> returning nil) raises, as it does on the interpreter.</li>
     </ul>
-    <p class="text-gray-400 mb-4">If a compiled view fails while it renders, or writes a function by name (a lambda: <code>&lt;%= callback %&gt;</code>), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with <code>content_for</code> is taken back, but not a side effect it already had, such as a session value it deleted. Under <code>--dev</code> every view renders on the tree-walker.</p>
-    <p class="text-gray-400 mb-12"><code>SOLI_VM_VIEWS=0</code> renders every view on the tree-walker. <code>SOLI_VM_VIEWS_CHECK=&lt;file&gt;</code> renders each compiled view on both engines, serves the tree-walker&rsquo;s output and appends to <code>&lt;file&gt;</code> every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.</p>
+    <p class="text-gray-400 mb-4">If a compiled view fails while it renders, or writes a function by name (a lambda: <code>&lt;%= callback %&gt;</code>), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with <code>content_for</code> is taken back, but not a side effect it already had, such as a session value it deleted. A view that wrote a function by name, or that the tree-walker then rendered without an error, renders on the tree-walker from then on, in that worker: the two engines disagree about it, and trying the VM again would render the page twice on every request. An error both engines raise is the view&rsquo;s or its data&rsquo;s, and the view stays compiled. Under <code>--dev</code> every view renders on the tree-walker.</p>
+    <p class="text-gray-400 mb-4"><code>SOLI_VM_VIEWS=0</code> renders every view on the tree-walker. <code>SOLI_VM_VIEWS_CHECK=&lt;file&gt;</code> renders each compiled view on both engines, serves the tree-walker&rsquo;s output and appends to <code>&lt;file&gt;</code> every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.</p>
+    <p class="text-gray-400 mb-2"><code>SOLI_ENGINE_LOG=1</code> says on stderr, once each, which views, partials, components and layouts the interpreter renders in production, and which view helpers it runs, with the reason:</p>
+    <pre data-filename="stderr" class="mb-12"><code class="language-text text-sm">[soli engine] view 'posts/_post.html.slv' renders on the interpreter: too small to gain from the VM
+[soli engine] layout 'layouts/application.html.slv' renders on the interpreter: layouts are not compiled
+[soli engine] view helper 'title' runs on the interpreter: it reads `site_name` without parentheses, which the interpreter calls
+[soli engine] view 'posts/index.html.slv' failed on the VM and rendered on the interpreter, which renders it from now on: &hellip;</code></pre>
 
     <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
     <ul class="space-y-4 mb-12">

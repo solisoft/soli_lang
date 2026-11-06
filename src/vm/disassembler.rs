@@ -54,6 +54,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("SYMBOL       {:>5} (:{})", idx, name));
         }
         Op::Null => out.push_str("NULL"),
+        Op::PushNulls(count) => out.push_str(&format!("PUSH_NULLS       {count:>3}")),
         Op::True => out.push_str("TRUE"),
         Op::False => out.push_str("FALSE"),
         Op::Pop => out.push_str("POP"),
@@ -90,6 +91,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Not => out.push_str("NOT"),
         Op::Jump(offset) => out.push_str(&format!("JUMP         {:>5}", offset)),
         Op::JumpIfFalse(offset) => out.push_str(&format!("JUMP_IF_FALSE {:>4}", offset)),
+        Op::JumpIfTrue(offset) => out.push_str(&format!("JUMP_IF_TRUE {:>5}", offset)),
         Op::Loop(offset) => out.push_str(&format!("LOOP         {:>5}", offset)),
         Op::JumpIfFalseNoPop(offset) => {
             out.push_str(&format!("JUMP_FALSE_NP {:>4}", offset));
@@ -126,12 +128,25 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
         Op::HashWithKeys(idx, n) => out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n)),
+        Op::LiteralArray(idx) => out.push_str(&format!(
+            "LITERAL_ARRAY {:>4} ({})",
+            idx,
+            format_constant(chunk.constants.get(*idx as usize))
+        )),
+        Op::LiteralListIncludes(idx, user_method) => {
+            let list = format_constant(chunk.constants.get(*idx as usize));
+            out.push_str(&format!("LIST_INCLUDES {:>4} ({})", idx, list));
+            if *user_method != super::opcode::NO_USER_METHOD {
+                let name = constant_string(chunk, *user_method);
+                out.push_str(&format!(" user_method={}", name));
+            }
+        }
         Op::Range => out.push_str("RANGE"),
         Op::GetIndex => out.push_str("GET_INDEX"),
         Op::SetIndex => out.push_str("SET_INDEX"),
         Op::BuildString(n) => out.push_str(&format!("BUILD_STRING {:>5}", n)),
         Op::Spread => out.push_str("SPREAD"),
-        Op::GetProperty(idx) => {
+        Op::GetProperty(idx, _, _) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("GET_PROPERTY {:>5} ({})", idx, name));
         }
@@ -248,6 +263,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::AppendLocalConst(slot, cidx) => {
             out.push_str(&format!("APPEND_LC    {:>3},{:>3}", slot, cidx))
         }
+        Op::AddLocalConstInPlace(slot, cidx) => {
+            out.push_str(&format!("ADD_LC_IP    {:>3},{:>3}", slot, cidx))
+        }
+        Op::SubLocalConstInPlace(slot, cidx) => {
+            out.push_str(&format!("SUB_LC_IP    {:>3},{:>3}", slot, cidx))
+        }
+        Op::MulLocalConstInPlace(slot, cidx) => {
+            out.push_str(&format!("MUL_LC_IP    {:>3},{:>3}", slot, cidx))
+        }
         Op::AppendLocal(slot) => out.push_str(&format!("APPEND_LOCAL {:>4}", slot)),
         Op::AppendGlobal(idx) => out.push_str(&format!("APPEND_GLOBAL {:>3}", idx)),
         Op::AppendUpvalue(idx) => out.push_str(&format!("APPEND_UPVAL {:>4}", idx)),
@@ -290,13 +314,48 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::AutoInvoke => out.push_str("AUTO_INVOKE"),
         Op::CoverLine(line) => out.push_str(&format!("COVER_LINE {line}")),
         Op::PopIter => out.push_str("POP_ITER"),
+        Op::PopRangeComprehension(slot) => {
+            out.push_str(&format!("POP_RANGE_COMPREHENSION {:>3}", slot))
+        }
         Op::EnumPayload(sl, v, i) => {
             out.push_str(&format!("ENUM_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))
         }
         Op::MatchType(n, off) => out.push_str(&format!("MATCH_TYPE {:>5} {:>5}", n, off)),
-        Op::CallMethod(idx, argc) => {
+        Op::MatchArrayLen(sl, n, at_least) => out.push_str(&format!(
+            "MATCH_ARRAY_LEN {:>4} {}{}",
+            sl,
+            if *at_least != 0 { ">=" } else { "==" },
+            n
+        )),
+        Op::ArrayRestLocal(sl, start) => {
+            out.push_str(&format!("ARRAY_REST_LOCAL {:>4} {:>4}", sl, start))
+        }
+        Op::CallMethodNamed(idx, argc, names_idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_METHOD_NAMED {:>3} ({}) argc={} {}",
+                idx,
+                name,
+                argc,
+                format_constant(chunk.constants.get(*names_idx as usize))
+            ));
+        }
+        Op::CallSelfOrGlobalNamed(idx, argc, names_idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_SELF_OR_GLOBAL_NAMED {:>3} ({}) argc={} {}",
+                idx,
+                name,
+                argc,
+                format_constant(chunk.constants.get(*names_idx as usize))
+            ));
+        }
+        Op::CallMethod(idx, argc, block) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));
+            if *block {
+                out.push_str(" block");
+            }
         }
         Op::CallSuperInit(argc) => {
             out.push_str(&format!("CALL_SUPER_INIT    argc={}", argc));
@@ -308,12 +367,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
                 idx, name, argc
             ));
         }
-        Op::CallMethodById(idx, argc, mid) => {
+        Op::CallMethodById(idx, argc, mid, block) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(
                 "CALL_MID     {:>5} ({}) argc={} mid={}",
                 idx, name, argc, mid
             ));
+            if *block {
+                out.push_str(" block");
+            }
         }
         Op::HashGetConst(idx) => {
             let name = constant_string(chunk, *idx);
@@ -403,6 +465,9 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::DivLocalConst(slot, cidx) => {
             out.push_str(&format!("DIV_LC       {:>3},{:>3}", slot, cidx))
         }
+        Op::ModLocalConst(slot, cidx) => {
+            out.push_str(&format!("MOD_LC       {:>3},{:>3}", slot, cidx))
+        }
         Op::GetLocal2(a, b) => out.push_str(&format!("GET_LOCAL_2  {:>3},{:>3}", a, b)),
         Op::LessLocalLocal(a, b) => out.push_str(&format!("LESS_LL      {:>3},{:>3}", a, b)),
         Op::GreaterLocalLocal(a, b) => out.push_str(&format!("GREATER_LL   {:>3},{:>3}", a, b)),
@@ -421,18 +486,24 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::TestGreaterJump(offset) => out.push_str(&format!("TEST_GT_JUMP {:>5}", offset)),
         Op::TestGreaterEqualJump(offset) => out.push_str(&format!("TEST_GE_JUMP {:>5}", offset)),
         Op::TestNotEqualJump(offset) => out.push_str(&format!("TEST_NE_JUMP {:>5}", offset)),
+        Op::TestEqualJump(offset) => out.push_str(&format!("TEST_EQ_JUMP {:>5}", offset)),
         Op::IsNull => out.push_str("IS_NULL"),
         Op::NotNull => out.push_str("NOT_NULL"),
         Op::JumpIfNull(offset) => out.push_str(&format!("JUMP_IF_NULL {:>5}", offset)),
         Op::JumpIfNotNull(offset) => out.push_str(&format!("JUMP_IF_NOT_NULL {:>4}", offset)),
         Op::IsTruthyLocal(slot) => out.push_str(&format!("IS_TRUTHY_LOCAL {:>3}", slot)),
         Op::IsFalsyLocal(slot) => out.push_str(&format!("IS_FALSY_LOCAL {:>3}", slot)),
+        Op::JumpIfLocalFalsy(slot, offset) => {
+            out.push_str(&format!("JUMP_LOCAL_FALSY {:>3} {:>5}", slot, offset))
+        }
+        Op::JumpIfLocalTruthy(slot, offset) => {
+            out.push_str(&format!("JUMP_LOCAL_TRUTHY {:>3} {:>5}", slot, offset))
+        }
         Op::AddLocalInt(slot, n) => out.push_str(&format!("ADD_LOCAL_INT {:>3},{:>3}", slot, n)),
         Op::IncrLocalFast(slot) => out.push_str(&format!("INCR_LOCAL_FAST {:>2}", slot)),
         Op::GetAndNullLocal(slot) => out.push_str(&format!("GET_AND_NULL_LOCAL {:>2}", slot)),
         Op::IsZeroLocal(slot) => out.push_str(&format!("IS_ZERO_LOCAL  {:>3}", slot)),
         Op::NotZeroLocal(slot) => out.push_str(&format!("NOT_ZERO_LOCAL {:>3}", slot)),
-        Op::SwapSetLocal(slot) => out.push_str(&format!("SWAP_SET_LOCAL   {:>3}", slot)),
         Op::GetGlobalNullCheck(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("GET_GLOBAL_NULL  {:>5} ({})", idx, name))
@@ -452,7 +523,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::PopNull => out.push_str("POP_NULL"),
         Op::DupN(n) => out.push_str(&format!("DUP_N            {:>3}", n)),
-        Op::GetLocalProperty(slot, idx) => {
+        Op::GetLocalProperty(slot, idx, _, _) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(
                 "GET_LOCAL_PROP   {:>3},{:>3} ({})",
@@ -488,7 +559,7 @@ fn format_constant(val: Option<&Constant>) -> String {
     match val {
         Some(Constant::Int(n)) => format!("{}", n),
         Some(Constant::Float(n)) => format!("{}", n),
-        Some(Constant::Decimal(s)) => format!("{}D", s),
+        Some(Constant::Decimal(d)) => format!("{}D", d),
         Some(Constant::String(s)) => format!("\"{}\"", s),
         Some(Constant::Bool(b)) => format!("{}", b),
         Some(Constant::Null) => "null".to_string(),
@@ -500,6 +571,22 @@ fn format_constant(val: Option<&Constant>) -> String {
                 .map(|n| n.as_ref().map(|s| s.as_ref()).unwrap_or("_"))
                 .collect();
             format!("ArgNames[{}]", rendered.join(", "))
+        }
+        Some(Constant::LiteralList(list)) => {
+            use super::literal_list::ListLiteral;
+            let rendered: Vec<String> = list
+                .items
+                .iter()
+                .map(|item| match item {
+                    ListLiteral::Int(n) => n.to_string(),
+                    ListLiteral::Float(f) => f.to_string(),
+                    ListLiteral::String(s) => format!("\"{}\"", s),
+                    ListLiteral::Symbol(s) => format!(":{}", s),
+                    ListLiteral::Bool(b) => b.to_string(),
+                    ListLiteral::Null => "null".to_string(),
+                })
+                .collect();
+            format!("[{}]", rendered.join(", "))
         }
         None => "???".to_string(),
     }
@@ -632,7 +719,8 @@ mod tests {
         let mut p = proto("test");
         let i_b = p.chunk.add_constant(Constant::Bool(true));
         let i_n = p.chunk.add_constant(Constant::Null);
-        let i_d = p.chunk.add_constant(Constant::Decimal("19.99".into()));
+        let decimal = crate::interpreter::value::DecimalValue::from_literal("19.99").unwrap();
+        let i_d = p.chunk.add_constant(Constant::Decimal(decimal));
         p.chunk.emit(Op::Constant(i_b), 1);
         p.chunk.emit(Op::Constant(i_n), 1);
         p.chunk.emit(Op::Constant(i_d), 1);
@@ -692,10 +780,18 @@ mod tests {
     }
 
     #[test]
+    fn push_nulls_renders_its_count() {
+        let body = body_for(vec![(Op::PushNulls(6), 1)]);
+        assert!(body.contains("PUSH_NULLS"), "got: {body}");
+        assert!(body.trim_end().ends_with('6'), "got: {body}");
+    }
+
+    #[test]
     fn jump_ops_render_offset() {
         let body = body_for(vec![
             (Op::Jump(10), 1),
             (Op::JumpIfFalse(20), 1),
+            (Op::JumpIfTrue(21), 1),
             (Op::Loop(5), 1),
             (Op::JumpIfFalseNoPop(2), 1),
             (Op::JumpIfTrueNoPop(3), 1),
@@ -703,6 +799,7 @@ mod tests {
         ]);
         assert!(body.contains("JUMP "));
         assert!(body.contains("JUMP_IF_FALSE"));
+        assert!(body.contains("JUMP_IF_TRUE"));
         assert!(body.contains("LOOP"));
         assert!(body.contains("JUMP_FALSE_NP"));
         assert!(body.contains("JUMP_TRUE_NP"));
@@ -719,19 +816,23 @@ mod tests {
             (Op::NotEqualLocalLocal(1, 2), 1),
             (Op::IsTruthyLocal(0), 1),
             (Op::IsFalsyLocal(0), 1),
+            (Op::JumpIfLocalFalsy(0, 2), 1),
+            (Op::JumpIfLocalTruthy(0, 2), 1),
         ]);
         assert!(body.contains("INCR_LOCAL_FAST"));
         assert!(body.contains("EQ_LL"));
         assert!(body.contains("NE_LL"));
         assert!(body.contains("IS_TRUTHY_LOCAL"));
         assert!(body.contains("IS_FALSY_LOCAL"));
+        assert!(body.contains("JUMP_LOCAL_FALSY"));
+        assert!(body.contains("JUMP_LOCAL_TRUTHY"));
     }
 
     #[test]
     fn get_local_property_includes_property_name() {
         let mut p = proto("test");
         let idx = p.chunk.add_constant(Constant::String("foo".into()));
-        p.chunk.emit(Op::GetLocalProperty(2, idx), 1);
+        p.chunk.emit(Op::GetLocalProperty(2, idx, 0, 0), 1);
         let out = disassemble(&p);
         assert!(out.contains("GET_LOCAL_PROP"));
         assert!(out.contains("(foo)"));
@@ -785,5 +886,43 @@ mod tests {
         p.chunk.emit(Op::Constant(idx), 1);
         let out = disassemble(&p);
         assert!(out.contains("(HashKeys[2])"), "got: {out}");
+    }
+
+    // ---------- literal lists ----------
+
+    #[test]
+    fn literal_list_ops_render_their_elements() {
+        use crate::vm::literal_list::{ListLiteral, LiteralList};
+        let mut p = proto("test");
+        let list = Arc::new(LiteralList {
+            items: vec![
+                ListLiteral::String("up".into()),
+                ListLiteral::Symbol("late".into()),
+                ListLiteral::Int(3),
+                ListLiteral::Null,
+            ],
+        });
+        let idx = p.chunk.add_constant(Constant::LiteralList(list));
+        let name = p.chunk.add_constant(Constant::String("includes?".into()));
+        p.chunk.emit(Op::LiteralArray(idx), 1);
+        p.chunk.emit(Op::LiteralListIncludes(idx, name), 1);
+        p.chunk.emit(
+            Op::LiteralListIncludes(idx, crate::vm::opcode::NO_USER_METHOD),
+            1,
+        );
+        let out = disassemble(&p);
+        assert!(
+            out.contains("LITERAL_ARRAY    0 ([\"up\", :late, 3, null])"),
+            "got: {out}"
+        );
+        assert!(
+            out.contains("LIST_INCLUDES    0 ([\"up\", :late, 3, null]) user_method=includes?"),
+            "got: {out}"
+        );
+        assert!(
+            out.lines()
+                .any(|line| line.ends_with("LIST_INCLUDES    0 ([\"up\", :late, 3, null])")),
+            "got: {out}"
+        );
     }
 }

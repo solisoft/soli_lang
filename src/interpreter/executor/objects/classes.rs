@@ -127,9 +127,10 @@ impl Interpreter {
     /// `Klass.new(...)` on a plain class or a value object. With positional
     /// arguments (other than one hash) it runs the constructor exactly like
     /// `new Klass(...)`. No arguments, one hash, or named arguments only keep
-    /// the attribute form on a plain class — an instance with those fields,
-    /// no constructor, as it always was — and build a value object from
-    /// those fields, its constructor and invariants included.
+    /// the attribute form on a plain class without a constructor — its
+    /// fields started as `new Klass()` starts them, then those attributes
+    /// assigned — and build a value object from those fields, its
+    /// constructor and invariants included.
     pub(crate) fn class_new(
         &mut self,
         class: &Rc<crate::interpreter::value::Class>,
@@ -154,7 +155,7 @@ impl Interpreter {
             }
         }
         use crate::interpreter::executor::access::member::{
-            has_constructor, is_attribute_new, new_with_attributes,
+            assign_attributes, check_attribute_args, has_constructor, is_attribute_new,
         };
         if !is_attribute_new(&positional, !named.is_empty()) {
             return self.instantiate_class(class, positional, named, span);
@@ -186,7 +187,13 @@ impl Interpreter {
             }
             vec![Value::Hash(Rc::new(RefCell::new(pairs)))]
         };
-        new_with_attributes(class, &args).map_err(|e| RuntimeError::new(e, span))
+        // The fields start as `new Klass()` starts them — every default,
+        // `nil` without one — and then take the attributes.
+        check_attribute_args(class, &args).map_err(|e| RuntimeError::new(e, span))?;
+        let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+        self.initialize_instance_fields(class, &instance)?;
+        assign_attributes(&instance, &args);
+        Ok(Value::Instance(instance))
     }
 
     /// `amount.with(cents: 600)` / `amount.with({"cents": 600})`: the value
@@ -352,11 +359,16 @@ impl Interpreter {
         Ok(ctor_args)
     }
 
-    /// Initialize instance fields from class field declarations, including
-    /// inherited fields (superclass first so subclass defaults win). Used by
-    /// `evaluate_new` and by `call_value`/`call_value_with_named` for the
-    /// bare `Person(...)` call form, so both instantiation styles see the
-    /// same defaults.
+    /// Start every declared instance field of `class` and its ancestors on
+    /// `instance`, the farthest class first — the one path behind every way
+    /// of building an instance (`new Klass(...)`, `Klass(...)`,
+    /// `Klass.new(...)`, the attribute form). Each class starts its fields —
+    /// a literal default, else `nil` — then evaluates its defaults that are
+    /// not literals, in declaration order, before the next class down starts
+    /// its own: so a subclass's default wins. Those defaults are evaluated on
+    /// the new instance (`@x` and the methods are its own) in the class's
+    /// environment, as the VM runs them; they were evaluated in the caller's
+    /// environment, reading its `this` and its locals, and in hash-map order.
     pub(crate) fn initialize_instance_fields(
         &mut self,
         class: &crate::interpreter::value::Class,
@@ -365,14 +377,63 @@ impl Interpreter {
         if let Some(ref superclass) = class.superclass {
             self.initialize_instance_fields(superclass, instance)?;
         }
-        for (field_name, field_initializer) in &class.fields {
-            let value = if let Some(init_expr) = field_initializer {
-                self.evaluate(init_expr)?
-            } else {
-                Value::Null
-            };
-            instance.borrow_mut().set(field_name.clone(), value);
+        // A class the VM compiled keeps its starts in `field_init`; its
+        // other defaults are bytecode, which only the VM runs.
+        if class.fields.is_empty() {
+            if let Some(init) = class.field_init.borrow().as_ref() {
+                init.start(&mut instance.borrow_mut());
+            }
+            return Ok(());
         }
-        Ok(())
+        let mut computed = Vec::new();
+        for name in crate::interpreter::executor::access::member::declared_field_order(class) {
+            let default = class.fields.get(&name).and_then(Option::as_ref);
+            let start = match default {
+                None => Value::Null,
+                Some(expr) => {
+                    match crate::interpreter::executor::access::member::literal_value(expr) {
+                        Some(value) => value,
+                        None => {
+                            computed.push((name.clone(), expr));
+                            Value::Null
+                        }
+                    }
+                }
+            };
+            instance.borrow_mut().set(name, start);
+        }
+        if computed.is_empty() {
+            return Ok(());
+        }
+        // The class's environment: where its methods were declared.
+        let enclosing = class
+            .defaults_env
+            .clone()
+            .or_else(|| class.constructor.as_ref().map(|ctor| ctor.closure.clone()))
+            .or_else(|| {
+                class
+                    .methods
+                    .borrow()
+                    .values()
+                    .next()
+                    .map(|method| method.closure.clone())
+            })
+            .unwrap_or_else(|| self.environment.clone());
+        let mut env = Environment::with_enclosing(enclosing);
+        env.define("this".to_string(), Value::Instance(instance.clone()));
+        let env = Rc::new(RefCell::new(env));
+        let previous = std::mem::replace(&mut self.environment, env);
+        let mut result = Ok(());
+        for (name, expr) in computed {
+            match self.evaluate(expr) {
+                Ok(value) => instance.borrow_mut().set(name, value),
+                Err(error) => {
+                    result = Err(error);
+                    break;
+                }
+            }
+        }
+        self.environment = previous;
+        result
     }
 }

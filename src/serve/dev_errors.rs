@@ -845,6 +845,7 @@ mod tests {
             restarts: 1,
             lost: 2,
             overflowed: 0,
+            last_problem_at: 0,
         });
         assert!(
             !html.contains("faster than"),

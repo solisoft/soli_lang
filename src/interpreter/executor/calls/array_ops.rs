@@ -80,7 +80,7 @@ struct ValueSet {
 impl ValueSet {
     fn with_capacity(n: usize) -> Self {
         Self {
-            hashed: HashSet::with_capacity_and_hasher(n, ahash::RandomState::new()),
+            hashed: HashSet::with_capacity_and_hasher(n, crate::interpreter::value::map_hasher()),
             other: Vec::new(),
         }
     }
@@ -506,30 +506,60 @@ pub(crate) fn tally(items: &[Value]) -> Value {
 ///
 /// Either way an ordinary `.sort()` on request data became a 500. A merge sort
 /// makes no consistency assumption: a bad comparator yields an arbitrary but
-/// well-defined order instead of a panic. It is stable, and O(n log n) with one
-/// scratch buffer.
+/// well-defined order instead of a panic. It is stable, and O(n log n).
+///
+/// The merge runs over a vector of indices, not over the elements: merging
+/// `Value`s directly cloned one into the scratch buffer and cloned it back at
+/// every level (about 2·n·log n refcount bumps and drops). Indices are plain
+/// `usize` copies; the elements are moved once, by swaps, when the final order
+/// is known. Nothing here clones a `T`, so a comparator that panics leaves
+/// `items` a permutation of its input (it is not touched until the end).
 pub(crate) fn stable_sort_by<T, F>(items: &mut [T], mut compare: F)
 where
-    T: Clone,
     F: FnMut(&T, &T) -> std::cmp::Ordering,
 {
     let len = items.len();
     if len < 2 {
         return;
     }
-    let mut buffer = items.to_vec();
-    merge_sort_range(items, &mut buffer, 0, len, &mut compare);
+    let mut order: Vec<usize> = (0..len).collect();
+    let mut buffer: Vec<usize> = vec![0; len];
+    {
+        let items: &[T] = items;
+        let mut by_index = |a: &usize, b: &usize| compare(&items[*a], &items[*b]);
+        merge_sort_range(&mut order, &mut buffer, 0, len, &mut by_index);
+    }
+    apply_permutation(items, &mut order);
 }
 
-fn merge_sort_range<T, F>(
-    items: &mut [T],
-    buffer: &mut [T],
+/// Reorder `items` so that position `k` holds what was at `order[k]`, by swaps
+/// along each cycle of the permutation. `order` is consumed (left as the
+/// identity).
+fn apply_permutation<T>(items: &mut [T], order: &mut [usize]) {
+    for start in 0..order.len() {
+        // Invariant: `items[current]` holds the element that was at `start`,
+        // waiting for its slot at the end of the cycle.
+        let mut current = start;
+        loop {
+            let source = order[current];
+            order[current] = current;
+            if source == start {
+                break;
+            }
+            items.swap(current, source);
+            current = source;
+        }
+    }
+}
+
+fn merge_sort_range<F>(
+    items: &mut [usize],
+    buffer: &mut [usize],
     start: usize,
     end: usize,
     compare: &mut F,
 ) where
-    T: Clone,
-    F: FnMut(&T, &T) -> std::cmp::Ordering,
+    F: FnMut(&usize, &usize) -> std::cmp::Ordering,
 {
     if end - start < 2 {
         return;
@@ -543,29 +573,111 @@ fn merge_sort_range<T, F>(
         return;
     }
 
-    buffer[start..end].clone_from_slice(&items[start..end]);
+    buffer[start..end].copy_from_slice(&items[start..end]);
     let (mut left, mut right, mut out) = (start, mid, start);
     while left < mid && right < end {
         // `Less` or `Equal` takes from the left half, which is what makes the
         // sort stable.
         if compare(&buffer[left], &buffer[right]) == std::cmp::Ordering::Greater {
-            items[out] = buffer[right].clone();
+            items[out] = buffer[right];
             right += 1;
         } else {
-            items[out] = buffer[left].clone();
+            items[out] = buffer[left];
             left += 1;
         }
         out += 1;
     }
-    while left < mid {
-        items[out] = buffer[left].clone();
-        left += 1;
-        out += 1;
+    let tail = if left < mid { left..mid } else { right..end };
+    items[out..end].copy_from_slice(&buffer[tail]);
+}
+
+/// The default ordering of `Array#sort` without a comparator, shared by both
+/// engines: Int, Float and String compare among themselves (Int and Float
+/// numerically), NaN and every other pair compare `Equal`.
+pub(crate) fn default_sort_order(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (Value::String(x), Value::String(y)) => x.cmp(y),
+        (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal),
+        (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal),
+        _ => Ordering::Equal,
     }
-    while right < end {
-        items[out] = buffer[right].clone();
-        right += 1;
-        out += 1;
+}
+
+/// Which homogeneous shape `sort_values_default` can hand to the standard
+/// library: one where `default_sort_order` is a total order.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum DefaultSortPath {
+    /// Every element is an Int.
+    Ints,
+    /// Every element is a Float and none is NaN.
+    Floats,
+    /// Every element is a String.
+    Strings,
+    /// Anything else: mixed types, NaN, hashes… — the tolerant merge sort.
+    Tolerant,
+}
+
+pub(crate) fn default_sort_path(items: &[Value]) -> DefaultSortPath {
+    match items.first() {
+        Some(Value::Int(_)) if items.iter().all(|v| matches!(v, Value::Int(_))) => {
+            DefaultSortPath::Ints
+        }
+        Some(Value::Float(_))
+            if items
+                .iter()
+                .all(|v| matches!(v, Value::Float(f) if !f.is_nan())) =>
+        {
+            DefaultSortPath::Floats
+        }
+        Some(Value::String(_)) if items.iter().all(|v| matches!(v, Value::String(_))) => {
+            DefaultSortPath::Strings
+        }
+        _ => DefaultSortPath::Tolerant,
+    }
+}
+
+/// `Array#sort` without a comparator, in place.
+///
+/// On an all-Int, all-String or all-non-NaN-Float array the default ordering
+/// is a total order, so the standard library's sorts cannot hit their
+/// total-order panic and give exactly the merge sort's result (both are
+/// stable; equal Ints are indistinguishable, so those take the unstable sort
+/// over bare `i64`s). Everything else keeps the tolerant merge sort.
+pub(crate) fn sort_values_default(items: &mut [Value]) {
+    if items.len() < 2 {
+        return;
+    }
+    match default_sort_path(items) {
+        DefaultSortPath::Ints => {
+            let mut ints: Vec<i64> = items
+                .iter()
+                .map(|v| match v {
+                    Value::Int(n) => *n,
+                    _ => unreachable!("default_sort_path checked every element"),
+                })
+                .collect();
+            ints.sort_unstable();
+            for (slot, n) in items.iter_mut().zip(ints) {
+                *slot = Value::Int(n);
+            }
+        }
+        DefaultSortPath::Floats => items.sort_by(|a, b| match (a, b) {
+            // No NaN here, so `partial_cmp` always answers. Not `total_cmp`:
+            // that puts -0.0 before 0.0, where the default order (and so the
+            // merge sort) keeps them in input order as equals.
+            (Value::Float(x), Value::Float(y)) => {
+                x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            _ => std::cmp::Ordering::Equal,
+        }),
+        DefaultSortPath::Strings => items.sort_by(|a, b| match (a, b) {
+            (Value::String(x), Value::String(y)) => x.cmp(y),
+            _ => std::cmp::Ordering::Equal,
+        }),
+        DefaultSortPath::Tolerant => stable_sort_by(items, default_sort_order),
     }
 }
 
@@ -1254,5 +1366,158 @@ mod tolerant_sort_tests {
         });
         items.sort();
         assert_eq!(items, (0..500).collect::<Vec<i32>>());
+    }
+
+    /// The merge runs over indices and moves the elements once: no `Clone`
+    /// bound, so a type that cannot be cloned sorts too. This pins the
+    /// "no clone + drop per merge level" property at compile time.
+    #[test]
+    fn it_moves_elements_without_cloning_them() {
+        struct NoClone(i32, char);
+        let mut items: Vec<NoClone> = [(3, 'a'), (1, 'b'), (3, 'c'), (2, 'd'), (1, 'e')]
+            .into_iter()
+            .map(|(k, tag)| NoClone(k, tag))
+            .collect();
+        stable_sort_by(&mut items, |a, b| a.0.cmp(&b.0));
+        let tags: String = items.iter().map(|item| item.1).collect();
+        assert_eq!(tags, "bedac");
+    }
+
+    /// Against the standard library's stable sort on pseudo-random inputs of
+    /// many lengths (odd, even, already sorted, reversed, all equal): the
+    /// index merge plus the cycle permutation must give the same order.
+    #[test]
+    fn it_matches_the_standard_stable_sort() {
+        let mut seed = 0x2545_f491_u64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for len in [2usize, 3, 4, 5, 7, 8, 16, 31, 64, 100, 257, 1000] {
+            for shape in 0..4 {
+                let input: Vec<(u64, usize)> = (0..len)
+                    .map(|i| {
+                        let key = match shape {
+                            0 => next() % 10,
+                            1 => i as u64,
+                            2 => (len - i) as u64,
+                            _ => 7,
+                        };
+                        (key, i)
+                    })
+                    .collect();
+                let mut ours = input.clone();
+                stable_sort_by(&mut ours, |a, b| a.0.cmp(&b.0));
+                let mut std_sorted = input;
+                std_sorted.sort_by_key(|a| a.0);
+                assert_eq!(ours, std_sorted, "len {len}, shape {shape}");
+            }
+        }
+    }
+
+    #[test]
+    fn apply_permutation_follows_every_cycle() {
+        let mut items = vec!['a', 'b', 'c', 'd', 'e', 'f'];
+        // Two cycles (0 1 2) and (3 4) plus a fixed point 5.
+        let mut order = vec![1, 2, 0, 4, 3, 5];
+        apply_permutation(&mut items, &mut order);
+        assert_eq!(items, vec!['b', 'c', 'a', 'e', 'd', 'f']);
+        assert_eq!(order, vec![0, 1, 2, 3, 4, 5]);
+    }
+
+    fn ints(values: &[i64]) -> Vec<Value> {
+        values.iter().map(|n| Value::Int(*n)).collect()
+    }
+
+    fn floats(values: &[f64]) -> Vec<Value> {
+        values.iter().map(|n| Value::Float(*n)).collect()
+    }
+
+    fn strings(values: &[&str]) -> Vec<Value> {
+        values.iter().map(|s| Value::String((*s).into())).collect()
+    }
+
+    /// The fast path is taken exactly where the default order is total.
+    #[test]
+    fn default_sort_path_picks_the_std_sort_only_for_total_orders() {
+        assert_eq!(default_sort_path(&ints(&[3, 1, 2])), DefaultSortPath::Ints);
+        assert_eq!(
+            default_sort_path(&floats(&[0.5, -0.0, 0.0])),
+            DefaultSortPath::Floats
+        );
+        assert_eq!(
+            default_sort_path(&strings(&["b", "a"])),
+            DefaultSortPath::Strings
+        );
+        assert_eq!(
+            default_sort_path(&floats(&[1.0, f64::NAN, 0.5])),
+            DefaultSortPath::Tolerant
+        );
+        // Int/Float mixes compare through `as f64`, which is lossy past 2^53
+        // and so not transitive: they stay on the tolerant sort.
+        assert_eq!(
+            default_sort_path(&[Value::Int(1), Value::Float(0.5)]),
+            DefaultSortPath::Tolerant
+        );
+        assert_eq!(
+            default_sort_path(&[Value::Int(5), Value::String("a".into()), Value::Int(3)]),
+            DefaultSortPath::Tolerant
+        );
+        assert_eq!(
+            default_sort_path(&[Value::Null, Value::Int(1)]),
+            DefaultSortPath::Tolerant
+        );
+    }
+
+    /// Every fast path gives exactly what the tolerant merge sort with the
+    /// default order gives — including -0.0 / 0.0, which compare equal and so
+    /// keep their input order (`total_cmp` would not).
+    #[test]
+    fn sort_values_default_matches_the_tolerant_sort() {
+        let cases: Vec<Vec<Value>> = vec![
+            ints(&[5, -3, 9, 0, 9, i64::MIN, i64::MAX, 2]),
+            floats(&[
+                0.0,
+                -0.0,
+                1.5,
+                -2.25,
+                0.0,
+                -0.0,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+            ]),
+            floats(&[3.0, f64::NAN, 1.0, 2.0]),
+            strings(&["pear", "Apple", "apple", "", "pear", "é", "z"]),
+            vec![
+                Value::Int(3),
+                Value::Float(1.5),
+                Value::Int(2),
+                Value::Float(-0.0),
+            ],
+            vec![
+                Value::Int(5),
+                Value::String("a".into()),
+                Value::Int(3),
+                Value::Null,
+            ],
+        ];
+        for case in cases {
+            let mut fast = case.clone();
+            sort_values_default(&mut fast);
+            let mut tolerant = case.clone();
+            stable_sort_by(&mut tolerant, default_sort_order);
+            let show = |vals: &[Value]| {
+                vals.iter()
+                    .map(|v| match v {
+                        Value::Float(f) => format!("F{f:?}"),
+                        other => format!("{other:?}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            assert_eq!(show(&fast), show(&tolerant), "input {}", show(&case));
+        }
     }
 }

@@ -422,7 +422,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_MAX_PARAM_PAIRS` | Maximum `key=value` pairs parsed from a query string or urlencoded body, and plain (non-file) fields from a multipart body. Bounded only by the body cap, `a=&a=&…` produced millions of string pairs per request. Pairs past the cap are dropped. | `4096` |
 | `SOLI_HANDLER_TIMEOUT_SECS` | Wall-clock budget for executing one request handler. A runaway loop used to hold a worker forever, since the 504 the client receives does not stop the handler. Checked on loop iterations, statements, calls (recursion included), each element a block iterator hands its block (`n.times`, `upto`, `each`, …) and each comprehension element, on both engines, so it costs nothing measurable. Once spent it stays spent for the rest of the request — a `rescue` cannot keep the handler running — and the request answers with the error rather than being run again on the interpreter (before 2.29.4, an action, hook or middleware that timed out on the VM was re-run there and kept on the interpreter for that worker). `0` disables it. | `30` |
 | `SOLI_WORKER_STACK_MB` | Stack size for threads that run Soli code. The interpreter recurses on the native stack and its 256-frame budget does not fit the 2 MiB default, where an overflow aborts the whole process instead of failing one request. Virtual address space, committed only as used. | `64` |
-| `SOLI_MAX_RANGE_LEN` | Maximum elements a single `range(a, b)` / `a..b` may materialise. Both collect eagerly, so a request-supplied bound could ask the allocator for gigabytes — and an allocation failure aborts the process rather than the request. | `16777216` |
+| `SOLI_MAX_RANGE_LEN` | Maximum elements a single `range(a, b)` / `a..b` may materialise. Both collect eagerly, so a request-supplied bound could ask the allocator for gigabytes — and an allocation failure aborts the process rather than the request. A `for` loop or a comprehension over `a..b`, in parentheses or not, counts through it without building it, so the length of the range is not limited there; a comprehension's result is, since it is built: `[f(i) for i in 0..n]` is refused once it would hold more than this many elements (a filter that keeps fewer is not). | `16777216` |
 | `SOLI_MAX_STRING_ALLOC_BYTES` | Maximum size of a string built by `"x" * n`. Same reasoning as `SOLI_MAX_RANGE_LEN`; a negative count is refused outright. | `67108864` (64 MiB) |
 | `SOLI_MAX_PAGE_SIZE` | Ceiling on `paginate({"per": n})` and vector-search `top_k`. `per` comes straight from request params, and an unbounded page loads the whole collection into one request. | `1000` |
 | `SOLI_RATE_LIMIT_IPV6_PREFIX` | Prefix length IPv6 clients are aggregated to for per-IP rate limiting. A residential allocation is a 64-bit prefix, so keying on the full address let one host take a fresh bucket per request and never trip the login throttle. Use 56 or 48 to aggregate a whole site. | `64` |
@@ -486,6 +486,8 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_JOBS_USER` | HTTP Basic username for the production `/__soli/jobs` dashboard. Must be paired with `SOLI_JOBS_PASSWORD`. Unset (and no token, and no `SOLI_ADMIN_*`) means the route 404s outside `--dev`. | unset |
 | `SOLI_JOBS_PASSWORD` | HTTP Basic password for `/__soli/jobs`. | unset |
 | `SOLI_JOBS_TOKEN` | Optional bearer token for `/__soli/jobs` (`Authorization: Bearer …`). Accepted alongside Basic when both are set. | unset |
+| `SOLI_USAGE` | App usage counts (requests per route pattern, status classes, latency) for the [`/__soli/`](observability.md#overview-__soli) overview, kept hourly in `_soli_usage` when the app has a database configured (in memory otherwise). `off` stops counting; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
+| `SOLI_OVERVIEW_USER` / `SOLI_OVERVIEW_PASSWORD` / `SOLI_OVERVIEW_TOKEN` | Credentials for the usage and engine rows of the production `/__soli/` overview. The overview also opens with any other operator page's credentials, showing only that page's source. With none of them and no `SOLI_ADMIN_*`, it 404s outside `--dev`. | unset |
 | `SOLI_ERRORS` | Error tracking for [`/__soli/errors`](observability.md#error-tracking-__solierrors). `off` stops recording; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
 | `SOLI_ERRORS_USER` | HTTP Basic username for the production `/__soli/errors` page. Must be paired with `SOLI_ERRORS_PASSWORD`. With no errors credentials and no `SOLI_ADMIN_*`, the route 404s outside `--dev`. | unset |
 | `SOLI_ERRORS_PASSWORD` | HTTP Basic password for `/__soli/errors`. | unset |
@@ -504,7 +506,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_MOBILE_KEEP` | Builds kept per app (bundle id and platform); older ones are deleted with their files. | 20 |
 | `SOLI_MOBILE_PUBLIC_INSTALL` | `0` turns off the public install links (`/__soli/mobile/i/<token>`). | on |
 | `SOLI_ANDROID_KEYSTORE` | Release keystore for `soli mobile build android` (same as `--keystore`); its passwords come from `SOLI_ANDROID_KEYSTORE_PASSWORD`, `SOLI_ANDROID_KEY_PASSWORD` and `SOLI_ANDROID_KEY_ALIAS`. | unset (debug key) |
-| `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`, `/__soli/mobile`), in addition to each page's own. | unset |
+| `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/`, `/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`, `/__soli/spam`, `/__soli/mobile`), in addition to each page's own. | unset |
 | `SOLI_NOTIFY_WEBHOOKS` | Comma-separated URLs that receive [notifications](observability.md#notifications). Slack, Microsoft Teams, Discord, Google Chat and Campfire bot URLs get their own message format; any other URL gets the event as JSON. | unset |
 | `SOLI_NOTIFY_EMAILS` | Comma-separated addresses that receive notifications through the app's mailer (`SOLI_SMTP_*`). | unset |
 | `SOLI_NOTIFY_FROM` | Sender of notification emails. | `SOLI_SMTP_FROM` |
@@ -554,13 +556,16 @@ Read by the [`ES` class](builtins.md#es-class), per application; `ES.configure` 
 `soli script.sl`, `soli -e "…"` and executables from `soli build tool.sl` run on the bytecode VM —
 the engine `soli serve` uses in production — unless the script needs the tree-walking interpreter.
 That is decided from the source before the first line runs. The interpreter takes a script that
-uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`,
-`inspect`, `to_s`, `to_string` on a class name), `method_missing`, model batch iteration
+uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`, `inspect`,
+`to_s`, `to_string` on a class name), `method_missing`, model batch iteration
 (`find_each`, `in_batches`, `find_in_batches`), a model
-lifecycle callback (`before_save`, `after_create`, …) or a state machine (`state_machine`,
-`before_transition`, `after_transition`); one that reads a function with no required parameter
-without parentheses (`x = helper`, `print(helper)`: the interpreter calls it, the VM would hand
-over the function); and one the VM cannot compile. `soli test`, the REPL and `soli serve --dev`
+lifecycle callback (`before_save`, `after_create`, …), a state machine (`state_machine`,
+`before_transition`, `after_transition`) or `subscribe` with a block; one that reads a function
+with no required parameter without parentheses (`x = helper`, `print(helper)`: the interpreter
+calls it, the VM would hand over the function); and one the VM cannot compile. Those names count
+wherever they appear, even where the script defines one itself (a variable `methods`, a
+`def subscribe(topic)`), since the same name may be the builtin elsewhere in the script. A bare
+`clock`, which both engines call, stays on the VM. `soli test`, the REPL and `soli serve --dev`
 always use the interpreter. See [Running Soli Code](soli-language.md#running-soli-code).
 
 | Variable / flag | Purpose | Default |
@@ -568,7 +573,7 @@ always use the interpreter. See [Running Soli Code](soli-language.md#running-sol
 | `--tree` | Run the script on the tree-walking interpreter: `soli --tree script.sl`. | unset |
 | `--vm` | Run it on the VM with no fallback. A script that needs the interpreter stops with an error where the VM cannot go on (`Cannot access property 'send' on …`), and a lambda kept in a variable and read without `()` stays a function, as under `soli serve` (a zero-argument def read bare is called, as on the interpreter). | unset |
 | `SOLI_ENGINE` | `tree` (or `interpreter`), `vm` or `auto`: the engine `soli script.sl` and `soli -e` use when no flag is given. A flag wins; any other value means `auto`. An executable from `soli build` keeps the engine it was built with (`soli build tool.sl --tree` or `--vm`; `auto` by default) and ignores it. | `auto` |
-| `SOLI_ENGINE_LOG` | `1` prints to stderr which engine runs a script and why — `engine: vm`, `` engine: tree-walker — the script uses `send` ``, `` engine: tree-walker — the script calls `helper` without parentheses `` — when the choice is automatic (a forced engine prints nothing). Under `soli serve` it logs each action or middleware demoted from the VM to the interpreter (see [Observability](observability.md)). | unset |
+| `SOLI_ENGINE_LOG` | `1` prints to stderr which engine runs a script and why — `engine: vm`, `` engine: tree-walker — the script uses `class_eval` ``, `` engine: tree-walker — the script calls `helper` without parentheses `` — when the choice is automatic (a forced engine prints nothing). Under `soli serve` it logs each action or middleware demoted from the VM to the interpreter (see [Observability](observability.md)), and, once each, the views, partials, components and layouts the interpreter renders and the view helpers it runs, with the reason (see [Views](views.md#which-engine-renders-a-view)). | unset |
 | `SOLI_VM_VIEWS` | `0` / `off` renders every view on the tree-walking interpreter instead of compiling it to the VM (production only; `--dev` always uses the interpreter). See [Views](views.md#which-engine-renders-a-view). | on |
 | `SOLI_VM_VIEWS_CHECK` | A file path: each compiled view is also rendered on the interpreter, whose output is served, and every view whose two renders differ is appended to the file. A diagnostic; it doubles a render's cost. | unset |
 

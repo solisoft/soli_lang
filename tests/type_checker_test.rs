@@ -436,6 +436,27 @@ end
     );
 }
 
+// A string iterates by character on both engines, so `for ch in s` with a
+// visible String is accepted and binds `ch` as a String.
+#[test]
+fn for_over_a_string_typechecks_and_binds_a_string() {
+    check_ok(
+        "
+let word: String = \"héllo\"
+for ch, i in word
+  let c: String = ch
+  let n: Int = i
+end
+",
+    );
+    let errors = check_err("for ch in \"abc\" { let n: Int = ch; }");
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch: the loop variable is a String",
+    );
+}
+
 #[test]
 fn for_over_int_errors() {
     let errors = check_err("for x in 5 { let y = x; }");
@@ -1052,4 +1073,18 @@ end
 "
         ));
     }
+}
+
+// ---------- match rest bindings ----------
+
+/// `...rest` in an array or hash pattern binds a name the arm can use. The
+/// checker used to skip it, so any read of `rest` was an "Undefined variable"
+/// and the program never ran on either engine.
+#[test]
+fn match_rest_bindings_are_defined_in_the_arm() {
+    check_ok(
+        "def head_tail(xs)\n  match xs {\n    [first, ...rest] => [first, rest.length, rest],\n    _ => nil\n  }\nend\n\
+         def others(h)\n  match h {\n    {name: n, ...rest} => rest,\n    _ => nil\n  }\nend\n\
+         print(head_tail([1, 2, 3]))\nprint(others({\"name\": \"a\", \"age\": 1}))",
+    );
 }

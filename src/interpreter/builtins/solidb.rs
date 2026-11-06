@@ -114,7 +114,7 @@ fn parse_query_options(value: &Value) -> Result<Option<f64>, String> {
 /// `grouped` only coalesces reads — a write via `db.query` must still run
 /// immediately, matching Model `create`/`update`/`delete`. Strings and
 /// comments are skipped so `FILTER doc.status == "INSERT"` is not a write.
-fn sdbql_is_data_modification(sdbql: &str) -> bool {
+pub(crate) fn sdbql_is_data_modification(sdbql: &str) -> bool {
     let bytes = sdbql.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -1657,6 +1657,26 @@ mod tests {
                 "{q:?} should run immediately inside grouped"
             );
         }
+    }
+
+    /// A SoliDB write that is not a model save — a bulk `update_all` /
+    /// `delete_all`, `db.query("INSERT …")` — arms the durable-write
+    /// tripwire, so a handler that ran it and then failed on the VM is not
+    /// re-run on the tree-walker. A read does not.
+    #[test]
+    fn an_sdbql_write_arms_the_durable_write_tripwire() {
+        use crate::interpreter::builtins::model::crud::{
+            clear_durable_commit, had_durable_commit, mark_if_sdbql_writes,
+        };
+        clear_durable_commit();
+        mark_if_sdbql_writes("FOR doc IN orders FILTER doc.paid RETURN doc");
+        assert!(!had_durable_commit());
+        mark_if_sdbql_writes("FOR doc IN orders FILTER doc.paid UPDATE doc WITH @p IN orders");
+        assert!(had_durable_commit());
+        clear_durable_commit();
+        mark_if_sdbql_writes("FOR doc IN orders REMOVE doc IN orders");
+        assert!(had_durable_commit());
+        clear_durable_commit();
     }
 
     #[test]

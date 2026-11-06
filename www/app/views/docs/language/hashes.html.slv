@@ -185,7 +185,16 @@ print(data.items.length);  # 3
 # Safe navigation with &. (returns null if any part is null)
 user = {profile: null}
 print(user&.profile&.email);  # null (no error)
-print(user&.profile&.email || "no email");  # "no email"</code></pre>
+print(user&.profile&.email || "no email");  # "no email"
+
+# A key named like a hash method is still the key;
+# parentheses always call the method
+row = {"size": 2048, "key": "abc"}
+print(row.size)          # 2048  (the key)
+print(row.size())        # 2     (Hash#size, the number of entries)
+print(row.key("abc"))    # "key" (Hash#key)
+print({"a": 1}.size)     # 1     (no "size" key, so the method)</code></pre>
+                    <p class="text-gray-400 mt-3">The key wins over a method of the same name only when it is there; otherwise the method answers. Both engines follow this rule, so <code class="text-orange-400">soli test</code> and <code class="text-orange-400">soli serve</code> read a row the same way. Some code handles hashes it did not build, such as <code class="text-orange-400">params</code> or a decoded JSON body. There, call the methods with parentheses (<code class="text-orange-400">h.keys()</code>, <code class="text-orange-400">h.length()</code>), or read the keys with brackets.</p>
                 </div>
             </section>
 

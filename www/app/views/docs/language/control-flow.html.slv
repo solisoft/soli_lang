@@ -206,16 +206,28 @@ end
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Iterates over collections or ranges.</p>
+                <p class="text-gray-400 mb-3">Iterates over collections, ranges or strings. A string yields one character at a time, each a one-character <code class="text-cyan-400">String</code> &mdash; a character, not a byte, so <code class="text-cyan-400">"é"</code> and <code class="text-cyan-400">"😀"</code> are single steps.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Iterate over array
 fruits = ["apple", "banana", "cherry"]
 for fruit in fruits
   print(fruit)
 end
 
+# Iterate over a string, with the index
+for ch, i in "héllo"
+  print("#{i}: #{ch}")  # 0: h, 1: é, 2: l, 3: l, 4: o
+end
+
 # Iterate with range
 for i in range(0, 5)
   print(i);  # 0, 1, 2, 3, 4
+end
+
+# Or with the range operator, which also stops before its end. A loop counts
+# through a..b, in parentheses or not, without building an array first
+# (range() builds one), so it has no SOLI_MAX_RANGE_LEN limit either.
+for i in 0..5
+  print(i)  # 0, 1, 2, 3, 4
 end
 
 # Range with step

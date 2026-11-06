@@ -56,6 +56,28 @@ impl Vm {
         if let Some(result) = hash_method_borrowed(&hash.borrow(), name, args, span) {
             return result;
         }
+        self.vm_call_hash_method_past_borrowed(hash, name, args, span)
+    }
+
+    /// `vm_call_hash_method` for a caller that has just asked
+    /// `hash_method_borrowed` and got None (`CallMethod` and `CallMethodById`,
+    /// through `hash_method_on_stack`): the methods that mutate the hash or
+    /// call back, without walking the borrowed tier a second time.
+    pub(crate) fn vm_call_hash_method_past_borrowed(
+        &mut self,
+        hash: &Rc<RefCell<HashPairs>>,
+        name: &str,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if !args.is_empty()
+            && matches!(
+                name,
+                "class" | "nil?" | "blank?" | "present?" | "inspect" | "to_s" | "to_string"
+            )
+        {
+            return Err(RuntimeError::wrong_arity(0, args.len(), span));
+        }
         match name {
             // --- Mutating methods ---
             "set" => {
@@ -296,11 +318,11 @@ impl Vm {
                         self.exit_callable_batch(batch);
                         outcome
                     }
-                    None => Err(RuntimeError::NoSuchProperty {
-                        value_type: "Hash".to_string(),
-                        property: name.to_string(),
+                    None => Err(RuntimeError::no_such_property(
+                        "Hash".to_string(),
+                        name.to_string(),
                         span,
-                    }),
+                    )),
                 }
             }
         }

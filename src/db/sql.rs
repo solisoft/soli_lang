@@ -107,6 +107,22 @@ macro_rules! route_sql {
     }};
 }
 
+/// Pass a write's result through, noting it for the durable-write tripwire
+/// (`crud::mark_durable_write`) when it succeeded.
+///
+/// Every write of the facade goes through here, so a handler that wrote
+/// before failing on the VM is not re-run on the tree-walker, whoever wrote:
+/// a model save, `increment`, a job row, `db.execute`. Only `insert_many`,
+/// `update_all` and `delete_all` marked before, so an action that bumped a
+/// counter (`increment_field`) or enqueued a job (`insert` into `_jobs`) and
+/// then raised wrote twice on each failing request.
+fn mark_on_success<T>(result: Result<T, String>) -> Result<T, String> {
+    if result.is_ok() {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
+    }
+    result
+}
+
 pub fn ensure_connected() -> Result<(), String> {
     route_sql!(
         super::postgres::ensure_connected(),
@@ -232,12 +248,13 @@ pub fn insert(
     key: Option<&str>,
     document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::insert(table, key, document),
         super::mysql::insert(table, key, document),
         super::sqlite::insert(table, key, document),
         super::d1::insert(table, key, document)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// `insert` refusing a taken key (see `postgres::insert_new`).
@@ -246,12 +263,13 @@ pub fn insert_new(
     key: &str,
     document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::insert_new(table, key, document),
         super::mysql::insert_new(table, key, document),
         super::sqlite::insert_new(table, key, document),
         super::d1::insert_new(table, key, document)
-    )
+    );
+    mark_on_success(result)
 }
 
 pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
@@ -269,12 +287,13 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::update(table, key, document, merge),
         super::mysql::update(table, key, document, merge),
         super::sqlite::update(table, key, document, merge),
         super::d1::update(table, key, document, merge)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// See `postgres::replace_if_version`: a compare-and-swap on `lock_version`.
@@ -284,21 +303,26 @@ pub fn replace_if_version(
     document: serde_json::Value,
     expected: i64,
 ) -> Result<bool, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::replace_if_version(table, key, document, expected),
         super::mysql::replace_if_version(table, key, document, expected),
         super::sqlite::replace_if_version(table, key, document, expected),
         super::d1::replace_if_version(table, key, document, expected)
-    )
+    );
+    if let Ok(true) = result {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
+    }
+    result
 }
 
 pub fn delete(table: &str, key: &str) -> Result<(), String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::delete(table, key),
         super::mysql::delete(table, key),
         super::sqlite::delete(table, key),
         super::d1::delete(table, key)
-    )
+    );
+    mark_on_success(result)
 }
 
 pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
@@ -432,12 +456,13 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
 /// ours. This path is the escape hatch, so it must not leave `SET` / `ATTACH`
 /// / `PRAGMA` sitting on a connection the next request will check out.
 pub fn execute_raw(sql: &str) -> Result<(), String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::execute_raw(sql),
         super::mysql::execute_raw(sql),
         super::sqlite::execute_raw(sql),
         super::d1::execute_raw(sql)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Insert many documents. Chunked so no backend's bind limit is exceeded, and
@@ -520,12 +545,13 @@ pub fn increment_field(
     field: &str,
     delta: i64,
 ) -> Result<Option<i64>, String> {
-    route_sql!(
+    let result = route_sql!(
         super::postgres::increment_field(table, key, field, delta),
         super::mysql::increment_field(table, key, field, delta),
         super::sqlite::increment_field(table, key, field, delta),
         super::d1::increment_field(table, key, field, delta)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Index names on `table` for the active connection.

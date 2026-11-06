@@ -7,10 +7,15 @@ pub mod chunk;
 pub mod compiler;
 pub mod compiler_classes;
 pub mod compiler_exprs;
+pub mod compiler_fold;
 pub mod compiler_hoist;
+pub mod compiler_literal_arrays;
 pub mod compiler_patterns;
+pub mod compiler_script_locals;
 pub mod compiler_stmts;
 pub mod disassembler;
+pub mod literal_list;
+pub mod method_cache;
 pub mod method_table;
 pub mod opcode;
 pub mod upvalue;
@@ -26,6 +31,8 @@ pub mod vm_hash_methods;
 pub mod vm_int_methods;
 pub mod vm_primitive_methods;
 pub mod vm_string_methods;
+pub mod vm_upvalues;
+pub mod vm_view_helpers;
 
 #[cfg(test)]
 mod deadline_tests;

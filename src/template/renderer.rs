@@ -100,11 +100,9 @@ struct RenderBuf {
 
 impl RenderBuf {
     fn with_capacity(min_capacity: usize) -> Self {
-        let mut buf = RENDER_BUFFERS
-            .with(|pool| pool.borrow_mut().pop())
-            .unwrap_or_default();
-        buf.reserve(min_capacity);
-        Self { buf: Some(buf) }
+        Self {
+            buf: Some(take_render_buffer(min_capacity)),
+        }
     }
 
     // `buf` is `Some` from construction until `finish` (which consumes the
@@ -115,15 +113,51 @@ impl RenderBuf {
     }
 
     fn finish(mut self) -> String {
-        let output = self.buf.take().unwrap_or_default();
-        if output.len() < TIGHT_COPY_BELOW && output.capacity() >= 4096 {
-            let tight = String::from(output.as_str());
-            recycle_render_buffer(output);
-            tight
-        } else {
-            output
-        }
+        finish_render_buffer(self.buf.take().unwrap_or_default())
     }
+}
+
+/// An empty page buffer of at least `min_capacity` bytes from this thread's
+/// pool: the tree-walker's renders and the views' VM (`vm_template`) share
+/// it, so a partial rendered per row reuses one buffer instead of allocating
+/// 4096 bytes and freeing them again.
+pub(crate) fn take_render_buffer(min_capacity: usize) -> String {
+    let mut buf = RENDER_BUFFERS
+        .with(|pool| pool.borrow_mut().pop())
+        .unwrap_or_default();
+    buf.reserve(min_capacity);
+    buf
+}
+
+/// What a render hands back from the page buffer `output` it wrote: a small
+/// result as a tight copy, the buffer going back to the pool; a larger one as
+/// the buffer itself, so a full view is not copied on the way out.
+pub(crate) fn finish_render_buffer(output: String) -> String {
+    if output.len() < TIGHT_COPY_BELOW && output.capacity() >= 4096 {
+        let tight = String::from(output.as_str());
+        recycle_render_buffer(output);
+        tight
+    } else {
+        output
+    }
+}
+
+/// An include's rendered page once its caller has copied it into its own
+/// page: back to the pool when it is a page buffer (a result too large for
+/// [`finish_render_buffer`] to copy out), dropped when it is a tight copy.
+pub(crate) fn recycle_include_page(page: String) {
+    if page.capacity() >= 4096 {
+        recycle_render_buffer(page);
+    }
+}
+
+/// An include's rendered page as a value (`partial()`, `component()`). The
+/// string is copied either way (`EcoString` has its own layout), so the page
+/// buffer goes back to the pool rather than to the allocator.
+pub(crate) fn page_into_value(page: String) -> Value {
+    let value = Value::String(page.as_str().into());
+    recycle_include_page(page);
+    value
 }
 
 impl Drop for RenderBuf {
@@ -148,7 +182,7 @@ fn recycle_render_buffer(mut buf: String) {
 }
 
 #[cfg(test)]
-fn pooled_render_buffers() -> usize {
+pub(crate) fn pooled_render_buffers() -> usize {
     RENDER_BUFFERS.with(|pool| pool.borrow().len())
 }
 
@@ -425,7 +459,9 @@ pub(crate) fn render_walker(
                         format!("components/{}", comp_name)
                     };
                     if let Some(r) = partial_renderer {
-                        output.push_str(&r(&comp_path, &comp_data)?);
+                        let html = r(&comp_path, &comp_data)?;
+                        output.push_str(&html);
+                        recycle_include_page(html);
                     } else {
                         return Err(format!(
                             "Component rendering not available for '{}'",
@@ -454,7 +490,9 @@ pub(crate) fn render_walker(
                         } else {
                             data.clone()
                         };
-                        output.push_str(&renderer(name, &partial_data)?);
+                        let html = renderer(name, &partial_data)?;
+                        output.push_str(&html);
+                        recycle_include_page(html);
                     } else {
                         return Err(format!("Partial rendering not available for '{}'", name));
                     }
@@ -518,7 +556,7 @@ pub(crate) fn write_value_to_output(value: &Value, escaped: bool, output: &mut S
     match value {
         Value::String(s) => {
             if escaped {
-                output.push_str(&html_escape(s));
+                escape_into(output, s);
             } else {
                 output.push_str(s);
             }
@@ -528,22 +566,24 @@ pub(crate) fn write_value_to_output(value: &Value, escaped: bool, output: &mut S
         Value::Int(n) => {
             output.push_str(itoa::Buffer::new().format(*n));
         }
+        // Same text as `{}` (ryu for up to 15 significant digits, Display past
+        // that), without core fmt's formatter machinery.
         Value::Float(n) => {
-            let _ = write!(output, "{}", n);
+            let _ = crate::interpreter::value::write_float(*n, output);
         }
         Value::Bool(b) => {
             output.push_str(if *b { "true" } else { "false" });
         }
         Value::Null => {}
-        // Decimal / DateTime / Symbol: same writer as join/JSON, no intermediate
-        // Display String when escape is off (or escape only when needed).
-        Value::Decimal(_) | Value::DateTime(_, _) | Value::Symbol(_) => {
+        // Decimal / DateTime: digits, `-`, `.`, `:` and spaces only — never an
+        // HTML special — so they go straight into the buffer either way.
+        Value::Decimal(_) | Value::DateTime(_, _) => value.write_to_string(output),
+        Value::Symbol(sym) => {
+            output.push(':');
             if escaped {
-                let mut tmp = String::new();
-                value.write_to_string(&mut tmp);
-                output.push_str(&html_escape(&tmp));
+                escape_into(output, sym);
             } else {
-                value.write_to_string(output);
+                output.push_str(sym);
             }
         }
         Value::Array(arr) => {
@@ -558,10 +598,9 @@ pub(crate) fn write_value_to_output(value: &Value, escaped: bool, output: &mut S
         Value::Hash(_) => output.push_str("[Hash]"),
         _ => {
             // Instance / Function / … — Display can embed user data, so honor
-            // the escape flag. html_escape is borrowed (zero-copy) when free of
-            // HTML specials.
+            // the escape flag.
             if escaped {
-                output.push_str(&html_escape(&value.to_string()));
+                escape_into(output, &value.to_string());
             } else {
                 let _ = write!(output, "{}", value);
             }
@@ -569,30 +608,80 @@ pub(crate) fn write_value_to_output(value: &Value, escaped: bool, output: &mut S
     }
 }
 
+/// Whether `b` is one of the five bytes HTML escaping replaces:
+/// `&` (0x26) and `'` (0x27) are the two bytes that OR 1 gives 0x27, `<`
+/// (0x3C) and `>` (0x3E) the two that OR 2 gives 0x3E. Three compares, no
+/// branch, so a fixed-size fold over it becomes vector code.
+#[inline(always)]
+fn is_html_special(b: u8) -> bool {
+    ((b | 1) == b'\'') | ((b | 2) == b'>') | (b == b'"')
+}
+
+/// The entity `<%= %>` writes for a special byte.
+#[inline(always)]
+fn html_entity(b: u8) -> &'static str {
+    match b {
+        b'&' => "&amp;",
+        b'<' => "&lt;",
+        b'>' => "&gt;",
+        b'"' => "&quot;",
+        _ => "&#x27;",
+    }
+}
+
+/// Index of the first HTML special byte in `bytes` at or after `from`.
+///
+/// Clean 16-byte blocks are skipped with a branch-free fold (vector compares);
+/// only the block holding a special, and a tail under 16 bytes, are walked
+/// byte by byte.
+#[inline]
+fn next_html_special(bytes: &[u8], from: usize) -> Option<usize> {
+    const BLOCK: usize = 16;
+    let mut i = from;
+    // `get` hands back exactly `BLOCK` bytes, so the conversion never fails.
+    while let Some(block) = bytes
+        .get(i..i + BLOCK)
+        .and_then(|block| <&[u8; BLOCK]>::try_from(block).ok())
+    {
+        if block
+            .iter()
+            .fold(false, |found, &b| found | is_html_special(b))
+        {
+            break;
+        }
+        i += BLOCK;
+    }
+    bytes[i..]
+        .iter()
+        .position(|&b| is_html_special(b))
+        .map(|offset| i + offset)
+}
+
+/// HTML-escape `s` straight onto the end of `out`: each clean run is copied
+/// with one `push_str`, each special replaced by its entity (`&amp;` `&lt;`
+/// `&gt;` `&quot;` `&#x27;`). No intermediate buffer.
+pub fn escape_into(out: &mut String, s: &str) {
+    let bytes = s.as_bytes();
+    let mut start = 0;
+    while let Some(pos) = next_html_special(bytes, start) {
+        // `pos` is an ASCII byte, so both slices end on a char boundary.
+        out.push_str(&s[start..pos]);
+        out.push_str(html_entity(bytes[pos]));
+        start = pos + 1;
+    }
+    out.push_str(&s[start..]);
+}
+
 /// Escape HTML special characters.
 /// Returns Cow::Borrowed when no escaping is needed (fast path).
 pub fn html_escape(s: &str) -> Cow<'_, str> {
-    // Fast path: scan bytes to check if escaping is needed at all
-    if !s
-        .bytes()
-        .any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\''))
-    {
+    let Some(first) = next_html_special(s.as_bytes(), 0) else {
         return Cow::Borrowed(s);
-    }
-    let mut result: Vec<u8> = Vec::with_capacity(s.len() + 8);
-    for &b in s.as_bytes() {
-        match b {
-            b'&' => result.extend_from_slice(b"&amp;"),
-            b'<' => result.extend_from_slice(b"&lt;"),
-            b'>' => result.extend_from_slice(b"&gt;"),
-            b'"' => result.extend_from_slice(b"&quot;"),
-            b'\'' => result.extend_from_slice(b"&#x27;"),
-            _ => result.push(b),
-        }
-    }
-    // SAFETY: Input was valid UTF-8 and we only replaced ASCII bytes
-    // with ASCII sequences, so the result is still valid UTF-8.
-    Cow::Owned(unsafe { String::from_utf8_unchecked(result) })
+    };
+    let mut out = String::with_capacity(s.len() + 16);
+    out.push_str(&s[..first]);
+    escape_into(&mut out, &s[first..]);
+    Cow::Owned(out)
 }
 
 /// Escape for use in a JavaScript string literal context.
@@ -754,6 +843,26 @@ mod tests {
         assert_eq!(html, "ada");
         assert_eq!(pooled_render_buffers(), before + 1);
         Ok(())
+    }
+
+    /// An include's page goes back to the pool once its caller copied it,
+    /// when it is a page buffer; a tight copy is just dropped.
+    #[test]
+    fn an_included_page_buffer_returns_to_the_pool() {
+        let before = pooled_render_buffers();
+        recycle_include_page(String::from("tight"));
+        assert_eq!(pooled_render_buffers(), before);
+
+        let mut page = take_render_buffer(4096);
+        let taken = pooled_render_buffers();
+        page.push_str(&"x".repeat(2000));
+        let Value::String(value) = page_into_value(page) else {
+            panic!("a page is a string value");
+        };
+        assert_eq!(value.as_str(), "x".repeat(2000));
+        assert_eq!(pooled_render_buffers(), taken + 1);
+        let reused = take_render_buffer(4096);
+        assert!(reused.is_empty() && reused.capacity() >= 4096);
     }
 
     #[test]
@@ -924,6 +1033,145 @@ mod tests {
             Cow::Borrowed(s) => assert_eq!(s, plain),
             Cow::Owned(_) => panic!("expected borrowed Cow for clean input"),
         }
+    }
+
+    /// The byte-at-a-time escaper `escape_into` replaced: the reference its
+    /// output must match byte for byte.
+    fn reference_escape(s: &str) -> String {
+        let mut out = String::new();
+        for c in s.chars() {
+            match c {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '"' => out.push_str("&quot;"),
+                '\'' => out.push_str("&#x27;"),
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn test_is_html_special_matches_exactly_five_bytes() {
+        for b in 0..=255u8 {
+            assert_eq!(
+                is_html_special(b),
+                matches!(b, b'&' | b'<' | b'>' | b'"' | b'\''),
+                "byte {:#04x}",
+                b
+            );
+        }
+    }
+
+    #[test]
+    fn test_escape_into_matches_reference_across_block_boundaries() {
+        // Every special at every offset of strings that straddle the 16-byte
+        // block size, with multibyte text around it, plus runs of specials.
+        let fillers = ["a", "é", "日", "🚀"];
+        for filler in fillers {
+            for len in 0..40 {
+                for special in ['&', '<', '>', '"', '\'', 'x'] {
+                    for at in 0..=len {
+                        let mut s: String = filler.repeat(at);
+                        s.push(special);
+                        s.push_str(&filler.repeat(len - at));
+                        let mut out = String::from("prefix:");
+                        escape_into(&mut out, &s);
+                        assert_eq!(out, format!("prefix:{}", reference_escape(&s)));
+                        assert_eq!(html_escape(&s), reference_escape(&s));
+                    }
+                }
+            }
+        }
+        let dense = "<>&\"'".repeat(13) + "tail" + &"'".repeat(17);
+        let mut out = String::new();
+        escape_into(&mut out, &dense);
+        assert_eq!(out, reference_escape(&dense));
+        let mut out = String::new();
+        escape_into(&mut out, "");
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn test_html_escape_borrows_long_clean_input() {
+        let plain = "a clean paragraph with no specials, long enough for blocks. ".repeat(40);
+        assert!(matches!(html_escape(&plain), Cow::Borrowed(_)));
+        assert!(matches!(html_escape(&(plain.clone() + "'")), Cow::Owned(_)));
+    }
+
+    #[test]
+    fn test_write_value_floats_match_display() {
+        let floats = [
+            0.0,
+            -0.0,
+            1.0,
+            -1.5,
+            6.02214,
+            0.1 + 0.2,
+            1e15,
+            1e16,
+            1e21,
+            1e-7,
+            123456789012345.0,
+            1658206780088562.2,
+            f64::MAX,
+            f64::MIN_POSITIVE,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        for n in floats {
+            for escaped in [true, false] {
+                let mut out = String::new();
+                write_value_to_output(&Value::Float(n), escaped, &mut out);
+                assert_eq!(out, format!("{}", n), "float {:?}", n);
+            }
+        }
+    }
+
+    #[test]
+    fn test_write_value_symbol_escapes_and_decimal_writes_direct() {
+        let mut out = String::new();
+        write_value_to_output(&Value::Symbol("a<b>'c'".into()), true, &mut out);
+        assert_eq!(out, ":a&lt;b&gt;&#x27;c&#x27;");
+        let mut out = String::new();
+        write_value_to_output(&Value::Symbol("a<b".into()), false, &mut out);
+        assert_eq!(out, ":a<b");
+
+        let decimal = Value::Decimal(crate::interpreter::value::DecimalValue(
+            "-1234.50"
+                .parse()
+                .unwrap_or_else(|e| panic!("a decimal: {e}")),
+            2,
+        ));
+        let mut expected = String::new();
+        decimal.write_to_string(&mut expected);
+        assert_eq!(expected, "-1234.50");
+        for escaped in [true, false] {
+            let mut out = String::new();
+            write_value_to_output(&decimal, escaped, &mut out);
+            assert_eq!(out, expected);
+        }
+        let datetime = Value::DateTime(1_700_000_000_000_000_000, true);
+        let mut out = String::new();
+        write_value_to_output(&datetime, true, &mut out);
+        assert_eq!(out, "2023-11-14 22:13:20");
+    }
+
+    #[test]
+    fn test_escaped_output_tag_renders_entities() -> Result<(), String> {
+        let nodes = parse_template("<p><%= title %></p>")?;
+        let data = make_hash(vec![(
+            "title",
+            Value::String("O'Brien & \"Sons\" <ltd> — café".into()),
+        )]);
+        let result = render_nodes(&nodes, &data, None)?;
+        assert_eq!(
+            result,
+            "<p>O&#x27;Brien &amp; &quot;Sons&quot; &lt;ltd&gt; — café</p>"
+        );
+        Ok(())
     }
 
     #[test]

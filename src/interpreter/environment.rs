@@ -6,7 +6,23 @@ use std::rc::Rc;
 
 use ahash::AHashMap;
 
-use crate::interpreter::value::{Function, HashPairs, StrKey, Value};
+use crate::interpreter::value::{map_hasher, Function, HashPairs, Instance, StrKey, Value};
+
+/// The value a view include reads for a bare `name` (or `@name`) past its own
+/// data: the controller's field of that name. `req`, `params`, `session` and
+/// `headers` are not inherited; the view gets those another way.
+pub(crate) fn inherited_field(controller: &Instance, name: &str) -> Option<Value> {
+    let value = controller.fields.get(name)?;
+    if !is_inherited_field(name) {
+        return None;
+    }
+    Some(value.clone())
+}
+
+/// Whether a controller field of this name reaches the views it renders.
+pub(crate) fn is_inherited_field(name: &str) -> bool {
+    !matches!(name, "req" | "params" | "session" | "headers")
+}
 
 /// Result of an `Environment::assign` call.
 ///
@@ -46,6 +62,10 @@ pub struct Environment {
     /// Checked during get() before walking the enclosing chain.
     /// Avoids copying all data fields into the HashMap.
     data_hash: Option<Rc<RefCell<HashPairs>>>,
+    /// A view include's controller, whose `@ivars` ([`inherited_field`]) it
+    /// reads after its data hash. Set only together with `data_hash`, so a
+    /// scope without one pays nothing for it.
+    inherited: Option<Rc<RefCell<Instance>>>,
     /// Shared by every render or helper call on a worker thread (the
     /// template builtins, the view helpers' env): user code never writes it.
     /// See [`Environment::freeze`].
@@ -55,10 +75,11 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Self {
         Self {
-            values: AHashMap::new(),
-            consts: AHashMap::new(),
+            values: AHashMap::with_hasher(map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: None,
             data_hash: None,
+            inherited: None,
             frozen: false,
         }
     }
@@ -67,20 +88,22 @@ impl Environment {
     /// Avoids repeated rehashing during `register_builtins()`.
     pub fn with_builtins_capacity() -> Self {
         Self {
-            values: AHashMap::with_capacity(300),
-            consts: AHashMap::new(),
+            values: AHashMap::with_capacity_and_hasher(300, map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: None,
             data_hash: None,
+            inherited: None,
             frozen: false,
         }
     }
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
-            values: AHashMap::new(),
-            consts: AHashMap::new(),
+            values: AHashMap::with_hasher(map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: Some(enclosing),
             data_hash: None,
+            inherited: None,
             frozen: false,
         }
     }
@@ -93,10 +116,11 @@ impl Environment {
         data_hash: Rc<RefCell<HashPairs>>,
     ) -> Self {
         Self {
-            values: AHashMap::new(),
-            consts: AHashMap::new(),
+            values: AHashMap::with_hasher(map_hasher()),
+            consts: AHashMap::with_hasher(map_hasher()),
             enclosing: Some(enclosing),
             data_hash: Some(data_hash),
+            inherited: None,
             frozen: false,
         }
     }
@@ -113,15 +137,25 @@ impl Environment {
 
     /// Clear this template scope for another render. The enclosing builtins
     /// stay; the map keeps its capacity. `locals` is bound to the new data.
+    /// `inherited` is the controller an include reads `@ivars` from past its
+    /// data; it is dropped when there is no data hash.
     pub(crate) fn reuse_for_template(
         &mut self,
         data_hash: Option<Rc<RefCell<HashPairs>>>,
+        inherited: Option<Rc<RefCell<Instance>>>,
         locals: Value,
     ) {
         self.values.clear();
         self.consts.clear();
+        self.inherited = if data_hash.is_some() { inherited } else { None };
         self.data_hash = data_hash;
         self.values.insert("locals".to_string(), locals);
+    }
+
+    /// Let go of the controller a pooled template scope inherited from: a
+    /// scope waiting in the pool must not keep a finished request alive.
+    pub(crate) fn release_inherited(&mut self) {
+        self.inherited = None;
     }
 
     /// Stop user assignments from writing this scope's bindings.
@@ -193,6 +227,13 @@ impl Environment {
             if let Some(value) = hash.borrow().get(&StrKey(name)) {
                 return Some(value.clone());
             }
+            // An include's inherited `@ivars`, after its own data and before
+            // the builtins and helpers, where a copy of them used to sit.
+            if let Some(ref controller) = self.inherited {
+                if let Some(value) = inherited_field(&controller.borrow(), name) {
+                    return Some(value);
+                }
+            }
         }
         if let Some(ref enclosing) = self.enclosing {
             return enclosing.borrow().get(name);
@@ -233,11 +274,17 @@ impl Environment {
             }
             return AppendString::Done(self.values.get(name).unwrap().clone());
         }
-        // `get` answers from the view's data hash before the enclosing
-        // scope; appending further up would edit a different binding.
+        // `get` answers from the view's data hash, and then from an include's
+        // inherited fields, before the enclosing scope; appending further up
+        // would edit a different binding.
         if let Some(ref hash) = self.data_hash {
             if hash.borrow().get(&StrKey(name)).is_some() {
                 return AppendString::NotString;
+            }
+            if let Some(ref controller) = self.inherited {
+                if inherited_field(&controller.borrow(), name).is_some() {
+                    return AppendString::NotString;
+                }
             }
         }
         if let Some(ref enclosing) = self.enclosing {
@@ -438,5 +485,77 @@ pub fn break_self_cycle(env: &Rc<RefCell<Environment>>, held_by_caller: usize) -
 impl Default for Environment {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::{Class, HashKey};
+
+    fn controller(fields: &[(&str, Value)]) -> Rc<RefCell<Instance>> {
+        let class = Rc::new(Class {
+            name: "PostsController".to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        for (name, value) in fields {
+            instance.fields.insert((*name).into(), value.clone());
+        }
+        Rc::new(RefCell::new(instance))
+    }
+
+    fn data(pairs: &[(&str, Value)]) -> Rc<RefCell<HashPairs>> {
+        let mut map = HashPairs::default();
+        for (key, value) in pairs {
+            map.insert(HashKey::String((*key).into()), value.clone());
+        }
+        Rc::new(RefCell::new(map))
+    }
+
+    /// An include reads its data, then its controller's fields, then the
+    /// scope it encloses. The request plumbing is not inherited.
+    #[test]
+    fn an_include_reads_its_data_then_the_controller_fields() {
+        let mut builtins = Environment::new();
+        builtins.define("helper".to_string(), Value::Int(1));
+        builtins.define("title".to_string(), Value::Int(2));
+        builtins.define("params".to_string(), Value::Int(3));
+        let mut scope = Environment::with_enclosing(Rc::new(RefCell::new(builtins)));
+        let fields = controller(&[
+            ("title", Value::String("Posts".into())),
+            ("post", Value::String("from @post".into())),
+            ("params", Value::String("the request's".into())),
+            ("_internal", Value::Int(7)),
+        ]);
+        let locals = data(&[("post", Value::String("passed".into()))]);
+        scope.reuse_for_template(Some(locals), Some(fields), Value::Null);
+
+        assert_eq!(scope.get("post"), Some(Value::String("passed".into())));
+        assert_eq!(scope.get("title"), Some(Value::String("Posts".into())));
+        assert_eq!(scope.get("_internal"), Some(Value::Int(7)));
+        assert_eq!(scope.get("helper"), Some(Value::Int(1)));
+        assert_eq!(scope.get("params"), Some(Value::Int(3)));
+        assert_eq!(scope.get("absent"), None);
+
+        // `title += "!"` reads the field and binds a local: it never appends
+        // into the builtins' `title`, nor into the controller's.
+        assert!(matches!(
+            scope.append_string("title", "!"),
+            AppendString::NotString
+        ));
+
+        scope.release_inherited();
+        assert_eq!(scope.get("title"), Some(Value::Int(2)));
+    }
+
+    /// Without a data hash (a partial given a non-hash context) nothing is
+    /// inherited, as no `@ivar` was ever copied into such a render.
+    #[test]
+    fn a_scope_without_data_inherits_nothing() {
+        let mut scope = Environment::new();
+        let fields = controller(&[("title", Value::String("Posts".into()))]);
+        scope.reuse_for_template(None, Some(fields), Value::Null);
+        assert_eq!(scope.get("title"), None);
     }
 }

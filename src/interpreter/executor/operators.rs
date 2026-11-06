@@ -1,4 +1,13 @@
 //! Binary and unary operator evaluation.
+//!
+//! The rules of `+ - * / %` and of the four orderings are defined once, by
+//! the associated functions [`Interpreter::eval_add`] … [`Interpreter::eval_modulo`]
+//! and [`Interpreter::compare_ordered`], which read no interpreter state. Both
+//! engines call them: the tree-walker from `evaluate_binary_values`, the VM
+//! from the slow arm of each operator (`Vm::op_add` … `op_compare_less_equal`)
+//! once its inline Int and Float cases do not apply. So a Decimal, an
+//! `Array - Array`, an overflow or a division by zero cannot come out
+//! differently on the two engines.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -12,9 +21,7 @@ use crate::span::Span;
 
 use super::{Interpreter, RuntimeResult};
 
-/// Ordering operator, used to dispatch string comparison explicitly so we
-/// don't need to probe a numeric cmp closure to figure out which operator
-/// was passed.
+/// An ordering operator, as [`Interpreter::compare_ordered`] applies it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OrdOp {
     Less,
@@ -83,6 +90,18 @@ pub(crate) fn int_negate_overflow(n: i64, span: Span) -> RuntimeError {
     }
 }
 
+/// `a..b` whose bounds are not both integers, built or counted through.
+fn range_operands_error(left: &Value, right: &Value, span: Span) -> RuntimeError {
+    RuntimeError::type_error(
+        format!(
+            "range (..) expects two integers, got {} and {}",
+            left.type_name(),
+            right.type_name()
+        ),
+        span,
+    )
+}
+
 impl Interpreter {
     pub(crate) fn evaluate_binary(
         &mut self,
@@ -107,6 +126,30 @@ impl Interpreter {
             .map_err(|e| RuntimeError::new(e, span))?;
 
         self.evaluate_binary_values(&left_val, op, &right_val, span)
+    }
+
+    /// The bounds of a range `left..right` that a `for` loop or a
+    /// comprehension counts through rather than builds: evaluated and checked
+    /// as [`Self::evaluate_binary`] does for `..` (Futures resolved, then two
+    /// integers required, with `eval_range`'s error), but with no
+    /// `SOLI_MAX_RANGE_LEN` limit, since no array is made. `span` is the
+    /// range's own, without any parentheses around it.
+    pub(crate) fn evaluate_range_bounds(
+        &mut self,
+        left: &Expr,
+        right: &Expr,
+        span: Span,
+    ) -> RuntimeResult<(i64, i64)> {
+        let left_val = self.evaluate(left)?;
+        let right_val = self.evaluate(right)?;
+        let left_val = left_val.resolve().map_err(|e| RuntimeError::new(e, span))?;
+        let right_val = right_val
+            .resolve()
+            .map_err(|e| RuntimeError::new(e, span))?;
+        match (&left_val, &right_val) {
+            (Value::Int(start), Value::Int(end)) => Ok((*start, *end)),
+            _ => Err(range_operands_error(&left_val, &right_val, span)),
+        }
     }
 
     fn eval_shovel(&mut self, left: &Expr, right: &Expr, span: Span) -> RuntimeResult<Value> {
@@ -319,42 +362,23 @@ create the record first, or use {}.create({{...}})",
         right_val: &Value,
         span: Span,
     ) -> RuntimeResult<Value> {
+        let ordered = |op: OrdOp| Self::compare_ordered(left_val, op, right_val, span);
         match op {
-            BinaryOp::Add => self.eval_add(left_val, right_val, span),
-            BinaryOp::Subtract => self.eval_subtract(left_val, right_val, span),
-            BinaryOp::Multiply => self.eval_multiply(left_val, right_val, span),
-            BinaryOp::Divide => self.eval_divide(left_val, right_val, span),
-            BinaryOp::Modulo => self.eval_modulo(left_val, right_val, span),
+            BinaryOp::Add => Self::eval_add(left_val, right_val, span),
+            BinaryOp::Subtract => Self::eval_subtract(left_val, right_val, span),
+            BinaryOp::Multiply => Self::eval_multiply(left_val, right_val, span),
+            BinaryOp::Divide => Self::eval_divide(left_val, right_val, span),
+            BinaryOp::Modulo => Self::eval_modulo(left_val, right_val, span),
             BinaryOp::Equal => Ok(Value::Bool(crate::interpreter::value::enum_aware_equal(
                 left_val, right_val,
             ))),
             BinaryOp::NotEqual => Ok(Value::Bool(!crate::interpreter::value::enum_aware_equal(
                 left_val, right_val,
             ))),
-            BinaryOp::Less => {
-                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
-                    return self.eval_string_compare(a, b, OrdOp::Less, span);
-                }
-                self.compare_values(left_val, right_val, span, |a, b| a < b)
-            }
-            BinaryOp::LessEqual => {
-                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
-                    return self.eval_string_compare(a, b, OrdOp::LessEqual, span);
-                }
-                self.compare_values(left_val, right_val, span, |a, b| a <= b)
-            }
-            BinaryOp::Greater => {
-                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
-                    return self.eval_string_compare(a, b, OrdOp::Greater, span);
-                }
-                self.compare_values(left_val, right_val, span, |a, b| a > b)
-            }
-            BinaryOp::GreaterEqual => {
-                if let (Value::String(a), Value::String(b)) = (left_val, right_val) {
-                    return self.eval_string_compare(a, b, OrdOp::GreaterEqual, span);
-                }
-                self.compare_values(left_val, right_val, span, |a, b| a >= b)
-            }
+            BinaryOp::Less => ordered(OrdOp::Less).map(Value::Bool),
+            BinaryOp::LessEqual => ordered(OrdOp::LessEqual).map(Value::Bool),
+            BinaryOp::Greater => ordered(OrdOp::Greater).map(Value::Bool),
+            BinaryOp::GreaterEqual => ordered(OrdOp::GreaterEqual).map(Value::Bool),
             BinaryOp::Range => self.eval_range(left_val, right_val, span),
             BinaryOp::Shovel => match left_val {
                 Value::Array(arr) => {
@@ -380,18 +404,12 @@ create the record first, or use {}.create({{...}})",
                 let arr: Vec<Value> = (*start..*end).map(Value::Int).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(arr))))
             }
-            _ => Err(RuntimeError::type_error(
-                format!(
-                    "range (..) expects two integers, got {} and {}",
-                    left.type_name(),
-                    right.type_name()
-                ),
-                span,
-            )),
+            _ => Err(range_operands_error(left, right, span)),
         }
     }
 
-    fn eval_add(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
+    /// `left + right`, on both engines (see the module docs).
+    pub(crate) fn eval_add(left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
             (Value::Array(a), Value::Array(b)) => {
                 let a = a.borrow();
@@ -442,8 +460,11 @@ create the record first, or use {}.create({{...}})",
             (Value::String(a), Value::String(b)) => {
                 Ok(Value::String(ecow::eco_format!("{}{}", a, b)))
             }
-            (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
-            (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
+            // A string and anything else: the other side as `Display` writes
+            // it, built like an interpolation (itoa/ryu into a sized buffer).
+            (Value::String(_), _) | (_, Value::String(_)) => Ok(Value::String(
+                crate::interpreter::value::concat_display(left, right),
+            )),
             _ => Err(RuntimeError::type_error(
                 format!("Cannot add {} and {}", left.type_name(), right.type_name()),
                 span,
@@ -451,7 +472,10 @@ create the record first, or use {}.create({{...}})",
         }
     }
 
-    fn eval_subtract(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
+    /// `left - right`, on both engines. An array minus an array keeps the
+    /// elements of `left` equal to none of `right`'s, by `PartialEq`: an
+    /// instance (an enum payload variant too) only matches itself.
+    pub(crate) fn eval_subtract(left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
             (Value::Array(arr), Value::Array(to_remove)) => {
                 let arr = arr.borrow();
@@ -510,7 +534,8 @@ create the record first, or use {}.create({{...}})",
         }
     }
 
-    fn eval_multiply(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
+    /// `left * right`, on both engines.
+    pub(crate) fn eval_multiply(left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
             (Value::Int(a), Value::Int(b)) => match a.checked_mul(*b) {
                 Some(product) => Ok(Value::Int(product)),
@@ -567,7 +592,9 @@ create the record first, or use {}.create({{...}})",
         }
     }
 
-    fn eval_divide(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
+    /// `left / right`, on both engines. A zero divisor raises only between
+    /// numbers; any other pair is the type error.
+    pub(crate) fn eval_divide(left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
             (Value::Int(a), Value::Int(b)) => {
                 if *b == 0 {
@@ -648,7 +675,9 @@ create the record first, or use {}.create({{...}})",
         }
     }
 
-    fn eval_modulo(&self, left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
+    /// `left % right`, on both engines. A Float remainder by zero, Int or
+    /// Float, is NaN, as the native kernels compute it.
+    pub(crate) fn eval_modulo(left: &Value, right: &Value, span: Span) -> RuntimeResult<Value> {
         match (left, right) {
             (Value::Int(a), Value::Int(b)) => {
                 if *b == 0 {
@@ -668,8 +697,10 @@ create the record first, or use {}.create({{...}})",
                 if b.0.is_zero() {
                     Err(RuntimeError::division_by_zero(span))
                 } else {
+                    // Checked: rust_decimal's `%` panics where `checked_rem`
+                    // gives up ("Division overflowed").
                     Ok(Value::Decimal(DecimalValue(
-                        a.0 % b.0,
+                        decimal_op(a.0, "%", b.0, span)?,
                         std::cmp::max(a.1, b.1),
                     )))
                 }
@@ -685,91 +716,53 @@ create the record first, or use {}.create({{...}})",
         }
     }
 
-    pub(crate) fn compare_values<F>(
-        &self,
+    /// `left <op> right` for `<`, `<=`, `>` and `>=`, on both engines: the VM's
+    /// `op_compare_less` / `op_compare_less_equal` call it for whatever their
+    /// inline Int and Float arms leave.
+    ///
+    /// Ints compare exactly (past 2^53 two different Ints round to the same
+    /// f64), strings byte by byte, DateTimes by their nanosecond timestamp,
+    /// exactly too (as `f64` it rounds to 256 ns, so `a < b`, `a == b` and
+    /// `a > b` could all be false). An Int meeting a Float, and a Decimal
+    /// meeting a Decimal, an Int or a Float, compare as `f64`. A NaN orders
+    /// with nothing, so every comparison with one is false.
+    pub(crate) fn compare_ordered(
         left: &Value,
+        op: OrdOp,
         right: &Value,
         span: Span,
-        cmp: F,
-    ) -> RuntimeResult<Value>
-    where
-        F: Fn(f64, f64) -> bool,
-    {
-        match (left, right) {
-            // Exact i64 ordering, mapped to -1/0/1 so the f64 `cmp` still
-            // applies: past 2^53 two different Ints round to the same f64.
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(cmp(a.cmp(b) as i8 as f64, 0.0))),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a, *b))),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a as f64, *b))),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(cmp(*a, *b as f64))),
-            (Value::Decimal(a), Value::Decimal(b)) => {
-                let left_f64 = a.value().to_f64().unwrap_or(0.0);
-                let right_f64 = b.value().to_f64().unwrap_or(0.0);
-                Ok(Value::Bool(cmp(left_f64, right_f64)))
-            }
-            (Value::Decimal(a), Value::Int(b)) => {
-                let left_f64 = a.value().to_f64().unwrap_or(0.0);
-                Ok(Value::Bool(cmp(left_f64, *b as f64)))
-            }
-            (Value::Int(b), Value::Decimal(a)) => {
-                let right_f64 = a.value().to_f64().unwrap_or(0.0);
-                Ok(Value::Bool(cmp(*b as f64, right_f64)))
-            }
-            (Value::Decimal(a), Value::Float(b)) => {
-                let left_f64 = a.value().to_f64().unwrap_or(0.0);
-                Ok(Value::Bool(cmp(left_f64, *b)))
-            }
-            (Value::Float(a), Value::Decimal(b)) => {
-                let right_f64 = b.value().to_f64().unwrap_or(0.0);
-                Ok(Value::Bool(cmp(*a, right_f64)))
-            }
-            (Value::String(_a), Value::String(_b)) => {
-                // String comparison is now handled in `eval_string_compare`
-                // before we reach this numeric-only path; the function
-                // signature for `compare_values` requires f64 inputs.
-                Err(RuntimeError::type_error(
-                    "internal error: string comparison reached compare_values; this is a bug"
-                        .to_string(),
-                    span,
-                ))
-            }
-            _ => {
-                // DateTime ordering: compare the internal nanosecond timestamp.
-                if let (Some(ts_a), Some(ts_b)) = (left.datetime_ts(), right.datetime_ts()) {
-                    return Ok(Value::Bool(cmp(ts_a as f64, ts_b as f64)));
+    ) -> RuntimeResult<bool> {
+        let ordering = match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Some(a.cmp(b)),
+            (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
+            (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b),
+            (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)),
+            (Value::Decimal(a), Value::Decimal(b)) => a.to_f64().partial_cmp(&b.to_f64()),
+            (Value::Decimal(a), Value::Int(b)) => a.to_f64().partial_cmp(&(*b as f64)),
+            (Value::Int(a), Value::Decimal(b)) => (*a as f64).partial_cmp(&b.to_f64()),
+            (Value::Decimal(a), Value::Float(b)) => a.to_f64().partial_cmp(b),
+            (Value::Float(a), Value::Decimal(b)) => a.partial_cmp(&b.to_f64()),
+            (Value::String(a), Value::String(b)) => Some(a.as_str().cmp(b.as_str())),
+            _ => match (left.datetime_ts(), right.datetime_ts()) {
+                (Some(a), Some(b)) => Some(a.cmp(&b)),
+                _ => {
+                    return Err(RuntimeError::type_error(
+                        format!(
+                            "Cannot compare {} and {}",
+                            left.type_name(),
+                            right.type_name()
+                        ),
+                        span,
+                    ))
                 }
-                Err(RuntimeError::type_error(
-                    format!(
-                        "Cannot compare {} and {}",
-                        left.type_name(),
-                        right.type_name()
-                    ),
-                    span,
-                ))
-            }
-        }
-    }
-
-    /// Lexicographic string comparison, dispatched on the actual operator
-    /// (rather than probing a numeric closure). Soli's old probe-based
-    /// implementation could not distinguish `==` from `>=` and returned
-    /// `false` for `"a" < "z"` — see operators.rs history.
-    pub(crate) fn eval_string_compare(
-        &self,
-        a: &str,
-        b: &str,
-        op: OrdOp,
-        span: Span,
-    ) -> RuntimeResult<Value> {
-        let ord = a.cmp(b);
-        let result = match op {
-            OrdOp::Less => ord == std::cmp::Ordering::Less,
-            OrdOp::LessEqual => ord != std::cmp::Ordering::Greater,
-            OrdOp::Greater => ord == std::cmp::Ordering::Greater,
-            OrdOp::GreaterEqual => ord != std::cmp::Ordering::Less,
+            },
         };
-        let _ = span;
-        Ok(Value::Bool(result))
+        Ok(ordering.is_some_and(|ordering| match op {
+            OrdOp::Less => ordering.is_lt(),
+            OrdOp::LessEqual => ordering.is_le(),
+            OrdOp::Greater => ordering.is_gt(),
+            OrdOp::GreaterEqual => ordering.is_ge(),
+        }))
     }
 
     pub(crate) fn evaluate_unary(
@@ -837,5 +830,62 @@ create the record first, or use {}.create({{...}})",
         } else {
             Ok(left_val)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::DecimalValue;
+
+    /// `<`, `<=`, `>` and `>=` of `left` against `right`.
+    fn order(left: &Value, right: &Value) -> [bool; 4] {
+        [
+            OrdOp::Less,
+            OrdOp::LessEqual,
+            OrdOp::Greater,
+            OrdOp::GreaterEqual,
+        ]
+        .map(|op| {
+            Interpreter::compare_ordered(left, op, right, Span::default()).expect("comparable")
+        })
+    }
+
+    /// Two instants 10 ns apart, 2026-01-01T00:00:00.000000100Z and …110Z.
+    /// As `f64` nanoseconds both round to the same value (the step is 256 ns
+    /// at this epoch), so the old comparator found `early < late` false and
+    /// `early >= late` true while `==` said they differ. The VM always
+    /// compared the `i64`.
+    #[test]
+    fn datetime_ordering_is_exact() {
+        let early = Value::DateTime(1_767_225_600_000_000_100, false);
+        let late = Value::DateTime(1_767_225_600_000_000_110, false);
+        assert_eq!(order(&early, &late), [true, true, false, false]);
+        assert_eq!(order(&late, &early), [false, false, true, true]);
+        assert_eq!(order(&early, &early), [false, true, false, true]);
+    }
+
+    #[test]
+    fn nan_compares_false_and_mismatches_raise() {
+        let nan = Value::Float(f64::NAN);
+        assert_eq!(order(&nan, &Value::Float(1.0)), [false; 4]);
+        assert_eq!(order(&Value::Int(1), &nan), [false; 4]);
+        let one = Value::Decimal(DecimalValue(rust_decimal::Decimal::ONE, 0));
+        assert_eq!(order(&one, &nan), [false; 4]);
+        assert_eq!(order(&one, &Value::Int(1)), [false, true, false, true]);
+        // 2^53 and 2^53 + 1 are one f64; as Ints they still order.
+        let (low, high) = (Value::Int(1 << 53), Value::Int((1 << 53) + 1));
+        assert_eq!(order(&low, &high), [true, true, false, false]);
+        let (a, b) = (Value::String("a".into()), Value::String("b".into()));
+        assert_eq!(order(&a, &b), [true, true, false, false]);
+
+        let array = Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)])));
+        let err =
+            Interpreter::compare_ordered(&array, OrdOp::Less, &Value::Int(1), Span::default())
+                .expect_err("an array does not order against an int");
+        assert!(
+            err.to_string().contains("Cannot compare array and int"),
+            "{err}"
+        );
     }
 }

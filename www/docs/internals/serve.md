@@ -26,7 +26,22 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 | `--dev` | Tree-walk `Interpreter` (hot reload) |
 | production | Bytecode `Vm` after `warm_vm_handlers` |
 
-`src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it).
+`src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it). Any other VM error re-runs the request on the interpreter, unless the handler wrote first. The handler is demoted only if that re-run answers (it succeeds, or raises a deliberate 404/403/`halt`/`DomainError` — an engine divergence) or if it wrote first; an error both engines raise leaves it on the VM.
+
+### The demotion rule (`vm_failure_verdict`, `settle_engine_divergence`)
+
+Every kind of handler — an action (`call_handler`, `call_class_method`), a controller hook (`run_hook_on_vm`), a middleware (`middleware::call_on_vm`) — takes the same path when the VM fails it. A raised 404/403/`halt`/`DomainError` is the answer, and a request past its time budget (`deadline::exhausted()`) answers the timeout: neither is re-run nor demoted, ahead of everything below. Otherwise `vm_failure_verdict` returns one of four outcomes:
+
+| VM failure | Demoted | Re-run on the tree-walker |
+|---|---|---|
+| a refusal (`EngineFallback`), nothing written | yes | yes — it answers the request |
+| anything after a durable write (`crud::had_durable_commit`) | yes | no — the VM's error is the answer |
+| an error settled earlier as the app's own | no | no — the VM's error is the answer |
+| anything else | only if the re-run answers | yes — `settle_engine_divergence` decides |
+
+**The tripwire.** `crud::clear_durable_commit` arms it before each VM attempt; every write the framework makes on the app's behalf sets it: each write of the SQL facade (`db::sql`: insert, update, delete, `increment_field`, `execute_raw`, the bulk writes) and of the column facade (`db::columns`), SoliDB document writes, an SDBQL statement that writes (`crud::mark_if_sdbql_writes`, the scan `grouped` already used: `update_all`, `delete_all`, `db.query("INSERT …")`), a `Solidb` client write, a columnar insert, a prune, a job enqueue (`jobs::enqueue_doc`, any backend) and a delivered mail. A write inside a transaction marks at the commit; a job and a mail mark at once (`mark_durable_effect`), since a rollback takes neither back. The framework's own bookkeeping (the error tracker's and slow-query log's collections, the dev inbox, the operator notifier's mail, the `solidb` session driver's writes) runs `without_durable_mark`: a re-run writes the same session again, so `session_set` before an app error must not demote the handler. Before, only model saves and bulk inserts marked, so an `increment` or a `perform_later` followed by an error was repeated by the re-run.
+
+**Settled verdicts.** When the re-run fails too, the error is the app's own: `settle_app_error` remembers the VM's error message for that handler (per kind, in a worker thread-local the coroutines share), and the next request failing with the same message is answered from the VM without a re-run. Without it every failing request ran the handler twice, once per engine, for the worker's life — repeating whatever it did before the error that no tripwire sees (outbound HTTP, a cache write, a push). A message that carries request data would re-run each new value once, so past eight messages every error of the handler counts as its own. A new message is re-run (below the cap), so a VM gap on another path of a settled handler is still caught; past the cap such a gap answers 500 from the VM where 2.29.3 would have demoted it. An error answered from the VM is reported with the action's frame (`with_action_frame`), the frame the tree-walker's run would have pushed, so the log has a location and the error tracker files every occurrence in one group. The verdicts are forgotten on a code reload (`forget_settled_app_errors`), and a re-run that ran out of time settles nothing.
 
 ## Builtins: one registry per consumer, on purpose
 
@@ -218,6 +233,35 @@ pub(crate) fn finish_response(builder: Builder, body: Bytes) -> Response<Respons
 
 Use this for every response you build in `src/serve/`. File-mode already does.
 
+### The framework's script tags (`inject.rs`)
+
+`finish_html` (`src/template/mod.rs`) finishes every rendered HTML page before
+its ETag is computed. It adds `nav.js` (or `prefetch.js` with `SOLI_NAV=off`)
+to every page, and `native.js`, `camera.js`, `sensors.js` and `pow.js` to the
+pages whose markup asks for them. `inject::add_framework_scripts` makes the
+decision in one forward pass and places the tags in one backward pass:
+
+- **`Probe`** answers every question the scripts ask: each feature's gate
+  (`data-soli-camera`, `name="soli-native"`, …) and each tag's
+  `__soli_*_injected` marker. All of them contain `soli`, so one SIMD `memmem`
+  pass over the page finds them all. A needle missing from `NEEDLES` is still
+  answered correctly, by a full search, but that costs a pass per response, and
+  the unit tests fail.
+- **`body_close_position`** is the insertion point for every tag: the last
+  `</body>`, else the last `</html>`, else the end (ASCII case-insensitive),
+  found with `memrchr` over the page's `<` bytes. A fragment has neither tag
+  (an htmx swap, a `layout: false` render), so it is the one page that is
+  searched end to end; this is what keeps that cheap. The dev bar and the live
+  reload script use the same function.
+
+To add a page-gated script, give its module a `pub(crate) fn tag_for(&Probe) ->
+Option<Cow<'static, str>>` holding its gate. Add its gate and marker to
+`NEEDLES`, then call it from `inject::tags_for` in the order the tags should
+appear. The one-pass result equals injecting the scripts one at a time
+only if no tag contains `</body>`, `</html>`, or another script's gate or
+marker; `no_tag_holds_a_body_close_or_another_script_s_needle` checks every
+tag for that.
+
 ## The worker-side request path
 
 `handle_request` in `mod.rs` is the order the stages run in; each stage is its
@@ -271,7 +315,7 @@ cleared and learnt again.
 
 Each request gets an `Interpreter::coroutine_shell` (the worker's environment,
 its own call stack), so the VM → tree-walker fallback runs inside the
-coroutine; handlers the VM failed on are merged back into the worker's VM.
+coroutine; handlers it moved off the VM are merged back into the worker's VM.
 WebSocket, LiveView and EUI events still run on the worker's own interpreter,
 between switches.
 
@@ -316,6 +360,7 @@ No `.env`, no DB, no controllers. Templates in that folder **are** code — only
 | `tenant.rs` | Per-application state; app root and the `File`/`Image` jails |
 | `websocket.rs` | WS upgrade + rooms |
 | `dev_bar.rs` | `--dev` overlay |
+| `inject.rs` | Which framework scripts an HTML page needs and where their tags go (see above) |
 | `cors.rs` | `cors("/api/*", …)` |
 
 ## How to add a reserved route

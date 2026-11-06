@@ -1,5 +1,23 @@
 # JSON.parse, JSON.stringify, to_json and assert_json.
 
+class JsonSpecPost
+  title: String
+  views: Int
+  body: String
+  password_digest: String
+  _key: String
+  _errors: Array
+
+  new(title: String)
+    @title = title
+    @views = 3
+    @body = "b"
+    @password_digest = "secret"
+    @_key = "k1"
+    @_errors = []
+  end
+end
+
 describe("JSON.parse") do
   test("parses an object") do
     assert_eq(JSON.parse("{\"name\": \"test\", \"value\": 42}"), {"name": "test", "value": 42})
@@ -47,6 +65,14 @@ describe("JSON.parse") do
 end
 
 describe("JSON.stringify") do
+  test("renders an instance's public fields sorted by name") do
+    expected = "{\"_key\":\"k1\",\"body\":\"b\",\"title\":\"t\",\"views\":3}"
+    assert_eq(JSON.stringify(JsonSpecPost.new("t")), expected)
+    # Same data, same bytes, whichever instance holds it.
+    posts = (0..20).map { |i| JSON.stringify(JsonSpecPost.new("t")) }
+    assert_eq(posts.uniq.length, 1)
+  end
+
   test("renders an object compactly, in insertion order") do
     assert_eq(JSON.stringify({"b": 1, "a": 2}), "{\"b\":1,\"a\":2}")
   end

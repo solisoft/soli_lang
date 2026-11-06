@@ -34,16 +34,12 @@ impl Interpreter {
             // Literals
             ExprKind::IntLiteral(n) => Ok(Value::Int(*n)),
             ExprKind::FloatLiteral(n) => Ok(Value::Float(*n)),
-            ExprKind::DecimalLiteral(s) => {
-                use crate::interpreter::value::DecimalValue;
-                let decimal: rust_decimal::Decimal =
-                    s.parse().map_err(|_| RuntimeError::General {
-                        message: format!("Invalid decimal literal: {}", s),
-                        span: expr.span,
-                    })?;
-                let precision = s.split('.').nth(1).map(|p| p.len() as u32).unwrap_or(0);
-                Ok(Value::Decimal(DecimalValue(decimal, precision)))
-            }
+            ExprKind::DecimalLiteral(s) => crate::interpreter::value::DecimalValue::from_literal(s)
+                .map(Value::Decimal)
+                .ok_or_else(|| RuntimeError::General {
+                    message: format!("Invalid decimal literal: {}", s),
+                    span: expr.span,
+                }),
             ExprKind::StringLiteral(s) => Ok(Value::String(s.clone().into())),
             ExprKind::CommandSubstitution(cmd) => self.evaluate_system_run(cmd, expr.span),
             ExprKind::BoolLiteral(b) => Ok(Value::Bool(*b)),
@@ -352,7 +348,11 @@ impl Interpreter {
             return Ok(Err(before));
         }
         drop(before);
-        match self.environment.borrow_mut().append_string(name, extra) {
+        // Its own statement: a `borrow_mut()` in the `match` would live through
+        // the arms, and the fallback's `borrow()` below panicked on it ("RefCell
+        // already mutably borrowed") for `<% title = title + "!" %>` in a view.
+        let appended = self.environment.borrow_mut().append_string(name, extra);
+        match appended {
             AppendString::Done(updated) => Ok(Ok(updated)),
             AppendString::IsConst => Err(RuntimeError::type_error(
                 format!("cannot reassign constant '{name}'"),
@@ -500,10 +500,10 @@ impl Interpreter {
             // field is still an error — and only for an instance: the
             // receiver is re-evaluated to check, on this error path alone.
             // The VM does the same with `Op::GetPropertyOrNull`.
-            Err(RuntimeError::NoSuchProperty { ref property, .. })
+            Err(RuntimeError::NoSuchProperty(ref info))
                 if matches!(op, CompoundOp::Or | CompoundOp::And | CompoundOp::Coalesce)
                     && matches!(&target.kind, ExprKind::Member { name, object }
-                        if name == property
+                        if *name == info.property
                             && matches!(self.evaluate(object), Ok(Value::Instance(_)))) =>
             {
                 Value::Null
@@ -678,6 +678,35 @@ impl Interpreter {
         ))
     }
 
+    /// The elements a comprehension walks: a copy of an array's, or for a
+    /// range `a..b`, with or without parentheses around it, its integers
+    /// counted one at a time as a `for` loop does, with no array built. For a
+    /// range it also returns the range's span: the result is then held to
+    /// `SOLI_MAX_RANGE_LEN` elements (`limits::check_comprehension_len`),
+    /// refused there. The VM's comprehensions do the same.
+    fn comprehension_items(
+        &mut self,
+        iterable: &Expr,
+    ) -> RuntimeResult<(Box<dyn Iterator<Item = Value>>, Option<Span>)> {
+        let range = iterable.without_parens();
+        if let ExprKind::Binary {
+            left,
+            operator: crate::ast::BinaryOp::Range,
+            right,
+        } = &range.kind
+        {
+            let (start, end) = self.evaluate_range_bounds(left, right, range.span)?;
+            return Ok((Box::new((start..end).map(Value::Int)), Some(range.span)));
+        }
+        match self.evaluate(iterable)? {
+            Value::Array(arr) => {
+                let items: Vec<Value> = arr.borrow().iter().cloned().collect();
+                Ok((Box::new(items.into_iter()), None))
+            }
+            _ => Err(RuntimeError::type_error("expected array", iterable.span)),
+        }
+    }
+
     /// Evaluate list comprehension.
     fn evaluate_list_comprehension(
         &mut self,
@@ -686,13 +715,7 @@ impl Interpreter {
         iterable: &Expr,
         condition: Option<&Expr>,
     ) -> RuntimeResult<Value> {
-        let iter_value = self.evaluate(iterable)?;
-        let items: Vec<Value> = match iter_value {
-            Value::Array(arr) => arr.borrow().iter().cloned().collect(),
-            _ => {
-                return Err(RuntimeError::type_error("expected array", iterable.span));
-            }
-        };
+        let (items, capped_at) = self.comprehension_items(iterable)?;
 
         let mut result = Vec::new();
         for item in items {
@@ -722,6 +745,10 @@ impl Interpreter {
 
             if pass_condition {
                 result.push(elem_value);
+                if let Some(span) = capped_at {
+                    crate::interpreter::limits::check_comprehension_len(result.len())
+                        .map_err(|message| RuntimeError::General { message, span })?;
+                }
             }
         }
 
@@ -737,13 +764,7 @@ impl Interpreter {
         iterable: &Expr,
         condition: Option<&Expr>,
     ) -> RuntimeResult<Value> {
-        let iter_value = self.evaluate(iterable)?;
-        let items: Vec<Value> = match iter_value {
-            Value::Array(arr) => arr.borrow().iter().cloned().collect(),
-            _ => {
-                return Err(RuntimeError::type_error("expected array", iterable.span));
-            }
-        };
+        let (items, capped_at) = self.comprehension_items(iterable)?;
 
         let mut result: crate::interpreter::value::HashPairs =
             crate::interpreter::value::HashPairs::default();
@@ -774,6 +795,10 @@ impl Interpreter {
             if should_include {
                 if let Some(hash_key) = key_value.to_hash_key() {
                     result.insert(hash_key, val_value);
+                    if let Some(span) = capped_at {
+                        crate::interpreter::limits::check_comprehension_len(result.len())
+                            .map_err(|message| RuntimeError::General { message, span })?;
+                    }
                 } else {
                     return Err(RuntimeError::type_error(
                         format!("Cannot use {} as hash key", key_value.type_name()),

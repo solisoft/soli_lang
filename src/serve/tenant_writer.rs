@@ -29,6 +29,8 @@ pub(crate) struct Stats {
     pub(crate) lost: AtomicU64,
     /// Items of a new group counted in (or refused for) the overflow.
     pub(crate) overflowed: AtomicU64,
+    /// Unix seconds of the last item dropped, failed or lost; 0 for never.
+    pub(crate) last_problem_at: AtomicU64,
 }
 
 /// A copy of [`Stats`] for a dashboard.
@@ -39,6 +41,8 @@ pub(crate) struct StatsSnapshot {
     pub restarts: u64,
     pub lost: u64,
     pub overflowed: u64,
+    /// Unix seconds of the last item dropped, failed or lost; 0 for never.
+    pub last_problem_at: u64,
 }
 
 impl Stats {
@@ -49,7 +53,34 @@ impl Stats {
             restarts: self.restarts.load(Ordering::Relaxed),
             lost: self.lost.load(Ordering::Relaxed),
             overflowed: self.overflowed.load(Ordering::Relaxed),
+            last_problem_at: self.last_problem_at.load(Ordering::Relaxed),
         }
+    }
+
+    fn problem_now(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.last_problem_at.store(now, Ordering::Relaxed);
+    }
+
+    /// `n` items whose write failed.
+    pub(crate) fn note_failed(&self, n: u64) {
+        self.failed.fetch_add(n, Ordering::Relaxed);
+        self.problem_now();
+    }
+
+    /// `n` items dropped on a full queue.
+    pub(crate) fn note_dropped(&self, n: u64) {
+        self.dropped.fetch_add(n, Ordering::Relaxed);
+        self.problem_now();
+    }
+
+    /// `n` items no writer could take.
+    pub(crate) fn note_lost(&self, n: u64) {
+        self.lost.fetch_add(n, Ordering::Relaxed);
+        self.problem_now();
     }
 }
 
@@ -109,7 +140,7 @@ impl<T> Writers<T> {
             match sender.try_send(item) {
                 Ok(()) => return,
                 Err(TrySendError::Full(_)) => {
-                    stats.dropped.fetch_add(1, Ordering::Relaxed);
+                    stats.note_dropped(1);
                     return;
                 }
                 Err(TrySendError::Disconnected(back)) => {
@@ -117,7 +148,7 @@ impl<T> Writers<T> {
                     stats.restarts.fetch_add(1, Ordering::Relaxed);
                     eprintln!("[{}] the writer had stopped; starting it again", self.label);
                     if attempt == 1 {
-                        stats.lost.fetch_add(1, Ordering::Relaxed);
+                        stats.note_lost(1);
                         return;
                     }
                     item = back;
@@ -143,7 +174,7 @@ impl<T> Writers<T> {
         }
         let (sender, receiver) = mpsc::sync_channel(self.queue_cap);
         if !spawn(tenant, receiver, writer.stats.clone()) {
-            writer.stats.lost.fetch_add(1, Ordering::Relaxed);
+            writer.stats.note_lost(1);
             return None;
         }
         writer.generation += 1;

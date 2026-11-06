@@ -62,6 +62,21 @@ impl Vm {
                 *ts, *use_utc, name, args, span,
             );
         }
+        if args.is_empty() && name == "round" {
+            // `f.round()` / `f.round`: the member table answers `round` with
+            // a method value, built only to be dropped before the call below.
+            // Without a user method on the type to outrank it, call it.
+            use crate::interpreter::executor::calls::user_methods::{has_user_methods, PrimType};
+            match receiver {
+                Value::Float(n) if !has_user_methods(PrimType::Float) => {
+                    return call_float_method_impl(*n, name, args, span);
+                }
+                Value::Decimal(d) if !has_user_methods(PrimType::Decimal) => {
+                    return call_decimal_method_impl(d, name, args, span);
+                }
+                _ => {}
+            }
+        }
         if args.is_empty() {
             let direct = match receiver {
                 Value::Float(n) => Interpreter::float_member_access(*n, name, span)?,
@@ -69,11 +84,11 @@ impl Vm {
                 Value::Null => Interpreter::null_member_access(name, span)?,
                 Value::Decimal(d) => Interpreter::decimal_member_access(d, name, span)?,
                 _ => {
-                    return Err(RuntimeError::NoSuchProperty {
-                        value_type: receiver.type_name(),
-                        property: name.to_string(),
+                    return Err(RuntimeError::no_such_property(
+                        receiver.type_name(),
+                        name.to_string(),
                         span,
-                    })
+                    ))
                 }
             };
             match direct {
@@ -86,11 +101,11 @@ impl Vm {
             Value::Bool(b) => call_bool_method_impl(*b, name, args, span),
             Value::Null => call_null_method_impl(name, args, span),
             Value::Decimal(d) => call_decimal_method_impl(d, name, args, span),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: receiver.type_name(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                receiver.type_name(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 }

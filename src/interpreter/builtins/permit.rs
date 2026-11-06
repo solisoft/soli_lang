@@ -27,7 +27,6 @@ use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
-use ahash::RandomState as AHasher;
 
 fn is_scalar(value: &Value) -> bool {
     matches!(
@@ -88,7 +87,7 @@ fn filter_value(value: &Value, spec: &Value) -> Option<Value> {
             };
             let source = source.borrow();
             let shape = shape.borrow();
-            let mut kept = HashPairs::with_capacity_and_hasher(shape.len(), AHasher::default());
+            let mut kept = HashPairs::with_capacity(shape.len());
             for (key, key_spec) in shape.iter() {
                 if let Some(found) = source.get(key) {
                     if let Some(filtered) = filter_value(found, key_spec) {

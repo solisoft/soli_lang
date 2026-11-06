@@ -296,9 +296,9 @@ pub fn bind_fields(
     Ok(())
 }
 
-/// Set every declared field the constructor left unset to `nil`, so both
-/// engines end with the same fields (the VM only sets fields that have a
-/// default).
+/// Set every declared field still unset to `nil`: one a stored value object
+/// lacks when it is hydrated. A constructed one already has them all — both
+/// engines start every declared field before the constructor runs.
 pub fn fill_declared_fields(instance: &Rc<RefCell<Instance>>) {
     let class = instance.borrow().class.clone();
     let mut inst = instance.borrow_mut();

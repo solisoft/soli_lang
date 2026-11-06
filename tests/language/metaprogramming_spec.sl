@@ -63,6 +63,18 @@ class MetaAliasAfterUse
   end
 end
 
+class MetaLateParent
+  def hello
+    "hi"
+  end
+end
+
+class MetaLateChild < MetaLateParent
+end
+
+class MetaLateGrandchild < MetaLateChild
+end
+
 inherited_log = []
 
 class MetaParent
@@ -228,6 +240,26 @@ describe("define_method") do
     assert_eq(greeter.say, "hello")
   end
 
+  test("on a class, the method reaches instances whose methods already ran") do
+    greeter = MetaGreeter.new()
+    assert_eq(greeter.say, "hello")
+    MetaGreeter.define_method("whisper", fn() { "psst" })
+    assert_eq(greeter.whisper, "psst")
+  end
+
+  test("on a parent, the method reaches subclasses that already looked one up") do
+    child = MetaLateChild.new()
+    grandchild = MetaLateGrandchild.new()
+    assert_eq(child.hello, "hi")
+    assert_eq(grandchild.respond_to?("late"), false)
+    MetaLateParent.define_method("late", fn() { "late!" })
+    assert_eq(child.respond_to?("late"), true)
+    assert_eq(child.late, "late!")
+    assert_eq(grandchild.late, "late!")
+    MetaLateParent.alias_method("hello_again", "hello")
+    assert_eq(grandchild.hello_again, "hi")
+  end
+
   test("on a primitive type, this is the receiver") do
     Int.define_method("meta_spec_doubled", fn() { this * 2 })
     assert_eq(3.meta_spec_doubled, 6)
@@ -262,7 +294,6 @@ describe("alias_method") do
   end
 
   test("on a class, an alias added after its methods ran reaches new instances") do
-    pending("bug: once an instance method ran, Class.alias_method no longer reaches new instances")
     assert_eq(MetaAliasAfterUse.new().say, "hello")
     MetaAliasAfterUse.alias_method("greeting", "say")
     assert_eq(MetaAliasAfterUse.new().greeting, "hello")

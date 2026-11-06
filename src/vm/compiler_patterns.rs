@@ -39,7 +39,10 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         | MatchPattern::Typed { .. } => false,
         // Nested sub-patterns are compiled by recursion, so a composite is
         // supported exactly when its parts are.
-        MatchPattern::Array { elements, .. } => elements.iter().any(pattern_needs_interpreter),
+        // `MatchArrayLen` carries the element count in a u16.
+        MatchPattern::Array { elements, .. } => {
+            elements.len() > u16::MAX as usize || elements.iter().any(pattern_needs_interpreter)
+        }
         MatchPattern::Hash { fields, .. } => {
             fields.iter().any(|(_, p)| pattern_needs_interpreter(p))
         }
@@ -130,8 +133,7 @@ impl Compiler {
 
             // The guard sees the bindings, which is the point of `n if n > 0`.
             let guard_fail = if let Some(ref guard) = arm.guard {
-                self.compile_expr(guard)?;
-                Some(self.emit_jump(Op::JumpIfFalse(0), line))
+                Some(self.compile_condition_jump(guard, false, line)?)
             } else {
                 None
             };
@@ -232,13 +234,26 @@ impl Compiler {
                 live += 1;
             }
 
-            // `Equal` consumes the copy, `JumpIfFalse` the boolean.
-            MatchPattern::Literal(expr_kind) => {
-                self.emit(Op::GetLocal(slot), line);
-                for j in self.compile_literal_pattern(expr_kind, line)? {
-                    fails.push((j, live));
+            // `EqualLocalConst` compares the subject's slot with the literal
+            // in place and pushes the boolean `JumpIfFalse` consumes. Emitted
+            // here rather than left to the peephole, which skips the head of
+            // every arm after the first: each is the target of the previous
+            // arm's failure jump.
+            MatchPattern::Literal(expr_kind) => match literal_pattern_constant(expr_kind) {
+                Some(constant) => {
+                    let idx = self.add_constant(constant);
+                    self.emit(Op::EqualLocalConst(slot, idx), line);
+                    let fail = self.emit_jump(Op::JumpIfFalse(0), line);
+                    fails.push((fail, live));
                 }
-            }
+                // `Equal` consumes the copy, `JumpIfFalse` the boolean.
+                None => {
+                    self.emit(Op::GetLocal(slot), line);
+                    for j in self.compile_literal_pattern(expr_kind, line)? {
+                        fails.push((j, live));
+                    }
+                }
+            },
 
             // `MatchType` peeks, so on failure its copy is still there; on
             // success that same copy is the binding.
@@ -252,24 +267,13 @@ impl Compiler {
             }
 
             MatchPattern::Array { elements, rest } => {
-                self.emit(Op::GetLocal(slot), line);
-                let ty = self.add_string_constant("Array");
-                let f = self.emit_jump(Op::MatchType(ty, 0), line);
-                fails.push((f, live + 1));
-                self.emit(Op::Pop, line);
-
-                // Without `...rest` the length must match exactly; with it the
-                // named elements are a prefix. Same rule as the tree-walker.
-                self.emit(Op::GetLocal(slot), line);
-                let len_idx = self.add_string_constant("length");
-                self.emit(Op::GetProperty(len_idx), line);
-                self.emit_constant(Constant::Int(elements.len() as i64), line);
+                // One op tests "is an Array" and the length. Without `...rest`
+                // the length must match exactly; with it the named elements
+                // are a prefix. Same rule as the tree-walker. The count fits:
+                // `pattern_needs_interpreter` routes a longer pattern away.
+                let count = elements.len() as u16;
                 self.emit(
-                    if rest.is_some() {
-                        Op::GreaterEqual
-                    } else {
-                        Op::Equal
-                    },
+                    Op::MatchArrayLen(slot, count, u8::from(rest.is_some())),
                     line,
                 );
                 let f = self.emit_jump(Op::JumpIfFalse(0), line);
@@ -286,15 +290,7 @@ impl Compiler {
                 }
 
                 if let Some(rest_name) = rest {
-                    self.emit(Op::GetLocal(slot), line);
-                    self.emit_constant(Constant::Int(elements.len() as i64), line);
-                    let name_idx = self.add_string_constant("slice");
-                    let mid = super::method_table::resolve_method_id("slice");
-                    if mid != super::method_table::METHOD_UNKNOWN {
-                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
-                    } else {
-                        self.emit(Op::CallMethod(name_idx, 1), line);
-                    }
+                    self.emit(Op::ArrayRestLocal(slot, count), line);
                     self.add_local(rest_name.clone(), false);
                     live += 1;
                 }
@@ -337,9 +333,9 @@ impl Compiler {
                     let name_idx = self.add_string_constant("except");
                     let mid = super::method_table::resolve_method_id("except");
                     if mid != super::method_table::METHOD_UNKNOWN {
-                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
+                        self.emit(Op::CallMethodById(name_idx, 1, mid, false), line);
                     } else {
-                        self.emit(Op::CallMethod(name_idx, 1), line);
+                        self.emit(Op::CallMethod(name_idx, 1, false), line);
                     }
                     self.add_local(rest_name.clone(), false);
                     live += 1;
@@ -369,9 +365,9 @@ impl Compiler {
                 fails.push((f, live + 1));
                 self.emit(Op::Pop, line);
 
-                let tag = self.add_string_constant("__variant");
+                let tag = self.get_property_op("__variant");
                 self.emit(Op::GetLocal(slot), line);
-                self.emit(Op::GetProperty(tag), line);
+                self.emit(tag, line);
                 let want = self.add_string_constant(variant_name);
                 self.emit(Op::Constant(want), line);
                 self.emit(Op::Equal, line);
@@ -432,7 +428,9 @@ impl Compiler {
                 self.emit_constant(Constant::Float(*n), line);
             }
             ExprKind::DecimalLiteral(s) => {
-                self.emit_constant(Constant::Decimal(s.clone()), line);
+                let span = crate::span::Span::new(0, 0, line, 0);
+                let decimal = super::compiler_exprs::decimal_literal(s, span)?;
+                self.emit_constant(Constant::Decimal(decimal), line);
             }
             ExprKind::StringLiteral(s) => {
                 self.emit_constant(Constant::String(s.clone().into()), line);
@@ -505,8 +503,7 @@ impl Compiler {
 
             // Check guard if present
             let guard_jump = if let Some(ref guard) = arm.guard {
-                self.compile_expr(guard)?;
-                Some(self.emit_jump(Op::JumpIfFalse(0), line))
+                Some(self.compile_condition_jump(guard, false, line)?)
             } else {
                 None
             };
@@ -575,4 +572,21 @@ impl Compiler {
             )),
         }
     }
+}
+
+/// The constant a literal match arm compares the subject with, as
+/// `compile_literal_pattern` would push it: `None` for a kind it does not
+/// compile to a single constant.
+fn literal_pattern_constant(expr_kind: &ExprKind) -> Option<Constant> {
+    Some(match expr_kind {
+        ExprKind::IntLiteral(n) => Constant::Int(*n),
+        ExprKind::FloatLiteral(n) => Constant::Float(*n),
+        ExprKind::DecimalLiteral(s) => {
+            Constant::Decimal(crate::interpreter::value::DecimalValue::from_literal(s)?)
+        }
+        ExprKind::StringLiteral(s) => Constant::String(s.clone().into()),
+        ExprKind::BoolLiteral(b) => Constant::Bool(*b),
+        ExprKind::Null => Constant::Null,
+        _ => return None,
+    })
 }

@@ -402,7 +402,7 @@ args = System.argv
 if args.length == 0
   print("usage: tool N")
 else
-  n = args[0].to_i()
+  n = args[0].to_i
   print("fib(#{n}) = #{fib(n)}")
 end
 ```

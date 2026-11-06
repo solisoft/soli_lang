@@ -8,6 +8,9 @@ pub enum Op {
     Constant(u16),
     /// Push null.
     Null,
+    /// Push `n` nulls in one dispatch: the slots of the bare-assigned locals
+    /// a function declares at entry (`Compiler::hoist_locals`).
+    PushNulls(u16),
     /// Push true.
     True,
     /// Push false.
@@ -66,6 +69,10 @@ pub enum Op {
     Jump(u16),
     /// Jump forward if top of stack is falsy (pops the value).
     JumpIfFalse(u16),
+    /// Jump forward if top of stack is truthy (pops the value): the branch
+    /// of `unless cond`, `x unless cond` and `if !cond`, which used to be
+    /// `Not, JumpIfFalse` — a Bool pushed only to be popped.
+    JumpIfTrue(u16),
     /// Jump backward by offset (for loops).
     Loop(u16),
     /// Jump forward if falsy, don't pop (for &&).
@@ -113,6 +120,22 @@ pub enum Op {
     /// and N values on the stack. Used for hash literals with all-literal keys —
     /// avoids pushing/converting keys at runtime.
     HashWithKeys(u16, u16),
+    /// Push a fresh array of the elements of the `Constant::LiteralList` at
+    /// the operand: an array literal made only of literals (`["draft",
+    /// "sent"]`), built in one dispatch instead of a `Constant` per element
+    /// and an `Array`. A new array on every evaluation, as before.
+    LiteralArray(u16),
+    /// `[<literals>].includes?(x)` — or `include?`, `contains`, `contains?`
+    /// — with `x` on top of the stack: `x` is replaced by whether the
+    /// `Constant::LiteralList` at the first operand holds it, compared with
+    /// `==` as `Array#includes?` compares, and no array is built.
+    ///
+    /// The second operand is the method's name constant when the call would
+    /// have compiled to `CallMethod`, whose gate lets a user-defined Array
+    /// method of that name take the call (the op then builds the array and
+    /// calls it); [`NO_USER_METHOD`] when it would have been `CallMethodById`,
+    /// which has no such gate.
+    LiteralListIncludes(u16, u16),
     /// Build a range from two values on the stack.
     Range,
     /// Get element at index: stack has [obj, index].
@@ -126,8 +149,17 @@ pub enum Op {
     Spread,
 
     // --- Objects ---
-    /// Get a property by name constant index.
-    GetProperty(u16),
+    /// Get a property: `(name constant, method id, zero-arg mask)`.
+    ///
+    /// The last two are for a paren-less call of a zero-argument builtin,
+    /// `h.length` or `s.blank?`: the name's `resolve_method_id`, and the
+    /// receiver types it is a zero-argument builtin of
+    /// (`method_registry::zero_arg_receiver_mask`; 0 when the id is unknown).
+    /// With them the fast tier answers the call by id, as `CallMethodById`
+    /// answers `h.length()`, instead of handing it to the general arm to
+    /// resolve by name (`method_table::bare_zero_arg`). Emit through
+    /// `Compiler::get_property_op`, which computes them.
+    GetProperty(u16, u16, u16),
     /// `GetProperty` for the read half of `obj.x ||= v` / `&&=` / `??=`: an
     /// instance that has no such property pushes Null instead of raising, so
     /// `@items ||= []` can initialise a field nothing has set yet.
@@ -210,6 +242,13 @@ pub enum Op {
     GetIter,
     /// Pop two ints (start, end), push IterState::Range directly (zero allocation).
     GetIterRange,
+    /// Pop what the element's `ArrayPush` / `SetIndex` left on the stack,
+    /// then refuse once the result of a comprehension over a range, the
+    /// array or hash in local `slot`, holds more than `SOLI_MAX_RANGE_LEN`
+    /// elements (`limits::check_comprehension_len`): the range is counted,
+    /// not built, so this is what bounds the allocation. Takes the place of
+    /// the `Pop` that ends each element.
+    PopRangeComprehension(u16),
     /// Advance iterator or jump to exit offset.
     ForIter(u16),
     /// Specialized ForIter for ranges: inline range check + increment, no method call.
@@ -232,11 +271,13 @@ pub enum Op {
     // --- Templates ---
     /// Write a view's output: pops a value, appends it to `Vm::template_out`
     /// (HTML-escaped when the operand is true, as `<%= %>`; raw for `<%- %>`
-    /// and literal text), pushes Null. Emitted only for the `__tpl_write` /
-    /// `__tpl_write_raw` intrinsics a compiled template is made of.
+    /// and literal text), pushes nothing. Emitted only for the `__tpl_write` /
+    /// `__tpl_write_raw` intrinsics a compiled template is made of: as a
+    /// statement the op stands alone, and where the call is used as a value
+    /// the compiler pushes its Null after it.
     TemplateWrite(bool),
     /// Write a string constant to `Vm::template_out` as is (a template's
-    /// literal text) and push Null: no `Value` is built for the text.
+    /// literal text), pushing nothing: no `Value` is built for the text.
     TemplateWriteConst(u16),
     /// A template `for` loop's iterable, as the template renderer iterates it:
     /// pops a value and pushes a hash as an array of `[key, value]` pairs, a
@@ -274,12 +315,20 @@ pub enum Op {
     /// Decrement a local integer by 1: local[slot] -= 1
     DecrLocal(u16),
     /// Add two locals and push result: push(local[a] + local[b])
+    ///
+    /// Nothing emits it at the moment. `a = a + b` becomes `AddLocalsInPlace`,
+    /// and no rule fuses `GetLocal, GetLocal, Add` on its own (the `Sub`,
+    /// `Mul` and `Div` forms have one).
     AddLocalLocal(u16, u16),
     /// Compare two locals with <=: push(local[a] <= local[b])
     LessEqualLocalLocal(u16, u16),
     /// Get local and add int constant: push(local[slot] + constant_int)
     AddLocalConst(u16, u16),
     /// Assign top of stack to local (without extra pop): local[slot] = pop()
+    ///
+    /// Replaces `SetLocal(slot), Pop`, which is what an assignment statement
+    /// compiles to (`fuse_set_local_pop`). The parameter-default prologue
+    /// emits it directly.
     SetLocalPop(u16),
     /// `local[a] += local[b]` entirely in place: no push, no pop, one dispatch.
     ///
@@ -296,6 +345,19 @@ pub enum Op {
     /// [`Op::AddLocalsInPlace`] for strings. Other types of local fall back
     /// to a normal add against that constant.
     AppendLocalConst(u16, u16),
+    /// `local[slot] += constant` for an Int or Float constant other than an
+    /// Int 1 (that is [`Op::IncrLocal`]), in place: no push, no pop.
+    ///
+    /// Replaces `GetLocal(slot), Constant(c), Add, SetLocal(slot), Pop`, which
+    /// was otherwise `AddLocalConst, SetLocalPop`. An Int overflow raises and
+    /// leaves the local as it was; any other pair of types goes through the
+    /// general `+`.
+    AddLocalConstInPlace(u16, u16),
+    /// `local[slot] -= constant`, in place, as [`Op::AddLocalConstInPlace`]
+    /// (an Int 1 is [`Op::DecrLocal`]).
+    SubLocalConstInPlace(u16, u16),
+    /// `local[slot] *= constant`, in place, as [`Op::AddLocalConstInPlace`].
+    MulLocalConstInPlace(u16, u16),
     /// `local[slot] << value`. Pops the value and, below it, the local as it
     /// was read before the value ran. An array is pushed into; a string local
     /// appends a string. The resulting local is pushed, matching `<<`
@@ -338,12 +400,21 @@ pub enum Op {
     MarkProtected(u16),
     /// The callee half of a bare call inside an instance method (`_tax(2)`):
     /// `this` is on the stack; replaced by the global when one exists, left in
-    /// place as the receiver when `this` has the method.
+    /// place as the receiver when `this` has the method. Either way a marker
+    /// is pushed above it that records the decision, so the call half does not
+    /// redo it: `Null` for the global, the defining `Class` for a compiled
+    /// method, `true` for any other method. Neither: "Undefined variable",
+    /// before the arguments run.
     SelfOrGlobalCallee(u16),
-    /// The call half: calls the global, or dispatches the method on the
-    /// receiver `SelfOrGlobalCallee` left — a call on `self`, so a private
-    /// method is allowed.
+    /// The call half, on `[callee, marker, args…]`: drops the marker, then
+    /// calls the global, or enters the method on the receiver
+    /// `SelfOrGlobalCallee` left — a call on `self`, so a private method is
+    /// allowed.
     CallSelfOrGlobal(u16, u8),
+    /// `CallSelfOrGlobal` with labelled arguments (`_scale(factor: 2)` in a
+    /// method): (name_constant_idx, argc, names_idx). A global takes them as
+    /// `CallNamed` would; otherwise they bind as for `CallMethodNamed`.
+    CallSelfOrGlobalNamed(u16, u8, u16),
     /// Follows a bare read (`signed_in?`, no parens) that may hold a function:
     /// a zero-argument def, or a builtin the tree-walker calls bare, is called
     /// with no arguments and its result replaces it; any other value — a
@@ -360,10 +431,21 @@ pub enum Op {
     CoverLine(u32),
     /// Combined property access + call: receiver is below args, method name from constant.
     /// Avoids allocating Value::Method intermediary.
-    CallMethod(u16, u8),
+    /// Fields: (name_constant_idx, argc, block). `block` is true when the
+    /// last argument was written as a block (`xs.map { |x| … }`): such a call
+    /// always lets a primitive user method (`Array.define_method`) outrank the
+    /// builtin, where a block-less one may not — see
+    /// `builtin_outranks_user_method`.
+    CallMethod(u16, u8, bool),
     /// Like CallMethod but with a resolved method ID for direct dispatch (no string matching).
-    /// Fields: (name_constant_idx, argc, method_id). Falls back to string dispatch for classes.
-    CallMethodById(u16, u8, u16),
+    /// Fields: (name_constant_idx, argc, method_id, block). Falls back to string dispatch for classes.
+    CallMethodById(u16, u8, u16, bool),
+    /// A method call with labelled arguments (`obj.m(k: v)`): the receiver,
+    /// then `argc` slots labelled by the `ArgNames` constant `names_idx`.
+    /// Fields: (name_constant_idx, argc, names_idx). The method is resolved
+    /// as `CallMethod` resolves it and its parameters bound by name, with the
+    /// receiver kept as `this`.
+    CallMethodNamed(u16, u8, u16),
     /// Specialized hash get with a compile-time constant string key.
     HashGetConst(u16),
     /// Specialized hash has_key? with a compile-time constant string key.
@@ -413,6 +495,8 @@ pub enum Op {
     MulLocalConst(u16, u16),
     /// Divide local by constant: push(local[slot] / constant)
     DivLocalConst(u16, u16),
+    /// Local modulo constant: push(local[slot] % constant)
+    ModLocalConst(u16, u16),
     /// Push two locals onto stack (reduces GetLocal dispatch overhead)
     GetLocal2(u16, u16),
     /// Combined Greater + JumpIfFalse: pop two, compare >, jump if false.
@@ -421,6 +505,8 @@ pub enum Op {
     TestGreaterEqualJump(u16),
     /// Combined NotEqual + JumpIfFalse: pop two, compare !=, jump if false.
     TestNotEqualJump(u16),
+    /// Combined Equal + JumpIfFalse: pop two, compare ==, jump if false.
+    TestEqualJump(u16),
     /// Compare locals: push(local[a] < local[b])
     LessLocalLocal(u16, u16),
     /// Compare locals: push(local[a] > local[b])
@@ -450,7 +536,17 @@ pub enum Op {
     IsTruthyLocal(u16),
     /// Check if local is falsy (null, false, 0, ""), push bool
     IsFalsyLocal(u16),
+    /// `if local` / `while local`: jump `offset` when `local[slot]` is falsy.
+    /// The fused form of `GetLocal(slot), JumpIfFalse` — one dispatch, and
+    /// nothing pushed or popped. Peephole-only (not patched by `patch_jump`).
+    JumpIfLocalFalsy(u16, u16),
+    /// `unless local` / `if !local`: jump `offset` when `local[slot]` is
+    /// truthy. The fused form of `GetLocal(slot), Not, JumpIfFalse`.
+    JumpIfLocalTruthy(u16, u16),
     /// Get local and add int (optimized for small ints)
+    ///
+    /// Nothing emits it at the moment: `AddLocalConst` takes
+    /// `GetLocal, Constant(Int), Add`, which the callback kernels read.
     AddLocalInt(u16, i32),
     /// Increment local by 1 (already have IncrLocal, add this as variant)
     IncrLocalFast(u16),
@@ -460,8 +556,6 @@ pub enum Op {
     IsZeroLocal(u16),
     /// Check if local != 0, push bool
     NotZeroLocal(u16),
-    /// Set local to value from stack and push old value
-    SwapSetLocal(u16),
     /// Get global and check if null/undefined in one op
     GetGlobalNullCheck(u16),
     /// Get global, call if exists (optimized fast path)
@@ -478,8 +572,10 @@ pub enum Op {
     PopNull,
     /// Duplicate top of stack N times
     DupN(u8),
-    /// Get local by index, then get property (common in loops)
-    GetLocalProperty(u16, u16),
+    /// Get local by index, then get property (common in loops):
+    /// `(slot, name constant, method id, zero-arg mask)`, the last three as
+    /// in `GetProperty`.
+    GetLocalProperty(u16, u16, u16, u16),
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
     /// `obj[arr[idx]]` with all three in locals. The `h[keys[i]]` shape of
@@ -507,6 +603,20 @@ pub enum Op {
     /// primitives (`Int s`, `String s`), so this mirrors the tree-walker's
     /// pattern rules instead.
     MatchType(u16, u16),
+    /// Array-pattern shape test on a local: push `true` when the value in
+    /// `slot` is an Array whose length is exactly `len` (`at_least == 0`), or
+    /// at least `len` (`at_least != 0`, a pattern with `...rest`).
+    ///
+    /// One op for what was `MatchType("Array")`, `Pop`, a `length` property
+    /// read through the generic member path, a constant and a comparison. The
+    /// length is the native one, which is what the tree-walker reads too: a
+    /// user-defined `Array#length` is consulted by neither engine.
+    MatchArrayLen(u16, u16, u8),
+    /// Push `arr[start..]` of the Array in `slot`, as a new Array: the
+    /// `...rest` of an array pattern, once `MatchArrayLen` has proven the
+    /// length. Empty when the value is not an Array or is shorter. Native, as
+    /// in the tree-walker, rather than a `slice` method call.
+    ArrayRestLocal(u16, u16),
     /// Discard the innermost `for` iterator.
     ///
     /// `ForIter` pops it when the sequence is exhausted, which is the only way
@@ -515,6 +625,10 @@ pub enum Op {
     /// the next loop to run resumes on it. Same leak `return` and `throw` had.
     PopIter,
 }
+
+/// [`Op::LiteralListIncludes`]'s second operand when no user-defined Array
+/// method can take the call.
+pub const NO_USER_METHOD: u16 = u16::MAX;
 
 /// Every opcode that advances `ip` by one of its operands.
 ///
@@ -543,6 +657,7 @@ pub enum Op {
 pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::Jump(0),
     Op::JumpIfFalse(0),
+    Op::JumpIfTrue(0),
     Op::JumpIfFalseNoPop(0),
     Op::JumpIfTrueNoPop(0),
     Op::JumpIfNull(0),
@@ -558,6 +673,9 @@ pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::TestGreaterJump(0),
     Op::TestGreaterEqualJump(0),
     Op::TestNotEqualJump(0),
+    Op::TestEqualJump(0),
+    Op::JumpIfLocalFalsy(0, 0),
+    Op::JumpIfLocalTruthy(0, 0),
     Op::MatchType(0, 0),
     // Two targets, and neither name says "jump".
     Op::TryBegin(0, 0),

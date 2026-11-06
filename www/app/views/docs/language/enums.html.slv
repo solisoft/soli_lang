@@ -114,6 +114,7 @@ Status.Pending(reason: "x") == Status.Pending(reason: "x")   # true  (structural
 Status.Pending(reason: "x") == Status.Pending(reason: "y")   # false
 
 Status.Pending(reason: "x").variant()                   # "Pending"</code></pre>
+            <p class="text-gray-400 mt-3"><code class="text-orange-400">!=</code> is always the negation of <code class="text-orange-400">==</code>, in a condition too (<code class="text-orange-400">if order.status != Status.Paid</code>). A value rebuilt from storage, such as an <code class="text-orange-400">enum_field</code> read or <code class="text-orange-400">Status.parse(...)</code>, compares like one built in code.</p>
         </div>
     </section>
 

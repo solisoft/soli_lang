@@ -302,6 +302,15 @@ Then in a view:
 Group helpers thematically — `application_helper.sl`, `markdown_helpers.sl`,
 `form_helpers.sl` — rather than one mega-file.
 
+A helper sees the builtins a script sees, the other helpers and the request
+(`req`, `params`, `session`), not the functions only a view has:
+`substring(...)`, `t(...)`, `l(...)`, `datetime_format(...)`,
+`public_path(...)`, `number_with_delimiter(...)`, `paginate(...)`,
+`component(...)`, the form builder, the route helpers. Calling one fails with
+"Cannot call non-function value" and the page answers 500. Use string methods
+(`text.substring(0, 3)`, `text.upcase`), or compute the value in the view and
+pass it in.
+
 ## Client interactivity — HTMX + Alpine.js
 
 Every scaffolded app ships with **HTMX** and **Alpine.js** preloaded in

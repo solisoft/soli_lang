@@ -331,12 +331,9 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "to_string".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_string", Some(0), |args| {
             let (t, use_utc) = recv_dt(args, "DateTime.to_string")?;
-            Ok(Value::String(
-                wall_clock(t, use_utc)
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()
-                    .into(),
-            ))
+            // Same text `str(d)` and interpolation produce, without chrono's
+            // runtime-parsed strftime.
+            Ok(Value::String(Value::render_datetime(t, use_utc).into()))
         })),
     );
 

@@ -756,7 +756,19 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
 }
 
 /// `__mailer_deliver(mail_hash)` — send (or capture) a fully-rendered mail.
+///
+/// A delivered mail cannot be taken back: it arms the durable-write tripwire
+/// (`crud::mark_durable_effect`), so a handler that sent it and then failed on
+/// the VM is not re-run on the tree-walker, which would send it again.
 fn mailer_deliver(args: &[Value]) -> Result<Value, String> {
+    let delivered = deliver_mail(args);
+    if delivered.is_ok() {
+        crate::interpreter::builtins::model::crud::mark_durable_effect();
+    }
+    delivered
+}
+
+fn deliver_mail(args: &[Value]) -> Result<Value, String> {
     let Some(Value::Hash(mail)) = args.first() else {
         return Err("Mailer.deliver expects a Hash".to_string());
     };
@@ -846,7 +858,9 @@ pub(crate) fn send_operator_mail(
     put("subject", Value::String(subject.into()));
     put("text_body", Value::String(text_body.into()));
     put("html_body", Value::String(html_body.into()));
-    mailer_deliver(&[Value::Hash(Rc::new(RefCell::new(mail)))]).map(|_| ())
+    // The framework's own mail (an error notification), not the handler's:
+    // it does not arm the durable-write tripwire.
+    deliver_mail(&[Value::Hash(Rc::new(RefCell::new(mail)))]).map(|_| ())
 }
 
 /// `__mailer_deliveries()` — captured mail in test mode (newest last).

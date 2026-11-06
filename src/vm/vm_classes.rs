@@ -8,7 +8,27 @@ use crate::interpreter::executor::Interpreter;
 use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
-use super::vm::Vm;
+use super::vm::{CallFrame, Vm};
+
+/// A frame whose slot 0 holds `this`: a method dispatched with its class, or
+/// one compiled as a method (see `Vm::current_this`).
+fn is_method_frame(frame: &CallFrame) -> bool {
+    frame.class.is_some() || frame.closure.proto.is_method
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the frame scans [`Vm::current_this`] ran on this thread.
+    static THIS_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many frame scans [`Vm::current_this`] has run on this
+/// thread, for a test to tell a privacy check that scanned from one that did
+/// not.
+#[cfg(test)]
+fn this_scans() -> usize {
+    THIS_SCANS.with(std::cell::Cell::get)
+}
 
 /// Members the tree-walker implements on a class value itself, rather than
 /// looking them up in the class's own method tables.
@@ -50,7 +70,7 @@ fn vm_define_method(class: Rc<Class>) -> Value {
                              function; run this file without --vm"
                             .to_string());
                     }
-                    class.vm_methods.borrow_mut().insert(method_name, c.clone());
+                    class.insert_vm_method(method_name, c.clone());
                 }
                 _ => return Err("define_method expects a function as second argument".to_string()),
             }
@@ -86,7 +106,7 @@ fn vm_alias_method(class: Rc<Class>) -> Value {
                     class.methods.borrow_mut().insert(new_name, f);
                 }
                 (None, Some(c)) => {
-                    class.vm_methods.borrow_mut().insert(new_name, c);
+                    class.insert_vm_method(new_name, c);
                 }
                 (None, None) => {
                     return Err(format!(
@@ -99,6 +119,14 @@ fn vm_alias_method(class: Rc<Class>) -> Value {
             Ok(Value::Null)
         },
     ))
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Class-member reads the VM handed to the tree-walker's
+    /// `class_member_access` on this thread: tests pin the members the VM
+    /// answers itself.
+    pub(crate) static CLASS_MEMBER_HANDOFFS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub(crate) fn is_class_reflection_member(name: &str) -> bool {
@@ -119,7 +147,9 @@ pub(crate) fn is_class_reflection_member(name: &str) -> bool {
 impl Vm {
     /// Resolve a `Future` or `grouped` `Deferred` the way the tree-walker does
     /// on member access, so `` `echo hi`.stdout `` and a deferred query's
-    /// fields work under the VM.
+    /// fields work under the VM. The tree-walker's `evaluate_call` forces a
+    /// method call's receiver with this too, so `body.size()` on a JSON body
+    /// is the method on both engines.
     pub(crate) fn force_lazy_receiver(object: &Value, span: Span) -> Result<Value, RuntimeError> {
         match object {
             Value::Future(future) => Value::Future(future.clone())
@@ -152,10 +182,7 @@ impl Vm {
             return false;
         };
         crate::interpreter::symbol::symbol_string(qb.borrow().class_name).is_some_and(
-            |class_name| {
-                crate::interpreter::builtins::model::scopes::lookup_scope(class_name, name)
-                    .is_some()
-            },
+            |class_name| crate::interpreter::builtins::model::scopes::has_scope(class_name, name),
         )
     }
 
@@ -169,8 +196,7 @@ impl Vm {
         name: &str,
     ) -> bool {
         class.is_model_subclass()
-            && crate::interpreter::builtins::model::scopes::lookup_scope(&class.name, name)
-                .is_some()
+            && crate::interpreter::builtins::model::scopes::has_scope(&class.name, name)
     }
 
     /// A model scope bound to a fresh builder for the class, resolved by the
@@ -422,11 +448,11 @@ impl Vm {
                     }
                     _ => {}
                 }
-                Err(RuntimeError::NoSuchProperty {
-                    value_type: inst_ref.class.name.clone(),
-                    property: name.to_string(),
+                Err(RuntimeError::no_such_property(
+                    inst_ref.class.name.clone(),
+                    name.to_string(),
                     span,
-                })
+                ))
             }
             Value::Class(class) => {
                 // A named scope on a model class comes first, as in the
@@ -493,6 +519,28 @@ impl Vm {
                     .map_err(|e| RuntimeError::type_error(e, span))?;
                     return Ok(Value::Class(nested.clone()));
                 }
+                // A model's bare `new` and the universal members (`klass.nil?`,
+                // `Post.class`), answered here as `class_member_access` answers
+                // them. Asking the tree-walker cost an interpreter seeded with a
+                // copy of every global, ~35 µs plus ~90 ns a global — on every
+                // `authorize(record)` of the auth scaffold, whose `policy_for`
+                // tests `policy_class.nil?`.
+                if name == "new"
+                    && crate::interpreter::executor::access::member::model_attribute_new(class)
+                {
+                    return Ok(
+                        crate::interpreter::executor::access::member::attribute_new_function(
+                            object,
+                        ),
+                    );
+                }
+                if let Some(value) =
+                    crate::interpreter::executor::access::member::class_universal_member(
+                        class, name,
+                    )
+                {
+                    return Ok(value);
+                }
                 // Class reflection (`define_method`, `class_eval`, `send`, …) is
                 // implemented only in the tree-walker's member access, which owns
                 // the primitive-overlay and method-cache bookkeeping. The VM used
@@ -552,17 +600,28 @@ impl Vm {
                 // after a write was a 500 in production (2.6.2). The
                 // interpreter answers the same NoSuchProperty for a member
                 // neither engine knows.
-                let mut interp = Interpreter::for_vm_fragment(&self.globals);
+                //
+                // `class_member_access` reads the class, the model registries
+                // and the test stubs, never a program global, so the
+                // interpreter needs no copy of the VM's globals — seeding one
+                // (`for_vm_fragment`) cost ~35 µs a read, as it did for scopes
+                // (`model_class_scope`).
+                #[cfg(test)]
+                CLASS_MEMBER_HANDOFFS.with(|count| count.set(count.get() + 1));
+                let mut interp = Interpreter::for_bound_body();
                 interp.evaluate_member_on_value(object.clone(), name, span)
             }
             // The tree-walker's rule, by the same function
-            // (`Interpreter::hash_member_value`): user methods, the universal
-            // members (`nil?`, `blank?`, `present?`…), then a builtin method
-            // name reads as the method and anything else as the key's value —
-            // `null` when the key is absent. The VM used to answer a method for
-            // every absent key, so `if rec._errors` was true on a hash without
-            // `_errors` (2.6.2); then it skipped the universal members, so
-            // `h.present?` was `null` (2.6.4).
+            // (`Interpreter::hash_member_value`): user methods, then the key —
+            // even one named like a method, which is what GetProperty's fast
+            // paths answer before reaching here — then the universal members
+            // (`nil?`, `blank?`, `present?`…), then a builtin method name as
+            // the method, and `null` for anything else. The VM used to answer
+            // a method for every absent key, so `if rec._errors` was true on a
+            // hash without `_errors` (2.6.2); then it skipped the universal
+            // members, so `h.present?` was `null` (2.6.4); then this path put
+            // the builtin names before the key while the fast paths did not,
+            // so `row.size ||= 0` wrote the entry count over a `size` field.
             Value::Hash(hash) => Ok(Interpreter::hash_member_value(hash, name, object.clone())),
             Value::Array(_) => {
                 // Array methods like .length, .map, .filter, etc.
@@ -612,11 +671,11 @@ impl Vm {
                 if let Some(native) = superclass.find_native_method(name) {
                     return Ok(Value::NativeFunction((*native).clone()));
                 }
-                Err(RuntimeError::NoSuchProperty {
-                    value_type: format!("super({})", superclass.name),
-                    property: name.to_string(),
+                Err(RuntimeError::no_such_property(
+                    format!("super({})", superclass.name),
+                    name.to_string(),
                     span,
-                })
+                ))
             }
             Value::Function(_) | Value::NativeFunction(_) => match name {
                 "nil?" => Ok(Value::Bool(false)),
@@ -624,11 +683,11 @@ impl Vm {
                 "present?" => Ok(Value::Bool(true)),
                 "class" => Ok(Value::String("Function".into())),
                 "inspect" => Ok(Value::String("<function>".into())),
-                _ => Err(RuntimeError::NoSuchProperty {
-                    value_type: object.type_name().to_string(),
-                    property: name.to_string(),
+                _ => Err(RuntimeError::no_such_property(
+                    object.type_name().to_string(),
+                    name.to_string(),
                     span,
-                }),
+                )),
             },
             // A bare member of a query builder (`Post.where(...).all`,
             // `.count`, a scope) resolves through the tree-walker's
@@ -637,11 +696,11 @@ impl Vm {
             // tree-walker does. This used to be an `EngineFallback`: harmless
             // before a write, a 500 after one.
             Value::QueryBuilder(_) => self.query_builder_property(object, name, span),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: object.type_name().to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                object.type_name().to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -664,41 +723,92 @@ impl Vm {
     /// The `this` of the method running now: the receiver slot of the nearest
     /// method frame — dispatched with its class, or compiled as a method (a
     /// served action enters through `call_method_bound`, with no class) —
-    /// looking past the blocks it runs.
+    /// looking past the blocks it runs. From a plain function that scans the
+    /// whole frame stack, so the privacy check asks only for a restricted name.
     fn current_this(&self) -> Option<&Value> {
+        #[cfg(test)]
+        THIS_SCANS.with(|scans| scans.set(scans.get() + 1));
         self.frames
             .iter()
             .rev()
-            .find(|frame| frame.class.is_some() || frame.closure.proto.is_method)
+            .find(|frame| is_method_frame(frame))
             .and_then(|frame| self.stack.get(frame.stack_base))
     }
 
-    /// Refuse `receiver.name` for a restricted method the running code may not
+    /// Is the running frame the one [`Self::current_this`] answers from? Then
+    /// its slot 0 *is* `this`, and a member read on it is a member of self.
+    #[inline]
+    pub(crate) fn slot_zero_is_this(&self) -> bool {
+        self.frames.last().is_some_and(is_method_frame)
+    }
+
+    /// Is `inst` the `this` of the running frame, that frame being a method
+    /// frame? There [`Self::current_this`] would answer with its slot 0, so
+    /// this is its answer without the scan. `false` from a block or a plain
+    /// function: only the scan knows their `this`.
+    #[inline]
+    fn is_running_method_this(&self, inst: &Rc<RefCell<Instance>>) -> bool {
+        match self.frames.last() {
+            Some(frame) if is_method_frame(frame) => matches!(
+                self.stack.get(frame.stack_base),
+                Some(Value::Instance(this)) if Rc::ptr_eq(this, inst)
+            ),
+            _ => false,
+        }
+    }
+
+    /// Refuse `receiver.name` for a restricted member the running code may not
     /// reach: a private one off `self`, a protected one from outside the
-    /// declaring class and its subclasses. Free until some class declares one.
+    /// declaring class and its subclasses. One relaxed load until some class
+    /// declares one. After that the cheap answers come first, each the one
+    /// the full rule gives:
+    ///
+    /// 1. A member of the running method's `this` (`@x = v`, `@helper()` in
+    ///    the method's own body) passes on the running frame's slot 0, since
+    ///    no restriction refuses `self` (`MethodAccess::allows`).
+    /// 2. A name no class of the receiver's chain restricts passes on the
+    ///    chain's memo (`Class::restricted_method`): no walk and no frame
+    ///    scan, whatever the call depth.
+    /// 3. Only for a restricted name does [`Self::current_this`] scan the
+    ///    frames, which finds the `this` of a method past the blocks it runs.
+    ///    A member of that `this` passes.
+    /// 4. Otherwise the caller's class decides a protected member, and the
+    ///    rest is refused.
     pub(crate) fn check_private_value(
         &self,
         receiver: &Value,
         name: &str,
     ) -> Result<(), RuntimeError> {
+        if !crate::interpreter::value::restricted_methods_declared() {
+            return Ok(());
+        }
         let Value::Instance(inst) = receiver else {
             return Ok(());
         };
-        let Some((access, defining)) = inst.borrow().class.restricted_method(name) else {
-            return Ok(());
-        };
-        let (on_self, caller) = match self.current_this() {
-            Some(Value::Instance(this)) => {
-                (Rc::ptr_eq(this, inst), Some(this.borrow().class.clone()))
-            }
-            _ => (false, None),
-        };
-        if access.allows(&defining, on_self, caller.as_deref()) {
+        if self.is_running_method_this(inst) {
             return Ok(());
         }
-        let inst = inst.borrow();
+        let instance = inst.borrow();
+        let Some((access, defining)) = instance.class.restricted_method(name) else {
+            return Ok(());
+        };
+        let this = match self.current_this() {
+            Some(Value::Instance(this)) => Some(this),
+            _ => None,
+        };
+        if this.is_some_and(|this| Rc::ptr_eq(this, inst)) {
+            return Ok(());
+        }
+        let caller = this.map(|this| this.borrow().class.clone());
+        if access.allows(defining, false, caller.as_deref()) {
+            return Ok(());
+        }
         Err(RuntimeError::General {
-            message: access.refusal(name, &inst.class.name, inst.fields.contains_key(name)),
+            message: access.refusal(
+                name,
+                &instance.class.name,
+                instance.fields.contains_key(name),
+            ),
             span: self.current_span(),
         })
     }
@@ -967,7 +1077,7 @@ impl Vm {
             }
             Value::Hash(hash) => {
                 hash.borrow_mut()
-                    .insert(HashKey::String(name.to_string().into()), value);
+                    .insert(HashKey::String(name.into()), value);
                 Ok(())
             }
             _ => Err(RuntimeError::type_error(
@@ -1015,11 +1125,13 @@ impl Vm {
             );
             // Preserve the shared bytecode-method maps across rebuilds.
             new_class.vm_methods = sub.vm_methods.clone();
+            new_class.vm_init = sub.vm_init.clone();
             new_class.vm_static_methods = sub.vm_static_methods.clone();
             new_class.is_module = sub.is_module;
             new_class.included_modules = sub.included_modules.clone();
             new_class.mixin_static_methods = sub.mixin_static_methods.clone();
             new_class.declared_fields = sub.declared_fields.clone();
+            *new_class.field_init.get_mut() = sub.field_init.borrow().clone();
             crate::interpreter::domain::note_class(&new_class);
             // Replace the class on top of the stack
             let new_class = Rc::new(new_class);
@@ -1056,27 +1168,46 @@ impl Vm {
                 let mut static_methods = current.static_methods.clone();
 
                 match method {
+                    // The class's field defaults that are not literals: run
+                    // for each new instance (`Vm::init_fields`), never
+                    // dispatched as a method.
+                    // The constructor: kept apart from the methods, so a
+                    // user method `init` is a method like any other.
+                    Value::VmClosure(closure)
+                        if !is_static && name == crate::interpreter::value::VM_CONSTRUCTOR =>
+                    {
+                        *current.vm_init.borrow_mut() = Some(closure);
+                        return Ok(());
+                    }
+                    Value::VmClosure(closure)
+                        if !is_static
+                            && name == crate::interpreter::value::FIELD_DEFAULTS_METHOD =>
+                    {
+                        let mut field_init = current.field_init.borrow_mut();
+                        Rc::make_mut(field_init.get_or_insert_with(Default::default)).computed =
+                            Some(closure);
+                        return Ok(());
+                    }
                     Value::VmClosure(closure) => {
                         // Bytecode methods from compile_class_decl. The maps
                         // are shared `Rc`s, so no class rebuild is needed —
-                        // and the constructor ("init") plus instance methods
-                        // become dispatchable via find_vm_method.
+                        // and instance methods become dispatchable via
+                        // find_vm_method.
                         if is_static {
                             current
                                 .vm_static_methods
                                 .borrow_mut()
                                 .insert(name.to_string(), closure);
+                            crate::interpreter::value::note_static_methods_changed();
                         } else {
-                            current
-                                .vm_methods
-                                .borrow_mut()
-                                .insert(name.to_string(), closure.clone());
+                            current.insert_vm_method(name.to_string(), closure.clone());
                             // Modules expose instance methods as module functions.
                             if current.is_module {
                                 current
                                     .vm_static_methods
                                     .borrow_mut()
                                     .insert(name.to_string(), closure);
+                                crate::interpreter::value::note_static_methods_changed();
                             }
                         }
                         return Ok(());
@@ -1084,6 +1215,7 @@ impl Vm {
                     Value::Function(func) => {
                         if is_static {
                             static_methods.insert(name.to_string(), func);
+                            crate::interpreter::value::note_static_methods_changed();
                         } else {
                             current.methods.borrow_mut().insert(name.to_string(), func);
                         }
@@ -1105,6 +1237,7 @@ impl Vm {
                 );
                 // Preserve the shared bytecode-method maps across rebuilds.
                 new_class.vm_methods = current.vm_methods.clone();
+                new_class.vm_init = current.vm_init.clone();
                 new_class.vm_static_methods = current.vm_static_methods.clone();
                 new_class.is_module = current.is_module;
                 new_class.included_modules = current.included_modules.clone();
@@ -1113,6 +1246,7 @@ impl Vm {
                 new_class.extended_hook_stmts = current.extended_hook_stmts.clone();
                 new_class.concern_static_methods = current.concern_static_methods.clone();
                 new_class.concern_method_names = current.concern_method_names.clone();
+                *new_class.field_init.get_mut() = current.field_init.borrow().clone();
                 self.stack[top] = Value::Class(Rc::new(new_class));
             }
             Ok(())
@@ -1232,7 +1366,7 @@ impl Vm {
 
         match class_val {
             // Same protocol as calling the class value directly — runs the
-            // compiled "init" constructor (or JIT-compiles a tree-walking
+            // compiled constructor (or JIT-compiles a tree-walking
             // one) with the instance bound as `this`.
             Value::Class(class) => self.call_class(&class, argc, span),
             _ => Err(RuntimeError::NotAClass(
@@ -1341,6 +1475,325 @@ mod deferred_force_tests {
             ("rec", instance_holding("posts", two_posts())),
         );
         assert_eq!(out, Value::String("ab".into()));
+    }
+}
+
+#[cfg(test)]
+mod privacy_check_tests {
+    //! Once a class declares a private member, the privacy check answers the
+    //! common accesses without the class-chain walk or a frame scan: a member
+    //! of the running method's `this` on that frame's slot 0, a name no class
+    //! of the receiver's chain restricts on the chain's memo. Only a
+    //! restricted name walks the chain and scans the frames for `this`, which
+    //! is what every `@x` read, write and call used to pay. Refusals stay.
+    use super::this_scans;
+    use crate::interpreter::value::{restricted_lookups, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// What a run cost the check: `Class::restricted_method` calls past the
+    /// flag, how many of them walked the chain, and `Vm::current_this` frame
+    /// scans.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Cost {
+        lookups: usize,
+        walks: usize,
+        scans: usize,
+    }
+
+    impl Cost {
+        fn so_far() -> Self {
+            let (lookups, walks) = restricted_lookups();
+            Cost {
+                lookups,
+                walks,
+                scans: this_scans(),
+            }
+        }
+
+        fn since(self, start: Cost) -> Cost {
+            Cost {
+                lookups: self.lookups - start.lookups,
+                walks: self.walks - start.walks,
+                scans: self.scans - start.scans,
+            }
+        }
+    }
+
+    fn cost(lookups: usize, walks: usize, scans: usize) -> Cost {
+        Cost {
+            lookups,
+            walks,
+            scans,
+        }
+    }
+
+    /// A field read refused from outside the class costs two checks of a
+    /// lookup, a walk and a frame scan that finds no `this`: the fast tier
+    /// runs one and hands the read to the general arm, which runs its own
+    /// and raises. Only a refusal pays twice; a read the check lets through
+    /// completes in the fast tier after one.
+    const REFUSED_FIELD_READ: Cost = Cost {
+        lookups: 2,
+        walks: 2,
+        scans: 2,
+    };
+
+    /// A method call refused from outside the class pays the same two
+    /// checks: the fast tier's method call runs one, the general arm the
+    /// other.
+    const REFUSED_METHOD_CALL: Cost = REFUSED_FIELD_READ;
+
+    /// Run `src` with each `__NAME__` replaced by its value; return its
+    /// `result` and `refused` globals, and what the run cost the check.
+    fn run(src: &str, values: &[(&str, i64)]) -> (Value, Option<Value>, Cost) {
+        let src = values.iter().fold(src.to_string(), |src, (name, value)| {
+            src.replace(&format!("__{name}__"), &value.to_string())
+        });
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = Cost::so_far();
+        vm.execute(&module.main).expect("vm");
+        let spent = Cost::so_far().since(start);
+        (
+            vm.globals.get("result").cloned().expect("result"),
+            vm.globals.get("refused").cloned(),
+            spent,
+        )
+    }
+
+    fn refused() -> Option<Value> {
+        Some(Value::String("refused".into()))
+    }
+
+    const LEDGER: &str = r#"
+class Ledger
+  private total: Int
+
+  new()
+    @total = 0
+  end
+
+  def run(n)
+    i = 0
+    while i < n
+      @total = @total + @_step(i) + _step(1)
+      this.total = this.total + 1
+      i = i + 1
+    end
+    @total
+  end
+
+  private
+
+  def _step(i)
+    i
+  end
+end
+
+ledger = new Ledger()
+result = ledger.run(__N__)
+refused = ledger.total rescue "refused"
+"#;
+
+    /// `@x`, `@x = v`, `this.x`, `@m()` and a bare call in a method's own
+    /// body never reach the class and never scan the frames, however many
+    /// times the loop runs. The whole cost is the two accesses from outside:
+    /// `ledger.run` (a lookup) and the refused `ledger.total`, which is
+    /// checked twice (`REFUSED_FIELD_READ`).
+    #[test]
+    fn members_of_self_skip_the_lookup() {
+        let (short, refused_read, short_cost) = run(LEDGER, &[("N", 3)]);
+        let (long, _, long_cost) = run(LEDGER, &[("N", 30)]);
+        assert_eq!(short, Value::Int(9));
+        assert_eq!(long, Value::Int(495));
+        assert_eq!(refused_read, refused());
+        let expected = cost(
+            1 + REFUSED_FIELD_READ.lookups,
+            REFUSED_FIELD_READ.walks,
+            REFUSED_FIELD_READ.scans,
+        );
+        assert_eq!(short_cost, expected);
+        assert_eq!(long_cost, expected);
+    }
+
+    const TALLY: &str = r#"
+class Tally
+  private secret: Int
+  count: Int
+
+  new()
+    @secret = 0
+    @count = 0
+  end
+
+  def run(n)
+    i = 0
+    while i < n
+      [1].each { |x| @count = @count + x }
+      [1].each { |x| @secret = @secret + @_one() }
+      i = i + 1
+    end
+    @count * 100 + @secret
+  end
+
+  private
+
+  def _one
+    1
+  end
+end
+
+tally = new Tally()
+result = tally.run(__N__)
+refused = tally.secret rescue "refused"
+"#;
+
+    /// A block's frame is no method frame, so its `@x` asks the class. For
+    /// `count`, which no class of the chain restricts, that is the memo
+    /// alone: a lookup for the read and one for the write, no walk, no scan.
+    /// The restricted `@secret` read and write and the `@_one()` call walk the
+    /// chain and scan down to the method's frame, where they find `this` and
+    /// pass. That is three lookups, three walks and three scans per
+    /// iteration, which is what they cost before. Outside the loop:
+    /// `tally.run` (a lookup) and the refused `tally.secret`.
+    #[test]
+    fn a_block_scans_for_this_only_for_a_restricted_name() {
+        let (short, refused_read, short_cost) = run(TALLY, &[("N", 3)]);
+        let (long, _, long_cost) = run(TALLY, &[("N", 30)]);
+        assert_eq!(short, Value::Int(303));
+        assert_eq!(long, Value::Int(3030));
+        assert_eq!(refused_read, refused());
+        let per_iteration = cost(2 + 3, 3, 3);
+        let outside = cost(
+            1 + REFUSED_FIELD_READ.lookups,
+            REFUSED_FIELD_READ.walks,
+            REFUSED_FIELD_READ.scans,
+        );
+        for (n, spent) in [(3, short_cost), (30, long_cost)] {
+            assert_eq!(
+                spent,
+                cost(
+                    outside.lookups + n * per_iteration.lookups,
+                    outside.walks + n * per_iteration.walks,
+                    outside.scans + n * per_iteration.scans,
+                ),
+                "n = {n}"
+            );
+        }
+    }
+
+    const POSTS: &str = r##"
+class Post
+  title: String
+
+  new(title: String)
+    @title = title
+  end
+
+  private
+
+  def _slug
+    "slug"
+  end
+end
+
+def retitle(post, n)
+  i = 0
+  while i < n
+    post.title = "#{post.title}."
+    i = i + 1
+  end
+  post.title
+end
+
+post = new Post("a")
+result = retitle(post, __N__)
+refused = post._slug() rescue "refused"
+"##;
+
+    /// A field of a class that has private members, read and written from
+    /// outside: each access asks the class, which answers from its memo,
+    /// with no walk and no frame scan. Two accesses per iteration and the
+    /// final read, plus the refused `_slug` call, which alone walks the chain
+    /// and scans (twice: `REFUSED_METHOD_CALL`).
+    #[test]
+    fn an_unrestricted_name_skips_the_walk() {
+        let (short, refused_call, short_cost) = run(POSTS, &[("N", 3)]);
+        let (long, _, long_cost) = run(POSTS, &[("N", 30)]);
+        assert_eq!(short, Value::String("a...".into()));
+        assert_eq!(long, Value::String(format!("a{}", ".".repeat(30)).into()));
+        assert_eq!(refused_call, refused());
+        let refused = REFUSED_METHOD_CALL;
+        for (n, spent) in [(3, short_cost), (30, long_cost)] {
+            assert_eq!(
+                spent,
+                cost(2 * n + 1 + refused.lookups, refused.walks, refused.scans),
+                "n = {n}"
+            );
+        }
+    }
+
+    const NODES: &str = r#"
+class Node
+  v: Int
+
+  new(v: Int)
+    @v = v
+  end
+
+  private
+
+  def _hidden
+    0
+  end
+end
+
+def reads(node, n)
+  total = 0
+  i = 0
+  while i < n
+    total = total + node.v
+    [1].each { |x| node.v = node.v * x }
+    i = i + 1
+  end
+  total
+end
+
+def at_depth(node, depth, n)
+  return reads(node, n) if depth == 0
+
+  at_depth(node, depth - 1, n)
+end
+
+node = new Node(1)
+result = at_depth(node, __DEPTH__, __N__)
+refused = node._hidden() rescue "refused"
+"#;
+
+    /// `node.v` read from a plain function at the bottom of a recursion, and
+    /// read and written from a block it runs: no frame on the stack is a
+    /// method frame, so a scan for `this` would walk every one of them. An
+    /// unrestricted name never asks for it, so the scans stay at the ones the
+    /// refused `_hidden` call makes (`REFUSED_METHOD_CALL`), whatever the
+    /// depth and the loop length.
+    #[test]
+    fn an_unrestricted_name_scans_no_frames_at_any_depth() {
+        let (shallow, refused_call, shallow_cost) = run(NODES, &[("DEPTH", 0), ("N", 3)]);
+        let (deep, _, deep_cost) = run(NODES, &[("DEPTH", 40), ("N", 30)]);
+        assert_eq!(shallow, Value::Int(3));
+        assert_eq!(deep, Value::Int(30));
+        assert_eq!(refused_call, refused());
+        let refused = REFUSED_METHOD_CALL;
+        for (n, spent) in [(3, shallow_cost), (30, deep_cost)] {
+            assert_eq!(
+                spent,
+                cost(3 * n + refused.lookups, refused.walks, refused.scans),
+                "n = {n}"
+            );
+        }
     }
 }
 

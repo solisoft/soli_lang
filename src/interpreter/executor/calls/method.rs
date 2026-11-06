@@ -407,55 +407,16 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         use crate::interpreter::executor::access::member::{
-            parse_uploader_method_name, UploaderMethod,
+            uploader_call, uploader_helper_args, uploader_helper_missing,
         };
 
-        let (kind, field) = parse_uploader_method_name(method_name).ok_or_else(|| {
-            RuntimeError::type_error(
-                format!("'{}' is not a recognized uploader method", method_name),
-                span,
-            )
-        })?;
-
-        let helper_name = match kind {
-            UploaderMethod::Attach => "attach_upload",
-            UploaderMethod::Detach => "detach_upload",
-            UploaderMethod::Url | UploaderMethod::Urls => "upload_url",
-        };
-
-        let helper = self.environment.borrow().get(helper_name).ok_or_else(|| {
-            RuntimeError::type_error(
-                format!(
-                    "uploader method '{}' requires the '{}' helper to be defined \
-                     (see app/controllers/support.sl)",
-                    method_name, helper_name
-                ),
-                span,
-            )
-        })?;
-
-        let mut forwarded: Vec<Value> = Vec::with_capacity(arguments.len() + 2);
-        forwarded.push(Value::Instance(inst));
-        forwarded.push(Value::String(field.to_string().into()));
-        match kind {
-            UploaderMethod::Attach => {
-                if arguments.len() != 1 {
-                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
-                }
-                forwarded.extend(arguments);
-            }
-            UploaderMethod::Detach | UploaderMethod::Url | UploaderMethod::Urls => {
-                if arguments.len() > 1 {
-                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
-                }
-                if let Some(arg) = arguments.into_iter().next() {
-                    forwarded.push(arg);
-                } else {
-                    forwarded.push(Value::Null);
-                }
-            }
-        }
-
+        let (kind, field, helper_name) = uploader_call(method_name, span)?;
+        let helper = self
+            .environment
+            .borrow()
+            .get(helper_name)
+            .ok_or_else(|| uploader_helper_missing(method_name, helper_name, span))?;
+        let forwarded = uploader_helper_args(kind, field, Value::Instance(inst), arguments, span)?;
         self.call_value(helper, forwarded, span)
     }
 
@@ -800,11 +761,11 @@ impl Interpreter {
                 };
                 Ok(Value::Bool(class_name == "array" || class_name == "object"))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Array".to_string(),
-                property: method_name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Array".to_string(),
+                method_name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -1335,24 +1296,10 @@ impl Interpreter {
                 }
             });
         } else {
-            // The default ordering answers `Equal` across types, which is not
-            // transitive, so this needs the tolerant sort too.
-            crate::interpreter::executor::calls::array_ops::stable_sort_by(&mut result, |a, b| {
-                match (a, b) {
-                    (Value::Int(a), Value::Int(b)) => a.cmp(b),
-                    (Value::Float(a), Value::Float(b)) => {
-                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                    }
-                    (Value::String(a), Value::String(b)) => a.cmp(b),
-                    (Value::Int(a), Value::Float(b)) => (*a as f64)
-                        .partial_cmp(b)
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    (Value::Float(a), Value::Int(b)) => a
-                        .partial_cmp(&(*b as f64))
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    _ => std::cmp::Ordering::Equal,
-                }
-            });
+            // Same helper as the VM: a total-order fast path for homogeneous
+            // arrays, the tolerant merge sort otherwise (the default ordering
+            // answers `Equal` across types, which is not transitive).
+            crate::interpreter::executor::calls::array_ops::sort_values_default(&mut result);
         }
 
         Ok(Value::Array(Rc::new(RefCell::new(result))))

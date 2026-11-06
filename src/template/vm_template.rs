@@ -7,12 +7,15 @@
 //! written into `Vm::template_out`, with no string built and no native call.
 //!
 //! The template's free names (`rows`, `title`, `h`) become the function's
-//! parameters. At render time each gets the data value of that name, else the
-//! VM global (a helper, a builtin), else nil — the order the tree-walker's
-//! scope chain resolves them in, with its lenient undefined read. A bare read
-//! of one (`<% if signed_in? %>`) calls a zero-argument helper or builtin it
-//! holds, as the tree-walker does (`Op::AutoInvoke`); `bind` passes the
-//! function itself, so the call happens where the view reads it.
+//! parameters. At render time each gets the data value of that name, else (in
+//! a partial or component) the controller's `@ivar` of that name, else the
+//! template env's (a helper, a builtin), else nil — the order the
+//! tree-walker's scope chain resolves them in, with its lenient undefined
+//! read. A bare read of one (`<% if signed_in? %>`) calls a zero-argument
+//! helper or builtin it holds, as the tree-walker does (`Op::AutoInvoke`);
+//! `bind` passes the function itself, so the call happens where the view
+//! reads it. A bare-call builtin (`clock`) stays a global, which the bytecode
+//! calls where it is read bare, as in an action.
 //!
 //! A `form_with` / `fields_for` block and `<%= render "partial" %>` compile
 //! too. A layout is never compiled: the tree-walker still renders it.
@@ -26,7 +29,8 @@ use crate::ast::expr::{Argument, Expr, ExprKind};
 use crate::ast::stmt::{FunctionDecl, Parameter, Program, Stmt, StmtKind};
 use crate::ast::types::{TypeAnnotation, TypeKind};
 use crate::error::RuntimeError;
-use crate::interpreter::value::{hash_get_value, Value};
+use crate::interpreter::environment::inherited_field;
+use crate::interpreter::value::{hash_get_value, Instance, Value};
 use crate::span::Span;
 use crate::template::parser::TemplateNode;
 use crate::vm::chunk::{Constant, FunctionProto};
@@ -36,6 +40,10 @@ use crate::vm::{Compiler, Vm, VmClosure};
 pub struct VmTemplate {
     closure: Value,
     params: Vec<String>,
+    /// The bare-call builtins (`clock`) the template reads. They are not
+    /// parameters: the bytecode reads each as a global and calls it where it
+    /// is read bare (see [`VmTemplate::bare_call_unresolved`]).
+    bare_calls: Vec<String>,
     /// Whether the function returns the variables the view assigned (see
     /// [`VmTemplate::render`]).
     exports: bool,
@@ -84,23 +92,36 @@ impl VmTemplate {
             ))));
         }
         // First pass: learn the free names, which the compiler resolves as
-        // globals. The second compiles them as parameters.
+        // globals. The second compiles them as parameters, all but the
+        // bare-call builtins.
         let seen = Rc::new(RefCell::new(HashSet::new()));
         compile_function(&body, &[], Some(seen.clone()), None)?;
+        // A bare-call builtin the view does not assign stays a global: the
+        // compiler calls it where it is read bare, as it does in an action, so
+        // `clock - start` is the time here as on the tree-walker. As a
+        // parameter it held the function itself, `clock - start` raised, and
+        // every render was done again on the tree-walker.
+        let (mut bare_calls, mut params): (Vec<String>, Vec<String>) =
+            seen.borrow().iter().cloned().partition(|name| {
+                crate::interpreter::builtins::is_bare_call_builtin(name)
+                    && !all_assigned.contains(name)
+            });
+        bare_calls.sort();
         // A name the view assigns is a parameter too: `<% errors = @errors ?? {} %>`
         // reads the data's `errors` before replacing it, as the tree-walker
         // does. As a plain local it would read nil.
-        let mut params: Vec<String> = seen.borrow().iter().cloned().collect();
         params.extend(all_assigned);
         params.sort();
         params.dedup();
-        // A bare read of a free name calls a zero-argument helper it holds
-        // (`<% if signed_in? %>`), as the tree-walker's renderer does.
-        let free_names = Rc::new(seen.borrow().clone());
+        // A bare read of a parameter calls a zero-argument helper it holds
+        // (`<% if signed_in? %>`), as the tree-walker's renderer does. The
+        // bare-call builtins kept as globals are called by the compiler.
+        let free_names = Rc::new(params.iter().cloned().collect::<HashSet<String>>());
         let proto = compile_function(&body, &params, None, Some(free_names))?;
         Ok(Self {
             closure: Value::VmClosure(Rc::new(VmClosure::new(proto, Vec::new()))),
             params,
+            bare_calls,
             exports,
         })
     }
@@ -114,19 +135,66 @@ impl VmTemplate {
     /// globals. An error leaves the VM reset and nothing written: the caller
     /// renders on the tree-walker instead.
     pub fn render(&self, vm: &mut Vm, data: &Value) -> Result<Rendered, RuntimeError> {
+        self.render_inheriting(vm, data, None)
+    }
+
+    /// [`VmTemplate::render`] for an include: a name the data lacks reads
+    /// `inherited`'s `@ivar` before `vm`'s globals.
+    pub(crate) fn render_inheriting(
+        &self,
+        vm: &mut Vm,
+        data: &Value,
+        inherited: Option<&Rc<RefCell<Instance>>>,
+    ) -> Result<Rendered, RuntimeError> {
+        if let Some(name) = self.bare_call_unresolved(data, inherited, &vm.globals, &vm.globals) {
+            return Err(RuntimeError::EngineFallback(
+                format!("a bare `{name}` that is not the builtin"),
+                Span::default(),
+            ));
+        }
         let names = std::mem::take(&mut vm.globals);
-        let args = self.bind(data, &names);
+        let args = self.bind(data, inherited, &names);
         vm.globals = names;
         self.run(vm, args)
     }
 
-    /// The template's arguments: each free name's data value, else its value
-    /// in `names` (the view's scope past its data), else nil.
-    fn bind(&self, data: &Value, names: &ahash::AHashMap<String, Value>) -> Vec<Value> {
+    /// The first bare-call builtin the template reads (`clock`) that is not,
+    /// for this render, the builtin its bytecode calls: the data or the
+    /// inherited controller binds the name (a controller's `@clock`, even to
+    /// nil), or a helper or an app function took it where the tree-walker
+    /// looks (`names`) or where the bytecode reads it (`globals`). Such a
+    /// render goes to the tree-walker, which resolves the name as it always
+    /// has.
+    fn bare_call_unresolved(
+        &self,
+        data: &Value,
+        inherited: Option<&Rc<RefCell<Instance>>>,
+        names: &ahash::AHashMap<String, Value>,
+        globals: &ahash::AHashMap<String, Value>,
+    ) -> Option<&str> {
+        self.bare_calls.iter().map(String::as_str).find(|&name| {
+            data_binds(data, name)
+                || inherited
+                    .is_some_and(|controller| inherited_field(&controller.borrow(), name).is_some())
+                || !is_builtin(names.get(name), name)
+                || !is_builtin(globals.get(name), name)
+        })
+    }
+
+    /// The template's arguments: each free name's data value, else the
+    /// inherited controller's `@ivar` of that name, else its value in `names`
+    /// (the view's scope past its data), else nil.
+    fn bind(
+        &self,
+        data: &Value,
+        inherited: Option<&Rc<RefCell<Instance>>>,
+        names: &ahash::AHashMap<String, Value>,
+    ) -> Vec<Value> {
         self.params
             .iter()
             .map(|name| {
                 data_value(data, name)
+                    .or_else(|| inherited.and_then(|controller| inherited_value(controller, name)))
                     .or_else(|| names.get(name).cloned())
                     .unwrap_or(Value::Null)
             })
@@ -137,10 +205,11 @@ impl VmTemplate {
         vm.template_out.clear();
         vm.template_captures.clear();
         // The page leaves with the result (`mem::take` below), so each render
-        // starts from an empty buffer: size it as the tree-walker's renderer
-        // does instead of growing it a few times over.
+        // starts from an empty buffer: one of the tree-walker's pooled page
+        // buffers, of its size. A VM-compiled partial rendered per row used to
+        // allocate 4096 bytes and free them again each time.
         if vm.template_out.capacity() == 0 {
-            vm.template_out.reserve(4096);
+            vm.template_out = crate::template::renderer::take_render_buffer(4096);
         }
         match vm.call_value_direct(self.closure.clone(), &args, Span::default()) {
             Ok(result) => {
@@ -152,8 +221,12 @@ impl VmTemplate {
                         .collect(),
                     _ => Vec::new(),
                 };
+                // A small page leaves as a tight copy and its buffer goes back
+                // to the pool, as the tree-walker's does.
                 Ok(Rendered {
-                    html: std::mem::take(&mut vm.template_out),
+                    html: crate::template::renderer::finish_render_buffer(std::mem::take(
+                        &mut vm.template_out,
+                    )),
                     assigned,
                 })
             }
@@ -190,6 +263,30 @@ fn data_value(data: &Value, name: &str) -> Option<Value> {
         Value::Deferred(_) => value.force_deferred(),
         other => other,
     })
+}
+
+/// The controller's `@ivar` an include reads for `name` past its data, a
+/// `grouped {}` placeholder forced as [`data_value`] forces one.
+fn inherited_value(controller: &Rc<RefCell<Instance>>, name: &str) -> Option<Value> {
+    let value = inherited_field(&controller.borrow(), name)?;
+    Some(match value {
+        Value::Deferred(_) => value.force_deferred(),
+        other => other,
+    })
+}
+
+/// Whether the data has a key `name`, whatever its value: the tree-walker
+/// then reads that value, not a builtin of the same name.
+fn data_binds(data: &Value, name: &str) -> bool {
+    match data {
+        Value::Hash(map) => hash_get_value(&map.borrow(), &Value::String(name.into())).is_some(),
+        _ => false,
+    }
+}
+
+/// Whether `value` is the builtin function `name` itself.
+fn is_builtin(value: Option<&Value>, name: &str) -> bool {
+    matches!(value, Some(Value::NativeFunction(native)) if native.name == name)
 }
 
 fn compile_function(
@@ -447,8 +544,8 @@ pub(crate) fn render_component_block(
     content: Value,
 ) -> Result<String, String> {
     use crate::interpreter::value::{HashKey, HashPairs};
-    let name = match name {
-        Value::String(s) => s.to_string(),
+    let name: &str = match name {
+        Value::String(s) => s,
         other => {
             return Err(format!(
                 "component name must evaluate to string, got {}",
@@ -464,10 +561,10 @@ pub(crate) fn render_component_block(
     }
     map.insert(HashKey::String("content".into()), content);
     let data = Value::Hash(Rc::new(RefCell::new(map)));
-    let path = if name.contains('/') || name.contains('.') {
-        name
+    let path: std::borrow::Cow<str> = if name.contains('/') || name.contains('.') {
+        name.into()
     } else {
-        format!("components/{name}")
+        format!("components/{name}").into()
     };
     let rendering = RENDERING_CACHE.with(|c| c.get());
     if rendering.is_null() {
@@ -484,11 +581,13 @@ pub(crate) fn render_component_block(
 /// `TemplateNode::Partial` arm does it: the name is resolved by
 /// `render_partial` (the `_` prefix, `components/` left clean), and `data` is
 /// whatever the tag's context evaluated to — the view's own data when the tag
-/// gave none. No helpers are injected; the `partial()` builtin does that, and
-/// this tag does not.
+/// gave none. Nothing is added to it, as `partial()` adds nothing: the helpers
+/// resolve in the template env and the controller's `@ivars` in the include's
+/// scope.
 pub(crate) fn render_partial_block(name: &Value, data: &Value) -> Result<String, String> {
-    let name = match name {
-        Value::String(s) => s.to_string(),
+    // Borrowed: formatting it into a new `String` cost 2% of an include.
+    let name: &str = match name {
+        Value::String(s) => s,
         other => {
             return Err(format!(
                 "partial name must evaluate to string, got {}",
@@ -499,12 +598,12 @@ pub(crate) fn render_partial_block(name: &Value, data: &Value) -> Result<String,
     let rendering = RENDERING_CACHE.with(|c| c.get());
     if rendering.is_null() {
         return crate::interpreter::builtins::template::get_template_cache()?
-            .render_partial(&name, data);
+            .render_partial(name, data);
     }
     // SAFETY: set by `render_view` from a `&TemplateCache` that outlives the
     // render, cleared when it ends (`RenderingCache`), and read only on this
     // thread, inside that render.
-    unsafe { &*rendering }.render_partial(&name, data)
+    unsafe { &*rendering }.render_partial(name, data)
 }
 
 /// Whether a template does enough work for the VM to pay: a loop, or at least
@@ -657,39 +756,189 @@ pub fn enabled() -> bool {
         })
 }
 
-/// Render a view on this thread's VM, or `None` when the tree-walker must:
-/// views off, a view that does not compile, a view rendered from inside
-/// another (the VM is in use), or a render the VM refused or failed. A failed
-/// render wrote nothing; the caller renders the view again on the tree-walker,
-/// which raises the error with its file and line.
+/// How [`render_view`] rendered a view.
+pub enum ViewRender {
+    /// On the VM.
+    Rendered(Rendered),
+    /// Not on the VM: the caller renders the view on the tree-walker. With a
+    /// [`VmFailure`] when the VM tried and failed, which the caller settles
+    /// once the tree-walker has rendered the view.
+    TreeWalker(Option<VmFailure>),
+    /// The VM failed past the request's time budget: the render fails with
+    /// this message. The tree-walker does not render the view again — that
+    /// is the work the budget was meant to stop — and the view stays
+    /// compiled: the error is the request's, not the view's.
+    Failed(String),
+}
+
+/// A render the VM failed with an error other than a refusal. Nothing it
+/// wrote is sent: the caller renders the view again on the tree-walker. When
+/// that render succeeds, the two engines disagree about the view, and
+/// [`VmFailure::tree_walker_rendered`] keeps it on the tree-walker from then
+/// on (on this thread) instead of failing on the VM on every request.
+/// Dropped without it — the tree-walker raised too — the error is the view's
+/// or its data's, and the view stays compiled.
+pub struct VmFailure {
+    /// The view's nodes: their address keys `COMPILED`, and holding them
+    /// keeps it from being reused.
+    nodes: Arc<Vec<TemplateNode>>,
+    error: RuntimeError,
+    /// The view's name for `SOLI_ENGINE_LOG`, kept only when it is on.
+    name: Option<String>,
+}
+
+impl VmFailure {
+    /// The tree-walker rendered the view the VM failed.
+    pub fn tree_walker_rendered(self) {
+        keep_on_tree_walker(&self.nodes);
+        if let Some(name) = self.name {
+            let error = self.error;
+            engine_log(|| {
+                format!(
+                    "view '{name}' failed on the VM and rendered on the interpreter, \
+                     which renders it from now on: {error}"
+                )
+            });
+        }
+    }
+}
+
+/// `nodes` render on the tree-walker from now on, on this thread.
+fn keep_on_tree_walker(nodes: &Arc<Vec<TemplateNode>>) {
+    let key = Arc::as_ptr(nodes) as usize;
+    COMPILED.with(|compiled| {
+        if let Ok(mut compiled) = compiled.try_borrow_mut() {
+            if let Some(entry) = compiled.get_mut(&key) {
+                entry.1 = None;
+            }
+        }
+    });
+}
+
+/// A template's name in `SOLI_ENGINE_LOG` lines: its path under the views
+/// directory, or the whole path when it lives elsewhere (an engine's views).
+fn view_name(path: &std::path::Path, cache: &crate::template::TemplateCache) -> String {
+    path.strip_prefix(cache.views_dir())
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+/// `SOLI_ENGINE_LOG=1`: say on stderr which templates render on the
+/// interpreter, and why.
+fn engine_log_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        crate::platform::env::var("SOLI_ENGINE_LOG")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    })
+}
+
+/// Print `line` under `SOLI_ENGINE_LOG`, once per process: every worker
+/// thread decides about a template on its own, and they decide alike.
+pub(crate) fn engine_log(line: impl FnOnce() -> String) {
+    if !engine_log_enabled() {
+        return;
+    }
+    static PRINTED: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let line = line();
+    let first = PRINTED
+        .get_or_init(Default::default)
+        .lock()
+        .map(|mut printed| printed.insert(line.clone()))
+        .unwrap_or(true);
+    if first {
+        eprintln!("[soli engine] {line}");
+    }
+}
+
+/// `SOLI_ENGINE_LOG=1`: a template the VM never tries — a layout, or a
+/// partial rendered outside a view — says once that the tree-walker renders
+/// it, and `why`, as a view that does not compile does. `kind` is how the
+/// line names it ("layout", "view").
+pub fn note_interpreted(
+    kind: &str,
+    path: &std::path::Path,
+    cache: &crate::template::TemplateCache,
+    why: &str,
+) {
+    if engine_log_enabled() && enabled() {
+        engine_log(|| {
+            format!(
+                "{kind} '{}' renders on the interpreter: {why}",
+                view_name(path, cache)
+            )
+        });
+    }
+}
+
+/// Render a view on this thread's VM, or say that the tree-walker must:
+/// views off, a view that does not compile, a render whose bare `clock` the
+/// data or a helper rebinds, a view the VM refused or failed before, or a
+/// render the VM refused or failed now. A failed render wrote nothing; the
+/// caller renders the view again on the tree-walker, which raises the error
+/// with its file and line — and when it raises none, hands back the
+/// [`VmFailure`]. `inherited` is a partial's or component's controller, whose
+/// `@ivars` a name its data lacks reads, as `env` does on the tree-walker.
 pub fn render_view(
     nodes: &Arc<Vec<TemplateNode>>,
     data: &Value,
+    inherited: Option<&Rc<RefCell<Instance>>>,
     env: &Rc<RefCell<crate::interpreter::environment::Environment>>,
     cache: &crate::template::TemplateCache,
     path: &std::path::Path,
-) -> Option<Rendered> {
+) -> ViewRender {
     // A render does not suspend its request (`serve::coroutine`).
     #[cfg(not(target_arch = "wasm32"))]
     let _no_yield = crate::serve::coroutine::NoYield::enter();
     if !enabled() {
         check_log("[vm-views] off");
-        return None;
+        return ViewRender::TreeWalker(None);
     }
     let key = Arc::as_ptr(nodes) as usize;
-    let compiled = COMPILED.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        if let Some((_, compiled)) = cache.get(&key) {
+    let compiled = COMPILED.with(|compiled_views| {
+        let mut compiled_views = compiled_views.borrow_mut();
+        if let Some((_, compiled)) = compiled_views.get(&key) {
             return compiled.clone();
         }
-        let compiled = VmTemplate::compile_for_serve(nodes).ok().map(Rc::new);
-        cache.insert(key, (nodes.clone(), compiled.clone()));
+        let compiled = match VmTemplate::compile_for_serve(nodes) {
+            Ok(template) => Some(Rc::new(template)),
+            Err(reason) => {
+                engine_log(|| {
+                    format!(
+                        "view '{}' renders on the interpreter: {reason}",
+                        view_name(path, cache)
+                    )
+                });
+                None
+            }
+        };
+        compiled_views.insert(key, (nodes.clone(), compiled.clone()));
         compiled
-    })?;
+    });
+    let Some(compiled) = compiled else {
+        return ViewRender::TreeWalker(None);
+    };
     // A VM from this thread's pool, held by this render alone: a component
     // or partial rendered from inside it takes another.
     let mut view_vm = ViewVm::take();
-    let args = compiled.bind(data, &view_vm.names);
+    // About this render's data (`@clock`) or the app's helpers, not about the
+    // view: the tree-walker renders this once, and the view stays compiled.
+    if let Some(name) =
+        compiled.bare_call_unresolved(data, inherited, &view_vm.names, &view_vm.vm.globals)
+    {
+        view_vm.put_back();
+        engine_log(|| {
+            format!(
+                "view '{}' renders on the interpreter while `{name}` is not the builtin \
+                 (the data, a helper or the app binds it)",
+                view_name(path, cache)
+            )
+        });
+        return ViewRender::TreeWalker(None);
+    }
+    let args = compiled.bind(data, inherited, &view_vm.names);
     view_vm.vm.tree_walk_env = Some(env.clone());
     view_vm.vm.template_content_before = None;
     let outcome = {
@@ -706,23 +955,38 @@ pub fn render_view(
     }
     view_vm.put_back();
     match outcome {
-        Ok(rendered) => Some(rendered),
+        Ok(rendered) => ViewRender::Rendered(rendered),
         Err(err) => {
-            check_log(&format!(
-                "[vm-views] {}: render failed, tree-walker used: {err}",
-                path.display()
-            ));
-            // A refusal is about the view (a function written bare), so it
-            // keeps the tree-walker from now on; any other error may be about
-            // this request's data, and the view stays compiled.
-            if err.is_engine_fallback() {
-                COMPILED.with(|cache| {
-                    if let Some(entry) = cache.borrow_mut().get_mut(&key) {
-                        entry.1 = None;
-                    }
-                });
+            if check_enabled() {
+                check_log(&format!(
+                    "[vm-views] {}: render failed, tree-walker used: {err}",
+                    path.display()
+                ));
             }
-            None
+            // Past the handler budget the render is over: neither re-run on
+            // the tree-walker nor demoted (what serve does for an action).
+            if crate::interpreter::deadline::exhausted() {
+                return ViewRender::Failed(format!("Evaluation error: {err}"));
+            }
+            // A refusal is about the view (a function written bare), so it
+            // keeps the tree-walker from now on.
+            if err.is_engine_fallback() {
+                keep_on_tree_walker(nodes);
+                engine_log(|| {
+                    format!(
+                        "view '{}' renders on the interpreter from now on: {err}",
+                        view_name(path, cache)
+                    )
+                });
+                return ViewRender::TreeWalker(None);
+            }
+            // Any other error may be about this request's data. The
+            // tree-walker's render of the same view and data tells.
+            ViewRender::TreeWalker(Some(VmFailure {
+                nodes: nodes.clone(),
+                error: err,
+                name: engine_log_enabled().then(|| view_name(path, cache)),
+            }))
         }
     }
 }
@@ -798,7 +1062,7 @@ struct ViewVm {
 /// Names a JIT-compiled `FormBuilder` method calls that the worker's globals
 /// do not have. They live in the template env (`template_env_bindings`); the
 /// method runs on this VM and looks globals up here. A name the worker already
-/// defined is left alone.
+/// defined is left alone, unless the builder defines it itself.
 const FORM_BUILDER_GLOBALS: &[&str] = &[
     "_form_safe_url",
     "_safe_attr_name",
@@ -808,12 +1072,28 @@ const FORM_BUILDER_GLOBALS: &[&str] = &[
     "h",
 ];
 
+/// A name the form builder defines itself is its own definition: on the
+/// tree-walker its methods close over the builder's environment, so a view
+/// helper of the same name (`csrf_field`) is not what `f.open()` calls, and
+/// it must not be on the VM either. The template env holds the app's helpers
+/// last, so it would hand over the helper. It replaces what `globals` already
+/// holds: a view VM with no worker globals (a background job's mailer view)
+/// starts from the template env's names, the helper among them, and a worker
+/// whose app defines the name holds the app's.
 fn install_form_builder_globals(
     globals: &mut ahash::AHashMap<String, Value>,
     template_names: &ahash::AHashMap<String, Value>,
 ) {
+    let builder =
+        crate::interpreter::builtins::template::form_builder_definitions().unwrap_or_default();
     for name in FORM_BUILDER_GLOBALS {
-        if let Some(value) = template_names.get(*name) {
+        let own = builder
+            .iter()
+            .find(|(defined, _)| defined == name)
+            .map(|(_, value)| value);
+        if let Some(value) = own {
+            globals.insert((*name).to_string(), value.clone());
+        } else if let Some(value) = template_names.get(*name) {
             globals
                 .entry((*name).to_string())
                 .or_insert_with(|| value.clone());
@@ -834,6 +1114,10 @@ impl ViewVm {
                 .collect();
         let mut vm = Vm::new();
         vm.tree_walk_functions = true;
+        // As the tree-walker does: a function the view calls (a view helper
+        // compiled here, a model method) that returns a value its declared
+        // return type does not admit raises instead of handing it back.
+        vm.check_return_types = true;
         vm.globals = WORKER_GLOBALS
             .with(|g| g.borrow().clone())
             .unwrap_or_else(|| names.clone());
@@ -952,12 +1236,141 @@ mod tests {
             "<% title = @title.upcase %><%= title %>|<% count = count + 1 %><%= count %>",
             "<% settings = @settings ?? {} %><%= settings.keys().length %>",
             "<%= locals[\"count\"] %>|<%= locals[\"absent\"].to_s %>|",
+            // A string read from the data, appended to: the tree-walker's
+            // in-place append panicked on its own borrow here.
+            "<% title = title + \"!\" %><%= title %>|<% title += \"?\" %><%= title %>",
+            "<% title += \"?\" %><%= title %>",
         ];
         // What serve's renderer enters: an undefined name, and an `@ivar`
         // with no instance, read as nil / the bare local.
         let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
         let mut vm = Vm::new();
         let data = data();
+        for source in cases {
+            let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let tree =
+                render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let compiled = VmTemplate::compile(&nodes)
+                .unwrap_or_else(|e| panic!("{source}: does not compile: {e}"));
+            let on_vm = compiled
+                .render(&mut vm, &data)
+                .unwrap_or_else(|e| panic!("{source}: {e}"))
+                .html;
+            assert_eq!(on_vm, tree, "{source}");
+        }
+    }
+
+    /// `<% @count = @count %>` stores the local `count` into itself (in a
+    /// view `@count` is that local), and every other local must come through
+    /// it. The peephole used to fuse the pair into `SwapSetLocal`, which
+    /// popped a value the pair never pushed: `count` took the last local's
+    /// value and the next read of that local indexed past the stack.
+    #[test]
+    fn a_self_assignment_in_a_view_keeps_the_other_locals() {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let data = data();
+        let render_on_vm = |source: &str| {
+            let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let compiled = VmTemplate::compile(&nodes)
+                .unwrap_or_else(|e| panic!("{source}: does not compile: {e}"));
+            compiled
+                .render(&mut Vm::new(), &data)
+                .unwrap_or_else(|e| panic!("{source}: {e}"))
+                .html
+        };
+        let bare = "<% count = count %><%= count %>|<%= ratio %>|<%= flag %>";
+        let nodes = parse_template(bare).unwrap_or_else(|e| panic!("{bare}: {e}"));
+        let tree = render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{bare}: {e}"));
+        assert_eq!(tree, "3|2.5|true");
+        assert_eq!(render_on_vm(bare), tree, "{bare}");
+        let ivar = "<% @count = @count %><%= @count %>|<%= ratio %>|<%= flag %>";
+        assert_eq!(render_on_vm(ivar), tree, "{ivar}");
+    }
+
+    /// `<% if order.status != paid %>` in a view runs on the VM, which fuses
+    /// the `!=` and its branch into `TestNotEqualJump`. That op compared two
+    /// instances by pointer, so a status read back from the database (an
+    /// `enum_field` is rebuilt as a new instance) was "not paid" next to an
+    /// equal `Paid`, while the tree-walker said paid.
+    #[test]
+    fn a_view_compares_enum_values_by_value_in_a_condition() {
+        use crate::interpreter::value::{build_enum_value, Class};
+
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let status = Rc::new(Class {
+            name: "Status".to_string(),
+            ..Default::default()
+        });
+        // What an `enum_field` read builds: a new instance on every call.
+        let stored = |tag: &str| build_enum_value(&status, &Value::String(tag.into()));
+        let data = hash(vec![
+            ("order", hash(vec![("status", stored("Paid"))])),
+            ("paid", stored("Paid")),
+            ("shipped", stored("Shipped")),
+        ]);
+        let source = "<% if order.status != paid %>unpaid<% else %>paid<% end %>|\
+                      <% if order.status != shipped %>not shipped<% end %>";
+        let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+        let tree = render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{source}: {e}"));
+        assert_eq!(tree, "paid|not shipped");
+        let compiled = VmTemplate::compile(&nodes)
+            .unwrap_or_else(|e| panic!("{source}: does not compile: {e}"));
+        let Value::VmClosure(closure) = &compiled.closure else {
+            panic!("a compiled view is a closure");
+        };
+        let fused = closure
+            .proto
+            .chunk
+            .code
+            .iter()
+            .filter(|op| matches!(op, crate::vm::opcode::Op::TestNotEqualJump(_)))
+            .count();
+        assert_eq!(fused, 2, "both conditions run the fused op");
+        let on_vm = compiled
+            .render(&mut Vm::new(), &data)
+            .unwrap_or_else(|e| panic!("{source}: {e}"))
+            .html;
+        assert_eq!(on_vm, tree);
+    }
+
+    /// Money arithmetic and a set difference render on the VM, as on the
+    /// tree-walker. The VM had no Decimal arm and no `Array - Array`: every
+    /// render raised partway, and serve threw that work away and rendered
+    /// the whole view again on the tree-walker, on every request.
+    #[test]
+    fn decimals_and_array_difference_render_on_the_vm() {
+        let decimal = |digits: &str, precision: u32| {
+            Value::Decimal(crate::interpreter::value::DecimalValue(
+                digits
+                    .parse()
+                    .unwrap_or_else(|e| panic!("{digits} is a decimal: {e}")),
+                precision,
+            ))
+        };
+        let strings = |items: &[&str]| {
+            array(
+                items
+                    .iter()
+                    .map(|item| Value::String((*item).into()))
+                    .collect(),
+            )
+        };
+        let data = hash(vec![
+            ("price", decimal("19.99", 2)),
+            ("shipping", decimal("4.5", 1)),
+            ("qty", Value::Int(3)),
+            ("rate", Value::Float(0.5)),
+            ("tags", strings(&["a", "b", "c", "b"])),
+            ("removed", strings(&["b"])),
+        ]);
+        let cases = [
+            "<%= price * qty %>|<%= qty * price %>|<%= price + shipping %>|<%= price - shipping %>",
+            "<%= price / qty %>|<%= price + 1 %>|<%= 100 - price %>|<%= price * rate %>|<%= -price %>",
+            "<% if price > 10 %>big<% end %>|<%= price < shipping %>|<%= price >= 19.99 %>|<%= shipping <= qty %>",
+            "<% total = 0 %><% for i in [1, 2] %><% total = total + price * i %><% end %><%= total %>",
+            "<% for tag in tags - removed %><%= tag %>;<% end %>|<%= (tags - removed).length %>",
+        ];
+        let mut vm = Vm::new();
         for source in cases {
             let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
             let tree =
@@ -987,6 +1400,50 @@ mod tests {
         let names: Vec<&str> = rendered.assigned.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(names, ["heading", "note"]);
         assert_eq!(rendered.html, "Posts");
+        Ok(())
+    }
+
+    /// A render takes its page buffer from the tree-walker's pool and gives
+    /// it back when the page is small, handing out a tight copy: a partial
+    /// rendered per row no longer allocates and frees 4096 bytes each time.
+    /// A page-sized result leaves as the buffer itself, not copied.
+    #[test]
+    fn a_render_borrows_its_page_buffer_from_the_pool() -> Result<(), String> {
+        use crate::template::renderer::{pooled_render_buffers, take_render_buffer};
+        let nodes = parse_template("<p><%= title %></p>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let mut vm = Vm::new();
+        let data = hash(vec![("title", Value::String("Posts".into()))]);
+        // One buffer in the pool for the render to take.
+        let seeded = take_render_buffer(4096);
+        crate::template::renderer::recycle_include_page(seeded);
+        let before = pooled_render_buffers();
+        assert!(before > 0);
+        for _ in 0..3 {
+            let html = compiled
+                .render(&mut vm, &data)
+                .map_err(|e| e.to_string())?
+                .html;
+            assert_eq!(html, "<p>Posts</p>");
+            assert!(
+                html.capacity() < 1024,
+                "a small page kept the 4096-byte buffer (capacity {})",
+                html.capacity()
+            );
+            assert_eq!(pooled_render_buffers(), before, "the buffer went back");
+        }
+
+        let big = parse_template(&format!("<%= title %>{}", "x".repeat(1100)))?;
+        let html = VmTemplate::compile(&big)?
+            .render(&mut vm, &data)
+            .map_err(|e| e.to_string())?
+            .html;
+        assert_eq!(html.len(), "Posts".len() + 1100);
+        assert!(
+            html.capacity() >= 4096,
+            "a page-sized result was copied out"
+        );
+        assert_eq!(pooled_render_buffers(), before - 1);
         Ok(())
     }
 
@@ -1070,12 +1527,65 @@ mod tests {
         Ok(())
     }
 
+    /// A write is a statement of its own: no Null pushed for an `Op::Pop` to
+    /// discard after it, in the view's body and in a loop's alike.
+    #[test]
+    fn a_write_pushes_nothing_for_a_pop_to_discard() -> Result<(), String> {
+        use crate::vm::opcode::Op;
+        let nodes = parse_template(
+            "<p><%= title %></p><% for row in rows %><li><%- row.title %></li><% end %>",
+        )?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let Value::VmClosure(closure) = &compiled.closure else {
+            return Err("not a VM closure".to_string());
+        };
+        let code = &closure.proto.chunk.code;
+        let is_write = |op: &Op| matches!(op, Op::TemplateWrite(_) | Op::TemplateWriteConst(_));
+        assert_eq!(code.iter().filter(|op| is_write(op)).count(), 6, "{code:?}");
+        // The one Pop left is the loop's: `row` going out of scope at the end
+        // of each pass. Each of the six writes had its own.
+        assert_eq!(
+            code.iter().filter(|op| matches!(op, Op::Pop)).count(),
+            1,
+            "{code:?}"
+        );
+        assert!(
+            code.windows(2)
+                .all(|pair| !(is_write(&pair[0]) && matches!(pair[1], Op::Null))),
+            "{code:?}"
+        );
+        assert_renders_same(
+            "<p><%= title %></p><% for row in rows %><li><%- row.title %></li><% end %>",
+            &data(),
+        );
+        Ok(())
+    }
+
+    /// The intrinsic used as a value is nil, as a call that returns nothing,
+    /// and the write still happens: the compiler pushes the Null the op no
+    /// longer does.
+    #[test]
+    fn a_write_used_as_a_value_is_nil() -> Result<(), String> {
+        let nodes = parse_template(
+            "<% r = __tpl_write_raw(\"a\") %><% s = __tpl_write(\"<\") %><% t = __tpl_write_raw(count) %>\
+             [<%= r.nil? %>,<%= s.nil? %>,<%= t.nil? %>]",
+        )?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let html = compiled
+            .render(&mut view_vm(), &data())
+            .map_err(|e| e.to_string())?
+            .html;
+        assert_eq!(html, "a&lt;3[true,true,true]");
+        Ok(())
+    }
+
     /// A VM as serve builds one for a view: the form builder is Soli, so its
     /// functions run on the interpreter, and the template builtins are the
     /// globals a free name resolves in.
     fn view_vm() -> Vm {
         let mut vm = Vm::new();
         vm.tree_walk_functions = true;
+        vm.check_return_types = true;
         vm.globals = crate::template::core_eval::template_env_bindings()
             .into_iter()
             .collect();
@@ -1133,6 +1643,135 @@ mod tests {
         drop(view);
         super::WORKER_GLOBALS.with(|slot| *slot.borrow_mut() = None);
         super::empty_pool();
+        Ok(())
+    }
+
+    /// A view helper named like a function the form builder defines
+    /// (`csrf_field`) is not what a JIT-compiled `FormBuilder` method calls:
+    /// on the tree-walker the builder's methods close over its own
+    /// environment. The template env holds the app's helpers last, so it
+    /// would have handed over the helper.
+    #[test]
+    fn the_form_builder_calls_its_own_functions_on_the_vm() -> Result<(), String> {
+        let mut template_names: ahash::AHashMap<String, Value> =
+            crate::template::core_eval::template_env_bindings()
+                .into_iter()
+                .collect();
+        template_names.insert("csrf_field".to_string(), Value::Int(1));
+        // Empty, as a worker's table without the builder, and already holding
+        // the helper, as a view VM with no worker globals starts.
+        let mut globals = ahash::AHashMap::new();
+        super::install_form_builder_globals(&mut globals, &template_names);
+        let mut seeded = template_names.clone();
+        super::install_form_builder_globals(&mut seeded, &template_names);
+
+        let builder = crate::interpreter::builtins::template::form_builder_definitions()?;
+        let own = builder.iter().find_map(|(name, value)| match value {
+            Value::Function(func) if name == "csrf_field" => Some(func.clone()),
+            _ => None,
+        });
+        for table in [&globals, &seeded] {
+            match (table.get("csrf_field"), &own) {
+                (Some(Value::Function(installed)), Some(own)) => {
+                    assert!(Rc::ptr_eq(installed, own), "not the builder's csrf_field")
+                }
+                (installed, _) => return Err(format!("csrf_field installed as {installed:?}")),
+            }
+        }
+        // `attr` the builder does not define: the template env's.
+        assert!(globals.contains_key("attr"));
+        Ok(())
+    }
+
+    /// A controller whose `@ivars` are `fields`.
+    fn controller(fields: Vec<(&str, Value)>) -> Rc<RefCell<Instance>> {
+        let class = Rc::new(crate::interpreter::value::Class {
+            name: "PostsController".to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        for (name, value) in fields {
+            instance.fields.insert(name.into(), value);
+        }
+        Rc::new(RefCell::new(instance))
+    }
+
+    /// `source` on the tree-walker as an include with `inherited`'s `@ivars`
+    /// renders it, and on the VM.
+    fn render_include_on_both(
+        source: &str,
+        data: &Value,
+        inherited: &Rc<RefCell<Instance>>,
+    ) -> Result<(String, Result<Rendered, RuntimeError>), Box<dyn std::error::Error>> {
+        let nodes = parse_template(source)?;
+        let mut interpreter =
+            crate::template::core_eval::template_interpreter(data, Some(inherited.clone()));
+        let tree = crate::template::renderer::render_with_interpreter(
+            &mut interpreter,
+            &nodes,
+            data,
+            None,
+            None,
+        )?;
+        drop(interpreter);
+        let on_vm =
+            VmTemplate::compile(&nodes)?.render_inheriting(&mut view_vm(), data, Some(inherited));
+        Ok((tree, on_vm))
+    }
+
+    /// A partial's free names bind the controller's `@ivars` past its data
+    /// and before the template env, the order the tree-walker's scope reads
+    /// them in. They used to be copied into the partial's data.
+    #[test]
+    fn an_include_binds_the_controller_ivars_as_the_tree_walker_reads_them(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let inherited = controller(vec![
+            ("title", Value::String("Posts".into())),
+            ("post", Value::String("from @post".into())),
+            ("params", Value::String("the request's".into())),
+            ("count", Value::Int(2)),
+        ]);
+        let data = hash(vec![("post", Value::String("passed".into()))]);
+        let cases = [
+            (
+                "<%= post %>|<%= @title %>|<%= title.upcase %>|<%= params.nil? %>|<%= absent.nil? %>",
+                "passed|Posts|POSTS|true|true",
+            ),
+            (
+                "<% for i in [1, 2] %><%= i %>:<%= @title %>;<% end %>",
+                "1:Posts;2:Posts;",
+            ),
+            (
+                "<% title = title + \"!\" %><%= title %>|<%= count + 1 %>",
+                "Posts!|3",
+            ),
+            (
+                "<%= [1].map { |x| title + post }.join(\",\") %>",
+                "Postspassed",
+            ),
+            ("<%= h(@title) %>|<%= locals.length %>", "Posts|1"),
+        ];
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        for (source, expected) in cases {
+            let (tree, on_vm) = render_include_on_both(source, &data, &inherited)?;
+            assert_eq!(tree, expected, "{source}");
+            assert_eq!(on_vm?.html, tree, "{source}");
+        }
+        Ok(())
+    }
+
+    /// A controller's `@clock` is what an include's bare `clock` reads on the
+    /// tree-walker: the VM refuses that render rather than call the builtin.
+    #[test]
+    fn an_inherited_clock_is_left_to_the_tree_walker() -> Result<(), Box<dyn std::error::Error>> {
+        let inherited = controller(vec![("clock", Value::Int(5))]);
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let (tree, on_vm) = render_include_on_both("<%= clock + 1 %>", &hash(vec![]), &inherited)?;
+        assert_eq!(tree, "6");
+        match on_vm {
+            Err(err) => assert!(err.is_engine_fallback(), "{err}"),
+            Ok(rendered) => return Err(format!("the builtin was called: {}", rendered.html).into()),
+        }
         Ok(())
     }
 
@@ -1288,6 +1927,199 @@ mod tests {
                 .html;
             assert_eq!(on_vm, tree, "{source}");
         }
+        Ok(())
+    }
+
+    /// A bare `clock` is the time in a compiled view, as on the tree-walker
+    /// and in an action. It used to be a parameter holding the function: its
+    /// value was the function, `clock - started` raised, and serve rendered
+    /// every such page twice, the second time on the tree-walker.
+    #[test]
+    fn a_bare_clock_is_the_time_in_a_compiled_view() -> Result<(), Box<dyn std::error::Error>> {
+        let data = hash(vec![("started", Value::Float(1.0))]);
+        let cases = [
+            "<%= (clock - started) > 0 %>",
+            "<% start = clock %><%= ((clock - start) * 1000).round(2) >= 0 %>",
+            "<%= type(clock) %>|<%= type(clock()) %>|<%= clock.round > 0 %>",
+            "<%= \"#{clock > started}\" %>",
+            "<%= [1, 2].map { |i| clock > started }.join(\",\") %>",
+            "<% for i in [1] %><%= (clock + i) > started %><% end %>",
+            // A `clock` the view binds itself is that binding, on both.
+            "<%= [3].map { |clock| clock + 1 }.join(\",\") %>",
+            "<% for clock in [7] %><%= clock %><% end %>",
+        ];
+        for source in cases {
+            assert_renders_same(source, &data);
+        }
+        // Read as the global the bytecode calls, not bound as a parameter.
+        let nodes = parse_template("<%= clock - started %>")?;
+        assert_eq!(VmTemplate::compile(&nodes)?.params(), ["started"]);
+        // One the view assigns stays a parameter, holding what it assigned.
+        let nodes = parse_template("<% clock = 5 %><%= clock + 1 %>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        assert_eq!(compiled.params(), ["clock"]);
+        assert_eq!(compiled.render(&mut view_vm(), &data)?.html, "6");
+        Ok(())
+    }
+
+    /// The tree-walker reads a `clock` the data binds (a controller's
+    /// `@clock`, even nil), or a helper or an app function named `clock`,
+    /// where the bytecode would call the builtin: the VM refuses that render,
+    /// rather than write the time in its place.
+    #[test]
+    fn a_clock_the_data_or_the_app_binds_is_left_to_the_tree_walker(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = parse_template("<%= clock + 1 %>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let five = hash(vec![("clock", Value::Int(5))]);
+        assert_eq!(render_nodes(&nodes, &five, None)?, "6");
+        for data in [five, hash(vec![("clock", Value::Null)])] {
+            let Err(err) = compiled.render(&mut view_vm(), &data) else {
+                return Err("a data-bound `clock` was called as the builtin".into());
+            };
+            assert!(err.is_engine_fallback(), "{err}");
+        }
+        let mut vm = view_vm();
+        vm.globals.insert("clock".to_string(), Value::Int(1));
+        let Err(err) = compiled.render(&mut vm, &hash(vec![])) else {
+            return Err("an app's own `clock` was called as the builtin".into());
+        };
+        assert!(err.is_engine_fallback(), "{err}");
+        Ok(())
+    }
+
+    /// How many times a probe ran on one engine.
+    type Calls = Rc<std::cell::Cell<usize>>;
+
+    /// `probe()` for a view, with the calls it got on the VM and on the
+    /// tree-walker: the VM's render sets `RENDERING_CACHE`, the tree-walker's
+    /// does not. It fails on the engines it is told to.
+    fn counting_probe(fails_on_vm: bool, fails_on_tree_walker: bool) -> (Value, Calls, Calls) {
+        let on_vm = Calls::default();
+        let on_tree_walker = Calls::default();
+        let (vm_calls, tree_walker_calls) = (on_vm.clone(), on_tree_walker.clone());
+        let native = crate::interpreter::value::NativeFunction::new("probe", Some(0), move |_| {
+            let vm = RENDERING_CACHE.with(|c| !c.get().is_null());
+            let calls = if vm { &vm_calls } else { &tree_walker_calls };
+            calls.set(calls.get() + 1);
+            if (vm && fails_on_vm) || (!vm && fails_on_tree_walker) {
+                return Err("probe failed".to_string());
+            }
+            Ok(Value::String("p".into()))
+        });
+        (Value::NativeFunction(native), on_vm, on_tree_walker)
+    }
+
+    /// Views at `views/page` and `views/things/_row` that call `probe()`
+    /// twice, in a loop (worth compiling), then write `n`.
+    fn probe_views() -> Result<(tempfile::TempDir, crate::template::TemplateCache), std::io::Error>
+    {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(views.join("things"))?;
+        let source = "<% for i in [1, 2] %><%= probe() %><% end %>|<%= n %>";
+        std::fs::write(views.join("page.html.slv"), source)?;
+        std::fs::write(views.join("things").join("_row.html.slv"), source)?;
+        let cache = crate::template::TemplateCache::new(&views);
+        Ok((dir, cache))
+    }
+
+    /// A view the VM fails on and the tree-walker renders: the two engines
+    /// disagree about it, so it stays on the tree-walker. Every request used
+    /// to run it on the VM, throw that away and render it again. A partial
+    /// rendered inside a view goes the same way.
+    #[test]
+    fn a_view_only_the_vm_fails_stays_on_the_tree_walker() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let (_dir, cache) = probe_views()?;
+        let (probe, on_vm, on_tree_walker) = counting_probe(true, false);
+        // A different `n` each time: the response cache never answers.
+        for n in 1..=3 {
+            let data = hash(vec![("probe", probe.clone()), ("n", Value::Int(n))]);
+            assert_eq!(cache.render("page", &data, None)?, format!("pp|{n}"));
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (1, 6));
+
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let (probe, on_vm, on_tree_walker) = counting_probe(true, false);
+        for n in 1..=3 {
+            let data = hash(vec![("probe", probe.clone()), ("n", Value::Int(n))]);
+            assert_eq!(
+                cache.render_partial("things/row", &data)?,
+                format!("pp|{n}")
+            );
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (1, 6));
+        Ok(())
+    }
+
+    /// An error both engines raise is the view's or its data's, not the VM's:
+    /// the view stays compiled, and the next request tries the VM again.
+    #[test]
+    fn an_error_both_engines_raise_keeps_the_view_compiled(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, cache) = probe_views()?;
+        let (probe, on_vm, on_tree_walker) = counting_probe(true, true);
+        for n in 1..=2 {
+            let data = hash(vec![("probe", probe.clone()), ("n", Value::Int(n))]);
+            assert!(cache.render("page", &data, None).is_err());
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (2, 2));
+        Ok(())
+    }
+
+    /// A view the VM stops at the handler budget fails: the tree-walker
+    /// rendered it again past the budget (its `for` over output checks no
+    /// deadline) and returned the whole page, then kept the view on the
+    /// tree-walker for good, as if the engines disagreed about it.
+    #[test]
+    fn a_view_past_the_budget_fails_and_stays_compiled() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(&views)?;
+        std::fs::write(
+            views.join("page.html.slv"),
+            "<% for row in rows %><%= row %>,<% end %><%= probe() %>",
+        )?;
+        let cache = crate::template::TemplateCache::new(&views);
+        let (probe, on_vm, on_tree_walker) = counting_probe(false, false);
+        let many = array((0..200_000).map(Value::Int).collect());
+        let data = hash(vec![("probe", probe.clone()), ("rows", many)]);
+        {
+            let guard = crate::interpreter::deadline::enter(web_time::Duration::from_nanos(1));
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            let Err(err) = cache.render("page", &data, None) else {
+                return Err("a view past the budget rendered".into());
+            };
+            assert!(err.contains("handler budget"), "{err}");
+            drop(guard);
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (0, 0));
+        // Not demoted: the next request renders on the VM.
+        let data = hash(vec![("probe", probe), ("rows", array(vec![Value::Int(1)]))]);
+        assert_eq!(cache.render("page", &data, None)?, "1,p");
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (1, 0));
+        Ok(())
+    }
+
+    /// Through serve's render path: a page whose footer reads `clock` bare
+    /// is rendered by the VM alone.
+    #[test]
+    fn a_page_reading_clock_bare_renders_on_the_vm_alone() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(&views)?;
+        std::fs::write(
+            views.join("page.html.slv"),
+            "<% for i in [1, 2] %><%= probe() %><% end %>|<%= (clock - started) > 0 %>",
+        )?;
+        let cache = crate::template::TemplateCache::new(&views);
+        let (probe, on_vm, on_tree_walker) = counting_probe(false, false);
+        let data = hash(vec![("probe", probe), ("started", Value::Float(1.0))]);
+        assert_eq!(cache.render("page", &data, None)?, "pp|true");
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (2, 0));
         Ok(())
     }
 

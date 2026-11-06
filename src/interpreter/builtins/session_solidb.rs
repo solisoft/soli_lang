@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::solidb_http::{SoliDBClient, SoliDBError};
 
+use super::model::crud;
 use super::session::SessionStore;
 use super::session_request_cache as request_cache;
 
@@ -202,14 +203,20 @@ impl SolidbSessionStore {
         Ok(answer)
     }
 
+    // The session's own writes do not arm the durable-write tripwire
+    // (`crud::without_durable_mark`): they are the framework's, and a re-run
+    // of the handler on the tree-walker writes the same session again. A
+    // handler that set a session key and then raised its own error would
+    // otherwise be demoted for good, as if it had written app data.
     fn save_session(&self, session: &SessionDocument) -> Result<(), String> {
         let client = self.create_client().map_err(|e| e.to_string())?;
         let doc_value = serde_json::to_value(session)
             .map_err(|e| format!("Failed to serialize session: {}", e))?;
 
-        client
-            .update(&self.collection, &session.key, doc_value, true)
-            .map_err(|e| e.to_string())?;
+        crud::without_durable_mark(|| {
+            client.update(&self.collection, &session.key, doc_value, true)
+        })
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -218,9 +225,10 @@ impl SolidbSessionStore {
         let doc_value = serde_json::to_value(session)
             .map_err(|e| format!("Failed to serialize session: {}", e))?;
 
-        client
-            .insert(&self.collection, Some(&session.key), doc_value)
-            .map_err(|e| e.to_string())?;
+        crud::without_durable_mark(|| {
+            client.insert(&self.collection, Some(&session.key), doc_value)
+        })
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 }
@@ -316,7 +324,9 @@ impl SessionStore for SolidbSessionStore {
     fn destroy(&self, session_id: &str) {
         request_cache::forget(self.memo_id(), session_id);
         if let Ok(client) = self.create_client() {
-            if let Err(e) = client.delete(&self.collection, session_id) {
+            if let Err(e) =
+                crud::without_durable_mark(|| client.delete(&self.collection, session_id))
+            {
                 eprintln!("Failed to destroy session: {}", e);
             }
         }
@@ -348,7 +358,9 @@ impl SessionStore for SolidbSessionStore {
     fn cleanup(&self) {
         if let Ok(client) = self.create_client() {
             let cutoff_ms = chrono::Utc::now().timestamp_millis() - self.max_age.as_millis() as i64;
-            Self::purge_expired(&client, &self.collection, cutoff_ms);
+            crud::without_durable_mark(|| {
+                Self::purge_expired(&client, &self.collection, cutoff_ms)
+            });
         }
     }
 
@@ -375,6 +387,21 @@ impl SessionStore for SolidbSessionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The session's writes are the framework's: a handler that set a
+    /// session key and then raised is still re-run, not demoted as if it had
+    /// written app data. The writes mark before the request goes out, so an
+    /// unreachable host shows it.
+    #[test]
+    fn session_writes_do_not_arm_the_durable_write_tripwire() {
+        let store = SolidbSessionStore::new("127.0.0.1:1".to_string(), "test_db".to_string());
+        crud::clear_durable_commit();
+        let id = store.create_session();
+        store.destroy(&id);
+        let _ = store.regenerate(&id);
+        store.cleanup();
+        assert!(!crud::had_durable_commit());
+    }
 
     #[test]
     fn test_solidb_store_creation() {

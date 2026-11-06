@@ -118,3 +118,40 @@ print(post._key, post._errors)
         "refused\nrefused\nnull [kept]\n",
     );
 }
+
+/// `Model.new(attrs)` sets the literal defaults and the attributes it is
+/// given, and leaves every other declared field unset — as 2.29.3 did — so
+/// `save` neither validates nor writes a `nil` the caller never set, and a
+/// column's own default applies. It set them all to `nil` (C577), so a
+/// `numericality` validation failed on a field nobody assigned and a SQL
+/// insert wrote NULL over the column's DEFAULT. A plain class still starts
+/// every declared field (`Klass.new(attrs)`).
+#[test]
+fn model_new_leaves_unassigned_declared_fields_unset() {
+    assert_both(
+        r##"def stamp()
+  "computed"
+end
+class Person < Model
+  name: String
+  age: Int
+  views: Int = 0
+  tags: Array = []
+  status: String = stamp()
+end
+p = Person.new({"name": "Ann"})
+h = p.to_h
+print(h.has_key("name"), h.has_key("age"), h.has_key("status"), p.views, p.tags)
+q = Person.new()
+print(q.to_h.has_key("age"), q.views, q.to_h.length)
+r = Person.new({"age": nil})
+print(r.to_h.has_key("age"), r.to_h.has_key("name"))
+class Bag
+  a: Int
+  b: Int = 2
+end
+print(Bag.new({"b": 3}).a, Bag.new().b)
+"##,
+        "true false false 0 []\nfalse 0 2\ntrue false\nnull 2\n",
+    );
+}

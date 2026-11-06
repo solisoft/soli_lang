@@ -43,6 +43,19 @@ pub fn is_bare_call_builtin(name: &str) -> bool {
     BARE_CALL_BUILTINS.contains(&name)
 }
 
+/// Whether a bare read of the native `name` means something different on the
+/// two engines: the tree-walker calls a zero-argument (or auto-invocable)
+/// native read by name, the VM passes it as a value — except the
+/// [`BARE_CALL_BUILTINS`], which both engines call. Auto engine selection
+/// keeps a script, or a `serve` middleware, that relies on the difference on
+/// the tree-walker.
+pub fn bare_read_differs_between_engines(
+    name: &str,
+    native: &crate::interpreter::value::NativeFunction,
+) -> bool {
+    (native.is_auto_invocable || native.arity == Some(0)) && !is_bare_call_builtin(name)
+}
+
 // Re-export submodules
 pub mod apns;
 pub mod app_links;
@@ -244,7 +257,7 @@ impl Drop for StdoutCaptureGuard {
     }
 }
 
-fn write_captured_or_stdout(s: &str) {
+pub(crate) fn write_captured_or_stdout(s: &str) {
     let captured = STDOUT_CAPTURE.with(|c| {
         if let Some(ref mut buf) = *c.borrow_mut() {
             buf.extend_from_slice(s.as_bytes());

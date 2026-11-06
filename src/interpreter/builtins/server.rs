@@ -21,7 +21,6 @@ fn ws_message_to_string(value: &Value, fn_name: &str) -> Result<String, String> 
             .map_err(|e| format!("{}() could not serialize payload to JSON: {}", fn_name, e)),
     }
 }
-use ahash::RandomState as AHasher;
 use bytes::Bytes;
 
 /// An OpenAPI document declared in `config/routes.sl` with
@@ -99,7 +98,36 @@ thread_local! {
     // Method-indexed route cache for O(1) method lookup + O(m) route search
     // where m = routes for that method, instead of O(n) for all routes
     static ROUTE_INDEX: RefCell<RouteIndex> = RefCell::new(RouteIndex::new());
+    // Bumped whenever this thread's route table or its index changes, so a
+    // cache keyed by route position (the usage recorder's) knows when the
+    // positions it saw mean something else.
+    static ROUTES_GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
+
+fn bump_routes_generation() {
+    ROUTES_GENERATION.with(|g| g.set(g.get().wrapping_add(1)));
+}
+
+/// Changes whenever this thread's route table does: a position returned by
+/// [`find_route`] names the same route for as long as this stays the same.
+pub fn routes_generation() -> u64 {
+    ROUTES_GENERATION.with(|g| g.get())
+}
+
+/// `GET /posts/:id`: the method and the pattern of the route at `index`, as
+/// [`find_route`] returned it.
+pub fn route_label(index: usize) -> Option<String> {
+    ROUTES.with(|routes| {
+        routes
+            .borrow()
+            .get(index)
+            .map(|route| format!("{} {}", route.method, route.path_pattern))
+    })
+}
+
+/// What [`find_route`] hands back: the handler name, the route's own
+/// middleware, the captured params, and the route's position in the table.
+pub type FoundRoute = (String, Vec<Value>, HashMap<String, String>, usize);
 
 /// Method-indexed route cache for faster lookups.
 /// Groups routes by HTTP method and provides fast exact-match lookup.
@@ -156,6 +184,7 @@ impl RouteIndex {
 
 /// Clear all registered routes (useful for testing or restarting).
 pub fn clear_routes() {
+    bump_routes_generation();
     ROUTES.with(|routes| routes.borrow_mut().clear());
     ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
 }
@@ -163,6 +192,7 @@ pub fn clear_routes() {
 /// Take all routes (consumes and returns them), leaving empty routes.
 /// Used for hot reload to save routes before reloading.
 pub fn take_routes() -> Vec<Route> {
+    bump_routes_generation();
     ROUTES.with(|routes| {
         let mut r = routes.borrow_mut();
         std::mem::take(&mut *r)
@@ -171,6 +201,7 @@ pub fn take_routes() -> Vec<Route> {
 
 /// Restore routes from a previous state (after failed reload).
 pub fn restore_routes(routes: Vec<Route>) {
+    bump_routes_generation();
     ROUTES.with(|r| *r.borrow_mut() = routes);
     ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
 }
@@ -228,6 +259,7 @@ pub fn get_routes() -> Vec<Route> {
 /// Rebuild the route index from current routes.
 /// Call this after modifying routes to enable fast lookups.
 pub fn rebuild_route_index() {
+    bump_routes_generation();
     ROUTES.with(|routes| {
         ROUTE_INDEX.with(|index| {
             index.borrow_mut().rebuild(&routes.borrow());
@@ -236,12 +268,10 @@ pub fn rebuild_route_index() {
 }
 
 /// Find a matching route by method and path using the index.
-/// Returns only the needed fields (handler_name, middleware, params) to avoid
-/// cloning the entire Route struct (which includes method and path_pattern we don't need).
-pub fn find_route(
-    method: &str,
-    path: &str,
-) -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+/// Returns only the needed fields (handler_name, middleware, params, and the
+/// route's position) to avoid cloning the entire Route struct (which includes
+/// method and path_pattern we don't need).
+pub fn find_route(method: &str, path: &str) -> Option<FoundRoute> {
     ROUTES.with(|routes| {
         ROUTE_INDEX.with(|index| {
             let routes = routes.borrow();
@@ -260,7 +290,7 @@ pub fn find_route(
                               exact_map: Option<&std::collections::HashMap<String, usize>>,
                               pattern_indices: Option<&Vec<usize>>,
                               path: &str|
-             -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+             -> Option<FoundRoute> {
                 if let Some(result) = try_find_route(routes, exact_map, pattern_indices, path) {
                     return Some(result);
                 }
@@ -311,13 +341,13 @@ fn try_find_route(
     exact_map: Option<&std::collections::HashMap<String, usize>>,
     pattern_indices: Option<&Vec<usize>>,
     path: &str,
-) -> Option<(String, Vec<Value>, HashMap<String, String>)> {
+) -> Option<FoundRoute> {
     // Fast path: nested HashMap lookup for exact matches
     if let Some(path_map) = exact_map {
         if let Some(&idx) = path_map.get(path) {
             if let Some(route) = routes.get(idx) {
                 let middleware = resolve_middleware(route);
-                return Some((route.handler_name.clone(), middleware, HashMap::new()));
+                return Some((route.handler_name.clone(), middleware, HashMap::new(), idx));
             }
         }
     }
@@ -328,7 +358,7 @@ fn try_find_route(
             if let Some(route) = routes.get(idx) {
                 if let Some(params) = match_path(&route.path_pattern, path) {
                     let middleware = resolve_middleware(route);
-                    return Some((route.handler_name.clone(), middleware, params));
+                    return Some((route.handler_name.clone(), middleware, params, idx));
                 }
             }
         }
@@ -467,6 +497,7 @@ fn register_route(
     middleware: Vec<Value>,
     middleware_names: Vec<String>,
 ) {
+    bump_routes_generation();
     ROUTES.with(|routes| {
         routes.borrow_mut().push(Route {
             method: method.to_string(),
@@ -1020,7 +1051,7 @@ fn param_node_to_value(node: ParamNode) -> Value {
     match node {
         ParamNode::Str(s) => Value::String(s.into()),
         ParamNode::Map(map) => {
-            let mut pairs = HashPairs::with_capacity_and_hasher(map.len(), AHasher::default());
+            let mut pairs = HashPairs::with_capacity(map.len());
             for (k, v) in map {
                 pairs.insert(HashKey::String(k.into()), param_node_to_value(v));
             }
@@ -1055,7 +1086,7 @@ pub fn nest_query_pairs(pairs: Vec<(String, String)>) -> HashPairs {
             }
         }
     }
-    let mut result = HashPairs::with_capacity_and_hasher(root.len(), AHasher::default());
+    let mut result = HashPairs::with_capacity(root.len());
     for (k, v) in root {
         result.insert(HashKey::String(k.into()), param_node_to_value(v));
     }
@@ -1152,6 +1183,13 @@ pub fn set_fast_path_response(resp: FastPathResponse) {
     });
 }
 
+/// Whether `render_json` / `render_text` / `render_jsonp` already answered
+/// this request. The action's return value is then not a response: the
+/// auto-render of the action's default view is skipped.
+pub fn has_fast_path_response() -> bool {
+    FAST_PATH_RESPONSE.with(|cell| cell.borrow().is_some())
+}
+
 /// Take the fast-path response if set (called from extract_response).
 pub fn take_fast_path_response() -> Option<FastPathResponse> {
     FAST_PATH_RESPONSE.with(|cell| cell.borrow_mut().take())
@@ -1205,7 +1243,7 @@ pub fn build_request_hash(
     let raw_cookie = headers.get("cookie").map(|s| s.as_str());
     let cookie_pairs = crate::interpreter::builtins::session::parse_cookie_pairs(raw_cookie);
     let cookies = Value::Hash(Rc::new(RefCell::new(cookie_pairs)));
-    let mut header_pairs = HashPairs::with_capacity_and_hasher(headers.len(), AHasher::default());
+    let mut header_pairs = HashPairs::with_capacity(headers.len());
     for (k, v) in headers {
         header_pairs.insert(HashKey::String(k.into()), Value::String(v.into()));
     }
@@ -1255,7 +1293,7 @@ pub fn build_request_hash_with_parsed(
     let params_value = if params.is_empty() {
         None
     } else {
-        let mut map = HashPairs::with_capacity_and_hasher(params.len(), AHasher::default());
+        let mut map = HashPairs::with_capacity(params.len());
         for (k, v) in params {
             map.insert(HashKey::String(k.into()), Value::String(v.into()));
         }
@@ -1309,7 +1347,7 @@ pub fn build_request_hash_with_parsed(
             + if parsed.files.is_some() { 1 } else { 0 }
             + if all_value.is_some() { 1 } else { 0 }
             + if !peer_ip.is_empty() { 1 } else { 0 };
-        let mut map = HashPairs::with_capacity_and_hasher(capacity, AHasher::default());
+        let mut map = HashPairs::with_capacity(capacity);
         map.insert(keys.method.clone(), Value::String(method.into()));
         map.insert(keys.path.clone(), Value::String(path.into()));
         if let Some(v) = params_value {
@@ -1399,10 +1437,7 @@ fn build_unified_params_refs(
     query_params: &HashPairs,
     parsed: &ParsedBody,
 ) -> HashPairs {
-    let mut all: HashPairs = HashPairs::with_capacity_and_hasher(
-        route_params.len() + query_params.len(),
-        AHasher::default(),
-    );
+    let mut all: HashPairs = HashPairs::with_capacity(route_params.len() + query_params.len());
 
     // Start with route params
     for (k, v) in route_params {

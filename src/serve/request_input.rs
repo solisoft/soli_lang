@@ -88,8 +88,7 @@ pub(super) fn build(
     // from hyper's HeaderMap into the Soli HashPairs handlers see as
     // req["headers"] (non-UTF-8 values are skipped, as before).
     let wire_headers = std::mem::take(&mut data.headers);
-    let mut headers =
-        HashPairs::with_capacity_and_hasher(wire_headers.keys_len(), ahash::RandomState::default());
+    let mut headers = HashPairs::with_capacity(wire_headers.keys_len());
     for (name, value) in &wire_headers {
         if let Ok(v) = value.to_str() {
             headers.insert(

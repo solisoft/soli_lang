@@ -162,12 +162,12 @@ end</code></pre>
 if args.length == 0
   print("usage: tool N")
 else
-  n = args[0].to_i()
+  n = args[0].to_i
   print("n = #{n}")
 end</code></pre>
 
             <p class="text-gray-400 mt-4">
-                The values are always Strings; convert them yourself (<code>to_i()</code>, <code>to_f()</code>). Under <code>soli serve</code> and <code>soli test</code> it is <code>[]</code>. See <a href="/docs/development-tools/deploy#script-executables" class="text-amber-400 hover:text-amber-300">Script Executables</a>.
+                The values are always Strings; convert them yourself (<code>to_i</code>, <code>to_f</code>). Under <code>soli serve</code> and <code>soli test</code> it is <code>[]</code>. See <a href="/docs/development-tools/deploy#script-executables" class="text-amber-400 hover:text-amber-300">Script Executables</a>.
             </p>
         </div>
     </section>

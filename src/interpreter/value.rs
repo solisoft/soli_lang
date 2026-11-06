@@ -45,6 +45,21 @@ impl DecimalValue {
         Ok(Self(decimal, precision))
     }
 
+    /// The value of a Decimal literal from its text, `"19.99"` for `19.99D`.
+    /// The precision is the number of digits written after the point, also
+    /// past the 28 places the value keeps. `None` when the text does not
+    /// parse: an integer part beyond Decimal's range, or a `%n[...]` word
+    /// that is not a number. Both engines read literals through this; the
+    /// VM does it once, when it compiles one.
+    pub fn from_literal(text: &str) -> Option<Self> {
+        let decimal: Decimal = text.parse().ok()?;
+        let precision = text
+            .split('.')
+            .nth(1)
+            .map_or(0, |digits| digits.len() as u32);
+        Some(Self(decimal, precision))
+    }
+
     /// Get the precision (number of decimal places)
     pub fn precision(&self) -> u32 {
         self.1
@@ -344,6 +359,7 @@ pub fn empty_hash() -> Value {
 /// Storage for a Soli hash: insertion-ordered, linear up to eight entries and
 /// an `IndexMap` (ahash) beyond — see [`super::small_map`].
 pub type HashPairs = super::small_map::SmallMap;
+pub use super::small_map::map_hasher;
 
 #[inline]
 pub fn hash_get_value<'a>(hash: &'a HashPairs, key: &Value) -> Option<&'a Value> {
@@ -372,18 +388,14 @@ pub fn hash_contains_value(hash: &HashPairs, key: &Value) -> bool {
 pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
     match key {
         Value::String(s) => {
-            if let Some((_, _, existing)) = hash.get_full_mut(&StrKey(s)) {
-                *existing = value;
-            } else {
-                hash.insert(HashKey::String(s.clone()), value);
-            }
+            hash.set_str(s, value);
             true
         }
         Value::Symbol(s) => {
             if let Some((_, _, existing)) = hash.get_full_mut(&SymKey(s)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Symbol(s.clone()), value);
+                hash.insert_absent(HashKey::Symbol(s.clone()), value);
             }
             true
         }
@@ -391,7 +403,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Int(*n)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Int(*n), value);
+                hash.insert_absent(HashKey::Int(*n), value);
             }
             true
         }
@@ -399,7 +411,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Bool(*b)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Bool(*b), value);
+                hash.insert_absent(HashKey::Bool(*b), value);
             }
             true
         }
@@ -407,7 +419,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Null) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Null, value);
+                hash.insert_absent(HashKey::Null, value);
             }
             true
         }
@@ -415,7 +427,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Decimal(d.clone())) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Decimal(d.clone()), value);
+                hash.insert_absent(HashKey::Decimal(d.clone()), value);
             }
             true
         }
@@ -523,20 +535,43 @@ pub struct DeferredCell {
 /// structurally — class name + `__variant` tag + payload fields (recursively) —
 /// and defers to the default `PartialEq` for everything else, preserving
 /// existing behaviour for ordinary objects.
+///
+/// A unit variant is a shared singleton, so `status == Status.Active` is
+/// usually one instance compared with itself, and identity answers it before
+/// any field is looked at. That holds for any instance that is no payload
+/// variant: an ordinary object's `PartialEq` is identity first, and a unit
+/// variant's only field is its tag. A payload variant compared with itself
+/// still goes field by field, so `v == v` stays false when its payload holds
+/// a NaN, exactly as for two equal copies.
 pub fn enum_aware_equal(a: &Value, b: &Value) -> bool {
     if let (Value::Instance(ia), Value::Instance(ib)) = (a, b) {
-        let a_is_enum = ia.borrow().fields.contains_key("__variant");
-        let b_is_enum = ib.borrow().fields.contains_key("__variant");
-        if a_is_enum && b_is_enum {
-            let ra = ia.borrow();
-            let rb = ib.borrow();
-            if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
-                return false;
+        // The left operand decides: an ordinary object never compares
+        // structurally, so the right one is probed only behind an enum.
+        let ra = ia.borrow();
+        if !ra.fields.contains_key("__variant") {
+            // `PartialEq`'s own first answer for one object, without its
+            // depth guard.
+            if Rc::ptr_eq(ia, ib) {
+                return true;
             }
-            return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
-                Some(vb) => enum_aware_equal(va, vb),
-                None => false,
-            });
+        } else {
+            // A unit variant (its tag is its only field) compared with
+            // itself: identity answers. A payload variant compares field by
+            // field even against itself (a NaN payload is unequal to itself
+            // on both engines).
+            if ra.fields.len() <= 1 && Rc::ptr_eq(ia, ib) {
+                return true;
+            }
+            let rb = ib.borrow();
+            if rb.fields.contains_key("__variant") {
+                if ra.class.name != rb.class.name || ra.fields.len() != rb.fields.len() {
+                    return false;
+                }
+                return ra.fields.iter().all(|(key, va)| match rb.fields.get(key) {
+                    Some(vb) => enum_aware_equal(va, vb),
+                    None => false,
+                });
+            }
         }
     }
     a == b
@@ -684,15 +719,34 @@ impl Value {
     /// generic object form, leaking the internal field as
     /// `<DateTime _ts: 1794744000000000000>`.
     pub fn render_datetime(ts: i64, use_utc: bool) -> String {
-        if use_utc {
-            chrono::DateTime::from_timestamp_nanos(ts)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
+        Self::datetime_text(ts, use_utc).as_str().to_string()
+    }
+
+    /// Append a `DateTime`'s string form to `out` without an intermediate
+    /// String. Byte-identical to `format("%Y-%m-%d %H:%M:%S")`.
+    #[inline]
+    pub fn write_datetime(ts: i64, use_utc: bool, out: &mut String) {
+        out.push_str(Self::datetime_text(ts, use_utc).as_str());
+    }
+
+    /// `YYYY-MM-DD HH:MM:SS` on the stack. This used to go through chrono's
+    /// `format(...)`, which parses the strftime pattern on every call, formats
+    /// through `core::fmt` and allocates a String the caller then copied —
+    /// about 190-235 ns more per date written into a view than a string of
+    /// the same length. Here: the view's UTC offset (0, or the cached zone's
+    /// offset at this instant — the same rule `with_timezone` applies), then
+    /// days-from-epoch to a civil date and two-digit writes.
+    ///
+    /// Always 19 bytes: an `i64` of nanoseconds spans 1677-09-21 to
+    /// 2262-04-11, and no zone moves that by more than a day, so `%Y` is
+    /// always the four-digit, unsigned form chrono prints for 0..=9999.
+    pub fn datetime_text(ts: i64, use_utc: bool) -> DateTimeText {
+        let offset = if use_utc {
+            0
         } else {
-            crate::interpreter::builtins::datetime::local_zone::local_from_nanos(ts)
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string()
-        }
+            crate::interpreter::builtins::datetime::local_zone::local_offset_secs(ts)
+        };
+        DateTimeText::new(ts, offset)
     }
 
     /// How a `DateTime` serialises to JSON: RFC 3339, matching `to_iso()`.
@@ -845,7 +899,27 @@ impl Value {
         }
     }
 
+    /// Soli truthiness: `false`, `nil`, `0`, `""`, `[]` and `{}` are falsy,
+    /// everything else (`0.0` included) is truthy.
+    ///
+    /// Inlined for the scalar tags, which is what nearly every condition
+    /// tests: the VM's conditional jumps call this once per branch, and as an
+    /// out-of-line function the `Bool` case paid a call, a stack frame and a
+    /// return around a one-byte read. Collections, strings and `Deferred`
+    /// (which may flush a query batch) go to `is_truthy_slow`, kept out of
+    /// line so the dispatch loop does not inline a batch flush at each site.
+    #[inline]
     pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Bool(b) => *b,
+            Value::Null => false,
+            Value::Int(i) => *i != 0,
+            _ => self.is_truthy_slow(),
+        }
+    }
+
+    #[inline(never)]
+    fn is_truthy_slow(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
             Value::Null => false,
@@ -871,7 +945,7 @@ impl Value {
     #[inline]
     pub fn display_len(&self) -> usize {
         match self {
-            Value::DateTime(ts, use_utc) => Self::render_datetime(*ts, *use_utc).len(),
+            Value::DateTime(_, _) => DateTimeText::LEN,
             // Count digits arithmetically. This used to be `n.to_string().len()`,
             // which heap-allocated a String purely to read its length and then
             // dropped it — and `join` calls this once per element to size its
@@ -952,7 +1026,7 @@ impl Value {
     #[inline]
     pub fn write_to_string(&self, s: &mut String) {
         match self {
-            Value::DateTime(ts, use_utc) => s.push_str(&Self::render_datetime(*ts, *use_utc)),
+            Value::DateTime(ts, use_utc) => Self::write_datetime(*ts, *use_utc, s),
             // itoa writes into a stack buffer; `to_string()` allocated one
             // String per element. Integers have a single decimal form, so the
             // output is byte-identical.
@@ -1199,8 +1273,28 @@ fn with_depth<T>(
 /// call.
 #[inline(never)]
 pub fn build_interpolated(parts: &[Value]) -> SoliStr {
+    build_display(parts.iter())
+}
+
+/// `a` followed by `b`, each as `Display` writes it: the `+` of a string and
+/// any other value, on both engines. Built like an interpolation (and through
+/// the same code), so `"n=" + 1.5` and `"n=#{1.5}"` are one string, made the
+/// same way; `eco_format!` went through `Display`'s formatter and depth guard
+/// for every number, 17 ns more per `"str" + int` than the interpolation.
+#[inline(never)]
+pub fn concat_display(a: &Value, b: &Value) -> SoliStr {
+    build_display([a, b].into_iter())
+}
+
+/// The body of [`build_interpolated`] and [`concat_display`]: two passes over
+/// the parts, one to size the result and one to write it.
+#[inline(always)]
+fn build_display<'a, I>(parts: I) -> SoliStr
+where
+    I: Iterator<Item = &'a Value> + Clone,
+{
     let mut len = 0;
-    for part in parts {
+    for part in parts.clone() {
         // Measured inline rather than through `display_len`, whose recursive
         // container arms keep it from inlining: a call per part cost the
         // multi-part case more than the build saves.
@@ -1295,7 +1389,9 @@ impl fmt::Display for Value {
 impl Value {
     fn fmt_inner(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::DateTime(ts, use_utc) => write!(f, "{}", Value::render_datetime(*ts, *use_utc)),
+            Value::DateTime(ts, use_utc) => {
+                f.write_str(Value::datetime_text(*ts, *use_utc).as_str())
+            }
             Value::Int(n) => write!(f, "{}", n),
             Value::Float(n) => write!(f, "{}", n),
             Value::Decimal(d) => write!(f, "{}", d),
@@ -1453,6 +1549,11 @@ pub struct Function {
     /// Cached JIT-compiled FunctionProto — compiled once on first call,
     /// reused on subsequent calls.
     pub jit_cache: RefCell<Option<std::sync::Arc<crate::vm::chunk::FunctionProto>>>,
+    /// The VM closure over `jit_cache`'s proto (it has no upvalues), made on
+    /// the first VM call and reused by the next ones instead of a fresh
+    /// `Rc<VmClosure>` per call. Only trusted while its proto is the one in
+    /// `jit_cache` (`crate::vm::vm_calls::cached_function_closure`).
+    pub jit_closure: RefCell<Option<Rc<VmClosure>>>,
     /// Machine code for this function, when it is a top-level def typed
     /// Int/Float/Bool end to end (see `crate::native`). Tried first on each
     /// call; a declined call runs the body as usual.
@@ -1477,6 +1578,7 @@ impl Default for Function {
             return_type: None,
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            jit_closure: RefCell::new(None),
             binds_this: false,
             kernel: None,
         }
@@ -1501,6 +1603,7 @@ impl Function {
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            jit_closure: RefCell::new(None),
             binds_this: false,
             kernel: None,
         }
@@ -1523,6 +1626,7 @@ impl Function {
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            jit_closure: RefCell::new(None),
             binds_this: false,
             kernel: None,
         }
@@ -1572,6 +1676,47 @@ pub struct NativeFunctionInner {
     /// allocation was pure overhead.
     pub func: NativeFn,
     pub is_auto_invocable: bool, // Can be called without parentheses
+    /// Which of the few natives the VM intercepts this one is, worked out
+    /// once from `name` at construction so a global native call branches on
+    /// a byte instead of comparing its name against every special.
+    pub vm_special: NativeSpecial,
+}
+
+/// The natives the VM handles itself before (or instead of) calling `func`:
+/// block-taking builtins that must run a closure on the calling VM, and the
+/// ones whose tree-walker behaviour needs VM state. `None` for every other
+/// native, which the VM calls straight on its stack slice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeSpecial {
+    None,
+    Grouped,
+    WithTransaction,
+    AfterCommit,
+    WithTenant,
+    RenderJson,
+    AssertRaises,
+    Defined,
+    ConstGet,
+    /// `Xml.build` / `Xml.each` / `node.add` with a block
+    /// (`builtins::xml::block::takes_block`).
+    XmlBlock,
+}
+
+impl NativeSpecial {
+    pub fn of(name: &str) -> Self {
+        match name {
+            "grouped" => Self::Grouped,
+            "with_transaction" => Self::WithTransaction,
+            "after_commit" => Self::AfterCommit,
+            "with_tenant" => Self::WithTenant,
+            "render_json" => Self::RenderJson,
+            "assert_raises" => Self::AssertRaises,
+            "defined" => Self::Defined,
+            "const_get" => Self::ConstGet,
+            _ if crate::interpreter::builtins::xml::block::takes_block(name) => Self::XmlBlock,
+            _ => Self::None,
+        }
+    }
 }
 
 impl std::ops::Deref for NativeFunction {
@@ -1608,11 +1753,14 @@ impl NativeFunction {
     where
         F: Fn(&[Value]) -> Result<Value, String> + 'static,
     {
+        let name = name.into();
+        let vm_special = NativeSpecial::of(&name);
         Self(Rc::new(NativeFunctionInner {
-            name: name.into(),
+            name,
             arity,
             func: Rc::new(func),
             is_auto_invocable,
+            vm_special,
         }))
     }
 }
@@ -1669,6 +1817,124 @@ pub const PRIM_TYPE_COUNT: usize = 9;
 /// dropped and the instance came back empty.
 pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
 
+/// The method that evaluates a class's field defaults that are not literals
+/// (`created: Int = clock()`) on a new instance and returns them as a hash,
+/// `{"created": …}`. The VM compiles one per class that has such defaults
+/// and keeps it in [`FieldInit::computed`], never among the class's methods.
+pub const FIELD_DEFAULTS_METHOD: &str = "__field_defaults__";
+
+/// The name `Op::Method` registers a compiled constructor under: no
+/// identifier can spell it, so it never meets a user method. `op_add_method`
+/// stores it in [`Class::vm_init`], never among the class's methods.
+pub const VM_CONSTRUCTOR: &str = "<new>";
+
+/// How the VM starts one class's own declared instance fields on a new
+/// instance, before any constructor runs: what the tree-walker's
+/// `initialize_instance_fields` does for that class (each ancestor has its
+/// own). Built once per class: by `Op::Field` and the
+/// [`FIELD_DEFAULTS_METHOD`] when the VM compiles the class, from
+/// [`Class::fields`] for one the tree-walker defined.
+#[derive(Debug, Clone, Default)]
+pub struct FieldInit {
+    /// Every declared instance field, in declaration order, with the value it
+    /// starts with: its literal default (`count: Int = 0`, `tags: Array =
+    /// []`), else `nil`. That covers a field without a default, and one whose
+    /// default `computed` evaluates.
+    pub fields: Vec<(SoliStr, Value)>,
+    /// The defaults that are not literals, run on the new instance as the
+    /// class: a method returning them by field name.
+    pub computed: Option<Rc<VmClosure>>,
+}
+
+impl FieldInit {
+    /// Set every field to the value it starts with. An array or hash default
+    /// is copied, so two instances never share one.
+    pub fn start(&self, instance: &mut Instance) {
+        for (name, value) in &self.fields {
+            instance.fields.insert(name.clone(), fresh_copy(value));
+        }
+    }
+
+    /// [`Self::start`] for the fields that start with something other than
+    /// `nil`: the literal defaults, as a model's `Model.new(attrs)` sets them.
+    pub fn start_literals(&self, instance: &mut Instance) {
+        for (name, value) in &self.fields {
+            if !matches!(value, Value::Null) {
+                instance.fields.insert(name.clone(), fresh_copy(value));
+            }
+        }
+    }
+}
+
+/// How the VM starts every declared field of a new instance of one class —
+/// its own and its ancestors' — built once per class from their
+/// [`FieldInit`]s (`Vm::construct_plan`, kept in [`Class::construct_plan`]).
+#[derive(Debug, Default)]
+pub struct ConstructPlan {
+    /// Every declared field of the chain with the value it starts with: in
+    /// the order the farthest class first declares them, with the value of
+    /// the nearest class that declares them.
+    pub starts: Vec<(SoliStr, Value)>,
+    /// The field-defaults methods of the chain, the farthest class first,
+    /// each with the class it runs as (`None`: the class itself — kept
+    /// without an `Rc` to it, which would never be freed).
+    pub computed: Vec<(Rc<VmClosure>, Option<Rc<Class>>)>,
+    /// A class below one with defaults that are not literals declares
+    /// fields of its own. Each class must then start its fields after its
+    /// ancestors' defaults ran, as the tree-walker does: class by class.
+    pub class_by_class: bool,
+}
+
+impl ConstructPlan {
+    /// Set every field to the value it starts with (arrays and hashes
+    /// copied, so two instances never share one).
+    pub fn start(&self, instance: &mut Instance) {
+        for (name, value) in &self.starts {
+            instance.fields.insert(name.clone(), fresh_copy(value));
+        }
+    }
+}
+
+/// `value` with each array and hash in it copied: a literal default handed to
+/// one more instance.
+fn fresh_copy(value: &Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(Rc::new(RefCell::new(
+            items.borrow().iter().map(fresh_copy).collect(),
+        ))),
+        Value::Hash(pairs) => {
+            let pairs = pairs.borrow();
+            let mut copy = HashPairs::with_capacity(pairs.len());
+            for (key, item) in pairs.iter() {
+                copy.insert(key.clone(), fresh_copy(item));
+            }
+            Value::Hash(Rc::new(RefCell::new(copy)))
+        }
+        other => other.clone(),
+    }
+}
+
+thread_local! {
+    /// Bumped whenever a class's instance methods change after it was built
+    /// (`define_method`, `alias_method`, `include`, a module body). Each
+    /// class's flattened method cache records the epoch it was built at and
+    /// is rebuilt on a mismatch. Classes are `Rc` and never cross threads, so
+    /// a per-thread counter is enough.
+    static METHOD_EPOCH: Cell<u64> = const { Cell::new(1) };
+}
+
+/// The current method-definition epoch (see `METHOD_EPOCH`).
+#[inline]
+pub fn method_epoch() -> u64 {
+    METHOD_EPOCH.with(|epoch| epoch.get())
+}
+
+/// Mark every flattened method cache stale: a class's methods changed, and
+/// its subclasses copied the old set into their own caches.
+pub fn bump_method_epoch() {
+    METHOD_EPOCH.with(|epoch| epoch.set(epoch.get().wrapping_add(1)));
+}
+
 /// A method as `Class::find_instance_method_level` (or
 /// `find_static_method_level`) finds it on the class that declares it:
 /// already compiled to bytecode, or still the tree-walker's AST.
@@ -1701,6 +1967,12 @@ pub struct Class {
     /// ahash-keyed: `find_method` probes this once per method call.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_methods_cache: RefCell<Option<HashMap<String, Rc<Function>, AHasher>>>,
+    /// The [`method_epoch`] `all_methods_cache` was built at. The cache copies
+    /// the superclass's flattened map, so a method added to an ancestor later
+    /// (`A.define_method`, `alias_method`, `include`) must rebuild it too —
+    /// the epoch is global and a mismatch means "rebuild". `pub` only for
+    /// struct-literal construction: always `Cell::new(0)` outside this module.
+    pub all_methods_cache_epoch: Cell<u64>,
     /// Flattened native method cache for O(1) lookups.
     /// NOTE: Should not be manually set; use Class::new() constructor instead.
     pub all_native_methods_cache: RefCell<Option<HashMap<String, Rc<NativeFunction>, AHasher>>>,
@@ -1710,14 +1982,29 @@ pub struct Class {
     /// dispatch in `member.rs` and the VM does not consult `Class.methods`.
     pub primitive: Option<PrimType>,
     /// Bytecode instance methods, registered by `Op::Method` when a class is
-    /// compiled in the VM (`compile_class_decl`). The constructor lands here
-    /// under the name `"init"` (it returns `this`). `Rc` so the per-method
-    /// class rebuilds in `op_add_method` share one map. ahash-keyed: the VM
-    /// probes this on every compiled instance-method call.
+    /// compiled in the VM (`compile_class_decl`) — not the constructor (see
+    /// `vm_init`). `Rc` so the per-method class rebuilds in `op_add_method`
+    /// share one map. ahash-keyed: the VM
+    /// probes this on every compiled instance-method call. Write it through
+    /// [`Class::insert_vm_method`], or call [`note_vm_methods_changed`] after
+    /// writing: the VM's method cache trusts an entry until that epoch moves.
     pub vm_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
+    /// The constructor of a class the VM compiled (`new(...) … end`),
+    /// registered by `Op::Method` under [`VM_CONSTRUCTOR`]. Kept apart from
+    /// `vm_methods`: a user method may be called `init` (or anything else)
+    /// without being taken for the constructor, and the constructor is never
+    /// reachable as a method. `Rc` so the class rebuilds share it, as
+    /// `vm_methods`.
+    pub vm_init: Rc<RefCell<Option<Rc<VmClosure>>>>,
     /// Bytecode static methods, registered by `Op::StaticMethod`. Compiled
     /// as plain functions (no `this` slot).
     pub vm_static_methods: Rc<RefCell<HashMap<String, Rc<VmClosure>, AHasher>>>,
+    /// Bytecode for this class's own tree-walker `static def`s that do not
+    /// read `this`, compiled by the VM as plain functions on their first call
+    /// so later calls skip the name lookups and the closure allocation. Only
+    /// entries of `static_methods` land here, and that map never changes once
+    /// the class is built; a clone starts empty (see [`PlainStaticCache`]).
+    pub vm_plain_static_methods: PlainStaticCache,
     /// Memoized result of [`Class::is_model_subclass`]. The superclass chain
     /// and class names are fixed at construction, so the walk's result can
     /// never change for a given `Class` value. Instance member access checks
@@ -1730,9 +2017,29 @@ pub struct Class {
     /// Memoized [`Class::is_value_object`]. Same contract as
     /// `model_subclass_memo`: always `Cell::new(None)` outside this module.
     pub value_object_memo: Cell<Option<bool>>,
-    /// Memo for [`Class::inherits_field_defaults`]: always `Cell::new(None)`
+    /// How the VM starts this class's own declared instance fields (see
+    /// [`FieldInit`]). Set when the VM compiles the class, or the first time
+    /// it builds an instance of a class the tree-walker defined. `None` until
+    /// then, and for a class that declares no instance field.
+    pub field_init: RefCell<Option<Rc<FieldInit>>>,
+    /// The VM's compiled form of [`Class::constructor`] (a tree-walker
+    /// constructor: every class of a served app), with the function it was
+    /// compiled from. Compiled once, in constructor mode, the first time the
+    /// VM runs it (`Vm::compiled_constructor`); every construction then
+    /// enters it as one frame. A copy of the class given another
+    /// constructor compiles its own: the function is compared by pointer.
+    pub vm_constructor: RefCell<Option<(Rc<Function>, Rc<VmClosure>)>>,
+    /// How the VM starts the declared fields of a new instance of this
+    /// class ([`ConstructPlan`]): built on the first one, kept for the next.
+    pub construct_plan: RefCell<Option<Rc<ConstructPlan>>>,
+    /// The environment a class the tree-walker defined evaluates its field
+    /// defaults that are not literals in — its methods' — with `this` the
+    /// new instance. `None` for a class without such defaults (and for one
+    /// the VM compiled, whose defaults are bytecode).
+    pub defaults_env: Option<Rc<RefCell<Environment>>>,
+    /// Memo for [`Class::intercepts_new`]: always `Default::default()`
     /// outside this module.
-    pub field_defaults_memo: Cell<Option<bool>>,
+    pub intercepts_new_memo: InterceptsNewMemo,
     /// The instance fields this class declares (`cents: Int`), in order. A
     /// value object's implicit constructor binds positional arguments to
     /// them, and `to_h` lists them in this order. Inherited ones live on the
@@ -1760,7 +2067,81 @@ pub struct Class {
     /// Instance methods and fields declared `protected` on this class:
     /// reachable from code running in an instance of the declaring class or a
     /// subclass, on that instance or another one. `Rc` as above.
+    ///
+    /// A name added to either set after the class exists must be followed by
+    /// [`note_restricted_methods_declared`] (or
+    /// [`note_restricted_members_changed`]), which stales
+    /// `restricted_names_memo` on every class.
     pub protected_members: Rc<RefCell<HashSet<String>>>,
+    /// Memo for [`Class::restricted_method`]: always `Default::default()`
+    /// outside this module.
+    pub restricted_names_memo: RefCell<RestrictedNames>,
+}
+
+/// [`Class::vm_plain_static_methods`]: plain-function bytecode for a class's
+/// own `static def`s, by name.
+///
+/// Cloning gives an empty cache rather than a copy. A class is rebuilt by
+/// cloning it and replacing some of its maps (`op_add_method`, a reopened
+/// class), and the clone's `static_methods` may name a different function
+/// than the original's did; it compiles its own entries on first call. The
+/// map itself is created on the first insert, so a class nobody calls a
+/// static on never seeds an `ahash` state.
+#[derive(Default)]
+pub struct PlainStaticCache(RefCell<Option<HashMap<String, Rc<VmClosure>, AHasher>>>);
+
+impl PlainStaticCache {
+    /// The cached bytecode for `name`, if it was compiled.
+    #[inline]
+    pub fn get(&self, name: &str) -> Option<Rc<VmClosure>> {
+        self.0.borrow().as_ref()?.get(name).cloned()
+    }
+
+    /// Remember the bytecode compiled for `name`.
+    pub fn insert(&self, name: &str, closure: Rc<VmClosure>) {
+        self.0
+            .borrow_mut()
+            .get_or_insert_with(HashMap::default)
+            .insert(name.to_string(), closure);
+    }
+}
+
+impl Clone for PlainStaticCache {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl fmt::Debug for PlainStaticCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let names: Vec<String> = self
+            .0
+            .borrow()
+            .as_ref()
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default();
+        f.debug_tuple("PlainStaticCache").field(&names).finish()
+    }
+}
+
+/// The names the classes of one chain declare private or protected, as
+/// [`Class::restricted_method`] last collected them.
+#[derive(Debug, Default)]
+pub struct RestrictedNames {
+    /// The `RESTRICTED_MEMBERS_EPOCH` they were collected in; 0 before the
+    /// first collection, which no epoch equals.
+    epoch: u64,
+    /// `None` when no class of the chain declares one.
+    names: Option<HashSet<String, AHasher>>,
+}
+
+/// A copy starts uncollected. A cloned [`Class`] can be given another
+/// superclass or other private sets before its first lookup, and must not
+/// answer from the original's chain. The cost is one collection per clone.
+impl Clone for RestrictedNames {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
 }
 
 /// How far a restricted instance method reaches (see [`Class::restricted_method`]).
@@ -1806,17 +2187,106 @@ impl MethodAccess {
     }
 }
 
+/// [`Class::intercepts_new`]'s last answer for one class, with the
+/// `STATIC_METHODS_EPOCH` it was computed in (0: never, which no epoch
+/// equals).
+#[derive(Debug, Default)]
+pub struct InterceptsNewMemo(Cell<(u64, bool)>);
+
+/// A copy starts empty: a cloned [`Class`] can be given another superclass
+/// or other static methods before it is first asked.
+impl Clone for InterceptsNewMemo {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+/// Bumped whenever a static method joins a class that already exists — an
+/// `include` or `extend`, a `static def` the VM registers on the class it is
+/// compiling, a module's `class_methods` — so every
+/// [`Class::intercepts_new`] memo is computed again: a subclass's answer
+/// depends on its ancestors' tables too. Starts at 1, so a fresh memo is
+/// never current. The VM's caches of tree-walker statics
+/// (`compile_tree_walking_static`) do not bump it: they only hold statics
+/// `find_static_method` already finds, so they cannot change an answer.
+static STATIC_METHODS_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A static method joined an existing class: stale every
+/// [`Class::intercepts_new`] memo.
+pub fn note_static_methods_changed() {
+    STATIC_METHODS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Set once any class declares a private or protected instance method (see
 /// [`Class::restricted_method`]).
 static RESTRICTED_METHODS_DECLARED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Bumped whenever a name joins some class's `private_members` or
+/// `protected_members`: a [`RestrictedNames`] memo collected in an earlier
+/// epoch is collected again. Starts at 1, so a fresh memo is never current.
+static RESTRICTED_MEMBERS_EPOCH: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
 pub fn note_restricted_methods_declared() {
     RESTRICTED_METHODS_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
+    note_restricted_members_changed();
+}
+
+/// A name joined a class's private or protected set where the flag stays as
+/// it is (a `private class` nested in a class): stale every
+/// [`RestrictedNames`] memo. [`note_restricted_methods_declared`] does it too.
+pub fn note_restricted_members_changed() {
+    RESTRICTED_MEMBERS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub fn restricted_methods_declared() -> bool {
     RESTRICTED_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Bumped whenever some class's `vm_methods` map changes (see
+/// [`Class::insert_vm_method`]): the VM's method cache (`vm::method_cache`)
+/// answers a call only with what it found in the current epoch. Starts at 1,
+/// so an empty entry (epoch 0) is never current.
+static VM_METHODS_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Some class's `vm_methods` changed: stale every method-cache entry. A
+/// global, not per class: a class's answer also depends on its ancestors'
+/// maps, and changes happen at boot and warm-up, not per request.
+pub fn note_vm_methods_changed() {
+    VM_METHODS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The current `VM_METHODS_EPOCH`.
+#[inline]
+pub fn vm_methods_epoch() -> u64 {
+    VM_METHODS_EPOCH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the [`Class::restricted_method`] calls this thread made past
+    /// the flag, and how many of them walked the chain.
+    static RESTRICTED_LOOKUPS: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+}
+
+#[cfg(test)]
+fn tally_restricted_lookup(walked: bool) {
+    RESTRICTED_LOOKUPS.with(|tally| {
+        let (lookups, walks) = tally.get();
+        tally.set(if walked {
+            (lookups, walks + 1)
+        } else {
+            (lookups + 1, walks)
+        });
+    });
+}
+
+/// Test-only: `(lookups past the flag, chain walks)` made on this thread so
+/// far, for a test to tell a skipped privacy check from one that ran.
+#[cfg(test)]
+pub(crate) fn restricted_lookups() -> (usize, usize) {
+    RESTRICTED_LOOKUPS.with(Cell::get)
 }
 
 impl Default for Class {
@@ -1835,13 +2305,20 @@ impl Default for Class {
             const_fields: HashSet::new(),
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
+            all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_init: Rc::new(RefCell::new(None)),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
-            field_defaults_memo: Cell::new(None),
+            field_init: RefCell::new(None),
+            vm_constructor: RefCell::new(None),
+            construct_plan: RefCell::new(None),
+            defaults_env: None,
+            intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
             included_modules: Rc::new(RefCell::new(Vec::new())),
@@ -1852,6 +2329,7 @@ impl Default for Class {
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_members: Rc::new(RefCell::new(HashSet::new())),
             protected_members: Rc::new(RefCell::new(HashSet::new())),
+            restricted_names_memo: RefCell::default(),
         }
     }
 }
@@ -1885,13 +2363,20 @@ impl Class {
             const_fields: HashSet::new(),
             static_const_fields: HashSet::new(),
             all_methods_cache: RefCell::new(None),
+            all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
             primitive: None,
             vm_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_init: Rc::new(RefCell::new(None)),
             vm_static_methods: Rc::new(RefCell::new(HashMap::default())),
+            vm_plain_static_methods: PlainStaticCache::default(),
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
-            field_defaults_memo: Cell::new(None),
+            field_init: RefCell::new(None),
+            vm_constructor: RefCell::new(None),
+            construct_plan: RefCell::new(None),
+            defaults_env: None,
+            intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
             included_modules: Rc::new(RefCell::new(Vec::new())),
@@ -1902,6 +2387,7 @@ impl Class {
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_members: Rc::new(RefCell::new(HashSet::new())),
             protected_members: Rc::new(RefCell::new(HashSet::new())),
+            restricted_names_memo: RefCell::default(),
         }
     }
 
@@ -1915,23 +2401,32 @@ impl Class {
             .and_then(|superclass| superclass.find_vm_method(name))
     }
 
-    /// The restriction on instance method `name`, and the class that defines
-    /// it: `None` for a public method. The nearest class in the chain that
-    /// defines the method decides, so a subclass that redefines it without a
-    /// modifier makes it public again. Answers `None` without a lookup until
-    /// some class declares a private or protected method, so an application
-    /// with none pays one relaxed load.
-    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, String)> {
+    /// The restriction on instance member `name`, and the name of the class
+    /// that defines it: `None` for a public one. The nearest class in the
+    /// chain that defines the member decides, so a subclass that redefines it
+    /// without a modifier makes it public again. Answers `None` without a
+    /// lookup until some class declares a private or protected member, so an
+    /// application with none pays one relaxed load; after that, a name no
+    /// class of the chain restricts — a field read, or any member of a class
+    /// with no restricted ancestor — costs one probe of the chain's memo.
+    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, &str)> {
         if !restricted_methods_declared() {
             return None;
         }
+        #[cfg(test)]
+        tally_restricted_lookup(false);
+        if !self.chain_restricts(name) {
+            return None;
+        }
+        #[cfg(test)]
+        tally_restricted_lookup(true);
         let mut cursor: Option<&Class> = Some(self);
         while let Some(class) = cursor {
             if class.private_members.borrow().contains(name) {
-                return Some((MethodAccess::Private, class.name.clone()));
+                return Some((MethodAccess::Private, class.name.as_str()));
             }
             if class.protected_members.borrow().contains(name) {
-                return Some((MethodAccess::Protected, class.name.clone()));
+                return Some((MethodAccess::Protected, class.name.as_str()));
             }
             if class.methods.borrow().contains_key(name)
                 || class.vm_methods.borrow().contains_key(name)
@@ -1942,6 +2437,41 @@ impl Class {
             cursor = class.superclass.as_deref();
         }
         None
+    }
+
+    /// Does some class of this chain declare `name` private or protected?
+    /// Only then can [`Self::restricted_method`]'s walk find a restriction,
+    /// so every other name skips it. Which members a class *defines* — what
+    /// `include` and `define_method` change — is left to the walk: the memo
+    /// holds only the declared names, collected once per
+    /// `RESTRICTED_MEMBERS_EPOCH`. The chain itself is fixed per `Class`.
+    fn chain_restricts(&self, name: &str) -> bool {
+        let epoch = RESTRICTED_MEMBERS_EPOCH.load(std::sync::atomic::Ordering::Relaxed);
+        {
+            let memo = self.restricted_names_memo.borrow();
+            if memo.epoch == epoch {
+                return memo
+                    .names
+                    .as_ref()
+                    .is_some_and(|names| names.contains(name));
+            }
+        }
+        let mut names: Option<HashSet<String, AHasher>> = None;
+        let mut cursor: Option<&Class> = Some(self);
+        while let Some(class) = cursor {
+            for declared in [&class.private_members, &class.protected_members] {
+                let declared = declared.borrow();
+                if !declared.is_empty() {
+                    names
+                        .get_or_insert_with(HashSet::default)
+                        .extend(declared.iter().cloned());
+                }
+            }
+            cursor = class.superclass.as_deref();
+        }
+        let restricts = names.as_ref().is_some_and(|names| names.contains(name));
+        *self.restricted_names_memo.borrow_mut() = RestrictedNames { epoch, names };
+        restricts
     }
 
     /// Is this class `name`, or does it inherit from it?
@@ -1973,6 +2503,36 @@ impl Class {
             let next = current.superclass.clone()?;
             current = next;
         }
+    }
+
+    /// The nearest compiled constructor up the chain ([`Class::vm_init`]),
+    /// with the class that declares it.
+    pub fn find_vm_init_with_class(self: &Rc<Self>) -> Option<(Rc<VmClosure>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let found = current.vm_init.borrow().clone();
+            if let Some(closure) = found {
+                return Some((closure, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// Whether this class or an ancestor has a compiled constructor.
+    pub fn has_vm_init(&self) -> bool {
+        self.vm_init.borrow().is_some()
+            || self
+                .superclass
+                .as_ref()
+                .is_some_and(|superclass| superclass.has_vm_init())
+    }
+
+    /// Register bytecode instance method `name`, replacing any of that name,
+    /// and stale the VM's method cache ([`note_vm_methods_changed`]).
+    pub fn insert_vm_method(&self, name: String, method: Rc<VmClosure>) {
+        self.vm_methods.borrow_mut().insert(name, method);
+        note_vm_methods_changed();
     }
 
     /// The nearest definition of instance method `name`, and the class that
@@ -2059,10 +2619,70 @@ impl Class {
         None
     }
 
-    /// Build the flattened method cache if not already built.
+    /// [`Self::find_constructor`], with the class that declares the
+    /// constructor. The VM runs a tree-walker constructor with that class on
+    /// its frame, so the `super(...)` inside it reaches *that* class's
+    /// superclass — the one the tree-walker binds as `__defining_superclass__`
+    /// where the class is declared — and not the instance's, or the
+    /// subclass's the search started from.
+    pub fn find_constructor_with_class(self: &Rc<Self>) -> Option<(Rc<Function>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            if let Some(ctor) = current.constructor.clone() {
+                return Some((ctor, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// The nearest tree-walker method `name` up the chain, with the class that
+    /// declares it: [`Self::find_vm_method_with_class`] for a method the VM
+    /// has not compiled. The VM records that class on the method's frame, so
+    /// a `super` inside the method resolves against its superclass.
+    pub fn find_method_with_class(
+        self: &Rc<Self>,
+        name: &str,
+    ) -> Option<(Rc<Function>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let found = current.methods.borrow().get(name).cloned();
+            if let Some(method) = found {
+                return Some((method, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// The class in this one's chain that declares `method` — the same
+    /// function, not one of the same name — or `None` when none of them does,
+    /// as for a controller hook's lambda.
+    pub fn declaring_class_of(self: &Rc<Self>, method: &Function) -> Option<Rc<Class>> {
+        let mut current = self.clone();
+        loop {
+            let declares = current
+                .methods
+                .borrow()
+                .get(method.name.as_str())
+                .is_some_and(|own| std::ptr::eq(Rc::as_ptr(own), method));
+            if declares {
+                return Some(current);
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// Build the flattened method cache if not already built, or rebuild it
+    /// when a method was defined on any class since it was built (see
+    /// [`bump_method_epoch`]): the map holds the ancestors' methods too, so a
+    /// change to a parent leaves every subclass's copy stale.
     fn ensure_methods_cached(&self) {
+        let epoch = method_epoch();
         // Fast path: check if already cached without borrowing mutably
-        if self.all_methods_cache.borrow().is_some() {
+        if self.all_methods_cache_epoch.get() == epoch && self.all_methods_cache.borrow().is_some()
+        {
             return;
         }
 
@@ -2084,6 +2704,7 @@ impl Class {
 
         // Store in cache
         *self.all_methods_cache.borrow_mut() = Some(all_methods);
+        self.all_methods_cache_epoch.set(epoch);
     }
 
     /// Build the flattened native method cache if not already built.
@@ -2177,9 +2798,19 @@ impl Class {
         None
     }
 
+    /// Call after changing `methods` (or `vm_methods`) of a class that may
+    /// already be in use. Drops this class's flattened caches and bumps the
+    /// global [`method_epoch`], so every subclass rebuilds its own copy on its
+    /// next lookup instead of keeping the parent's old method set.
+    ///
+    /// The VM's per-site method cache answers the nearest definition, which
+    /// a new tree-walker method can change too: it is staled as well
+    /// ([`note_vm_methods_changed`]).
     pub fn invalidate_method_cache(&self) {
         *self.all_methods_cache.borrow_mut() = None;
         *self.all_native_methods_cache.borrow_mut() = None;
+        bump_method_epoch();
+        note_vm_methods_changed();
     }
 
     /// Mix `module`'s instance methods into this class (Ruby `include`).
@@ -2221,6 +2852,7 @@ impl Class {
                 mine.entry(name.clone()).or_insert_with(|| method.clone());
             }
         }
+        note_vm_methods_changed();
         {
             let mut mine = self.mixin_static_methods.borrow_mut();
             for (name, method) in module.concern_static_methods.borrow().iter() {
@@ -2245,6 +2877,8 @@ impl Class {
         }
         self.included_modules.borrow_mut().push(module.clone());
         self.invalidate_method_cache();
+        // Its `class_methods`, if any, joined this class's statics.
+        note_static_methods_changed();
         Ok(true)
     }
 
@@ -2297,6 +2931,7 @@ impl Class {
                 mine.entry(name.clone()).or_insert_with(|| method.clone());
             }
         }
+        note_static_methods_changed();
         Ok(())
     }
 
@@ -2329,29 +2964,6 @@ impl Class {
         result
     }
 
-    /// Whether this class or one of its ancestors declares field defaults a
-    /// VM constructor does not set on its own: a defaults-only compiled
-    /// `init`, or a literal default on a class the tree-walker defined (see
-    /// `Vm::apply_field_defaults`).
-    pub fn inherits_field_defaults(&self) -> bool {
-        if let Some(cached) = self.field_defaults_memo.get() {
-            return cached;
-        }
-        let own = self
-            .vm_methods
-            .borrow()
-            .get("init")
-            .is_some_and(|init| init.proto.defaults_only)
-            || self.fields.values().any(Option::is_some);
-        let result = own
-            || self
-                .superclass
-                .as_ref()
-                .is_some_and(|superclass| superclass.inherits_field_defaults());
-        self.field_defaults_memo.set(Some(result));
-        result
-    }
-
     /// Whether this class is `ValueObject` or descends from it: compared by
     /// value, frozen once constructed (see `interpreter::domain`).
     pub fn is_value_object(&self) -> bool {
@@ -2367,6 +2979,49 @@ impl Class {
         };
         self.value_object_memo.set(Some(result));
         result
+    }
+
+    /// Whether `Klass.new(...)` on this class is answered by the engines'
+    /// call interceptors: not a model (its `new` is the ORM's), not a module,
+    /// and no class of the chain has a static `new` of its own — written in
+    /// Soli, compiled by the VM, or native. Memoized per class until a static
+    /// method joins any class ([`note_static_methods_changed`]): it was three
+    /// walks of the chain on every `Klass.new`, two SipHash probes a level.
+    pub fn intercepts_new(&self) -> bool {
+        let epoch = STATIC_METHODS_EPOCH.load(std::sync::atomic::Ordering::Relaxed);
+        let (computed_in, answer) = self.intercepts_new_memo.0.get();
+        if computed_in == epoch {
+            return answer;
+        }
+        let answer = !self.is_model_subclass()
+            && !self.is_module
+            && self.find_static_method("new").is_none()
+            && self.find_vm_static_method("new").is_none()
+            && !self.has_native_static_new();
+        self.intercepts_new_memo.0.set((epoch, answer));
+        answer
+    }
+
+    fn has_native_static_new(&self) -> bool {
+        self.native_static_methods.contains_key("new")
+            || self
+                .superclass
+                .as_ref()
+                .is_some_and(|superclass| superclass.has_native_static_new())
+    }
+
+    /// How many instance fields a new instance starts with, at least: the
+    /// ones this class and its ancestors declare, which both engines set
+    /// before any constructor runs. A class the tree-walker defined lists its
+    /// own in `fields` (and `declared_fields`), one the VM compiled in
+    /// `declared_fields` only. [`Instance::new`] sizes its field map with it,
+    /// so starting them never regrows the map.
+    pub fn declared_field_count(&self) -> usize {
+        let own = self.fields.len().max(self.declared_fields.borrow().len());
+        own + self
+            .superclass
+            .as_deref()
+            .map_or(0, Class::declared_field_count)
     }
 
     /// Every declared instance field, inherited ones first.
@@ -2403,15 +3058,23 @@ pub struct Instance {
 
 impl Instance {
     pub fn new(class: Rc<Class>) -> Self {
-        // Size the map for the fields the class declares, so a constructor
-        // filling them in does not rehash partway through. Declared-field
-        // count is the right hint even for classes that add fields
-        // dynamically: it covers the common case exactly and merely
-        // under-reserves for the rare one.
-        let capacity = class.fields.len();
+        Self::with_capacity(class, 0)
+    }
+
+    /// An instance whose field map has room for `fields` entries, and at
+    /// least for every field its class and their ancestors declare
+    /// ([`Class::declared_field_count`]) — all of which a construction sets
+    /// before any constructor runs — so filling them in does not rehash
+    /// partway through. A model row passes its column count. A field a
+    /// constructor adds without declaring it can still grow the map, the rare
+    /// case. Sized from the class's own tree-walker `fields` alone, a class
+    /// the VM compiled started at 0 and regrew at its 4th and 8th field, and
+    /// inherited fields were never counted.
+    pub fn with_capacity(class: Rc<Class>, fields: usize) -> Self {
+        let capacity = fields.max(class.declared_field_count());
         Self {
             class,
-            fields: HashMap::with_capacity_and_hasher(capacity, Default::default()),
+            fields: HashMap::with_capacity_and_hasher(capacity, map_hasher()),
             original_fields: None,
             previous_changes: None,
         }
@@ -2505,18 +3168,37 @@ pub use crate::interpreter::value_json::{json_to_value, json_to_value_ref, value
 /// This is the default; SEC-013a will add an explicit `to_json`
 /// override hook so apps can customise their serialisation shape
 /// without working around the filter.
+///
+/// Runs once per field of every serialised instance, so it allocates nothing:
+/// the `_` test comes first (one byte), and only `_` names are compared with
+/// the metadata list.
 pub(crate) fn is_safe_serialised_field(name: &str) -> bool {
-    // Always-exposed Model metadata.
-    const PUBLIC_META: &[&str] = &["_key", "_id", "_rev", "_created_at", "_updated_at"];
-    if PUBLIC_META.contains(&name) {
-        return true;
-    }
-    // All other `_`-prefixed fields are framework internals
-    // (`_errors`, `_text`, `_pending_translations`, …).
-    if name.starts_with('_') {
-        return false;
+    if let Some(rest) = name.strip_prefix('_') {
+        // Always-exposed Model metadata; every other `_`-prefixed field is a
+        // framework internal (`_errors`, `_text`, `_pending_translations`, …).
+        return matches!(rest, "key" | "id" | "rev" | "created_at" | "updated_at");
     }
     !is_sensitive_field_name(name)
+}
+
+/// The fields of a plain instance that its JSON carries (see
+/// [`is_safe_serialised_field`]), sorted by name.
+///
+/// `Instance::fields` is a hash map with a random seed per instance, so its
+/// iteration order differs from one object to the next and from one request
+/// to the next. Sorting gives every writer one stable order: the one
+/// `value_to_json` already produced through `serde_json::Map` (a `BTreeMap`,
+/// byte order), so `render_json`, `JSON.stringify`, serde and `value_to_json`
+/// agree byte for byte, and identical data gives identical bytes (ETags,
+/// cache keys, snapshot tests).
+pub(crate) fn serialised_instance_fields(instance: &Instance) -> Vec<(&SoliStr, &Value)> {
+    let mut fields: Vec<(&SoliStr, &Value)> = instance
+        .fields
+        .iter()
+        .filter(|(name, _)| is_safe_serialised_field(name))
+        .collect();
+    fields.sort_unstable_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+    fields
 }
 
 /// Does this *model field* name look like it holds a secret?
@@ -2536,20 +3218,29 @@ pub(crate) fn is_safe_serialised_field(name: &str) -> bool {
 /// So a field called `author` is serialised normally and still redacted in an
 /// error log. That asymmetry is the point.
 ///
-/// Case-insensitive on the prefix/suffix, matched in lowercase so `PasswordHash`
-/// is caught as well as `password_hash`.
+/// ASCII-case-insensitive on the prefix/suffix, so `PasswordHash` is caught
+/// as well as `password_hash`. The bytes are compared in place with
+/// `eq_ignore_ascii_case` rather than through a lowercased copy: this runs for
+/// every field of every serialised instance, and the copy was a heap
+/// allocation per field. Non-ASCII bytes compare unchanged either way.
 pub(crate) fn is_sensitive_field_name(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
+    let bytes = name.as_bytes();
+    let starts_with = |prefix: &[u8]| {
+        bytes
+            .get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    };
+    let ends_with = |suffix: &[u8]| {
+        bytes.len() >= suffix.len()
+            && bytes[bytes.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+    };
     // Catches `password`, `password_digest`, `password_hash`,
-    // `password_reset_token`, `passwordHash` (lowercased to
-    // `passwordhash`), etc.
-    if lower.starts_with("password") {
-        return true;
-    }
-    lower.ends_with("_token")
-        || lower.ends_with("_digest")
-        || lower.ends_with("_secret")
-        || lower.ends_with("_hash")
+    // `password_reset_token`, `passwordHash`, etc.
+    starts_with(b"password")
+        || ends_with(b"_token")
+        || ends_with(b"_digest")
+        || ends_with(b"_secret")
+        || ends_with(b"_hash")
 }
 
 thread_local! {
@@ -2666,11 +3357,10 @@ impl Value {
                 // names match common-sensitive patterns and most
                 // `_`-prefixed framework internals; apps that need the
                 // raw shape can serialise explicitly via a Hash literal.
-                let mut map = serializer.serialize_map(None)?;
-                for (k, v) in borrow.fields.iter() {
-                    if is_safe_serialised_field(k) {
-                        map.serialize_entry(k, v)?;
-                    }
+                let fields = serialised_instance_fields(&borrow);
+                let mut map = serializer.serialize_map(Some(fields.len()))?;
+                for (k, v) in fields {
+                    map.serialize_entry(k, v)?;
                 }
                 map.end()
             }
@@ -3141,39 +3831,179 @@ fn class_answers_to(class: &Class, name: &str) -> bool {
 
 pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
     match &expected.kind {
-        TypeKind::Named(name) => {
-            let name_lower = name.to_lowercase();
-            match name_lower.as_str() {
-                "any" => true,
-                "int" => matches!(value, Value::Int(_)),
-                "float" => matches!(value, Value::Float(_)),
-                "decimal" => matches!(value, Value::Decimal(_)),
-                "string" => matches!(value, Value::String(_)),
-                "bool" => matches!(value, Value::Bool(_)),
-                "array" => matches!(value, Value::Array(_)),
-                "hash" => matches!(value, Value::Hash(_)),
-                "function" => matches!(value, Value::Function(_) | Value::NativeFunction(_)),
-                "void" | "null" => matches!(value, Value::Null),
-                // Class instance check
-                // Class instance check: the class or an ancestor, named in
-                // full or — written inside its context — by its short name
-                // (`-> Invoice` for a `Billing::Invoice`).
-                _ => match value {
-                    Value::Instance(inst) => class_answers_to(&inst.borrow().class, name),
-                    _ => false,
-                },
-            }
-        }
+        TypeKind::Named(name) => match TypeCheck::builtin(name) {
+            Some(check) => check.admits(value),
+            None => instance_answers_to(value, name),
+        },
         TypeKind::Void => matches!(value, Value::Null),
         TypeKind::Nullable(inner) => {
             matches!(value, Value::Null) || value_matches_type(value, inner)
         }
         TypeKind::Array(_) => matches!(value, Value::Array(_)),
         TypeKind::Hash { .. } => matches!(value, Value::Hash(_)),
-        TypeKind::Function { .. } => {
-            matches!(value, Value::Function(_) | Value::NativeFunction(_))
+        TypeKind::Function { .. } => is_function_value(value),
+    }
+}
+
+/// A function on either engine: the tree-walker's, a builtin, or a VM
+/// closure (all of which `type_name` reports as `Function`).
+#[inline]
+fn is_function_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+    )
+}
+
+/// An instance of the class `name` names, or of a subclass of it: the
+/// class named in full or, written inside its context, by its short name
+/// (`-> Invoice` for a `Billing::Invoice`).
+#[inline]
+fn instance_answers_to(value: &Value, name: &str) -> bool {
+    match value {
+        Value::Instance(inst) => class_answers_to(&inst.borrow().class, name),
+        _ => false,
+    }
+}
+
+/// A type annotation lowered once, so a check against it reads no name.
+/// It decides exactly what [`value_matches_type`] decides for the same
+/// annotation; the VM lowers a function's return type when it compiles
+/// the function and checks each return against this.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeCheck {
+    Any,
+    Int,
+    Float,
+    Decimal,
+    String,
+    Bool,
+    Array,
+    Hash,
+    Function,
+    /// `Void`, or the name `Null`.
+    Null,
+    /// A class name, matched case-sensitively against the class and its
+    /// ancestors, in full or by short name.
+    Class(Box<str>),
+    /// `T?`: null, or what the inner check admits.
+    Nullable(Box<TypeCheck>),
+}
+
+impl TypeCheck {
+    /// The check for an annotation.
+    pub fn lower(expected: &TypeAnnotation) -> Self {
+        match &expected.kind {
+            TypeKind::Named(name) => {
+                Self::builtin(name).unwrap_or_else(|| Self::Class(name.as_str().into()))
+            }
+            TypeKind::Void => Self::Null,
+            TypeKind::Nullable(inner) => Self::Nullable(Box::new(Self::lower(inner))),
+            TypeKind::Array(_) => Self::Array,
+            TypeKind::Hash { .. } => Self::Hash,
+            TypeKind::Function { .. } => Self::Function,
         }
     }
+
+    /// The built-in type a name spells, in any ASCII case (`int`, `Int`,
+    /// `INT`), or `None` for a class name. Dispatches on the length first,
+    /// so a name is compared against at most three candidates.
+    fn builtin(name: &str) -> Option<Self> {
+        let is = |candidate: &str| name.eq_ignore_ascii_case(candidate);
+        let check = match name.len() {
+            3 if is("int") => Self::Int,
+            3 if is("any") => Self::Any,
+            4 if is("hash") => Self::Hash,
+            4 if is("bool") => Self::Bool,
+            4 if is("void") || is("null") => Self::Null,
+            5 if is("array") => Self::Array,
+            5 if is("float") => Self::Float,
+            6 if is("string") => Self::String,
+            7 if is("decimal") => Self::Decimal,
+            8 if is("function") => Self::Function,
+            _ => return None,
+        };
+        Some(check)
+    }
+
+    /// Whether `value` is of this type.
+    #[inline]
+    pub fn admits(&self, value: &Value) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Int => matches!(value, Value::Int(_)),
+            Self::Float => matches!(value, Value::Float(_)),
+            Self::Decimal => matches!(value, Value::Decimal(_)),
+            Self::String => matches!(value, Value::String(_)),
+            Self::Bool => matches!(value, Value::Bool(_)),
+            Self::Array => matches!(value, Value::Array(_)),
+            Self::Hash => matches!(value, Value::Hash(_)),
+            Self::Function => is_function_value(value),
+            Self::Null => matches!(value, Value::Null),
+            Self::Class(name) => instance_answers_to(value, name),
+            Self::Nullable(inner) => matches!(value, Value::Null) || inner.admits(value),
+        }
+    }
+}
+
+/// A `DateTime`'s `YYYY-MM-DD HH:MM:SS` form, formatted on the stack. See
+/// [`Value::datetime_text`].
+pub struct DateTimeText([u8; DateTimeText::LEN]);
+
+impl DateTimeText {
+    pub const LEN: usize = 19;
+
+    /// Format the instant `nanos` (UTC) shifted by `offset_secs` east of UTC.
+    pub fn new(nanos: i64, offset_secs: i32) -> Self {
+        // Floor to whole seconds, as `from_timestamp_nanos` does: the
+        // sub-second part is always non-negative, so -1ns is 23:59:59.
+        let secs = nanos.div_euclid(1_000_000_000) + offset_secs as i64;
+        let days = secs.div_euclid(86_400);
+        let second_of_day = secs.rem_euclid(86_400) as u32;
+        let (year, month, day) = civil_from_days(days);
+        let year = year as u32;
+        debug_assert!(
+            year <= 9999,
+            "DateTime year {year} out of the 4-digit range"
+        );
+        let hour = second_of_day / 3600;
+        let minute = second_of_day / 60 % 60;
+        let second = second_of_day % 60;
+        let mut buf = *b"0000-00-00 00:00:00";
+        let two = |buf: &mut [u8; 19], at: usize, n: u32| {
+            buf[at] = b'0' + (n / 10 % 10) as u8;
+            buf[at + 1] = b'0' + (n % 10) as u8;
+        };
+        two(&mut buf, 0, year / 100);
+        two(&mut buf, 2, year % 100);
+        two(&mut buf, 5, month);
+        two(&mut buf, 8, day);
+        two(&mut buf, 11, hour);
+        two(&mut buf, 14, minute);
+        two(&mut buf, 17, second);
+        DateTimeText(buf)
+    }
+
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        // Only ASCII digits, '-', ' ' and ':' are ever written.
+        std::str::from_utf8(&self.0).unwrap_or_default()
+    }
+}
+
+/// Days since 1970-01-01 to a proleptic Gregorian (year, month, day) —
+/// Howard Hinnant's `civil_from_days`, exact for negative days too.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097); // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11], March-based
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year, month, day)
 }
 
 #[cfg(test)]
@@ -3204,6 +4034,35 @@ mod decimal_tests {
     fn test_decimal_value_from_str_invalid() {
         let result = DecimalValue::from_str("not_a_decimal", 2);
         assert!(result.is_err());
+    }
+
+    /// A literal's precision is the digits written after its point, also
+    /// past the 28 places the value keeps: the two literals below print
+    /// alike and compare unequal, on both engines.
+    #[test]
+    fn a_decimal_literal_keeps_the_precision_it_was_written_with() {
+        let price = DecimalValue::from_literal("19.99").expect("19.99");
+        assert_eq!(price, DecimalValue(Decimal::from_str("19.99").unwrap(), 2));
+        assert_eq!(DecimalValue::from_literal("1.00").unwrap().precision(), 2);
+        assert_eq!(DecimalValue::from_literal("-2.5").unwrap().precision(), 1);
+
+        let long = DecimalValue::from_literal("1.12345678901234567890123456789012").unwrap();
+        assert_eq!(long.precision(), 32);
+        assert_eq!(long.to_string(), "1.1234567890123456789012345679");
+        let rounded = DecimalValue::from_literal("1.1234567890123456789012345679").unwrap();
+        assert_eq!(long.value(), rounded.value());
+        assert_ne!(long, rounded);
+    }
+
+    #[test]
+    fn text_that_is_no_decimal_is_no_literal() {
+        // `%n[abcD]` reads as the literal `abc.00`.
+        assert_eq!(DecimalValue::from_literal("abc.00"), None);
+        // An integer part beyond Decimal's 96-bit range.
+        assert_eq!(
+            DecimalValue::from_literal("99999999999999999999999999999999.5"),
+            None
+        );
     }
 
     #[test]
@@ -3580,6 +4439,72 @@ mod return_type_tests {
         assert!(value_matches_type(&value, &ty_upper));
         assert!(value_matches_type(&value, &ty_mixed));
     }
+
+    fn annotations() -> Vec<TypeAnnotation> {
+        let named = |n: &str| make_type(TypeKind::Named(n.to_string()));
+        let mut types: Vec<TypeAnnotation> = [
+            "Int", "int", "INT", "Float", "Decimal", "decimal", "String", "Bool", "Array", "Hash",
+            "hash", "Function", "Void", "Null", "Any", "Pt", "pt", "Int2", "Strin",
+        ]
+        .iter()
+        .map(|n| named(n))
+        .collect();
+        types.push(make_type(TypeKind::Void));
+        types.push(make_type(TypeKind::Nullable(Box::new(named("Int")))));
+        types.push(make_type(TypeKind::Nullable(Box::new(named("Pt")))));
+        types.push(make_type(TypeKind::Array(Box::new(named("Int")))));
+        types.push(make_type(TypeKind::Hash {
+            key_type: Box::new(named("String")),
+            value_type: Box::new(named("Int")),
+        }));
+        types.push(make_type(TypeKind::Function {
+            params: vec![named("Int")],
+            return_type: Box::new(named("Int")),
+        }));
+        types
+    }
+
+    fn values() -> Vec<Value> {
+        vec![
+            Value::Int(1),
+            Value::Float(1.5),
+            Value::Decimal(DecimalValue(rust_decimal::Decimal::new(15, 1), 1)),
+            Value::String("s".into()),
+            Value::Bool(true),
+            Value::Null,
+            Value::Array(Rc::new(RefCell::new(vec![]))),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+        ]
+    }
+
+    #[test]
+    fn a_lowered_check_decides_what_value_matches_type_decides() {
+        for ty in annotations() {
+            let check = TypeCheck::lower(&ty);
+            for value in values() {
+                assert_eq!(
+                    check.admits(&value),
+                    value_matches_type(&value, &ty),
+                    "{ty} against {}",
+                    value.type_name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn names_lower_case_insensitively_and_others_are_classes() {
+        let named = |n: &str| TypeCheck::lower(&make_type(TypeKind::Named(n.to_string())));
+        assert_eq!(named("HASH"), TypeCheck::Hash);
+        assert_eq!(named("void"), TypeCheck::Null);
+        assert_eq!(named("Null"), TypeCheck::Null);
+        assert_eq!(named("function"), TypeCheck::Function);
+        assert_eq!(named("Strings"), TypeCheck::Class("Strings".into()));
+        assert_eq!(
+            named("Billing::Invoice"),
+            TypeCheck::Class("Billing::Invoice".into())
+        );
+    }
 }
 
 #[cfg(test)]
@@ -3955,6 +4880,21 @@ mod value_misc_tests {
     }
 
     #[test]
+    fn safe_serialised_field_matches_metadata_names_exactly() {
+        // Only the exact metadata names pass: no prefix match, no case folding.
+        for f in &[
+            "_", "_keys", "_Key", "_ID", "__key", "_id_x", "_created", "_rev_",
+        ] {
+            assert!(
+                !super::is_safe_serialised_field(f),
+                "{} should be filtered",
+                f
+            );
+        }
+        assert!(super::is_safe_serialised_field(""));
+    }
+
+    #[test]
     fn safe_serialised_field_keeps_innocent_lookalikes() {
         // `token_count` doesn't end in `_token`; `digest_format` doesn't end in `_digest`.
         // The suffix match is anchored, so legitimate fields aren't false-positives.
@@ -4072,6 +5012,53 @@ mod sensitive_name_tests {
             assert!(
                 is_sensitive_field_name(name),
                 "{name} should be treated as sensitive"
+            );
+        }
+    }
+
+    /// The allocation-free matcher must answer exactly what the old
+    /// lowercase-then-compare one did, ASCII case folding and non-ASCII names
+    /// included.
+    #[test]
+    fn matches_the_lowercasing_reference() {
+        fn reference(name: &str) -> bool {
+            let lower = name.to_ascii_lowercase();
+            lower.starts_with("password")
+                || lower.ends_with("_token")
+                || lower.ends_with("_digest")
+                || lower.ends_with("_secret")
+                || lower.ends_with("_hash")
+        }
+        for name in [
+            "",
+            "p",
+            "passwor",
+            "password",
+            "PASSWORD",
+            "pAsSwOrD_x",
+            "passwordHash",
+            "my_password",
+            "_token",
+            "token",
+            "x_TOKEN",
+            "x_Digest",
+            "a_secreT",
+            "a_hasH",
+            "_hash",
+            "hash",
+            "content_hashes",
+            "tokens",
+            "mot_de_passe",
+            "pässword",
+            "clé_token",
+            "ünïcode_HASH",
+            "token_ß",
+            "\u{0}_token",
+        ] {
+            assert_eq!(
+                is_sensitive_field_name(name),
+                reference(name),
+                "disagreement on {name:?}"
             );
         }
     }
@@ -4215,5 +5202,525 @@ mod interpolation_format_tests {
             build_interpolated(&long).as_str(),
             format!("{}{}", "x".repeat(40), 1e20)
         );
+    }
+}
+
+#[cfg(test)]
+mod restricted_member_tests {
+    //! `Class::restricted_method` answers a name no class of the chain
+    //! declares private or protected from a memo, without its walk — and every
+    //! answer it gives is still the walk's.
+    use super::*;
+
+    fn class(name: &str, superclass: Option<&Rc<Class>>) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            superclass: superclass.cloned(),
+            ..Default::default()
+        })
+    }
+
+    fn declare_private(class: &Class, name: &str) {
+        class.private_members.borrow_mut().insert(name.to_string());
+        note_restricted_methods_declared();
+    }
+
+    fn walks() -> usize {
+        restricted_lookups().1
+    }
+
+    #[test]
+    fn a_name_no_class_of_the_chain_restricts_skips_the_walk() {
+        let base = class("Base", None);
+        declare_private(&base, "token");
+        let child = class("Child", Some(&base));
+        let plain = class("Plain", None);
+
+        let (lookups, walked) = restricted_lookups();
+        for _ in 0..3 {
+            assert_eq!(child.restricted_method("title"), None);
+            assert_eq!(plain.restricted_method("title"), None);
+        }
+        assert_eq!(restricted_lookups(), (lookups + 6, walked));
+
+        assert_eq!(
+            child.restricted_method("token"),
+            Some((MethodAccess::Private, "Base"))
+        );
+        assert_eq!(walks(), walked + 1);
+    }
+
+    #[test]
+    fn the_nearest_definition_still_decides() {
+        let base = class("Base", None);
+        declare_private(&base, "reveal");
+        base.protected_members
+            .borrow_mut()
+            .insert("rank".to_string());
+        note_restricted_methods_declared();
+        let open = class("Open", Some(&base));
+        open.methods
+            .borrow_mut()
+            .insert("reveal".to_string(), Rc::new(Function::default()));
+        let below = class("Below", Some(&open));
+
+        assert_eq!(
+            base.restricted_method("reveal"),
+            Some((MethodAccess::Private, "Base"))
+        );
+        assert_eq!(open.restricted_method("reveal"), None);
+        assert_eq!(below.restricted_method("reveal"), None);
+        assert_eq!(
+            below.restricted_method("rank"),
+            Some((MethodAccess::Protected, "Base"))
+        );
+    }
+
+    /// A member restricted after a subclass's memo was collected — a
+    /// `private` reaching a class again, a `private class` nested in it — is
+    /// seen: each addition moves the epoch.
+    #[test]
+    fn a_member_restricted_after_the_memo_is_seen() {
+        let base = class("Base", None);
+        let child = class("Child", Some(&base));
+        declare_private(&base, "first");
+        assert_eq!(child.restricted_method("late"), None);
+        assert_eq!(child.restricted_method("Ledger"), None);
+
+        declare_private(&base, "late");
+        assert_eq!(
+            child.restricted_method("late"),
+            Some((MethodAccess::Private, "Base"))
+        );
+
+        base.private_members
+            .borrow_mut()
+            .insert("Ledger".to_string());
+        note_restricted_members_changed();
+        assert_eq!(
+            child.restricted_method("Ledger"),
+            Some((MethodAccess::Private, "Base"))
+        );
+    }
+
+    /// A clone of a class whose memo is collected, given a superclass that
+    /// restricts a name: the clone answers for its own chain. A copied memo
+    /// would still say that no class of the chain restricts anything.
+    #[test]
+    fn a_cloned_class_collects_its_own_memo() {
+        let guarded = class("Guarded", None);
+        declare_private(&guarded, "token");
+        let plain = class("Plain", None);
+        assert_eq!(plain.restricted_method("token"), None);
+
+        let mut reparented = (*plain).clone();
+        reparented.superclass = Some(guarded);
+        assert_eq!(
+            reparented.restricted_method("token"),
+            Some((MethodAccess::Private, "Guarded"))
+        );
+        assert_eq!(plain.restricted_method("token"), None);
+    }
+}
+
+#[cfg(test)]
+mod construction_tests {
+    //! What a construction asks of its class on every `new`, answered once.
+    use super::*;
+
+    fn class(name: &str, superclass: Option<&Rc<Class>>) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            superclass: superclass.cloned(),
+            ..Default::default()
+        })
+    }
+
+    /// `Klass.new` asks `intercepts_new` on every call. The answer is kept
+    /// per class until a static method joins some class, and is then
+    /// computed again: a static `new` an ancestor gains (`extend`) is the
+    /// subclass's too, so the subclass's answer flips with it.
+    #[test]
+    fn intercepts_new_is_memoized_until_a_static_joins_the_chain() {
+        let base = class("Base", None);
+        let child = class("Child", Some(&base));
+        let other = class("Other", None);
+        assert!(child.intercepts_new());
+        assert!(child.intercepts_new(), "the memo gives the same answer");
+        assert!(
+            child.intercepts_new_memo.0.get().1,
+            "the answer is kept on the class"
+        );
+
+        let factory = Rc::new(Class {
+            name: "Factory".to_string(),
+            is_module: true,
+            ..Default::default()
+        });
+        factory.methods.borrow_mut().insert(
+            "new".to_string(),
+            Rc::new(Function {
+                name: "new".to_string(),
+                ..Function::default()
+            }),
+        );
+        base.extend_module(&factory)
+            .expect("a module extends a class");
+        assert!(!base.intercepts_new(), "Base.new is Factory's now");
+        assert!(
+            !child.intercepts_new(),
+            "an ancestor's static `new` is the subclass's too"
+        );
+        assert!(
+            other.intercepts_new(),
+            "an unrelated class keeps its answer"
+        );
+
+        let model = class("Model", None);
+        let post = class("Post", Some(&model));
+        assert!(!post.intercepts_new(), "a model's `new` is the ORM's");
+    }
+
+    /// A new instance has room for every field its class and their
+    /// ancestors declare: a construction sets all of them before any
+    /// constructor runs. A class the VM compiled lists its own in
+    /// `declared_fields` only; a model row passes its column count.
+    #[test]
+    fn a_new_instance_has_room_for_every_declared_field() {
+        let parent = Rc::new(Class {
+            name: "Parent".to_string(),
+            fields: ["a", "b", "c"]
+                .iter()
+                .map(|name| (name.to_string(), None))
+                .collect(),
+            ..Default::default()
+        });
+        *parent.declared_fields.borrow_mut() = vec!["a".into(), "b".into(), "c".into()];
+        let kid = class("Kid", Some(&parent));
+        *kid.declared_fields.borrow_mut() = (1..=6).map(|i| format!("k{i}")).collect();
+
+        assert_eq!(kid.declared_field_count(), 9);
+        assert!(
+            Instance::new(kid.clone()).fields.capacity() >= 9,
+            "the six own fields of a VM class and the three inherited ones"
+        );
+        assert!(Instance::with_capacity(kid.clone(), 20).fields.capacity() >= 20);
+        assert_eq!(
+            Instance::new(class("Plain", None)).fields.capacity(),
+            0,
+            "no declared field, no allocation"
+        );
+    }
+}
+
+#[cfg(test)]
+mod datetime_text_tests {
+    use super::{DateTimeText, Value};
+    use crate::interpreter::builtins::datetime::local_zone::{local_from_nanos, offset_secs_in};
+    use chrono::{DateTime, TimeZone, Utc};
+    use chrono_tz::Tz;
+
+    const FMT: &str = "%Y-%m-%d %H:%M:%S";
+    const SEC: i64 = 1_000_000_000;
+
+    fn via_chrono_utc(ts: i64) -> String {
+        DateTime::from_timestamp_nanos(ts).format(FMT).to_string()
+    }
+
+    /// Edges chrono and a hand-rolled civil-date routine most often disagree
+    /// on: the epoch, a nanosecond either side of it, pre-1970 instants, the
+    /// i64 bounds, leap days and century years.
+    fn edge_instants() -> Vec<i64> {
+        let mut out = vec![0, -1, 1, -SEC, -SEC + 1, SEC - 1, i64::MIN, i64::MAX];
+        for (y, m, d) in [
+            (1677, 9, 22),
+            (1700, 2, 28),
+            (1700, 3, 1),
+            (1800, 12, 31),
+            (1900, 2, 28),
+            (1900, 3, 1),
+            (1969, 12, 31),
+            (2000, 2, 29),
+            (2000, 3, 1),
+            (2024, 2, 29),
+            (2100, 2, 28),
+            (2100, 3, 1),
+            (2262, 4, 10),
+        ] {
+            let midnight = Utc.with_ymd_and_hms(y, m, d, 0, 0, 0).unwrap().timestamp() * SEC;
+            for delta in [-SEC, -1, 0, 1, SEC, 86_399 * SEC + 999_999_999] {
+                out.push(midnight + delta);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn utc_view_matches_chrono_strftime() {
+        for ts in edge_instants() {
+            let text = DateTimeText::new(ts, 0);
+            assert_eq!(text.as_str(), via_chrono_utc(ts), "nanos {ts}");
+        }
+        // A sweep across the whole i64 range (~57k instants).
+        let step: i64 = 0x0001_2345_6789_abcd;
+        let mut ts = i64::MIN;
+        while ts <= i64::MAX - step {
+            assert_eq!(
+                DateTimeText::new(ts, 0).as_str(),
+                via_chrono_utc(ts),
+                "nanos {ts}"
+            );
+            ts += step;
+        }
+    }
+
+    /// The local view: the offset rule must match `with_timezone` at every
+    /// instant, DST transitions, half-hour and 45-minute zones included.
+    #[test]
+    fn zone_offsets_match_chrono_tz_across_transitions() {
+        let zones = [
+            "America/New_York",
+            "Europe/London",
+            "Australia/Lord_Howe", // 30-minute DST shift
+            "Asia/Kolkata",        // +05:30, no DST
+            "Pacific/Chatham",     // +12:45 / +13:45
+            "America/St_Johns",    // -03:30 / -02:30
+            "Pacific/Apia",        // skipped 2011-12-30 entirely
+            "America/Havana",      // DST at midnight
+        ];
+        let from = Utc
+            .with_ymd_and_hms(2011, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let to = Utc
+            .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        for name in zones {
+            let tz: Tz = name.parse().unwrap();
+            // Every 15 minutes for two years: each transition is hit exactly.
+            let mut secs = from;
+            while secs < to {
+                for ts in [secs * SEC, secs * SEC - 1] {
+                    let utc = DateTime::from_timestamp_nanos(ts);
+                    let expected = utc.with_timezone(&tz).format(FMT).to_string();
+                    let offset = offset_secs_in(&tz, &utc.naive_utc());
+                    assert_eq!(
+                        DateTimeText::new(ts, offset).as_str(),
+                        expected,
+                        "{name} at {utc}"
+                    );
+                }
+                secs += 900;
+            }
+        }
+        // Pre-1970 local mean time offsets have seconds in them (e.g.
+        // Europe/Amsterdam +00:19:32): the second digits must follow too.
+        let tz: Tz = "Europe/Amsterdam".parse().unwrap();
+        for ts in edge_instants() {
+            let utc = DateTime::from_timestamp_nanos(ts);
+            let offset = offset_secs_in(&tz, &utc.naive_utc());
+            assert_eq!(
+                DateTimeText::new(ts, offset).as_str(),
+                utc.with_timezone(&tz).format(FMT).to_string(),
+                "Amsterdam at {utc}"
+            );
+        }
+    }
+
+    /// Every caller — `str()`/Display, interpolation, `.to_string` — writes
+    /// the same 19 bytes, and `display_len` agrees with them, in both views.
+    #[test]
+    fn all_string_paths_agree_in_both_views() {
+        for ts in edge_instants() {
+            for use_utc in [true, false] {
+                let expected = if use_utc {
+                    via_chrono_utc(ts)
+                } else {
+                    local_from_nanos(ts).format(FMT).to_string()
+                };
+                let value = Value::DateTime(ts, use_utc);
+                let mut written = String::from(">");
+                value.write_to_string(&mut written);
+                assert_eq!(written, format!(">{expected}"));
+                assert_eq!(value.to_string(), expected);
+                assert_eq!(Value::render_datetime(ts, use_utc), expected);
+                assert_eq!(value.display_len(), expected.len());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod method_cache_tests {
+    use super::{Class, Function};
+    use std::rc::Rc;
+
+    fn method(name: &str) -> Rc<Function> {
+        Rc::new(Function {
+            name: name.to_string(),
+            ..Function::default()
+        })
+    }
+
+    /// A subclass's flattened cache copies its parent's methods. A method
+    /// added to the parent after that copy was made must still be found
+    /// through the subclass (and the grandchild), not only through the parent.
+    #[test]
+    fn method_added_to_a_parent_reaches_cached_subclasses() {
+        let parent = Rc::new(Class {
+            name: "A".to_string(),
+            ..Default::default()
+        });
+        parent
+            .methods
+            .borrow_mut()
+            .insert("hello".to_string(), method("hello"));
+        let child = Rc::new(Class {
+            name: "B".to_string(),
+            superclass: Some(parent.clone()),
+            ..Default::default()
+        });
+        let grandchild = Class {
+            name: "C".to_string(),
+            superclass: Some(child.clone()),
+            ..Default::default()
+        };
+
+        // Build every cache along the chain.
+        assert!(grandchild.find_method("hello").is_some());
+        assert!(grandchild.find_method("late").is_none());
+        assert!(child.find_method("late").is_none());
+
+        parent
+            .methods
+            .borrow_mut()
+            .insert("late".to_string(), method("late"));
+        parent.invalidate_method_cache();
+
+        assert_eq!(child.find_method("late").unwrap().name, "late");
+        assert_eq!(grandchild.find_method("late").unwrap().name, "late");
+        assert!(grandchild.find_method("hello").is_some());
+    }
+
+    /// With no definition in between, the cache is reused, not rebuilt.
+    #[test]
+    fn cache_is_kept_while_no_method_changes() {
+        let class = Class {
+            name: "Kept".to_string(),
+            ..Default::default()
+        };
+        class
+            .methods
+            .borrow_mut()
+            .insert("a".to_string(), method("a"));
+        let first = class.find_method("a").unwrap();
+        let epoch = class.all_methods_cache_epoch.get();
+        let second = class.find_method("a").unwrap();
+        assert!(Rc::ptr_eq(&first, &second));
+        assert_eq!(class.all_methods_cache_epoch.get(), epoch);
+    }
+}
+
+#[cfg(test)]
+mod concat_and_equality_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// `"str" + x` and `x + "str"` render `x` exactly as `Display` does (what
+    /// `eco_format!("{}{}")` produced before), on the inline and the heap
+    /// path, for every kind of value a string can be added to.
+    #[test]
+    fn concat_display_matches_display_for_every_operand_kind() {
+        let array = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(1),
+            Value::Float(2.5),
+            Value::String("s".into()),
+        ])));
+        let decimal = Value::Decimal(DecimalValue(rust_decimal::Decimal::new(150, 2), 2));
+        let others = [
+            Value::Int(0),
+            Value::Int(-42),
+            Value::Int(i64::MIN),
+            Value::Int(i64::MAX),
+            Value::Float(1.0),
+            Value::Float(-0.0),
+            Value::Float(0.1 + 0.2),
+            Value::Float(1e16),
+            Value::Float(1e-7),
+            Value::Float(1658206780088562.2),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Null,
+            Value::Symbol("sym".into()),
+            decimal,
+            array,
+        ];
+        for prefix in ["", "n=", "a prefix longer than the inline limit: "] {
+            let text = Value::String(prefix.into());
+            for other in &others {
+                assert_eq!(
+                    concat_display(&text, other).as_str(),
+                    format!("{}{}", prefix, other),
+                    "{prefix:?} + {other:?}"
+                );
+                assert_eq!(
+                    concat_display(other, &text).as_str(),
+                    format!("{}{}", other, prefix),
+                    "{other:?} + {prefix:?}"
+                );
+            }
+        }
+    }
+
+    fn instance(class: &Rc<Class>, fields: &[(&str, Value)]) -> Value {
+        let mut inst = Instance::new(class.clone());
+        for (name, value) in fields {
+            inst.set(*name, value.clone());
+        }
+        Value::Instance(Rc::new(RefCell::new(inst)))
+    }
+
+    fn class(name: &str) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            ..Class::default()
+        })
+    }
+
+    /// The identity shortcut answers for ordinary objects only: an enum value
+    /// still compares field by field, even against itself.
+    #[test]
+    fn enum_aware_equal_identity_shortcut_keeps_enum_semantics() {
+        let point = class("Point");
+        let p1 = instance(&point, &[("x", Value::Int(1))]);
+        let p2 = instance(&point, &[("x", Value::Int(1))]);
+        assert!(enum_aware_equal(&p1, &p1.clone()));
+        assert!(!enum_aware_equal(&p1, &p2));
+
+        let maybe = class("Maybe");
+        let some = |v: Value| {
+            instance(
+                &maybe,
+                &[("__variant", Value::String("Some".into())), ("v", v)],
+            )
+        };
+        assert!(enum_aware_equal(&some(Value::Int(7)), &some(Value::Int(7))));
+        assert!(!enum_aware_equal(
+            &some(Value::Int(7)),
+            &some(Value::Int(8))
+        ));
+        let nan = some(Value::Float(f64::NAN));
+        assert!(!enum_aware_equal(&nan, &nan.clone()));
+        let same = some(Value::Float(1.5));
+        assert!(enum_aware_equal(&same, &same.clone()));
+
+        // An enum against an ordinary object, either way round, is identity.
+        let unit = instance(&maybe, &[("__variant", Value::String("None".into()))]);
+        assert!(!enum_aware_equal(&unit, &p1));
+        assert!(!enum_aware_equal(&p1, &unit));
     }
 }

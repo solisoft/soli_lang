@@ -330,6 +330,11 @@ pub(crate) fn enqueue_doc(
         store::enqueue(&doc)
     }
     .map_err(|e| format!("{what} failed: {e}"))?;
+    // The job will run: a handler that enqueued and then failed on the VM
+    // must not be re-run, or the job (a `deliver_later` mail) runs twice. A
+    // Cloudflare Queue message and a SoliDB job row are outside any
+    // transaction, so this marks even inside one.
+    crate::interpreter::builtins::model::crud::mark_durable_effect();
     Ok(Value::String(id.into()))
 }
 

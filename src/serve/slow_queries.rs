@@ -363,7 +363,7 @@ impl<'a> Flusher<'a> {
                     self.stats.overflowed.fetch_add(count, Ordering::Relaxed);
                 }
                 Err(e) => {
-                    self.stats.failed.fetch_add(count, Ordering::Relaxed);
+                    self.stats.note_failed(count);
                     eprintln!("[slow-queries] could not record query group {fingerprint}: {e}");
                 }
             }

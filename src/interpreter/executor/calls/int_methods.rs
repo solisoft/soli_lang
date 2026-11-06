@@ -224,11 +224,11 @@ pub(crate) fn call_int_method_impl(
                 Value::Int(n.rem_euclid(divisor)),
             ]))))
         }
-        _ => Err(RuntimeError::NoSuchProperty {
-            value_type: "int".to_string(),
-            property: method_name.to_string(),
+        _ => Err(RuntimeError::no_such_property(
+            "int".to_string(),
+            method_name.to_string(),
             span,
-        }),
+        )),
     }
 }
 
@@ -374,7 +374,7 @@ fn int_is_a(arguments: &[Value], span: Span) -> RuntimeResult<Value> {
 /// negative numbers).
 fn int_to_s(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
     if arguments.is_empty() {
-        return Ok(Value::String(n.to_string().into()));
+        return Ok(int_to_s_value(n));
     }
     if arguments.len() != 1 {
         return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
@@ -395,9 +395,16 @@ fn int_to_s(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
         ));
     }
     if base == 10 {
-        return Ok(Value::String(n.to_string().into()));
+        return Ok(int_to_s_value(n));
     }
     Ok(Value::String(int_to_radix_string(n, base as u64).into()))
+}
+
+/// `n.to_s` with no base: the decimal digits, written straight into the
+/// string. Up to 15 bytes (any id or counter) that is inline, with no
+/// allocation; `n.to_string().into()` allocated a `String` and copied it.
+pub(crate) fn int_to_s_value(n: i64) -> Value {
+    Value::String(itoa::Buffer::new().format(n).into())
 }
 
 /// Render `n` in the given radix (2..=36), lowercase digits with a leading

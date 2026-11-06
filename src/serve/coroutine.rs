@@ -341,10 +341,7 @@ impl Scheduler {
             // written by the handler call. Copying the globals again is most
             // of what a request on a coroutine costs.
             Some(mut vm) => {
-                // The set only grows: copy it when the worker's has.
-                if vm.failed_handlers.len() != worker.failed_handlers.len() {
-                    vm.failed_handlers.clone_from(&worker.failed_handlers);
-                }
+                adopt_demotions(&mut vm.failed_handlers, &worker.failed_handlers);
                 vm
             }
             None => {
@@ -400,15 +397,11 @@ impl Scheduler {
                 let task = self.tasks.remove(&id).expect("task present");
                 self.stacks.push(task.into_stack());
                 if let Some(mut vm) = done.vm {
-                    // A handler the VM failed on stays on the tree-walker for
-                    // the requests after this one, as it does without
-                    // coroutines.
+                    // A handler moved off the VM on this request stays on the
+                    // tree-walker for the requests after this one, as it does
+                    // without coroutines.
                     if let Some(worker) = worker_vm.as_mut() {
-                        if vm.failed_handlers.len() != worker.failed_handlers.len() {
-                            worker
-                                .failed_handlers
-                                .extend(vm.failed_handlers.iter().cloned());
-                        }
+                        merge_demotions(&mut worker.failed_handlers, &vm.failed_handlers);
                     }
                     vm.reset();
                     self.vms.push(vm);
@@ -421,6 +414,39 @@ impl Scheduler {
     pub(crate) fn resume_ready(&mut self, worker_vm: &mut Option<crate::vm::Vm>) {
         while let Ok(id) = self.ready_rx.try_recv() {
             self.resume(id, worker_vm);
+        }
+    }
+}
+
+/// Bring a pooled VM's demotion set up to the worker's before it serves a
+/// request. Every set a coroutine's VM gained was merged into the worker's
+/// when its request ended ([`merge_demotions`]), so the pooled set is a
+/// subset of the worker's, and equal sets — the steady state, both empty on
+/// a healthy worker — cost a length compare.
+///
+/// It used to copy only when the lengths differed. Two coroutines that each
+/// demoted a different handler left the worker with one of them and a pooled
+/// VM with the other — the same length — so that VM kept running the
+/// worker's demoted handler on the VM.
+fn adopt_demotions(vm: &mut ahash::AHashSet<String>, worker: &ahash::AHashSet<String>) {
+    if vm != worker {
+        vm.clone_from(worker);
+    }
+}
+
+/// Merge what a coroutine's VM demoted during its request into the worker's
+/// set, so the requests after it skip the VM for those handlers as they do
+/// without coroutines.
+///
+/// It used to merge only when the lengths differed, so a second coroutine
+/// that demoted a *different* handler than the first, from a VM copied
+/// before either, found the same length and its demotion was lost: the
+/// handler went back to the VM — and, if it had written before failing,
+/// answered 500 again on the next request.
+fn merge_demotions(worker: &mut ahash::AHashSet<String>, vm: &ahash::AHashSet<String>) {
+    for handler in vm {
+        if !worker.contains(handler) {
+            worker.insert(handler.clone());
         }
     }
 }
@@ -438,6 +464,33 @@ impl Drop for Scheduler {
 
 #[cfg(test)]
 mod tests {
+    /// Two coroutines that each demote one handler, from VMs copied while
+    /// the worker had demoted none: both demotions reach the worker, and a
+    /// pooled VM takes both back.
+    #[test]
+    fn demotions_of_concurrent_coroutines_all_reach_the_worker() {
+        let set = |names: &[&str]| -> ahash::AHashSet<String> {
+            names.iter().map(|name| name.to_string()).collect()
+        };
+        let mut worker = set(&[]);
+        let first = set(&["A#index"]);
+        let second = set(&["B#show"]);
+        super::merge_demotions(&mut worker, &first);
+        super::merge_demotions(&mut worker, &second);
+        assert_eq!(worker, set(&["A#index", "B#show"]));
+
+        // A pooled VM holding one demotion, on a worker holding another of
+        // the same count (what the length-based merge left behind): it takes
+        // the worker's set, not its own.
+        let mut pooled = second;
+        let mut other_worker = set(&["A#index"]);
+        super::adopt_demotions(&mut pooled, &other_worker);
+        assert_eq!(pooled, set(&["A#index"]));
+        super::merge_demotions(&mut other_worker, &set(&["C#new"]));
+        super::adopt_demotions(&mut pooled, &other_worker);
+        assert_eq!(pooled, set(&["A#index", "C#new"]));
+    }
+
     use super::*;
     use std::time::Duration;
 

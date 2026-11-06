@@ -15,8 +15,9 @@ pub enum Constant {
     String(crate::interpreter::value::SoliStr),
     Bool(bool),
     Null,
-    /// Decimal value stored as string (parsed at runtime)
-    Decimal(String),
+    /// A Decimal literal, parsed when it was compiled: loading it is a copy,
+    /// in the fast tier, as for an `Int`.
+    Decimal(crate::interpreter::value::DecimalValue),
     /// A compiled function prototype.
     Function(Arc<FunctionProto>),
     /// Pre-computed HashKey list — used for hash literals with all-literal keys
@@ -28,7 +29,16 @@ pub enum Constant {
     /// block) argument. `CallNamed` reads it to split the evaluated arguments
     /// back into positional and named groups before binding them to the callee.
     ArgNames(Arc<Vec<Option<crate::interpreter::value::SoliStr>>>),
+    /// The elements of an array literal made only of literals (`["draft",
+    /// "sent"]`), read by `Op::LiteralArray` and `Op::LiteralListIncludes`
+    /// and never loaded as a value itself.
+    LiteralList(Arc<super::literal_list::LiteralList>),
 }
+
+/// The `Constant::ArgNames` label of a block argument in a labelled method
+/// call (`obj.m(k: v) do … end`). No identifier can be spelled `&`, so it never
+/// collides with a parameter name.
+pub const BLOCK_LABEL: &str = "&";
 
 /// A compiled function (or top-level script).
 #[derive(Debug, Clone)]
@@ -64,16 +74,20 @@ pub struct FunctionProto {
     pub kernel: Option<crate::native::KernelRef>,
     /// The declared return type, checked on return when the VM runs a script
     /// (`Vm::check_return_types`), as the tree-walker checks it.
+    /// Set with [`FunctionProto::set_return_type`], which lowers it into
+    /// `return_check`.
     pub return_type: Option<crate::ast::TypeAnnotation>,
+    /// `return_type` lowered once, so a checked return reads no type name.
+    pub return_check: Option<crate::interpreter::value::TypeCheck>,
     /// Where the function is declared: the span of a return-type error.
     pub decl_span: crate::span::Span,
     /// The qualified class its code is written in (`Billing::PayInvoice`), so
     /// a name it reads unqualified can be its namespace's (`Billing::Invoice`).
     pub namespace: Option<std::sync::Arc<str>>,
-    /// The `init` the compiler writes for a class with field defaults and no
-    /// `new`: it sets the defaults and nothing else, so construction carries
-    /// on to the superclass's constructor (`Vm::call_class`).
-    pub defaults_only: bool,
+    /// The index of a `&block` parameter, when the function declares one. A
+    /// labelled method call binds its block there and no argument to it,
+    /// as the tree-walker's `call_value_with_named` does.
+    pub block_param: Option<u16>,
 }
 
 impl FunctionProto {
@@ -90,10 +104,20 @@ impl FunctionProto {
             source_path: None,
             kernel: None,
             return_type: None,
+            return_check: None,
             decl_span: crate::span::Span::default(),
             namespace: None,
-            defaults_only: false,
+            block_param: None,
         }
+    }
+
+    /// Declare the return type, and the check each return runs against it
+    /// when the VM checks return types.
+    pub fn set_return_type(&mut self, return_type: Option<crate::ast::TypeAnnotation>) {
+        self.return_check = return_type
+            .as_ref()
+            .map(crate::interpreter::value::TypeCheck::lower);
+        self.return_type = return_type;
     }
 }
 
@@ -108,7 +132,20 @@ pub struct Chunk {
     pub columns: Vec<u32>,
     /// Constant pool.
     pub constants: Vec<Constant>,
+    /// Set when a jump, loop or handler offset did not fit its 16-bit
+    /// operand ([`Chunk::jump_operand`]). The compiler refuses such a chunk
+    /// (`Compiler::check_jump_offsets`), so the code runs on the tree-walker
+    /// instead of jumping to a truncated target.
+    pub offset_overflow: bool,
 }
+
+/// The longest forward or backward distance a branch operand may hold.
+///
+/// Operands are `u16`, and the peephole adds up to 2 to a forward offset when
+/// it fuses the instructions before a jump into it (`JumpIfLocalTruthy(slot,
+/// offset + 2)`), so the limit leaves that room. `compact_nops` only shortens
+/// offsets.
+pub const MAX_JUMP_OFFSET: usize = u16::MAX as usize - 2;
 
 impl Chunk {
     pub fn new() -> Self {
@@ -117,7 +154,22 @@ impl Chunk {
             lines: Vec::new(),
             columns: Vec::new(),
             constants: Vec::new(),
+            offset_overflow: false,
         }
+    }
+
+    /// `distance` as a branch operand. A distance past [`MAX_JUMP_OFFSET`]
+    /// does not fit: it marks the chunk (`offset_overflow`), which the
+    /// compiler then refuses, and gives 0. Truncating it instead, as every
+    /// offset was up to 2.29.3, sent a body of more than 65,535 instructions
+    /// to the wrong instruction, mid-expression, where the VM's unchecked
+    /// stack reads (`peek_two!`) read past the stack.
+    pub fn jump_operand(&mut self, distance: usize) -> u16 {
+        if distance > MAX_JUMP_OFFSET {
+            self.offset_overflow = true;
+            return 0;
+        }
+        distance as u16
     }
 
     /// Emit an instruction and record its source line.
@@ -163,7 +215,7 @@ impl Chunk {
     /// Patch a jump instruction at `offset` with the actual jump distance.
     pub fn patch_jump(&mut self, offset: usize) {
         let jump = self.code.len() - offset - 1;
-        let jump = jump as u16;
+        let jump = self.jump_operand(jump);
         match &mut self.code[offset] {
             // Single-target forward branches. `CatchMatch`, `RescueJump`
             // and `TryBegin` are patched by hand at their emit sites (the
@@ -176,6 +228,7 @@ impl Chunk {
             // one, instead of mis-jumping at run time.
             Op::Jump(target)
             | Op::JumpIfFalse(target)
+            | Op::JumpIfTrue(target)
             | Op::JumpIfFalseNoPop(target)
             | Op::JumpIfTrueNoPop(target)
             | Op::JumpIfNull(target)
@@ -298,11 +351,30 @@ mod tests {
         assert_eq!(c.code[off], Op::Jump(3));
     }
 
+    /// A forward jump over more instructions than its 16-bit operand holds
+    /// marks the chunk, which the compiler refuses, instead of truncating
+    /// the distance and landing inside the body it skips.
+    #[test]
+    fn a_jump_too_long_for_its_operand_marks_the_chunk() {
+        for (body, overflows) in [(MAX_JUMP_OFFSET, false), (MAX_JUMP_OFFSET + 1, true)] {
+            let mut c = Chunk::new();
+            let off = c.emit(Op::JumpIfFalse(0), 1);
+            for _ in 0..body {
+                c.emit(Op::Nop, 1);
+            }
+            c.patch_jump(off);
+            assert_eq!(c.offset_overflow, overflows, "{body}");
+            let expected = if overflows { 0 } else { body as u16 };
+            assert_eq!(c.code[off], Op::JumpIfFalse(expected), "{body}");
+        }
+    }
+
     #[test]
     fn patch_jump_works_for_each_jump_variant() {
         let variants = [
             Op::Jump(0),
             Op::JumpIfFalse(0),
+            Op::JumpIfTrue(0),
             Op::JumpIfFalseNoPop(0),
             Op::JumpIfTrueNoPop(0),
             Op::JumpIfNull(0),
@@ -322,6 +394,7 @@ mod tests {
             let target = match c.code[off] {
                 Op::Jump(t)
                 | Op::JumpIfFalse(t)
+                | Op::JumpIfTrue(t)
                 | Op::JumpIfFalseNoPop(t)
                 | Op::JumpIfTrueNoPop(t)
                 | Op::JumpIfNull(t)

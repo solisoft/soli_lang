@@ -122,7 +122,14 @@ impl Linter {
             }
 
             ExprKind::Assign { target, value } => {
-                rules::smell::check_closure_cycle(target, value, expr.span, &mut self.diagnostics);
+                if !self.class_level_this {
+                    rules::smell::check_closure_cycle(
+                        target,
+                        value,
+                        expr.span,
+                        &mut self.diagnostics,
+                    );
+                }
                 self.lint_expr(target);
                 self.lint_expr(value);
             }
@@ -167,7 +174,9 @@ impl Linter {
                         &mut self.diagnostics,
                     );
                 }
+                let class_level_this = std::mem::replace(&mut self.class_level_this, false);
                 self.lint_body(body);
+                self.class_level_this = class_level_this;
                 self.depth -= 1;
             }
 
@@ -239,7 +248,14 @@ impl Linter {
             }
 
             ExprKind::CompoundAssign { target, value, .. } => {
-                rules::smell::check_closure_cycle(target, value, expr.span, &mut self.diagnostics);
+                if !self.class_level_this {
+                    rules::smell::check_closure_cycle(
+                        target,
+                        value,
+                        expr.span,
+                        &mut self.diagnostics,
+                    );
+                }
                 self.lint_expr(target);
                 self.lint_expr(value);
             }

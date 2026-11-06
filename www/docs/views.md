@@ -233,6 +233,9 @@ Extracts a portion of a string (useful for truncating content).
 <%= substring(post["content"], 0, 100) %>...
 ```
 
+`substring(...)` exists in templates only: a helper in `app/helpers` calls the
+string method, `text.substring(0, 100)`.
+
 ### Request-Context Functions
 
 Read fields off the current request directly — no need to plumb them through the view data hash. Available in every template (views, layouts, partials). They return `null` when called outside an active request (e.g. from a unit test).
@@ -661,21 +664,29 @@ Localizes a date/time according to the current locale.
 
 When you create a new application with `soli new`, a starter helper file is generated at `app/helpers/application_helper.sl`. These helpers complement the built-in functions and are automatically available in all templates.
 
-### truncate(text, length, suffix)
+### truncate_text(text, length, suffix)
 
-Truncates text to a maximum length, appending a suffix (default: "...").
+Shortens text longer than `length` characters to `length` characters, the
+suffix included: it keeps the first `length - len(suffix)` characters and
+appends the suffix. Text that already fits comes back unchanged, and a suffix
+longer than `length` comes back alone. It counts characters, not bytes, so
+accented text is cut where you expect.
 
 **Parameters:**
 - `text` (String) - The text to truncate
-- `length` (Int) - Maximum length before truncation
-- `suffix` (String, optional) - Suffix to append (default: "...")
+- `length` (Int) - The most characters the result may have, suffix included
+  (a suffix longer than `length` comes back alone)
+- `suffix` (String) - What marks the cut: `"..."`, `"…"`, `" [more]"`
 
 ```erb
-<p><%= truncate(post["content"], 100) %></p>
+<p><%= truncate_text(post["content"], 100, "...") %></p>
 <!-- "This is a very long article that continues..." -->
 
-<p><%= truncate(title, 50, " [more]") %></p>
+<p><%= truncate_text(title, 50, " [more]") %></p>
 <!-- "This is a long title that gets cut [more]" -->
+
+<p><%= truncate_text("héllo wörld", 8, "…") %></p>
+<!-- "héllo w…" -->
 ```
 
 ### number_with_delimiter(number, delimiter)
@@ -753,7 +764,9 @@ Returns a pluralized string based on count.
 
 ### capitalize(text)
 
-Capitalizes the first letter of a string.
+Upper-cases the first letter of a string and leaves the rest as it is. The
+`capitalize` string method lowercases the rest: `"hello WORLD".capitalize` gives
+`"Hello world"`.
 
 **Parameters:**
 - `text` (String) - The text to capitalize
@@ -761,6 +774,9 @@ Capitalizes the first letter of a string.
 ```erb
 <p><%= capitalize("hello world") %></p>
 <!-- "Hello world" -->
+
+<p><%= capitalize("hello WORLD") %></p>
+<!-- "Hello WORLD" -->
 
 <p><%= capitalize(user["status"]) %></p>
 <!-- "Active" (if status was "active") -->
@@ -846,7 +862,7 @@ See the full [Components](#components) section for the dedicated `component()` h
   <h2><%= capitalize(product["name"]) %></h2>
 
   <p class="description">
-    <%= truncate(product["description"], 150) %>
+    <%= truncate_text(product["description"], 150, "...") %>
   </p>
 
   <div class="pricing">
@@ -875,23 +891,39 @@ You can add your own helpers by editing `app/helpers/application_helper.sl`:
 
 # ... existing helpers ...
 
-# Custom helper: Format a phone number
+# Custom helper: format a 10-digit phone number as (555) 123-4567
 def format_phone(number)
-  digits = replace(number, "[^0-9]", "")
-  if len(digits) == 10
-    return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
-  end
-  number
+  digits = Regex.replace_all("[^0-9]", number, "")
+  return number unless len(digits) == 10
+
+  "(" + digits.substring(0, 3) + ") " + digits.substring(3, 6) + "-" + digits.substring(6, 10)
 end
 
-# Custom helper: Generate a mailto link
-def mail_to(email, text = null)
-  if text == null
-    text = email
-  end
+# Custom helper: a mailto link; output it raw, <%- mail_to(user.email, "Write to us") %>
+def mail_to(email, text)
   "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
 end
 ```
+
+A helper you define wins over a framework function of the same name — a
+route helper (`posts_path`), the form builder's `form_with`, `button_to` or
+`csrf_field`, `Retry`, a builtin — in every view, partial and component,
+`<%= render "x" %>` partials included. A local, or a controller `@ivar`, of
+the same name wins over the helper. Helpers are looked up where the view
+looks names up; nothing copies them into a partial's data. The framework's
+own code keeps its own: a `csrf_field` helper of yours changes what
+`<%- csrf_field() %>` prints, not the token `form_with` and `button_to` embed.
+
+A helper runs in the helpers' own scope, not the view's. It sees the builtins a
+script sees (`len`, `html_escape`, `h`, `time_ago`, `partial`, …), the other
+helpers and the request (`req`, `params`, `session`, `cookies`, `headers`). It
+does not see the functions only a view has: `substring(...)`, `t(...)`,
+`l(...)`, `datetime_format(...)`, `public_path(...)`,
+`number_with_delimiter(...)`, `paginate(...)`, `component(...)`, the form
+builder and the route helpers. A helper called from a view reads such a name
+as nil, so calling it fails with "Cannot call non-function value" and the page
+answers 500. Call the string methods instead (`text.substring(0, 3)`,
+`text.upcase`), or compute the value in the view and pass it to the helper.
 
 ---
 
@@ -1066,8 +1098,17 @@ variables, just like the main view — so a partial can read `@current_user` or
 <%= partial("shared/avatar") %>   <%# the partial reads @current_user directly %>
 ```
 
-An explicit local always wins over an inherited ivar of the same name, and
-framework internals (`req`, `params`, `session`, `headers`) are never injected.
+A partial reads them as names in its scope, after its own locals: nothing is
+copied into the hash you pass, and `partial()` / `component()` leave that hash
+as it was. An explicit local always wins over an inherited ivar of the same
+name, an inherited ivar wins over a helper of the same name (as it does in the
+view), and the framework internals (`req`, `params`, `session`, `headers`) are
+not inherited.
+
+Called from a helper, a service or an action rather than from a view,
+`partial()` / `render_partial()` also gives the partial `req`, `params` and
+`cookies`. Those go into a copy, so your hash keeps only your keys there too:
+a `json_script(opts)` after the call shows no request.
 
 ### The `locals` hash
 
@@ -1109,6 +1150,10 @@ guards:
 `locals` is always defined, even when the partial is rendered without a
 data hash — in that case it's an empty hash, so `locals[anything]` is safe
 and returns `null`.
+
+Besides the keys you passed, `locals` holds the controller's inherited
+`@ivars` (your keys win over them), so `locals["current_user_id"]` reads an
+`@current_user_id` the caller did not pass. View helpers are not in it.
 
 ## Components
 
@@ -1322,6 +1367,13 @@ cached, and a cache-backend outage falls back to a normal render:
 <%- component("footer", { "cache": "site-footer", "cache_ttl": 3600 }) %>
 ```
 
+A derived key follows the values in the data, and a record (any object) by its class and
+its fields: edit the plan and its table gets a new key. What the record's methods read is
+not part of the key: a relation (`plan.features`) queries the database, and the cached
+table keeps the features it was rendered with until `cache_ttl` runs out. Pass the related
+data in the hash when it should count. Data the key cannot be derived from, such as a
+query not run yet (`Plan.where(...)`), renders the component uncached.
+
 ### Component catalog (dev)
 
 With `soli serve --dev`, browse every component at **`/__soli/components`** — a
@@ -1436,15 +1488,26 @@ A template too small to gain from it stays on the interpreter as well: one with 
 
 The rules are the tree-walker's:
 
-- A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a builtin or a helper, and nil when it is neither. `@title` reads `title`.
+- A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a helper or a builtin (a helper wins over a builtin of the same name), and nil when it is neither. In a partial or component it is the locals passed, then the controller's `@ivars`, then a helper or a builtin. `@title` reads `title`.
+- A bare `clock` is the time, as `clock()` is: `<%= ((clock - @started) * 1000).round(2) %>` stays on the VM. A render whose data has a `clock` of its own (a controller's `@clock`), or an app that defines `clock` itself (a helper or a top-level function), is rendered on the tree-walker instead, which resolves `clock` as it always has.
 - A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout, and only for that render: one that reuses a builtin's or a helper's name (`<% url = … %>`, `<% h = … %>`) no longer replaces it for the renders that follow on the worker. A bare assignment in a helper body is a local of that call in the same way.
 - A zero-argument helper or builtin read without `()` is called where the view reads it — `<% if signed_in? %>`, `<%= current_user %>` — as on the tree-walker. Before 2.29.4 a compiled view read the function itself, which is always truthy.
 - A `for` over a hash yields `[key, value]` pairs.
-- A helper from `app/helpers` whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name — `req`, `params`, `session`, `cookies`, `headers`, `flash`, another helper, a builtin — or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.
+- A helper from `app/helpers` runs on the VM with the view. The names it reads from its closure — builtins, the other helpers, component classes, `req`, `params`, `session`, `cookies`, `headers` — are read from that closure on every call, so a helper still sees the current request. A helper stays on the interpreter when it assigns a name its closure holds (`req = …`, a local of that call there, as above), names something its closure does not hold (a model class), calls `respond_to`, `render_json`, `grouped`, `with_transaction`, `after_commit`, `with_tenant`, `assert_raises`, `event` or `Factory`, reads a zero-argument helper or builtin without parentheses (`site_name` rather than `site_name()`: the interpreter calls it), or declares a function or keeps a lambda anywhere but in a call's arguments. A call that passes a zero-argument function to a parameter the helper reads bare runs on the interpreter too.
+- A function the view calls that returns a value its declared return type does not admit (`def label(n) -> String` returning nil) raises, as it does on the interpreter.
 
-If a compiled view fails while it renders, or writes a function by name (a lambda: `<%= callback %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
+If a compiled view fails while it renders, or writes a function by name (a lambda: `<%= callback %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. A view that wrote a function by name, or that the tree-walker then rendered without an error, renders on the tree-walker from then on, in that worker: the two engines disagree about it, and trying the VM again would render the page twice on every request. An error both engines raise is the view's or its data's, and the view stays compiled. Under `--dev` every view renders on the tree-walker.
 
 `SOLI_VM_VIEWS=0` renders every view on the tree-walker. `SOLI_VM_VIEWS_CHECK=<file>` renders each compiled view on both engines, serves the tree-walker's output and appends to `<file>` every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.
+
+`SOLI_ENGINE_LOG=1` says on stderr, once each, which views, partials, components and layouts the interpreter renders in production, and which view helpers it runs, with the reason:
+
+```text
+[soli engine] view 'posts/_post.html.slv' renders on the interpreter: too small to gain from the VM
+[soli engine] layout 'layouts/application.html.slv' renders on the interpreter: layouts are not compiled
+[soli engine] view helper 'title' runs on the interpreter: it reads `site_name` without parentheses, which the interpreter calls
+[soli engine] view 'posts/index.html.slv' failed on the VM and rendered on the interpreter, which renders it from now on: …
+```
 
 ## View Best Practices
 

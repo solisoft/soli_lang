@@ -305,6 +305,25 @@ pub(crate) fn mark_durable_write() {
     }
 }
 
+/// Note an effect no rollback can take back: a job handed to the queue, a
+/// mail sent. Marked even inside a transaction — the queue row of a SoliDB
+/// app and a Cloudflare Queue message are not part of it, and a rolled-back
+/// block has still sent its mail.
+pub(crate) fn mark_durable_effect() {
+    DURABLE_COMMIT.with(|c| c.set(true));
+}
+
+/// Run framework bookkeeping (the error tracker's and slow-query log's own
+/// collections, the dev mail inbox) without arming the tripwire: those writes
+/// are the framework's, idempotent per request, and must not stop a failing
+/// handler from being re-run on the tree-walker nor demote it.
+pub(crate) fn without_durable_mark<T>(run: impl FnOnce() -> T) -> T {
+    let before = had_durable_commit();
+    let result = run();
+    DURABLE_COMMIT.with(|c| c.set(before));
+    result
+}
+
 /// Run `run` inside a model-class transaction (begin on the receiver's
 /// connection, commit on success, rollback + re-raise on error). Nested
 /// calls join the outer transaction. Shared by the tree-walker interceptor
@@ -614,7 +633,7 @@ fn class_name_from_id(id: &str) -> String {
 /// For included relations, the correct class is derived from the _id field.
 pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Value {
     let target_class = resolve_instance_class(class, json);
-    let mut instance = Instance::new(target_class.clone());
+    let mut instance = Instance::with_capacity(target_class.clone(), column_count(json));
     if let serde_json::Value::Object(map) = json {
         for (k, v) in map {
             // `as_str()` avoids cloning the key into an intermediate String
@@ -631,7 +650,7 @@ pub fn json_doc_to_instance(class: &Rc<Class>, json: &serde_json::Value) -> Valu
 /// owned (query result rows, batch transforms).
 pub fn json_doc_to_instance_owned(class: &Rc<Class>, json: serde_json::Value) -> Value {
     let target_class = resolve_instance_class(class, &json);
-    let mut instance = Instance::new(target_class.clone());
+    let mut instance = Instance::with_capacity(target_class.clone(), column_count(&json));
     if let serde_json::Value::Object(map) = json {
         for (k, v) in map {
             instance.set(k, json_to_value_owned(v));
@@ -639,6 +658,17 @@ pub fn json_doc_to_instance_owned(class: &Rc<Class>, json: serde_json::Value) ->
     }
     apply_instance_post_load(&target_class, &mut instance);
     Value::Instance(Rc::new(RefCell::new(instance)))
+}
+
+/// How many fields a row's document becomes: its key count. The instance's
+/// map is sized for them up front — a schemaless model declares no field,
+/// and its rows (`_key`, `_id`, `_rev`, the timestamps…) regrew the map at
+/// their 4th and 8th key.
+fn column_count(json: &serde_json::Value) -> usize {
+    match json {
+        serde_json::Value::Object(map) => map.len(),
+        _ => 0,
+    }
 }
 
 fn apply_instance_post_load(target_class: &Rc<Class>, instance: &mut Instance) {
@@ -769,6 +799,18 @@ fn split_cursor_batch(json: serde_json::Value) -> (Vec<serde_json::Value>, bool,
     (rows, has_more, cursor_id)
 }
 
+/// Arm the durable-write tripwire for an SDBQL statement that writes
+/// (`INSERT`, `UPDATE`, `REMOVE`, `UPSERT`, …): a bulk `update_all` /
+/// `delete_all`, `db.query("INSERT …")`, an `@sdbql{}` write. Marked when the
+/// statement is sent, not when it answers: a timed-out write may still land.
+/// The scan skips strings and comments and costs a pass over the query text,
+/// next to a network round-trip.
+pub(crate) fn mark_if_sdbql_writes(sdbql: &str) {
+    if crate::interpreter::builtins::solidb::sdbql_is_data_modification(sdbql) {
+        mark_durable_write();
+    }
+}
+
 /// Fast async query execution - uses server's tokio runtime.
 /// Uses same HTTP client as HTTP.request for consistency.
 pub fn exec_async_query_with_binds(
@@ -784,6 +826,7 @@ pub fn exec_async_query_with_binds(
                 .to_string(),
         );
     }
+    mark_if_sdbql_writes(&sdbql);
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
 
@@ -1004,6 +1047,7 @@ fn observe_sent_query(body: &[u8], ms: f64) {
 /// Async query returning raw JSON string (no Value conversion - fastest).
 /// Uses same HTTP client as HTTP.request for consistency.
 pub fn exec_async_query_raw(sdbql: String) -> Value {
+    mark_if_sdbql_writes(&sdbql);
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
     // SEC-036: build the JSON body with serde_json so the SDBQL value is
@@ -1061,6 +1105,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
 
 /// Hardcoded query - exact same pattern as HTTP.request for comparison.
 pub fn exec_query_hardcoded(sdbql: String) -> Value {
+    mark_if_sdbql_writes(&sdbql);
     // Use environment variables for credentials
     let host = crate::platform::env::var("SOLIDB_HOST")
         .unwrap_or_else(|_| "http://localhost:6745".to_string());
@@ -1439,6 +1484,7 @@ pub fn exec_db_api_request(
 /// number of deleted documents. A missing collection prunes to 0 rather than
 /// erroring — nothing to delete is a success for retention.
 pub fn exec_prune(collection: &str, older_than_iso: &str) -> Result<i64, String> {
+    mark_durable_write();
     let (scheme, host) = solidb_scheme_host();
     let database = get_database_name();
     let url = format!(

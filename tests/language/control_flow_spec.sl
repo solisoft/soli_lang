@@ -784,6 +784,23 @@ describe("for") do
     assert_eq(labels, ["0:5", "1:6"])
   end
 
+  test("iterates a string by character, with the index") do
+    def passthrough(value)
+      value
+    end
+
+    seen = []
+    for ch, i in passthrough("hé😀")
+      seen.push("#{i}:#{ch}")
+    end
+    letters = []
+    for ch in "abc"
+      letters.push(ch.upcase)
+    end
+    assert_eq(seen, ["0:h", "1:é", "2:😀"])
+    assert_eq(letters, ["A", "B", "C"])
+  end
+
   test("refuses a hash") do
     assert_raises("cannot iterate over hash") do
       for key in {"a": 1}

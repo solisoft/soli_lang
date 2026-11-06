@@ -166,7 +166,7 @@ impl Vm {
                 check_arity(0, args.len(), span)?;
                 let mut lines = Vec::with_capacity(s.bytes().filter(|b| *b == b'\n').count() + 1);
                 for line in s.lines() {
-                    lines.push(Value::String(line.to_string().into()));
+                    lines.push(Value::String(SoliStr::from(line)));
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(lines))))
             }
@@ -241,22 +241,22 @@ impl Vm {
             // --- One-arg methods ---
             "contains" | "contains?" => {
                 check_arity(1, args.len(), span)?;
-                let sub = expect_string(&args[0], "contains", span)?;
+                let sub = expect_string(&args[0], name, span)?;
                 Ok(Value::Bool(s.contains(sub)))
             }
             "starts_with" | "starts_with?" => {
                 check_arity(1, args.len(), span)?;
-                let prefix = expect_string(&args[0], "starts_with", span)?;
+                let prefix = expect_string(&args[0], "starts_with?", span)?;
                 Ok(Value::Bool(s.starts_with(prefix)))
             }
             "ends_with" | "ends_with?" => {
                 check_arity(1, args.len(), span)?;
-                let suffix = expect_string(&args[0], "ends_with", span)?;
+                let suffix = expect_string(&args[0], "ends_with?", span)?;
                 Ok(Value::Bool(s.ends_with(suffix)))
             }
             "include?" | "includes?" => {
                 check_arity(1, args.len(), span)?;
-                let sub = expect_string(&args[0], "include?", span)?;
+                let sub = expect_string(&args[0], name, span)?;
                 Ok(Value::Bool(s.contains(sub)))
             }
             "slugify" => {
@@ -274,16 +274,9 @@ impl Vm {
                 } else {
                     expect_string(&args[0], "split", span)?
                 };
-                let capacity = if delim.is_empty() {
-                    s.len() + 1
-                } else {
-                    s.matches(delim).count() + 1
-                };
-                let mut parts = Vec::with_capacity(capacity);
-                for part in s.split(delim) {
-                    parts.push(Value::String(part.to_string().into()));
-                }
-                Ok(Value::Array(Rc::new(RefCell::new(parts))))
+                Ok(Value::Array(Rc::new(RefCell::new(
+                    crate::interpreter::executor::calls::string_methods::split_to_values(s, delim),
+                ))))
             }
             "index_of" => {
                 check_arity(1, args.len(), span)?;
@@ -520,12 +513,12 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
                     let total_pad = width - s.len();
                     let left_pad = total_pad / 2;
                     let right_pad = total_pad - left_pad;
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     for _ in 0..left_pad {
                         result.push(pad_char);
                     }
@@ -533,7 +526,7 @@ impl Vm {
                     for _ in 0..right_pad {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "ljust" => {
@@ -554,14 +547,14 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     result.push_str(s);
                     for _ in 0..(width - s.len()) {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "rjust" => {
@@ -582,14 +575,14 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     for _ in 0..(width - s.len()) {
                         result.push(pad_char);
                     }
                     result.push_str(s);
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "lpad" => {
@@ -618,15 +611,15 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
                     let padding = width - s.len();
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     for _ in 0..padding {
                         result.push(pad_char);
                     }
                     result.push_str(s);
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "rpad" => {
@@ -655,15 +648,15 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
                     let padding = width - s.len();
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     result.push_str(s);
                     for _ in 0..padding {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "truncate" => {
@@ -678,12 +671,17 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or("...");
-                if s.len() <= length {
-                    Ok(Value::String(s.to_string().into()))
-                } else {
-                    let result = &s[..length.saturating_sub(suffix.len())];
-                    Ok(Value::String(format!("{}{}", result, suffix).into()))
-                }
+                // Character-based, and shared with the interpreter: the byte
+                // slice this replaced panicked inside a multi-byte character.
+                // A string that fits is handed back without copying it.
+                Ok(Value::String(
+                    match crate::interpreter::executor::calls::string_methods::truncate_chars(
+                        text, length, suffix,
+                    ) {
+                        Some(cut) => cut.into(),
+                        None => s.clone(),
+                    },
+                ))
             }
             "match" => {
                 check_arity(1, args.len(), span)?;
@@ -794,11 +792,11 @@ impl Vm {
             "blank?" => Ok(Value::Bool(s.trim().is_empty())),
             "present?" => Ok(Value::Bool(!s.trim().is_empty())),
             "inspect" => Ok(Value::String(format!("\"{}\"", s).into())),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "String".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "String".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 }

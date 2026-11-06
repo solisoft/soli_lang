@@ -90,6 +90,16 @@ macro_rules! route_cols {
     }};
 }
 
+/// Note a successful write for the durable-write tripwire, as the document
+/// facade does (`sql::mark_on_success`): a column-mode `increment`, save or
+/// bulk write followed by a failure on the VM must not be re-run.
+fn mark_on_success<T>(result: Result<T, String>) -> Result<T, String> {
+    if result.is_ok() {
+        crate::interpreter::builtins::model::crud::mark_durable_write();
+    }
+    result
+}
+
 /// Fetch one row by primary key.
 pub fn get_row(
     schema: &Arc<TableSchema>,
@@ -108,12 +118,13 @@ pub fn insert_row(
     schema: &Arc<TableSchema>,
     doc: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    route_cols!(
+    let result = route_cols!(
         super::postgres::col_insert(schema, doc),
         super::mysql::col_insert(schema, doc),
         super::sqlite::col_insert(schema, doc),
         super::d1::col_insert(schema, doc)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Update a row by primary key, returning it as stored.
@@ -122,22 +133,24 @@ pub fn update_row(
     pk: &serde_json::Value,
     patch: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    route_cols!(
+    let result = route_cols!(
         super::postgres::col_update(schema, pk, patch),
         super::mysql::col_update(schema, pk, patch),
         super::sqlite::col_update(schema, pk, patch),
         super::d1::col_update(schema, pk, patch)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Delete a row by primary key.
 pub fn delete_row(schema: &Arc<TableSchema>, pk: &serde_json::Value) -> Result<(), String> {
-    route_cols!(
+    let result = route_cols!(
         super::postgres::col_delete(schema, pk),
         super::mysql::col_delete(schema, pk),
         super::sqlite::col_delete(schema, pk),
         super::d1::col_delete(schema, pk)
-    )
+    );
+    mark_on_success(result)
 }
 
 pub fn select_rows(q: &ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
@@ -185,12 +198,13 @@ pub fn increment_column(
     column: &str,
     delta: i64,
 ) -> Result<Option<i64>, String> {
-    route_cols!(
+    let result = route_cols!(
         super::postgres::col_increment(schema, pk, column, delta),
         super::mysql::col_increment(schema, pk, column, delta),
         super::sqlite::col_increment(schema, pk, column, delta),
         super::d1::col_increment(schema, pk, column, delta)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Grouped aggregation over real columns.
@@ -209,22 +223,24 @@ pub fn group_by(
 
 /// Bulk delete. Returns the number of rows removed.
 pub fn delete_all(q: &ColumnQuery) -> Result<u64, String> {
-    route_cols!(
+    let result = route_cols!(
         super::postgres::col_delete_all(q),
         super::mysql::col_delete_all(q),
         super::sqlite::col_delete_all(q),
         super::d1::col_delete_all(q)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Bulk update. Returns the number of rows changed.
 pub fn update_all(q: &ColumnQuery, patch: &serde_json::Value) -> Result<u64, String> {
-    route_cols!(
+    let result = route_cols!(
         super::postgres::col_update_all(q, patch),
         super::mysql::col_update_all(q, patch),
         super::sqlite::col_update_all(q, patch),
         super::d1::col_update_all(q, patch)
-    )
+    );
+    mark_on_success(result)
 }
 
 /// Result column names for a grouped query: the group columns, then each

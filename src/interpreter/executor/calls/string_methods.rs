@@ -65,18 +65,35 @@ pub fn identity_string(s: &SoliStr) -> Value {
     Value::String(s.clone())
 }
 
+/// True when no byte of `s` is an ASCII lowercase letter.
+///
+/// A fold with `|` instead of `all()`: `all` stops at the first hit, and that
+/// early exit keeps the loop scalar, so a 10 KB string that is already upper
+/// case took 3.4 us — six times what `to_uppercase` costs. The fold has no
+/// branch in its body and vectorizes; it always reads every byte, which is
+/// what the no-op case has to do anyway.
+#[inline]
+fn has_no_ascii_lowercase(s: &str) -> bool {
+    !s.bytes().fold(false, |acc, b| acc | b.is_ascii_lowercase())
+}
+
+/// True when no byte of `s` is an ASCII uppercase letter. See
+/// [`has_no_ascii_lowercase`].
+#[inline]
+fn has_no_ascii_uppercase(s: &str) -> bool {
+    !s.bytes().fold(false, |acc, b| acc | b.is_ascii_uppercase())
+}
+
 /// Uppercase with an ASCII fast path and a no-op when already upper.
+///
+/// The ASCII path converts a copy of the `SoliStr` in place: one allocation
+/// and one copy, where building a `String` first and converting it paid two.
 pub fn upcase_string(s: &SoliStr) -> Value {
     if s.is_ascii() {
-        if s.bytes().all(|b| !b.is_ascii_lowercase()) {
+        if has_no_ascii_lowercase(s) {
             return identity_string(s);
         }
-        let mut bytes = s.as_bytes().to_vec();
-        for b in &mut bytes {
-            *b = b.to_ascii_uppercase();
-        }
-        // SAFETY: ASCII uppercasing preserves ASCII / UTF-8.
-        return Value::String(unsafe { String::from_utf8_unchecked(bytes) }.into());
+        return Value::String(s.to_ascii_uppercase());
     }
     Value::String(s.to_uppercase())
 }
@@ -84,16 +101,51 @@ pub fn upcase_string(s: &SoliStr) -> Value {
 /// Lowercase with an ASCII fast path and a no-op when already lower.
 pub fn downcase_string(s: &SoliStr) -> Value {
     if s.is_ascii() {
-        if s.bytes().all(|b| !b.is_ascii_uppercase()) {
+        if has_no_ascii_uppercase(s) {
             return identity_string(s);
         }
-        let mut bytes = s.as_bytes().to_vec();
-        for b in &mut bytes {
-            *b = b.to_ascii_lowercase();
-        }
-        return Value::String(unsafe { String::from_utf8_unchecked(bytes) }.into());
+        return Value::String(s.to_ascii_lowercase());
     }
     Value::String(s.to_lowercase())
+}
+
+/// The character at `index` of `s` (negative counts from the end), or
+/// `None` when it is out of range. Indexing is by character, never by byte.
+///
+/// `s[i]` used to collect the whole string into a `Vec<char>` to read one
+/// character: an allocation of four bytes per character and a full decode on
+/// every access, so a loop over a string's indexes was quadratic. Here:
+///
+/// * when every byte up to the wanted one is ASCII (or, for a negative
+///   index, every byte of the wanted suffix), each of those bytes is one
+///   character, so the answer is a byte read;
+/// * otherwise the characters are walked with `chars().nth`, which stops at
+///   the wanted one and allocates nothing.
+///
+/// Callers that need the length for an out-of-range error count it
+/// themselves; the hit path never does.
+pub(crate) fn string_char_at(s: &str, index: i64) -> Option<Value> {
+    let bytes = s.as_bytes();
+    if index >= 0 {
+        let i = usize::try_from(index).ok()?;
+        // A string never has more characters than bytes.
+        if i >= bytes.len() {
+            return None;
+        }
+        if bytes[..=i].is_ascii() {
+            return Some(char_to_value(bytes[i] as char));
+        }
+        return s.chars().nth(i).map(char_to_value);
+    }
+    // Negative: the `back`-th character from the end (1-based).
+    let back = usize::try_from(index.unsigned_abs()).ok()?;
+    if back > bytes.len() {
+        return None;
+    }
+    if bytes[bytes.len() - back..].is_ascii() {
+        return Some(char_to_value(bytes[bytes.len() - back] as char));
+    }
+    s.chars().rev().nth(back - 1).map(char_to_value)
 }
 
 /// Reverse a string by character, with a byte-wise fast path for ASCII.
@@ -129,6 +181,20 @@ pub(crate) fn reverse_string(s: &str) -> String {
 pub(crate) fn char_to_value(c: char) -> Value {
     let mut buf = [0u8; 4];
     Value::String(SoliStr::from(&*c.encode_utf8(&mut buf)))
+}
+
+/// `s.split(delim)` as one `Value::String` per piece.
+///
+/// Each piece goes straight into a `SoliStr`. `part.to_string().into()` built
+/// a `String` and then copied it again, because `EcoString::from(String)`
+/// cannot adopt the buffer: a malloc, a copy and a free per piece for
+/// nothing. The old pre-scan that counted the matches to size the `Vec` read
+/// the whole string a second time; letting the `Vec` grow is cheaper for the
+/// handful of pieces a split usually yields.
+pub(crate) fn split_to_values(s: &str, delim: &str) -> Vec<Value> {
+    s.split(delim)
+        .map(|part| Value::String(SoliStr::from(part)))
+        .collect()
 }
 
 pub(crate) fn chars_to_values(s: &str) -> Vec<Value> {
@@ -242,6 +308,40 @@ pub(crate) fn substring_chars(s: &str, start: i64, end: i64) -> String {
         return String::new();
     }
     chars[start..end].iter().collect()
+}
+
+/// `truncate(length, suffix)` — counted in **characters**, suffix included.
+///
+/// Returns `None` when the string already fits, so the caller can hand back the
+/// receiver unchanged. Both engines used to slice at the byte index
+/// `length - suffix.len()`, which panicked the process (a 500 under `soli
+/// serve`) whenever the cut fell inside a multi-byte character —
+/// `"ééééé".truncate(3, "")` — and measured accented text by its UTF-8 bytes, so
+/// `"héllo world".truncate(8)` kept one character fewer than its ASCII twin.
+pub(crate) fn truncate_chars(s: &str, length: usize, suffix: &str) -> Option<String> {
+    // A string never has more characters than bytes: this answers short strings
+    // and `truncate(9223372036854775807)` without walking anything.
+    if s.len() <= length {
+        return None;
+    }
+    let keep = length.saturating_sub(suffix.chars().count());
+    let cut = if s.is_ascii() {
+        // More bytes than `length` is more characters than `length`.
+        keep
+    } else {
+        let mut offsets = s.char_indices().map(|(byte, _)| byte);
+        // Byte offset of character `keep`: where the string is cut.
+        let cut = offsets.nth(keep)?;
+        // Character `length` must exist too, or the string already fits.
+        if length > keep {
+            offsets.nth(length - keep - 1)?;
+        }
+        cut
+    };
+    let mut out = String::with_capacity(cut + suffix.len());
+    out.push_str(&s[..cut]);
+    out.push_str(suffix);
+    Some(out)
 }
 
 /// Largest width the padding helpers will build.
@@ -447,15 +547,9 @@ impl Interpreter {
                         }
                     }
                 };
-                let mut parts = Vec::with_capacity(if delim.is_empty() {
-                    text.len() + 1
-                } else {
-                    text.matches(delim).count() + 1
-                });
-                for part in text.split(delim) {
-                    parts.push(Value::String(part.into()));
-                }
-                Some(Ok(Value::Array(Rc::new(RefCell::new(parts)))))
+                Some(Ok(Value::Array(Rc::new(RefCell::new(split_to_values(
+                    text, delim,
+                ))))))
             }
             "replace" => {
                 if arguments.len() != 2 {
@@ -726,11 +820,11 @@ impl Interpreter {
                 }
                 Ok(Value::String(string_succ(text).into()))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "String".to_string(),
-                property: method_name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "String".to_string(),
+                method_name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -1340,12 +1434,11 @@ impl Interpreter {
             })
             .unwrap_or("...");
 
-        if s.len() <= length {
-            Ok(Value::String(s.to_string().into()))
-        } else {
-            let result = &s[..length.saturating_sub(suffix.len())];
-            Ok(Value::String((result.to_string() + suffix).into()))
-        }
+        Ok(Value::String(
+            truncate_chars(s, length, suffix)
+                .unwrap_or_else(|| s.to_string())
+                .into(),
+        ))
     }
 
     fn string_length(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1388,16 +1481,9 @@ impl Interpreter {
                 }
             }
         };
-        let capacity = if delim.is_empty() {
-            s.len() + 1
-        } else {
-            s.matches(delim).count() + 1
-        };
-        let mut parts = Vec::with_capacity(capacity);
-        for part in s.split(delim) {
-            parts.push(Value::String(part.to_string().into()));
-        }
-        Ok(Value::Array(Rc::new(RefCell::new(parts))))
+        Ok(Value::Array(Rc::new(RefCell::new(split_to_values(
+            s, delim,
+        )))))
     }
 
     fn string_index_of(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1631,7 +1717,105 @@ pub(crate) fn string_succ(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{camelize_string, parse_to_int, reverse_string, slugify_string, string_succ};
+    use super::{
+        camelize_string, downcase_string, parse_to_int, reverse_string, slugify_string,
+        split_to_values, string_char_at, string_succ, truncate_chars, upcase_string,
+    };
+    use crate::interpreter::value::{SoliStr, Value};
+
+    fn char_at(s: &str, i: i64) -> Option<String> {
+        string_char_at(s, i).map(|v| match v {
+            Value::String(c) => c.to_string(),
+            other => panic!("not a string: {other:?}"),
+        })
+    }
+
+    /// `s[i]` is by character on every path: the ASCII byte read, the
+    /// `chars().nth` walk, and the negative forms of both must agree with
+    /// indexing a `Vec<char>`, which is what the VM used to build.
+    #[test]
+    fn string_char_at_matches_char_vector_indexing() {
+        let samples = [
+            "",
+            "a",
+            "hello",
+            "héllo wörld😀",
+            "ab😀",
+            "😀ab",
+            "aé",
+            "éa",
+            "日本語テキスト",
+        ];
+        for s in samples {
+            let chars: Vec<char> = s.chars().collect();
+            let n = chars.len() as i64;
+            for i in -(n + 3)..(n + 3) {
+                let expected = if i < 0 {
+                    usize::try_from(n + i).ok().and_then(|k| chars.get(k))
+                } else {
+                    chars.get(i as usize)
+                }
+                .map(|c| c.to_string());
+                assert_eq!(char_at(s, i), expected, "{s:?}[{i}]");
+            }
+        }
+        assert_eq!(char_at("abc", i64::MIN), None);
+        assert_eq!(char_at("abc", i64::MAX), None);
+        assert_eq!(char_at("héllo", i64::MIN), None);
+    }
+
+    /// An already-cased ASCII string comes back as the receiver itself
+    /// (same buffer), and a string that needs work is converted correctly.
+    #[test]
+    fn upcase_and_downcase_share_a_no_op_and_convert_otherwise() {
+        let upper = SoliStr::from("ALREADY UPPER CASE, LONG ENOUGH TO LIVE ON THE HEAP 123");
+        let lower = SoliStr::from("already lower case, long enough to live on the heap 123");
+        let shares = |v: Value, s: &SoliStr| match v {
+            Value::String(out) => out.as_ptr() == s.as_ptr(),
+            _ => false,
+        };
+        assert!(shares(upcase_string(&upper), &upper));
+        assert!(shares(downcase_string(&lower), &lower));
+        let text = |v: Value| match v {
+            Value::String(out) => out.to_string(),
+            other => panic!("not a string: {other:?}"),
+        };
+        assert_eq!(
+            text(upcase_string(&lower)),
+            lower.to_uppercase().to_string()
+        );
+        assert_eq!(
+            text(downcase_string(&upper)),
+            upper.to_lowercase().to_string()
+        );
+        assert_eq!(text(upcase_string(&SoliStr::from("mIxEd"))), "MIXED");
+        assert_eq!(text(downcase_string(&SoliStr::from("mIxEd"))), "mixed");
+        // Non-ASCII still takes the Unicode mapping.
+        assert_eq!(text(upcase_string(&SoliStr::from("école"))), "ÉCOLE");
+        assert_eq!(text(downcase_string(&SoliStr::from("ÉCOLE"))), "école");
+        assert_eq!(text(upcase_string(&SoliStr::from(""))), "");
+    }
+
+    #[test]
+    fn split_to_values_matches_str_split() {
+        for (s, d) in [
+            ("a,b,,c", ","),
+            ("", ","),
+            ("abc", ""),
+            ("x", ","),
+            ("a::b", "::"),
+        ] {
+            let got: Vec<String> = split_to_values(s, d)
+                .into_iter()
+                .map(|v| match v {
+                    Value::String(p) => p.to_string(),
+                    other => panic!("not a string: {other:?}"),
+                })
+                .collect();
+            let expected: Vec<String> = s.split(d).map(str::to_string).collect();
+            assert_eq!(got, expected, "{s:?}.split({d:?})");
+        }
+    }
 
     #[test]
     fn camelize_snake_case_lower() {
@@ -1816,5 +2000,56 @@ mod tests {
     fn succ_no_alnum() {
         assert_eq!(string_succ("!!!"), "!!!");
         assert_eq!(string_succ(""), "");
+    }
+
+    #[test]
+    fn truncate_cuts_multibyte_text_at_a_character_boundary() {
+        // Used to panic: byte 3 is inside the second 'é'.
+        assert_eq!(truncate_chars("ééééé", 3, "").as_deref(), Some("ééé"));
+        assert_eq!(truncate_chars("ééééé", 4, "...").as_deref(), Some("é..."));
+        assert_eq!(
+            truncate_chars("日本語テキスト", 4, "…").as_deref(),
+            Some("日本語…")
+        );
+        assert_eq!(truncate_chars("😀😀😀", 2, "").as_deref(), Some("😀😀"));
+    }
+
+    #[test]
+    fn truncate_counts_characters_not_bytes() {
+        // Five characters, ten bytes: it fits.
+        assert_eq!(truncate_chars("ééééé", 5, "..."), None);
+        assert_eq!(truncate_chars("ééééé", 9, "..."), None);
+        assert_eq!(
+            truncate_chars("héllo world", 8, "...").as_deref(),
+            Some("héllo...")
+        );
+        // Each 'é' boundary around `length` and `keep`.
+        assert_eq!(truncate_chars("abcé", 3, "").as_deref(), Some("abc"));
+        assert_eq!(truncate_chars("abcé", 4, ""), None);
+        assert_eq!(truncate_chars("éabc", 3, "").as_deref(), Some("éab"));
+    }
+
+    #[test]
+    fn truncate_keeps_the_ascii_behaviour() {
+        assert_eq!(
+            truncate_chars("hello world", 8, "...").as_deref(),
+            Some("hello...")
+        );
+        assert_eq!(truncate_chars("hello!", 5, "...").as_deref(), Some("he..."));
+        assert_eq!(truncate_chars("hello", 5, "..."), None);
+        assert_eq!(
+            truncate_chars("hello world", 8, "~").as_deref(),
+            Some("hello w~")
+        );
+        // A suffix longer than the limit is all that is left, as before.
+        assert_eq!(
+            truncate_chars("hello world", 2, "...").as_deref(),
+            Some("...")
+        );
+        assert_eq!(
+            truncate_chars("héllo wörld", 2, "...").as_deref(),
+            Some("...")
+        );
+        assert_eq!(truncate_chars("abc", usize::MAX, "..."), None);
     }
 }

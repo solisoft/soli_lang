@@ -84,7 +84,8 @@ soli lint app/main.sl  # lint a single file
 A script runs on the bytecode VM, the engine `soli serve` uses in production, unless it needs the
 tree-walking interpreter: it uses class reflection such as `send`, `method_missing`, a model
 callback or a state machine, or it reads a function with no required parameter without
-parentheses (`x = helper`), which the interpreter calls and the VM would not. That is decided
+parentheses (`x = helper`), which the interpreter calls and the VM would not. A bare `clock`
+runs on the VM. That is decided
 before the first line runs. `--tree` forces the interpreter, `--vm` the VM, and
 `SOLI_ENGINE_LOG=1` prints which one runs and why (see
 [Configuration](configuration.md#script-engine)). `soli test`, the REPL and `soli serve --dev` use
@@ -131,18 +132,28 @@ let user: Hash = {"name": "Alice", "age": 30};
 
 ### Primitive Types
 
-Soli provides five primitive types:
+Soli provides six primitive types:
 
 ```soli
 # Int - 64-bit signed integer
 count = 42;
 negative = -100;
 large = 9_000_000;  # Underscores for readability
+# Past the Int range (-9223372036854775808..9223372036854775807) the operators
+# raise "integer overflow" instead of wrapping: + - * / %, unary -, += and -=,
+# ++ and --. The error is catchable, and the variable keeps its value.
 
 # Float - 64-bit floating-point
 pi = 3.14159;
 small = 0.001;
 # No exponent literal: `2.5e10` does not parse. Use "2.5e10".to_f
+
+# Decimal - exact decimal arithmetic, for money: a D suffix after at least
+# one decimal place (100.00D, not 100D)
+price = 19.99D
+rate = 0.0675D
+# Past Decimal's range (about 7.9e28) a literal raises "Invalid decimal
+# literal"; digits past the 28th decimal place are rounded.
 
 # String - UTF-8 text
 greeting = "Hello, World!";
@@ -319,7 +330,10 @@ cache["key"] ||= expensive_lookup();   # compute once, reuse on repeat
 | `a ??= b` | `a = a ?? b`            | You want a default only for `null` (keeps `false`/`0`) |
 
 The right-hand side is **not evaluated** when the condition fails, so it's
-safe to use expensive expressions on the right.
+safe to use expensive expressions on the right. Nothing is written either: on a
+set field `@total ||= 0` is a single read, a value object's field can be tested
+this way without tripping its immutability, and `obj.label ||= v` on a getter
+does not copy the getter's result into a field.
 
 ### Comparison Operators
 
@@ -417,6 +431,12 @@ print(s.starts_with("Hell"));  # true
 print(s.ends_with("!"));      # true
 print(s.casecmp?("hello, world!"));  # true (case-insensitive equality)
 
+# Indexing counts characters, never bytes; a negative index counts from the end
+print("héllo"[1]);         # "é"
+print("héllo"[-1]);        # "o"
+# Past either end it raises: Index out of bounds: 5 (length 5) — in characters
+print("héllo"[5] rescue "none");  # "none"
+
 # String transformation
 snake_case = "HelloWorld".snake_case();  # "hello_world"
 camel_lower = "hello_world".camelize();      # "helloWorld" (lower-camel)
@@ -424,13 +444,21 @@ camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify;    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> numeric HTML entities, ASCII untouched)
 
+# Truncation counts characters, suffix included (default "..."), and never cuts
+# a character in half
+"hello world".truncate(8)         # "hello..."
+"hello world".truncate(8, "~")    # "hello w~"
+"héllo wörld".truncate(8)         # "héllo..."
+"日本語テキスト".truncate(4, "…")  # "日本語…"
+"hi".truncate(10)                 # "hi" (already fits: unchanged)
+
 # Numeric conversion. `to_i` takes an optional radix from 2 to 36; the
 # conventional 0x / 0o / 0b prefixes are accepted.
 print("ff".to_i(16));      # 255
 print("1010".to_i(2));     # 10
 print("-ff".to_i(16));     # -255
-print("4.88".to_i());      # 4   (base 10 is lenient; other bases parse strictly)
-print("nope".to_i());      # 0
+print("4.88".to_i);        # 4   (base 10 is lenient; other bases parse strictly)
+print("nope".to_i);        # 0
 
 # Character-set variants
 print("aaabbb".squeeze());       # "ab"   (collapse every run)
@@ -679,9 +707,22 @@ end
 # 1: banana
 # 2: cherry
 
+# Iterate over a string: one character (a one-character String) at a time,
+# not one byte — "é" and "😀" are single steps
+for ch, i in "héllo"
+  print("#{i}: #{ch}")  # 0: h, 1: é, 2: l, 3: l, 4: o
+end
+
 # Iterate with range
 for i in range(0, 5)
   print(i);  # 0, 1, 2, 3, 4
+end
+
+# Or with the range operator, which also stops before its end. A loop counts
+# through a..b, in parentheses or not, without building an array first
+# (range() builds one), so it has no SOLI_MAX_RANGE_LEN limit either.
+for i in 0..5
+  print(i)  # 0, 1, 2, 3, 4
 end
 
 # Range with step
@@ -1404,6 +1445,52 @@ configure("example.com", port: 443);     # Mixed: positional then named
 configure(host: "api.example.com", port: 443, debug: true);  # All named
 ```
 
+#### On Methods
+
+Labels work the same on a method call, and the receiver stays `this`: an
+instance method, `@helper(k: v)`, the bare private helper, a `static def`, and
+safe navigation (a nil receiver evaluates no argument):
+
+```soli
+class Invoice
+  total: Int
+
+  new(total: Int)
+    @total = total
+  end
+
+  def with_fee(fee: Int = 5, times: Int = 1) -> Int
+    @total + fee * times
+  end
+
+  def summary -> String
+    "#{@with_fee(times: 3)} with fees, #{_due(days: 30)}"
+  end
+
+  static def zero(note: String = "")
+    this.new(total: 0)
+  end
+
+  private
+
+  def _due(days: Int) -> String
+    "due in #{days} days"
+  end
+end
+
+invoice = Invoice.new(total: 100)
+print(invoice.with_fee(fee: 10))       # 110
+print(invoice.summary)                 # 115 with fees, due in 30 days
+print(Invoice.zero(note: "draft").total)  # 0
+missing = nil
+print(missing&.with_fee(fee: 10))      # null
+```
+
+A block passed along with labels (`list.add(item: x) do … end`) reaches the
+method's `&block` parameter; a method without one ignores it. A builtin method
+receives the labels as one trailing options hash, and `method_missing` gets
+them as a hash after the positional arguments.
+
 #### Ruby-Style Calls Without Parentheses
 
 You can also call methods on objects without parentheses, using Ruby-style syntax:
@@ -1669,6 +1756,15 @@ labels = ["a", "b"].each_with_index.map { |letter, i| "#{i}:#{letter}" }  # ["0:
 # A block with two or more parameters destructures an array element, as in Ruby
 [["Ann", 31], ["Bob", 42]].map { |name, age| "#{name} (#{age})" }  # ["Ann (31)", "Bob (42)"]
 
+# A block may declare fewer parameters than the iterator passes and gets only those.
+# This holds for every iterator (times/upto/downto, the array and hash methods).
+3.times { print("hi") }                                # no index
+["a", "b"].each_with_index { |letter| print(letter) }  # the element, without its index
+numbers.each { print("tick") }                         # once per element
+# One exception: a one-parameter `reduce` callback gets the [acc, x] pair, just as
+# a one-parameter hash block gets [key, value]. A direct call still checks arity:
+# `f = fn() { 1 }` and then `f(5)` raises "expected 0, got 1".
+
 # reduce - accumulate to single value
 sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55
 product = numbers.reduce(fn(acc, x) acc * x, 1);  # 3628800
@@ -1909,6 +2005,18 @@ deleted = delete(person, "city");
 print(deleted);  # Paris
 print(person);   # {name: Alice, age: 31, country: France}
 ```
+
+Dot notation reads a key too: `person.name` is `person["name"]`, and a missing key is `nil`. A key named like a hash method is still the key, so `{"size": 2048}.size` is `2048`. The method answers only when the hash has no such key: `{"a": 1}.size` is `1`. Parentheses always call the method:
+
+```soli
+row = {"size": 2048, "key": "abc"}
+row.size          # 2048  — the key
+row.size()        # 2     — Hash#size, the number of entries
+row.key("abc")    # "key" — Hash#key, the first key holding "abc"
+{"a": 1}.size     # 1     — no "size" key, so the method
+```
+
+Both engines follow this rule, so `soli test` and `soli serve` read a row the same way. Some code handles hashes it did not build, such as `params` or a decoded JSON body. There, call the methods with parentheses (`h.keys()`, `h.length()`), or read the keys with brackets, so that a key named like a method cannot answer in the method's place.
 
 #### Hash Methods
 
@@ -2159,8 +2267,69 @@ Counter.new().count   # 0 — the constructor ran
 - Keep the parentheses when there are no arguments: a bare `Counter.new` is
   not a call.
 - A class without a constructor takes its fields from a hash or from named
-  arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`.
+  arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`. The fields it is not given
+  keep their defaults.
 - A module is not instantiated: `Greetable.new()` raises.
+- `return` ends a constructor early (a guard such as `return if amount.nil?`).
+  `new` still gives the instance, never what the constructor returns.
+
+#### Fields start with their defaults
+
+Before any constructor runs, every field the class and its parents declare is
+set: to its default, or to `nil` when it has none. The parent's fields come
+first, so a subclass's default wins. Every way of building the instance sees
+them: `new Klass(...)`, `Klass(...)`, `Klass.new(...)`, and a hash or named
+arguments on a class without a constructor.
+
+```soli
+class Account
+  owner: String
+  nickname: String
+  balance: Int = 0
+  tags: Array = []
+  opened: Float = clock()     # evaluated for each new account
+
+  new(owner)
+    @owner = owner
+  end
+end
+
+a = Account.new("ann")
+a.balance                    # 0
+a.nickname                   # nil — declared, never assigned
+a.tags.push("vip")
+Account.new("bo").tags       # [] — each instance gets its own array
+
+class Savings < Account
+  balance: Int = 100
+end
+
+Savings.new("cy").balance    # 100 — the subclass's default wins
+```
+
+- A default is evaluated once per new instance, never when the class is
+  defined.
+- A default that is not a literal (`clock()`, `@items.length`, a constant)
+  is evaluated on the new instance: `@field` and `@method` are the new
+  instance's, and a name reads what the class's methods would read — never a
+  local or the `this` of the code that calls `new`.
+- Each class sets its fields first — its literal defaults, `nil` for the
+  rest — then evaluates its other defaults in declaration order, before the
+  next class down sets its own. So a default may read a field declared above
+  it, or any field with a literal default of its class or its parents.
+- `super(...)` runs the parent's constructor body only. It does not set the
+  fields again, so what a constructor assigned before calling it stays.
+- A model's `Post.new(attrs)` is the ORM's: it sets the literal defaults and
+  the attributes, and leaves any other field unset (see
+  [Models](models.md#building-without-saving)).
+
+```soli
+class Basket
+  items: Array = [1, 2, 3]
+  count: Int = @items.length      # 3 — this basket's items
+  label: String = "n=#{@count}"   # "n=3": `count` is declared above
+end
+```
 
 #### `this` and `self`
 
@@ -2247,7 +2416,7 @@ end
 - Explicit `render("view", {...})` data **always wins** over the auto-exposed fields.
 - The framework-injected fields `req`, `params`, `session`, and `headers` are never re-exposed this way — those flow through their usual channels.
 - Auto-exposure is scoped to the action currently running. No cross-action, cross-controller, or cross-request leakage.
-- Partials (`render_partial`, `partial`) are unaffected — pass data to them explicitly. Inside the partial, read the data back via bare identifiers or the `locals` hash (`locals["class"]`) for keys whose names collide with reserved words or builtins. See [Views → The `locals` hash](./views.md#the-locals-hash) for the full semantics.
+- Partials and components (`render_partial`, `partial`, `component`) see the fields too, after the locals passed to them, which win. Inside the partial, read the data back via bare identifiers or the `locals` hash (`locals["class"]`) for keys whose names collide with reserved words or builtins. See [Views → Inherited instance variables](./views.md#inherited-instance-variables) and [Views → The `locals` hash](./views.md#the-locals-hash) for the full semantics.
 
 ### Constructors and Factory Methods
 
@@ -3456,6 +3625,10 @@ Status.Active == Status.Archived                              # false
 Status.Pending(reason: "x") == Status.Pending(reason: "x")    # true  (structural)
 Status.Pending(reason: "x") == Status.Pending(reason: "y")    # false
 ```
+
+`!=` is always the negation of `==`, in a condition too
+(`if order.status != Status.Paid`). A value rebuilt from storage, such as an
+`enum_field` read or `Status.parse(...)`, compares like one built in code.
 
 `variant()` returns the variant name as a String — useful for serializing to a
 database column or JSON.
@@ -4846,14 +5019,14 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
 - **Implicit returns** — the last expression is the value; `return` is for early
   exits, and before a last line that would start with `fn(` (read as a named
   function declaration). A line opening with `(` is its own statement.
-- **No `()` on a zero-argument method call** — `Post.all`,
-  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
-  them on model writes for now — `@post.save()`, `@post.delete()`,
-  `Post.delete_all()`, `Post.new()`: bare, a write skips its lifecycle
-  callbacks and a static returns the function. Keep them on a **bare function** (`current_user()`, `session_destroy()`), so a
-  call reads as one — and a lambda kept in a variable needs them: production
-  leaves a bare one uncalled. Keep them before an index too — `list.sort()[0]`: the type checker refuses
-  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+- **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
+  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`.
+  Two places keep them: **`Klass.new()`** — a bare `Post.new` reads the
+  class's `new` without calling it, so it is no instance; and a **bare function**
+  (`current_user()`, `session_destroy()`), so a call reads as one — both
+  engines call a zero-argument def, helper or builtin read bare, but a lambda
+  kept in a variable needs them: production leaves a bare one uncalled.
+  `.any?`, `.all?` and `.none?` take a block
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
