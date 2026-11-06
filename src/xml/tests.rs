@@ -171,15 +171,14 @@ fn a_reference_to_a_forbidden_character_is_refused() -> TestResult {
             &format!("{input}: {err}"),
         )?;
     }
-    // The same refusal holds under every policy.
-    ensure(
-        parse("<a>&#0;</a>", &ParsePolicy::soap()).is_err(),
-        "SOAP accepted &#0;",
-    )?;
+    // c14n refuses it too; SOAP drops it, as its old parser did
+    // (`legacy_char_refs`).
     ensure(
         parse("<a>&#0;</a>", &ParsePolicy::c14n()).is_err(),
         "c14n accepted &#0;",
-    )
+    )?;
+    let tree = with("<a>&#0;v</a>", &ParsePolicy::soap())?;
+    ensure(tree.text(root(&tree)?) == "v", "SOAP kept &#0;")
 }
 
 #[test]
@@ -398,14 +397,17 @@ fn a_document_needs_exactly_one_root_and_no_text_outside_it() -> TestResult {
 
 #[test]
 fn soap_and_c14n_ignore_trailing_content() -> TestResult {
-    for policy in [ParsePolicy::soap(), ParsePolicy::c14n()] {
+    for (policy, expected) in [
+        (ParsePolicy::soap(), &["element"][..]),
+        (ParsePolicy::c14n(), &["element", "comment"][..]),
+    ] {
         let tree = with("<a>1</a><b><c/></b>tail<!--kept-->", &policy)?;
         let kinds: Vec<&str> = tree
             .children(NodeId::DOCUMENT)
             .iter()
             .map(|c| tree.kind(*c).name())
             .collect();
-        assert_eq!(kinds, ["element", "comment"]);
+        assert_eq!(kinds, expected);
         // A trailing root cut off by the end of the input is ignored too.
         with("<a/><b>", &policy)?;
     }
@@ -494,10 +496,11 @@ fn depth_limit_at_n_and_n_plus_one() -> TestResult {
         soap_error_message(&err),
         "XML parsing error: nesting depth exceeded 64 levels (likely DoS payload)"
     );
-    // A skipped trailing root is depth-limited too.
-    let soap = ParsePolicy::soap().lowered(Some(3), None, None);
-    with("<a/><n><n><n></n></n></n>", &soap)?;
-    fails("<a/><n><n><n><n></n></n></n></n>", &soap)?;
+    // A skipped trailing root is depth-limited too (SOAP stops at the end
+    // of the first root and never reads it).
+    let c14n = ParsePolicy::c14n().lowered(Some(3), None, None);
+    with("<a/><n><n><n></n></n></n>", &c14n)?;
+    fails("<a/><n><n><n><n></n></n></n></n>", &c14n)?;
     Ok(())
 }
 
@@ -2018,4 +2021,188 @@ fn built_elements_are_capped_and_duplicate_checked() -> TestResult {
         tree.create_element("e", &many, None).is_err(),
         "a duplicate among 41 attributes",
     )
+}
+
+// ---- Legacy knobs: what the old SOAP and c14n parsers accepted ----
+
+#[test]
+fn legacy_char_refs_resolve_the_quick_xml_way() -> TestResult {
+    let mut soap = ParsePolicy::soap();
+    soap.unknown_entity = OnUnknownEntity::Drop;
+    // Any code point but NUL resolves, controls and U+FFFE included.
+    let tree = with("<a>&#1;&#xFFFE;&#x41;&#66;</a>", &soap)?;
+    assert_eq!(tree.text(root(&tree)?), "\u{1}\u{FFFE}AB");
+    // One that does not resolve is dropped under Drop...
+    for bad in [
+        "&#0;",
+        "&#xD800;",
+        "&#x110000;",
+        "&#X41;",
+        "&#;",
+        "&#x;",
+        "&#-1;",
+        "&#+65;",
+    ] {
+        let tree = with(&format!("<a>{bad}v</a>"), &soap)?;
+        assert_eq!(tree.text(root(&tree)?), "v", "{bad}");
+    }
+    // ... and refused under Error (c14n), in text and attribute values.
+    let c14n = ParsePolicy::c14n();
+    let tree = with("<a x=\"&#1;\">&#1;</a>", &c14n)?;
+    assert_eq!(tree.attribute(root(&tree)?, "x"), Some("\u{1}"));
+    assert_eq!(
+        fails("<a>&#0;</a>", &c14n)?.kind,
+        XmlErrorKind::ForbiddenCharRef(0)
+    );
+    assert_eq!(
+        fails("<a>&#x110000;</a>", &c14n)?.kind,
+        XmlErrorKind::InvalidCharRef("#x110000".into())
+    );
+    fails("<a x=\"&#xD800;\"/>", &c14n)?;
+    // `Xml.parse` keeps the strict rule.
+    fails_xml("<a>&#1;</a>")?;
+    Ok(())
+}
+
+#[test]
+fn stop_after_root_reads_nothing_past_the_first_root() -> TestResult {
+    let soap = ParsePolicy::soap();
+    for input in [
+        "<a>1</a></b>",
+        "<a>1</a><b></c>",
+        "<a>1</a><!DOCTYPE x>",
+        "<a>1</a>&#0;",
+        "<a>1</a><",
+        "<a/></b>",
+    ] {
+        let tree = with(input, &soap)?;
+        assert_eq!(tree.children(NodeId::DOCUMENT).len(), 1, "{input}");
+    }
+    // c14n reads on, so the same inputs fail there.
+    fails("<a>1</a></b>", &ParsePolicy::c14n())?;
+    // The event loop says Done at the root's end.
+    let mut sink = TreeSink::new(100);
+    let mut events = EventLoop::new("<a/>junk</x>".as_bytes(), soap);
+    assert_eq!(
+        events.step(&mut sink).map_err(|e| e.to_string())?,
+        Step::Done
+    );
+    // Truncated input still fails (bug 6).
+    fails("<a><b>1</b>", &soap)?;
+    Ok(())
+}
+
+#[test]
+fn text_before_the_root_is_kept_on_request() -> TestResult {
+    let soap = ParsePolicy::soap();
+    let tree = with(" pre <!--c--> &amp; more <a>x</a>", &soap)?;
+    let texts: Vec<String> = tree
+        .children(NodeId::DOCUMENT)
+        .iter()
+        .filter(|c| tree.kind(**c).name() == "text")
+        .map(|c| tree.text(*c))
+        .collect();
+    assert_eq!(texts, [" pre ", " & more "]);
+    assert_eq!(soap_shape(&tree), map(vec![("a", st("pre& morex"))]));
+    // Blank text before the root is still not delivered; text after it never.
+    let tree = with("  <a>x</a>", &soap)?;
+    assert_eq!(tree.children(NodeId::DOCUMENT).len(), 1);
+    // Other policies ignore (c14n) or refuse (Xml.parse) it.
+    let tree = with("pre<a>x</a>", &ParsePolicy::c14n())?;
+    assert_eq!(tree.children(NodeId::DOCUMENT).len(), 1);
+    fails_xml("pre<a>x</a>")?;
+    Ok(())
+}
+
+#[test]
+fn soap_text_is_trimmed_piece_by_piece_at_comments_and_pis() -> TestResult {
+    assert_eq!(soap("<a>x <!-- c --> y</a>")?, map(vec![("a", st("xy"))]));
+    assert_eq!(soap("<a>x <?p d?> y</a>")?, map(vec![("a", st("xy"))]));
+    // Inside a piece: entities, CDATA and child elements do not cut.
+    assert_eq!(
+        soap("<a> x &amp; <![CDATA[ y ]]> z </a>")?,
+        map(vec![("a", st("x &  y  z"))])
+    );
+    assert_eq!(
+        soap("<r>a<!--c-->b <c>1</c> d</r>")?,
+        map(vec![(
+            "r",
+            map(vec![("_text", st("ab  d")), ("c", st("1"))])
+        )])
+    );
+    // A piece is trimmed of XML whitespace only; the whole of Unicode's.
+    assert_eq!(
+        soap("<a>\u{a0}x\u{2003}<!--c-->y\u{a0}</a>")?,
+        map(vec![("a", st("x\u{2003}y"))])
+    );
+    Ok(())
+}
+
+#[test]
+fn soap_keeps_the_ambiguity_of_a_child_named_text() -> TestResult {
+    // Text placed before a child named `_text` forms a list with it, and
+    // stands unless more text follows, as with the old parser.
+    assert_eq!(
+        soap("<r>x<_text>v</_text></r>")?,
+        map(vec![("r", Proj::List(vec![st("x"), st("v")]))])
+    );
+    assert_eq!(soap("<r><_text>v</_text>x</r>")?, map(vec![("r", st("x"))]));
+    assert_eq!(
+        soap("<r>x<_text>v</_text>y</r>")?,
+        map(vec![("r", st("xy"))])
+    );
+    Ok(())
+}
+
+#[test]
+fn the_per_element_declaration_cap_is_a_knob() -> TestResult {
+    let decls: Vec<String> = (0..300).map(|i| format!("xmlns:p{i}=\"u{i}\"")).collect();
+    let input = format!("<a {}/>", decls.join(" "));
+    fails_xml(&input)?;
+    with(&input, &ParsePolicy::soap())?;
+    with(&input, &ParsePolicy::c14n())?;
+    let mut policy = ParsePolicy::xml();
+    policy.max_ns_decls_per_element = 300;
+    with(&input, &policy)?;
+    policy.max_ns_decls_per_element = 299;
+    fails(&input, &policy)?;
+    Ok(())
+}
+
+#[test]
+fn duplicates_by_qname_and_a_self_closing_leaf_past_the_depth() -> TestResult {
+    let c14n = ParsePolicy::c14n();
+    // By qname: these are two attributes, as for the old c14n parser.
+    with(
+        "<a xmlns:p=\"u\" xmlns:q=\"u\" p:x=\"1\" q:x=\"2\"/>",
+        &c14n,
+    )?;
+    with("<a x=\"1\" p:x=\"2\"/>", &c14n)?;
+    let err = fails("<a x=\"1\" x=\"2\"/>", &c14n)?;
+    assert_eq!(err.kind, XmlErrorKind::DuplicateAttribute("x".into()));
+    let mut by_name = c14n;
+    by_name.duplicate_by_qname = false;
+    fails(
+        "<a xmlns:p=\"u\" xmlns:q=\"u\" p:x=\"1\" q:x=\"2\"/>",
+        &by_name,
+    )?;
+    // Depth: start tags count, a self-closing leaf just below does not.
+    let policy = ParsePolicy::c14n().lowered(Some(3), None, None);
+    with("<n><n><n><leaf/></n></n></n>", &policy)?;
+    with("<n><n><n><leaf/><leaf/></n></n></n>", &policy)?;
+    fails("<n><n><n><n></n></n></n></n>", &policy)?;
+    let mut strict = policy;
+    strict.self_closing_past_depth = false;
+    fails("<n><n><n><leaf/></n></n></n>", &strict)?;
+    Ok(())
+}
+
+#[test]
+fn a_lenient_policy_ignores_a_malformed_declaration() -> TestResult {
+    for policy in [ParsePolicy::soap(), ParsePolicy::c14n()] {
+        let tree = with("<?xml version=\"1.0\" encoding?><a/>", &policy)?;
+        assert_eq!(tree.decl().and_then(|d| d.encoding.clone()), None);
+    }
+    fails_xml("<?xml version=\"1.0\" encoding?><a/>")?;
+    Ok(())
 }

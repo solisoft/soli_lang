@@ -217,6 +217,9 @@ fn resolve_reference(
     offset: u64,
 ) -> Result<Option<char>, XmlError> {
     if let Some(number) = name.strip_prefix('#') {
+        if policy.legacy_char_refs {
+            return legacy_char_ref(number, policy, offset);
+        }
         let code = match number.strip_prefix('x') {
             Some(hex) => u32::from_str_radix(hex, 16).ok(),
             None => number.parse::<u32>().ok(),
@@ -253,6 +256,39 @@ fn resolve_reference(
         }
     };
     Ok(Some(c))
+}
+
+/// A character reference resolved by quick-xml's rule (`policy.legacy_char_refs`):
+/// a decimal or `x`-hex number with no sign, any code point but NUL. One that
+/// does not resolve follows `policy.unknown_entity`.
+fn legacy_char_ref(
+    number: &str,
+    policy: &ParsePolicy,
+    offset: u64,
+) -> Result<Option<char>, XmlError> {
+    let (digits, radix) = match number.strip_prefix('x') {
+        Some(hex) => (hex, 16),
+        None => (number, 10),
+    };
+    let code = if digits.starts_with(['+', '-']) {
+        None
+    } else {
+        u32::from_str_radix(digits, radix).ok()
+    };
+    match code.filter(|code| *code != 0).and_then(char::from_u32) {
+        Some(c) => Ok(Some(c)),
+        None => match policy.unknown_entity {
+            OnUnknownEntity::Drop => Ok(None),
+            OnUnknownEntity::Error => Err(XmlError::at(
+                match code {
+                    // NUL or a surrogate: XML forbids the character.
+                    Some(code) if code <= 0x10FFFF => XmlErrorKind::ForbiddenCharRef(code),
+                    _ => XmlErrorKind::InvalidCharRef(format!("#{number}")),
+                },
+                offset,
+            )),
+        },
+    }
 }
 
 /// Decode an attribute value: references resolved, then attribute-value
@@ -339,6 +375,9 @@ impl<R: BufRead> EventLoop<R> {
         config.allow_unmatched_ends = false;
         config.expand_empty_elements = false;
         config.trim_text(false);
+        reader
+            .resolver_mut()
+            .set_max_declarations_per_element(policy.max_ns_decls_per_element);
         EventLoop {
             reader,
             buf: Vec::new(),
@@ -397,7 +436,15 @@ impl<R: BufRead> EventLoop<R> {
                         start,
                     ))
                 } else {
-                    self.handle(event, start, sink)
+                    self.handle(event, start, sink).map(|step| {
+                        // A self-closing root under `stop_after_root` ends the
+                        // parse from inside `start`.
+                        if self.done {
+                            Step::Done
+                        } else {
+                            step
+                        }
+                    })
                 }
             }
             Err(err) => Err(map_qx_error(err, self.reader.error_position())),
@@ -464,6 +511,10 @@ impl<R: BufRead> EventLoop<R> {
                     sink.end_element()?;
                     if self.open.is_empty() {
                         self.state = RootState::After;
+                        if self.policy.stop_after_root {
+                            self.done = true;
+                            return Ok(Step::Done);
+                        }
                     }
                 }
             }
@@ -514,10 +565,17 @@ impl<R: BufRead> EventLoop<R> {
                         }
                         Err(_) => "1.0".into(),
                     };
+                    // The lenient policies never read the declaration before:
+                    // a malformed field is left out rather than refused.
+                    let strict = self.policy.strict_syntax;
+                    let field = |value| match decl_field(value, start) {
+                        Err(_) if !strict => Ok(None),
+                        other => other,
+                    };
                     let decl = XmlDecl {
                         version,
-                        encoding: decl_field(e.encoding(), start)?,
-                        standalone: decl_field(e.standalone(), start)?,
+                        encoding: field(e.encoding())?,
+                        standalone: field(e.standalone())?,
                     };
                     sink.declaration(decl)?;
                 }
@@ -627,6 +685,9 @@ impl<R: BufRead> EventLoop<R> {
         let blank = text.chars().all(is_xml_space);
         if self.outside_root() {
             if !blank || had_ref {
+                if self.state == RootState::Before && self.policy.keep_text_before_root {
+                    return sink.text(text);
+                }
                 return self.outside_content(self.pending_start);
             }
             return Ok(());
@@ -671,7 +732,10 @@ impl<R: BufRead> EventLoop<R> {
                 }
             }
         }
-        if self.open.len() + 1 > self.policy.max_depth {
+        let legacy_leaf = empty
+            && self.policy.self_closing_past_depth
+            && self.open.len() == self.policy.max_depth;
+        if self.open.len() + 1 > self.policy.max_depth && !legacy_leaf {
             return Err(XmlError::at(
                 XmlErrorKind::DepthExceeded(self.policy.max_depth),
                 offset,
@@ -686,6 +750,9 @@ impl<R: BufRead> EventLoop<R> {
             sink.end_element()?;
             if self.open.is_empty() {
                 self.state = RootState::After;
+                if self.policy.stop_after_root {
+                    self.done = true;
+                }
             }
         } else {
             self.open.push((qname, offset, 0));
@@ -821,7 +888,13 @@ impl<R: BufRead> EventLoop<R> {
             });
         }
         if self.policy.duplicate_attribute == Strictness::Error {
-            if let Some(dup) = find_duplicate(&attrs) {
+            let dup = if self.policy.duplicate_by_qname {
+                let mut seen = std::collections::HashSet::with_capacity(attrs.len());
+                attrs.iter().find(|attr| !seen.insert(&attr.qname))
+            } else {
+                find_duplicate(&attrs)
+            };
+            if let Some(dup) = dup {
                 return Err(XmlError::at(
                     XmlErrorKind::DuplicateAttribute(dup.qname.to_string()),
                     offset,

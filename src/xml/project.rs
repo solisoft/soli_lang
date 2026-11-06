@@ -213,18 +213,40 @@ pub fn to_h(tree: &XmlTree, id: NodeId) -> Proj {
 /// is `nil`; a repeated name gives a list; text beside children goes under
 /// `"_text"`, at the position where the old parser first flushed it (before
 /// the next non-self-closing child, or last); comments and PIs are skipped; a
-/// child named `_text` stays ambiguous.
+/// child named `_text` stays ambiguous. The old parser trimmed each text
+/// event, so a comment or PI still cuts the text into pieces trimmed one by
+/// one (`x <!--c--> y` is `"xy"`), and text before the root (kept by
+/// `keep_text_before_root`) is read as the first pieces of the root's text
+/// (`junk<a>x</a>` is `"junkx"`). Within a piece, text, references and CDATA
+/// are joined (bugs 1 and 2), and so are the pieces either side of a child
+/// element (bug 5).
 pub fn soap_shape(tree: &XmlTree) -> Proj {
     let Some(root) = tree.root_element() else {
         return Proj::Null;
     };
+    let mut leading = SoapText::default();
+    for child in tree.children(NodeId::DOCUMENT) {
+        if *child == root {
+            break;
+        }
+        if let Kind::Text(s) = tree.kind(*child) {
+            leading.push(s);
+            leading.cut();
+        }
+    }
     let value = project(tree, root, |node, values| {
         let mut map: IndexMap<String, Proj> = IndexMap::new();
-        let mut text = String::new();
-        let mut placed = false;
+        let mut text = if node == root {
+            std::mem::take(&mut leading)
+        } else {
+            SoapText::default()
+        };
+        // The text as it stood when `_text` was placed, if it was.
+        let mut placed: Option<String> = None;
         for child in tree.children(node) {
             match tree.kind(*child) {
-                Kind::Text(s) | Kind::CData(s) => text.push_str(s),
+                Kind::Text(s) | Kind::CData(s) => text.push(s),
+                Kind::Comment(_) | Kind::Pi { .. } => text.cut(),
                 Kind::Element {
                     qname,
                     self_closing,
@@ -233,9 +255,10 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
                     // The old parser flushed pending text when a child
                     // *started* (`Event::Start`); a self-closing child was an
                     // `Event::Empty` and flushed nothing.
-                    if !self_closing && !placed && !text.trim().is_empty() {
-                        map.insert("_text".to_string(), Proj::Null);
-                        placed = true;
+                    if !self_closing && placed.is_none() && !text.is_blank() {
+                        let so_far = text.joined();
+                        map.insert("_text".to_string(), Proj::Str(so_far.clone()));
+                        placed = Some(so_far);
                     }
                     let value = values.remove(child).unwrap_or(Proj::Null);
                     insert_repeat(&mut map, qname, value);
@@ -243,8 +266,13 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
                 _ => {}
             }
         }
+        let text = text.finish();
         let trimmed = text.trim();
-        if !trimmed.is_empty() {
+        // The old parser wrote `_text` when a child started and again at the
+        // end, the second time only if text had come since. With nothing new,
+        // the placed value stands, even if a child named `_text` has since
+        // turned it into a list (that ambiguity is kept).
+        if !trimmed.is_empty() && placed.as_deref() != Some(trimmed) {
             map.insert("_text".to_string(), Proj::Str(trimmed.to_string()));
         }
         if map.is_empty() {
@@ -258,6 +286,46 @@ pub fn soap_shape(tree: &XmlTree) -> Proj {
     let mut out = IndexMap::new();
     out.insert(tree.name(root).unwrap_or_default().to_string(), value);
     Proj::Map(out)
+}
+
+/// An element's text as the old SOAP parser saw it: pieces cut at comments
+/// and PIs, each trimmed of XML whitespace (quick-xml's `trim_text`), joined.
+#[derive(Debug, Default)]
+struct SoapText {
+    done: String,
+    piece: String,
+}
+
+fn is_xml_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
+impl SoapText {
+    fn push(&mut self, s: &str) {
+        self.piece.push_str(s);
+    }
+
+    fn cut(&mut self) {
+        self.done.push_str(self.piece.trim_matches(is_xml_space));
+        self.piece.clear();
+    }
+
+    /// What the old parser's `current_text.trim().is_empty()` saw.
+    fn is_blank(&self) -> bool {
+        self.done.trim().is_empty() && self.piece.trim().is_empty()
+    }
+
+    /// The text so far, trimmed as a value is.
+    fn joined(&self) -> String {
+        let mut text = self.done.clone();
+        text.push_str(self.piece.trim_matches(is_xml_space));
+        text.trim().to_string()
+    }
+
+    fn finish(mut self) -> String {
+        self.cut();
+        self.done
+    }
 }
 
 /// The error string `SOAP.parse` gives for `err`, worded as today.

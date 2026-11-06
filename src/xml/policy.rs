@@ -25,6 +25,11 @@ pub const MAX_DEPTH_CEILING: usize = 10_000;
 /// real vocabularies stay in the tens.
 pub const MAX_NS_BINDINGS: usize = 4096;
 
+/// quick-xml's default cap on the namespace declarations of one start tag,
+/// kept for `Xml.parse`.
+pub const QUICK_XML_NS_DECLS_PER_ELEMENT: usize =
+    quick_xml::name::DEFAULT_MAX_DECLARATIONS_PER_ELEMENT;
+
 /// What to do with `&name;` when `name` is not a predefined entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnUnknownEntity {
@@ -115,6 +120,37 @@ pub struct ParsePolicy {
     /// and attributes past `max_attrs` are dropped. Namespace declarations
     /// are read best effort under the same rules.
     pub lenient_attributes: bool,
+    /// Namespace declarations one start tag may make (quick-xml's
+    /// per-element cap, RUSTSEC-2026-0195). `max_ns_bindings` still caps the
+    /// declarations live at once, so a lenient caller can lift this one to
+    /// keep accepting what its old parser accepted.
+    pub max_ns_decls_per_element: usize,
+    /// Character references resolve by quick-xml's own rule, as the old SOAP
+    /// and c14n parsers did: any code point but NUL, controls and U+FFFE
+    /// included. A reference that does not resolve (`&#0;`, a surrogate, past
+    /// U+10FFFF, a sign, not a number) is then handled like an unknown entity:
+    /// dropped under [`OnUnknownEntity::Drop`], refused under `Error`. Off
+    /// (`Xml.parse`): only characters XML allows, every other one refused.
+    pub legacy_char_refs: bool,
+    /// Duplicate attributes are compared by qname as written (the old c14n
+    /// parser), not by expanded name: `p:x` and `q:x` with `p` and `q` bound
+    /// to one URI, or an unbound `p:x` beside `x`, are two attributes.
+    pub duplicate_by_qname: bool,
+    /// The depth limit is checked on start tags only, as the old SOAP and
+    /// c14n parsers did: a self-closing element directly inside an element at
+    /// `max_depth` is accepted (it cannot nest, so one level past the limit
+    /// is the most this allows).
+    pub self_closing_past_depth: bool,
+    /// Stop reading when the first root element closes (`SOAP.parse`, which
+    /// never looked past it): what follows, well-formed or not, is not read.
+    /// Wins over `trailing_content`.
+    pub stop_after_root: bool,
+    /// Non-whitespace text (and references) before the root element is given
+    /// to the sink as text of the document node instead of being ignored.
+    /// `SOAP.parse` read it as the start of the root's text (`junk<a>x</a>`
+    /// gave `"junkx"`); `soap_shape` does the same with it. Only meaningful
+    /// with `TrailingContent::Ignore`.
+    pub keep_text_before_root: bool,
 }
 
 impl ParsePolicy {
@@ -137,11 +173,20 @@ impl ParsePolicy {
             strict_syntax: true,
             raw_pi_data: false,
             lenient_attributes: false,
+            max_ns_decls_per_element: QUICK_XML_NS_DECLS_PER_ELEMENT,
+            legacy_char_refs: false,
+            duplicate_by_qname: false,
+            self_closing_past_depth: false,
+            stop_after_root: false,
+            keep_text_before_root: false,
         }
     }
 
     /// `SOAP.parse` / `SOAP.call`: today's lenient parser, with depth 64 and a
-    /// 1 MiB text run, and truncated input now refused (bug 6).
+    /// 1 MiB text run, and truncated input now refused (bug 6). The legacy
+    /// knobs keep what the old quick-xml loop accepted: it read no further
+    /// than the root, kept text before it, resolved character references the
+    /// quick-xml way and checked depth on start tags only.
     pub fn soap() -> Self {
         ParsePolicy {
             doctype_message:
@@ -161,6 +206,12 @@ impl ParsePolicy {
             strict_syntax: false,
             raw_pi_data: false,
             lenient_attributes: true,
+            max_ns_decls_per_element: MAX_NS_BINDINGS,
+            legacy_char_refs: true,
+            duplicate_by_qname: false,
+            self_closing_past_depth: true,
+            stop_after_root: true,
+            keep_text_before_root: true,
         }
     }
 
@@ -186,6 +237,12 @@ impl ParsePolicy {
             strict_syntax: false,
             raw_pi_data: true,
             lenient_attributes: false,
+            max_ns_decls_per_element: MAX_NS_BINDINGS,
+            legacy_char_refs: true,
+            duplicate_by_qname: true,
+            self_closing_past_depth: true,
+            stop_after_root: false,
+            keep_text_before_root: false,
         }
     }
 
@@ -256,6 +313,15 @@ mod tests {
         assert_eq!(soap.max_text_run, Some(1024 * 1024));
         assert!(soap.lenient_attributes && !xml.lenient_attributes && !c14n.lenient_attributes);
         assert_eq!(xml.max_ns_bindings, MAX_NS_BINDINGS);
+        // The legacy knobs: on where the old parsers behaved that way.
+        assert!(!xml.legacy_char_refs && soap.legacy_char_refs && c14n.legacy_char_refs);
+        assert!(soap.stop_after_root && !c14n.stop_after_root && !xml.stop_after_root);
+        assert!(soap.keep_text_before_root && !c14n.keep_text_before_root);
+        assert!(c14n.duplicate_by_qname && !soap.duplicate_by_qname && !xml.duplicate_by_qname);
+        assert!(soap.self_closing_past_depth && c14n.self_closing_past_depth);
+        assert!(!xml.self_closing_past_depth);
+        assert_eq!(xml.max_ns_decls_per_element, 256);
+        assert_eq!(soap.max_ns_decls_per_element, MAX_NS_BINDINGS);
         assert!(xml.max_depth <= MAX_DEPTH_CEILING);
         assert!(!ParsePolicy::xml().strip_blank(true).keep_blank_text);
         assert_eq!(
