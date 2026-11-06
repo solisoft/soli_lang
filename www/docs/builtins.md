@@ -7243,6 +7243,56 @@ Logger.set_capture(false);
 
 ---
 
+## Metrics Class
+
+App-defined metrics, shared by every worker of the process. They go wherever
+metrics are configured — Prometheus text at `GET /_metrics` (`SOLI_METRICS=1`),
+a Datadog agent over DogStatsD (`DD_AGENT_HOST`, `DD_DOGSTATSD_URL` or
+`SOLI_STATSD`), OTLP/HTTP (`SOLI_OTEL_METRICS=1`). With none configured a call
+is validated and dropped, so instrumented code costs next to nothing in
+development. Under `soli test` samples are kept so a spec can read them back.
+
+| Method | Description |
+|--------|-------------|
+| `Metrics.increment(name, value = 1, tags: {})` | Add to a counter. `value` ≥ 0 (Int or Float). `Metrics.increment(name, {"k": "v"})` counts 1 with those tags. |
+| `Metrics.gauge(name, value, tags: {})` | Set a gauge to its current value. |
+| `Metrics.histogram(name, value, tags: {})` | Record one observation in a histogram (DogStatsD `\|h`). |
+| `Metrics.distribution(name, value, tags: {})` | The same histogram locally; DogStatsD `\|d` (a Datadog distribution). |
+| `Metrics.time(name, tags = {}) do … end` | Run the block, record its duration **in seconds** as a distribution (also when it raises), answer its value. Pass tags positionally here. |
+| `Metrics.value(name, tags = {})` | The current value of one series: a number (counter, gauge), `{"count", "sum", "buckets"}` (histogram), or `nil`. |
+| `Metrics.enabled?` | Whether samples are being stored (a sink is configured, or `soli test`). |
+| `Metrics.reset` | Forget every app metric — tests only (`APP_ENV=test`). |
+
+```soli
+Metrics.increment("orders.created", tags: {"plan": order.plan})
+Metrics.gauge("queue.depth", pending_jobs.length)
+Metrics.histogram("cart.items", cart.items.length)
+
+total = Metrics.time("checkout.duration", {"step": "charge"}) do
+  Payments.charge(order)
+end
+```
+
+**Names** match `[a-zA-Z_][a-zA-Z0-9_.]*` (at most 200 characters); dots
+become underscores on the Prometheus scrape (`orders.created` →
+`orders_created`) and stay dots for DogStatsD and OTLP. The `soli.` / `soli_`
+prefix is reserved for the built-in series. One name is one kind: using a
+counter's name as a gauge raises.
+
+**Tags** are a hash of string keys (same characters as names) to Strings,
+numbers, Bools or `nil` (an empty value); at most 20 per sample. `le` and keys
+starting with `__` are reserved. Each distinct tag combination is one series:
+**at most 1,000 series per metric and 1,000 metric names** — past either cap
+the sample is dropped, counted in `soli_metrics_dropped_total`, and one warning
+is printed. Never tag with an id.
+
+Histogram buckets are seconds — `0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1,
+0.25, 0.5, 1, 2.5, 5, 10` — or `SOLI_METRICS_BUCKETS="0.01,0.1,1"`. A bad name,
+tag or value raises; a full cap never does. See
+[Observability → Metrics](observability.md#metrics-_metrics).
+
+---
+
 ## Retry Functions
 
 Retry logic is engine-embedded Soli (plain natives cannot invoke blocks), with

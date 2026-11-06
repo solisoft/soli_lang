@@ -1953,7 +1953,14 @@ fn worker_loop(
 
     // Matched route per request — feeds the dev bar's "requests" panel and the
     // `X-Soli-Route` response header the client patch reads.
-    route_log::set_enabled(dev_mode || log_channels.collect_timing());
+    // Also on when a metrics sink is configured: the request histogram is
+    // labelled with the route.
+    route_log::set_enabled(
+        dev_mode || log_channels.collect_timing() || crate::metrics::metrics_enabled(),
+    );
+    // The OTLP metrics interval thread (when `SOLI_OTEL_METRICS` /
+    // `OTEL_METRICS_EXPORTER=otlp` is set) and the DogStatsD sender.
+    crate::metrics::start_exporters();
 
     // File mode has no app to load — no models, middleware, controllers, jobs
     // or routes. The worker exists purely to render the `.slv`/`.erb`
@@ -6597,6 +6604,11 @@ fn handle_request(
         None
     };
 
+    // The per-route request histogram (`soli_http_request_duration_seconds`,
+    // DogStatsD `soli.http.request.duration`): clocked only when a metrics
+    // sink is configured.
+    let metrics_started = crate::metrics::metrics_enabled().then(Instant::now);
+
     // Queue wait: time between the hyper handler enqueueing the request and
     // this worker picking it up. Only captured when logging is active (the
     // enqueue timestamp is None otherwise).
@@ -6707,7 +6719,17 @@ fn handle_request(
         start_time,
     ) {
         Ok(matched) => matched,
-        Err(resp) => return resp,
+        Err(resp) => {
+            if let Some(started) = metrics_started {
+                crate::metrics::Metrics::global().record_request(
+                    &data.method,
+                    resp.status,
+                    None,
+                    started.elapsed(),
+                );
+            }
+            return resp;
+        }
     };
     let route_match::Matched {
         handler_name,
@@ -6740,6 +6762,7 @@ fn handle_request(
         span_started,
         trace_ctx,
         start_time,
+        metrics_started,
         queue_ms,
         log_requests,
         log_channels,

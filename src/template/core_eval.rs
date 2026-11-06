@@ -59,6 +59,9 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&env_rc) {
                 eprintln!("[WARN] Retry stdlib failed to load: {}", e);
             }
+            if let Err(e) = crate::interpreter::builtins::metrics::register_metrics_class(&env_rc) {
+                eprintln!("[WARN] Metrics stdlib failed to load: {}", e);
+            }
             // The app's helpers last, so one named like a route helper, the
             // form builder's `button_to` or `Retry` is the app's in every
             // template: a view, a `partial()` and a `<%= render %>` alike.

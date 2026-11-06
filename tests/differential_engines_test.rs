@@ -6297,6 +6297,28 @@ print(["1"].includes?(1), [nil].includes?(false), [true].includes?(1), [0].inclu
 print(["up"].includes?(:up), [:up].includes?("up"), ["Account", "User"].includes?(Account))
 print([1, 2].includes?([1]), [[1], 2].includes?([1]), [{"a": 1}].includes?({"a": 1}))"##,
     ),
+    // The app metrics API: named `tags:`, a `do` block timed by `time` (its
+    // tags positional: a labelled call with a block on a stdlib static
+    // method is refused by the VM), and a refused name — the same on both
+    // engines.
+    (
+        "metrics_api_calls",
+        r##"answer = Metrics.time("checkout.time") do
+  41 + 1
+end
+print(answer)
+tagged = Metrics.time("job.run", {"job": "mail"}) do
+  "done"
+end
+print(tagged)
+Metrics.increment("orders.created", tags: {"plan": "pro"})
+Metrics.increment("orders.created", 2)
+Metrics.gauge("queue.depth", 3, tags: {"queue": "mail"})
+Metrics.histogram("cart.items", 2.5, {"k": "v"})
+Metrics.distribution("cart.items", 1)
+refused = Metrics.increment("bad name") rescue "refused"
+print(refused)"##,
+    ),
 ];
 
 /// Run `source` through the soli binary; `vm` selects the bytecode VM with
@@ -6411,6 +6433,35 @@ fn run_with_env(source: &str, tag: &str, vm: bool, env: &[(&str, &str)]) -> (boo
         String::from_utf8_lossy(&output.stdout).into_owned(),
         String::from_utf8_lossy(&output.stderr).into_owned(),
     )
+}
+
+/// With a metrics sink configured (`SOLI_METRICS=1`), both engines store
+/// app samples and read them back the same way.
+#[test]
+fn metrics_are_recorded_and_read_back_on_both_engines() {
+    let source = r##"Metrics.increment("orders.created", tags: {"plan": "pro"})
+Metrics.increment("orders.created", 2, tags: {"plan": "pro"})
+Metrics.gauge("queue.depth", 7)
+Metrics.histogram("cart.items", 0.2)
+seconds = Metrics.time("work") do
+  1
+end
+print(Metrics.enabled?)
+print(Metrics.value("orders.created", tags: {"plan": "pro"}))
+print(Metrics.value("queue.depth"))
+print(Metrics.value("cart.items")["count"], Metrics.value("cart.items")["buckets"]["0.25"])
+print(Metrics.value("work")["count"], seconds)
+"##;
+    for vm in [false, true] {
+        let (ok, stdout, stderr) = run_with_env(
+            source,
+            &format!("metrics_on_{vm}"),
+            vm,
+            &[("SOLI_METRICS", "1")],
+        );
+        assert!(ok, "vm: {vm}: {stderr}");
+        assert_eq!(stdout, "true\n3\n7\n1 1\n1 1\n", "vm: {vm}");
+    }
 }
 
 /// A range that a `for` loop or a comprehension counts through is never built,

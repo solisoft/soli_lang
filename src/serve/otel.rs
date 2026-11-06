@@ -30,6 +30,11 @@
 //!    own thread.
 //! 6. **Datadog** — `DD_SERVICE` / `DD_ENV` / `DD_VERSION` as fallbacks for the
 //!    service identity ([`identity`]) and [`datadog_id`] for `dd.trace_id`.
+//! 7. **Metrics share it** — `crate::metrics` exports OTLP metrics itself but
+//!    takes its resource ([`OtelConfig::resource_pairs`]), its headers
+//!    ([`OtelConfig::otlp_headers`] with `Signal::Metrics`) and its DogStatsD
+//!    service tags ([`OtelConfig::identity`]) from this config, so the three
+//!    signals never disagree.
 //!
 //! No new crates: JSON via `serde_json`, HTTP via `ureq`, IDs via `uuid`.
 
@@ -89,6 +94,10 @@ pub struct OtelConfig {
     pub logs_endpoint: Option<String>,
     /// Headers sent on every logs POST (generic + `…_LOGS_HEADERS`).
     pub logs_headers: Vec<(String, String)>,
+    /// Headers sent on every metrics POST (generic + `…_METRICS_HEADERS`).
+    /// The metrics exporter (`crate::metrics::otlp`) reads them through
+    /// [`OtelConfig::otlp_headers`].
+    pub metrics_headers: Vec<(String, String)>,
     /// Per-POST timeout (`OTEL_EXPORTER_OTLP_TIMEOUT`, milliseconds).
     pub export_timeout: Duration,
 }
@@ -104,6 +113,7 @@ impl Default for OtelConfig {
             traces_headers: Vec::new(),
             logs_endpoint: None,
             logs_headers: Vec::new(),
+            metrics_headers: Vec::new(),
             export_timeout: EXPORT_TIMEOUT,
         }
     }
@@ -122,7 +132,7 @@ impl OtelConfig {
     /// in tests). Returns the warnings to print rather than printing them,
     /// so tests can assert on them — and so a warning can be checked for
     /// never containing a header value.
-    fn from_lookup(get: &dyn Fn(&str) -> Option<String>) -> (Self, Vec<String>) {
+    pub(crate) fn from_lookup(get: &dyn Fn(&str) -> Option<String>) -> (Self, Vec<String>) {
         let mut warnings = Vec::new();
         let var = |name: &str| -> Option<String> {
             get(name)
@@ -232,6 +242,15 @@ impl OtelConfig {
             ),
         );
 
+        let metrics_headers = merge_headers(
+            &generic,
+            parse_headers(
+                var("OTEL_EXPORTER_OTLP_METRICS_HEADERS").as_deref(),
+                "OTEL_EXPORTER_OTLP_METRICS_HEADERS",
+                &mut warnings,
+            ),
+        );
+
         let export_timeout = match var("OTEL_EXPORTER_OTLP_TIMEOUT") {
             None => EXPORT_TIMEOUT,
             Some(raw) => match raw.parse::<u64>() {
@@ -257,10 +276,41 @@ impl OtelConfig {
                 traces_headers,
                 logs_endpoint,
                 logs_headers,
+                metrics_headers,
                 export_timeout,
             },
             warnings,
         )
+    }
+}
+
+impl OtelConfig {
+    /// The headers every POST of `signal` carries: `OTEL_EXPORTER_OTLP_HEADERS`
+    /// with the signal-specific list replacing any of the same name. Values
+    /// are credentials: never print them.
+    pub(crate) fn otlp_headers(&self, signal: Signal) -> &[(String, String)] {
+        match signal {
+            Signal::Traces => &self.traces_headers,
+            Signal::Logs => &self.logs_headers,
+            Signal::Metrics => &self.metrics_headers,
+        }
+    }
+
+    /// The resource every signal shares, as plain key / value pairs:
+    /// `service.name`, the SDK identity, then the configured and
+    /// Datadog-derived attributes.
+    pub(crate) fn resource_pairs(&self) -> Vec<(String, String)> {
+        let mut attrs = vec![
+            ("service.name".to_string(), self.service_name.clone()),
+            ("telemetry.sdk.name".to_string(), "soli".to_string()),
+            ("telemetry.sdk.language".to_string(), "rust".to_string()),
+            (
+                "telemetry.sdk.version".to_string(),
+                env!("CARGO_PKG_VERSION", "0.0.0").to_string(),
+            ),
+        ];
+        attrs.extend(self.resource_attrs.iter().cloned());
+        attrs
     }
 }
 
@@ -659,10 +709,13 @@ fn take_exception() -> Option<ExceptionInfo> {
 // ---------- export ----------
 
 /// Which OTLP signal a POST carries — picks its endpoint and headers.
+/// Metrics are exported by `crate::metrics::otlp` on its own interval
+/// thread; the variant is here so their headers resolve the same way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Signal {
+pub(crate) enum Signal {
     Traces,
     Logs,
+    Metrics,
 }
 
 struct ExportBatch {
@@ -678,10 +731,13 @@ static EXPORT_DROPPED: AtomicBool = AtomicBool::new(false);
 /// never the headers.
 fn send_batch(batch: &ExportBatch) {
     let cfg = config();
-    let (endpoint, headers) = match batch.signal {
-        Signal::Traces => (cfg.traces_endpoint.as_deref(), &cfg.traces_headers),
-        Signal::Logs => (cfg.logs_endpoint.as_deref(), &cfg.logs_headers),
+    let endpoint = match batch.signal {
+        Signal::Traces => cfg.traces_endpoint.as_deref(),
+        Signal::Logs => cfg.logs_endpoint.as_deref(),
+        // Never queued here: the metrics exporter posts on its own.
+        Signal::Metrics => None,
     };
+    let headers = cfg.otlp_headers(batch.signal);
     let Some(endpoint) = endpoint else {
         return;
     };
@@ -998,16 +1054,10 @@ fn build_otlp_logs_body(cfg: &OtelConfig, records: Vec<Value>) -> String {
 /// The resource every signal shares: `service.name`, the SDK identity, and
 /// the configured / Datadog-derived attributes.
 fn resource_attributes(cfg: &OtelConfig) -> Vec<Value> {
-    let mut attrs = vec![
-        attr_str("service.name", &cfg.service_name),
-        attr_str("telemetry.sdk.name", "soli"),
-        attr_str("telemetry.sdk.language", "rust"),
-        attr_str("telemetry.sdk.version", env!("CARGO_PKG_VERSION", "0.0.0")),
-    ];
-    for (k, v) in &cfg.resource_attrs {
-        attrs.push(attr_str(k, v));
-    }
-    attrs
+    cfg.resource_pairs()
+        .iter()
+        .map(|(k, v)| attr_str(k, v))
+        .collect()
 }
 
 // ---------- Datadog correlation ----------
@@ -1602,6 +1652,42 @@ mod tests {
             cfg.logs_endpoint.as_deref(),
             Some("https://otlp.example.com/v1/logs")
         );
+    }
+
+    #[test]
+    fn metrics_headers_follow_the_same_rules() {
+        let (cfg, warnings) = cfg_from(&[
+            ("OTEL_EXPORTER_OTLP_HEADERS", "dd-api-key=generic,x-a=1"),
+            (
+                "OTEL_EXPORTER_OTLP_METRICS_HEADERS",
+                "DD-API-KEY=metrics,x-bad=a%0Ab",
+            ),
+        ]);
+        assert_eq!(
+            cfg.otlp_headers(Signal::Metrics),
+            &[
+                ("x-a".to_string(), "1".to_string()),
+                ("DD-API-KEY".to_string(), "metrics".to_string())
+            ][..]
+        );
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].starts_with("OTEL_EXPORTER_OTLP_METRICS_HEADERS"));
+        assert!(!warnings[0].contains("a\nb") && !warnings[0].contains("metrics,"));
+        // Traces and logs keep the generic key the metrics list replaced.
+        assert_eq!(cfg.otlp_headers(Signal::Logs)[0].1, "generic");
+    }
+
+    #[test]
+    fn resource_pairs_lead_with_service_and_sdk() {
+        let (cfg, _) = cfg_from(&[("DD_SERVICE", "shop"), ("DD_ENV", "prod")]);
+        let pairs = cfg.resource_pairs();
+        assert_eq!(pairs[0], ("service.name".to_string(), "shop".to_string()));
+        assert!(pairs.contains(&(
+            "deployment.environment.name".to_string(),
+            "prod".to_string()
+        )));
+        assert!(pairs.contains(&("deployment.environment".to_string(), "prod".to_string())));
+        assert_eq!(resource_attributes(&cfg).len(), pairs.len());
     }
 
     #[test]

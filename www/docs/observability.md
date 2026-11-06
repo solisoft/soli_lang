@@ -4,7 +4,7 @@ Soli ships three production signals out of the box: **metrics**, **structured lo
 
 | Signal | Enable | Where it goes |
 |--------|--------|---------------|
-| Metrics | `SOLI_METRICS=1` | Prometheus text at `GET /_metrics` |
+| Metrics | `SOLI_METRICS=1`, `DD_AGENT_HOST` / `SOLI_STATSD`, `SOLI_OTEL_METRICS=1` | Prometheus text at `GET /_metrics`, DogStatsD to a Datadog agent, OTLP/HTTP JSON |
 | Logs | `SOLI_LOG=…` (+ optional `SOLI_LOG_FORMAT=json`) | stdout / stderr |
 | Traces | `SOLI_OTEL=1` or `OTEL_EXPORTER_OTLP_*` | OTLP/HTTP JSON to your collector |
 | Health | always on | `GET /_health`, `GET /_ready` |
@@ -50,7 +50,7 @@ Point liveness probes at `/_health` and readiness probes at `/_ready`. On `SIGTE
 
 ## Metrics (`/_metrics`)
 
-Collection is opt-in via `SOLI_METRICS=1` (or `true`). Until that is set, counters stay at zero and the hot path skips the per-operation clocks.
+Collection is opt-in: `SOLI_METRICS=1` (or `true`), a DogStatsD target or OTLP metrics export each turn it on. Until one is set, counters stay at zero, the hot path skips the per-operation clocks, and an app metric call is validated and dropped. `/_metrics` is always served.
 
 ```bash
 SOLI_METRICS=1 soli serve
@@ -62,14 +62,25 @@ Representative series (all Prometheus text format):
 | Metric | Meaning |
 |--------|---------|
 | `soli_http_requests_total` | Requests handled |
-| `soli_lexing_duration_seconds` / `_count` | Time in the lexer |
-| `soli_parsing_duration_seconds` / `_count` | Time in the parser |
-| `soli_vm_execution_seconds` / `_count` | Bytecode VM wall time, one sample per entry into the VM (a handler, a middleware, a view, a script). Blocks, paren-less method calls and constructors run inside that entry are part of its time, not samples of their own |
-| `soli_template_render_duration_seconds` / `_count` | Views, layouts, partials |
-| `soli_middleware_duration_seconds` / `_count` | Middleware totals |
-| `soli_db_query_duration_seconds` / `_count` | SoliDB / SolidB query time |
+| `soli_http_request_duration_seconds` | Histogram of request time, from routing to response, labelled `method` (`GET`…, anything else `OTHER`), `route` (the matched `controller#action`, `unmatched` for a 404) and `status_class` (`2xx`…). `/_metrics`, `/_health`, `/_ready` and `/up` are not counted |
+| `soli_lexing_duration_seconds` | Time in the lexer |
+| `soli_parsing_duration_seconds` | Time in the parser |
+| `soli_vm_execution_seconds` | Bytecode VM wall time, one sample per entry into the VM (a handler, a middleware, a view, a script). Blocks, paren-less method calls and constructors run inside that entry are part of its time, not samples of their own |
+| `soli_template_render_duration_seconds` | Views, layouts, partials |
+| `soli_middleware_duration_seconds` | Middleware totals, per request |
+| `soli_db_query_duration_seconds` | SoliDB / SolidB query time, per request |
 | `soli_vm_handler_demotions_total` | Actions, controller hooks and middleware that fell back from the VM to the tree-walker (cached per worker). `SOLI_ENGINE_LOG=1` prints one line per unique handler (for a script, it prints which engine runs it and why — see [Configuration](configuration.md#script-engine)); `SOLI_FAIL_ON_VM_DEMOTION=1` exits the process when the VM *refuses* a handler, so CI cannot ship a new refuse. Views are not counted: `SOLI_ENGINE_LOG=1` also names, once each, the templates the interpreter renders and why (see [Views](views.md#which-engine-renders-a-view)). The bytecode VM only runs outside `--dev`, so neither applies to `soli serve --dev` or `soli test`. |
 | `soli_handler_panics_total` | Panics contained by the per-request `catch_unwind` (client got 500; worker stayed up) |
+| `soli_metrics_dropped_total` | App metric samples dropped: past a cardinality cap, or a full DogStatsD queue |
+
+Every `*_seconds` series is a **histogram**: `_bucket{le="…"}` (cumulative), `_sum` and `_count`. The buckets are seconds — `0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10` — and `SOLI_METRICS_BUCKETS="0.01,0.1,1"` replaces them (increasing, comma-separated; a bad list warns and keeps the defaults). They apply to app histograms too. A p95 in PromQL:
+
+```promql
+histogram_quantile(0.95,
+  sum by (le, route) (rate(soli_http_request_duration_seconds_bucket[5m])))
+```
+
+> **Upgrading from 2.31.0 or earlier.** The duration series used to be a counter pair: the bare name was the total seconds and `_count` the count. The total is now `<name>_sum` (the bare name no longer exists), `_count` is unchanged, and `_bucket` is new. Replace `rate(soli_db_query_duration_seconds[5m])` with `rate(soli_db_query_duration_seconds_sum[5m])`.
 
 `soli_handler_panics_total` and `soli_vm_handler_demotions_total` are counted even when `SOLI_METRICS` is off — rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance.
 
@@ -79,6 +90,52 @@ A handler that fails on the VM is re-run on the tree-walker, which answers the r
 - the re-run answered where the VM failed (it succeeded, or raised a deliberate 404, 403, `halt` or `DomainError`), an engine divergence, also counted in `soli_vm_engine_divergences_total`, which should stay at zero.
 
 An error both engines raise, such as a `throw`, a nil read from a missing parameter or a `JSON.parse` of a bad body, is the app's own. The request answers 500 and the handler stays on the VM, so a bad request cannot move it to the slower engine. The worker remembers it: the next requests failing with the same error are answered from the VM without a re-run, so whatever the handler did before the error (an outbound HTTP call, a cache write) runs once per request, not twice. A new error of the same handler is re-run once again, for up to eight distinct errors per handler; past that, every error of the handler is answered from the VM without a re-run, so a handler that keeps failing with new messages (one that carries request data, say) cannot double its side effects either. A handler that fails after a write, an enqueue or a mail is not re-run, since it would happen twice. Its error is the answer, and it is demoted, since nothing can tell a VM gap from the app's error. A handler that ran out of the request's time budget ([`SOLI_HANDLER_TIMEOUT_SECS`](configuration.md)) is neither re-run nor demoted: the timeout is the answer.
+
+### App metrics
+
+Your own counters, gauges and histograms, with the [`Metrics` class](builtins.md#metrics-class):
+
+```soli
+Metrics.increment("orders.created", tags: {"plan": order.plan})
+Metrics.gauge("queue.depth", pending_jobs.length)
+Metrics.histogram("cart.items", cart.items.length)
+total = Metrics.time("checkout.duration", {"step": "charge"}) do
+  Payments.charge(order)
+end
+```
+
+They are shared by every worker and appear on `/_metrics` after the built-in series (`orders.created` is scraped as `orders_created`), go to DogStatsD and OTLP when those are set up, and are capped at 1,000 tag combinations per metric and 1,000 metric names (a sample past a cap is dropped and counted in `soli_metrics_dropped_total`). Under `soli test` they are kept even with no sink, so a spec reads them back with `Metrics.value`.
+
+### DogStatsD (Datadog)
+
+Set any of these and every app sample is also sent to a Datadog agent, together with each request's duration:
+
+| Variable | Meaning |
+|----------|---------|
+| `SOLI_STATSD` | `host:port` (port 8125 if left out), `udp://host:port` or `unix:///path`. Wins over the two below; `SOLI_STATSD=off` turns DogStatsD off even when `DD_AGENT_HOST` is set |
+| `DD_DOGSTATSD_URL` | `udp://host:port` or `unix:///var/run/datadog/dsd.socket` |
+| `DD_AGENT_HOST` (+ `DD_DOGSTATSD_PORT`, default 8125) | The agent host the Datadog tracers use |
+| `DD_ENV`, `DD_SERVICE`, `DD_VERSION` | Sent as `env:`, `service:`, `version:` on every line — resolved like the trace resource ([precedence](#enable)), so `OTEL_SERVICE_NAME` or `OTEL_RESOURCE_ATTRIBUTES` win when set; no tag when nothing is configured |
+| `DD_TAGS` | More global tags, `team:web,region:eu` (comma- or space-separated) |
+
+Lines follow the DogStatsD format — `orders.created:1|c|#plan:pro,env:prod,service:shop`: `increment` sends `|c`, `gauge` `|g`, `histogram` `|h`, `distribution` and `time` `|d`. Built in, one line per request: `soli.http.request.duration` (seconds, `|d`) tagged `method`, `route`, `status_class`. Workers never touch the socket: they queue each line (16,384 at most, then drop and count), and a background thread packs them into datagrams of at most 1,432 bytes (8 KB on a Unix socket). Nothing waits for, or hears back from, the agent.
+
+On Kubernetes, the agent's host IP usually arrives as `DD_AGENT_HOST` through the downward API, so the same variable that points the tracer at the agent turns DogStatsD on.
+
+### OTLP metrics
+
+`SOLI_OTEL_METRICS=1` (or `OTEL_METRICS_EXPORTER=otlp`) starts a background thread that POSTs every metric — built-in and app — as OTLP/HTTP JSON every `OTEL_METRIC_EXPORT_INTERVAL` ms (default 60000). Counters are cumulative monotonic sums, gauges gauges, the `*_seconds` series and app histograms explicit-bucket histograms, all cumulative since the process started; built-in names are dotted (`soli.http.request.duration`, unit `s`; `soli.http.requests`).
+
+| Variable | Meaning |
+|----------|---------|
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Full URL. Otherwise `OTEL_EXPORTER_OTLP_ENDPOINT` + `/v1/metrics`, otherwise `http://127.0.0.1:4318/v1/metrics` |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | `key=value,key2=value2`, parsed exactly as for traces and logs; the metrics list wins on the same key (case-insensitive). Never logged — put the API key here (`DD-API-KEY=…` for Datadog's OTLP intake) |
+| `OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_METRIC_EXPORT_TIMEOUT` | Milliseconds (defaults 60000 and 10000); without `OTEL_METRIC_EXPORT_TIMEOUT`, a set `OTEL_EXPORTER_OTLP_TIMEOUT` applies |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `DD_SERVICE` / `DD_ENV` / `DD_VERSION` | The resource — the very one traces and logs carry, with the same [precedence](#enable) |
+
+`OTEL_SDK_DISABLED=true` or `SOLI_OTEL_METRICS=0` keeps it off. A failed export warns once and is retried with the next interval's (cumulative) values; a `429` is not an error.
+
+### Scraping
 
 Scrape from Prometheus / Grafana Alloy / Datadog agent like any other text exposition endpoint. Access: with `SOLI_METRICS_TOKEN` set, the endpoint wants `Authorization: Bearer <token>`. Unset, it answers only loopback and private-range peers — and **refuses (404) any request carrying `X-Forwarded-For`, `X-Real-IP` or `Forwarded`, or any request while `trust_proxy` is on**, since behind a reverse proxy every peer looks local. A deployment behind a proxy must set `SOLI_METRICS_TOKEN` and configure the scraper to send it.
 
@@ -192,6 +249,7 @@ soli serve
 | `OTEL_EXPORTER_OTLP_HEADERS` | Headers on every export POST: `k=v,k2=v2`, values percent-decoded | unset |
 | `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | Same, traces only; a key here replaces the generic one | unset |
 | `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | Same, logs only | unset |
+| `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | Same, metrics only ([OTLP metrics](#otlp-metrics)) | unset |
 | `OTEL_EXPORTER_OTLP_TIMEOUT` | Per-POST timeout, milliseconds | `2000` |
 | `SOLI_OTEL_LOGS` / `OTEL_LOGS_EXPORTER=otlp` | Also export log records over OTLP ([Log export](#log-export-otlp)) | off |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full `/v1/logs` URL | derived from base |
@@ -321,7 +379,7 @@ The URLs above are an example: use the OTLP intake endpoints Datadog documents f
 
 What you get:
 
-- **Unified service tagging** — `DD_SERVICE` / `DD_ENV` / `DD_VERSION` become `service.name` / `deployment.environment(.name)` / `service.version` on the resource and `service` / `env` / `version` on every JSON log line. The OTel variables win when both are set.
+- **Unified service tagging** — `DD_SERVICE` / `DD_ENV` / `DD_VERSION` become `service.name` / `deployment.environment(.name)` / `service.version` on the resource (traces, logs and OTLP metrics alike), `service` / `env` / `version` on every JSON log line and as DogStatsD tags. The OTel variables win when both are set.
 - **APM traces** — the per-request span tree; the root span is the service entry span.
 - **Log ↔ trace correlation** — `dd.trace_id` / `dd.span_id` on JSON logs (both forms of the id are kept, so other backends still join on the hex `trace_id`).
 - **Error Tracking** — the `exception` event's `exception.type` / `exception.message` / `exception.stacktrace` map to Datadog's `error.type` / `error.message` / `error.stack`, so uncaught errors group in Error Tracking by class — throw your own `Error` subclasses to get distinct groups. JSON `request_error` lines carry `error_type`; remap `error` → `error.message`, `error_type` → `error.kind` and `stack` → `error.stack` in a log pipeline if you want log-based error tracking as well.
@@ -555,7 +613,9 @@ Production logging reuses the same channel buffers as the dev bar (`query`, `htt
 ## Limits (honest)
 
 - No auto-instrumentation of every third-party client library — only Soli's own request path, ORM, and `HTTP.*` client.
-- OTLP export covers **traces** and, opt-in, **logs** (`SOLI_OTEL_LOGS=1`) — not metrics, which stay on Prometheus `/_metrics`. Logs always stay on stdout/stderr too.
+- OTLP export covers **traces** and, opt-in, **logs** (`SOLI_OTEL_LOGS=1`) and **metrics** (`SOLI_OTEL_METRICS=1`) — HTTP/JSON only, no gRPC or protobuf. Logs always stay on stdout/stderr too, and Prometheus `/_metrics` keeps working alongside. The last metrics interval before the process exits is not flushed; DogStatsD lines still queued at exit are lost too.
+- Metrics are per process: several processes (or hosts) each expose their own `/_metrics` and send their own series — aggregate in Prometheus or Datadog.
+- `Metrics.time` takes its tags positionally (`Metrics.time("x", {"k": "v"}) do … end`): the bytecode VM refuses a labelled call that also carries a block.
 - Head sampling only (`OTEL_TRACES_SAMPLER`); tail sampling and any sampling UI belong on the collector.
 - Calls made outside Soli's `HTTP.*` client — `Apns`, `Fcm`, S3, webhook deliveries — carry no `traceparent`.
 - Background jobs are traced, but their log lines have no JSON mode, so they carry no `dd` correlation.

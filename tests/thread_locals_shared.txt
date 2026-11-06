@@ -144,6 +144,7 @@ src/interpreter/builtins/model/state_machine.rs SM_BEFORE
 src/interpreter/builtins/model/state_machine.rs SM_AFTER
 src/interpreter/builtins/model/validation.rs RULE_CONDITIONS
 src/interpreter/builtins/named_routes.rs NAMED_ROUTES
+src/interpreter/builtins/metrics.rs METRICS_CLASS
 src/interpreter/builtins/retry.rs RETRY_CLASS
 src/interpreter/builtins/router.rs CONTROLLERS
 src/interpreter/builtins/router.rs ROUTER_CONTEXT

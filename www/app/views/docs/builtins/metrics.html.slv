@@ -1,0 +1,53 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-rose-400 via-orange-400 to-red-400 bg-clip-text text-transparent">Metrics Class</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            App-defined counters, gauges and histograms, shared by every worker. They go wherever metrics are configured: Prometheus text at <code>GET /_metrics</code> (<code>SOLI_METRICS=1</code>), a Datadog agent over DogStatsD (<code>DD_AGENT_HOST</code>, <code>DD_DOGSTATSD_URL</code> or <code>SOLI_STATSD</code>), OTLP/HTTP (<code>SOLI_OTEL_METRICS=1</code>). With none configured a call is validated and dropped; under <code>soli test</code> samples are kept so a spec can read them back.
+        </p>
+    </div>
+    <section id="def-metrics-record" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">increment / gauge / histogram / distribution</h2>
+        <p class="text-gray-400 mb-4"><code>Metrics.increment(name, value = 1, tags: {})</code> adds to a counter (a value of 0 or more; <code>Metrics.increment(name, {"k": "v"})</code> counts 1 with those tags). <code>Metrics.gauge(name, value, tags: {})</code> sets a current value. <code>Metrics.histogram(name, value, tags: {})</code> records one observation; <code>Metrics.distribution</code> is the same histogram locally and a Datadog distribution (<code>|d</code>) over DogStatsD.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">Metrics.increment(&quot;orders.created&quot;, tags: {&quot;plan&quot;: order.plan})
+Metrics.gauge(&quot;queue.depth&quot;, pending_jobs.length)
+Metrics.histogram(&quot;cart.items&quot;, cart.items.length)</code></pre>
+        </div>
+    </section>
+    <section id="def-metrics-time" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Metrics.time(name, tags = {}) do … end</h2>
+        <p class="text-gray-400 mb-4">Runs the block, records its duration <strong class="text-white">in seconds</strong> as a distribution — also when the block raises, which then reaches the caller unchanged — and answers the block's value. Pass the tags positionally here.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">total = Metrics.time(&quot;checkout.duration&quot;, {&quot;step&quot;: &quot;charge&quot;}) do
+  Payments.charge(order)
+end</code></pre>
+        </div>
+    </section>
+    <section id="def-metrics-read" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Reading back in a spec</h2>
+        <p class="text-gray-400 mb-4"><code>Metrics.value(name, tags = {})</code> answers a number for a counter or a gauge, <code>{"count", "sum", "buckets"}</code> for a histogram (buckets cumulative, keyed by upper bound), or <code>nil</code>. <code>Metrics.enabled?</code> says whether samples are stored. <code>Metrics.reset</code> forgets every app metric and only runs under <code>APP_ENV=test</code>.</p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
+            <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">before_each() do
+  Metrics.reset
+end
+
+test(&quot;counts the order&quot;) do
+  post(&quot;/orders&quot;, {&quot;plan&quot;: &quot;pro&quot;})
+  assert_eq(Metrics.value(&quot;orders.created&quot;, {&quot;plan&quot;: &quot;pro&quot;}), 1)
+end</code></pre>
+        </div>
+    </section>
+    <section id="def-metrics-rules" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">Names, tags and caps</h2>
+        <ul class="list-disc pl-6 text-gray-400 space-y-2">
+            <li><strong class="text-white">Names</strong> match <code>[a-zA-Z_][a-zA-Z0-9_.]*</code> (200 characters at most). Dots become underscores on the Prometheus scrape (<code>orders.created</code> → <code>orders_created</code>) and stay dots for DogStatsD and OTLP. The <code>soli.</code> / <code>soli_</code> prefix belongs to the built-in series. A name is one kind: using a counter's name as a gauge raises.</li>
+            <li><strong class="text-white">Tags</strong> are a hash of string keys (same characters as names) to Strings, numbers, Bools or <code>nil</code> (an empty value), 20 at most. <code>le</code> and keys starting with <code>__</code> are reserved.</li>
+            <li><strong class="text-white">Cardinality is capped</strong>: 1,000 tag combinations per metric and 1,000 metric names. Past a cap the sample is dropped, counted in <code>soli_metrics_dropped_total</code>, and one warning is printed. Never tag with an id.</li>
+            <li><strong class="text-white">Histogram buckets</strong> are seconds — <code>0.001</code> to <code>10</code> — or <code>SOLI_METRICS_BUCKETS="0.01,0.1,1"</code>.</li>
+            <li>A bad name, tag or value raises; a full cap never does.</li>
+        </ul>
+        <p class="text-gray-400 mt-4">Where the samples go and how to configure each sink: <a href="/docs/development-tools/observability#metrics" class="text-amber-400 hover:underline">Observability → Metrics</a>.</p>
+    </section>
+</div>

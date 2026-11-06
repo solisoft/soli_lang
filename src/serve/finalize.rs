@@ -44,6 +44,9 @@ pub(super) struct Finalizer {
     pub(super) trace_ctx: Option<otel::TraceContext>,
     /// The access-log timer. `Some` exactly when `log_requests` is true.
     pub(super) start_time: Option<Instant>,
+    /// The request-histogram timer. `Some` exactly when a metrics sink is
+    /// configured (`crate::metrics::metrics_enabled`).
+    pub(super) metrics_started: Option<Instant>,
     /// Time the request spent queued before a worker took it, in ms. `None`
     /// when logging is off, because then nothing timestamped the enqueue.
     pub(super) queue_ms: Option<f64>,
@@ -82,6 +85,7 @@ pub(super) fn finish(
     test_runner_headers(&mut resp);
     dev_snapshot(f, method, path, &mut resp);
     export_traces(f, &resp);
+    request_metrics(f, method, &resp);
     access_log(f, method, path, &resp);
 
     // Clear session context
@@ -328,6 +332,19 @@ fn export_traces(f: &Finalizer, resp: &ResponseData) {
         otel::export_request(ctx, &spans, resp.status, req_id);
         // Whatever this worker runs next is not part of this trace.
         super::otel_propagation::activate(None, None);
+    }
+}
+
+/// One sample of the per-route request histogram, labelled with the matched
+/// `controller#action`.
+fn request_metrics(f: &Finalizer, method: &str, resp: &ResponseData) {
+    if let Some(started) = f.metrics_started {
+        crate::metrics::Metrics::global().record_request(
+            method,
+            resp.status,
+            route_log::snapshot().as_deref(),
+            started.elapsed(),
+        );
     }
 }
 

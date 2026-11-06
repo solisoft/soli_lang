@@ -701,6 +701,11 @@ def builtins_logger
   render_docs("docs/builtins/logger", "Logger Class", "builtins", "logger")
 end
 
+# GET /docs/builtins/metrics
+def builtins_metrics
+  render_docs("docs/builtins/metrics", "Metrics Class", "builtins", "metrics")
+end
+
 def builtins_resilience
   render_docs("docs/builtins/resilience", "Retry & Circuit Breaker", "builtins", "resilience")
 end
