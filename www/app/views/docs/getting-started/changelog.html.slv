@@ -24,7 +24,7 @@
     </section>
 
     <section id="v2-32-0" class="mb-16 scroll-mt-24">
-        <h2 class="text-3xl font-bold text-white mb-4">v2.32.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-06</span></h2>
+        <h2 class="text-3xl font-bold text-white mb-4">v2.32.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-07</span></h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Datadog-ready observability: trace propagation and sampling, traced jobs, log correlation and service tags, exceptions on spans, OTLP logs and metrics, an app <code class="text-cyan-400">Metrics</code> API and DogStatsD. Breaking for dashboards: built-in duration series are now histograms (the total is <code class="text-cyan-400">_sum</code>).</p>
         <h3 id="v2-32-0-observability-tracing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Observability &mdash; propagation, sampling and jobs</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
