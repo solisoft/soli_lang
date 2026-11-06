@@ -300,9 +300,9 @@ describe("SOAP.parse compatibility") do
       assert_eq(soap_json("<a " + (0..300).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + ">x</a>"), "{\"a\":\"x\"}")
     end
     test("4097 declarations on one element") do
-      # limit: at most 4096 namespace declarations live at once (MAX_NS_BINDINGS)
+      # limit: at most 4096 namespace declarations on one element (max_ns_decls_per_element)
       # was: {"a":"x"}
-      assert_eq(soap_json("<a " + (0..4097).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + ">x</a>"), "ERR XML parsing error: start tag declares more than 4096 namespace bindings; raise the limit with NamespaceResolver::set_max_declarations_per_element")
+      assert_eq(soap_json("<a " + (0..4097).map { |i| "xmlns:p#{i}=\"u#{i}\"" }.join(" ") + ">x</a>"), "ERR XML parsing error: more than 4096 namespace declarations on one element")
     end
   end
 
@@ -319,6 +319,18 @@ describe("SOAP.parse compatibility") do
     end
     test("mixed around self-closing") do
       assert_eq(soap_json("<r>head<c/>tail</r>"), "{\"r\":{\"c\":null,\"_text\":\"headtail\"}}")
+    end
+    test("mixed spaced around self-closing") do
+      assert_eq(soap_json("<r>a <c/> b</r>"), "{\"r\":{\"c\":null,\"_text\":\"ab\"}}")
+    end
+    test("mixed spaced around self-closing then child") do
+      assert_eq(soap_json("<r>a <c/> b<d>1</d></r>"), "{\"r\":{\"c\":null,\"_text\":\"ab\",\"d\":\"1\"}}")
+    end
+    test("indented self-closing children") do
+      assert_eq(soap_json("<r>\n  <c/>\n  x <d/> y\n</r>"), "{\"r\":{\"c\":null,\"d\":null,\"_text\":\"xy\"}}")
+    end
+    test("text before root and spaced self-closing") do
+      assert_eq(soap_json("pre <a>x <c/> y</a>"), "{\"a\":{\"c\":null,\"_text\":\"prexy\"}}")
     end
     test("mixed spaced") do
       # fix: mixed-content runs are joined, then trimmed (bug 5)
@@ -390,6 +402,9 @@ describe("SOAP.parse compatibility") do
       # fix: mixed-content runs are joined, then trimmed (bug 5)
       # was: {"r":{"_text":"d","c":"1"}}
       assert_eq(soap_json("<r>a<!--c-->b<c>1</c>d</r>"), "{\"r\":{\"_text\":\"abd\",\"c\":\"1\"}}")
+    end
+    test("misplaced declaration between spaced text") do
+      assert_eq(soap_json("<a>y <?xml version=\"1.0\"?> x</a>"), "{\"a\":\"yx\"}")
     end
     test("xml-named pi") do
       assert_eq(soap_json("<a><?xml-stylesheet href=\"x\"?>t</a>"), "{\"a\":\"t\"}")
@@ -666,6 +681,18 @@ describe("SOAP.parse compatibility") do
     end
     test("1 MiB split by a self-closing child") do
       assert_eq(soap_summary("<a>" + "A" * 600000 + "<c/>" + "A" * 600000 + "</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
+    end
+    test("1 MiB split by a comment before the root") do
+      assert_eq(soap_summary("A" * 600000 + "<!--c-->" + "A" * 600000 + "<a>x</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
+    end
+    test("1 MiB split by the root's start tag") do
+      assert_eq(soap_summary("A" * 600000 + "<a>" + "A" * 600000 + "</a>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
+    end
+    test("1 MiB before a self-closing root") do
+      assert_eq(soap_summary("A" * 600000 + "<!--c-->" + "A" * 600000 + "<a/>"), "79:ERR XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)")
+    end
+    test("under 1 MiB across the root's start tag") do
+      assert_eq(soap_summary("A" * 500000 + "<a>" + "A" * 500000 + "</a>"), "1000008:{\"a\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
     end
     test("1 MiB in two siblings") do
       assert_eq(soap_summary("<r><a>" + "A" * 600000 + "</a><b>" + "A" * 600000 + "</b></r>"), "1200021:{\"r\":{\"a\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")

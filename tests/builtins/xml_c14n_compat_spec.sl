@@ -1,7 +1,11 @@
 # The c14n trio (Xml.c14n_exclusive, get_element_by_id, get_elements_by_tag)
 # on edge inputs, frozen before parse_document moved onto the shared XML core
 # (src/xml). Every row must stay byte-identical except a row tagged
-# `# unavoidable:` or `# limit:`, which shows the old output above it.
+# `# message:` (refused before and now, only the wording changed),
+# `# unavoidable:` (a refusal of the quick-xml NsReader the core is built on),
+# `# limit:` (a hardening limit of the core) or `# relaxed:` (input inside an
+# ignored trailing root is no longer checked), which shows the old output
+# above it.
 
 def capture(f)
   result = nil
@@ -71,6 +75,11 @@ describe("c14n trio compatibility") do
       # message: refused as before, worded as for an entity in text
       # was: ERR Xml.c14n_exclusive(): XML attribute value error: at 1..4: unrecognized entity `foo`
       assert_eq(c14n_json("<a x=\"&foo;\"/>"), "ERR Xml.c14n_exclusive(): general entity reference `&foo;` is not allowed (XXE / entity-expansion defense)")
+    end
+    test("bad entity in an ignored trailing root") do
+      # relaxed: only the first root is read; a trailing root is skipped unchecked
+      # was: ERR Xml.c14n_exclusive(): XML attribute value error: at 1..4: unrecognized entity `foo`
+      assert_eq(c14n_json("<a/><b x=\"&foo;\"/>"), "\"<a></a>\"")
     end
     test("PI inside root") do
       assert_eq(c14n_json("<a><?pi  data  here?><?empty?></a>"), "\"<a><?pi   data  here?><?empty?></a>\"")
