@@ -101,3 +101,35 @@ fn tree_walker_comprehensions_stop_at_the_budget() {
         assert_timed_out("tree-walker", source, on_tree_walker(source));
     }
 }
+
+/// `Xml.each` stops at the budget on both engines: before each block call,
+/// and every 256 events while it scans past elements that do not match.
+/// Through `run_script`, which registers the builtins (`Vm::new` alone does
+/// not define `Xml`).
+#[test]
+fn xml_each_stops_at_the_budget_on_both_engines() {
+    let dir = std::env::temp_dir().join(format!("soli_xml_deadline_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("items.xml");
+    let body = format!("<r>{}</r>", "<item/>".repeat(50_000));
+    std::fs::write(&path, body).expect("write the file");
+    let path = path.display().to_string();
+    for expr in ["item", "nothing"] {
+        let source = format!(
+            "n = 0\nXml.each({path:?}, {expr:?}) do |item|\n  n = n + 1\nend\nn"
+        );
+        {
+            let _budget = spent_budget();
+            let result = crate::run_script(&source, None, false, crate::Engine::Vm)
+                .map_err(|e| RuntimeError::new(e.to_string(), crate::span::Span::default()));
+            assert_timed_out("vm", &source, result);
+        }
+        {
+            let _budget = spent_budget();
+            let result = crate::run_script(&source, None, false, crate::Engine::Tree)
+                .map_err(|e| RuntimeError::new(e.to_string(), crate::span::Span::default()));
+            assert_timed_out("tree-walker", &source, result);
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

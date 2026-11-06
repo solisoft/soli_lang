@@ -2138,6 +2138,90 @@ n = Xml.element("a")
 n.add("b", id: 1)
 print(n.at_xpath("/a/b/@id"), n.at_xpath("/"))"##,
     ),
+    // --- XML streaming (lane L3): Xml.each with a do block, &fn, a throw
+    // and break; Xml.reader with break; matches support find / xpath ---
+    (
+        "xml_each_do_block",
+        r##"feed = "tests/builtins/_fixtures/xml/feed.rss"
+titles = []
+n = Xml.each(feed, "channel/item") do |item|
+  titles.push(item.find("title").text)
+  print(item["id"], item.parent, item.at_xpath("dc:creator/text()"), item.find_all("*").length)
+end
+print(n, titles)
+def in_def(path)
+  total = 0
+  Xml.each(path, "item") do |item|
+    total = total + item["id"].to_i
+  end
+  total
+end
+print(in_def(feed))
+print(Xml.each(feed, "dc:creator") do |c|
+  print(c, c.namespace)
+end)"##,
+    ),
+    (
+        "xml_each_fn_block",
+        r##"feed = "tests/builtins/_fixtures/xml/feed.rss"
+ids = []
+collect = fn(node) { ids.push(node["id"]) }
+print(Xml.each(feed, "item", &collect), ids)
+print(Xml.each(feed, "item[@id='2']", fn(node) { ids.push("p" + node["id"]) }), ids)
+cb = Xml.each
+print(cb(feed, "title") do |t|
+  ids.push(t.text)
+end, ids)"##,
+    ),
+    (
+        "xml_each_throw",
+        r##"feed = "tests/builtins/_fixtures/xml/feed.rss"
+hits = 0
+try
+  Xml.each(feed, "item") do |item|
+    hits = hits + 1
+    throw "stop #{item["id"]}"
+  end
+catch e
+  print("caught", e, hits)
+end
+try
+  Xml.each(feed, "item")
+catch e
+  print("no block", e)
+end
+try
+  Xml.each(feed, "item[1]") do |item|
+    print("never")
+  end
+catch e
+  print("bad match", e)
+end
+print(Xml.each(feed, "item") do |item|
+  nil
+end)"##,
+    ),
+    (
+        "xml_each_break_and_reader",
+        r##"feed = "tests/builtins/_fixtures/xml/feed.rss"
+seen = []
+n = Xml.each(feed, "item") do |item|
+  break if item["id"] == "1"
+  seen.push(item["id"])
+end
+print(n, seen)
+reader = Xml.reader(feed, "item")
+print(reader, type(reader))
+while (item = reader.next)
+  print("next", item["id"], item.find("title").text)
+  break if item["id"] == "1"
+end
+print(reader.count)
+reader.close
+print(reader.next, reader.count)
+r2 = Xml.reader(feed, "title")
+print(r2.next.text, r2.next.text, r2.next.text, r2.next, r2.count)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -3994,3 +3994,16 @@ Xml.parse("<a/>").find(42)
 Xml.parse("<a/>").find
 Xml.parse("<a/>").xpath("a", {}, {})
 Xml.element("a").at_xpath("/a")
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "item").next
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "item").count
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "channel/item[@id='2']").next["id"]
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "dc:creator").next.namespace
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "item").next.find("title").text
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "item").next.parent
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "item")
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss", "item[1]")
+Xml.reader("tests/builtins/_fixtures/xml/missing.xml", "item")
+Xml.reader("tests/builtins/_fixtures/xml/feed.rss")
+Xml.each("tests/builtins/_fixtures/xml/feed.rss", "item")
+Xml.each("tests/builtins/_fixtures/xml/feed.rss", "item") { |n| n["id"] }
+Xml.each("tests/builtins/_fixtures/xml/feed.rss", "title", fn(n) { n.text })
