@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.30.1] - 2026-11-06
+
 ### Changed
 
 - **`jwt_sign` takes an `iat` option, and refuses `exp`/`iat` in the
