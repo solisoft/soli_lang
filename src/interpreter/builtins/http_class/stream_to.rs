@@ -378,7 +378,7 @@ async fn read(spec: &Spec, cancel: &tokio::sync::Notify, reader: &mut Reader) {
         reader.outcome.state = Some(State::Failed);
         reader.outcome.error = Some(error);
     };
-    let client = get_user_http_client().clone();
+    let client = user_http_client(spec.call.follow_redirects).clone();
     let request = match stream_request(
         &client,
         &spec.call.method,
@@ -967,6 +967,7 @@ mod tests {
             idle: Duration::from_secs(5),
             headers: Vec::new(),
             body: Some(OutgoingBody::Text("{}".into())),
+            follow_redirects: true,
         };
         let target = Target {
             format: Format::parse(format).unwrap(),
