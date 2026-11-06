@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-11-06
+
 ### Added
 
 - **Outgoing `HTTP.*` calls carry the trace on (W3C `traceparent`).** With
