@@ -23,7 +23,12 @@
 //! Knobs: `doctype_message`, `unknown_entity`, `unbound_prefix`,
 //! `duplicate_attribute`, `trailing_content`, `no_root`, `max_depth`,
 //! `max_nodes`, `max_bytes`, `max_attrs`, `max_text_run`, `max_ns_bindings`,
-//! `keep_blank_text`, `strict_syntax`, `raw_pi_data`, `lenient_attributes`. Limits come from `interpreter::limits::max_xml_*`.
+//! `keep_blank_text`, `strict_syntax`, `raw_pi_data`, `lenient_attributes`, and
+//! the legacy knobs that keep `SOAP.parse` and the c14n trio accepting what
+//! their old parsers accepted: `max_ns_decls_per_element`,
+//! `legacy_char_refs`, `duplicate_by_qname`, `self_closing_past_depth`,
+//! `stop_after_root`, `keep_text_before_root`. Limits come from
+//! `interpreter::limits::max_xml_*`.
 //!
 //! **The tree** — [`XmlTree`], [`NodeId`] (`NodeId::DOCUMENT` is 0), [`Kind`]
 //! (`Document`, `Element { qname, local_start, ns_uri, attrs, ns_decls,
@@ -84,7 +89,7 @@ pub use error::{line_col, XmlError, XmlErrorKind};
 pub use parse::{parse, parse_bytes, EventLoop, NsScope, Sink, StartTag, Step, TreeSink};
 pub use policy::{
     OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
-    MAX_NAME_LEN, MAX_NS_BINDINGS,
+    MAX_NAME_LEN, MAX_NS_BINDINGS, QUICK_XML_NS_DECLS_PER_ELEMENT,
 };
 pub use project::{soap_error_message, soap_shape, to_h, Proj};
 pub use serialize::{serialize, serialize_children, SerializeOptions};

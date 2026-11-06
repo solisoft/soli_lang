@@ -29,10 +29,13 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(test)]
 use std::ops::Deref;
 use std::rc::Rc;
 
+#[cfg(test)]
 use quick_xml::events::{BytesStart, Event};
+#[cfg(test)]
 use quick_xml::{Reader, XmlVersion};
 
 /// Decode + entity-unescape a text event.
@@ -41,6 +44,7 @@ use quick_xml::{Reader, XmlVersion};
 /// (bytes -> str) plus the free `escape::unescape()` (`&lt;` -> `<`). This
 /// restores the original decode-then-resolve-predefined-entities behaviour
 /// used when canonicalizing text content.
+#[cfg(test)]
 fn decode_text_event(e: &quick_xml::events::BytesText) -> Result<String, String> {
     let decoded = e
         .decode()
@@ -58,6 +62,7 @@ fn decode_text_event(e: &quick_xml::events::BytesText) -> Result<String, String>
 /// as their own event rather than inlining them into `Text`. We resolve those
 /// here; any other named entity would require a DTD (rejected up front as an
 /// XXE / entity-expansion defense), so an unknown name is an error.
+#[cfg(test)]
 fn resolve_general_ref(e: &quick_xml::events::BytesRef) -> Result<String, String> {
     if e.is_char_ref() {
         return e
@@ -91,6 +96,7 @@ const XMLDSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
 
 /// Element-nesting cap — a deeply nested document is the classic XML DoS
 /// vector. Generous enough for any real signed payload.
+#[cfg(test)]
 const MAX_DEPTH: usize = 256;
 
 /// A regular (non-`xmlns`) attribute.
@@ -127,6 +133,7 @@ fn split_qname(q: &str) -> (String, String) {
     }
 }
 
+#[cfg(test)]
 fn bytes_lossy<T: Deref<Target = [u8]>>(b: &T) -> String {
     String::from_utf8_lossy(b).into_owned()
 }
@@ -163,6 +170,7 @@ fn escape_attr(s: &str) -> String {
     out
 }
 
+#[cfg(test)]
 fn build_element(e: &BytesStart) -> Result<Element, String> {
     let qname = bytes_lossy(&e.name().into_inner().to_vec());
     let (prefix, local) = split_qname(&qname);
@@ -212,104 +220,102 @@ fn build_element(e: &BytesStart) -> Result<Element, String> {
 }
 
 /// Parse `xml` into a tree, returning the single document element.
+///
+/// The shared XML core parses (`ParsePolicy::c14n()`: DOCTYPE refused, depth
+/// 256, unbound prefixes allowed, trailing roots ignored, comments and text
+/// outside the root dropped here) and the tree is copied into this module's
+/// `Element`, built exactly as the old quick-xml loop built it. The old loop
+/// is kept as `tests::legacy_parse_document`, the oracle the adapter is
+/// checked against.
 fn parse_document(xml: &str) -> Result<Element, String> {
+    use crate::xml::{Kind, NodeId, ParsePolicy, XmlError, XmlErrorKind, XmlTree};
+
+    /// The old loop's error strings, for the errors it could give.
+    fn message(err: &XmlError) -> String {
+        match &err.kind {
+            XmlErrorKind::Doctype(message) | XmlErrorKind::NoRoot(message) => message.to_string(),
+            XmlErrorKind::DepthExceeded(limit) => {
+                format!("nesting depth exceeded {} levels", limit)
+            }
+            XmlErrorKind::UnknownEntity(name) => format!(
+                "general entity reference `&{};` is not allowed (XXE / entity-expansion defense)",
+                name
+            ),
+            _ => format!("XML parsing error: {}", err.quick_xml_message()),
+        }
+    }
+
+    fn element(tree: &XmlTree, id: NodeId) -> Option<Element> {
+        let el = tree.element(id)?;
+        let (prefix, local) = split_qname(el.qname);
+        let ns_decls = el
+            .ns_decls
+            .iter()
+            .map(|d| {
+                (
+                    d.prefix.as_deref().unwrap_or("").to_string(),
+                    d.uri.to_string(),
+                )
+            })
+            .collect();
+        let mut id_value = None;
+        let attrs = el
+            .attrs
+            .iter()
+            .map(|a| {
+                let (aprefix, alocal) = split_qname(&a.qname);
+                // No DTD/schema, so match the common ID-attribute spellings
+                // (Id / ID / id) by local name — what real XML-DSig libraries do.
+                if id_value.is_none() && alocal.eq_ignore_ascii_case("id") {
+                    id_value = Some(a.value.to_string());
+                }
+                Attr {
+                    qname: a.qname.to_string(),
+                    prefix: aprefix,
+                    local: alocal,
+                    value: a.value.to_string(),
+                }
+            })
+            .collect();
+        let mut children = Vec::new();
+        for child in tree.children(id) {
+            match tree.kind(*child) {
+                Kind::Text(text) | Kind::CData(text) => children.push(Node::Text(text.to_string())),
+                Kind::Pi { target, data } => children.push(Node::Pi(if data.is_empty() {
+                    target.to_string()
+                } else {
+                    format!("{} {}", target, data)
+                })),
+                // Bounded by the policy's depth limit (256, plus one
+                // self-closing leaf), like the old recursion.
+                Kind::Element { .. } => children.extend(element(tree, *child).map(Node::Element)),
+                // Comments are omitted (no-comments form).
+                _ => {}
+            }
+        }
+        Some(Element {
+            qname: el.qname.to_string(),
+            prefix,
+            local,
+            ns_decls,
+            attrs,
+            children,
+            id: id_value,
+        })
+    }
+
     // XML line-ending normalization (#xD#xA and lone #xD -> #xA). Done on the
     // raw source so literal CRs become LFs, while `&#xD;` character references
     // (which survive normalization untouched) round-trip back to CR and are
     // re-escaped as `&#xD;` by the output stage.
     let normalized = xml.replace("\r\n", "\n").replace('\r', "\n");
-
-    let mut reader = Reader::from_str(&normalized);
-    let mut buf = Vec::new();
-    let mut stack: Vec<Element> = Vec::new();
-    let mut roots: Vec<Node> = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::DocType(_)) => {
-                return Err(
-                    "DOCTYPE declarations are not allowed (XXE / entity-expansion defense)"
-                        .to_string(),
-                );
-            }
-            Ok(Event::Decl(_)) | Ok(Event::Comment(_)) => {
-                // XML declaration removed; comments omitted (no-comments form).
-            }
-            Ok(Event::Start(e)) => {
-                if stack.len() >= MAX_DEPTH {
-                    return Err(format!("nesting depth exceeded {} levels", MAX_DEPTH));
-                }
-                stack.push(build_element(&e)?);
-            }
-            Ok(Event::Empty(e)) => {
-                let el = build_element(&e)?;
-                attach(&mut stack, &mut roots, Node::Element(el));
-            }
-            Ok(Event::End(_)) => {
-                if let Some(el) = stack.pop() {
-                    attach(&mut stack, &mut roots, Node::Element(el));
-                }
-            }
-            Ok(Event::Text(e)) => {
-                let text = decode_text_event(&e)?;
-                // Text outside the document element is discarded.
-                if !stack.is_empty() {
-                    attach(&mut stack, &mut roots, Node::Text(text));
-                }
-            }
-            Ok(Event::CData(e)) => {
-                // CDATA content is literal character data; escaped on output.
-                if !stack.is_empty() {
-                    attach(
-                        &mut stack,
-                        &mut roots,
-                        Node::Text(bytes_lossy(&e.into_inner())),
-                    );
-                }
-            }
-            Ok(Event::PI(e)) => {
-                // Processing instructions inside the document element are kept.
-                // (Top-level PIs, which the spec wraps in newlines, are out of
-                // scope for subtree canonicalization and are dropped.)
-                if !stack.is_empty() {
-                    let target = bytes_lossy(&e.target().to_vec());
-                    let content = bytes_lossy(&e.content().to_vec());
-                    let formatted = if content.is_empty() {
-                        target
-                    } else {
-                        format!("{} {}", target, content)
-                    };
-                    attach(&mut stack, &mut roots, Node::Pi(formatted));
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                // quick-xml 0.41 surfaces entity references — including the five
-                // predefined ones (`&amp;` etc.) and numeric character refs
-                // (`&#65;`) — as their own event instead of inlining them into
-                // `Text`. Resolve those to their replacement text (re-escaped by
-                // the output stage). Any *named* entity that isn't predefined
-                // could only be defined by a DTD, which we reject above; refuse
-                // it rather than silently dropping signed material.
-                let text = resolve_general_ref(&e)?;
-                if !stack.is_empty() {
-                    attach(&mut stack, &mut roots, Node::Text(text));
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(format!("XML parsing error: {}", e)),
-        }
-        buf.clear();
-    }
-
-    roots
-        .into_iter()
-        .find_map(|n| match n {
-            Node::Element(e) => Some(e),
-            _ => None,
-        })
+    let tree = crate::xml::parse(&normalized, &ParsePolicy::c14n()).map_err(|e| message(&e))?;
+    tree.root_element()
+        .and_then(|root| element(&tree, root))
         .ok_or_else(|| "no document element found".to_string())
 }
 
+#[cfg(test)]
 fn attach(stack: &mut [Element], roots: &mut Vec<Node>, node: Node) {
     match stack.last_mut() {
         Some(parent) => parent.children.push(node),
@@ -869,6 +875,274 @@ pub fn register_xml_builtins(env: &mut Environment) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The parser `parse_document` had before it moved onto the shared XML
+    /// core, kept as the oracle the adapter is compared with.
+    fn legacy_parse_document(xml: &str) -> Result<Element, String> {
+        // XML line-ending normalization (#xD#xA and lone #xD -> #xA). Done on the
+        // raw source so literal CRs become LFs, while `&#xD;` character references
+        // (which survive normalization untouched) round-trip back to CR and are
+        // re-escaped as `&#xD;` by the output stage.
+        let normalized = xml.replace("\r\n", "\n").replace('\r', "\n");
+
+        let mut reader = Reader::from_str(&normalized);
+        let mut buf = Vec::new();
+        let mut stack: Vec<Element> = Vec::new();
+        let mut roots: Vec<Node> = Vec::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::DocType(_)) => {
+                    return Err(
+                        "DOCTYPE declarations are not allowed (XXE / entity-expansion defense)"
+                            .to_string(),
+                    );
+                }
+                Ok(Event::Decl(_)) | Ok(Event::Comment(_)) => {
+                    // XML declaration removed; comments omitted (no-comments form).
+                }
+                Ok(Event::Start(e)) => {
+                    if stack.len() >= MAX_DEPTH {
+                        return Err(format!("nesting depth exceeded {} levels", MAX_DEPTH));
+                    }
+                    stack.push(build_element(&e)?);
+                }
+                Ok(Event::Empty(e)) => {
+                    let el = build_element(&e)?;
+                    attach(&mut stack, &mut roots, Node::Element(el));
+                }
+                Ok(Event::End(_)) => {
+                    if let Some(el) = stack.pop() {
+                        attach(&mut stack, &mut roots, Node::Element(el));
+                    }
+                }
+                Ok(Event::Text(e)) => {
+                    let text = decode_text_event(&e)?;
+                    // Text outside the document element is discarded.
+                    if !stack.is_empty() {
+                        attach(&mut stack, &mut roots, Node::Text(text));
+                    }
+                }
+                Ok(Event::CData(e)) => {
+                    // CDATA content is literal character data; escaped on output.
+                    if !stack.is_empty() {
+                        attach(
+                            &mut stack,
+                            &mut roots,
+                            Node::Text(bytes_lossy(&e.into_inner())),
+                        );
+                    }
+                }
+                Ok(Event::PI(e)) => {
+                    // Processing instructions inside the document element are kept.
+                    // (Top-level PIs, which the spec wraps in newlines, are out of
+                    // scope for subtree canonicalization and are dropped.)
+                    if !stack.is_empty() {
+                        let target = bytes_lossy(&e.target().to_vec());
+                        let content = bytes_lossy(&e.content().to_vec());
+                        let formatted = if content.is_empty() {
+                            target
+                        } else {
+                            format!("{} {}", target, content)
+                        };
+                        attach(&mut stack, &mut roots, Node::Pi(formatted));
+                    }
+                }
+                Ok(Event::GeneralRef(e)) => {
+                    // quick-xml 0.41 surfaces entity references — including the five
+                    // predefined ones (`&amp;` etc.) and numeric character refs
+                    // (`&#65;`) — as their own event instead of inlining them into
+                    // `Text`. Resolve those to their replacement text (re-escaped by
+                    // the output stage). Any *named* entity that isn't predefined
+                    // could only be defined by a DTD, which we reject above; refuse
+                    // it rather than silently dropping signed material.
+                    let text = resolve_general_ref(&e)?;
+                    if !stack.is_empty() {
+                        attach(&mut stack, &mut roots, Node::Text(text));
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(format!("XML parsing error: {}", e)),
+            }
+            buf.clear();
+        }
+
+        roots
+            .into_iter()
+            .find_map(|n| match n {
+                Node::Element(e) => Some(e),
+                _ => None,
+            })
+            .ok_or_else(|| "no document element found".to_string())
+    }
+
+    /// The `Element` tree as text, adjacent text nodes merged (the old loop
+    /// made one per quick-xml event; every consumer concatenates them).
+    fn dump(el: &Element, out: &mut String) {
+        out.push_str(&format!(
+            "<{}|{}|{}|{:?}|{:?}|{:?}>",
+            el.qname,
+            el.prefix,
+            el.local,
+            el.ns_decls,
+            el.attrs
+                .iter()
+                .map(|a| (&a.qname, &a.prefix, &a.local, &a.value))
+                .collect::<Vec<_>>(),
+            el.id
+        ));
+        let mut text = String::new();
+        for child in &el.children {
+            match child {
+                Node::Text(t) => text.push_str(t),
+                other => {
+                    if !text.is_empty() {
+                        out.push_str(&format!("T{:?}", std::mem::take(&mut text)));
+                    }
+                    match other {
+                        Node::Pi(p) => out.push_str(&format!("P{:?}", p)),
+                        Node::Element(c) => dump(c, out),
+                        Node::Text(_) => {}
+                    }
+                }
+            }
+        }
+        if !text.is_empty() {
+            out.push_str(&format!("T{:?}", text));
+        }
+        out.push_str("</>");
+    }
+
+    fn render(result: Result<Element, String>) -> Result<String, String> {
+        let el = result?;
+        let mut out = String::new();
+        dump(&el, &mut out);
+        Ok(out)
+    }
+
+    /// Documents both parsers must read into the same `Element`, and the
+    /// error strings both must give.
+    const EQUIVALENCE_CORPUS: &[&str] = &[
+        "<doc/>",
+        "<doc></doc>",
+        "<doc b='2' a='1' c='3'></doc>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><doc>x</doc>",
+        "<doc><!-- hi -->text</doc>",
+        "<doc>a &amp; b &lt; c &gt; d</doc>",
+        "<doc x=\"a&#9;b&#10;c&gt;d\"></doc>",
+        "<doc>  a  b  </doc>",
+        r#"<n0:root xmlns:n0="http://a" xmlns:n2="http://c"><n1:elem xmlns:n1="http://b">text</n1:elem></n0:root>"#,
+        r#"<a:x xmlns:a="http://a"><a:y><a:z>q</a:z></a:y></a:x>"#,
+        r#"<root xmlns="http://a"><child xmlns="">t</child></root>"#,
+        r#"<a:x xmlns:a="http://a"><a:y xmlns:a="http://a">t</a:y></a:x>"#,
+        "<doc><![CDATA[a < b & c]]></doc>",
+        r#"<doc xmlns:b="http://b" b:z="1" a="2"></doc>"#,
+        r#"<root xmlns:a="http://a"><a:obj ID="x"><a:v>hi</a:v></a:obj></root>"#,
+        r#"<Document ID="_o"><Data>x</Data><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:Sig/></ds:Signature></Document>"#,
+        r#"<r><Item>1<Item>2</Item></Item><g><Item>3</Item></g></r>"#,
+        // Line endings, references, PIs, attribute whitespace.
+        "<a>l1\r\nl2\rl3</a>",
+        "<a x=\"1\r\n2\" y=\"1\t2\n3\"/>",
+        "<a>x&#13;y&#xD;&#9;&#x41;&#66;</a>",
+        "<a x=\"&#9;&#10;&#13;&lt;&amp;&quot;&apos;\"/>",
+        "<a>x&#1;y&#xFFFE;</a>",
+        "<a x=\"&#1;\"/>",
+        "<a><?pi  data  here?><?empty?>t<?x y?></a>",
+        "<?pi out?><!--c-->  <a>x<!-- y -->z</a><?pi after?><!--d-->",
+        "<a>x<![CDATA[<y>&]]>z<![CDATA[]]></a>",
+        "&amp; <a>x</a> tail",
+        // Roots: trailing ones are ignored, the first one is kept.
+        "<a>1</a><b>2</b>",
+        "<a>1</a><b>",
+        "<a/><b>2</b>",
+        // Namespaces: undeclared defaults, unbound prefixes, Id spellings.
+        r#"<r xmlns="u"><c xmlns=""><d/></c></r>"#,
+        "<p:a><p:b/></p:a>",
+        r#"<a x="1" p:x="2"/>"#,
+        r#"<a xmlns:p="u" xmlns:q="u" p:x="1" q:x="2"/>"#,
+        r#"<a ID="1"><b Id="2"/><c wsu:Id="3" xmlns:wsu="w"/><d id="a" ID="b"/></a>"#,
+        r#"<a xml:lang="en" b="1" xmlns:x="a:b:c" x:y:z="2"/>"#,
+        r#"<r xmlns:a="u" xmlns:b="v"><s xmlns:b="w"><a:x b:y="1"/></s></r>"#,
+        "<a b='\"x\"' c=\"'y'\" d=\"<\"/>",
+        "\u{FEFF}<a>x</a>",
+        "<a>x\u{1}y</a>",
+        "<a><!-- a -- b -->x</a>",
+        "<?xml version=\"1.0\" encoding?><a/>",
+        "<a/><?xml version=\"1.0\"?>",
+        "<a>\n  <b> x </b>\n</a>",
+        "<a>caf\u{e9} &#233; \u{1F600}</a>",
+        // Errors.
+        "",
+        "hello",
+        "<a><b>1</b>",
+        "<a><b></a>",
+        "</a>",
+        "<a",
+        "<!DOCTYPE a><a/>",
+        "<a>&foo;</a>",
+        "<a>1</a><b>&foo;</b>",
+    ];
+
+    #[test]
+    fn the_adapter_builds_what_the_legacy_parser_built() -> Result<(), String> {
+        let mut nested = String::new();
+        for _ in 0..256 {
+            nested.push_str("<n>");
+        }
+        nested.push_str("<leaf/>");
+        for _ in 0..256 {
+            nested.push_str("</n>");
+        }
+        let decls: Vec<String> = (0..300).map(|i| format!("xmlns:p{i}=\"u{i}\"")).collect();
+        let many_decls = format!("<a {}/>", decls.join(" "));
+        let mut inputs: Vec<&str> = EQUIVALENCE_CORPUS.to_vec();
+        inputs.push(&nested);
+        inputs.push(&many_decls);
+        for input in inputs {
+            let legacy = render(legacy_parse_document(input));
+            let adapter = render(parse_document(input));
+            if legacy != adapter {
+                return Err(format!(
+                    "{input:?}\n  legacy:  {legacy:?}\n  adapter: {adapter:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Where the two parsers differ on purpose: refusals of quick-xml's
+    /// `NsReader`, which the shared core reads with, and the error wording
+    /// of inputs the old loop refused too.
+    #[test]
+    fn the_adapter_differs_from_the_legacy_parser_only_as_listed() -> Result<(), String> {
+        for input in [
+            r#"<a xmlns:xml="other"/>"#,
+            r#"<a xmlns:xmlns="u"/>"#,
+            r#"<a xmlns:p="http://www.w3.org/XML/1998/namespace"/>"#,
+            r#"<a xmlns:p="http://www.w3.org/2000/xmlns/"/>"#,
+        ] {
+            render(legacy_parse_document(input))?;
+            let err = match parse_document(input) {
+                Ok(_) => return Err(format!("{input}: the adapter accepted it")),
+                Err(err) => err,
+            };
+            if !err.starts_with("XML parsing error: ") {
+                return Err(format!("{input}: {err}"));
+            }
+        }
+        for input in [
+            r#"<a x="1" x="2"/>"#,
+            r#"<a x="&foo;"/>"#,
+            r#"<a x="AT&T"/>"#,
+            "<a b/>",
+            "<a>&#0;</a>",
+        ] {
+            if legacy_parse_document(input).is_ok() || parse_document(input).is_ok() {
+                return Err(format!("{input}: expected both parsers to refuse it"));
+            }
+        }
+        Ok(())
+    }
 
     fn c14n(xml: &str) -> String {
         canonicalize_exclusive(xml, &BTreeSet::new()).unwrap()

@@ -10,9 +10,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use quick_xml::events::Event;
-use quick_xml::Reader;
-
 use crate::interpreter::builtins::http_class::{
     get_user_http_client, read_capped_text_async, validate_url_for_ssrf,
 };
@@ -22,45 +19,6 @@ use crate::serve::get_tokio_handle;
 
 /// Default SOAP 1.1 namespace
 const SOAP11_NS: &str = "http://schemas.xmlsoap.org/soap/envelope/";
-
-/// Decode + entity-unescape a text event.
-///
-/// quick-xml 0.41 split the old `BytesText::unescape()` (decode + resolve
-/// predefined entities) into `decode()` (bytes -> str) plus the free
-/// `escape::unescape()` (`&lt;` -> `<`). This helper restores the previous
-/// behaviour so text content is returned with predefined entities resolved.
-fn decode_text_event(e: &quick_xml::events::BytesText) -> Result<String, String> {
-    let decoded = e
-        .decode()
-        .map_err(|err| format!("XML text decode error: {}", err))?;
-    let unescaped = quick_xml::escape::unescape(&decoded)
-        .map_err(|err| format!("XML text unescape error: {}", err))?;
-    Ok(unescaped.into_owned())
-}
-
-/// Resolve a general entity reference (`Event::GeneralRef`) to its replacement
-/// text.
-///
-/// quick-xml 0.41 surfaces the five predefined entities (`&amp;` etc.) and
-/// numeric character references (`&#65;`) as their own event rather than
-/// inlining them into `Text`. We resolve those; an unknown (DTD-defined)
-/// entity yields `Err` so the caller can drop it — we never expand external
-/// entities (XXE defense).
-fn resolve_general_ref(e: &quick_xml::events::BytesRef) -> Result<String, String> {
-    if e.is_char_ref() {
-        return e
-            .resolve_char_ref()
-            .map_err(|err| format!("XML character reference error: {}", err))?
-            .map(|c| c.to_string())
-            .ok_or_else(|| "invalid numeric character reference".to_string());
-    }
-    let name = e
-        .decode()
-        .map_err(|err| format!("XML entity error: {}", err))?;
-    quick_xml::escape::resolve_predefined_entity(&name)
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("unknown general entity `&{};`", name))
-}
 
 pub fn register_soap_class(env: &mut Environment) {
     let mut soap_static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
@@ -456,159 +414,34 @@ fn build_json_from_value(value: &Value) -> String {
     }
 }
 
-/// Maximum element-nesting depth the SOAP parser will accept. A
-/// billion-laughs / deeply-nested XML body is the classic XML DoS
-/// vector — well past 64 levels we're not parsing real-world SOAP
-/// anyway. Picked to match common defaults in defensive XML libraries.
-const SOAP_MAX_DEPTH: usize = 64;
-
-/// Maximum total bytes of unencoded text content this parser will
-/// accumulate per element. Stops a single `<x>AAAA…</x>` payload from
-/// growing the in-memory buffer without bound. 1 MiB is well above any
-/// legitimate SOAP body field.
-const SOAP_MAX_TEXT_BYTES: usize = 1024 * 1024;
-
+/// `SOAP.parse` and the reply of `SOAP.call` (both paths): the shared XML
+/// core under `ParsePolicy::soap()` (DOCTYPE refused, depth 64, 1 MiB of text
+/// per element, unknown entities dropped, attributes ignored), projected into
+/// today's shape by `soap_shape`. `Value`s are built here, on the calling
+/// thread or the worker thread, exactly where the old parser built them.
 fn parse_xml_to_value(xml: &str) -> Result<Value, String> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text_end = true;
-    reader.config_mut().trim_text_start = true;
+    let tree = crate::xml::parse(xml, &crate::xml::ParsePolicy::soap())
+        .map_err(|err| crate::xml::soap_error_message(&err))?;
+    Ok(proj_to_value(crate::xml::soap_shape(&tree)))
+}
 
-    let mut buf = Vec::new();
-    let mut stack: Vec<(String, HashPairs)> = Vec::new();
-    let mut current_text = String::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            // SEC-008: an XML document with a DOCTYPE may declare
-            // entities (XXE) or expand recursively (billion laughs).
-            // quick_xml does not honour entity definitions, but the
-            // mere presence of a DOCTYPE in untrusted input is a
-            // strong "this isn't normal SOAP" signal — refuse rather
-            // than let it through silently.
-            Ok(Event::DocType(_)) => {
-                return Err(
-                    "XML parsing error: DOCTYPE declarations are not allowed in SOAP payloads"
-                        .to_string(),
-                );
+/// A projection as a Soli value. Recursion is bounded by the SOAP depth
+/// limit (64, plus one self-closing leaf).
+fn proj_to_value(mut proj: crate::xml::Proj) -> Value {
+    use crate::xml::Proj;
+    match &mut proj {
+        Proj::Null => Value::Null,
+        Proj::Str(s) => Value::String(std::mem::take(s).into()),
+        Proj::List(items) => Value::Array(Rc::new(RefCell::new(
+            items.drain(..).map(proj_to_value).collect(),
+        ))),
+        Proj::Map(map) => {
+            let mut pairs = HashPairs::default();
+            for (key, value) in map.drain(..) {
+                pairs.insert(HashKey::String(key.into()), proj_to_value(value));
             }
-            Ok(Event::Start(e)) => {
-                if !current_text.trim().is_empty() && !stack.is_empty() {
-                    if let Some((_, parent)) = stack.last_mut() {
-                        parent.insert(
-                            HashKey::String("_text".into()),
-                            Value::String(current_text.trim().to_string().into()),
-                        );
-                    }
-                    current_text.clear();
-                }
-
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                if stack.len() >= SOAP_MAX_DEPTH {
-                    return Err(format!(
-                        "XML parsing error: nesting depth exceeded {} levels (likely DoS payload)",
-                        SOAP_MAX_DEPTH
-                    ));
-                }
-                stack.push((name, HashPairs::default()));
-            }
-            Ok(Event::Text(e)) => {
-                if let Ok(text) = decode_text_event(&e) {
-                    if current_text.len().saturating_add(text.len()) > SOAP_MAX_TEXT_BYTES {
-                        return Err(format!(
-                            "XML parsing error: element text exceeded {} bytes (likely DoS payload)",
-                            SOAP_MAX_TEXT_BYTES
-                        ));
-                    }
-                    current_text.push_str(&text);
-                }
-            }
-            Ok(Event::End(_)) => {
-                if let Some((name, mut attrs)) = stack.pop() {
-                    if !current_text.trim().is_empty() {
-                        attrs.insert(
-                            HashKey::String("_text".into()),
-                            Value::String(current_text.trim().to_string().into()),
-                        );
-                        current_text.clear();
-                    }
-
-                    let value = if attrs.is_empty() {
-                        Value::Null
-                    } else if attrs.len() == 1
-                        && attrs.contains_key(&HashKey::String("_text".into()))
-                    {
-                        attrs
-                            .swap_remove(&HashKey::String("_text".into()))
-                            .unwrap_or(Value::Null)
-                    } else {
-                        Value::Hash(Rc::new(RefCell::new(attrs)))
-                    };
-
-                    if let Some((_parent_name, parent)) = stack.last_mut() {
-                        let key = HashKey::String(name.clone().into());
-                        if let Some(existing) = parent.get(&key) {
-                            // Convert to array if multiple elements with same name
-                            let new_arr = match existing {
-                                Value::Array(arr) => {
-                                    let mut new_vec = arr.borrow().clone();
-                                    new_vec.push(value);
-                                    Value::Array(Rc::new(RefCell::new(new_vec)))
-                                }
-                                _ => Value::Array(Rc::new(RefCell::new(vec![
-                                    existing.clone(),
-                                    value,
-                                ]))),
-                            };
-                            parent.insert(key, new_arr);
-                        } else {
-                            parent.insert(key, value);
-                        }
-                    } else {
-                        // Root element
-                        let mut root = HashPairs::default();
-                        root.insert(HashKey::String(name.into()), value);
-                        return Ok(Value::Hash(Rc::new(RefCell::new(root))));
-                    }
-                }
-            }
-            Ok(Event::Empty(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                if let Some((_, parent)) = stack.last_mut() {
-                    parent.insert(HashKey::String(name.into()), Value::Null);
-                }
-            }
-            Ok(Event::GeneralRef(e)) => {
-                // Predefined entities (`&amp;` etc.) and numeric character refs
-                // arrive as their own event in quick-xml 0.41; resolve them into
-                // the current text run. An unknown (DTD-defined) entity yields
-                // Err and is dropped — we never expand external entities (XXE).
-                if let Ok(text) = resolve_general_ref(&e) {
-                    if current_text.len().saturating_add(text.len()) > SOAP_MAX_TEXT_BYTES {
-                        return Err(format!(
-                            "XML parsing error: element text exceeded {} bytes (likely DoS payload)",
-                            SOAP_MAX_TEXT_BYTES
-                        ));
-                    }
-                    current_text.push_str(&text);
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(format!("XML parsing error: {}", e)),
-            _ => {}
+            Value::Hash(Rc::new(RefCell::new(pairs)))
         }
-        buf.clear();
-    }
-
-    match stack.pop() {
-        Some((name, attrs)) => {
-            let mut root = HashPairs::default();
-            root.insert(
-                HashKey::String(name.into()),
-                Value::Hash(Rc::new(RefCell::new(attrs))),
-            );
-            Ok(Value::Hash(Rc::new(RefCell::new(root))))
-        }
-        _ => Ok(Value::Null),
     }
 }
 
@@ -761,44 +594,65 @@ fn xml_escape_attribute(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    //! Regression coverage for the SEC-008 SOAP-XML hardening:
-    //! DOCTYPE rejection, depth cap, text-size cap.
+    //! Regression coverage for the SEC-008 SOAP-XML hardening (DOCTYPE
+    //! rejection, depth cap, text-size cap) and for the move onto the shared
+    //! XML core. `tests/builtins/soap_compat_spec.sl` is the full table.
     use super::*;
 
+    type TestResult = Result<(), String>;
+
+    const SOAP_MAX_DEPTH: usize = 64;
+    const SOAP_MAX_TEXT_BYTES: usize = 1024 * 1024;
+
+    fn json(xml: &str) -> Result<String, String> {
+        crate::interpreter::value::stringify_to_string(&parse_xml_to_value(xml)?)
+    }
+
+    fn refused(xml: &str) -> Result<String, String> {
+        match parse_xml_to_value(xml) {
+            Ok(v) => Err(format!("expected {xml:?} to be refused, got {v}")),
+            Err(err) => Ok(err),
+        }
+    }
+
     #[test]
-    fn rejects_doctype_declarations() {
+    fn rejects_doctype_declarations() -> TestResult {
         let xml = r#"<?xml version="1.0"?>
 <!DOCTYPE foo [<!ENTITY a "hello">]>
 <root><body>&a;</body></root>"#;
-        let err = parse_xml_to_value(xml).unwrap_err();
-        assert!(
-            err.contains("DOCTYPE"),
-            "expected DOCTYPE rejection, got: {}",
-            err
+        assert_eq!(
+            refused(xml)?,
+            "XML parsing error: DOCTYPE declarations are not allowed in SOAP payloads"
         );
+        Ok(())
     }
 
     #[test]
-    fn rejects_excessive_nesting() {
-        // Build an XML payload with nesting just past the cap.
-        let mut xml = String::from("<?xml version=\"1.0\"?>");
-        let depth = SOAP_MAX_DEPTH + 5;
-        for i in 0..depth {
-            xml.push_str(&format!("<n{}>", i));
-        }
-        for i in (0..depth).rev() {
-            xml.push_str(&format!("</n{}>", i));
-        }
-        let err = parse_xml_to_value(&xml).unwrap_err();
-        assert!(
-            err.contains("nesting depth exceeded"),
-            "expected depth-cap rejection, got: {}",
-            err
+    fn rejects_excessive_nesting() -> TestResult {
+        let nested = |depth: usize, leaf: &str| {
+            let mut xml = String::from("<?xml version=\"1.0\"?>");
+            for i in 0..depth {
+                xml.push_str(&format!("<n{}>", i));
+            }
+            xml.push_str(leaf);
+            for i in (0..depth).rev() {
+                xml.push_str(&format!("</n{}>", i));
+            }
+            xml
+        };
+        parse_xml_to_value(&nested(SOAP_MAX_DEPTH, "x"))?;
+        // As before, the limit counts start tags: one self-closing leaf
+        // below the deepest element is still read.
+        parse_xml_to_value(&nested(SOAP_MAX_DEPTH, "<leaf/>"))?;
+        assert_eq!(
+            refused(&nested(SOAP_MAX_DEPTH + 5, ""))?,
+            "XML parsing error: nesting depth exceeded 64 levels (likely DoS payload)"
         );
+        Ok(())
     }
 
     #[test]
-    fn rejects_text_payload_over_cap() {
+    fn rejects_text_payload_over_cap() -> TestResult {
         let mut xml = String::from("<root>");
         // Push enough to clearly exceed SOAP_MAX_TEXT_BYTES across one or
         // more text events.
@@ -807,16 +661,15 @@ mod tests {
             xml.push_str(&chunk);
         }
         xml.push_str("</root>");
-        let err = parse_xml_to_value(&xml).unwrap_err();
-        assert!(
-            err.contains("element text exceeded"),
-            "expected text-cap rejection, got: {}",
-            err
+        assert_eq!(
+            refused(&xml)?,
+            "XML parsing error: element text exceeded 1048576 bytes (likely DoS payload)"
         );
+        Ok(())
     }
 
     #[test]
-    fn accepts_normal_soap_envelope() {
+    fn accepts_normal_soap_envelope() -> TestResult {
         let xml = r#"<?xml version="1.0"?>
 <Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
     <Body>
@@ -826,7 +679,70 @@ mod tests {
         </GetUser>
     </Body>
 </Envelope>"#;
-        let v = parse_xml_to_value(xml).expect("normal SOAP body must parse");
-        assert!(matches!(v, Value::Hash(_)));
+        assert_eq!(
+            json(xml)?,
+            r#"{"Envelope":{"Body":{"GetUser":{"id":"42","name":"Alice"}}}}"#
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_six_fixes_and_crlf() -> TestResult {
+        // 1. whitespace around entities, 2. CDATA, 3. self-closing repeats,
+        // 4. self-closing root, 5. mixed text, CRLF.
+        assert_eq!(json("<a>Tom &amp; Jerry</a>")?, r#"{"a":"Tom & Jerry"}"#);
+        assert_eq!(json("<a><![CDATA[<b>]]></a>")?, r#"{"a":"<b>"}"#);
+        assert_eq!(json("<r><x>1</x><x/></r>")?, r#"{"r":{"x":["1",null]}}"#);
+        assert_eq!(json("<a/>")?, r#"{"a":null}"#);
+        assert_eq!(
+            json("<r>head <c>1</c> tail</r>")?,
+            r#"{"r":{"_text":"head  tail","c":"1"}}"#
+        );
+        assert_eq!(json("<a>l1\r\nl2</a>")?, r#"{"a":"l1\nl2"}"#);
+        // 6. truncated input raises, so `SOAP.call` gives `parsed: nil`.
+        assert!(refused("<r><a>1</a>")?.starts_with("XML parsing error: "));
+        Ok(())
+    }
+
+    #[test]
+    fn keeps_what_the_old_parser_accepted() -> TestResult {
+        // Text before the root starts the root's text; a comment still cuts
+        // text into pieces trimmed one by one.
+        assert_eq!(json("junk<a>x</a>")?, r#"{"a":"junkx"}"#);
+        assert_eq!(json("<a>x <!-- c --> y</a>")?, r#"{"a":"xy"}"#);
+        // Character references resolve the quick-xml way: an invalid one is
+        // dropped, a control character is kept.
+        assert_eq!(json("<a>&#0;v</a>")?, r#"{"a":"v"}"#);
+        assert_eq!(json("<a>&#1;v</a>")?, r#"{"a":"\u0001v"}"#);
+        // Nothing after the root is read.
+        assert_eq!(json("<a>1</a></b>")?, r#"{"a":"1"}"#);
+        assert_eq!(json("<a>1</a><!DOCTYPE x>")?, r#"{"a":"1"}"#);
+        // Attributes never refuse a document.
+        assert_eq!(json(r#"<a x="AT&T" b>v</a>"#)?, r#"{"a":"v"}"#);
+        // More than quick-xml's 256 declarations on one element.
+        let decls: Vec<String> = (0..300).map(|i| format!("xmlns:p{i}=\"u{i}\"")).collect();
+        assert_eq!(
+            json(&format!("<a {}>x</a>", decls.join(" ")))?,
+            r#"{"a":"x"}"#
+        );
+        // A malformed declaration field is ignored.
+        assert_eq!(
+            json("<?xml version=\"1.0\" encoding?><a>1</a>")?,
+            r#"{"a":"1"}"#
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_reply_that_does_not_parse_gives_nil() {
+        // Both `SOAP.call` paths do `parse_xml_to_value(&body).unwrap_or(Null)`.
+        assert!(matches!(
+            parse_xml_to_value("<r><a>1</a>").unwrap_or(Value::Null),
+            Value::Null
+        ));
+        assert!(matches!(
+            parse_xml_to_value("").unwrap_or(Value::Null),
+            Value::Null
+        ));
     }
 }
