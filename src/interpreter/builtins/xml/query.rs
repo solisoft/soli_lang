@@ -138,26 +138,27 @@ fn run(node: &XmlRef, args: &[Value], flavour: Flavour, want: Want) -> Result<Va
     let table = namespaces(args.get(1), who)?;
     let xpath = compiled(&expr).map_err(|e| format!("{who}: {e}"))?;
     let max_visits = crate::interpreter::limits::max_xpath_visits();
-    let (items, strings) = node.write(|tree, id| {
-        let items = select(
-            tree,
-            id,
-            &xpath,
-            &Query {
-                flavour,
-                namespaces: &table,
-                max_visits,
-            },
-        )?;
-        let take = match want {
-            Want::First => items.len().min(1),
-            Want::All => items.len(),
-        };
-        let strings: Vec<Option<String>> =
-            items[..take].iter().map(|item| item.string(tree)).collect();
-        Ok::<_, crate::xml::XPathError>((items, strings))
-    })?
-    .map_err(|e| format!("{who}: {e}"))?;
+    let (items, strings) = node
+        .write(|tree, id| {
+            let items = select(
+                tree,
+                id,
+                &xpath,
+                &Query {
+                    flavour,
+                    namespaces: &table,
+                    max_visits,
+                },
+            )?;
+            let take = match want {
+                Want::First => items.len().min(1),
+                Want::All => items.len(),
+            };
+            let strings: Vec<Option<String>> =
+                items[..take].iter().map(|item| item.string(tree)).collect();
+            Ok::<_, crate::xml::XPathError>((items, strings))
+        })?
+        .map_err(|e| format!("{who}: {e}"))?;
     let values = items
         .iter()
         .zip(strings)

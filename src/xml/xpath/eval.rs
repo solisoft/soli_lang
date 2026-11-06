@@ -325,9 +325,7 @@ impl<'t> Eval<'t> {
         let mut set: Vec<NodeId> = match path.start {
             Start::Root if self.detached => vec![VIRTUAL],
             Start::Root => vec![NodeId::DOCUMENT],
-            Start::Relative
-                if self.flavour == Flavour::Lenient && context == NodeId::DOCUMENT =>
-            {
+            Start::Relative if self.flavour == Flavour::Lenient && context == NodeId::DOCUMENT => {
                 self.tree.root_element().into_iter().collect()
             }
             Start::Relative => vec![context],
@@ -496,14 +494,18 @@ impl<'t> Eval<'t> {
                 literal,
             } => {
                 let want = *eq;
-                self.any_value(operand, node, Some(&|v: &str| (v == literal.as_str()) == want))?
+                self.any_value(
+                    operand,
+                    node,
+                    Some(&|v: &str| (v == literal.as_str()) == want),
+                )?
             }
             Expr::Contains(operand, literal) => {
                 self.first_value(operand, node)?.contains(literal.as_str())
             }
-            Expr::StartsWith(operand, literal) => {
-                self.first_value(operand, node)?.starts_with(literal.as_str())
-            }
+            Expr::StartsWith(operand, literal) => self
+                .first_value(operand, node)?
+                .starts_with(literal.as_str()),
         })
     }
 
@@ -530,12 +532,10 @@ impl<'t> Eval<'t> {
                 let kids = self.children(node);
                 let children = kids.as_slice();
                 self.charge(children.len())?;
-                Ok(children
-                    .iter()
-                    .any(|c| match self.tree.kind(*c) {
-                        Kind::Text(s) | Kind::CData(s) => pred.is_none_or(|p| p(s)),
-                        _ => false,
-                    }))
+                Ok(children.iter().any(|c| match self.tree.kind(*c) {
+                    Kind::Text(s) | Kind::CData(s) => pred.is_none_or(|p| p(s)),
+                    _ => false,
+                }))
             }
             Operand::Dot => match pred {
                 None => Ok(true),

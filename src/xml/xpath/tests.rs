@@ -268,7 +268,8 @@ fn expression_limits_are_enforced_at_n_and_n_plus_one() -> TestResult {
     }
     // A bare `/` is a step too, so a union of them is bounded.
     XPath::compile(&vec!["/"; MAX_STEPS].join("|")).map_err(|e| e.to_string())?;
-    if compile_error(&vec!["/"; MAX_STEPS + 1].join("|"))? != "XPath too complex: more than 64 steps"
+    if compile_error(&vec!["/"; MAX_STEPS + 1].join("|"))?
+        != "XPath too complex: more than 64 steps"
     {
         return Err("65 bare slashes".into());
     }
@@ -344,24 +345,56 @@ fn strict_xpath_semantics_table() -> TestResult {
         ("//item[@kind][1]", &[I2]),
         ("//item[1][@kind]", &[]),
         ("//item[@id!='1'][2]", &[I3]),
-        ("//title[1]", &["/rss/channel/title", "/rss/channel/item[1]/title", "/rss/channel/item[2]/title", "/rss/channel/item[3]/title"]),
+        (
+            "//title[1]",
+            &[
+                "/rss/channel/title",
+                "/rss/channel/item[1]/title",
+                "/rss/channel/item[2]/title",
+                "/rss/channel/item[3]/title",
+            ],
+        ),
         ("//item[1]/tag[2]", &["/rss/channel/item[1]/tag[2]"]),
         ("//item/..", &["/rss/channel"]),
         ("//title/../@id", &["=1", "=2", "=3"]),
         ("//item[2]/../item[3]", &[I3]),
         ("//comment()", &["/rss/channel/item[2]/comment()"]),
-        ("//processing-instruction()", &["/rss/channel/item[2]/processing-instruction()"]),
-        ("//processing-instruction('p')", &["/rss/channel/item[2]/processing-instruction()"]),
+        (
+            "//processing-instruction()",
+            &["/rss/channel/item[2]/processing-instruction()"],
+        ),
+        (
+            "//processing-instruction('p')",
+            &["/rss/channel/item[2]/processing-instruction()"],
+        ),
         ("//processing-instruction('q')", &[]),
-        ("//item[3]/node()", &["/rss/channel/item[3]/title", "/rss/channel/item[3]/text()[1]", "/rss/channel/item[3]/text()[2]"]),
+        (
+            "//item[3]/node()",
+            &[
+                "/rss/channel/item[3]/title",
+                "/rss/channel/item[3]/text()[1]",
+                "/rss/channel/item[3]/text()[2]",
+            ],
+        ),
         ("//item[3]/text()", &["=tail", "=cd"]),
         ("//item[3]/text()[2]", &["=cd"]),
         ("//*[@*]", &["/rss", I1, I2, I3]),
-        ("//item/title | /rss/channel/title", &["/rss/channel/title", "/rss/channel/item[1]/title", "/rss/channel/item[2]/title", "/rss/channel/item[3]/title"]),
+        (
+            "//item/title | /rss/channel/title",
+            &[
+                "/rss/channel/title",
+                "/rss/channel/item[1]/title",
+                "/rss/channel/item[2]/title",
+                "/rss/channel/item[3]/title",
+            ],
+        ),
         ("//item | //item[1] | //item", &[I1, I2, I3]),
         ("//item/@kind | //item[2]", &[I2, "=b"]),
         ("//*:item[@id='3']", &[I3]),
-        ("//item//text()", &["=A", "=x", "=y", "=B & C", "=A", "=tail", "=cd"]),
+        (
+            "//item//text()",
+            &["=A", "=x", "=y", "=B & C", "=A", "=tail", "=cd"],
+        ),
         ("/rss/./channel/./item[1]/.", &[I1]),
         ("/..", &[]),
     ];
@@ -406,7 +439,10 @@ fn namespaces_resolve_per_flavour() -> TestResult {
         ("//entry", &[]),
         ("//xmlns:entry", &[e1, e2]),
         ("//*:entry", &[e1, e2]),
-        ("/xmlns:feed/xmlns:entry/xmlns:title/text()", &["=E1", "=E2"]),
+        (
+            "/xmlns:feed/xmlns:entry/xmlns:title/text()",
+            &["=E1", "=E2"],
+        ),
         ("//x:*", &["/feed/entry[1]/x:meta"]),
         ("//x:meta/@x:k", &["=v"]),
         ("//x:meta/@k", &["=w"]),
@@ -420,7 +456,10 @@ fn namespaces_resolve_per_flavour() -> TestResult {
 
     let lenient: &[(&str, &[&str])] = &[
         ("entry", &[e1, e2]),
-        ("entry/title", &["/feed/entry[1]/title", "/feed/entry[2]/title"]),
+        (
+            "entry/title",
+            &["/feed/entry[1]/title", "/feed/entry[2]/title"],
+        ),
         ("entry[title='E2']", &[e2]),
         ("//meta", &["/feed/entry[1]/x:meta"]),
         ("entry/x:meta/@k", &["=w"]),
@@ -430,28 +469,64 @@ fn namespaces_resolve_per_flavour() -> TestResult {
     // The `""` key makes unprefixed tests mean exactly that URI, in both.
     let with_default = [("", ATOM_NS)];
     for flavour in [Flavour::Strict, Flavour::Lenient] {
-        let got = run(&mut tree, NodeId::DOCUMENT, "//entry", flavour, &with_default)?;
+        let got = run(
+            &mut tree,
+            NodeId::DOCUMENT,
+            "//entry",
+            flavour,
+            &with_default,
+        )?;
         if got != [e1, e2] {
             return Err(format!("{flavour:?} with the \"\" key: {got:?}"));
         }
-        let got = run(&mut tree, NodeId::DOCUMENT, "//meta", flavour, &with_default)?;
+        let got = run(
+            &mut tree,
+            NodeId::DOCUMENT,
+            "//meta",
+            flavour,
+            &with_default,
+        )?;
         if !got.is_empty() {
-            return Err(format!("{flavour:?}: meta is not in the default namespace: {got:?}"));
+            return Err(format!(
+                "{flavour:?}: meta is not in the default namespace: {got:?}"
+            ));
         }
     }
     let other = [("", "urn:other")];
-    if !run(&mut tree, NodeId::DOCUMENT, "entry", Flavour::Lenient, &other)?.is_empty() {
+    if !run(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "entry",
+        Flavour::Lenient,
+        &other,
+    )?
+    .is_empty()
+    {
         return Err("a \"\" key with another URI must match nothing".into());
     }
     // `""` mapped to "" means no namespace.
     let none = [("", "")];
-    if !run(&mut tree, NodeId::DOCUMENT, "entry", Flavour::Lenient, &none)?.is_empty() {
+    if !run(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "entry",
+        Flavour::Lenient,
+        &none,
+    )?
+    .is_empty()
+    {
         return Err("\"\" => \"\" must mean no namespace".into());
     }
 
     // The table wins over the root's declarations, and binds any name.
     let a = [("a", ATOM_NS), ("x", "urn:y")];
-    let got = run(&mut tree, NodeId::DOCUMENT, "//a:entry/a:title/text()", Flavour::Strict, &a)?;
+    let got = run(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "//a:entry/a:title/text()",
+        Flavour::Strict,
+        &a,
+    )?;
     if got != ["=E1", "=E2"] {
         return Err(format!("table prefix: {got:?}"));
     }
@@ -461,7 +536,14 @@ fn namespaces_resolve_per_flavour() -> TestResult {
 
     // An unknown prefix is refused, even if its step is never reached.
     for flavour in [Flavour::Strict, Flavour::Lenient] {
-        match eval_with(&mut tree, NodeId::DOCUMENT, "//nothing/q:entry", flavour, &[], 1000) {
+        match eval_with(
+            &mut tree,
+            NodeId::DOCUMENT,
+            "//nothing/q:entry",
+            flavour,
+            &[],
+            1000,
+        ) {
             Err(XPathError {
                 kind: XPathErrorKind::UnboundPrefix(p),
             }) if p == "q" => {}
@@ -470,13 +552,26 @@ fn namespaces_resolve_per_flavour() -> TestResult {
     }
     // `xml` is always bound.
     let mut tree = doc(r#"<a xml:lang="fr"/>"#)?;
-    let got = run(&mut tree, NodeId::DOCUMENT, "a/@xml:lang", Flavour::Strict, &[])?;
+    let got = run(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "a/@xml:lang",
+        Flavour::Strict,
+        &[],
+    )?;
     if got != ["=fr"] {
         return Err(format!("xml:lang: {got:?}"));
     }
     // `xmlns:` with no default namespace on the root is unbound.
     let mut tree = doc("<a/>")?;
-    match eval_with(&mut tree, NodeId::DOCUMENT, "xmlns:a", Flavour::Strict, &[], 1000) {
+    match eval_with(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "xmlns:a",
+        Flavour::Strict,
+        &[],
+        1000,
+    ) {
         Err(e) if e.to_string() == "unbound prefix 'xmlns'" => Ok(()),
         other => Err(format!("{other:?}")),
     }
@@ -534,7 +629,9 @@ fn factur_x_seller_and_lines() -> TestResult {
 #[test]
 fn detached_fragments_have_a_virtual_root() -> TestResult {
     let (mut tree, a) = XmlTree::new_fragment(100, "a", &[]).map_err(|e| e.to_string())?;
-    let b = tree.add_element(a, "b", &[("k", "1")]).map_err(|e| e.to_string())?;
+    let b = tree
+        .add_element(a, "b", &[("k", "1")])
+        .map_err(|e| e.to_string())?;
     tree.add_element(b, "b", &[]).map_err(|e| e.to_string())?;
     tree.add_element(a, "c", &[]).map_err(|e| e.to_string())?;
     let table: &[(&str, &[&str])] = &[
@@ -560,7 +657,13 @@ fn detached_fragments_have_a_virtual_root() -> TestResult {
     if got != ["=A"] {
         return Err(format!("detached: {got:?}"));
     }
-    let got = run(&mut tree, NodeId::DOCUMENT, "//item/@id", Flavour::Strict, &[])?;
+    let got = run(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "//item/@id",
+        Flavour::Strict,
+        &[],
+    )?;
     if got != ["=2", "=3"] {
         return Err(format!("document after detach: {got:?}"));
     }
@@ -568,7 +671,13 @@ fn detached_fragments_have_a_virtual_root() -> TestResult {
     let mut tree = doc(ATOM)?;
     let entry = tree.descendants(NodeId::DOCUMENT)[2];
     let (mut copy, top) = tree.dup(entry).map_err(|e| e.to_string())?;
-    let got = run(&mut copy, top, "xmlns:title/text() | *:meta/@*:k", Flavour::Strict, &[])?;
+    let got = run(
+        &mut copy,
+        top,
+        "xmlns:title/text() | *:meta/@*:k",
+        Flavour::Strict,
+        &[],
+    )?;
     if got != ["=E1", "=v", "=w"] {
         return Err(format!("dup: {got:?}"));
     }
@@ -582,10 +691,18 @@ fn results_follow_document_order_after_edits() -> TestResult {
     let fresh = tree
         .create_element("item", &[("id", "0")], None)
         .map_err(|e| e.to_string())?;
-    tree.prepend_child(channel, fresh).map_err(|e| e.to_string())?;
+    tree.prepend_child(channel, fresh)
+        .map_err(|e| e.to_string())?;
     let last = tree.descendants(NodeId::DOCUMENT)[4];
-    tree.append_child(channel, last).map_err(|e| e.to_string())?;
-    let got = run(&mut tree, NodeId::DOCUMENT, "//item/@id | //item[1]", Flavour::Strict, &[])?;
+    tree.append_child(channel, last)
+        .map_err(|e| e.to_string())?;
+    let got = run(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "//item/@id | //item[1]",
+        Flavour::Strict,
+        &[],
+    )?;
     if got != ["/rss/channel/item[1]", "=0", "=2", "=3", "=1"] {
         return Err(format!("{got:?}"));
     }
@@ -598,7 +715,9 @@ fn chain(depth: usize) -> Result<XmlTree, String> {
         XmlTree::new_document(depth + 10, Some(("a", &[]))).map_err(|e| e.to_string())?;
     let mut node = root.ok_or("no root")?;
     for _ in 1..depth {
-        node = tree.add_element(node, "a", &[]).map_err(|e| e.to_string())?;
+        node = tree
+            .add_element(node, "a", &[])
+            .map_err(|e| e.to_string())?;
     }
     tree.add_text(node, "x").map_err(|e| e.to_string())?;
     Ok(tree)
@@ -608,13 +727,27 @@ fn chain(depth: usize) -> Result<XmlTree, String> {
 fn the_visit_budget_bounds_adversarial_queries() -> TestResult {
     let mut tree = chain(5000)?;
     // `//*//*//*` stays linear: each `//` skips contexts already covered.
-    let items = eval_with(&mut tree, NodeId::DOCUMENT, "//*//*//*", Flavour::Strict, &[], 60_000)
-        .map_err(|e| e.to_string())?;
+    let items = eval_with(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "//*//*//*",
+        Flavour::Strict,
+        &[],
+        60_000,
+    )
+    .map_err(|e| e.to_string())?;
     if items.len() != 4998 {
         return Err(format!("{} nodes", items.len()));
     }
     // `.` reads every subtree: quadratic, so the budget stops it.
-    match eval_with(&mut tree, NodeId::DOCUMENT, "//*[.='y']", Flavour::Strict, &[], 1_000_000) {
+    match eval_with(
+        &mut tree,
+        NodeId::DOCUMENT,
+        "//*[.='y']",
+        Flavour::Strict,
+        &[],
+        1_000_000,
+    ) {
         Err(e) if e.kind == XPathErrorKind::Budget(1_000_000) => {}
         other => return Err(format!("expected the budget error, got {other:?}")),
     }
@@ -630,14 +763,32 @@ fn the_visit_budget_bounds_adversarial_queries() -> TestResult {
     let text = "y".repeat(64 * 1024);
     let leaf = long.descendants(NodeId::DOCUMENT)[31];
     long.add_text(leaf, &text).map_err(|e| e.to_string())?;
-    match eval_with(&mut long, NodeId::DOCUMENT, "//*[.='z']", Flavour::Strict, &[], 20_000) {
+    match eval_with(
+        &mut long,
+        NodeId::DOCUMENT,
+        "//*[.='z']",
+        Flavour::Strict,
+        &[],
+        20_000,
+    ) {
         Err(e) if e.kind == XPathErrorKind::Budget(20_000) => {}
-        other => return Err(format!("long text: expected the budget error, got {other:?}")),
+        other => {
+            return Err(format!(
+                "long text: expected the budget error, got {other:?}"
+            ))
+        }
     }
     // The same queries within budget on a small tree.
     let mut small = chain(10)?;
-    let got = eval_with(&mut small, NodeId::DOCUMENT, "//*[.='x']", Flavour::Strict, &[], 1000)
-        .map_err(|e| e.to_string())?;
+    let got = eval_with(
+        &mut small,
+        NodeId::DOCUMENT,
+        "//*[.='x']",
+        Flavour::Strict,
+        &[],
+        1000,
+    )
+    .map_err(|e| e.to_string())?;
     if got.len() != 10 {
         return Err(format!("{} matches", got.len()));
     }

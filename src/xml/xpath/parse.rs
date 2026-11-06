@@ -277,9 +277,10 @@ impl<'a> Parser<'a> {
             Tok::Axis(axis) => format!("axis '{axis}::'"),
             Tok::Variable(name) => format!("variable '${name}'"),
             Tok::Other('+') | Tok::Other('-') => "arithmetic".to_string(),
-            Tok::Name { prefix: None, local }
-                if ["div", "mod"].contains(&local.as_str()) && self.pos > 0 =>
-            {
+            Tok::Name {
+                prefix: None,
+                local,
+            } if ["div", "mod"].contains(&local.as_str()) && self.pos > 0 => {
                 "arithmetic".to_string()
             }
             Tok::Name { prefix, local } if *self.peek_at(1) == Tok::LParen => {
