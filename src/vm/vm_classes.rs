@@ -712,6 +712,48 @@ impl Vm {
         self.check_private_value(&self.stack[receiver_idx], name)
     }
 
+    /// The native method `name` of a non-model instance, bound to it and not
+    /// called, or the native static `name` of a non-model class: what
+    /// `Op::GetMethod` reads for the callee of a call with named arguments.
+    /// A field or a method written in Soli of that name wins (the usual
+    /// lookup order), and a model keeps its own path.
+    pub(crate) fn callee_native(object: &Value, name: &str) -> Option<Value> {
+        if let Value::Class(class) = object {
+            if class.is_model_subclass()
+                || class.find_static_method(name).is_some()
+                || class.find_vm_static_method(name).is_some()
+            {
+                return None;
+            }
+            return class
+                .find_native_static_method(name)
+                .map(|native| Value::NativeFunction((*native).clone()));
+        }
+        let Value::Instance(inst) = object else {
+            return None;
+        };
+        let inst_ref = inst.borrow();
+        if inst_ref.class.is_model_subclass() || inst_ref.fields.contains_key(name) {
+            return None;
+        }
+        if inst_ref.class.find_method(name).is_some()
+            || inst_ref.class.find_vm_method(name).is_some()
+        {
+            return None;
+        }
+        let native = inst_ref.class.find_native_method_unshadowed(name)?;
+        let class_name = inst_ref.class.name.clone();
+        drop(inst_ref);
+        Some(
+            crate::interpreter::executor::access::member::bind_native_method_to_instance(
+                inst,
+                &class_name,
+                name,
+                &native,
+            ),
+        )
+    }
+
     /// The model persist/delete native a bare `record.<name>` would
     /// auto-invoke, when `name` is one: a model instance with no field of that
     /// name, and a native that runs with no arguments.

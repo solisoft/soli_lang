@@ -835,6 +835,10 @@ impl Interpreter {
         match name {
             "inspect" => {
                 let inst_ref = inst.borrow();
+                // An XML handle inspects as its compact `to_xml`.
+                if let Some(xml) = crate::interpreter::builtins::xml::value::display(&inst_ref) {
+                    return Ok(Value::String(xml.into()));
+                }
                 if inst_ref.fields.is_empty() {
                     return Ok(Value::String(
                         format!("<{} instance>", inst_ref.class.name).into(),
@@ -3006,6 +3010,9 @@ impl Interpreter {
     /// One-line compact representation of an instance, showing only key identifier fields.
     fn inspect_instance_compact(inst: &Rc<RefCell<Instance>>) -> String {
         let inst_ref = inst.borrow();
+        if let Some(xml) = crate::interpreter::builtins::xml::value::display(&inst_ref) {
+            return xml;
+        }
         if inst_ref.fields.is_empty() {
             return format!("<{} instance>", inst_ref.class.name);
         }

@@ -101,6 +101,11 @@ fn write_value(out: &mut Vec<u8>, value: &Value, depth: usize) -> Result<(), Str
         Value::Instance(instance) => {
             let depth = enter(depth)?;
             let instance = instance.borrow();
+            // An XML node serialises as its `to_xml` string.
+            if let Some(xml) = crate::interpreter::builtins::xml::value::display(&instance) {
+                write_str(out, &xml);
+                return Ok(());
+            }
             // Enum value: a bare tag for a unit variant, otherwise
             // `{"variant": tag, ...payload}`.
             if let Some(tag) = enum_variant_tag(&instance) {

@@ -202,7 +202,7 @@ pub mod uuid;
 pub mod validation;
 pub mod vapid;
 pub mod x509;
-pub mod xml_c14n;
+pub mod xml;
 
 thread_local! {
     /// When `Some`, Soli's `print`/`println` builtins write here instead of
@@ -517,8 +517,8 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register SOAP class
     soap::register_soap_class(env);
 
-    // Register Xml class (exclusive XML canonicalization for XML-DSig)
-    xml_c14n::register_xml_builtins(env);
+    // Register Xml, XmlNode and XmlDocument (parser, builder, c14n)
+    xml::register_xml_builtins(env);
 
     // Register X509 class (certificate public-key extraction for SAML)
     x509::register_x509_builtins(env);

@@ -328,6 +328,20 @@ fn fnv_value(h: &mut u64, v: &crate::interpreter::value::Value) {
                 fnv_value(h, v);
             }
         }
+        // An XML node is hashed by its content (`to_xml`): two renders that
+        // pass different trees must not share a cache entry.
+        Value::Instance(inst)
+            if crate::interpreter::builtins::xml::value::is_node_class(&inst.borrow().class) =>
+        {
+            let xml = crate::interpreter::builtins::xml::value::fingerprint(&inst.borrow())
+                .unwrap_or_default();
+            *h ^= b'X' as u64;
+            *h = h.wrapping_mul(FNV_PRIME);
+            for byte in xml.as_bytes() {
+                *h ^= u64::from(*byte);
+                *h = h.wrapping_mul(FNV_PRIME);
+            }
+        }
         // Other variants (Function, Class, Instance, NativeFunction,
         // Method, QueryBuilder, Future, Super, VmClosure, Image, ...)
         // are not seen in render data — but hash them defensively by

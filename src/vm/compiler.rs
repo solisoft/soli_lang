@@ -1117,7 +1117,7 @@ fn stack_effect(op: Op) -> i32 {
         Range | GetIndex => -1,
         SetIndex => -2,
         // Objects.
-        GetProperty(_) | GetPropertyOrNull(_) => 0,
+        GetProperty(_) | GetPropertyOrNull(_) | GetMethod(_) => 0,
         SetProperty(_) | InitProperty(_) => -1,
         // Classes (class value stays on the stack; method/field defs pop one).
         Class(_) | Module(_) => 1,

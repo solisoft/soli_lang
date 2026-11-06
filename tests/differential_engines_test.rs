@@ -1906,6 +1906,200 @@ print(summary(["outer", "b"], 1))"##,
 end
 print(guarded("alice-password", 1))"##,
     ),
+    // --- XML (lane L1): navigation, index hooks, display, equality,
+    // building and mutation, and the block builder ---
+    (
+        "xml_navigation",
+        r##"doc = Xml.parse("<rss v=\"2\"><channel><title>A &amp; B</title><item id=\"1\"><t>x</t></item><item id=\"2\"/></channel></rss>")
+print(type(doc), doc.kind, doc.root.name)
+ch = doc.root.children[0]
+print(ch.name, ch.children.length, ch.nodes.length)
+items = ch.children.filter { |c| c.name == "item" }
+print(items.map { |i| i["id"] })
+print(items[0].path, items[0].text, ch.children[0].text)
+print(items[0].parent == ch, items[0] == items[1], items[0].next_sibling == items[1])
+print([items[0], items[1].previous_sibling].uniq.length)
+print(items[0].ancestors.map { |a| a.name })
+print(doc.declaration, doc.root.attributes, doc.root.has_attribute?("v"))"##,
+    ),
+    (
+        "xml_index_and_get",
+        r##"root = Xml.parse("<a id=\"7\" x=\"y\"/>").root
+print(root["id"], root.get("x"), root["nope"], root["__xml"])
+k = "id"
+print(root[k])
+root["id"] = 8
+root["x"] = nil
+root.set("z", 1)
+print(root)"##,
+    ),
+    (
+        "xml_display_json_eq",
+        r##"doc = Xml.parse("<r><a k=\"1\">t</a></r>")
+a = doc.root.children[0]
+print(a)
+print("#{a}")
+print(a.inspect)
+print(json_stringify({"n": a}))
+print(Xml.parse("<a/>") == Xml.parse("<a/>"), doc.root.children[0] == a)
+print([a].includes?(doc.root.children[0]))"##,
+    ),
+    (
+        "xml_dot_write_refused",
+        r##"n = Xml.element("a")
+n.text = "hi"
+n.name = "b"
+print(n)
+try
+  n.foo = 1
+catch e
+  print("refused")
+end
+try
+  n.has_key("x")
+catch e
+  print("no has_key")
+end"##,
+    ),
+    (
+        "xml_build_and_mutate",
+        r##"doc = Xml.document("rss", version: "2.0")
+channel = doc.root.add("channel")
+channel.add("title", "News & views")
+[1, 2].each do |i|
+  item = channel.add("item", id: i)
+  item.add("title", "P#{i}")
+  item.add_cdata("<b>#{i}</b>")
+end
+print(doc.to_xml(indent: 2))
+print(doc.to_xml)
+el = Xml.element("a", ["t", Xml.element("b")], {"x": 1})
+print(el, el.to_h)
+el.children[0].remove
+el.prepend("s")
+print(el, el.dup == el)
+print(Xml.parse("<i id=\"1\"><t>A</t><g>x</g><g>y</g></i>").to_h)"##,
+    ),
+    (
+        "xml_block_builder_do",
+        r##"doc = Xml.build("feed", {"xmlns": "urn:a"}) do |f|
+  f.add("title", "T")
+  [1, 2].each do |i|
+    f.add("entry", id: i) do |e|
+      e.add("n", i * 10)
+    end
+  end
+end
+print(type(doc))
+print(doc.to_xml(indent: 2))
+c = doc.root.add("c", nil, {"k": "v"}) do |x|
+  x["at"] = "1"
+end
+print(c)"##,
+    ),
+    (
+        "xml_block_builder_fn",
+        r##"root = Xml.element("r")
+blk = fn(n) { n.add("viafn") }
+root.add("w", &blk)
+root.add("w2", fn(n) { n.add("positional") })
+doc = Xml.build("d", &blk)
+print(root)
+print(doc.root)"##,
+    ),
+    (
+        "xml_block_builder_throw",
+        r##"root = Xml.element("r")
+try
+  root.add("a") do |a|
+    a.add("before")
+    throw "boom"
+  end
+catch e
+  print("caught #{e}")
+end
+print(root)
+try
+  Xml.build("x") do |x|
+    throw "doc boom"
+  end
+catch e
+  print("caught #{e}")
+end"##,
+    ),
+    (
+        "xml_block_builder_break",
+        r##"root = Xml.element("r")
+root.add("a") do |a|
+  a.add("first")
+  break
+end
+root.add("b")
+print(root)
+n = 0
+Xml.build("x") do |x|
+  [1, 2, 3].each do |i|
+    x.add("i") do |c|
+      n = n + 1
+      break if i == 2
+      c.add("after")
+    end
+  end
+end
+print(n)"##,
+    ),
+    (
+        "xml_no_constructor",
+        r##"def attempt(label, f)
+  try
+    f()
+    print(label, "built")
+  catch e
+    print(label, e)
+  end
+end
+attempt("bare", fn() { XmlNode.new })
+attempt("empty", fn() { XmlNode.new() })
+attempt("positional", fn() { XmlNode.new("x") })
+attempt("named", fn() { XmlNode.new(name: "x") })
+attempt("call", fn() { XmlNode() })
+attempt("doc bare", fn() { XmlDocument.new })
+attempt("doc empty", fn() { XmlDocument.new() })
+attempt("doc named", fn() { XmlDocument.new(name: "x") })"##,
+    ),
+    (
+        "xml_safe_member_named_and_block",
+        r##"q = Xml.element("q")
+print(q&.add("z", id: 2))
+r = Xml.element("r")
+r&.add("x") do |x|
+  x.add("y")
+end
+print(r)
+print(Xml.element("q")&.to_xml(indent: 2))
+nothing = nil
+print(nothing&.to_xml(indent: 2))
+res = nothing&.add("never", id: 1) do |x|
+  print("not run")
+end
+print(res)
+def side()
+  print("evaluated")
+  1
+end
+print(nothing&.add("z", id: side()))
+print(q&.add("w", id: side()))"##,
+    ),
+    (
+        "xml_add_is_atomic",
+        r##"n = Xml.element("x")
+try
+  n.add("y", [n])
+catch e
+  print("refused")
+end
+print(n)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -3142,6 +3142,19 @@ impl Vm {
                     let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);
                 }
+                Op::GetMethod(idx) => {
+                    let object = self.stack.pop().unwrap();
+                    let name = self.read_string_constant(idx);
+                    self.check_private_value(&object, &name)?;
+                    let result = match Self::callee_native(&object, &name) {
+                        Some(bound) => bound,
+                        None => {
+                            let span = self.current_span();
+                            self.op_get_property_member(&object, &name, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
                 Op::GetPropertyOrNull(idx) => {
                     let object = self.stack.pop().unwrap();
                     let name = self.read_string_constant(idx);
@@ -5396,6 +5409,12 @@ impl Vm {
             // l'interpréteur accepte, et un gestionnaire changeait de résultat
             // selon le moteur qui le servait.
             (Value::Instance(inst), Value::String(key)) => {
+                // `node["id"]` / `node.get("id")`: an XML node's attribute.
+                if let Some(attr) =
+                    crate::interpreter::builtins::xml::value::index_get(&inst.borrow(), key)
+                {
+                    return Ok(attr);
+                }
                 if crate::interpreter::value::restricted_methods_declared() {
                     self.check_private_value(object, key)?;
                 }
@@ -5469,6 +5488,15 @@ impl Vm {
             // `record[field] = value`: the write `record.<field> = value`
             // does on the tree-walker (`access/index.rs`), checks included.
             (Value::Instance(inst), Value::String(key)) => {
+                // `node["id"] = v`: an XML node's attribute.
+                let xml = crate::interpreter::builtins::xml::value::index_set(
+                    &inst.borrow(),
+                    key,
+                    &value,
+                );
+                if let Some(result) = xml {
+                    return result.map_err(|message| RuntimeError::type_error(message, span));
+                }
                 if crate::interpreter::value::restricted_methods_declared() {
                     self.check_private_value(object, key)?;
                 }

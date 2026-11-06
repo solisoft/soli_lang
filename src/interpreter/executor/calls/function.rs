@@ -702,6 +702,15 @@ impl Interpreter {
                                         arg_values.push(self.evaluate(expr)?);
                                     }
                                 }
+                                // `node.add("x", fn(c) { … })`: the XML block builder.
+                                if crate::interpreter::builtins::xml::block::takes_block(
+                                    &native.name,
+                                ) {
+                                    let mut args = Vec::with_capacity(arg_values.len() + 1);
+                                    args.push(Value::Instance(inst));
+                                    args.extend(arg_values);
+                                    return self.call_xml_block_native(&native, args, span);
+                                }
                                 if let Some(expected) = native.arity {
                                     if arg_values.len() != expected {
                                         return Err(RuntimeError::wrong_arity(
@@ -2371,6 +2380,24 @@ impl Interpreter {
         Ok(Some(result))
     }
 
+    /// A block-taking XML native (`Xml.build`, `node.add`): the native runs,
+    /// then the block with the root or the new child. See
+    /// `builtins::xml::block`.
+    fn call_xml_block_native(
+        &mut self,
+        native: &crate::interpreter::value::NativeFunction,
+        args: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        crate::interpreter::builtins::xml::block::run(
+            &native.name,
+            args,
+            |args| (native.func)(args),
+            |block, subject| self.call_value(block, vec![subject], span),
+            span,
+        )
+    }
+
     /// Call a value with both positional and named arguments.
     pub(crate) fn call_value_with_named(
         &mut self,
@@ -2486,6 +2513,11 @@ impl Interpreter {
                 // Add block argument as last positional arg for native functions
                 if let Some(block_val) = block_arg {
                     all_args.push(block_val);
+                }
+
+                // `Xml.build(…) do |root| … end`, `node.add(…) do |child| … end`.
+                if crate::interpreter::builtins::xml::block::takes_block(&native.name) {
+                    return self.call_xml_block_native(&native, all_args, span);
                 }
 
                 if all_args.len() != native.arity.unwrap_or(all_args.len()) {
@@ -2675,6 +2707,10 @@ impl Interpreter {
                     if arguments.len() != arity {
                         return Err(RuntimeError::wrong_arity(arity, arguments.len(), span));
                     }
+                }
+                // `node.add("x", fn(c) { … })` / `Xml.build("r", &blk)`.
+                if crate::interpreter::builtins::xml::block::takes_block(&native.name) {
+                    return self.call_xml_block_native(&native, arguments, span);
                 }
                 let _current_env = crate::interpreter::executor::variables::set_current_env(
                     self.environment.clone(),
