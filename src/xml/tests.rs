@@ -2272,3 +2272,162 @@ fn a_lenient_policy_ignores_a_malformed_declaration() -> TestResult {
     fails_xml("<?xml version=\"1.0\" encoding?><a/>")?;
     Ok(())
 }
+
+// ------------------------------------------------------- doctype: "skip"
+
+fn skip() -> ParsePolicy {
+    ParsePolicy::xml().with_doctype(DoctypeMode::Skip)
+}
+
+#[test]
+fn skip_reads_past_system_and_public_doctypes() -> TestResult {
+    let qualys = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n\
+        <!DOCTYPE SIMPLE_RETURN SYSTEM \"https://qualysapi.qualys.com/api/2.0/simple_return.dtd\">\n\
+        <SIMPLE_RETURN><RESPONSE><TEXT>ok</TEXT></RESPONSE></SIMPLE_RETURN>";
+    let tree = with(qualys, &skip())?;
+    let top = root(&tree)?;
+    assert_eq!(tree.name(top), Some("SIMPLE_RETURN"));
+    assert_eq!(tree.text(top), "ok");
+    assert_eq!(tree.doctype(), Some("SIMPLE_RETURN"));
+    // Only the root and the blank text around the DOCTYPE: nothing of it
+    // becomes a node, and it is never written back.
+    let written = compact(&tree, NodeId::DOCUMENT)?;
+    ensure(!written.contains("DOCTYPE"), &written)?;
+    xml(&written)?;
+
+    let public = "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+        \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"/>";
+    let tree = with(public, &skip())?;
+    assert_eq!(tree.doctype(), Some("plist"));
+    // A `>` or `[` inside a quoted literal does not end the declaration.
+    let tree = with("<!DOCTYPE r SYSTEM \"a>b[c.dtd\"><r>x</r>", &skip())?;
+    assert_eq!(tree.text(root(&tree)?), "x");
+    let tree = with("<!DOCTYPE r PUBLIC 'p]>' 'q>'><r/>", &skip())?;
+    assert_eq!(tree.doctype(), Some("r"));
+    // No DOCTYPE: nil, and the default policy still refuses one.
+    assert_eq!(with("<r/>", &skip())?.doctype(), None);
+    assert_eq!(
+        fails_xml(qualys)?.kind,
+        XmlErrorKind::Doctype("DOCTYPE declarations are not allowed in XML documents")
+    );
+    Ok(())
+}
+
+#[test]
+fn skip_reads_past_an_internal_subset_with_tricky_content() -> TestResult {
+    let input = "<!DOCTYPE r [\n\
+        <!ELEMENT r (#PCDATA)>\n\
+        <!ATTLIST r a CDATA \"x]>y\">\n\
+        <!ENTITY e \"]]> > ]\">\n\
+        <!-- a comment with ] and > and ]> -->\n\
+        <?pi data ] > ]>?>\n\
+        <!NOTATION n SYSTEM \"n]>\">\n\
+        %pe;\n\
+        ]>\n<r a=\"1\">body</r>";
+    let tree = with(input, &skip())?;
+    let top = root(&tree)?;
+    assert_eq!(tree.text(top), "body");
+    assert_eq!(tree.doctype(), Some("r"));
+    // The ATTLIST default is not applied: only the attribute written.
+    let el = tree.element(top).ok_or("not an element")?;
+    assert_eq!(el.attrs.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn skip_never_defines_an_entity() -> TestResult {
+    // XXE and billion laughs: the subset is read past, never declared.
+    let laughs =
+        "<!DOCTYPE lolz [<!ENTITY lol \"lol\"><!ENTITY lol2 \"&lol;&lol;\">]><lolz>&lol2;</lolz>";
+    assert_eq!(
+        fails(laughs, &skip())?.kind,
+        XmlErrorKind::UnknownEntity("lol2".into())
+    );
+    let xxe = "<!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>";
+    assert_eq!(
+        fails(xxe, &skip())?.kind,
+        XmlErrorKind::UnknownEntity("x".into())
+    );
+    let in_attr = "<!DOCTYPE r [<!ENTITY x \"v\">]><r a=\"&x;\"/>";
+    assert_eq!(
+        fails(in_attr, &skip())?.kind,
+        XmlErrorKind::UnknownEntity("x".into())
+    );
+    // The predefined entities still resolve.
+    let tree = with("<!DOCTYPE r [<!ENTITY x \"v\">]><r>&amp;&#65;</r>", &skip())?;
+    assert_eq!(tree.text(root(&tree)?), "&A");
+    Ok(())
+}
+
+#[test]
+fn skip_allows_one_doctype_before_the_root_only() -> TestResult {
+    let twice = "<!DOCTYPE r><!DOCTYPE r><r/>";
+    assert_eq!(fails(twice, &skip())?.kind, XmlErrorKind::MisplacedDoctype);
+    let after = "<r/><!DOCTYPE r>";
+    assert_eq!(fails(after, &skip())?.kind, XmlErrorKind::MisplacedDoctype);
+    let inside = "<r><!DOCTYPE r></r>";
+    assert_eq!(fails(inside, &skip())?.kind, XmlErrorKind::MisplacedDoctype);
+    assert_eq!(
+        XmlErrorKind::MisplacedDoctype.to_string(),
+        "a DOCTYPE is only allowed once, before the root element"
+    );
+    // Comments and PIs may stand before and after it; the declaration must
+    // still come first.
+    let tree = with(
+        "<?xml version=\"1.0\"?><!--c--><!DOCTYPE r><?p d?><r/>",
+        &skip(),
+    )?;
+    assert_eq!(tree.doctype(), Some("r"));
+    assert_eq!(
+        fails("<!DOCTYPE r><?xml version=\"1.0\"?><r/>", &skip())?.kind,
+        XmlErrorKind::MisplacedDeclaration
+    );
+    // A DOCTYPE alone is not a document.
+    assert!(matches!(
+        fails("<!DOCTYPE r>", &skip())?.kind,
+        XmlErrorKind::NoRoot(_)
+    ));
+    // The name is checked like any other.
+    assert!(matches!(
+        fails("<!DOCTYPE 1r><r/>", &skip())?.kind,
+        XmlErrorKind::InvalidName(_)
+    ));
+    Ok(())
+}
+
+#[test]
+fn skip_keeps_the_size_limit_and_ends_on_an_unclosed_subset() -> TestResult {
+    let big = format!(
+        "<!DOCTYPE r [{}]><r/>",
+        "<!ENTITY e \"xxxxxxxx\">".repeat(200)
+    );
+    let small = skip().lowered(None, None, Some(1024));
+    assert!(matches!(
+        fails(&big, &small)?.kind,
+        XmlErrorKind::BytesExceeded(..)
+    ));
+    with(&big, &skip())?;
+    // An internal subset that never closes ends at the end of the input.
+    for cut in [
+        "<!DOCTYPE r [<!ENTITY e \"x\">",
+        "<!DOCTYPE r [<!-- ]> ",
+        "<!DOCTYPE r SYSTEM \"x.dtd",
+        "<!DOCTYPE r [<!ENTITY e \"]>",
+    ] {
+        let err = fails(cut, &skip())?;
+        ensure(
+            matches!(err.kind, XmlErrorKind::Syntax(_)),
+            &format!("{cut:?}: {err}"),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn soap_and_c14n_refuse_a_doctype_whatever_xml_allows() -> TestResult {
+    let input = "<!DOCTYPE r SYSTEM \"r.dtd\"><r/>";
+    with(input, &skip())?;
+    fails(input, &ParsePolicy::soap())?;
+    fails(input, &ParsePolicy::c14n())?;
+    Ok(())
+}

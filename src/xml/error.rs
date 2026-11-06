@@ -17,6 +17,9 @@ pub enum XmlErrorKind {
     /// A `<!DOCTYPE …>` was found. The message is the caller's policy text
     /// ([`super::ParsePolicy::doctype_message`]), pinned by existing specs.
     Doctype(&'static str),
+    /// A DOCTYPE read under `DoctypeMode::Skip` that is not the first and
+    /// only one before the root element.
+    MisplacedDoctype,
     /// `&name;` where `name` is not one of the five predefined entities.
     UnknownEntity(String),
     /// A character reference to a character XML forbids (`&#0;`, `&#xFFFE;`).
@@ -147,6 +150,9 @@ impl fmt::Display for XmlErrorKind {
         use XmlErrorKind::*;
         match self {
             Doctype(message) => f.write_str(message),
+            MisplacedDoctype => {
+                f.write_str("a DOCTYPE is only allowed once, before the root element")
+            }
             UnknownEntity(name) => write!(f, "unknown entity '&{name};'"),
             ForbiddenCharRef(code) => {
                 write!(f, "character reference to U+{code:04X}, which XML forbids")

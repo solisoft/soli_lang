@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`Xml.parse(src, doctype: "skip")` reads past a `<!DOCTYPE …>`** instead of
+  refusing it (card #660). Qualys v2 puts
+  `<!DOCTYPE SIMPLE_RETURN SYSTEM "…/simple_return.dtd">` on every response,
+  and PingCastle and ORCQ reports carry one too, so apps stripped it by hand.
+  quick-xml already reads the declaration as one event — `SYSTEM` / `PUBLIC`
+  ids and an internal subset `[ … ]` whose quoted literals, comments and PIs
+  hold `]` or `>` — and the loop now drops it under `DoctypeMode::Skip`,
+  keeping only its name (`doc.doctype`, `nil` without one; never serialised).
+  Nothing in it is interpreted: no entity is ever declared, so a reference to
+  one the subset declares still raises `unknown entity` (no XXE, no billion
+  laughs), `<!ATTLIST>` defaults are not applied, and the declaration counts
+  toward `SOLI_MAX_XML_BYTES` (one streamed event toward `max_bytes`). One
+  DOCTYPE before the root element; a second one or one after the root raises
+  `a DOCTYPE is only allowed once, before the root element` (new
+  `XmlErrorKind::MisplacedDoctype`). The default stays `"refuse"`; any other
+  value raises `option 'doctype' must be "refuse" or "skip"`. `Xml.parse_file`
+  takes it too, and `Xml.each` / `Xml.reader` gain a fourth `opts` argument
+  (or `doctype:` as named arguments with no namespace table). `SOAP.*`, the
+  c14n helpers and `Xml.well_formed?` keep refusing. The `xml_parse` fuzz
+  target now parses under skip mode as well and checks it accepts everything
+  the default does, to the same tree. Tests: the `skip_*` tests in
+  `src/xml/tests.rs`, `a_skipped_doctype_streams_like_parse` in
+  `src/xml/stream_tests.rs`, and the `doctype:` cases in
+  `tests/builtins/xml_spec.sl` and `tests/builtins/xml_stream_spec.sl`.
+
 ## [2.30.2] - 2026-11-06
 
 ### Fixed

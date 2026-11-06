@@ -33,8 +33,8 @@ use super::error::{XmlError, XmlErrorKind};
 use super::escape::{first_forbidden, is_ncname, is_qname, is_xml_char, split_qname};
 use super::ns::Bindings;
 use super::policy::{
-    OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent, MAX_DEPTH_CEILING,
-    MAX_NAME_LEN,
+    DoctypeMode, OnNoRoot, OnUnknownEntity, ParsePolicy, Strictness, TrailingContent,
+    MAX_DEPTH_CEILING, MAX_NAME_LEN,
 };
 use super::tree::{find_duplicate, Attr, Kind, NodeId, NsDecl, XmlDecl, XmlTree, XML_NS};
 
@@ -54,6 +54,11 @@ pub struct StartTag {
 pub trait Sink {
     /// `<?xml …?>`, before anything else.
     fn declaration(&mut self, _decl: XmlDecl) -> Result<(), XmlError> {
+        Ok(())
+    }
+    /// The name of a DOCTYPE read past under `DoctypeMode::Skip` (nothing
+    /// else of it is kept).
+    fn doctype(&mut self, _name: &str) -> Result<(), XmlError> {
         Ok(())
     }
     /// An element opens. `scope` is the namespace scope *including* the
@@ -167,6 +172,8 @@ pub struct EventLoop<R: BufRead> {
     /// count toward the root's `max_text_run`, as the root's text.
     before_root_text: usize,
     seen_event: bool,
+    /// A DOCTYPE was skipped (`DoctypeMode::Skip`): a second one is refused.
+    seen_doctype: bool,
     done: bool,
 }
 
@@ -399,6 +406,7 @@ impl<R: BufRead> EventLoop<R> {
             pending_ref: false,
             before_root_text: 0,
             seen_event: false,
+            seen_doctype: false,
             done: false,
         }
     }
@@ -595,11 +603,29 @@ impl<R: BufRead> EventLoop<R> {
                     sink.declaration(decl)?;
                 }
             }
-            Event::DocType(_) => {
-                return Err(XmlError::at(
-                    XmlErrorKind::Doctype(self.policy.doctype_message),
-                    start,
-                ));
+            Event::DocType(e) => {
+                if self.policy.doctype == DoctypeMode::Refuse {
+                    return Err(XmlError::at(
+                        XmlErrorKind::Doctype(self.policy.doctype_message),
+                        start,
+                    ));
+                }
+                self.flush(sink)?;
+                if self.seen_doctype || self.state != RootState::Before {
+                    return Err(XmlError::at(XmlErrorKind::MisplacedDoctype, start));
+                }
+                self.seen_doctype = true;
+                // quick-xml has already read past the whole declaration,
+                // internal subset included, without interpreting it. Only
+                // the name is kept: nothing the subset declares (an entity,
+                // a default attribute) ever reaches the parse.
+                let content = utf8(&e, start)?;
+                let name = content
+                    .split(|c: char| is_xml_space(c) || c == '[')
+                    .next()
+                    .unwrap_or_default();
+                check_name(name, self.policy.strict_syntax, start)?;
+                sink.doctype(name)?;
             }
             Event::Eof => {
                 self.flush(sink)?;
@@ -979,6 +1005,11 @@ impl TreeSink {
 impl Sink for TreeSink {
     fn declaration(&mut self, decl: XmlDecl) -> Result<(), XmlError> {
         self.tree.set_decl_unchecked(decl);
+        Ok(())
+    }
+
+    fn doctype(&mut self, name: &str) -> Result<(), XmlError> {
+        self.tree.set_doctype(Some(name.into()));
         Ok(())
     }
 

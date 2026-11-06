@@ -33,7 +33,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">XmlDocument</code></td>
-                        <td class="py-3 px-4 text-gray-300">The document node, a subclass of <code class="text-amber-400">XmlNode</code>: it has every node method plus <code class="text-amber-400">root</code> and <code class="text-amber-400">declaration</code>.</td>
+                        <td class="py-3 px-4 text-gray-300">The document node, a subclass of <code class="text-amber-400">XmlNode</code>: it has every node method plus <code class="text-amber-400">root</code>, <code class="text-amber-400">declaration</code> and <code class="text-amber-400">doctype</code>.</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">XmlReader</code></td>
@@ -73,7 +73,8 @@ end
         <p class="text-gray-300 mb-4">Parses a String and returns an <code class="text-amber-400">XmlDocument</code>. It raises on malformed input. <code class="text-amber-400">Xml.parse</code> takes a String only and never treats its argument as a path, so a request body can never turn into a file read.</p>
         <pre data-filename="Example" class="mb-6"><code class="language-soli text-sm">doc = Xml.parse(body)
 doc = Xml.parse(body, strip_blank: true)        # drop whitespace-only text nodes
-doc = Xml.parse(body, {"max_depth": 32})        # options as one Hash work too</code></pre>
+doc = Xml.parse(body, {"max_depth": 32})        # options as one Hash work too
+doc = Xml.parse(body, doctype: "skip")          # read past a &lt;!DOCTYPE …&gt; (see below)</code></pre>
         <div class="overflow-x-auto mb-6 rounded-xl border border-white/10">
             <table class="w-full text-sm">
                 <thead>
@@ -104,17 +105,40 @@ doc = Xml.parse(body, {"max_depth": 32})        # options as one Hash work too</
                         <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">SOLI_MAX_XML_BYTES</code> (64 MiB)</td>
                         <td class="py-3 px-4 text-gray-300">Largest input.</td>
                     </tr>
+                    <tr>
+                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">doctype</code></td>
+                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">"refuse"</code></td>
+                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">"skip"</code> reads past one <code class="text-amber-400">&lt;!DOCTYPE …&gt;</code> instead of raising (see <a href="#doctype" class="text-cyan-400 hover:text-cyan-300 underline">DOCTYPE</a>).</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
-        <p class="text-gray-300 mb-4">The three limits can only be <strong class="text-white">lowered</strong> by an option, never raised: raise the environment variable instead. An unknown option raises <code class="text-amber-400">Xml.parse: unknown option 'deep' (expected one of: strip_blank, max_depth, max_nodes, max_bytes)</code>.</p>
+        <p class="text-gray-300 mb-4">The three limits can only be <strong class="text-white">lowered</strong> by an option, never raised: raise the environment variable instead. An unknown option raises <code class="text-amber-400">Xml.parse: unknown option 'deep' (expected one of: strip_blank, max_depth, max_nodes, max_bytes, doctype)</code>.</p>
         <p class="text-gray-300 mb-4">What the parser does with the input:</p>
         <ul class="space-y-2 text-gray-300 mb-6 list-disc pl-6">
             <li><strong class="text-white">UTF-8 only.</strong> A byte-order mark is skipped, the <code class="text-amber-400">encoding=</code> declaration is ignored, and invalid UTF-8 raises.</li>
             <li><strong class="text-white">Line endings</strong> are normalised (CRLF and a lone CR become LF) before attribute values are normalised, so a CRLF inside an attribute becomes one space.</li>
             <li>The five predefined entities (<code class="text-amber-400">&amp;amp;</code> <code class="text-amber-400">&amp;lt;</code> <code class="text-amber-400">&amp;gt;</code> <code class="text-amber-400">&amp;quot;</code> <code class="text-amber-400">&amp;apos;</code>) and character references (<code class="text-amber-400">&amp;#233;</code>, <code class="text-amber-400">&amp;#xE9;</code>) are decoded. A reference to a character XML forbids (<code class="text-amber-400">&amp;#0;</code>) raises.</li>
             <li>Text broken up by entity references is joined into one text node. CDATA stays its own node kind.</li>
-            <li>It raises on: a <code class="text-amber-400">DOCTYPE</code>, an unknown entity (<code class="text-amber-400">&amp;nbsp;</code>), an unbound namespace prefix, a duplicate attribute, a mismatched or unclosed tag, no root element, a second root element, and non-whitespace text outside the root.</li>
+            <li>It raises on: a <code class="text-amber-400">DOCTYPE</code> (unless <code class="text-amber-400">doctype: "skip"</code>), an unknown entity (<code class="text-amber-400">&amp;nbsp;</code>), an unbound namespace prefix, a duplicate attribute, a mismatched or unclosed tag, no root element, a second root element, and non-whitespace text outside the root.</li>
+        </ul>
+
+        <h3 id="doctype" class="scroll-mt-20 text-xl font-semibold text-white mt-8 mb-3">DOCTYPE</h3>
+        <p class="text-gray-300 mb-4">A <code class="text-amber-400">&lt;!DOCTYPE …&gt;</code> raises by default: <code class="text-amber-400">Xml.parse: line 2, column 1: DOCTYPE declarations are not allowed in XML documents</code>. Some APIs put one on every response all the same — Qualys v2, PingCastle and ORCQ reports, Apple property lists. <code class="text-amber-400">doctype: "skip"</code> reads past it instead of raising, so there is no need to cut it out of the body by hand:</p>
+        <pre data-filename="Example" class="mb-6"><code class="language-soli text-sm">body = """&lt;?xml version="1.0" encoding="UTF-8" ?&gt;
+&lt;!DOCTYPE SIMPLE_RETURN SYSTEM "https://qualysapi.qualys.com/api/2.0/simple_return.dtd"&gt;
+&lt;SIMPLE_RETURN&gt;&lt;RESPONSE&gt;&lt;TEXT&gt;Scan launched&lt;/TEXT&gt;&lt;/RESPONSE&gt;&lt;/SIMPLE_RETURN&gt;"""
+
+doc = Xml.parse(body, doctype: "skip")
+doc.find("//TEXT").text   # =&gt; "Scan launched"
+doc.doctype               # =&gt; "SIMPLE_RETURN"</code></pre>
+        <ul class="space-y-2 text-gray-300 mb-6 list-disc pl-6">
+            <li><strong class="text-white">Nothing of the DOCTYPE is used.</strong> The external id (<code class="text-amber-400">SYSTEM "…"</code>, <code class="text-amber-400">PUBLIC "…" "…"</code>) is never fetched, and an internal subset (<code class="text-amber-400">[ … ]</code>) is read past without being interpreted — quoted strings, comments and processing instructions holding <code class="text-amber-400">]</code> or <code class="text-amber-400">&gt;</code> included. No entity is ever declared, so <code class="text-amber-400">&amp;name;</code> for an entity the subset declares still raises <code class="text-amber-400">unknown entity '&amp;name;'</code>: skipping opens no door to XXE or "billion laughs". Default attribute values from an <code class="text-amber-400">&lt;!ATTLIST&gt;</code> are not applied either.</li>
+            <li><strong class="text-white">Only its name is kept</strong>: <code class="text-amber-400">doc.doctype</code> is <code class="text-amber-400">"SIMPLE_RETURN"</code> above, and <code class="text-amber-400">nil</code> for a document without one (or built with <code class="text-amber-400">Xml.document</code>). <code class="text-amber-400">to_xml</code> never writes the DOCTYPE back.</li>
+            <li><strong class="text-white">One DOCTYPE, before the root element.</strong> A second one, or one after the root starts, raises <code class="text-amber-400">a DOCTYPE is only allowed once, before the root element</code>. The XML declaration still has to come first.</li>
+            <li><strong class="text-white">The limits still hold.</strong> The DOCTYPE counts toward <code class="text-amber-400">max_bytes</code>, so a huge internal subset raises like any oversized input.</li>
+            <li>The only values are <code class="text-amber-400">"refuse"</code> (the default; <code class="text-amber-400">nil</code> too) and <code class="text-amber-400">"skip"</code>; anything else raises <code class="text-amber-400">Xml.parse: option 'doctype' must be "refuse" or "skip", got "ignore"</code>.</li>
+            <li><code class="text-amber-400">Xml.parse_file</code>, <code class="text-amber-400">Xml.each</code> and <code class="text-amber-400">Xml.reader</code> take the same option. <code class="text-amber-400">Xml.well_formed?</code>, <code class="text-amber-400">SOAP.parse</code> / <code class="text-amber-400">SOAP.call</code> and the <a href="/docs/builtins/xml-signatures" class="text-cyan-400 hover:text-cyan-300 underline">XML-signature</a> helpers always refuse a DOCTYPE.</li>
         </ul>
         <h3 id="xml-parse-file-path-options-nil" class="scroll-mt-20 text-xl font-semibold text-white mt-8 mb-3">Xml.parse_file(path, options = nil)</h3>
         <p class="text-gray-300 mb-4">Reads a file and parses it, with the same options. The path goes through the same checks as <code class="text-amber-400">File.read</code>: under <code class="text-amber-400">soli serve</code> and in jobs it must stay inside the application root, a symbolic link is not followed, and a directory, FIFO or device is refused (<code class="text-amber-400">Xml.parse_file: cannot read imports: not a file</code>) without blocking. The file size is checked against <code class="text-amber-400">max_bytes</code> before anything is read.</p>
@@ -192,6 +216,7 @@ Xml.well_formed?("&lt;a&gt;&lt;b&gt;&lt;/a&gt;")   # =&gt; false</code></pre>
         </div>
         <p class="text-gray-300 mb-4"><code class="text-amber-400">doc.declaration</code> is the XML declaration as a Hash, or <code class="text-amber-400">nil</code> when the document has none:</p>
         <pre data-filename="Example" class="mb-6"><code class="language-soli text-sm">doc.declaration   # =&gt; {"version": "1.0", "encoding": "UTF-8", "standalone": nil}</code></pre>
+        <p class="text-gray-300 mb-4"><code class="text-amber-400">doc.doctype</code> is the name of the DOCTYPE that <code class="text-amber-400">doctype: "skip"</code> read past (<code class="text-amber-400">"SIMPLE_RETURN"</code> for <code class="text-amber-400">&lt;!DOCTYPE SIMPLE_RETURN SYSTEM "…"&gt;</code>), or <code class="text-amber-400">nil</code>.</p>
         <p class="text-gray-300 mb-4"><code class="text-amber-400">type(node)</code> and <code class="text-amber-400">node.class</code> give <code class="text-amber-400">"XmlNode"</code> or <code class="text-amber-400">"XmlDocument"</code>. <code class="text-amber-400">is_a?</code> takes the class name as a String: <code class="text-amber-400">node.is_a?("XmlNode")</code>.</p>
         <h3 id="navigation" class="scroll-mt-20 text-xl font-semibold text-white mt-8 mb-3">Navigation</h3>
         <p class="text-gray-300 mb-4">Every method that returns an Array returns a fresh one: changing it does not change the tree.</p>
@@ -669,16 +694,21 @@ reader.close   # optional: the file is closed when the reader is dropped</code><
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     <tr>
-                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">Xml.each(path, match, ns = nil) do |node| … end</code></td>
+                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">Xml.each(path, match, ns = nil, opts = nil) do |node| … end</code></td>
                         <td class="py-3 px-4 text-gray-300">the number of matches yielded</td>
                     </tr>
                     <tr>
-                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">Xml.reader(path, match, ns = nil)</code></td>
+                        <td class="py-3 px-4 text-gray-300"><code class="text-amber-400">Xml.reader(path, match, ns = nil, opts = nil)</code></td>
                         <td class="py-3 px-4 text-gray-300">an <code class="text-amber-400">XmlReader</code>: <code class="text-amber-400">next</code> (the next match, or <code class="text-amber-400">nil</code> at the end), <code class="text-amber-400">count</code> (matches returned so far), <code class="text-amber-400">close</code></td>
                     </tr>
                 </tbody>
             </table>
         </div>
+        <p class="text-gray-300 mb-4">The one option is <code class="text-amber-400">doctype: "skip"</code>, as for <a href="#doctype" class="text-cyan-400 hover:text-cyan-300 underline">Xml.parse</a>. Named arguments work without a namespace table — a third argument that is a Hash with a <code class="text-amber-400">doctype</code> key is read as the options:</p>
+        <pre data-filename="Example" class="mb-6"><code class="language-soli text-sm">Xml.each("imports/qualys.xml", "HOST", doctype: "skip") do |host|
+  print(host.find("IP").text)
+end
+reader = Xml.reader("imports/report.xml", "r:item", {"r": "urn:r"}, doctype: "skip")</code></pre>
         <ul class="space-y-2 text-gray-300 mb-6 list-disc pl-6">
             <li><strong class="text-white">Files only.</strong> For a String already in memory, use <code class="text-amber-400">Xml.parse(s).find_all(…)</code>. The path goes through the same checks as <code class="text-amber-400">Xml.parse_file</code> (the application-root jail under <code class="text-amber-400">soli serve</code> and in jobs, no symbolic links, no FIFOs or devices).</li>
             <li>**Each match is a detached <code class="text-amber-400">XmlNode</code>** carrying the namespace declarations in scope where it stood, so <code class="text-amber-400">find</code>, <code class="text-amber-400">xpath</code>, <code class="text-amber-400">to_h</code> and <code class="text-amber-400">to_xml</code> work on it alone. Its <code class="text-amber-400">parent</code> and <code class="text-amber-400">document</code> are <code class="text-amber-400">nil</code>.</li>
@@ -793,7 +823,7 @@ end</code></pre>
     <section id="security" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Security</h2>
         <ul class="space-y-2 text-gray-300 mb-6 list-disc pl-6">
-            <li><strong class="text-white">No DTDs, no entity expansion.</strong> A <code class="text-amber-400">DOCTYPE</code> is always refused, so external entities (XXE) and entity-expansion bombs ("billion laughs") cannot happen.</li>
+            <li><strong class="text-white">No DTDs, no entity expansion.</strong> A <code class="text-amber-400">DOCTYPE</code> is refused by default. <code class="text-amber-400">doctype: "skip"</code> reads past it without interpreting it: nothing is fetched and no entity is ever declared, so external entities (XXE) and entity-expansion bombs ("billion laughs") cannot happen either way.</li>
             <li><strong class="text-white">Bounded work.</strong> Depth, node count, input size, attributes per element, namespace declarations and XPath work are all capped (see <a href="#limits" class="text-cyan-400 hover:text-cyan-300 underline">Limits</a>), and every error names the limit it hit.</li>
             <li><strong class="text-white">No path from a String.</strong> <code class="text-amber-400">Xml.parse</code> never reads a file. <code class="text-amber-400">Xml.parse_file</code>, <code class="text-amber-400">Xml.each</code> and <code class="text-amber-400">Xml.reader</code> take a path and apply the same jail as the <code class="text-amber-400">File</code> functions: inside the application root under <code class="text-amber-400">soli serve</code> and in jobs, no symbolic links, no FIFOs or devices.</li>
             <li><strong class="text-white">Output is always well-formed.</strong> The builder validates names, escapes text and values, drops characters XML cannot carry, and splits <code class="text-amber-400">]]&gt;</code> in CDATA. Building XML by string interpolation is how injection happens; prefer the builder, or at least <code class="text-amber-400">Xml.escape</code>.</li>

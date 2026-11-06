@@ -1,6 +1,9 @@
-//! Streaming from Soli: `Xml.each(path, match, ns = nil) do |node| … end`
-//! and `Xml.reader(path, match, ns = nil)` (an `XmlReader`), over the core's
-//! [`crate::xml::Pull`].
+//! Streaming from Soli: `Xml.each(path, match, ns = nil, opts = nil) do
+//! |node| … end` and `Xml.reader(path, match, ns = nil, opts = nil)` (an
+//! `XmlReader`), over the core's [`crate::xml::Pull`]. The one option is
+//! `doctype:` (`"refuse"` or `"skip"`, as for `Xml.parse`); a third argument
+//! that is a Hash with a `doctype` key is read as the options, so
+//! `Xml.each(path, "item", doctype: "skip")` works with no namespace table.
 //!
 //! Both read **files only**, through the same jail as `File` and
 //! `Xml.parse_file` (`file::resolve_readable_path`, then `open_for_read`
@@ -28,6 +31,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::rc::Rc;
 
+use super::node::{doctype_option, options};
 use super::value::{add_static, wrap, Arity, MethodTable, XmlPayload, XmlRef, HANDLE_FIELD};
 use crate::error::RuntimeError;
 use crate::interpreter::value::{
@@ -35,7 +39,7 @@ use crate::interpreter::value::{
 };
 use crate::span::Span;
 use crate::xml::stream::INTERRUPTED;
-use crate::xml::{Matcher, ParsePolicy, Pull, XmlError, XmlErrorKind};
+use crate::xml::{DoctypeMode, Matcher, ParsePolicy, Pull, XmlError, XmlErrorKind};
 
 /// What an `XmlReader` holds: the open stream (`None` once closed or at the
 /// end), the path as given, and the matches returned so far.
@@ -55,7 +59,27 @@ fn is_callable(value: &Value) -> bool {
 }
 
 fn usage(who: &str) -> String {
-    format!("{who}(path, match, ns = nil)")
+    format!("{who}(path, match, ns = nil, opts = nil)")
+}
+
+/// A Hash with a `doctype` key: the options, given as named arguments with
+/// no namespace table before them.
+fn is_options_hash(value: &Value) -> bool {
+    let Value::Hash(hash) = value else {
+        return false;
+    };
+    hash.borrow()
+        .iter()
+        .any(|(key, _)| matches!(key, HashKey::String(s) | HashKey::Symbol(s) if &**s == "doctype"))
+}
+
+/// The stream's policy from the options (`doctype:` only).
+fn stream_policy(value: Option<&Value>, who: &str) -> Result<ParsePolicy, String> {
+    let mut doctype = DoctypeMode::Refuse;
+    for (_, value) in options(value, who, &["doctype"])? {
+        doctype = doctype_option(&value, who)?;
+    }
+    Ok(ParsePolicy::xml().with_doctype(doctype))
 }
 
 /// The `ns` table: `nil`, or a Hash of prefix => URI (`""` = the namespace
@@ -89,11 +113,12 @@ fn ns_table(value: Option<&Value>, who: &str) -> Result<Vec<(String, String)>, S
     Ok(out)
 }
 
-/// Open `args = [path, match, ns?]` as a stream, through the file jail.
+/// Open `args = [path, match, ns?, opts?]` as a stream, through the file
+/// jail.
 fn open(args: &[Value], who: &str) -> Result<StreamState, String> {
-    if args.len() < 2 || args.len() > 3 {
+    if args.len() < 2 || args.len() > 4 {
         return Err(format!(
-            "{} takes 2 or 3 arguments, got {}",
+            "{} takes 2 to 4 arguments, got {}",
             usage(who),
             args.len()
         ));
@@ -110,7 +135,12 @@ fn open(args: &[Value], who: &str) -> Result<StreamState, String> {
             args[1].type_name()
         ));
     };
-    let table = ns_table(args.get(2), who)?;
+    let (ns, opts) = match args.get(2) {
+        Some(third) if args.len() == 3 && is_options_hash(third) => (None, Some(third)),
+        third => (third, args.get(3)),
+    };
+    let policy = stream_policy(opts, who)?;
+    let table = ns_table(ns, who)?;
     let matcher = Matcher::compile(expr, &table).map_err(|e| format!("{who}: {e}"))?;
     let resolved = crate::interpreter::builtins::file::resolve_readable_path(path, who)?;
     // Refuse a FIFO or a device before opening it: opening a FIFO for
@@ -131,7 +161,7 @@ fn open(args: &[Value], who: &str) -> Result<StreamState, String> {
         return Err(format!("{who}: cannot read {path}: not a file"));
     }
     Ok(StreamState {
-        pull: Some(Pull::new(BufReader::new(file), matcher, ParsePolicy::xml())),
+        pull: Some(Pull::new(BufReader::new(file), matcher, policy)),
         path: path.to_string(),
         count: 0,
     })

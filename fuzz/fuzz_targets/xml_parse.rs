@@ -3,10 +3,13 @@
 //! a clean error under every caller's policy — never a panic or a stack
 //! overflow — and whatever the strict `Xml.parse` policy accepts must
 //! round-trip: serialise it, parse the output, and get the same tree back.
+//! The round trip runs on the `doctype: "skip"` tree, a superset of the
+//! default policy's.
 
 use libfuzzer_sys::fuzz_target;
 use solilang::xml::{
-    parse, serialize, soap_shape, to_h, NodeId, ParsePolicy, SerializeOptions, XmlTree,
+    parse, serialize, soap_shape, to_h, DoctypeMode, NodeId, ParsePolicy, SerializeOptions,
+    XmlTree,
 };
 
 /// Every element under `id` in document order, by expanded name, with its
@@ -57,7 +60,24 @@ fuzz_target!(|data: &[u8]| {
     }
     let _ = parse(text, &ParsePolicy::c14n());
 
-    let Ok(tree) = parse(text, &ParsePolicy::xml()) else {
+    // `doctype: "skip"` accepts everything the default accepts, to the same
+    // tree, and reads past a DOCTYPE (internal subset included) without ever
+    // declaring an entity. The rest of the run works on its tree: the
+    // serialiser never writes a DOCTYPE, so the round trip reparses under the
+    // default policy.
+    let refused = parse(text, &ParsePolicy::xml());
+    let skipped = parse(text, &ParsePolicy::xml().with_doctype(DoctypeMode::Skip));
+    if let (Ok(strict), Ok(lenient)) = (&refused, &skipped) {
+        assert!(
+            strict.subtree_eq(NodeId::DOCUMENT, lenient, NodeId::DOCUMENT),
+            "doctype: skip changed a document without a DOCTYPE"
+        );
+    }
+    assert!(
+        refused.is_err() || skipped.is_ok(),
+        "doctype: skip refused what the default accepts"
+    );
+    let Ok(tree) = skipped else {
         return;
     };
     let _ = to_h(&tree, NodeId::DOCUMENT);

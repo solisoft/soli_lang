@@ -83,6 +83,8 @@ pub fn xml_classes() -> Vec<ClassType> {
         &[],
         hash_of(Type::String),
     );
+    // The name of the DOCTYPE `doctype: "skip"` read past, or nil.
+    add(&mut document, false, "doctype", &[], Type::String);
     vec![xml_class(), node, document, reader_class()]
 }
 
@@ -134,8 +136,14 @@ fn xml_class() -> ClassType {
     );
 
     // Streaming (§1.10): files only. `each` runs its block per match and
-    // answers the count.
-    let stream = [("path", String), ("match", String), ("ns", Any)];
+    // answers the count. `opts` is `doctype:` (a third-argument Hash with a
+    // `doctype` key is the options).
+    let stream = [
+        ("path", String),
+        ("match", String),
+        ("ns", Any),
+        ("opts", Any),
+    ];
     add(&mut xml, s, "each", &stream, Type::Int);
     add(&mut xml, s, "reader", &stream, reader_type());
 

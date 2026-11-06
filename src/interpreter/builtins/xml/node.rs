@@ -16,7 +16,8 @@ use std::rc::Rc;
 use super::value::{add_method, add_static, wrap, Arity, MethodTable, XmlRef};
 use crate::interpreter::value::{HashKey, HashPairs, Value};
 use crate::xml::{
-    escape, parse, parse_bytes, NodeId, ParsePolicy, Proj, SerializeOptions, XmlError, XmlTree,
+    escape, parse, parse_bytes, DoctypeMode, NodeId, ParsePolicy, Proj, SerializeOptions, XmlError,
+    XmlTree,
 };
 
 /// Deepest `to_h` value (hash and array levels) handed to Soli. Deeper
@@ -304,7 +305,7 @@ fn proj_to_value(proj: &Proj, depth: usize) -> Result<Value, String> {
 
 /// The options Hash of a call (`opts = nil`, or named arguments), with each
 /// key checked against `known`.
-fn options(
+pub(crate) fn options(
     value: Option<&Value>,
     who: &str,
     known: &[&str],
@@ -354,17 +355,42 @@ fn bool_option(value: &Value, who: &str, name: &str) -> Result<bool, String> {
     }
 }
 
+/// The `doctype:` option: `"refuse"` (the default, also `nil`) or `"skip"`.
+/// Shared with `Xml.each` / `Xml.reader`.
+pub(crate) fn doctype_option(value: &Value, who: &str) -> Result<DoctypeMode, String> {
+    let mode = match value {
+        Value::Null => Some(DoctypeMode::Refuse),
+        Value::String(s) => DoctypeMode::from_option(s),
+        _ => None,
+    };
+    mode.ok_or_else(|| {
+        let got = match value {
+            Value::String(s) => format!("\"{s}\""),
+            other => other.type_name().to_string(),
+        };
+        format!("{who}: option 'doctype' must be \"refuse\" or \"skip\", got {got}")
+    })
+}
+
 /// `Xml.parse` / `Xml.parse_file` options: `strip_blank`, `max_depth`,
-/// `max_nodes`, `max_bytes` (limits can only be lowered).
+/// `max_nodes`, `max_bytes` (limits can only be lowered), `doctype`.
 fn parse_policy(value: Option<&Value>, who: &str) -> Result<ParsePolicy, String> {
     let (mut depth, mut nodes, mut bytes, mut strip) = (None, None, None, false);
+    let mut doctype = DoctypeMode::Refuse;
     for (name, value) in options(
         value,
         who,
-        &["strip_blank", "max_depth", "max_nodes", "max_bytes"],
+        &[
+            "strip_blank",
+            "max_depth",
+            "max_nodes",
+            "max_bytes",
+            "doctype",
+        ],
     )? {
         match name.as_str() {
             "strip_blank" => strip = bool_option(&value, who, &name)?,
+            "doctype" => doctype = doctype_option(&value, who)?,
             "max_depth" => depth = Some(int_option(&value, who, &name)?),
             "max_nodes" => nodes = Some(int_option(&value, who, &name)?),
             _ => bytes = Some(int_option(&value, who, &name)?),
@@ -372,7 +398,8 @@ fn parse_policy(value: Option<&Value>, who: &str) -> Result<ParsePolicy, String>
     }
     Ok(ParsePolicy::xml()
         .lowered(depth, nodes, bytes)
-        .strip_blank(strip))
+        .strip_blank(strip)
+        .with_doctype(doctype))
 }
 
 fn serialize_options(value: Option<&Value>, who: &str) -> Result<SerializeOptions, String> {
@@ -896,6 +923,10 @@ pub(crate) fn document_methods() -> MethodTable {
                 ),
             ]),
         })
+    });
+    // The name of the DOCTYPE `doctype: "skip"` read past, or nil.
+    add_method(&mut t, "doctype", Arity::Zero, |n, _| {
+        n.read(|tree, _| opt_string(tree.doctype()))
     });
     t
 }

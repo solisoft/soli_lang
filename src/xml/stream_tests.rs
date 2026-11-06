@@ -465,3 +465,37 @@ fn the_document_must_still_be_well_formed_and_have_a_root() -> TestResult {
         XmlErrorKind::TextOutsideRoot,
     )
 }
+
+#[test]
+fn a_skipped_doctype_streams_like_parse() -> TestResult {
+    let skip = policy().with_doctype(crate::xml::DoctypeMode::Skip);
+    let input = "<?xml version=\"1.0\"?>\n\
+        <!DOCTYPE r SYSTEM \"https://example.com/r.dtd\" [<!ENTITY a \"]>\">]>\n\
+        <r><i>1</i><i>2</i></r>";
+    let found = stream_with(input, "i", &[], skip).map_err(|e| e.to_string())?;
+    eq(found, vec!["<i>1</i>".to_string(), "<i>2</i>".to_string()])?;
+    // The subset declares nothing.
+    let entity = "<!DOCTYPE r [<!ENTITY a \"x\">]><r><i>&a;</i></r>";
+    eq(
+        refused(entity, "i", skip)?.kind,
+        XmlErrorKind::UnknownEntity("a".into()),
+    )?;
+    eq(
+        refused("<r><i/></r><!DOCTYPE r>", "i", skip)?.kind,
+        XmlErrorKind::MisplacedDoctype,
+    )?;
+    // One DOCTYPE is one event: it is held to `max_bytes` like any other.
+    let mut small = skip;
+    small.max_bytes = 64;
+    let big = format!(
+        "<!DOCTYPE r [{}]><r><i/></r>",
+        "<!-- padding -->".repeat(20)
+    );
+    check(
+        matches!(
+            refused(&big, "i", small)?.kind,
+            XmlErrorKind::BytesExceeded(..)
+        ),
+        "a large internal subset passes max_bytes",
+    )
+}

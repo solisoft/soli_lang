@@ -11,7 +11,7 @@ Four classes are involved:
 |---|---|
 | `Xml` | The entry points: `Xml.parse`, `Xml.parse_file`, `Xml.document`, `Xml.element`, `Xml.build`, `Xml.each`, `Xml.reader`, `Xml.well_formed?`, `Xml.escape`. It also holds the XML-signature helpers (`Xml.c14n_exclusive`, …), documented under [XML Signatures](/docs/builtins/xml-signatures). |
 | `XmlNode` | Every node: elements, text, CDATA, comments, processing instructions. `node.kind` tells them apart. |
-| `XmlDocument` | The document node, a subclass of `XmlNode`: it has every node method plus `root` and `declaration`. |
+| `XmlDocument` | The document node, a subclass of `XmlNode`: it has every node method plus `root`, `declaration` and `doctype`. |
 | `XmlReader` | A pull cursor over a file, from `Xml.reader`. |
 
 None of them has a constructor: `XmlNode.new`, `XmlNode.new(...)` and
@@ -53,6 +53,7 @@ request body can never turn into a file read.
 doc = Xml.parse(body)
 doc = Xml.parse(body, strip_blank: true)        # drop whitespace-only text nodes
 doc = Xml.parse(body, {"max_depth": 32})        # options as one Hash work too
+doc = Xml.parse(body, doctype: "skip")          # read past a <!DOCTYPE …> (see below)
 ```
 
 | Option | Default | Effect |
@@ -61,10 +62,11 @@ doc = Xml.parse(body, {"max_depth": 32})        # options as one Hash work too
 | `max_depth` | `SOLI_MAX_XML_DEPTH` (256) | Deepest element nesting accepted. |
 | `max_nodes` | `SOLI_MAX_XML_NODES` (1,000,000) | Most nodes in the tree. |
 | `max_bytes` | `SOLI_MAX_XML_BYTES` (64 MiB) | Largest input. |
+| `doctype` | `"refuse"` | `"skip"` reads past one `<!DOCTYPE …>` instead of raising (see [DOCTYPE](#doctype)). |
 
 The three limits can only be **lowered** by an option, never raised: raise the
 environment variable instead. An unknown option raises
-`Xml.parse: unknown option 'deep' (expected one of: strip_blank, max_depth, max_nodes, max_bytes)`.
+`Xml.parse: unknown option 'deep' (expected one of: strip_blank, max_depth, max_nodes, max_bytes, doctype)`.
 
 What the parser does with the input:
 
@@ -78,9 +80,53 @@ What the parser does with the input:
   character XML forbids (`&#0;`) raises.
 - Text broken up by entity references is joined into one text node. CDATA stays
   its own node kind.
-- It raises on: a `DOCTYPE`, an unknown entity (`&nbsp;`), an unbound namespace
-  prefix, a duplicate attribute, a mismatched or unclosed tag, no root element,
-  a second root element, and non-whitespace text outside the root.
+- It raises on: a `DOCTYPE` (unless `doctype: "skip"`), an unknown entity
+  (`&nbsp;`), an unbound namespace prefix, a duplicate attribute, a mismatched
+  or unclosed tag, no root element, a second root element, and non-whitespace
+  text outside the root.
+
+#### DOCTYPE
+
+A `<!DOCTYPE …>` raises by default:
+`Xml.parse: line 2, column 1: DOCTYPE declarations are not allowed in XML documents`.
+Some APIs put one on every response all the same — Qualys v2, PingCastle and
+ORCQ reports, Apple property lists. `doctype: "skip"` reads past it instead of
+raising, so there is no need to cut it out of the body by hand:
+
+```soli
+body = """<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE SIMPLE_RETURN SYSTEM "https://qualysapi.qualys.com/api/2.0/simple_return.dtd">
+<SIMPLE_RETURN><RESPONSE><TEXT>Scan launched</TEXT></RESPONSE></SIMPLE_RETURN>"""
+
+doc = Xml.parse(body, doctype: "skip")
+doc.find("//TEXT").text   # => "Scan launched"
+doc.doctype               # => "SIMPLE_RETURN"
+```
+
+- **Nothing of the DOCTYPE is used.** The external id (`SYSTEM "…"`,
+  `PUBLIC "…" "…"`) is never fetched, and an internal subset (`[ … ]`) is read
+  past without being interpreted — quoted strings, comments and processing
+  instructions holding `]` or `>` included. No entity is ever declared, so
+  `&name;` for an entity the subset declares still raises
+  `unknown entity '&name;'`: skipping opens no door to XXE or "billion
+  laughs". Default attribute values from an `<!ATTLIST>` are not applied
+  either.
+- **Only its name is kept**: `doc.doctype` is `"SIMPLE_RETURN"` above, and
+  `nil` for a document without one (or built with `Xml.document`). `to_xml`
+  never writes the DOCTYPE back.
+- **One DOCTYPE, before the root element.** A second one, or one after the
+  root starts, raises
+  `a DOCTYPE is only allowed once, before the root element`. The XML
+  declaration still has to come first.
+- **The limits still hold.** The DOCTYPE counts toward `max_bytes`, so a huge
+  internal subset raises like any oversized input.
+- The only values are `"refuse"` (the default; `nil` too) and `"skip"`;
+  anything else raises
+  `Xml.parse: option 'doctype' must be "refuse" or "skip", got "ignore"`.
+- `Xml.parse_file`, `Xml.each` and `Xml.reader` take the same option.
+  `Xml.well_formed?`, `SOAP.parse` / `SOAP.call` and the
+  [XML-signature](/docs/builtins/xml-signatures) helpers always refuse a
+  DOCTYPE.
 
 ### Xml.parse_file(path, options = nil)
 
@@ -138,6 +184,9 @@ has none:
 ```soli
 doc.declaration   # => {"version": "1.0", "encoding": "UTF-8", "standalone": nil}
 ```
+
+`doc.doctype` is the name of the DOCTYPE that `doctype: "skip"` read past
+(`"SIMPLE_RETURN"` for `<!DOCTYPE SIMPLE_RETURN SYSTEM "…">`), or `nil`.
 
 `type(node)` and `node.class` give `"XmlNode"` or `"XmlDocument"`. `is_a?`
 takes the class name as a String: `node.is_a?("XmlNode")`.
@@ -614,8 +663,19 @@ reader.close   # optional: the file is closed when the reader is dropped
 
 | Call | Returns |
 |---|---|
-| `Xml.each(path, match, ns = nil) do \|node\| … end` | the number of matches yielded |
-| `Xml.reader(path, match, ns = nil)` | an `XmlReader`: `next` (the next match, or `nil` at the end), `count` (matches returned so far), `close` |
+| `Xml.each(path, match, ns = nil, opts = nil) do \|node\| … end` | the number of matches yielded |
+| `Xml.reader(path, match, ns = nil, opts = nil)` | an `XmlReader`: `next` (the next match, or `nil` at the end), `count` (matches returned so far), `close` |
+
+The one option is `doctype: "skip"`, as for [`Xml.parse`](#doctype). Named
+arguments work without a namespace table — a third argument that is a Hash
+with a `doctype` key is read as the options:
+
+```soli
+Xml.each("imports/qualys.xml", "HOST", doctype: "skip") do |host|
+  print(host.find("IP").text)
+end
+reader = Xml.reader("imports/report.xml", "r:item", {"r": "urn:r"}, doctype: "skip")
+```
 
 - **Files only.** For a String already in memory, use
   `Xml.parse(s).find_all(…)`. The path goes through the same checks as
@@ -747,8 +807,10 @@ end
 
 ## Security
 
-- **No DTDs, no entity expansion.** A `DOCTYPE` is always refused, so external
-  entities (XXE) and entity-expansion bombs ("billion laughs") cannot happen.
+- **No DTDs, no entity expansion.** A `DOCTYPE` is refused by default.
+  `doctype: "skip"` reads past it without interpreting it: nothing is fetched
+  and no entity is ever declared, so external entities (XXE) and
+  entity-expansion bombs ("billion laughs") cannot happen either way.
 - **Bounded work.** Depth, node count, input size, attributes per element,
   namespace declarations and XPath work are all capped (see [Limits](#limits)),
   and every error names the limit it hit.

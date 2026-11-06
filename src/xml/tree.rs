@@ -165,6 +165,9 @@ pub struct NodeData {
 pub struct XmlTree {
     nodes: Vec<NodeData>,
     decl: Option<XmlDecl>,
+    /// The name of the DOCTYPE skipped while parsing (`doctype: "skip"`);
+    /// nothing else of the declaration is kept, and it is never serialised.
+    doctype: Option<Box<str>>,
     order_dirty: bool,
     version: u64,
     node_limit: usize,
@@ -226,6 +229,7 @@ impl XmlTree {
                 kind: Kind::Document,
             }],
             decl: None,
+            doctype: None,
             order_dirty: false,
             version: 0,
             node_limit,
@@ -305,6 +309,15 @@ impl XmlTree {
 
     pub fn decl(&self) -> Option<&XmlDecl> {
         self.decl.as_ref()
+    }
+
+    /// The name of the DOCTYPE the parser skipped, if any.
+    pub fn doctype(&self) -> Option<&str> {
+        self.doctype.as_deref()
+    }
+
+    pub(crate) fn set_doctype(&mut self, name: Option<Box<str>>) {
+        self.doctype = name;
     }
 
     pub fn set_decl(&mut self, decl: Option<XmlDecl>) {
@@ -1298,6 +1311,7 @@ impl XmlTree {
         let mut tree = XmlTree::new(self.node_limit);
         if id == NodeId::DOCUMENT {
             tree.decl = self.decl.clone();
+            tree.doctype = self.doctype.clone();
             for child in self.children(NodeId::DOCUMENT) {
                 tree.copy_subtree_from(self, *child, Some(NodeId::DOCUMENT))?;
             }

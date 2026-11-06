@@ -58,6 +58,32 @@ pub enum TrailingContent {
     Ignore,
 }
 
+/// What to do with a `<!DOCTYPE …>` declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DoctypeMode {
+    /// Refuse it with the policy's `doctype_message` (every caller's
+    /// default).
+    Refuse,
+    /// Read past it and keep nothing of it but its name
+    /// (`Xml.parse(s, doctype: "skip")`). quick-xml skips the internal
+    /// subset as bytes (quoted literals, comments and PIs included) and
+    /// declares nothing from it, so an entity the subset declares is still
+    /// an unknown entity when referenced. One DOCTYPE, before the root
+    /// element; any other is refused.
+    Skip,
+}
+
+impl DoctypeMode {
+    /// The option value (`"refuse"` / `"skip"`), or `None` for any other.
+    pub fn from_option(value: &str) -> Option<Self> {
+        match value {
+            "refuse" => Some(DoctypeMode::Refuse),
+            "skip" => Some(DoctypeMode::Skip),
+            _ => None,
+        }
+    }
+}
+
 /// What an input without a root element gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnNoRoot {
@@ -75,8 +101,12 @@ pub enum OnNoRoot {
 /// The knobs of one parse. `Copy`, so a streaming reader can own one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsePolicy {
-    /// The message of the DOCTYPE refusal. DOCTYPE is always refused.
+    /// The message of the DOCTYPE refusal (under [`DoctypeMode::Refuse`]).
     pub doctype_message: &'static str,
+    /// Refuse a DOCTYPE, or skip it. Only `Xml.parse`, `Xml.parse_file`,
+    /// `Xml.each` and `Xml.reader` let a caller choose `Skip`; SOAP and c14n
+    /// always refuse.
+    pub doctype: DoctypeMode,
     pub unknown_entity: OnUnknownEntity,
     pub unbound_prefix: Strictness,
     /// Two attributes with the same expanded name on one element.
@@ -158,6 +188,7 @@ impl ParsePolicy {
     pub fn xml() -> Self {
         ParsePolicy {
             doctype_message: "DOCTYPE declarations are not allowed in XML documents",
+            doctype: DoctypeMode::Refuse,
             unknown_entity: OnUnknownEntity::Error,
             unbound_prefix: Strictness::Error,
             duplicate_attribute: Strictness::Error,
@@ -191,6 +222,7 @@ impl ParsePolicy {
         ParsePolicy {
             doctype_message:
                 "XML parsing error: DOCTYPE declarations are not allowed in SOAP payloads",
+            doctype: DoctypeMode::Refuse,
             unknown_entity: OnUnknownEntity::Drop,
             unbound_prefix: Strictness::Allow,
             duplicate_attribute: Strictness::Allow,
@@ -222,6 +254,7 @@ impl ParsePolicy {
         ParsePolicy {
             doctype_message:
                 "DOCTYPE declarations are not allowed (XXE / entity-expansion defense)",
+            doctype: DoctypeMode::Refuse,
             unknown_entity: OnUnknownEntity::Error,
             unbound_prefix: Strictness::Allow,
             duplicate_attribute: Strictness::Error,
@@ -264,6 +297,12 @@ impl ParsePolicy {
         if let Some(bytes) = max_bytes {
             self.max_bytes = self.max_bytes.min(bytes);
         }
+        self
+    }
+
+    /// `doctype: "skip"`: read past a DOCTYPE instead of refusing it.
+    pub fn with_doctype(mut self, mode: DoctypeMode) -> Self {
+        self.doctype = mode;
         self
     }
 
@@ -324,6 +363,15 @@ mod tests {
         assert_eq!(soap.max_ns_decls_per_element, MAX_NS_BINDINGS);
         assert!(xml.max_depth <= MAX_DEPTH_CEILING);
         assert!(!ParsePolicy::xml().strip_blank(true).keep_blank_text);
+        assert_eq!(xml.doctype, DoctypeMode::Refuse);
+        assert_eq!(soap.doctype, DoctypeMode::Refuse);
+        assert_eq!(c14n.doctype, DoctypeMode::Refuse);
+        assert_eq!(DoctypeMode::from_option("skip"), Some(DoctypeMode::Skip));
+        assert_eq!(
+            DoctypeMode::from_option("refuse"),
+            Some(DoctypeMode::Refuse)
+        );
+        assert_eq!(DoctypeMode::from_option("Skip"), None);
         assert_eq!(
             soap.doctype_message,
             "XML parsing error: DOCTYPE declarations are not allowed in SOAP payloads"

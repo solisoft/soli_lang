@@ -255,6 +255,28 @@ describe("Xml streaming") do
       end
     end
 
+    test("doctype: \"skip\" reads past a DOCTYPE and still declares nothing") do
+      path = write_xml("doctype_skip.xml", "<!DOCTYPE r SYSTEM \"https://example.com/r.dtd\"><r><item>1</item><item>2</item></r>")
+      seen = []
+      total = Xml.each(path, "item", doctype: "skip") do |node|
+        seen.push(node.text)
+      end
+      assert_eq(total, 2)
+      assert_eq(seen, ["1", "2"])
+      reader = Xml.reader(path, "item", nil, {"doctype": "skip"})
+      assert_eq(reader.next.text, "1")
+      reader.close
+      entity = write_xml("doctype_entity.xml", "<!DOCTYPE r [<!ENTITY a \"aaaa\">]><r><item>&a;</item></r>")
+      assert_raises("unknown entity '&a;'") do
+        Xml.each(entity, "item", doctype: "skip") do |node|
+          nil
+        end
+      end
+      assert_raises("option 'doctype' must be") do
+        Xml.reader(path, "item", doctype: "maybe")
+      end
+    end
+
     test("nesting deeper than SOLI_MAX_XML_DEPTH is refused") do
       path = write_xml("deep.xml", "<a>" * 300 + "</a>" * 300)
       assert_raises("more than 256 nested elements (SOLI_MAX_XML_DEPTH)") do

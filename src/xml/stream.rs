@@ -11,8 +11,8 @@
 //! outer subtree and is not handed over again.
 //!
 //! The document is checked as a whole, exactly as [`super::parse`] checks it
-//! (DOCTYPE, entities, names, depth, a second root, …): an error past the
-//! last match still raises.
+//! (DOCTYPE refused or skipped as the policy says, entities, names, depth, a
+//! second root, …): an error past the last match still raises.
 //!
 //! **Memory.** There is no cap on the file: memory is bounded by the depth
 //! times the name size, plus one subtree, plus one event. The [`Bounded`]
@@ -637,6 +637,12 @@ impl StreamSink {
 
 impl Sink for StreamSink {
     fn declaration(&mut self, _decl: XmlDecl) -> Result<(), XmlError> {
+        self.events += 1;
+        Ok(())
+    }
+
+    /// A skipped DOCTYPE counts as an event: the byte mark moves past it.
+    fn doctype(&mut self, _name: &str) -> Result<(), XmlError> {
         self.events += 1;
         Ok(())
     }

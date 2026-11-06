@@ -35,6 +35,64 @@ describe("Xml") do
       end
     end
 
+    test("doctype: \"skip\" reads past a Qualys v2 style DOCTYPE") do
+      body = """<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE SIMPLE_RETURN SYSTEM "https://qualysapi.qualys.com/api/2.0/simple_return.dtd">
+<SIMPLE_RETURN>
+  <RESPONSE>
+    <DATETIME>2026-11-06T10:00:00Z</DATETIME>
+    <TEXT>Scan launched</TEXT>
+  </RESPONSE>
+</SIMPLE_RETURN>"""
+      doc = Xml.parse(body, doctype: "skip")
+      assert_eq(doc.root.name, "SIMPLE_RETURN")
+      assert_eq(doc.find("//TEXT").text, "Scan launched")
+      assert_eq(doc.doctype, "SIMPLE_RETURN")
+      assert_not(doc.to_xml.includes?("DOCTYPE"))
+      assert_eq(Xml.parse("<a/>").doctype, nil)
+      assert_eq(Xml.parse(body, {"doctype": "skip"}).root.name, "SIMPLE_RETURN")
+    end
+
+    test("doctype: \"skip\" reads past PUBLIC ids and an internal subset") do
+      plist = "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"/>"
+      assert_eq(Xml.parse(plist, doctype: "skip").root["version"], "1.0")
+      subset = "<!DOCTYPE r [<!ATTLIST r a CDATA \"x]>y\"><!-- ]> --><?p ]>?>]><r>ok</r>"
+      assert_eq(Xml.parse(subset, doctype: "skip").root.text, "ok")
+    end
+
+    test("doctype: \"skip\" never defines an entity") do
+      assert_raises("unknown entity '&x;'") do
+        Xml.parse("<!DOCTYPE a [<!ENTITY x \"y\">]><a>&x;</a>", doctype: "skip")
+      end
+      assert_raises("unknown entity '&lol2;'") do
+        Xml.parse("<!DOCTYPE l [<!ENTITY lol \"lol\"><!ENTITY lol2 \"&lol;&lol;\">]><l>&lol2;</l>", doctype: "skip")
+      end
+    end
+
+    test("doctype: \"skip\" takes one DOCTYPE, before the root") do
+      assert_raises("a DOCTYPE is only allowed once, before the root element") do
+        Xml.parse("<a/><!DOCTYPE a>", doctype: "skip")
+      end
+      assert_raises("a DOCTYPE is only allowed once, before the root element") do
+        Xml.parse("<!DOCTYPE a><!DOCTYPE a><a/>", doctype: "skip")
+      end
+    end
+
+    test("the doctype option is \"refuse\" by default and checked") do
+      assert_raises("DOCTYPE declarations are not allowed") do
+        Xml.parse("<!DOCTYPE a SYSTEM \"a.dtd\"><a/>", doctype: "refuse")
+      end
+      assert_raises("DOCTYPE declarations are not allowed") do
+        Xml.parse("<!DOCTYPE a SYSTEM \"a.dtd\"><a/>")
+      end
+      assert_raises("Xml.parse: option 'doctype' must be \"refuse\" or \"skip\", got \"ignore\"") do
+        Xml.parse("<a/>", doctype: "ignore")
+      end
+      assert_raises("option 'doctype' must be") do
+        Xml.parse("<a/>", doctype: true)
+      end
+    end
+
     test("refuses a non-String argument") do
       assert_raises("Xml.parse: expects the XML as a String") do
         Xml.parse(42)
