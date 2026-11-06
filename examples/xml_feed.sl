@@ -6,20 +6,40 @@
 
 const DC = "http://purl.org/dc/elements/1.1/"
 
+const RSS_ATTRS = {"version": "2.0", "xmlns:dc": DC}
+
 posts = [
-  {"id": 1, "title": "XML lands in Soli", "author": "Ada", "url": "https://example.com/posts/xml",
-   "body_html": "<p>Parse, query, build and stream.</p>", "tags": ["xml", "release"]},
-  {"id": 2, "title": "XPath, the subset", "author": "Grace", "url": "https://example.com/posts/xpath",
-   "body_html": "<p>Predicates & unions.</p>", "tags": ["xml"]},
-  {"id": 3, "title": "Tom & Jerry's feed", "author": "Ada", "url": "https://example.com/posts/feeds",
-   "body_html": "<p>Escaping is the builder's job.</p>", "tags": []}
+  {
+    "id": 1,
+    "title": "XML lands in Soli",
+    "author": "Ada",
+    "url": "https://example.com/posts/xml",
+    "body_html": "<p>Parse, query, build and stream.</p>",
+    "tags": ["xml", "release"]
+  },
+  {
+    "id": 2,
+    "title": "XPath, the subset",
+    "author": "Grace",
+    "url": "https://example.com/posts/xpath",
+    "body_html": "<p>Predicates & unions.</p>",
+    "tags": ["xml"]
+  },
+  {
+    "id": 3,
+    "title": "Tom & Jerry's feed",
+    "author": "Ada",
+    "url": "https://example.com/posts/feeds",
+    "body_html": "<p>Escaping is the builder's job.</p>",
+    "tags": []
+  }
 ]
 
 # --- Build -----------------------------------------------------------------
 # Xml.build gives the block the root element and returns the document.
 # node.add(name, content, attrs) returns the child; named arguments are
 # attributes, and a block receives the child.
-feed = Xml.build("rss", {"version": "2.0", "xmlns:dc": DC}) do |rss|
+feed = Xml.build("rss", RSS_ATTRS) do |rss|
   rss.add("channel") do |channel|
     channel.add("title", "Soli blog")
     channel.add("link", "https://example.com")
@@ -57,9 +77,12 @@ end
 # declarations on the root element.
 by_ada = doc.xpath("//item[dc:creator='Ada']/title/text()")
 print("By Ada: #{by_ada.join(" | ")}")
-print("Tagged release: #{doc.at_xpath("//item[category='release']/@id")}")
-print("Last item: #{doc.at_xpath("/rss/channel/item[last()]/link/text()")}")
-print("Untagged: #{doc.find_all("channel/item[not(category)]/@id")}")
+release_id = doc.at_xpath("//item[category='release']/@id")
+print("Tagged release: #{release_id}")
+last_link = doc.at_xpath("/rss/channel/item[last()]/link/text()")
+print("Last item: #{last_link}")
+untagged = doc.find_all("channel/item[not(category)]/@id")
+print("Untagged: #{untagged}")
 
 # The text of a node is decoded: the CDATA comes back as written.
 print("First body: #{doc.find("channel/item/description").text}")
@@ -72,4 +95,5 @@ print("After edits: #{doc.find_all("channel/item/@id")}")
 
 # --- A Hash view, for permit or JSON ----------------------------------------
 first_item = doc.find("channel/item").to_h["item"]
-print(permit(first_item, {"title": true, "link": true}))
+allowed = {"title": true, "link": true}
+print(permit(first_item, allowed))
