@@ -30,8 +30,19 @@ impl TypeChecker {
                 }
             }
         }
+        // The receiver of an XML query (`doc.find("…")`), whose answer the
+        // expression decides — see `xml::xml_query_type`.
+        let mut query_receiver = None;
         let callee_type = match &callee.kind {
             ExprKind::Variable(name) => self.check_variable(name, callee.span)?,
+            ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
+                if !arguments.is_empty() && super::xml::is_query_method(name) =>
+            {
+                let (member, receiver) =
+                    self.check_member_callee_and_receiver(callee.span, object, name)?;
+                query_receiver = Some((receiver, name.as_str()));
+                member
+            }
             // `"ff".to_i(16)`: the arguments are checked against the method's
             // signature, which a bare `"12".to_i` would have collapsed.
             ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
@@ -117,6 +128,11 @@ impl TypeChecker {
                     }
                 }
 
+                if let Some((receiver, name)) = &query_receiver {
+                    if let Some(answer) = self.xml_query_type(receiver, name, arguments)? {
+                        return Ok(answer);
+                    }
+                }
                 Ok(*return_type)
             }
             Type::Class(class) => {

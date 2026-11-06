@@ -162,7 +162,9 @@ impl TypeChecker {
         // lookup answers the method's type, and the write was refused as
         // "expected (Hash, Bool) -> Any[], found Any[]".
         if let ExprKind::Member { object, name } = &target.kind {
-            if let Type::Class(class) = self.check_expr(object)? {
+            let receiver = self.check_expr(object)?;
+            self.check_xml_property_write(&receiver, name, &value_type, span)?;
+            if let Type::Class(class) = receiver {
                 if let Some(class_def) = self.env.get_class(&class.name) {
                     if class_def.find_field_with_owner(name).is_none()
                         && class_def.find_method_with_owner(name).is_some()
@@ -201,7 +203,7 @@ impl TypeChecker {
         // was 31 of the 52 remaining errors on a freshly scaffolded
         // application.
         let cond_type = self.check_expr(condition)?;
-        if !matches!(cond_type, Type::Bool | Type::Any | Type::Unknown) {
+        if !crate::types::checker::is_condition_type(&cond_type) {
             return Err(TypeError::mismatch(
                 "Bool".to_string(),
                 format!("{}", cond_type),

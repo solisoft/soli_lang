@@ -7,6 +7,7 @@ mod literals;
 mod objects;
 mod operators;
 mod variables;
+mod xml;
 
 use crate::ast::*;
 use crate::types::type_repr::Type;

@@ -103,7 +103,7 @@ impl TypeChecker {
                 else_branch,
             } => {
                 let cond_type = self.check_expr(condition)?;
-                if !matches!(cond_type, Type::Bool | Type::Any | Type::Unknown) {
+                if !crate::types::checker::is_condition_type(&cond_type) {
                     return Err(TypeError::mismatch(
                         "Bool",
                         format!("{}", cond_type),
@@ -119,7 +119,7 @@ impl TypeChecker {
 
             StmtKind::While { condition, body } => {
                 let cond_type = self.check_expr(condition)?;
-                if !matches!(cond_type, Type::Bool | Type::Any | Type::Unknown) {
+                if !crate::types::checker::is_condition_type(&cond_type) {
                     return Err(TypeError::mismatch(
                         "Bool",
                         format!("{}", cond_type),

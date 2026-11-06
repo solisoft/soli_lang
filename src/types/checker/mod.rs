@@ -210,6 +210,15 @@ impl TypeChecker {
     }
 }
 
+/// Whether a value of type `ty` may stand as an `if` / `unless` / `while` /
+/// ternary condition: a Bool, an unknown type, or a class instance. A class
+/// value is nil-able in this checker (`Null` is assignable to every class), so
+/// testing it is the nil check — `if node.parent`, `while (item =
+/// reader.next)`, `if user` — and refusing it refused the idiom itself.
+pub(crate) fn is_condition_type(ty: &Type) -> bool {
+    matches!(ty, Type::Bool | Type::Any | Type::Unknown | Type::Class(_))
+}
+
 impl Default for TypeChecker {
     fn default() -> Self {
         Self::new()

@@ -188,6 +188,21 @@ impl XPath {
     pub fn prefixes(&self) -> &[String] {
         &self.prefixes
     }
+
+    /// What every result is, known from the expression alone: `Some(true)`
+    /// when each path ends in `@attr` or a final `text()` (Strings),
+    /// `Some(false)` when none does (nodes), `None` for a union of both.
+    /// The type checker types a query with a literal expression from it.
+    pub fn yields_strings(&self) -> Option<bool> {
+        let mut kinds = self.paths.iter().map(|path| {
+            matches!(
+                path.steps.last(),
+                Some(parse::Step::Attr(_)) | Some(parse::Step::Child(parse::NodeTest::Text, _))
+            )
+        });
+        let first = kinds.next()?;
+        kinds.all(|kind| kind == first).then_some(first)
+    }
 }
 
 /// How to evaluate: the flavour, the caller's prefix table (`""` is the
