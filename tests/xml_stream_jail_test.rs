@@ -30,8 +30,7 @@ fn refused(source: &str, engine: Engine, needle: &str) {
 #[test]
 fn streaming_reads_honour_the_app_root_jail_on_both_engines() {
     std::env::set_var("SOLI_VM_OPTIONAL_LET", "1");
-    let base: PathBuf =
-        std::env::temp_dir().join(format!("soli_xml_jail_{}", std::process::id()));
+    let base: PathBuf = std::env::temp_dir().join(format!("soli_xml_jail_{}", std::process::id()));
     let app = base.join("app");
     fs::create_dir_all(app.join("imports")).expect("create the app root");
     let base = fs::canonicalize(&base).expect("canonical temp dir");
@@ -68,8 +67,14 @@ throw "parse_file gave #{doc}" unless doc.root.children.length == 2
                 format!("Xml.each({outside_path:?}, \"item\") do |item|\n  nil\nend"),
                 "Xml.each",
             ),
-            (format!("Xml.reader({outside_path:?}, \"item\")"), "Xml.reader"),
-            (format!("Xml.parse_file({outside_path:?})"), "Xml.parse_file"),
+            (
+                format!("Xml.reader({outside_path:?}, \"item\")"),
+                "Xml.reader",
+            ),
+            (
+                format!("Xml.parse_file({outside_path:?})"),
+                "Xml.parse_file",
+            ),
             (
                 "Xml.each(\"../outside.xml\", \"item\") do |item|\n  nil\nend".to_string(),
                 "Xml.each",

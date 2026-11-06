@@ -115,9 +115,7 @@ fn xml_each_stops_at_the_budget_on_both_engines() {
     std::fs::write(&path, body).expect("write the file");
     let path = path.display().to_string();
     for expr in ["item", "nothing"] {
-        let source = format!(
-            "n = 0\nXml.each({path:?}, {expr:?}) do |item|\n  n = n + 1\nend\nn"
-        );
+        let source = format!("n = 0\nXml.each({path:?}, {expr:?}) do |item|\n  n = n + 1\nend\nn");
         {
             let _budget = spent_budget();
             let result = crate::run_script(&source, None, false, crate::Engine::Vm)

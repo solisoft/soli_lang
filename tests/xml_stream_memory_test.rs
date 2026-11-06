@@ -1,9 +1,11 @@
 //! Streaming keeps memory bounded: a 200 MiB document is read with a peak
 //! RSS growth well under 50 MiB, by the core's `Pull` and by `Xml.each` /
-//! `Xml.reader` on both engines.
+//! `Xml.reader` on both engines. And it leaks no file descriptor when a
+//! block raises or breaks, or a reader is dropped unclosed.
 //!
 //! Lives in its own test binary on purpose, with a single `#[test]`: the
-//! peak RSS (`VmHWM`) is process-wide, so nothing else may run beside it.
+//! peak RSS (`VmHWM`) and the open descriptors are process-wide, so nothing
+//! else may run beside it.
 //! Linux only (it reads `/proc/self/status`). Run with `--nocapture` to see
 //! the numbers.
 
@@ -132,7 +134,7 @@ fn streaming_200_mib_keeps_the_peak_rss_growth_under_50_mib() {
             ParsePolicy::xml(),
         );
         let mut count = 0u64;
-        while let Some((tree, id)) = pull.next().expect("stream") {
+        while let Some((tree, id)) = pull.next_match().expect("stream") {
             assert_eq!(tree.element(id).map(|e| e.local_name), Some("item"));
             count += 1;
         }
@@ -164,7 +166,10 @@ throw "total #{{total}}" unless total == {items} * 42
         let growth = peak_growth(&format!("Xml.each on {engine:?}, 200 MiB file"), || {
             run(&each, engine)
         });
-        assert!(growth < LIMIT, "{engine:?} Xml.each: peak RSS grew by {growth} bytes");
+        assert!(
+            growth < LIMIT,
+            "{engine:?} Xml.each: peak RSS grew by {growth} bytes"
+        );
 
         let reader = format!(
             r#"
@@ -179,7 +184,61 @@ throw "reader gave #{{k}}" unless k == {items}
         let growth = peak_growth(&format!("Xml.reader on {engine:?}, 200 MiB file"), || {
             run(&reader, engine)
         });
-        assert!(growth < LIMIT, "{engine:?} Xml.reader: peak RSS grew by {growth} bytes");
+        assert!(
+            growth < LIMIT,
+            "{engine:?} Xml.reader: peak RSS grew by {growth} bytes"
+        );
     }
+
+    // No descriptor outlives a raise, a break, an error or a dropped reader.
+    let open_fds = || {
+        std::fs::read_dir("/proc/self/fd")
+            .map(|d| d.count())
+            .unwrap_or(0)
+    };
+    let small = dir.join("small.xml");
+    std::fs::write(&small, "<r><item id=\"1\"/><item id=\"2\"/><bad></r>").expect("small");
+    let small = small.display().to_string();
+    let churn = format!(
+        r#"
+i = 0
+while i < 200
+  try
+    Xml.each({small:?}, "item") do |item|
+      throw "stop"
+    end
+  catch e
+    nil
+  end
+  try
+    Xml.each({small:?}, "item") do |item|
+      break
+    end
+  catch e
+    nil
+  end
+  reader = Xml.reader({small:?}, "item")
+  reader.next
+  reader = nil
+  try
+    Xml.reader({small:?}, "item").next
+  catch e
+    nil
+  end
+  i = i + 1
+end
+"#
+    );
+    for engine in [Engine::Vm, Engine::Tree] {
+        let before = open_fds();
+        run(&churn, engine);
+        let after = open_fds();
+        eprintln!("{engine:?}: open descriptors {before} -> {after} after 800 streams");
+        assert!(
+            after <= before + 2,
+            "{engine:?}: {before} -> {after} open descriptors"
+        );
+    }
+
     let _ = std::fs::remove_dir_all(&dir);
 }
