@@ -416,20 +416,6 @@ fn parse_string(args: &[Value]) -> Result<Value, String> {
     Ok(wrap(XmlRef::new(tree, NodeId::DOCUMENT)))
 }
 
-#[cfg(unix)]
-fn open_no_follow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
-    use std::os::unix::fs::OpenOptionsExt;
-    std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)
-}
-
-#[cfg(not(unix))]
-fn open_no_follow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
-    std::fs::File::open(path)
-}
-
 fn parse_file(args: &[Value]) -> Result<Value, String> {
     const WHO: &str = "Xml.parse_file";
     if args.is_empty() || args.len() > 2 {
@@ -441,7 +427,8 @@ fn parse_file(args: &[Value]) -> Result<Value, String> {
     let path = string_arg(args, 0, WHO, "the path")?;
     let policy = parse_policy(args.get(1), WHO)?;
     let resolved = crate::interpreter::builtins::file::resolve_readable_path(&path, WHO)?;
-    let file = open_no_follow(&resolved).map_err(|e| format!("{WHO}: cannot open {path}: {e}"))?;
+    let file = crate::interpreter::builtins::file::open_for_read(&resolved, false)
+        .map_err(|e| format!("{WHO}: cannot open {path}: {e}"))?;
     let size = file
         .metadata()
         .map_err(|e| format!("{WHO}: cannot read {path}: {e}"))?

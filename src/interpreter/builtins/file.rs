@@ -91,9 +91,8 @@ fn resolve_path(path: &str, op: &str) -> Result<PathBuf, String> {
 /// Exposed for sibling builtins that read caller-supplied paths through
 /// third-party crates (the PDF image loader, fonts, spreadsheets), so the
 /// SEC-006 containment rule is applied once rather than reimplemented — or, as
-/// it was, skipped. Those callers are behind the `office` and `pdf`
-/// features, so a build without either has none.
-#[cfg_attr(not(any(feature = "office", feature = "pdf")), allow(dead_code))]
+/// it was, skipped. `Xml.parse_file`, `Xml.each` and `Xml.reader` use it in
+/// every build; the PDF and spreadsheet callers are behind their features.
 pub(crate) fn resolve_readable_path(path: &str, op: &str) -> Result<PathBuf, String> {
     resolve_with_jail(path, op, current_jail().as_deref())
 }
@@ -209,8 +208,10 @@ fn apply_nofollow(opts: &mut std::fs::OpenOptions, follow_symlinks: bool) {
 #[cfg(not(unix))]
 fn apply_nofollow(_opts: &mut std::fs::OpenOptions, _follow_symlinks: bool) {}
 
-/// Open a file for reading, honoring the policy's symlink stance.
-fn open_for_read(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::File> {
+/// Open a file for reading, honoring the policy's symlink stance. Sibling
+/// builtins that read a jailed path (`Xml.parse_file`, `Xml.each`,
+/// `Xml.reader`) open it here with `follow_symlinks: false`, as `File` does.
+pub(crate) fn open_for_read(path: &Path, follow_symlinks: bool) -> std::io::Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.read(true);
     apply_nofollow(&mut opts, follow_symlinks);
