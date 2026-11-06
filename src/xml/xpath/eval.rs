@@ -18,6 +18,9 @@ use crate::xml::tree::{Attr, ElementRef, Kind, NodeId, XmlTree, XML_NS};
 /// The virtual root of a detached fragment.
 const VIRTUAL: NodeId = NodeId(u32::MAX);
 
+/// Bytes of text a string-value copies per visit charged.
+pub(super) const TEXT_BYTES_PER_VISIT: usize = 64;
+
 /// A node's children: a slice of the arena, or the virtual root's one
 /// child.
 #[derive(Clone, Copy)]
@@ -623,7 +626,12 @@ impl<'t> Eval<'t> {
                 while let Some(node) = stack.pop() {
                     self.charge(1)?;
                     match self.tree.kind(node) {
-                        Kind::Text(s) | Kind::CData(s) => out.push_str(s),
+                        Kind::Text(s) | Kind::CData(s) => {
+                            // Copying text costs too: a long run read once per
+                            // ancestor (`//*[.='x']`) must reach the budget.
+                            self.charge(s.len() / TEXT_BYTES_PER_VISIT)?;
+                            out.push_str(s);
+                        }
                         _ => stack.extend(self.tree.children(node).iter().rev().copied()),
                     }
                 }

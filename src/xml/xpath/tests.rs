@@ -189,6 +189,10 @@ fn unsupported_xpath_is_refused_with_its_column() -> TestResult {
             "unsupported XPath at column 6: numeric comparison (only position() compares numbers)",
         ),
         ("1", "unsupported XPath at column 1: a number here"),
+        (
+            "a | (//a)[1]",
+            "unsupported XPath at column 5: a parenthesised path: for (//a)[1] write at_xpath(\"//a\")",
+        ),
         ("a[1.5]", "unsupported XPath at column 3: a number here"),
         (
             "@id/x",
@@ -261,6 +265,12 @@ fn expression_limits_are_enforced_at_n_and_n_plus_one() -> TestResult {
     let union = format!("{} | {}", steps(32), steps(33));
     if compile_error(&union)? != "XPath too complex: more than 64 steps" {
         return Err("65 steps across a union".into());
+    }
+    // A bare `/` is a step too, so a union of them is bounded.
+    XPath::compile(&vec!["/"; MAX_STEPS].join("|")).map_err(|e| e.to_string())?;
+    if compile_error(&vec!["/"; MAX_STEPS + 1].join("|"))? != "XPath too complex: more than 64 steps"
+    {
+        return Err("65 bare slashes".into());
     }
     // Predicates per step.
     let preds = |n: usize| format!("a{}", "[@x]".repeat(n));
@@ -613,6 +623,16 @@ fn the_visit_budget_bounds_adversarial_queries() -> TestResult {
         .ok_or("expected a budget error")?;
     if err.to_string() != "evaluation exceeded 10 node visits (SOLI_MAX_XPATH_VISITS)" {
         return Err(err.to_string());
+    }
+    // Long text copied once per ancestor is charged by its length: 32
+    // ancestors over 64 KiB of text cost far more than 32 x 2 visits.
+    let mut long = chain(32)?;
+    let text = "y".repeat(64 * 1024);
+    let leaf = long.descendants(NodeId::DOCUMENT)[31];
+    long.add_text(leaf, &text).map_err(|e| e.to_string())?;
+    match eval_with(&mut long, NodeId::DOCUMENT, "//*[.='z']", Flavour::Strict, &[], 20_000) {
+        Err(e) if e.kind == XPathErrorKind::Budget(20_000) => {}
+        other => return Err(format!("long text: expected the budget error, got {other:?}")),
     }
     // The same queries within budget on a small tree.
     let mut small = chain(10)?;

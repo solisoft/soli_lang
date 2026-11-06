@@ -318,10 +318,17 @@ impl<'a> Parser<'a> {
 
     fn path(&mut self) -> Result<Path, XPathError> {
         match self.peek() {
+            Tok::LParen => Err(XPathError::unsupported(
+                self.col(),
+                "a parenthesised path: for (//a)[1] write at_xpath(\"//a\")",
+            )),
             Tok::Slash => {
                 self.bump();
                 let mut steps = Vec::new();
-                if !matches!(self.peek(), Tok::End | Tok::Pipe) {
+                if matches!(self.peek(), Tok::End | Tok::Pipe) {
+                    // A bare `/` counts as a step, so `/|/|…` is bounded too.
+                    self.count_step()?;
+                } else {
                     self.rel_path(&mut steps)?;
                 }
                 Ok(Path {

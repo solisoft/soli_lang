@@ -55,7 +55,9 @@
 //! A step reads each context node's children (or, after `//`, its subtree)
 //! once; a bitset keeps any node from entering a set twice. Predicates read
 //! attributes and direct children, `.` reads the subtree. Every node read is
-//! a *visit*, and an evaluation that goes past [`Query::max_visits`] stops
+//! a *visit*; a string-value also counts one visit per 64 bytes of text it
+//! copies, so comparing long text once per ancestor stays bounded. An
+//! evaluation that goes past [`Query::max_visits`] stops
 //! with [`XPathErrorKind::Budget`]. The parser recurses only into
 //! `not(…)`/`(…)`, at most [`MAX_NESTING`] deep; the evaluator never recurses
 //! per tree level.
