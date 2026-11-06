@@ -2,6 +2,7 @@ src/interpreter/builtins/xml/block.rs 0
 src/interpreter/builtins/xml/mod.rs 0
 src/interpreter/builtins/xml/node.rs 0
 src/interpreter/builtins/xml/query.rs 0
+src/interpreter/builtins/xml/reader.rs 0
 src/interpreter/builtins/xml/value.rs 0
 src/interpreter/value_json.rs 0
 src/interpreter/value_stringify.rs 0
