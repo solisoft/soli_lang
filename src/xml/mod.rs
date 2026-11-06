@@ -69,6 +69,8 @@
 //! [`escape::escape_text`], [`escape::escape_attr`], [`escape::is_qname`],
 //! [`escape::is_ncname`], [`escape::drop_forbidden`].
 //!
+//! **Queries** — [`XPath::compile`] then [`select`]`(tree, context, &xpath, &Query { flavour, namespaces, max_visits })`: the XPath subset of `find` / `find_all` ([`Flavour::Lenient`]) and `xpath` / `at_xpath` ([`Flavour::Strict`]); see [`xpath`].
+//!
 //! **Errors** — [`XmlError`] `{ kind, offset, position }`; `Display` is
 //! `line L, column C: message` once located. The binding prefixes it
 //! (`Xml.parse: …`).
@@ -81,6 +83,7 @@ pub mod policy;
 pub mod project;
 pub mod serialize;
 pub mod tree;
+pub mod xpath;
 
 #[cfg(test)]
 mod tests;
@@ -94,6 +97,7 @@ pub use policy::{
 pub use project::{soap_error_message, soap_shape, to_h, Proj};
 pub use serialize::{serialize, serialize_children, SerializeOptions};
 pub use tree::{Attr, ElementRef, Kind, NodeData, NodeId, NsDecl, XmlDecl, XmlTree, XML_NS};
+pub use xpath::{select, Flavour, Item, Query, XPath, XPathError, XPathErrorKind};
 
 #[cfg(test)]
 mod send_check {

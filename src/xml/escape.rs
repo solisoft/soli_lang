@@ -116,7 +116,7 @@ pub fn escape5(s: &str) -> String {
 
 /// XML 1.0 (5th edition) `NameStartChar`, without `:`.
 #[inline]
-fn is_name_start_char(c: char) -> bool {
+pub(crate) fn is_name_start_char(c: char) -> bool {
     matches!(c,
         'A'..='Z' | '_' | 'a'..='z'
         | '\u{C0}'..='\u{D6}' | '\u{D8}'..='\u{F6}' | '\u{F8}'..='\u{2FF}'
@@ -127,7 +127,7 @@ fn is_name_start_char(c: char) -> bool {
 
 /// XML 1.0 (5th edition) `NameChar`, without `:`.
 #[inline]
-fn is_name_char(c: char) -> bool {
+pub(crate) fn is_name_char(c: char) -> bool {
     is_name_start_char(c)
         || matches!(c,
             '-' | '.' | '0'..='9' | '\u{B7}' | '\u{300}'..='\u{36F}' | '\u{203F}'..='\u{2040}')
