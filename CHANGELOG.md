@@ -4,6 +4,30 @@
 
 ### Changed
 
+- **`SOAP.parse` and `SOAP.call` read XML with the `Xml.parse` parser**, which
+  fixes six bugs and normalises line endings: whitespace around entities is
+  kept (`<a>Tom &amp; Jerry</a>` gives `"Tom & Jerry"`, was `"Tom&Jerry"`);
+  CDATA is kept as text (was dropped); a self-closing repeat joins its Array
+  (`<x>1</x><x/>` gives `["1", nil]`); a self-closing root gives `{"a" =>
+  nil}` (was `nil`); text on both sides of a child element is joined, then
+  trimmed, into `_text` (only the last piece was kept), while text around a
+  self-closing child, comment or PI is still trimmed piece by piece; truncated
+  XML raises `XML parsing error: <r> is not closed at the end of the input`, so
+  `SOAP.call` returns `parsed: nil` for a truncated reply (it returned a
+  partial Hash); CRLF and a lone CR become LF. Newly refused, in `SOAP.*` and
+  in `Xml.c14n_exclusive` / `get_element_by_id` / `get_elements_by_tag`:
+  binding the reserved `xml` or `xmlns` prefixes or their namespace URIs, more
+  than 4096 namespace declarations on one element or in scope, names over 4096
+  bytes, and (c14n only) more than 1024 attributes on one element. The c14n
+  functions otherwise give byte-identical output, and no longer check a
+  trailing root they ignore (`<a/><b x="&foo;"/>` canonicalises to `<a></a>`
+  instead of raising). Some messages for input that was already refused are
+  worded differently.
+- **`soli check`: a value typed as a class may be an `if` / `unless` / `while`
+  / ternary condition**, as it is at run time (`while (item = reader.next)`).
+  And a bare read of a built-in method with only optional parameters is typed
+  as the call the runtime makes, for every native class.
+
 - Inside `partial()` and `component()` a controller `@ivar` now wins over a
   view helper of the same name, as it already did in views and render-tag
   partials; `locals` lists the passed keys and the inherited `@ivars`, no
@@ -365,6 +389,15 @@
 
 ### Fixed
 
+- `Xml.parse_file` refuses a FIFO or a device before opening it, as `Xml.each`
+  and `Xml.reader` do, instead of blocking until a writer comes.
+- VM: a safe-navigation call with named arguments or a block
+  (`node&.add("x", id: 1) do |child| … end`) binds the native method instead of
+  running it with no arguments, and evaluates neither on `nil`. A call with
+  named arguments to a native method or static (`Xml.document("rss", version:
+  "2.0")`) binds it as `Op::GetMethod` does, so its labels reach it on the VM as
+  on the tree-walker.
+
 - An app helper named like a framework function (a route helper, the form
   builder's `button_to` / `csrf_field`, `Retry`) is the app's in `<%= render
   "x" %>` partials too, as it already was in views and `partial()`: the render
@@ -695,6 +728,31 @@
   Demotions are now merged by content, not by count.
 
 ### Added
+
+- **An XML parser, builder and streamer: `Xml.parse`, `XmlNode`, `XmlDocument`,
+  `XmlReader`.** `Xml.parse(s)` / `Xml.parse_file(path)` give a tree of node
+  objects (`doc.root`, `node["id"]`, `node.text`, `children` for elements and
+  `nodes` for everything, `parent`, siblings, `ancestors`, `descendants`,
+  namespaces). Two query flavours over one XPath subset: `find` / `find_all`
+  are lenient (from the root element, unprefixed names in any namespace) and
+  `xpath` / `at_xpath` are strict XPath 1.0 (paths, `//`, `..`, `@attr`,
+  `text()`, `node()`, `comment()`, `*:name`, `p:*`, `|`, predicates with
+  `[n]`, `last()`, `position()`, `=`/`!=`, `contains`, `starts-with`, `and`,
+  `or`, `not`); prefixes resolve through a table, then the root's
+  declarations. A builder (`Xml.document`, `Xml.element`, `node.add(name,
+  content, attrs)` with named arguments as attributes, `Xml.build(...) do
+  |root| … end` and `node.add(...) do |child| … end`) validates names, escapes
+  everything and drops characters XML forbids; mutation (`node["a"] = v`,
+  `text=`, `name=`, `append`, `insert_before`, `replace`, `remove`, `dup`, …)
+  moves nodes within a tree and copies them across trees. `to_xml` is
+  lossless by default (`indent:`, `declaration:`, `expand_empty:`), `to_h`
+  gives a Hash view, and `Xml.each(path, match) do |node| … end` /
+  `Xml.reader(path, match)` stream a file of any size one match at a time.
+  DOCTYPEs are refused; input size, depth, nodes, attributes and XPath work
+  are capped by `SOLI_MAX_XML_BYTES`, `SOLI_MAX_XML_DEPTH`,
+  `SOLI_MAX_XML_NODES`, `SOLI_MAX_XML_ATTRS` and `SOLI_MAX_XPATH_VISITS`.
+  `soli check` types the four classes and compiles literal queries. Docs:
+  `www/docs/xml.md`, `/docs/builtins/xml`; example: `examples/xml_feed.sl`.
 
 - **An overview at `/__soli/`.** Health tiles (requests over the range and their
   change, 5xx rate, p95 with p50, open errors, jobs dead/queued/oldest wait, slow
