@@ -191,18 +191,28 @@ pub fn add_method(
 
 fn build_class(name: &str, superclass: Option<Rc<Class>>, mut methods: MethodTable) -> Rc<Class> {
     let refusal = format!("{name} has no constructor: use Xml.parse, Xml.element or node.add");
+    let constructor_refusal = refusal.clone();
     methods.insert(
         NATIVE_CONSTRUCTOR.to_string(),
         Rc::new(NativeFunction::new(name.to_string(), None, move |_| {
-            Err(refusal.clone())
+            Err(constructor_refusal.clone())
         })),
     );
+    // `Klass.new` in every form (bare, `()`, positional, named) must refuse
+    // too: a native static `new` turns off the engines' attribute-hash
+    // `new` (`intercepts_new`), which would otherwise build an empty
+    // instance. `Optional` so the bare read runs it.
+    let mut statics = MethodTable::new();
+    add_static(&mut statics, name, "new", Arity::Optional, move |_| {
+        Err(refusal.clone())
+    });
     let mut const_fields = HashSet::new();
     const_fields.insert(HANDLE_FIELD.to_string());
     Rc::new(Class {
         name: name.to_string(),
         superclass,
         native_methods: methods,
+        native_static_methods: statics,
         const_fields,
         ..Default::default()
     })
