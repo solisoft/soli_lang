@@ -279,10 +279,7 @@ impl Parser {
                     }
 
                     // Check for trailing block: puts("args") { body } or puts "args" { body }
-                    if !self.no_trailing_brace
-                        && self.check(&TokenKind::LeftBrace)
-                        && !self.looks_like_hash_literal()
-                    {
+                    if self.trailing_brace_block_ahead() {
                         let block = self.parse_trailing_brace_block()?;
                         let mut args = arguments;
                         args.push(Argument::Block(block));
@@ -1019,10 +1016,7 @@ impl Parser {
                     let block = self.parse_trailing_block()?;
                     arguments.push(Argument::Block(block));
                 // Check for trailing brace block: obj.method(args) { body }
-                } else if !self.no_trailing_brace
-                    && self.check(&TokenKind::LeftBrace)
-                    && !self.looks_like_hash_literal()
-                {
+                } else if self.trailing_brace_block_ahead() {
                     let block = self.parse_trailing_brace_block()?;
                     arguments.push(Argument::Block(block));
                 // Check for trailing do block: obj.method(args) do body end
@@ -1066,10 +1060,7 @@ impl Parser {
                         span,
                     ))
                 // Check for trailing brace block: obj.method { body }
-                } else if !self.no_trailing_brace
-                    && self.check(&TokenKind::LeftBrace)
-                    && !self.looks_like_hash_literal()
-                {
+                } else if self.trailing_brace_block_ahead() {
                     let block = self.parse_trailing_brace_block()?;
                     let span = start_span.merge(&self.previous_span());
                     let member = Expr::new(
@@ -1465,6 +1456,20 @@ impl Parser {
 
     /// Parse a trailing brace block: `{ body }` or `{ |params| body }` as a lambda expression.
     fn parse_trailing_brace_block(&mut self) -> ParseResult<Expr> {
+        // The block's body is a fresh statement context: a block taken inside
+        // an `if`/`while` condition must not keep that condition's rules (no
+        // nested brace block, end at the line break) for its own statements.
+        let old_brace = self.no_trailing_brace;
+        let old_cond = self.condition_context;
+        self.no_trailing_brace = false;
+        self.condition_context = false;
+        let result = self.parse_trailing_brace_block_inner();
+        self.no_trailing_brace = old_brace;
+        self.condition_context = old_cond;
+        result
+    }
+
+    fn parse_trailing_brace_block_inner(&mut self) -> ParseResult<Expr> {
         let start_span = self.current_span();
         self.expect(&TokenKind::LeftBrace)?;
 

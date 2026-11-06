@@ -247,3 +247,61 @@ describe("Every form is equivalent to a lambda argument") do
     assert_eq(with_lambda, 3)
   end
 end
+
+# Card #657: in a condition a bare `{` is the statement's brace body, but
+# `{ |x| … }` is the call's block — a body never starts with `|`.
+describe("Brace blocks in conditions") do
+  test("if / unless / elsif") do
+    xs = [1, 2, 3]
+    seen = []
+    if xs.any? { |x| x > 2 }
+      seen.push("if")
+    end
+    unless xs.all? { |x| x > 2 }
+      seen.push("unless")
+    end
+    if xs.none? { |x| x < 2 }
+      seen.push("wrong")
+    elsif xs.find { |x| x == 2 }
+      seen.push("elsif")
+    end
+    assert_eq(seen, ["if", "unless", "elsif"])
+  end
+
+  test("chained after the block, then a brace body") do
+    hit = false
+    if [1, 2, 3].filter { |x| x > 1 }.length > 0 { hit = true }
+    assert(hit)
+  end
+
+  test("a brace body without params is still the body") do
+    hit = false
+    if [1].length > 0 { hit = true }
+    assert(hit)
+  end
+
+  test("postfix if / unless") do
+    seen = []
+    seen.push("if") if [1, 2].any? { |x| x > 1 }
+    seen.push("unless") unless [1, 2].any? { |x| x > 5 }
+    assert_eq(seen, ["if", "unless"])
+  end
+
+  test("while") do
+    n = 0
+    while [1, 2, 3].any? { |x| x > n }
+      n += 1
+    end
+    assert_eq(n, 3)
+  end
+
+  test("a block spanning lines") do
+    hit = false
+    if [1, 2, 3].any? { |x|
+      x.to_s == "3"
+    }
+      hit = true
+    end
+    assert(hit)
+  end
+end

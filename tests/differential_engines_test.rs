@@ -6203,6 +6203,36 @@ print(reader.next, reader.count)
 r2 = Xml.reader(feed, "title")
 print(r2.next.text, r2.next.text, r2.next.text, r2.next, r2.count)"##,
     ),
+    (
+        // Card #657: a `{ |x| … }` block after a call in an `if`/`unless`/
+        // `elsif`/`while` condition is the call's block, not the body.
+        "brace_block_in_condition",
+        r##"xs = [1, 2, 3]
+if xs.any? { |x| x > 2 }
+  print("any")
+end
+unless xs.all? { |x| x > 2 }
+  print("not all")
+end
+if xs.none? { |x| x > 5 }
+  print("none")
+elsif xs.any? { |x| x > 1 }
+  print("never")
+end
+if xs.filter { |x| x > 1 }.length > 0 { print("brace body") }
+print("postfix") if xs.find { |x| x == 2 }
+print("postfix unless") unless xs.any? { |x| x > 9 }
+n = 0
+while xs.any? { |x| x > n }
+  n = n + 1
+end
+print(n)
+if xs.any? { |x|
+  x.to_s == "3"
+}
+  print("multiline")
+end"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

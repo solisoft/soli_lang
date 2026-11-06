@@ -26,6 +26,20 @@
   `raw_and_triple_quoted_strings_hide_comment_markers` and their neighbours in
   `src/fmt/tests.rs` and `src/fmt/comments.rs`.
 
+- **A `{ |x| … }` block after a call in a condition is the call's block**
+  (card #657). `if xs.any? { |x| x.done }` did not compile: the parser
+  suppressed trailing brace blocks in every `if`/`unless`/`elsif`/`while`/
+  `for`/`match` head, because a `{` there may open the brace body, so the
+  block was read as the body. A `{` immediately followed by `|` is now always
+  a block (a body never starts with `|`); a `{` without `|` is still the body
+  (`if xs.map { 5 }.length > 0` is still a parse error: give the block a
+  parameter).
+  The block's own statements no longer inherit the condition's rules, so a
+  block may span lines or hold another brace block. Tests: parser
+  `test_brace_block_*_condition*`, `brace_block_in_condition` in
+  `tests/differential_engines_test.rs`, and "Brace blocks in conditions" in
+  `tests/language/trailing_blocks_spec.sl`.
+
 ## [2.30.1] - 2026-11-06
 
 ### Changed
