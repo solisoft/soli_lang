@@ -2905,6 +2905,71 @@ mod tests {
         });
     }
 
+    /// A queue with a week of history: 600 finished rows ahead of a job that
+    /// died a minute ago and a backlog waiting 40 minutes. The jobs page's
+    /// 500-row window holds only the finished rows; the overview's own read
+    /// must still find the dead job and the backlog, and count them.
+    #[test]
+    fn the_overview_sees_past_the_queue_history() {
+        with_sqlite("jobs-attention", || {
+            use crate::jobs::{iso_from_unix, unix_now};
+            let now = unix_now();
+            let row = |key: String, state: &str, run_at: i64, finished_at: Option<i64>| {
+                (
+                    key.clone(),
+                    serde_json::json!({
+                        "_key": key,
+                        "handler": "MailJob",
+                        "queue": "default",
+                        "state": state,
+                        "run_at": iso_from_unix(run_at),
+                        "finished_at": finished_at.map(iso_from_unix),
+                        "attempts": 3,
+                        "max_retries": 2,
+                    }),
+                )
+            };
+            let mut rows: Vec<(String, serde_json::Value)> = (0..600)
+                .map(|i| {
+                    let at = now - 6 * 86_400 + i;
+                    row(format!("done-{i}"), "done", at, Some(at + 1))
+                })
+                .collect();
+            rows.push(row(
+                "old-dead".into(),
+                "dead",
+                now - 3 * 86_400,
+                Some(now - 3 * 86_400),
+            ));
+            rows.push(row("fresh-dead".into(), "dead", now - 120, Some(now - 60)));
+            rows.push(row("waiting".into(), "pending", now - 2400, None));
+            rows.push(row("later".into(), "scheduled", now + 3600, None));
+            ensure_table("_jobs").expect("table");
+            insert_many("_jobs", &rows).expect("rows");
+
+            // The trap: the page's window is all history.
+            let window = crate::jobs::store::list(None).expect("list");
+            assert_eq!(window.len(), 500);
+            assert!(window.iter().all(|r| r["state"] == "done"));
+
+            let seen = crate::jobs::store::attention(
+                &iso_from_unix(now),
+                &iso_from_unix(now - 86_400),
+                500,
+            )
+            .expect("attention");
+            let keys = |rows: &[serde_json::Value]| -> Vec<String> {
+                rows.iter()
+                    .map(|r| r["_key"].as_str().unwrap_or("").to_string())
+                    .collect()
+            };
+            assert_eq!(keys(&seen.open), ["waiting", "later"]);
+            assert_eq!(keys(&seen.dead), ["fresh-dead"]);
+            assert_eq!(seen.due, 1);
+            assert_eq!(seen.dead_since, 1);
+        });
+    }
+
     #[test]
     fn a_unique_document_index_rejects_a_duplicate() {
         with_sqlite("doc-index-unique", || {

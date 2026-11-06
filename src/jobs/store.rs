@@ -155,6 +155,136 @@ pub fn list(queue: Option<&str>) -> Result<Vec<serde_json::Value>, String> {
     crud::exec_query(JOBS_COLLECTION, sdbql)
 }
 
+/// States a job is in until it finishes.
+const OPEN_STATES: [&str; 4] = ["pending", "scheduled", "failed", "running"];
+/// The open states a worker may pick up once their `run_at` is due.
+const WAITING_STATES: [&str; 3] = ["pending", "scheduled", "failed"];
+
+/// What the operator overview reads from the queue.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct QueueAttention {
+    /// Rows not finished yet, oldest `run_at` first, at most the limit asked.
+    pub open: Vec<serde_json::Value>,
+    /// Rows that died since the time asked, newest first, at most the limit.
+    pub dead: Vec<serde_json::Value>,
+    /// Waiting rows whose `run_at` is due, counted by the database.
+    pub due: u64,
+    /// Rows dead since the time asked, counted by the database.
+    pub dead_since: u64,
+}
+
+fn string_values(values: &[&str]) -> Vec<serde_json::Value> {
+    values
+        .iter()
+        .map(|v| serde_json::Value::String((*v).to_string()))
+        .collect()
+}
+
+fn cmp(field: &str, op: db::hash_filter::CmpOp, value: &str) -> db::hash_filter::HashFilter {
+    db::hash_filter::HashFilter::Cmp {
+        field: field.to_string(),
+        op,
+        value: serde_json::Value::String(value.to_string()),
+    }
+}
+
+/// The overview's queries, as SQL list queries: (open rows, dead rows, due
+/// count, dead count).
+fn attention_queries(now_iso: &str, dead_since_iso: &str, limit: usize) -> [db::ListQuery; 4] {
+    use db::hash_filter::{CmpOp, HashFilter};
+
+    let filtered = |filter: HashFilter, order: Option<&str>, desc: bool, limit: Option<usize>| {
+        let mut query = list_query(JOBS_COLLECTION, BTreeMap::new(), order, limit);
+        query.hash_filter = Some(filter);
+        query.order_desc = desc;
+        query
+    };
+    let open = HashFilter::In {
+        field: "state".to_string(),
+        values: string_values(&OPEN_STATES),
+    };
+    let dead = || {
+        HashFilter::And(vec![
+            cmp("state", CmpOp::Eq, "dead"),
+            cmp("finished_at", CmpOp::Gte, dead_since_iso),
+        ])
+    };
+    let due = HashFilter::And(vec![
+        HashFilter::In {
+            field: "state".to_string(),
+            values: string_values(&WAITING_STATES),
+        },
+        cmp("run_at", CmpOp::Lte, now_iso),
+    ]);
+    [
+        filtered(open, Some("run_at"), false, Some(limit)),
+        filtered(dead(), Some("finished_at"), true, Some(limit)),
+        filtered(due, None, false, None),
+        filtered(dead(), None, false, None),
+    ]
+}
+
+/// What needs an operator in the queue, filtered by the database.
+///
+/// Not a window over [`list`]: `done` rows are kept for a week and `dead` ones
+/// for good, so for any queue with some history the 500 oldest rows `list`
+/// returns are all finished, and a backlog or a job that died a minute ago
+/// never reached the overview. Here the open rows and the recent dead ones are
+/// two queries of their own, and the totals are counted, not read.
+pub fn attention(
+    now_iso: &str,
+    dead_since_iso: &str,
+    limit: usize,
+) -> Result<QueueAttention, String> {
+    if db::is_sql() {
+        let [open, dead, due, dead_count] = attention_queries(now_iso, dead_since_iso, limit);
+        return Ok(QueueAttention {
+            open: db::sql::select(&open)?,
+            dead: db::sql::select(&dead)?,
+            due: db::sql::count(&due)?.max(0) as u64,
+            dead_since: db::sql::count(&dead_count)?.max(0) as u64,
+        });
+    }
+    let quoted = |states: &[&str]| {
+        states
+            .iter()
+            .map(|s| format!("\"{s}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let now = escape_sdbql(now_iso);
+    let since = escape_sdbql(dead_since_iso);
+    let open_filter = format!("doc.state IN [{}]", quoted(&OPEN_STATES));
+    let dead_filter = format!("doc.state == \"dead\" AND doc.finished_at >= \"{since}\"");
+    let due_filter = format!(
+        "doc.state IN [{}] AND doc.run_at <= \"{now}\"",
+        quoted(&WAITING_STATES)
+    );
+    let count = |filter: &str| -> Result<u64, String> {
+        let sdbql = format!("RETURN LENGTH(FOR doc IN {JOBS_COLLECTION} FILTER {filter} RETURN 1)");
+        let rows = crud::exec_query(JOBS_COLLECTION, sdbql)?;
+        Ok(rows.first().and_then(|v| v.as_u64()).unwrap_or(0))
+    };
+    Ok(QueueAttention {
+        open: crud::exec_query(
+            JOBS_COLLECTION,
+            format!(
+                "FOR doc IN {JOBS_COLLECTION} FILTER {open_filter} \
+                 SORT doc.run_at ASC LIMIT {limit} RETURN doc"
+            ),
+        )?,
+        dead: crud::exec_query(
+            JOBS_COLLECTION,
+            format!(
+                "FOR doc IN {JOBS_COLLECTION} FILTER {dead_filter} \
+                 SORT doc.finished_at DESC LIMIT {limit} RETURN doc"
+            ),
+        )?,
+        due: count(&due_filter)?,
+        dead_since: count(&dead_filter)?,
+    })
+}
+
 /// Distinct queue names across non-terminal rows.
 ///
 /// Excludes terminal rows in the *query* rather than after the fact. Filtering a
