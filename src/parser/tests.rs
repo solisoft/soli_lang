@@ -1361,6 +1361,104 @@ mod parser_tests {
         }
     }
 
+    /// The condition of an `if`/`while`/… statement, asserting the call in it
+    /// took the `{ |x| … }` block (card #657).
+    fn condition_call_has_block(cond: &Expr) -> bool {
+        match &cond.kind {
+            ExprKind::Call { arguments, .. } => {
+                matches!(arguments.last(), Some(Argument::Block(_)))
+            }
+            ExprKind::Binary { left, .. } => condition_call_has_block(left),
+            ExprKind::Member { object, .. } => condition_call_has_block(object),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn test_brace_block_with_params_in_if_condition() {
+        match parse_stmt("if xs.any? { |x| x.done }\n  print(1)\nend") {
+            StmtKind::If {
+                condition,
+                then_branch,
+                ..
+            } => {
+                assert!(condition_call_has_block(&condition), "{:?}", condition);
+                match then_branch.kind {
+                    StmtKind::Block(stmts) => assert_eq!(stmts.len(), 1),
+                    other => panic!("Expected block body, got {:?}", other),
+                }
+            }
+            other => panic!("Expected if, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_brace_block_in_unless_while_elsif_conditions() {
+        match parse_stmt("unless xs.all? { |x| x > 1 }\n  print(1)\nend") {
+            StmtKind::Unless { condition, .. } => assert!(condition_call_has_block(&condition)),
+            other => panic!("Expected unless, got {:?}", other),
+        }
+        match parse_stmt("while xs.any? { |x| x > n }\n  n += 1\nend") {
+            StmtKind::While { condition, .. } => assert!(condition_call_has_block(&condition)),
+            other => panic!("Expected while, got {:?}", other),
+        }
+        match parse_stmt("if a\n  1\nelsif xs.find { |x| x == 2 }\n  2\nend") {
+            StmtKind::If {
+                else_branch: Some(else_branch),
+                ..
+            } => match else_branch.kind {
+                StmtKind::If { condition, .. } => assert!(condition_call_has_block(&condition)),
+                other => panic!("Expected elsif, got {:?}", other),
+            },
+            other => panic!("Expected if/elsif, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_brace_block_chained_in_condition_then_brace_body() {
+        // The block binds to `filter`, the comparison continues, and the
+        // following `{ … }` (no `|`) is still the brace body.
+        match parse_stmt("if xs.filter { |x| x > 1 }.length > 0 { print(1) }") {
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                assert!(matches!(condition.kind, ExprKind::Binary { .. }));
+                assert!(condition_call_has_block(&condition));
+                assert!(else_branch.is_none());
+                match then_branch.kind {
+                    StmtKind::Block(stmts) => assert_eq!(stmts.len(), 1),
+                    other => panic!("Expected block body, got {:?}", other),
+                }
+            }
+            other => panic!("Expected if, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_brace_body_without_pipe_stays_the_body() {
+        // `{` with no `|` after a call in a condition is still the body.
+        match parse_stmt("if xs.empty? { print(1) }") {
+            StmtKind::If {
+                condition,
+                then_branch,
+                ..
+            } => {
+                assert!(!condition_call_has_block(&condition));
+                assert!(matches!(then_branch.kind, StmtKind::Block(_)));
+            }
+            other => panic!("Expected if, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_brace_block_in_postfix_condition() {
+        let stmts =
+            parse_stmts("print(1) if xs.any? { |x| x > 1 }\nprint(2) unless xs.any? { |x| x > 9 }");
+        assert_eq!(stmts.len(), 2);
+    }
+
     #[test]
     fn test_empty_pipe_lambda_end_body_in_call() {
         // run(||\n  42\nend)

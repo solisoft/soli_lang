@@ -85,6 +85,16 @@ impl Parser {
         result
     }
 
+    /// Whether the `{` at the cursor opens a trailing block for the call just
+    /// parsed. Inside a condition (`if`/`while`/`for`/`match` head) a bare `{`
+    /// is the statement's brace body, but `{ |x| … }` still binds to the call:
+    /// a body never starts with `|`, so `if xs.any? { |x| x.done }` is a block.
+    pub(crate) fn trailing_brace_block_ahead(&self) -> bool {
+        self.check(&TokenKind::LeftBrace)
+            && (!self.no_trailing_brace || matches!(self.peek_nth(1).kind, TokenKind::Pipe))
+            && !self.looks_like_hash_literal()
+    }
+
     /// Parse a condition: no trailing brace (that is the body), and no operator
     /// continuation onto the next line (that is the body too).
     pub(crate) fn expression_condition(&mut self) -> ParseResult<Expr> {
