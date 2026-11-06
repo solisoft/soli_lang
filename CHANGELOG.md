@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.31.0] - 2026-11-06
+
 ### Added
 
 - **`Xml.parse(src, doctype: "skip")` reads past a `<!DOCTYPE …>`** instead of
