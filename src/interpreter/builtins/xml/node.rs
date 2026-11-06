@@ -606,23 +606,17 @@ pub(crate) fn xml_statics(table: &mut MethodTable) {
             _ => false,
         }))
     });
-    add_static(
-        table,
-        "Xml",
-        "escape",
-        Arity::Exact(1),
-        |args| {
-            let value = args.first().unwrap_or(&Value::Null);
-            match scalar_text(value) {
-                Some(text) => Ok(Value::String(escape::escape5(&text).into())),
-                None if matches!(value, Value::Null) => Ok(Value::String("".into())),
-                None => Err(format!(
-                    "Xml.escape: expects a String, got {}",
-                    value.type_name()
-                )),
-            }
-        },
-    );
+    add_static(table, "Xml", "escape", Arity::Exact(1), |args| {
+        let value = args.first().unwrap_or(&Value::Null);
+        match scalar_text(value) {
+            Some(text) => Ok(Value::String(escape::escape5(&text).into())),
+            None if matches!(value, Value::Null) => Ok(Value::String("".into())),
+            None => Err(format!(
+                "Xml.escape: expects a String, got {}",
+                value.type_name()
+            )),
+        }
+    });
     add_static(table, "Xml", "document", Arity::Optional, |args| {
         new_document(args, "Xml.document", false)
     });
