@@ -670,6 +670,12 @@ impl Vm {
         if native.name == "with_tenant" {
             return self.call_with_tenant_block(args, span);
         }
+        // `Xml.build(…) do |root| … end`, `node.add(…) do |child| … end`.
+        if crate::interpreter::builtins::xml::block::takes_block(&native.name) {
+            let result = self.call_xml_block_native(native, args, span)?;
+            self.push(result);
+            return Ok(());
+        }
         // SEC-013b: `render_json(record)` sends what the class's `as_json`
         // returns, as on the tree-walker (`try_evaluate_render_json_with_as_json`).
         // The native has no engine to call a user method with, so on the VM
@@ -729,6 +735,23 @@ impl Vm {
         drop(_native_span);
         self.push(result);
         Ok(())
+    }
+
+    /// A block-taking XML native: the native runs, then the block with the
+    /// root or the new child. See `builtins::xml::block`.
+    fn call_xml_block_native(
+        &mut self,
+        native: &NativeFunction,
+        args: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        crate::interpreter::builtins::xml::block::run(
+            &native.name,
+            args,
+            |args| (native.func)(args),
+            |block, subject| self.invoke_callable(block, &[subject], span),
+            span,
+        )
     }
 
     fn is_callable_block(value: &Value) -> bool {
@@ -2174,6 +2197,16 @@ impl Vm {
                 if argc != expected {
                     return Err(RuntimeError::wrong_arity(expected, argc, span));
                 }
+            }
+            // `node.add("x") do |child| … end`: the XML block builder.
+            if crate::interpreter::builtins::xml::block::takes_block(&native.name) {
+                let mut args = Vec::with_capacity(argc + 1);
+                args.push(Value::Instance(inst));
+                args.extend(self.stack.drain(receiver_idx + 1..));
+                self.stack.truncate(receiver_idx);
+                let result = self.call_xml_block_native(&native, args, span)?;
+                self.stack.push(result);
+                return Ok(());
             }
             let _native_span = crate::serve::span_log::maybe_instrument_native(&native.name);
             let result = {

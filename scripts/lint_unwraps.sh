@@ -24,6 +24,10 @@ src/interpreter/value_json.rs|JSON parsing of network bodies
 src/interpreter/value_stringify.rs|serialization of runtime values
 yaml/src|YAML parser behind Yaml.parse and locale files
 src/xml|XML core behind Xml.parse, SOAP.parse and the c14n trio (network bodies)
+src/interpreter/builtins/xml/mod.rs|XML binding: registration of Xml, XmlNode, XmlDocument
+src/interpreter/builtins/xml/value.rs|XML binding: node handles and the engine hooks
+src/interpreter/builtins/xml/node.rs|XML binding: Xml.parse and the node methods (network bodies)
+src/interpreter/builtins/xml/block.rs|XML binding: the block builder the engines run
 "
 
 count() {

@@ -9,6 +9,7 @@
 //! - `c14n.rs` — exclusive canonicalisation and the `get_element_by_id` /
 //!   `get_elements_by_tag` statics, which keep their own parser.
 
+pub mod block;
 pub mod c14n;
 pub mod node;
 pub mod value;
