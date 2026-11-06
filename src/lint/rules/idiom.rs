@@ -226,14 +226,36 @@ fn binding_from_find(stmt: &Stmt) -> Option<String> {
     }
 }
 
+/// `Model.find(..)` — a `.find` called directly on a class name. Only that
+/// form raises `RecordNotFound`: `Array#find`, `Hash#find`, `XmlNode#find`
+/// and a query chain's `.find` (`Post.where(..).find { .. }`, which runs over
+/// the materialized rows) all return nil on a miss, so a guard after them is
+/// live code. A lowercase variable, `@ivar`, `this` or a call result is never
+/// taken for a model.
 fn is_find_call(expr: &Expr) -> bool {
     let ExprKind::Call { callee, .. } = &expr.kind else {
         return false;
     };
-    matches!(
-        &callee.kind,
-        ExprKind::Member { name, .. } | ExprKind::SafeMember { name, .. } if name == "find"
-    )
+    match &callee.kind {
+        ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
+            if name == "find" =>
+        {
+            is_class_name(object)
+        }
+        _ => false,
+    }
+}
+
+/// `User`, `Admin::User` — a PascalCase name, not a `SCREAMING_CASE` constant.
+fn is_class_name(expr: &Expr) -> bool {
+    let name = match &expr.kind {
+        ExprKind::Variable(name) => name,
+        ExprKind::QualifiedName { name, .. } => name,
+        _ => return false,
+    };
+    name.starts_with(|c: char| c.is_ascii_uppercase())
+        && name.chars().any(|c| c.is_ascii_lowercase())
+        && !name.contains('_')
 }
 
 /// If `stmt` is a nil-guard on a single variable — `if x.nil? ...`,
@@ -579,6 +601,49 @@ mod tests {
         let mut d = Vec::new();
         check_manual_find_guard(&stmts, &mut d);
         assert!(d.is_empty());
+    }
+
+    fn find_then_guard(receiver: Expr) -> Vec<LintDiagnostic> {
+        let find = call(member(receiver, "find"), vec![string("item")]);
+        let stmts = vec![let_stmt("node", find), if_stmt(member(var("node"), "nil?"))];
+        let mut d = Vec::new();
+        check_manual_find_guard(&stmts, &mut d);
+        d
+    }
+
+    #[test]
+    fn flags_nil_guard_after_qualified_model_find() {
+        let receiver = Expr::new(
+            ExprKind::QualifiedName {
+                qualifier: Box::new(var("Admin")),
+                name: "User".to_string(),
+            },
+            Span::new(0, 0, 1, 1),
+        );
+        assert_eq!(find_then_guard(receiver).len(), 1);
+    }
+
+    /// `node = doc.find("item")` — XmlNode#find returns nil on a miss, so
+    /// the guard is live code (card #661).
+    #[test]
+    fn ignores_guard_after_find_on_lowercase_variable() {
+        assert!(find_then_guard(var("doc")).is_empty());
+        assert!(find_then_guard(var("xs")).is_empty());
+    }
+
+    #[test]
+    fn ignores_guard_after_find_on_ivar_this_or_call_result() {
+        let this = || Expr::new(ExprKind::This, Span::new(0, 0, 1, 1));
+        // `@doc.find(..)` parses as `this.doc.find(..)`.
+        assert!(find_then_guard(member(this(), "doc")).is_empty());
+        assert!(find_then_guard(this()).is_empty());
+        let chain = call(member(var("Post"), "where"), vec![string("x")]);
+        assert!(find_then_guard(chain).is_empty());
+    }
+
+    #[test]
+    fn ignores_guard_after_find_on_screaming_constant() {
+        assert!(find_then_guard(var("ITEMS")).is_empty());
     }
 
     #[test]

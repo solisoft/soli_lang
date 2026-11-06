@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.30.1.</p>
+        <h3 id="unreleased-devtools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">idiom/manual-find-guard</code> only fires after <code class="text-cyan-400">Model.find</code>.</strong> It matched any <code class="text-cyan-400">.find(...)</code>, so a nil-check after <code class="text-cyan-400">node = doc.find("item")</code> was reported as dead code although <code class="text-cyan-400">XmlNode#find</code> returns nil on a miss &mdash; as do <code class="text-cyan-400">Array#find</code>, <code class="text-cyan-400">Hash#find</code> and a query chain's <code class="text-cyan-400">.find { … }</code>. The receiver must now be a class name (<code class="text-cyan-400">Post.find</code>, <code class="text-cyan-400">Admin::User.find</code>); a variable, <code class="text-cyan-400">@ivar</code> or call result is left alone (<a href="/docs/development-tools/linting" class="text-amber-400 hover:underline">Linting</a>).</li>
+        </ul>
     </section>
 
     <section id="v2-30-1" class="mb-16 scroll-mt-24">

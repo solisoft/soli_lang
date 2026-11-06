@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`idiom/manual-find-guard` only fires after `Model.find`.** It matched any
+  `.find(...)` call, so `node = doc.find("item")` followed by
+  `return nil if node.nil?` was reported as dead code although `XmlNode#find`
+  returns nil on a miss — as do `Array#find`, `Hash#find` and a query chain's
+  `.find { … }`, which runs over the loaded rows. The rule now requires the
+  receiver to be a class name (`Post.find`, `Admin::User.find`); a lowercase
+  variable, `@ivar`, `this` or a call result is never taken for a model
+
 ## [2.30.1] - 2026-11-06
 
 ### Changed

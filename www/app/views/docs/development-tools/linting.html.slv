@@ -267,7 +267,7 @@ Post.create(this._permit_params(params))</code></pre>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">idiom/manual-find-guard</code>
-                <p class="text-gray-400 mt-2"><code>Model.find</code> raises <code>RecordNotFound</code> on a miss (which the request handler turns into a 404), so a nil-check on its result never runs. Drop it, or use <code class="text-amber-400">find_by</code> / <code class="text-amber-400">first_by</code> when you want a nil result.</p>
+                <p class="text-gray-400 mt-2"><code>Model.find</code> raises <code>RecordNotFound</code> on a miss (which the request handler turns into a 404), so a nil-check on its result never runs. Drop it, or use <code class="text-amber-400">find_by</code> / <code class="text-amber-400">first_by</code> when you want a nil result. Only <code>.find</code> on a class name (<code>Post.find</code>, <code>Admin::User.find</code>) is checked: <code>Array#find</code>, <code>Hash#find</code>, <code>XmlNode#find</code> and a query chain's <code>.find { … }</code> return nil on a miss, so a guard after <code>doc.find("item")</code> or <code>@doc.find(…)</code> is left alone.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad - dead code: .find already raised
 post = Post.find(id)
 return not_found() if post.nil?

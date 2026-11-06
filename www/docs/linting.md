@@ -164,6 +164,12 @@ post = Post.find(id)
 post = Post.find_by("slug", slug)
 ```
 
+The rule only looks at `.find` called on a class name (`Post.find`,
+`Admin::User.find`). Every other `find` returns nil on a miss — `Array#find`,
+`Hash#find`, `XmlNode#find`, and a query chain's `.find { … }`, which runs over
+the loaded rows — so a guard after `doc.find("item")`, `@doc.find(…)` or
+`xs.find { |x| … }` is live code and is left alone.
+
 ### Security
 
 `security/unfiltered-mass-assignment` — `Model.create(params)`, `.update` and
