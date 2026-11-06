@@ -4,7 +4,8 @@
 //!
 //! Recognizes `#` line comments, `//` line comments, and `/* … */` block
 //! comments. Skips comment-like bytes that appear inside string literals
-//! (`"…"`, `'…'`, `@"…"`, ``` `…` ```) and inside `@sdbql{…}` blocks.
+//! (`"…"`, `'…'`, `r"…"`, `"""…"""`, ``` `…` ```) and inside `@sdbql{…}`
+//! blocks.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommentKind {
@@ -66,87 +67,57 @@ pub fn extract_comments(source: &str) -> Vec<Comment> {
         }
 
         // String literal — skip its body so `#`/`//` inside don't register.
-        if b == b'"' || b == b'\'' {
-            let quote = b;
-            i += 1;
-            col += 1;
-            while i < bytes.len() && bytes[i] != quote {
-                if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                    // Skip an escape sequence.
-                    if bytes[i + 1] == b'\n' {
-                        line += 1;
-                        col = 1;
-                        i += 2;
-                        continue;
-                    }
-                    i += 2;
-                    col += 2;
-                    continue;
-                }
-                if bytes[i] == b'\n' {
+        // The end is found by the lexer's own rule (`quoted_string_end`): a
+        // string nested in a `#{…}` is part of the outer literal, so
+        // `"#{doc.fetch(".//TEXT")} tail"` holds no comment.
+        if b == b'"' || b == b'\'' || raw_string_at(bytes, i) {
+            let end = if b == b'r' {
+                raw_string_end(bytes, i + 1)
+            } else {
+                quoted_string_end(bytes, i)
+            };
+            for &c in &bytes[i..end] {
+                if c == b'\n' {
                     line += 1;
                     col = 1;
                 } else {
                     col += 1;
                 }
+            }
+            i = end;
+            continue;
+        }
+
+        // `@sdbql{…}` / `@sdql{…}` query block. (`@"…"` is not a form of its
+        // own: the lexer reads `@` then an ordinary string, and so does this.)
+        if b == b'@'
+            && (starts_with(bytes, i + 1, b"sdbql{") || starts_with(bytes, i + 1, b"sdql{"))
+        {
+            // Skip until the matching closing `}` (1-depth, since we're
+            // not interpolating).
+            while i < bytes.len() && bytes[i] != b'{' {
                 i += 1;
+                col += 1;
             }
             if i < bytes.len() {
                 i += 1;
                 col += 1;
             }
+            let mut depth = 1u32;
+            while i < bytes.len() && depth > 0 {
+                let c = bytes[i];
+                if c == b'{' {
+                    depth += 1;
+                } else if c == b'}' {
+                    depth -= 1;
+                } else if c == b'\n' {
+                    line += 1;
+                    col = 0;
+                }
+                i += 1;
+                col += 1;
+            }
             continue;
-        }
-
-        // `@"…"` raw string or `@sdbql{…}` / `@sdql{…}` query block.
-        if b == b'@' && i + 1 < bytes.len() {
-            let next = bytes[i + 1];
-            if next == b'"' {
-                // Raw string until next `"`.
-                i += 2;
-                col += 2;
-                while i < bytes.len() && bytes[i] != b'"' {
-                    if bytes[i] == b'\n' {
-                        line += 1;
-                        col = 1;
-                    } else {
-                        col += 1;
-                    }
-                    i += 1;
-                }
-                if i < bytes.len() {
-                    i += 1;
-                    col += 1;
-                }
-                continue;
-            }
-            if starts_with(bytes, i + 1, b"sdbql{") || starts_with(bytes, i + 1, b"sdql{") {
-                // Skip until the matching closing `}` (1-depth, since we're
-                // not interpolating).
-                while i < bytes.len() && bytes[i] != b'{' {
-                    i += 1;
-                    col += 1;
-                }
-                if i < bytes.len() {
-                    i += 1;
-                    col += 1;
-                }
-                let mut depth = 1u32;
-                while i < bytes.len() && depth > 0 {
-                    let c = bytes[i];
-                    if c == b'{' {
-                        depth += 1;
-                    } else if c == b'}' {
-                        depth -= 1;
-                    } else if c == b'\n' {
-                        line += 1;
-                        col = 0;
-                    }
-                    i += 1;
-                    col += 1;
-                }
-                continue;
-            }
         }
 
         // Command substitution: `…`.
@@ -243,6 +214,61 @@ pub fn extract_comments(source: &str) -> Vec<Comment> {
     out
 }
 
+/// Index just past the `"…"` / `'…'` literal whose opening quote is at
+/// `open` — the lexer's rule (`Scanner::scan_string`), so the two agree on
+/// where a string ends. A backslash escapes the next byte. `#{` opens an
+/// interpolation, after which `{`/`}` count depth; while the depth is above
+/// zero a quote of either kind is part of the expression (a nested string's
+/// delimiter), not the end of the literal. At depth zero the opening quote
+/// closes it. Unterminated: the end of the source.
+pub(crate) fn quoted_string_end(bytes: &[u8], open: usize) -> usize {
+    let quote = bytes[open];
+    let mut interpolated = false;
+    let mut depth = 0u32;
+    let mut i = open + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'#' if bytes.get(i + 1) == Some(&b'{') => {
+                interpolated = true;
+                depth = 1;
+                i += 2;
+                continue;
+            }
+            b'{' if interpolated => depth += 1,
+            b'}' if interpolated && depth > 0 => depth -= 1,
+            c if c == quote && depth == 0 => return i + 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    bytes.len()
+}
+
+/// Whether `r"…"` / `r'…'` raw string starts at `at`: an `r` followed by a
+/// quote that does not end an identifier (`bar"x"` is not one).
+pub(crate) fn raw_string_at(bytes: &[u8], at: usize) -> bool {
+    bytes[at] == b'r'
+        && matches!(bytes.get(at + 1), Some(b'"' | b'\''))
+        && !(at > 0 && {
+            let prev = bytes[at - 1];
+            prev.is_ascii_alphanumeric() || prev == b'_' || prev == b'@' || prev >= 0x80
+        })
+}
+
+/// Index just past the raw string whose opening quote is at `open`: the next
+/// matching quote, no escapes (`r"C:\"` ends at its second quote).
+pub(crate) fn raw_string_end(bytes: &[u8], open: usize) -> usize {
+    let quote = bytes[open];
+    bytes[open + 1..]
+        .iter()
+        .position(|&c| c == quote)
+        .map_or(bytes.len(), |p| open + 1 + p + 1)
+}
+
 fn starts_with(bytes: &[u8], at: usize, needle: &[u8]) -> bool {
     bytes.get(at..at + needle.len()) == Some(needle)
 }
@@ -310,5 +336,28 @@ mod tests {
         let cs = extract_comments(src);
         assert_eq!(cs.len(), 1);
         assert_eq!(cs[0].text, "# real");
+    }
+
+    #[test]
+    fn a_string_nested_in_an_interpolation_is_part_of_the_literal() {
+        let src = "m = \"#{doc.fetch(\".//TEXT\") ?? \"x\"} (code 1)\" # real\n";
+        let cs = extract_comments(src);
+        assert_eq!(cs.len(), 1);
+        assert_eq!(cs[0].text, "# real");
+        assert_eq!(cs[0].column, src.rfind("# real").unwrap() + 1);
+
+        let src = "s = '#{h['//']} // x' // real\n";
+        let cs = extract_comments(src);
+        assert_eq!(cs.len(), 1);
+        assert_eq!(cs[0].text, "// real");
+    }
+
+    #[test]
+    fn raw_strings_end_at_their_next_quote() {
+        let cs = extract_comments("p = r\"C:\\\" # real\nq = r'//'\n");
+        assert_eq!(cs.len(), 1);
+        assert_eq!(cs[0].text, "# real");
+        // `bar"x"` is an identifier then a string, not a raw string.
+        assert!(!raw_string_at(b"bar\"x\"", 2));
     }
 }

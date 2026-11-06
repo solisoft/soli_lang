@@ -10,6 +10,8 @@
 //! same bytes. It must not run on code written since: `[["a", 1]]` is a
 //! nested array now, and this rule would read it as a string.
 
+use super::comments::{quoted_string_end, raw_string_at, raw_string_end};
+
 /// The rewritten source, how many literals were converted, and the 1-based
 /// lines of `[[`-strings that could not be (their content holds `"""`, which
 /// would close the new literal early). Those are left as they are.
@@ -44,14 +46,16 @@ pub fn migrate_legacy_raw_strings(source: &str) -> (String, usize, Vec<usize>) {
             skip_to(&mut i, end, &mut line);
             continue;
         }
-        // `"…"` / `'…'`, with escapes (`r"…"` is covered: the `r` is plain
-        // code and its body holds no backslash escape to mis-skip).
+        // `"…"` / `'…'` by the lexer's rule (escapes, and strings nested in
+        // `#{…}` belong to the literal), `r"…"` to its next quote.
         if b == b'"' || b == b'\'' {
-            let mut j = i + 1;
-            while j < bytes.len() && bytes[j] != b {
-                j += if bytes[j] == b'\\' { 2 } else { 1 };
-            }
-            skip_to(&mut i, (j + 1).min(bytes.len()), &mut line);
+            let end = quoted_string_end(bytes, i);
+            skip_to(&mut i, end, &mut line);
+            continue;
+        }
+        if raw_string_at(bytes, i) {
+            let end = raw_string_end(bytes, i + 1);
+            skip_to(&mut i, end, &mut line);
             continue;
         }
         // `@sdbql{…}` / `@sdql{…}`: to the matching brace.
@@ -163,6 +167,8 @@ mod tests {
             "# [[ a comment ]]",
             "q = @sdbql{ FOR x IN [[1]] RETURN x }",
             "r = \"\"\"keep [[this]]\"\"\"",
+            "s = \"#{a[\"x\"]} [[not code]]\"",
+            "p = r\"\\\" # [[ a comment ]]",
         ] {
             assert_eq!(migrate(src), src);
         }
