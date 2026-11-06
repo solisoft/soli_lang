@@ -6,6 +6,7 @@
 //! - `node.rs` — the node methods and the `Xml` statics that build trees.
 //! - `reader.rs` — streaming: `Xml.each` (run by the engines through the
 //!   block builder's sites) and `Xml.reader` / `XmlReader`.
+//! - `query.rs` — `find`, `find_all`, `xpath` and `at_xpath`.
 //! - `block.rs` — the block builder (`Xml.build … do`, `node.add … do`), run
 //!   by the engines.
 //! - `c14n.rs` — exclusive canonicalisation and the `get_element_by_id` /
@@ -14,6 +15,7 @@
 pub mod block;
 pub mod c14n;
 pub mod node;
+pub mod query;
 pub mod reader;
 pub mod value;
 

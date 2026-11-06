@@ -24,8 +24,10 @@ use crate::xml::{
 /// result never recurses past a bounded depth.
 const MAX_TO_H_DEPTH: usize = 1024;
 
-/// Lane L2 registers `find`, `find_all`, `xpath` and `at_xpath` here.
-pub(crate) fn register_query_methods(_map: &mut MethodTable) {}
+/// `find`, `find_all`, `xpath` and `at_xpath` (lane L2, `query.rs`).
+pub(crate) fn register_query_methods(map: &mut MethodTable) {
+    super::query::register(map);
+}
 
 // --------------------------------------------------------------- arguments
 

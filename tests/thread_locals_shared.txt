@@ -113,6 +113,7 @@ src/interpreter/builtins/image.rs CLASS
 src/interpreter/builtins/image.rs CLASS
 src/interpreter/builtins/xml/value.rs DOCUMENT_CLASS
 src/interpreter/builtins/xml/value.rs NODE_CLASS
+src/interpreter/builtins/xml/query.rs XPATH_CACHE
 src/interpreter/builtins/jobs.rs JOB_CLASSES
 src/interpreter/builtins/model/registry.rs MODEL_CLASSES
 src/interpreter/builtins/model/registry.rs ENUM_FIELDS

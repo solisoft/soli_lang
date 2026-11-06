@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <title>Soli News</title>
+  <link href="https://example.com/" rel="alternate"/>
+  <link href="https://example.com/feed.atom" rel="self"/>
+  <updated>2026-11-05T12:00:00Z</updated>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
+  <entry>
+    <title>XML lands in Soli</title>
+    <link href="https://example.com/posts/xml" rel="alternate"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+    <updated>2026-11-05T12:00:00Z</updated>
+    <media:thumbnail url="https://example.com/xml.png"/>
+    <summary type="html">Parse, query &amp; build</summary>
+  </entry>
+  <entry>
+    <title>XPath, the subset</title>
+    <link href="https://example.com/posts/xpath" rel="alternate"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6b</id>
+    <updated>2026-11-04T12:00:00Z</updated>
+  </entry>
+</feed>
