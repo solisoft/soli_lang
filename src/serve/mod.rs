@@ -62,6 +62,7 @@ pub(crate) mod coroutine {
         }
     }
 }
+mod attention;
 pub mod cors;
 mod coverage;
 mod csrf;
@@ -96,6 +97,7 @@ pub mod openapi;
 mod operator_shell;
 mod origin;
 pub mod otel;
+mod overview;
 pub mod phase_log;
 mod pipeline;
 pub mod pow;
@@ -2597,6 +2599,20 @@ async fn handle_hyper_request(
         return Ok(response);
     }
 
+    // The overview at `/__soli/`: what needs attention across the pages
+    // below, and app usage. Opens for anyone who may open one of them, and
+    // shows each source only to who may open its page. See `overview`.
+    if let Some(resp) = overview::dispatch(
+        &method,
+        &path,
+        req.uri().query(),
+        req.headers(),
+        dev_mode,
+        peer_addr.ip(),
+    ) {
+        return Ok(resp);
+    }
+
     // Job dashboard: open in --dev to a local request (loopback peer, local
     // host name); otherwise, and in production, only when credentials
     // are configured (Basic and/or Bearer). Unconfigured production 404s
@@ -4672,6 +4688,10 @@ where
                 "[soli] handler panicked serving {} {} — returning 500 (worker survived)",
                 method, path
             );
+            // For the overview: the route pattern, never the raw path.
+            let subject = usage::current_route_label()
+                .unwrap_or_else(|| format!("{method} {}", attention::pattern_like(path)));
+            engine_events::record(engine_events::EngineKind::Panic, &subject, "");
             crate::interpreter::builtins::streaming::clear_pending_stream();
             blob_stream::clear_pending();
             panic_response()
