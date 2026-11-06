@@ -1834,42 +1834,39 @@ fn multipart_part(name: &str, value: &Value, caller: &str) -> Result<MultipartPa
 /// Send a reqwest request, recording method/url/status/duration in the
 /// per-request HTTP log when dev mode is on. Returns the response on success
 /// or the original error string on failure.
-async fn send_logged(
+///
+/// With tracing on, the request also carries the W3C `traceparent` (and the
+/// inbound `tracestate`) naming the CLIENT span recorded for it, unless the
+/// caller set those headers itself — see `serve::otel_propagation`. Runs on
+/// the calling thread (`block_on_user_http` polls it there), which is where
+/// the trace being served lives.
+pub(crate) async fn send_logged(
     method: &str,
     url: &str,
     builder: reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, String> {
+    let outbound = crate::serve::otel_propagation::OutboundCall::begin();
     // Either log enables timing capture — http_log for the queries panel,
     // span_log for the flamegraph. They share the same `start` instant.
     let logging = crate::interpreter::builtins::http_log::is_enabled()
         || crate::serve::span_log::is_enabled();
     let start = logging.then(web_time::Instant::now);
-    match builder.send().await {
+    let sent = match with_trace_headers(builder, outbound.as_ref()) {
+        Ok(builder) => builder.send().await,
+        Err(e) => Err(e),
+    };
+    let span = outbound.and_then(|call| call.span);
+    match sent {
         Ok(resp) => {
             if let Some(s) = start {
-                let dur = s.elapsed().as_secs_f64() * 1000.0;
-                let status = resp.status().as_u16();
-                // Scrubbed: a span name is exported off-box to the OTel collector,
-                // so it must not carry credentials from the query string or
-                // userinfo. The `http_log::record` call below scrubs too.
-                let span_name = format!(
-                    "{} {}",
-                    method,
-                    crate::interpreter::builtins::http_log::scrub_url_for_log(url)
-                );
-                crate::serve::span_log::record(
-                    &span_name,
-                    crate::serve::span_log::SpanKind::Http,
-                    s,
-                    s.elapsed().as_micros() as u64,
-                    None,
-                );
-                crate::interpreter::builtins::http_log::record(
+                crate::interpreter::builtins::http_log::record_call(
                     method.to_string(),
                     url.to_string(),
-                    status,
-                    dur,
+                    resp.status().as_u16(),
+                    s.elapsed().as_secs_f64() * 1000.0,
                     None,
+                    s,
+                    span,
                 );
             }
             Ok(resp)
@@ -1880,33 +1877,49 @@ async fn send_logged(
             // reactor.
             let msg = describe_request_error(&e);
             if let Some(s) = start {
-                let dur = s.elapsed().as_secs_f64() * 1000.0;
-                // Scrubbed: a span name is exported off-box to the OTel collector,
-                // so it must not carry credentials from the query string or
-                // userinfo. The `http_log::record` call below scrubs too.
-                let span_name = format!(
-                    "{} {}",
-                    method,
-                    crate::interpreter::builtins::http_log::scrub_url_for_log(url)
-                );
-                crate::serve::span_log::record(
-                    &span_name,
-                    crate::serve::span_log::SpanKind::Http,
-                    s,
-                    s.elapsed().as_micros() as u64,
-                    Some(msg.clone()),
-                );
-                crate::interpreter::builtins::http_log::record(
+                crate::interpreter::builtins::http_log::record_call(
                     method.to_string(),
                     url.to_string(),
                     0,
-                    dur,
+                    s.elapsed().as_secs_f64() * 1000.0,
                     Some(msg.clone()),
+                    s,
+                    span,
                 );
             }
             Err(msg)
         }
     }
+}
+
+/// Add the trace headers of `call` to a built request, keeping any
+/// `traceparent` / `tracestate` the caller set. A builder that does not build
+/// returns its error, which `send` would have returned anyway.
+#[cfg(not(target_arch = "wasm32"))]
+fn with_trace_headers(
+    builder: reqwest::RequestBuilder,
+    call: Option<&crate::serve::otel_propagation::OutboundCall>,
+) -> Result<reqwest::RequestBuilder, reqwest::Error> {
+    let Some(call) = call else {
+        return Ok(builder);
+    };
+    let (client, request) = builder.build_split();
+    let mut request = request?;
+    let missing = call.headers_missing(|name| request.headers().contains_key(name));
+    for (name, value) in missing {
+        if let Ok(value) = reqwest::header::HeaderValue::from_str(&value) {
+            request.headers_mut().insert(name, value);
+        }
+    }
+    Ok(reqwest::RequestBuilder::from_parts(client, request))
+}
+/// The edge build serves no OTLP trace: nothing to add.
+#[cfg(target_arch = "wasm32")]
+fn with_trace_headers(
+    builder: reqwest::RequestBuilder,
+    _call: Option<&crate::serve::otel_propagation::OutboundCall>,
+) -> Result<reqwest::RequestBuilder, reqwest::Error> {
+    Ok(builder)
 }
 
 pub fn register_http_class(env: &mut Environment) {
@@ -3373,6 +3386,8 @@ struct ParallelCallStats {
     duration_ms: f64,
     status: u16,
     error: Option<String>,
+    /// The CLIENT span id its `traceparent` named, taken on the calling thread.
+    span: Option<crate::serve::span_log::Reserved>,
 }
 
 fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
@@ -3382,15 +3397,27 @@ fn record_parallel_stats(stats: Vec<ParallelCallStats>) {
         return;
     }
     for s in stats {
-        crate::interpreter::builtins::http_log::record_with_start(
+        crate::interpreter::builtins::http_log::record_call(
             s.method,
             s.url,
             s.status,
             s.duration_ms,
             s.error,
             s.start,
+            s.span,
         );
     }
+}
+
+/// Trace headers for one call of a parallel fan-out, taken on the calling
+/// thread (the trace being served is a thread-local there, not on the worker
+/// thread that sends). Returns the CLIENT span id they name.
+fn trace_parallel_call(
+    headers: &mut Vec<(String, String)>,
+) -> Option<crate::serve::span_log::Reserved> {
+    let call = crate::serve::otel_propagation::OutboundCall::begin()?;
+    call.inject_into(headers);
+    call.span
 }
 
 /// One GET of a batch: its status (0 when nothing answered) and its body.
@@ -3412,8 +3439,9 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Resp
         let handles: Vec<_> = chunk
             .into_iter()
             .map(|url| {
-                let opts = opts.clone();
-                offload(move || {
+                let mut opts = opts.clone();
+                let span = trace_parallel_call(&mut opts.headers);
+                let handle = offload(move || {
                     let start = web_time::Instant::now();
                     let url_for_call = url.clone();
                     // SEC-015a: route through the SSRF-aware reqwest client so
@@ -3451,12 +3479,14 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Resp
                         duration_ms,
                         status,
                         error: body.as_ref().err().cloned(),
+                        span,
                     };
                     (body, stats)
-                })
+                });
+                (span, handle)
             })
             .collect();
-        for h in handles {
+        for (span, h) in handles {
             joined.push(h.join().unwrap_or_else(|_| {
                 (
                     Err("Thread panicked".to_string()),
@@ -3467,6 +3497,7 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Resp
                         duration_ms: 0.0,
                         status: 0,
                         error: Some("Thread panicked".to_string()),
+                        span,
                     },
                 )
             }));
@@ -3496,8 +3527,9 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
         let handles: Vec<_> = chunk
             .into_iter()
             .map(|url| {
-                let opts = opts.clone();
-                offload(move || {
+                let mut opts = opts.clone();
+                let span = trace_parallel_call(&mut opts.headers);
+                let handle = offload(move || {
                     let start = web_time::Instant::now();
                     let url_for_call = url.clone();
                     // SEC-015a: SSRF-aware reqwest client.
@@ -3541,12 +3573,14 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
                         duration_ms,
                         status,
                         error: body.as_ref().err().cloned(),
+                        span,
                     };
                     (body, stats)
-                })
+                });
+                (span, handle)
             })
             .collect();
-        for h in handles {
+        for (span, h) in handles {
             joined.push(h.join().unwrap_or_else(|_| {
                 (
                     Err("Thread panicked".to_string()),
@@ -3557,6 +3591,7 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
                         duration_ms: 0.0,
                         status: 0,
                         error: Some("Thread panicked".to_string()),
+                        span,
                     },
                 )
             }));
@@ -3589,8 +3624,9 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
         }
         let handles: Vec<_> = chunk
             .into_iter()
-            .map(|config| {
-                offload(move || {
+            .map(|mut config| {
+                let span = trace_parallel_call(&mut config.headers);
+                let handle = offload(move || {
                     let method = config.method.clone();
                     let url = config.url.clone();
                     let start = web_time::Instant::now();
@@ -3607,12 +3643,14 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
                         duration_ms,
                         status,
                         error,
+                        span,
                     };
                     (result, stats)
-                })
+                });
+                (span, handle)
             })
             .collect();
-        for h in handles {
+        for (span, h) in handles {
             joined.push(h.join().unwrap_or_else(|_| {
                 (
                     Err("Thread panicked".to_string()),
@@ -3623,6 +3661,7 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
                         duration_ms: 0.0,
                         status: 0,
                         error: Some("Thread panicked".to_string()),
+                        span,
                     },
                 )
             }));

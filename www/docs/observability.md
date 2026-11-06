@@ -178,13 +178,18 @@ soli serve
 | `OTEL_SERVICE_NAME` | `service.name` resource attribute | `soli` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Extra `key=value` pairs, comma-separated | unset |
 | `OTEL_SDK_DISABLED` | Force off when `true` | unset |
+| `OTEL_TRACES_SAMPLER` | Head sampler — see [Sampling](#sampling) | `parentbased_always_on` |
+| `OTEL_TRACES_SAMPLER_ARG` | Ratio for the `*traceidratio` samplers, `0`..`1` | `1.0` |
+| `SOLI_OTEL_PROPAGATE` | `0` / `false` stops adding `traceparent` to outgoing calls | on |
 
 ### What is exported
 
 Per request:
 
 1. A **SERVER** root span (`GET /path`) with `http.request.method`, `url.path`, `http.response.status_code`, `soli.request_id`.
-2. Nested **INTERNAL** / **CLIENT** spans for middleware, before/after actions, controller actions, views/partials/components, DB queries, and outgoing HTTP — the same tree the flamegraph shows under `--dev`.
+2. Nested **INTERNAL** / **CLIENT** spans for middleware, before/after actions, controller actions, views/partials/components, DB queries, and outgoing HTTP — the same tree the flamegraph shows under `--dev`. Each outgoing call is one CLIENT span.
+
+Per background job (run on the job pool), a trace of its own — see [Jobs](#jobs).
 
 Export is **async** on a dedicated background thread. A full queue drops batches rather than stalling web workers; the first drop and the first POST failure print a one-time warning on stderr.
 
@@ -193,6 +198,18 @@ Export is **async** on a dedicated background thread. A full queue drops batches
 - Inbound `traceparent` is parsed and becomes the parent of the root span.
 - Every response carries `traceparent` so gateways and clients can correlate.
 - When tracing is on, responses also get `X-Request-Id` (unless `X-Soli-Request-Id` was already set in `--dev`).
+- **Outgoing calls carry the trace on.** Every `HTTP.*` request — `get`, `post`, `request`, `get_json`, `stream`, the parallel `get_all` / `get_all_json` / `parallel`, and `SOAP.call` — gets a `traceparent` whose parent id is the CLIENT span recorded for that call, so the downstream service's span nests under it in Datadog, Jaeger or Tempo. The inbound `tracestate` (Datadog's `dd=…` among others) is forwarded unchanged. `HTTP.stream_to`, which outlives the request, names the span that started it instead.
+
+```soli
+# Nothing to write: inside a traced request this call sends
+#   traceparent: 00-<the request's trace id>-<this call's span id>-01
+HTTP.get("https://inventory.internal/items/42")
+
+# A header you set yourself is never replaced
+HTTP.get(url, {"headers": {"traceparent": upstream_traceparent}})
+```
+
+Like the OTel SDKs and Datadog's tracers, the headers go to **every host** a call reaches, third-party APIs included: they carry ids and the sampling flag, nothing else. `SOLI_OTEL_PROPAGATE=0` stops adding them (export is unaffected). With tracing off nothing is added.
 
 ### Log ↔ trace joins
 
@@ -206,7 +223,29 @@ JSON access lines include `trace_id` and `span_id` matching the exported root sp
 
 ### Sampling
 
-Soli always samples when tracing is enabled (flags bit `0x01`). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, …) rather than in the Soli process.
+Head sampling follows the standard OTel variables:
+
+| `OTEL_TRACES_SAMPLER` | Which traces are exported |
+|-----------------------|---------------------------|
+| `parentbased_always_on` *(default)* | the caller's decision (the inbound `traceparent`'s sampled flag); every trace that starts here |
+| `parentbased_always_off` | the caller's decision; none that start here |
+| `parentbased_traceidratio` | the caller's decision; `OTEL_TRACES_SAMPLER_ARG` of those that start here |
+| `always_on` | all, whatever the caller said |
+| `always_off` | none |
+| `traceidratio` | `OTEL_TRACES_SAMPLER_ARG` of all, whatever the caller said |
+
+```bash
+# Keep 10 % of the traces this app starts; follow upstream for the rest
+OTEL_TRACES_SAMPLER=parentbased_traceidratio OTEL_TRACES_SAMPLER_ARG=0.1 soli serve
+```
+
+The ratio is decided from the trace id (the rule the Go and Java SDKs use), so services sampling one trace with the same ratio agree. An unsampled request still gets ids — its log lines keep `trace_id`, its response and its outgoing calls carry `traceparent` with flags `00`, so downstream services drop it too — it is only not exported. An unknown sampler name or a ratio outside `0`..`1` prints one warning on stderr and the default applies. Tail sampling, batching and retention stay on the collector.
+
+### Jobs
+
+A job run on the background pool is a trace of its own: a **CONSUMER** root span named `job <ClassName>` with `messaging.system=soli`, `messaging.destination.name` (the queue), `messaging.message.id` (the job id), `soli.job.class` and `soli.job.attempt`, an ERROR status carrying the message when the job fails, and under it the same db / http / view spans a request records. Its outgoing `HTTP.*` calls carry its `traceparent`.
+
+A job enqueued inside a traced request (or another job) keeps that span's `traceparent` in its queue row (`traceparent`, absent on rows enqueued untraced or before this version), and its root span gets an **OTLP link** to it — not a parent, since the job may run much later, on another host. Datadog, Jaeger and Tempo show it as a linked span you can follow back to the request. Mailer `deliver_later`, notification jobs and `HTTP.stream_to` handlers are jobs too. A job's sampling is decided like a request that arrives without `traceparent`. Webhook deliveries (`Webhook.enqueue`) are not traced.
 
 ## Overview (`/__soli/`)
 
@@ -438,8 +477,8 @@ Production logging reuses the same channel buffers as the dev bar (`query`, `htt
 
 - No auto-instrumentation of every third-party client library — only Soli's own request path, ORM, and `HTTP.*` client.
 - OTLP export is **traces only** (not metrics or logs pipelines). Metrics stay on Prometheus `/_metrics`; logs stay on stdout.
-- Outbound `traceparent` injection on every `HTTP.*` call is not yet automatic; inbound propagation and response echo are.
-- No in-process sampling UI — put that on the collector.
+- Head sampling only (`OTEL_TRACES_SAMPLER`); tail sampling and any sampling UI belong on the collector.
+- Calls made outside Soli's `HTTP.*` client — `Apns`, `Fcm`, S3, webhook deliveries — carry no `traceparent`.
 
 ## See also
 

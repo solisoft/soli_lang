@@ -98,6 +98,9 @@ pub mod openapi;
 mod operator_shell;
 mod origin;
 pub mod otel;
+pub mod otel_jobs;
+pub mod otel_propagation;
+pub mod otel_sampler;
 mod overview;
 pub mod phase_log;
 mod pipeline;
@@ -6591,6 +6594,10 @@ fn handle_request(
         data.path.as_str(),
         header_str(&data.headers, "traceparent"),
     );
+    // Outgoing `HTTP.*` calls carry this trace on (`otel_propagation`).
+    if trace_ctx.is_some() {
+        otel_propagation::activate(trace_ctx.as_ref(), header_str(&data.headers, "tracestate"));
+    }
 
     // Anchor the span log to this request's start so every span's
     // `start_us` / `end_us` is encoded as microseconds-since-request-start.

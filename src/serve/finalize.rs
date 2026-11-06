@@ -326,6 +326,8 @@ fn export_traces(f: &Finalizer, resp: &ResponseData) {
         let req_id = request_id_header(resp);
         let spans = span_log::snapshot();
         otel::export_request(ctx, &spans, resp.status, req_id);
+        // Whatever this worker runs next is not part of this trace.
+        super::otel_propagation::activate(None, None);
     }
 }
 

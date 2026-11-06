@@ -43,6 +43,9 @@ struct BackgroundJob {
     /// The tenant to run under: the row's, or the one the hand-off was made
     /// under.
     tenant: Option<crate::db::tenancy::Tenant>,
+    /// `traceparent` of the span that handed the job over, for the job
+    /// trace's link back to it (`otel_jobs`).
+    traceparent: Option<String>,
 }
 
 /// Set once when the pool starts. `enqueue` returns `false` while unset so
@@ -100,6 +103,7 @@ pub fn enqueue(class_name: String, args_json: String) -> bool {
         args_json,
         record: None,
         tenant: crate::db::tenancy::current(),
+        traceparent: super::otel_propagation::current_traceparent(),
     })
 }
 
@@ -108,11 +112,13 @@ pub fn enqueue(class_name: String, args_json: String) -> bool {
 /// pool isn't running — the caller must then release its claim.
 pub fn enqueue_with_id(class_name: String, args_json: String, record: crate::jobs::JobDoc) -> bool {
     let tenant = record.tenant.clone();
+    let traceparent = record.traceparent.clone();
     send(BackgroundJob {
         class_name,
         args_json,
         record: Some(record),
         tenant,
+        traceparent,
     })
 }
 
@@ -315,8 +321,18 @@ fn worker_recv_loop(
         // keeps renewing a lease for work that already finished. The job runs
         // under the tenant it was enqueued under, and the next one starts with
         // none.
+        // With tracing on, the job is a CONSUMER span of a trace of its own,
+        // linked to the span that enqueued it.
+        let trace = super::otel_jobs::begin(super::otel_jobs::JobInfo {
+            class_name: &job.class_name,
+            job_id: job.record.as_ref().map(|r| r.key.as_str()),
+            queue: job.record.as_ref().map(|r| r.queue.as_str()),
+            attempt: job.record.as_ref().map(|r| r.attempts),
+            enqueued_by: job.traceparent.as_deref(),
+        });
         let outcome =
             crate::db::tenancy::scoped(job.tenant.clone(), || run_one(&job, interpreter, &runner));
+        super::otel_jobs::finish(trace, outcome.as_deref());
         if let Some(record) = &job.record {
             crate::jobs::engine::mark_finished(&record.key);
             crate::jobs::engine::report_outcome(record, outcome.as_deref());

@@ -295,6 +295,63 @@ pub fn record(name: &str, kind: SpanKind, start: Instant, dur_us: u64, meta: Opt
     });
 }
 
+/// A span id taken before the work it times, so the id can travel ahead of
+/// the record: an outgoing HTTP call puts it in its `traceparent` and the
+/// downstream service's span nests under it. The parent is the span open
+/// when it was reserved, not when it is recorded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Reserved {
+    pub id: u32,
+    pub parent: Option<u32>,
+}
+
+/// Reserve the next span id under the currently open span. `None` when the
+/// log is off.
+pub fn reserve() -> Option<Reserved> {
+    if !is_enabled() {
+        return None;
+    }
+    Some(Reserved {
+        parent: current_parent(),
+        id: next_id(),
+    })
+}
+
+/// [`record`] under an id taken earlier with [`reserve`].
+pub fn record_reserved(
+    reserved: Reserved,
+    name: &str,
+    kind: SpanKind,
+    start: Instant,
+    dur_us: u64,
+    meta: Option<String>,
+) {
+    if !is_enabled() {
+        return;
+    }
+    let start_us = us_since_start(start);
+    LOG.with(|l| {
+        l.borrow_mut().push(SpanRecord {
+            id: reserved.id,
+            parent: reserved.parent,
+            name: name.to_string(),
+            kind,
+            start_us,
+            end_us: start_us.saturating_add(dur_us),
+            meta,
+            render_id: None,
+        })
+    });
+}
+
+/// The innermost open span, if any (the request root counts).
+pub fn current_span() -> Option<u32> {
+    if !is_enabled() {
+        return None;
+    }
+    current_parent()
+}
+
 // Deep-mode (`fn:<name>` per Soli function call) hooks. Mirrors
 // `Interpreter::push_frame` / `pop_frame` strict pairing: every
 // `push_fn(name)` must be followed by exactly one `pop_fn()`.
@@ -680,6 +737,33 @@ mod tests {
             .collect();
         assert_eq!(roots.len(), 1, "only the second root should be recorded");
         assert_eq!(roots[0].name, "GET /two");
+    }
+
+    #[test]
+    fn a_reserved_id_keeps_its_parent_and_is_recorded_under_it() {
+        fresh();
+        let action = SpanGuard::start("a", SpanKind::Action);
+        let reserved = reserve().expect("enabled");
+        assert_eq!(current_span(), reserved.parent);
+        // Another span opened meanwhile takes a different id.
+        drop(SpanGuard::start("v", SpanKind::View));
+        record_reserved(reserved, "GET x", SpanKind::Http, Instant::now(), 10, None);
+        drop(action);
+        let snap = snapshot();
+        let http = snap.iter().find(|s| s.kind == SpanKind::Http).unwrap();
+        let view = snap.iter().find(|s| s.kind == SpanKind::View).unwrap();
+        let action = snap.iter().find(|s| s.kind == SpanKind::Action).unwrap();
+        assert_eq!(http.id, reserved.id);
+        assert_ne!(http.id, view.id);
+        assert_eq!(http.parent, Some(action.id));
+    }
+
+    #[test]
+    fn reserve_is_off_with_the_log() {
+        clear();
+        set_enabled(false);
+        assert!(reserve().is_none());
+        assert!(current_span().is_none());
     }
 
     #[test]

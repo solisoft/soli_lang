@@ -98,11 +98,14 @@ pub fn register_soap_class(env: &mut Environment) {
                             request = request.header(key.as_str(), value.as_str());
                         }
 
-                        let resp = request
-                            .body(envelope.to_string())
-                            .send()
-                            .await
-                            .map_err(|e| e.to_string())?;
+                        // Logged and traced like `HTTP.*`: a `traceparent` goes
+                        // out with the envelope when tracing is on.
+                        let resp = crate::interpreter::builtins::http_class::send_logged(
+                            "POST",
+                            &url,
+                            request.body(envelope.to_string()),
+                        )
+                        .await?;
 
                         let status = resp.status().as_u16();
                         let status_text =

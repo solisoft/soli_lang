@@ -239,6 +239,17 @@ fn random_span_id() -> String {
     }
 }
 
+/// Per-trace salt for [`local_span_id_hex`], from the root span id.
+fn span_salt(root_span_id: &str) -> u64 {
+    u64::from_str_radix(&root_span_id[..16.min(root_span_id.len())], 16).unwrap_or(1)
+}
+
+/// The exported id of a non-root span_log span, known before the span is
+/// recorded — what an outgoing `traceparent` names as its parent.
+pub(super) fn child_span_hex(root_span_id: &str, local_id: u32) -> String {
+    local_span_id_hex(local_id, u32::MAX, root_span_id, span_salt(root_span_id))
+}
+
 /// Map a span_log local id onto an 8-byte hex span id that is unique within
 /// the request and never all-zero. Root (`local_id == 0` typically) gets the
 /// context's public `span_id` so the exported root matches `traceparent`.
@@ -265,10 +276,15 @@ pub fn begin_request(
     if !enabled() {
         return None;
     }
-    let (trace_id, parent_span_id, flags) = inbound_traceparent
+    let (trace_id, parent_span_id, inbound_flags) = inbound_traceparent
         .and_then(parse_traceparent)
-        .map(|(tid, pid, f)| (tid, Some(pid), f | 0x01))
-        .unwrap_or_else(|| (random_trace_id(), None, 0x01));
+        .map(|(tid, pid, f)| (tid, Some(pid), Some(f)))
+        .unwrap_or_else(|| (random_trace_id(), None, None));
+    // Head sampling (`OTEL_TRACES_SAMPLER`): an unsampled trace keeps its ids
+    // and propagates with flags 00, but is not exported.
+    let sampled = super::otel_sampler::sampler()
+        .should_sample(&trace_id, inbound_flags.map(|f| f & 0x01 == 0x01));
+    let flags = (inbound_flags.unwrap_or(0) & !0x01) | u8::from(sampled);
 
     Some(TraceContext {
         trace_id,
@@ -356,15 +372,26 @@ pub fn export_request(
     http_status: u16,
     request_id: Option<&str>,
 ) {
+    // Not sampled (`OTEL_TRACES_SAMPLER`): ids and propagation only.
+    if ctx.flags & 0x01 == 0 {
+        return;
+    }
     let cfg = config();
-    let Some(endpoint) = cfg.traces_endpoint.as_ref() else {
+    if cfg.traces_endpoint.is_none() || exporter().is_none() {
+        return;
+    }
+    enqueue_export(build_otlp_body(cfg, ctx, spans, http_status, request_id));
+}
+
+/// Queue an OTLP/JSON body for the export thread. Drops (with one warning)
+/// when the queue is full rather than block the caller.
+pub(super) fn enqueue_export(body: String) {
+    let Some(endpoint) = config().traces_endpoint.as_ref() else {
         return;
     };
     let Some(tx) = exporter() else {
         return;
     };
-
-    let body = build_otlp_body(cfg, ctx, spans, http_status, request_id);
     match tx.try_send(ExportBatch {
         endpoint: endpoint.clone(),
         body,
@@ -406,7 +433,7 @@ fn span_kind_otlp(kind: SpanKind) -> i32 {
     }
 }
 
-fn build_otlp_body(
+pub(super) fn build_otlp_body(
     cfg: &OtelConfig,
     ctx: &TraceContext,
     spans: &[SpanRecord],
@@ -424,7 +451,7 @@ fn build_otlp_body(
         .unwrap_or(0);
 
     // Stable salt so local ids map deterministically within this request.
-    let salt = u64::from_str_radix(&ctx.span_id[..16.min(ctx.span_id.len())], 16).unwrap_or(1);
+    let salt = span_salt(&ctx.span_id);
 
     let wall_start_ns = unix_nanos(ctx.wall_start);
     // If wall_start was slightly before Instant::now at capture, durations
@@ -627,6 +654,18 @@ mod tests {
         assert_eq!(child.len(), 16);
         assert!(!child.chars().all(|c| c == '0'));
         assert_ne!(child, root_hex);
+    }
+
+    #[test]
+    fn a_child_span_id_is_known_before_export() {
+        let root = "b7ad6b7169203331";
+        let salt = span_salt(root);
+        for local in [1u32, 2, 7, 400] {
+            assert_eq!(
+                child_span_hex(root, local),
+                local_span_id_hex(local, 0, root, salt)
+            );
+        }
     }
 
     #[test]

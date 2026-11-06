@@ -607,13 +607,19 @@ struct Target {
 
 /// `HTTP.stream_to(method, url, options?, body?, to)`.
 fn http_stream_to(args: &[Value]) -> Result<Value, String> {
-    let call = stream_call(args, "HTTP.stream_to")?;
+    let mut call = stream_call(args, "HTTP.stream_to")?;
     if call.response != ResponseMode::Text {
         return Err(
             "HTTP.stream_to() reads text events; it takes no \"response\" option".to_string(),
         );
     }
     let target = target(args.get(4))?;
+    // Read here, on the request's thread: the stream itself runs on the HTTP
+    // runtime and usually outlives the request, so it has no CLIENT span of
+    // its own — the downstream span nests under the span that started it.
+    if let Some(trace) = crate::serve::otel_propagation::OutboundCall::detached() {
+        trace.inject_into(&mut call.headers);
+    }
     begin(call, target).map(|id| Value::String(id.into()))
 }
 

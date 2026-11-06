@@ -120,6 +120,11 @@ pub struct JobDoc {
     /// the site row it came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tenant: Option<crate::db::tenancy::Tenant>,
+    /// W3C `traceparent` of the span that enqueued the job, when it was
+    /// enqueued inside a traced request or job. The job's own trace links to
+    /// it (an OTLP span link, not a parent: the job may run much later).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traceparent: Option<String>,
 }
 
 impl JobDoc {
@@ -151,6 +156,7 @@ impl JobDoc {
             cron_name: None,
             webhook: None,
             tenant: crate::db::tenancy::current(),
+            traceparent: crate::serve::otel_propagation::current_traceparent(),
         }
     }
 

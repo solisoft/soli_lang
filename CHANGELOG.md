@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Outgoing `HTTP.*` calls carry the trace on (W3C `traceparent`).** With
+  tracing on, every `HTTP.*` request — the verb helpers, `HTTP.request`,
+  `get_json`, `stream`, `get_all`/`get_all_json`/`parallel`, and `SOAP.call` —
+  sends a `traceparent` whose parent id is the CLIENT span recorded for that
+  call (its span_log id is reserved before the call goes out), so the
+  downstream service's span nests under it in Datadog, Jaeger or Tempo; the
+  inbound `tracestate` is forwarded unchanged. `HTTP.stream_to`, which outlives
+  the request, names the span that started it. A `traceparent`/`tracestate` the
+  caller sets is never replaced; nothing is added with tracing off;
+  `SOLI_OTEL_PROPAGATE=0` turns injection off and keeps export. Like the OTel
+  SDKs, the headers go to every host. Each traced call is now exported as one
+  CLIENT span — `send_logged` used to record the call twice
+  (`serve::otel_propagation`, `span_log::reserve`, `http_log::record_call`).
+- **Head sampling: `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`.**
+  `always_on`, `always_off`, `traceidratio`, `parentbased_always_on` (the
+  default), `parentbased_always_off`, `parentbased_traceidratio`, per the OTel
+  spec: parent-based samplers follow the inbound sampled flag, and the ratio is
+  decided from the trace id (the Go/Java rule), so services agree. An unsampled
+  request keeps its ids (log correlation) and propagates `traceparent` with
+  flags `00`, but is not exported. An invalid value warns once and the default
+  applies (`serve::otel_sampler`). Soli used to sample everything, inbound
+  `00` included.
+- **Background jobs are traced.** A job run on the pool is a CONSUMER span
+  `job <ClassName>` (`messaging.system=soli`, queue, job id, attempt, ERROR
+  status on failure) with the same db / http child spans as a request, exported
+  like one; its outgoing calls propagate its trace. A job enqueued inside a
+  traced request or job stores that span's `traceparent` on its row
+  (`JobDoc.traceparent`, optional, so existing rows read as before) and its
+  span carries an OTLP link back to it — a link, not a parent, since it may run
+  much later. Mailer and notification jobs inherit it (`serve::otel_jobs`).
+
 ## [2.31.0] - 2026-11-06
 
 ### Added

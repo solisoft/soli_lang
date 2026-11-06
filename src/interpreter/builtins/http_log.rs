@@ -131,43 +131,42 @@ pub fn dropped() -> usize {
     DROPPED.with(|d| d.get())
 }
 
-pub fn record(method: String, url: String, status: u16, duration_ms: f64, error: Option<String>) {
-    let scrubbed_url = scrub_url_for_log(&url);
-    // Anchor the span "end" to now and back-date the start by the
-    // measured duration — close enough for visualisation, since the
-    // call site doesn't expose the original start instant here.
-    let dur_us = (duration_ms * 1000.0).max(0.0) as u64;
-    let start = web_time::Instant::now() - std::time::Duration::from_micros(dur_us);
-    record_with_start(method, scrubbed_url, status, duration_ms, error, start);
-}
-
-/// Like `record`, but uses the caller's real `Instant` for the flamegraph
-/// span. Used by parallel-fetch helpers (`HTTP.get_all` etc.) that capture
-/// the start timestamp on a worker thread and then record on the main
-/// thread after `join()` — back-dating from `Instant::now()` would collapse
-/// every concurrent call to the same end time and lose the parallelism.
-pub fn record_with_start(
+/// Record one outgoing call: its row in the HTTP panel and its CLIENT span in
+/// the flamegraph / OTLP export, nested under whatever action or view made it.
+///
+/// `start` is the call's real start, so concurrent calls (`HTTP.get_all`,
+/// timed on worker threads, recorded here after `join()`) keep their overlap.
+/// `span` is the id reserved before the call when its `traceparent` already
+/// named it (`otel_propagation`); otherwise the span takes the next id. One
+/// span per call: `send_logged` used to record its own as well as this one's,
+/// so every traced call was exported twice.
+pub fn record_call(
     method: String,
     url: String,
     status: u16,
     duration_ms: f64,
     error: Option<String>,
-    real_start: web_time::Instant,
+    start: web_time::Instant,
+    span: Option<crate::serve::span_log::Reserved>,
 ) {
-    // Mirror this call as a span so it shows up in the dev-bar flamegraph
-    // nested under whatever action / view fired it. Span_log is its own
-    // gate, so this is a no-op when --dev is off.
+    // Scrubbed: a span name is exported off-box to the OTel collector, so it
+    // must not carry credentials from the query string or userinfo.
     let scrubbed_url = scrub_url_for_log(&url);
     if crate::serve::span_log::is_enabled() {
         let dur_us = (duration_ms * 1000.0).max(0.0) as u64;
         let name = format!("{} {}", method, scrubbed_url);
-        crate::serve::span_log::record(
-            &name,
-            crate::serve::span_log::SpanKind::Http,
-            real_start,
-            dur_us,
-            error.clone(),
-        );
+        let kind = crate::serve::span_log::SpanKind::Http;
+        match span {
+            Some(reserved) => crate::serve::span_log::record_reserved(
+                reserved,
+                &name,
+                kind,
+                start,
+                dur_us,
+                error.clone(),
+            ),
+            None => crate::serve::span_log::record(&name, kind, start, dur_us, error.clone()),
+        }
     }
 
     LOG.with(|l| {
