@@ -3946,3 +3946,30 @@ true.to_s()
 [{"n": 1}, {"n": 2}].order("n", "desc").all()
 [1, 2].all()
 [1, 2].includes()
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.name
+Xml.parse("<a k=\"1\"><b>t</b></a>").root["k"]
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.get("k")
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.children
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.nodes.length
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.text
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.own_text
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.inner_xml
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.attributes
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.path
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.kind
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.parent
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.descendants.length
+Xml.parse("<a k=\"1\"><b>t</b></a>").to_h
+Xml.parse("<a k=\"1\"><b>t</b></a>").to_xml
+Xml.parse("<a k=\"1\"><b>t</b></a>").to_xml(indent: 2)
+Xml.parse("<a k=\"1\"><b>t</b></a>").declaration
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.inspect
+Xml.parse("<a k=\"1\"><b>t</b></a>").root.has_key("k")
+Xml.parse("<a/>") == Xml.parse("<a/>")
+Xml.element("a", "t", {"x": 1})
+Xml.element("a").add("b", id: 1)
+Xml.document("rss", version: "2.0")
+Xml.escape("<&>")
+Xml.well_formed?("<a>")
+Xml.parse("<a><b></a>")
+json_stringify(Xml.element("a"))

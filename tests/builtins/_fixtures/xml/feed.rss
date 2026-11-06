@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>News &amp; views</title>
+    <link>https://example.com/</link>
+    <!-- two items -->
+    <item id="1">
+      <title>First</title>
+      <dc:creator>Ada</dc:creator>
+      <description><![CDATA[<p>Hello</p>]]></description>
+    </item>
+    <item id="2">
+      <title>Second</title>
+      <dc:creator>Grace</dc:creator>
+    </item>
+  </channel>
+</rss>
