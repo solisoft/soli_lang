@@ -155,12 +155,12 @@ fn piece(value: &Value, who: &str) -> Result<Piece, String> {
     })
 }
 
+/// An element's name, content pieces and attributes, as written in a call.
+type ElementParts = (String, Vec<Piece>, Vec<(String, String)>);
+
 /// `(name, content = nil, attrs = nil)`, where a Hash in the content position
 /// is the attributes (`add("item", id: 1)`).
-fn name_content_attrs(
-    args: &[Value],
-    who: &str,
-) -> Result<(String, Vec<Piece>, Vec<(String, String)>), String> {
+fn name_content_attrs(args: &[Value], who: &str) -> Result<ElementParts, String> {
     if args.len() > 3 {
         return Err(format!(
             "{who} takes (name, content = nil, attrs = nil), got {} arguments",
