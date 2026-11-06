@@ -2145,7 +2145,10 @@ fn soap_text_is_also_cut_at_self_closing_children_and_misplaced_declarations() -
     // was trimmed apart.
     assert_eq!(
         soap("<r>a <c/> b</r>")?,
-        map(vec![("r", map(vec![("c", Proj::Null), ("_text", st("ab"))]))])
+        map(vec![(
+            "r",
+            map(vec![("c", Proj::Null), ("_text", st("ab"))])
+        )])
     );
     assert_eq!(
         soap("<r>a <c/> b<d>1</d></r>")?,
