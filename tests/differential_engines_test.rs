@@ -2100,6 +2100,44 @@ catch e
 end
 print(n)"##,
     ),
+    // --- XML queries (lane L2): find / find_all (lenient) and xpath /
+    // at_xpath (strict), namespaces, result types and errors ---
+    (
+        "xml_find_and_xpath",
+        r##"doc = Xml.parse("<rss><channel><title>A &amp; B</title><item id=\"1\"><t>x</t></item><item id=\"2\"/></channel></rss>")
+print(doc.find("channel/title")&.text, doc.find("rss"), doc.at_xpath("channel"))
+print(doc.find_all("//item/@id"), doc.xpath("rss/channel/item").length)
+print(doc.find("channel/item[@id='2']") == doc.xpath("//item")[1])
+print(doc.xpath("//item[last()]/@id | //title/text()"))
+print(type(doc.at_xpath("/")), doc.find_all("//item[t='x']").map { |i| i["id"] })
+print(doc.find("channel").find_all("item[position() > 1]"), doc.find("missing")&.text)"##,
+    ),
+    (
+        "xml_xpath_namespaces",
+        r##"feed = Xml.parse("<feed xmlns=\"urn:a\" xmlns:x=\"urn:x\"><entry><x:m k=\"v\"/></entry><entry/></feed>")
+print(feed.find_all("entry").length, feed.xpath("//entry").length, feed.xpath("//xmlns:entry").length)
+print(feed.xpath("//e:entry", {"e": "urn:a"}).length, feed.xpath("//entry", {"": "urn:a"}).length)
+print(feed.at_xpath("//x:m/@k"), feed.at_xpath("//y:m/@k", y: "urn:x"), feed.find("//*:m"))"##,
+    ),
+    (
+        "xml_xpath_errors",
+        r##"doc = Xml.parse("<a/>")
+["sum(//a)", "//q:a", "a[", "//a[@id=1]", "child::a"].each do |expr|
+  try
+    doc.xpath(expr)
+  catch e
+    print(e)
+  end
+end
+try
+  doc.find(42)
+catch e
+  print(e)
+end
+n = Xml.element("a")
+n.add("b", id: 1)
+print(n.at_xpath("/a/b/@id"), n.at_xpath("/"))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
