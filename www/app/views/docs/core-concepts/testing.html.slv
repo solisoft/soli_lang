@@ -297,6 +297,7 @@ headers = res_headers(response)
 assert_hash_has_key(headers, "Content-Type")</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-12 -mt-8"><code class="text-cyan-400">set-cookie</code> is an Array of strings, one per <code class="text-cyan-400">Set-Cookie</code> line (even a single one), so <code class="text-cyan-400">res_header(response, "set-cookie")</code> answers that Array; another header sent twice reads as one String joined with <code class="text-cyan-400">", "</code>.</p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Redirects</h3>
 
@@ -1191,6 +1192,7 @@ assert(sent.includes?("code_verifier="))</code></pre>
         <ul class="space-y-2 text-gray-400 text-sm leading-relaxed mb-8 list-disc pl-5">
             <li>The server is a real socket on <code class="text-cyan-400">127.0.0.1</code>, so the app&rsquo;s <strong class="text-white">test server</strong> &mdash; a separate process &mdash; reaches it exactly as it would reach the real service. Point the app at <code class="text-cyan-400">base</code> through whatever configuration it reads.</li>
             <li>A path that was never scripted answers <code class="text-cyan-400">200</code> with <code class="text-cyan-400">{"ok":true}</code>.</li>
+            <li>A fourth argument adds response headers: <code class="text-cyan-400">mock_http_route("/idp/login", 302, "", {"Location": "/home", "Set-Cookie": ["sid=1", "theme=dark"]})</code>. A String value sends one line, an Array one line per item &mdash; how to stand in for a server that sets two cookies.</li>
             <li><code class="text-cyan-400">mock_http_last_body(path)</code> returns the body of the last request on that path (up to 64 KiB), or <code class="text-cyan-400">nil</code> if none arrived.</li>
             <li>Routes are shared by the whole spec file. Give each test its own path prefix so one test&rsquo;s answers never reply in another&rsquo;s place.</li>
             <li>Test-only: none of the three exists in a served app.</li>

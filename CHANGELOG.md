@@ -40,6 +40,21 @@
   `tests/differential_engines_test.rs`, and "Brace blocks in conditions" in
   `tests/language/trailing_blocks_spec.sl`.
 
+- **An HTTP response keeps every `Set-Cookie` (#659).** The client builtins
+  built the response's `headers` hash one line at a time, so a header sent
+  twice kept only its last value: a login answering a session cookie and a
+  CSRF cookie lost the first. `set-cookie` is now **always an Array of
+  strings**, one per line, even with one cookie — a **shape change**: it was a
+  String. Any other repeated header is one String joined with `", "`. Applies
+  to `HTTP.request`, `HTTP.parallel`, `HTTP.stream`'s `stream.headers`,
+  `SOAP.call` and the spec client's responses (`get`/`post`… in `soli test`,
+  where a repeated header also kept only its last value); `res_header(response,
+  "set-cookie")` returns the Array (it answered `nil` for a non-String).
+  `mock_http_route` takes an optional fourth argument, a hash of response
+  headers (an Array value sends one line per item). Tests:
+  `http_class::response_headers_tests`, `tests/builtins/http_spec.sl`,
+  `tests/builtins/test_response_helpers_spec.sl`.
+
 ## [2.30.1] - 2026-11-06
 
 ### Changed

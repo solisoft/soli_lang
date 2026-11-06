@@ -826,6 +826,10 @@ let sent = mock_http_last_body("/idp/token")
 assert(sent.includes?("code_verifier="))
 ```
 
+- A fourth argument adds response headers: `mock_http_route("/idp/login",
+  302, "", {"Location": "/home", "Set-Cookie": ["sid=1", "theme=dark"]})`. A
+  String value sends one line, an Array one line per item — how to stand in
+  for a server that sets two cookies.
 - The server is a real socket on `127.0.0.1`, so the app's **test server** —
   a separate process — reaches it exactly as it would reach the real service.
   Point the app at `base` through whatever configuration it reads.

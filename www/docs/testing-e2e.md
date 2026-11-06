@@ -242,6 +242,10 @@ headers = res_headers(response);
 assert_hash_has_key(headers, "Content-Type");
 ```
 
+`set-cookie` is an Array of strings, one per `Set-Cookie` line (even a single
+one), so `res_header(response, "set-cookie")` answers that Array; another
+header sent twice reads as one String joined with `", "`.
+
 ### Redirects
 
 **res_redirect(response)** checks if the response is a redirect (3xx status):

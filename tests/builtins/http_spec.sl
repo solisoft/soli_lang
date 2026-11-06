@@ -119,6 +119,21 @@ describe("HTTP") do
       HTTP.request("POST", url("request_body"), {}, "payload")
       assert_eq(mock_http_last_body("/http-spec/request_body"), "payload")
     end
+
+    test("keeps every Set-Cookie as an array, joins other repeated headers") do
+      cookies = ["a=1; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT", "b=2; HttpOnly"]
+      mock_http_route("/http-spec/cookies", 200, "ok", {"Set-Cookie": cookies, "X-Thing": ["one", "two"]})
+      response = HTTP.request("GET", url("cookies"))
+      assert_eq(response["headers"]["set-cookie"], cookies)
+      assert_eq(response["headers"]["x-thing"], "one, two")
+      assert_eq(res_header(response, "Set-Cookie"), cookies)
+    end
+
+    test("answers a single Set-Cookie as a one-element array") do
+      mock_http_route("/http-spec/one_cookie", 200, "ok", {"Set-Cookie": "only=1"})
+      response = HTTP.request("GET", url("one_cookie"))
+      assert_eq(response["headers"]["set-cookie"], ["only=1"])
+    end
   end
 
   describe("stream") do

@@ -1124,6 +1124,23 @@ Unlike the verb helpers it does **not** raise on a 4xx/5xx — branch on
 `response["status"]`. Only a transport failure (DNS, refused connection,
 timeout, SSRF refusal) raises.
 
+**Response headers.** Names are lowercase. `set-cookie` is **always an Array of
+strings**, one per `Set-Cookie` line, even when the server sent a single
+cookie (a cookie's `Expires` attribute holds a comma, so the lines cannot be
+joined). Any other header sent more than once is one String, its values joined
+with `", "` (`"vary" => "accept, origin"`). The same shape holds for every
+response hash the client builtins answer: `HTTP.request`, `HTTP.parallel`,
+`stream.headers` from `HTTP.stream`, and `SOAP.call`; `res_header(response,
+"set-cookie")` returns the same Array.
+
+```soli
+response = HTTP.request("POST", login_url, {}, credentials)
+response["headers"]["set-cookie"]   # ["sid=abc; HttpOnly", "theme=dark; Path=/"]
+response["headers"]["set-cookie"].each do |line|
+  print(line.split(";")[0])         # "sid=abc", then "theme=dark"
+end
+```
+
 **Example:**
 ```soli
 response = HTTP.request("DELETE", "https://api.example.com/users/1")
@@ -1148,7 +1165,8 @@ keeps sending.
 120) is the longest wait **for the next bytes**, not for the whole answer.
 
 **Returns:** an `HTTPStream`:
-- `stream.status` (Int), `stream.headers` (Hash) - read when it opened
+- `stream.status` (Int), `stream.headers` (Hash) - read when it opened;
+  `headers` has `HTTP.request`'s shape (`set-cookie` an Array)
 - `stream.next_line` - the next line, its `\n` (and a `\r` before it) taken
   off; `nil` once the body is over (an unended last line comes first). Raises
   when nothing arrives for `timeout` seconds, when the connection breaks, and
