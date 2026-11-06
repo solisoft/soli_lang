@@ -738,6 +738,12 @@ impl XmlTree {
         Ok(id)
     }
 
+    /// Add an already-built node with no parent and no checks: the root of
+    /// a streamed match (`stream.rs`), a fragment like `Xml.element`'s.
+    pub(crate) fn push_detached_unchecked(&mut self, kind: Kind) -> Result<NodeId, XmlError> {
+        self.push_node(kind)
+    }
+
     pub(crate) fn set_decl_unchecked(&mut self, decl: XmlDecl) {
         self.decl = Some(decl);
     }

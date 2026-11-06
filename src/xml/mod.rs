@@ -69,6 +69,13 @@
 //! [`escape::escape_text`], [`escape::escape_attr`], [`escape::is_qname`],
 //! [`escape::is_ncname`], [`escape::drop_forbidden`].
 //!
+//! **Streaming** — [`stream::Pull`] (`Xml.each`, `Xml.reader`) drives the
+//! loop one step at a time with a `StreamSink` and hands over each
+//! [`stream::Matcher`] match as a tree of its own, a detached element
+//! carrying the namespaces in scope where it stood. `max_bytes` caps one
+//! subtree and one event (a byte-limiting reader enforces it before quick-xml
+//! buffers), `max_nodes` one subtree; the file itself has no cap.
+//!
 //! **Errors** — [`XmlError`] `{ kind, offset, position }`; `Display` is
 //! `line L, column C: message` once located. The binding prefixes it
 //! (`Xml.parse: …`).
@@ -80,6 +87,7 @@ pub mod parse;
 pub mod policy;
 pub mod project;
 pub mod serialize;
+pub mod stream;
 pub mod tree;
 
 #[cfg(test)]
@@ -93,6 +101,7 @@ pub use policy::{
 };
 pub use project::{soap_error_message, soap_shape, to_h, Proj};
 pub use serialize::{serialize, serialize_children, SerializeOptions};
+pub use stream::{Matcher, Pull};
 pub use tree::{Attr, ElementRef, Kind, NodeData, NodeId, NsDecl, XmlDecl, XmlTree, XML_NS};
 
 #[cfg(test)]

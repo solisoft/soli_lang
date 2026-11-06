@@ -422,6 +422,12 @@ impl<R: BufRead> EventLoop<R> {
         &self.policy
     }
 
+    /// The input being read: a streaming driver reaches its own reader
+    /// (a byte-limiting adapter, a file to re-read for line numbers).
+    pub fn input_mut(&mut self) -> &mut R {
+        self.reader.get_mut()
+    }
+
     /// Run to the end of the input.
     pub fn run<S: Sink>(&mut self, sink: &mut S) -> Result<(), XmlError> {
         while self.step(sink)? == Step::Continue {}
