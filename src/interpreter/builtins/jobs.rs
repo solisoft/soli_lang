@@ -335,6 +335,8 @@ pub(crate) fn enqueue_doc(
     // Cloudflare Queue message and a SoliDB job row are outside any
     // transaction, so this marks even inside one.
     crate::interpreter::builtins::model::crud::mark_durable_effect();
+    // An app with no job files at boot has no poller yet; this row needs one.
+    crate::jobs::engine::start_deferred();
     Ok(Value::String(id.into()))
 }
 
@@ -592,6 +594,8 @@ fn cron_schedule(args: &[Value]) -> Result<Value, String> {
     // call that declared it.
     let id = scheduler::upsert(&name, &expr, &handler, payload)
         .map_err(|e| format!("Cron.schedule failed: {e}"))?;
+    // Only a poller fires the schedule just declared.
+    crate::jobs::engine::start_deferred();
     Ok(Value::String(id.into()))
 }
 
@@ -1014,7 +1018,10 @@ pub fn read_static_cron(class: &Class) -> Option<String> {
 /// `Cron.schedule(name, expr, handler, {})` but callable from Rust during
 /// worker boot.
 pub fn register_static_cron(name: &str, expr: &str, handler: &str) -> Result<String, String> {
-    scheduler::upsert(name, expr, handler, serde_json::json!({}))
+    let id = scheduler::upsert(name, expr, handler, serde_json::json!({}))?;
+    // A job file added under `--dev` after boot: its schedule needs a poller.
+    crate::jobs::engine::start_deferred();
+    Ok(id)
 }
 
 /// Convert a `EmailJob` class name to a snake-case cron name like

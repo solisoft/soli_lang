@@ -79,6 +79,47 @@ pub fn report_outcome(job: &JobDoc, error: Option<&str>) {
     }
 }
 
+/// Whether `soli serve` should start the engine at boot: the app has at least
+/// one job class to run (`app/jobs/**/*_job.sl`, the files the loader reads —
+/// which is also where `static cron` is declared), or a mailer is configured
+/// (`deliver_later` enqueues the built-in delivery job).
+///
+/// An empty `app/jobs/` — what `soli new` scaffolds — is not a reason: such an
+/// app has nothing to run, and on an app with no database the poller only
+/// produced a failed claim per tick, forever. An app that enqueues anyway
+/// (`Webhook.enqueue`, `Cron.schedule`) starts the engine on that first
+/// enqueue, through [`start_deferred`]. A directory that cannot be read keeps
+/// the old behaviour and starts it.
+pub fn wanted_at_boot(jobs_dir: &std::path::Path, mailer_configured: bool) -> bool {
+    mailer_configured
+        || crate::serve::app_loader::scan_jobs(jobs_dir)
+            .map(|files| !files.is_empty())
+            .unwrap_or(true)
+}
+
+/// A start that `soli serve` set aside because the app had nothing to run.
+type DeferredStart = Box<dyn FnOnce() + Send>;
+
+static DEFERRED_START: Mutex<Option<DeferredStart>> = Mutex::new(None);
+
+/// Keep `starter` for the first enqueue: an app with no job files can still
+/// enqueue a webhook or declare a cron, and that work needs a poller.
+pub fn defer_start(starter: DeferredStart) {
+    if let Ok(mut slot) = DEFERRED_START.lock() {
+        *slot = Some(starter);
+    }
+}
+
+/// Run the start [`defer_start`] kept, once. A no-op when nothing was
+/// deferred — the engine already runs, `SOLI_JOB_WORKERS=0` disabled it, or
+/// this is not a `soli serve` process.
+pub fn start_deferred() {
+    let starter = DEFERRED_START.lock().ok().and_then(|mut slot| slot.take());
+    if let Some(starter) = starter {
+        starter();
+    }
+}
+
 /// Start the poller thread. Returns immediately; the thread runs until the
 /// process shuts down. `runtime_handle` is the server's tokio handle — the
 /// poller's DB and HTTP calls need it (the getter is thread-local, so the
@@ -114,7 +155,6 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode
         // Claims, leases and cron ticks: the queue's own traffic, which no app
         // can act on. The jobs themselves run elsewhere and are counted.
         crate::serve::query_stats::ignore_this_thread();
-        ensure_queue_collections();
         run_poller(cfg)
     });
     match spawned {
@@ -142,12 +182,14 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode
 /// server's own dispatch query, which does have its index.
 ///
 /// Runs on the poller thread, where blocking database calls belong, and is
-/// best-effort: a failure costs performance, not correctness.
-fn ensure_queue_collections() {
+/// best-effort: a failure costs performance, not correctness. The one failure
+/// it returns is an unreachable store, so the poller can report it once and try
+/// again when the store answers, rather than print a line per collection.
+fn ensure_queue_collections() -> Result<(), String> {
     if crate::db::is_sql() {
         // The SQL backends create and index their tables in `store::enqueue`,
         // and have no changefeed to satisfy.
-        return;
+        return Ok(());
     }
     use crate::interpreter::builtins::model::crud;
 
@@ -156,6 +198,9 @@ fn ensure_queue_collections() {
         (super::CRON_COLLECTION, &["next_run_at", "enabled"][..]),
     ] {
         if let Err(e) = crud::ensure_collection(collection) {
+            if is_connection_error(&e) {
+                return Err(e);
+            }
             eprintln!("[jobs] could not ensure {collection}: {e}");
             continue;
         }
@@ -181,6 +226,7 @@ fn ensure_queue_collections() {
             super::JOBS_COLLECTION
         );
     }
+    Ok(())
 }
 
 /// How long to keep pruning apart, regardless of how often the loop wakes.
@@ -188,25 +234,44 @@ const PRUNE_EVERY: Duration = Duration::from_secs(600);
 
 fn run_poller(cfg: super::EngineConfig) {
     let mut last_prune = web_time::Instant::now();
+    let mut health = StoreHealth::default();
+    let mut cron_errors = ErrorThrottle::default();
+    let mut poll_errors = ErrorThrottle::default();
+    let base = Duration::from_millis(cfg.poll_ms);
+
+    // Before the first sleep: the changefeed refuses a subscription to a
+    // collection that does not exist yet.
+    let first = ensure_queue_collections();
+    let mut queue_ready = first.is_ok();
+    report_health(&mut health, first);
+
     loop {
-        super::wake::wait(next_sleep(&cfg));
+        // While the store is unreachable the poller backs off on its own
+        // schedule; the queue's deadlines mean nothing until it answers.
+        let sleep = health.backoff(base).unwrap_or_else(|| next_sleep(&cfg));
+        super::wake::wait(sleep);
 
         // Renew leases first: in-flight work must not be reclaimed just because
         // this tick is slow or the queue is busy.
-        renew_leases(cfg.lease_secs);
+        let renewed = renew_leases(cfg.lease_secs);
 
         if crate::serve::shutdown::is_draining() {
             // Stop taking new work, but keep the loop alive so in-flight leases
             // stay renewed until the drain completes.
+            report_health(&mut health, renewed);
             continue;
         }
 
-        if let Err(e) = tick_cron() {
-            eprintln!("[cron] tick failed: {e}");
-        }
-
-        if let Err(e) = dispatch_due() {
-            eprintln!("[jobs] poll failed: {e}");
+        let tick = renewed.and_then(|()| {
+            if !queue_ready {
+                ensure_queue_collections()?;
+                queue_ready = true;
+            }
+            poll_once(&mut cron_errors, &mut poll_errors)
+        });
+        report_health(&mut health, tick);
+        if health.is_down() {
+            continue;
         }
 
         // Prune completed rows about every ten minutes. Timed rather than
@@ -219,6 +284,273 @@ fn run_poller(cfg: super::EngineConfig) {
                 eprintln!("[jobs] prune failed: {e}");
             }
         }
+    }
+}
+
+/// One cron tick and one claim. Returns `Err` only when the store could not be
+/// reached; any other failure is logged here, at most once a minute per kind,
+/// and the tick carries on.
+fn poll_once(
+    cron_errors: &mut ErrorThrottle,
+    poll_errors: &mut ErrorThrottle,
+) -> Result<(), String> {
+    if let Err(e) = tick_cron() {
+        if is_connection_error(&e) {
+            return Err(e);
+        }
+        if let Some(line) = cron_errors.report(web_time::Instant::now(), "[cron] tick failed", &e) {
+            eprintln!("{line}");
+        }
+    }
+    if let Err(e) = dispatch_due() {
+        if is_connection_error(&e) {
+            return Err(e);
+        }
+        if let Some(line) = poll_errors.report(web_time::Instant::now(), "[jobs] poll failed", &e) {
+            eprintln!("{line}");
+        }
+    }
+    Ok(())
+}
+
+/// Feed a tick's outcome to `health` and print what it says is worth saying.
+fn report_health(health: &mut StoreHealth, outcome: Result<(), String>) {
+    match outcome {
+        Ok(()) => {
+            if let Some(line) = health.reachable(&store_label()) {
+                println!("{line}");
+            }
+        }
+        Err(e) => {
+            if let Some(line) = health.unreachable(&store_label(), &e) {
+                eprintln!("{line}");
+            }
+        }
+    }
+}
+
+/// Where the queue lives, for a log line: the SoliDB host, or the SQL
+/// connection's name and adapter (never its URL, which carries credentials).
+fn store_label() -> String {
+    if crate::db::is_sql() {
+        crate::db::adapter_label()
+    } else {
+        crate::interpreter::builtins::model::db_config::db_host()
+    }
+}
+
+/// Longest the poller waits between two attempts while the store is down.
+const MAX_OUTAGE_BACKOFF: Duration = Duration::from_secs(300);
+
+/// Shortest gap between two log lines for the same kind of query error.
+const QUERY_ERROR_LOG_EVERY: Duration = Duration::from_secs(60);
+
+/// Whether `message` says the store could not be reached at all — refused,
+/// reset, timed out, no such host — as opposed to a query the store answered
+/// with an error. Matched on text, since the SoliDB and SQL drivers each word
+/// it their own way and only the message reaches the poller.
+pub(crate) fn is_connection_error(message: &str) -> bool {
+    const MARKERS: [&str; 16] = [
+        "http error",
+        "error sending request",
+        "connection refused",
+        "connection reset",
+        "connection closed",
+        "connection failed",
+        "connect error",
+        "tcp connect",
+        "timed out",
+        "dns error",
+        "failed to lookup",
+        "name or service not known",
+        "nodename nor servname",
+        "network is unreachable",
+        "no route to host",
+        "broken pipe",
+    ];
+    let lower = message.to_ascii_lowercase();
+    MARKERS.iter().any(|marker| lower.contains(marker))
+}
+
+/// The poller's view of whether the store answers, and what to say about it.
+///
+/// Kept free of I/O and clocks so the log and backoff rules are testable: an
+/// outage is reported once when it starts and once when it ends, and the
+/// poller waits longer between attempts the longer it lasts.
+#[derive(Debug, Default)]
+struct StoreHealth {
+    /// Consecutive ticks that could not reach the store.
+    failed_ticks: u32,
+}
+
+impl StoreHealth {
+    fn is_down(&self) -> bool {
+        self.failed_ticks > 0
+    }
+
+    /// A tick could not reach the store. Returns the line to log, which only
+    /// the first failure of an outage has.
+    fn unreachable(&mut self, host: &str, error: &str) -> Option<String> {
+        self.failed_ticks = self.failed_ticks.saturating_add(1);
+        (self.failed_ticks == 1).then(|| {
+            format!(
+                "[jobs] database unreachable at {host}: {error}; retrying with backoff \
+                 (up to {}s between attempts)",
+                MAX_OUTAGE_BACKOFF.as_secs()
+            )
+        })
+    }
+
+    /// A tick reached the store. Returns the line to log when that ends an
+    /// outage.
+    fn reachable(&mut self, host: &str) -> Option<String> {
+        let failed = std::mem::take(&mut self.failed_ticks);
+        (failed > 0).then(|| {
+            format!("[jobs] database reachable again at {host} after {failed} failed attempt(s)")
+        })
+    }
+
+    /// How long to wait before the next attempt, while down: the poll interval
+    /// doubled per failed attempt, capped at [`MAX_OUTAGE_BACKOFF`].
+    fn backoff(&self, base: Duration) -> Option<Duration> {
+        if self.failed_ticks == 0 {
+            return None;
+        }
+        let factor = 1u32 << self.failed_ticks.min(16);
+        Some(base.saturating_mul(factor).min(MAX_OUTAGE_BACKOFF))
+    }
+}
+
+/// Rate-limits a recurring error to one line per [`QUERY_ERROR_LOG_EVERY`],
+/// counting what it swallowed in between.
+#[derive(Debug, Default)]
+struct ErrorThrottle {
+    last_logged: Option<web_time::Instant>,
+    suppressed: u32,
+}
+
+impl ErrorThrottle {
+    fn report(&mut self, now: web_time::Instant, what: &str, error: &str) -> Option<String> {
+        let due = self
+            .last_logged
+            .is_none_or(|at| now.saturating_duration_since(at) >= QUERY_ERROR_LOG_EVERY);
+        if !due {
+            self.suppressed = self.suppressed.saturating_add(1);
+            return None;
+        }
+        self.last_logged = Some(now);
+        let suppressed = std::mem::take(&mut self.suppressed);
+        Some(if suppressed > 0 {
+            format!("{what}: {error} ({suppressed} similar error(s) not shown)")
+        } else {
+            format!("{what}: {error}")
+        })
+    }
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+
+    #[test]
+    fn an_outage_is_logged_once_and_its_end_once() {
+        let mut health = StoreHealth::default();
+        let first = health.unreachable("localhost:6745", "HTTP error: connection refused");
+        let line = first.expect("the first failure is reported");
+        assert!(
+            line.contains("database unreachable at localhost:6745"),
+            "{line}"
+        );
+        assert!(line.contains("retrying with backoff"), "{line}");
+        for _ in 0..50 {
+            assert_eq!(
+                health.unreachable("localhost:6745", "HTTP error: refused"),
+                None
+            );
+        }
+        let back = health
+            .reachable("localhost:6745")
+            .expect("recovery is reported");
+        assert!(back.contains("reachable again"), "{back}");
+        assert!(back.contains("51 failed attempt(s)"), "{back}");
+        assert_eq!(
+            health.reachable("localhost:6745"),
+            None,
+            "a healthy tick says nothing"
+        );
+        assert!(
+            health.unreachable("h", "e").is_some(),
+            "a new outage is reported again"
+        );
+    }
+
+    #[test]
+    fn backoff_doubles_and_caps_at_five_minutes() {
+        let base = Duration::from_millis(1000);
+        let mut health = StoreHealth::default();
+        assert_eq!(
+            health.backoff(base),
+            None,
+            "a healthy store keeps the normal schedule"
+        );
+        let mut seen = Vec::new();
+        for _ in 0..12 {
+            health.unreachable("h", "e");
+            seen.push(health.backoff(base).expect("down").as_secs());
+        }
+        assert_eq!(&seen[..5], &[2, 4, 8, 16, 32]);
+        assert!(seen.windows(2).all(|w| w[0] <= w[1]), "{seen:?}");
+        assert_eq!(*seen.last().expect("some"), 300);
+        for _ in 0..100 {
+            health.unreachable("h", "e");
+        }
+        assert_eq!(health.backoff(base), Some(MAX_OUTAGE_BACKOFF));
+        health.reachable("h");
+        assert_eq!(health.backoff(base), None);
+    }
+
+    #[test]
+    fn connection_failures_are_told_from_query_errors() {
+        for message in [
+            "HTTP error: error sending request for url (http://localhost:6745/_api/database/x/cursor)",
+            "HTTP error : tcp connect error: Connection refused (os error 61)",
+            "error communicating with database: Connection refused (os error 111)",
+            "pool timed out while waiting for an open connection",
+            "dns error: failed to lookup address information",
+        ] {
+            assert!(is_connection_error(message), "{message}");
+        }
+        for message in [
+            "Query failed (400): collection not found",
+            "syntax error at or near \"FOR\"",
+            "invalid cron expression",
+        ] {
+            assert!(!is_connection_error(message), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_recurring_query_error_is_logged_once_a_minute() {
+        let start = web_time::Instant::now();
+        let mut throttle = ErrorThrottle::default();
+        assert_eq!(
+            throttle
+                .report(start, "[jobs] poll failed", "boom")
+                .as_deref(),
+            Some("[jobs] poll failed: boom")
+        );
+        for second in 1..60 {
+            let at = start + Duration::from_secs(second);
+            assert_eq!(throttle.report(at, "[jobs] poll failed", "boom"), None);
+        }
+        let line = throttle
+            .report(
+                start + Duration::from_secs(60),
+                "[jobs] poll failed",
+                "boom",
+            )
+            .expect("a minute later it logs again");
+        assert!(line.contains("59 similar error(s) not shown"), "{line}");
     }
 }
 
@@ -413,16 +745,23 @@ fn release(job: &JobDoc) -> Result<(), String> {
     Ok(())
 }
 
-fn renew_leases(lease_secs: i64) {
+/// Extend the lease of every job running here. Stops at, and returns, the
+/// first failure to reach the store: the poller reports that once, rather than
+/// a line per in-flight job per tick.
+fn renew_leases(lease_secs: i64) -> Result<(), String> {
     let ids: Vec<String> = match in_flight().lock() {
         Ok(list) => list.clone(),
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
     for id in ids {
         if let Err(e) = store::renew_lease(&id, lease_secs) {
+            if is_connection_error(&e) {
+                return Err(e);
+            }
             eprintln!("[jobs] lease renewal failed for {id}: {e}");
         }
     }
+    Ok(())
 }
 
 fn tick_cron() -> Result<(), String> {
@@ -563,6 +902,47 @@ pub fn webhook_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_empty_jobs_directory_does_not_start_the_engine() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let jobs = dir.path().join("jobs");
+        std::fs::create_dir_all(&jobs).expect("jobs dir");
+        assert!(!wanted_at_boot(&jobs, false), "what `soli new` scaffolds");
+        // A file the loader does not read as a job is not one either.
+        std::fs::write(jobs.join("README.md"), "notes").expect("readme");
+        std::fs::write(jobs.join("helpers.sl"), "def x\n  1\nend\n").expect("helper");
+        assert!(!wanted_at_boot(&jobs, false));
+        assert!(!wanted_at_boot(&dir.path().join("missing"), false));
+    }
+
+    #[test]
+    fn a_job_file_or_a_mailer_starts_the_engine() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let jobs = dir.path().join("jobs");
+        std::fs::create_dir_all(jobs.join("billing")).expect("nested dir");
+        assert!(wanted_at_boot(&jobs, true), "deliver_later needs a poller");
+        assert!(wanted_at_boot(&dir.path().join("missing"), true));
+        std::fs::write(
+            jobs.join("billing/invoice_job.sl"),
+            "class InvoiceJob\nend\n",
+        )
+        .expect("job file");
+        assert!(wanted_at_boot(&jobs, false), "found in a subdirectory");
+    }
+
+    #[test]
+    fn a_deferred_start_runs_once() {
+        use std::sync::atomic::AtomicUsize;
+        static RUNS: AtomicUsize = AtomicUsize::new(0);
+        start_deferred(); // nothing deferred: a no-op
+        defer_start(Box::new(|| {
+            RUNS.fetch_add(1, Ordering::SeqCst);
+        }));
+        start_deferred();
+        start_deferred();
+        assert_eq!(RUNS.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn capacity_tracks_started_and_finished_jobs() {
