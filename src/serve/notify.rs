@@ -35,7 +35,6 @@
 //! request.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use web_time::{Duration, Instant};
@@ -206,7 +205,7 @@ fn spawn_notifier(tenant: TenantId, receiver: Receiver<Event>, stats: Arc<Stats>
                 continue;
             }
             for failure in send(&event, &config) {
-                stats.failed.fetch_add(1, Ordering::Relaxed);
+                stats.note_failed(1);
                 eprintln!(
                     "[notify] {} {}: {failure}",
                     event.kind.name(),
