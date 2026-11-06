@@ -77,6 +77,7 @@ mod dev_routes;
 mod dev_slow_queries;
 mod dev_spam;
 pub mod dev_store;
+mod engine_events;
 mod error_response;
 #[cfg(not(target_arch = "wasm32"))]
 mod file_watcher;
@@ -4414,6 +4415,11 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     if !matches!(err, RuntimeError::EngineFallback(..)) {
         return;
     }
+    engine_events::record(
+        engine_events::EngineKind::Refused,
+        handler,
+        &err.to_string(),
+    );
     static FAIL: OnceLock<bool> = OnceLock::new();
     let fail = *FAIL.get_or_init(|| {
         crate::platform::env::var("SOLI_FAIL_ON_VM_DEMOTION")
@@ -4484,6 +4490,7 @@ fn settle_engine_divergence(tree_walker_succeeded: bool) {
     crate::metrics::Metrics::global()
         .vm_engine_divergences_total
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    engine_events::record(engine_events::EngineKind::Divergence, &handler, &vm_error);
     let message = format!(
         "handler '{handler}' failed on the VM and succeeded on the interpreter — engine divergence: {vm_error}"
     );
