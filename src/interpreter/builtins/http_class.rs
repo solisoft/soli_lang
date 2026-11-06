@@ -560,6 +560,13 @@ fn embedded_ipv4_blocked(v6: &std::net::Ipv6Addr) -> Option<bool> {
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 static USER_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+/// The user client for `follow_redirects: false`: identical to
+/// [`USER_HTTP_CLIENT`] but for its redirect policy, which never follows —
+/// the first answer (a 3xx with its `Location`) is the caller's. A second
+/// cached client, because reqwest sets the policy on the client, not the
+/// request.
+#[cfg(not(target_arch = "wasm32"))]
+static USER_HTTP_CLIENT_NO_REDIRECT: OnceLock<Client> = OnceLock::new();
 
 /// SEC-015: DNS resolver that filters out blocked IPs at the connect-time
 /// resolution. `validate_url_for_ssrf` runs once on the URL string up-front
@@ -625,7 +632,10 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
 #[cfg(not(target_arch = "wasm32"))]
 fn build_ssrf_redirect_policy() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() >= 10 {
+        // `previous()` holds every URL already requested, the first one
+        // included: 10 entries means 10 hops followed — the 11th is refused,
+        // as reqwest's own `Policy::limited(10)` does.
+        if attempt.previous().len() > 10 {
             return attempt.error(std::io::Error::other("too many redirects (max 10)"));
         }
         if let Err(e) = validate_url_for_ssrf(attempt.url().as_str()) {
@@ -1088,7 +1098,25 @@ pub fn read_capped_text_sync(resp: ureq::Response) -> Result<String, String> {
 /// internal client.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_user_http_client() -> &'static Client {
-    USER_HTTP_CLIENT.get_or_init(|| {
+    user_http_client(true)
+}
+
+/// The user client for one request: the SEC-007 redirect-following one, or
+/// with `follow_redirects == false` its twin that returns a 3xx as-is. Both
+/// carry the same resolver, pool sizing, timeouts and TLS floor.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn user_http_client(follow_redirects: bool) -> &'static Client {
+    if follow_redirects {
+        USER_HTTP_CLIENT.get_or_init(|| build_user_http_client(build_ssrf_redirect_policy()))
+    } else {
+        USER_HTTP_CLIENT_NO_REDIRECT
+            .get_or_init(|| build_user_http_client(reqwest::redirect::Policy::none()))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn build_user_http_client(redirect: reqwest::redirect::Policy) -> Client {
+    {
         Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             // Match get_http_client's 15s floor: a longer client idle than the
@@ -1099,14 +1127,14 @@ pub fn get_user_http_client() -> &'static Client {
             .pool_idle_timeout(std::time::Duration::from_secs(15))
             .pool_max_idle_per_host(8)
             .tcp_keepalive(std::time::Duration::from_secs(60))
-            .redirect(build_ssrf_redirect_policy())
+            .redirect(redirect)
             .dns_resolver(std::sync::Arc::new(SsrfBlockingResolver))
             // SEC-042: same TLS-1.2 floor as the internal client (see
             // `get_http_client`).
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .expect("Failed to create user HTTP client")
-    })
+    }
 }
 #[cfg(target_arch = "wasm32")]
 /// On the edge build reqwest is `fetch`: no pool, resolver, redirect policy or
@@ -1118,6 +1146,15 @@ pub fn get_user_http_client() -> &'static Client {
             .build()
             .expect("Failed to create user HTTP client")
     })
+}
+
+/// The edge build has one client: `fetch` follows redirects itself and
+/// reqwest's wasm backend exposes no `redirect: "manual"`, so
+/// [`extract_follow_redirects`] refuses `false` there before a request is
+/// built.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn user_http_client(_follow_redirects: bool) -> &'static Client {
+    get_user_http_client()
 }
 
 /// Shared `ureq::Agent` for the HTTP class. SEC-007: redirects are
@@ -1181,7 +1218,18 @@ where
     Fut: std::future::Future<Output = Result<T, String>> + MaybeSend + 'static,
     T: MaybeSend + 'static,
 {
-    let client = get_user_http_client().clone();
+    run_user_http_request_with(true, f)
+}
+
+/// [`run_user_http_request`] on the client [`user_http_client`] picks for
+/// `follow_redirects`.
+fn run_user_http_request_with<F, Fut, T>(follow_redirects: bool, f: F) -> Result<T, String>
+where
+    F: FnOnce(reqwest::Client) -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>> + MaybeSend + 'static,
+    T: MaybeSend + 'static,
+{
+    let client = user_http_client(follow_redirects).clone();
     block_on_user_http(f(client))
 }
 
@@ -1239,10 +1287,22 @@ fn apply_timeout(
 
 /// Per-call request options shared by every `HTTP.<verb>` builtin: the
 /// `timeout` (seconds) and `headers` keys of the trailing options hash.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct RequestOptions {
     timeout: Option<std::time::Duration>,
     headers: Vec<(String, String)>,
+    /// `follow_redirects` (default true) — see [`extract_follow_redirects`].
+    follow_redirects: bool,
+}
+
+impl Default for RequestOptions {
+    fn default() -> Self {
+        RequestOptions {
+            timeout: None,
+            headers: Vec::new(),
+            follow_redirects: true,
+        }
+    }
 }
 
 impl RequestOptions {
@@ -1358,7 +1418,36 @@ fn extract_options(options: Option<&Value>) -> Result<RequestOptions, String> {
     Ok(RequestOptions {
         timeout: extract_timeout(options)?,
         headers: extract_headers(options)?,
+        follow_redirects: extract_follow_redirects(options)?,
     })
+}
+
+/// Read the `follow_redirects` key of an options hash. Missing / `null` is
+/// `true`: up to 10 hops are followed, each re-checked against the SSRF
+/// blocklist. `false` returns the first answer as-is — a 3xx with its
+/// `location` header — for a caller that handles the redirect itself.
+/// Anything but a Bool is a hard error, so `"false"` cannot quietly follow.
+/// On the edge build `false` is refused: `fetch` always follows.
+fn extract_follow_redirects(options: Option<&Value>) -> Result<bool, String> {
+    let Some(Value::Hash(hash)) = options else {
+        return Ok(true);
+    };
+    match hash
+        .borrow()
+        .get(&HashKey::String("follow_redirects".into()))
+    {
+        None | Some(Value::Null) => Ok(true),
+        #[cfg(target_arch = "wasm32")]
+        Some(Value::Bool(false)) => Err(
+            "HTTP follow_redirects: false is not supported on the edge build: fetch follows redirects itself"
+                .to_string(),
+        ),
+        Some(Value::Bool(follow)) => Ok(*follow),
+        Some(other) => Err(format!(
+            "HTTP follow_redirects must be true or false, got {}",
+            other.type_name()
+        )),
+    }
 }
 
 /// An outgoing request body: text (a String, or a Hash sent as JSON), raw
@@ -1663,10 +1752,11 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             let opts = extract_options(args.get(1))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http(async move {
                         let resp =
                             send_logged("GET", &url, opts.apply(client.get(&*url), &[])).await?;
@@ -1685,7 +1775,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp =
                                 opts.apply(client.get(&*url), &[])
                                     .send()
@@ -1731,10 +1821,11 @@ pub fn register_http_class(env: &mut Environment) {
             let (body, content_type) = outgoing_body(&args[1], args.get(2), "HTTP.post()")?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http(async move {
                         let defaults: Vec<(&str, &str)> = content_type
                             .map(|ct| ("Content-Type", ct))
@@ -1757,7 +1848,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let defaults: Vec<(&str, &str)> = content_type
                                 .map(|ct| ("Content-Type", ct))
                                 .into_iter()
@@ -1804,10 +1895,11 @@ pub fn register_http_class(env: &mut Environment) {
             let (body, content_type) = outgoing_body(&args[1], args.get(2), "HTTP.put()")?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http(async move {
                         let defaults: Vec<(&str, &str)> = content_type
                             .map(|ct| ("Content-Type", ct))
@@ -1830,7 +1922,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let defaults: Vec<(&str, &str)> = content_type
                                 .map(|ct| ("Content-Type", ct))
                                 .into_iter()
@@ -1877,10 +1969,11 @@ pub fn register_http_class(env: &mut Environment) {
             let (body, content_type) = outgoing_body(&args[1], args.get(2), "HTTP.patch()")?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http(async move {
                         let defaults: Vec<(&str, &str)> = content_type
                             .map(|ct| ("Content-Type", ct))
@@ -1903,7 +1996,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let defaults: Vec<(&str, &str)> = content_type
                                 .map(|ct| ("Content-Type", ct))
                                 .into_iter()
@@ -1948,10 +2041,11 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             let opts = extract_options(args.get(1))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http(async move {
                         let resp =
                             send_logged("DELETE", &url, opts.apply(client.delete(&*url), &[]))
@@ -1971,7 +2065,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp = opts.apply(client.delete(&*url), &[]).send().await.map_err(
                                 |e| format!("HTTP request failed: {}", describe_request_error(&e)),
                             )?;
@@ -2008,10 +2102,11 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             let opts = extract_options(args.get(1))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http(async move {
                         let resp =
                             send_logged("HEAD", &url, opts.apply(client.head(&*url), &[])).await?;
@@ -2028,7 +2123,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp =
                                 opts.apply(client.head(&*url), &[])
                                     .send()
@@ -2089,6 +2184,7 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
             let fetch = |client: reqwest::Client| {
                 let url = url.clone();
                 async move {
@@ -2102,8 +2198,8 @@ pub fn register_http_class(env: &mut Environment) {
             };
 
             let bytes = match get_tokio_handle() {
-                Some(_) => block_on_user_http(fetch(get_user_http_client().clone()))?,
-                _ => run_user_http_request(fetch)?,
+                Some(_) => block_on_user_http(fetch(user_http_client(follow).clone()))?,
+                _ => run_user_http_request_with(follow, fetch)?,
             };
 
             let written = bytes.len();
@@ -2131,10 +2227,11 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             let opts = extract_options(args.get(1))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http_local(async move {
                         let req = opts.apply(client.get(&*url), &[("Accept", "application/json")]);
                         let resp = send_logged("GET", &url, req).await?;
@@ -2155,7 +2252,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp = opts
                                 .apply(client.get(&*url), &[("Accept", "application/json")])
                                 .send()
@@ -2199,10 +2296,11 @@ pub fn register_http_class(env: &mut Environment) {
             validate_url_for_ssrf(&url)?;
 
             let opts = extract_options(args.get(1))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http_local(async move {
                         let req = opts.apply(client.get(&*url), &[]);
                         let resp = send_logged("GET", &url, req).await?;
@@ -2224,7 +2322,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp =
                                 opts.apply(client.get(&*url), &[])
                                     .send()
@@ -2270,10 +2368,11 @@ pub fn register_http_class(env: &mut Environment) {
             let json_body = value_to_json(&args[1])?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http_local(async move {
                         let req = opts.apply(
                             client.post(&*url).body(json_body),
@@ -2297,7 +2396,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp = opts
                                 .apply(
                                     client.post(&*url).body(json_body),
@@ -2343,10 +2442,11 @@ pub fn register_http_class(env: &mut Environment) {
             let json_body = value_to_json(&args[1])?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http_local(async move {
                         let req = opts.apply(
                             client.put(&*url).body(json_body),
@@ -2370,7 +2470,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp = opts
                                 .apply(
                                     client.put(&*url).body(json_body),
@@ -2416,10 +2516,11 @@ pub fn register_http_class(env: &mut Environment) {
             let json_body = value_to_json(&args[1])?;
 
             let opts = extract_options(args.get(2))?;
+            let follow = opts.follow_redirects;
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     match block_on_user_http_local(async move {
                         let req = opts.apply(
                             client.patch(&*url).body(json_body),
@@ -2443,7 +2544,7 @@ pub fn register_http_class(env: &mut Environment) {
                 }
                 _ => Ok(spawn_http_future(
                     move || {
-                        run_user_http_request(move |client| async move {
+                        run_user_http_request_with(follow, move |client| async move {
                             let resp = opts
                                 .apply(
                                     client.patch(&*url).body(json_body),
@@ -2502,6 +2603,7 @@ pub fn register_http_class(env: &mut Environment) {
             // and a nested `headers` hash is merged in so the same options
             // shape as `HTTP.get(url, {"headers": ...})` works here too.
             let timeout = extract_timeout(args.get(2))?;
+            let follow = extract_follow_redirects(args.get(2))?;
 
             let mut headers_vec: Vec<(String, String)> = extract_headers(args.get(2))?;
             if args.len() > 2 {
@@ -2511,7 +2613,10 @@ pub fn register_http_class(env: &mut Environment) {
                             HashKey::String(s) => s.clone(),
                             _ => continue,
                         };
-                        if matches!(key_str.as_ref(), "timeout" | "headers" | "multipart") {
+                        if matches!(
+                            key_str.as_ref(),
+                            "timeout" | "headers" | "multipart" | "follow_redirects"
+                        ) {
                             continue;
                         }
                         let value_str = match value {
@@ -2540,7 +2645,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             match get_tokio_handle() {
                 Some(_) => {
-                    let client = get_user_http_client().clone();
+                    let client = user_http_client(follow).clone();
                     let method_clone = method.clone();
                     let body_opt_clone = body_opt.clone();
                     let headers_vec_clone = headers_vec.clone();
@@ -2586,7 +2691,7 @@ pub fn register_http_class(env: &mut Environment) {
                     let headers_vec_clone = headers_vec.clone();
                     Ok(spawn_http_future(
                         move || {
-                            run_user_http_request(move |client| async move {
+                            run_user_http_request_with(follow, move |client| async move {
                                 let mut request = match method_clone.as_str() {
                                     "GET" => client.get(&*url),
                                     "POST" => client.post(&*url),
@@ -2965,6 +3070,7 @@ struct RequestConfig {
     headers: Vec<(String, String)>,
     body: Option<String>,
     timeout: Option<std::time::Duration>,
+    follow_redirects: bool,
 }
 
 struct HttpResponse {
@@ -2982,6 +3088,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             headers: vec![],
             body: None,
             timeout: None,
+            follow_redirects: true,
         }),
         Value::Hash(hash) => {
             let hash = hash.borrow();
@@ -2990,6 +3097,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
             let mut headers = vec![];
             let mut body = None;
             let timeout = extract_timeout(Some(value))?;
+            let follow_redirects = extract_follow_redirects(Some(value))?;
 
             for (k, v) in hash.iter() {
                 if let HashKey::String(key) = k {
@@ -3030,6 +3138,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
                 headers,
                 body: body.map(|s| s.to_string()),
                 timeout,
+                follow_redirects,
             })
         }
         other => Err(format!(
@@ -3083,61 +3192,58 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Stri
         if chunk.is_empty() {
             break;
         }
-        let handles: Vec<_> =
-            chunk
-                .into_iter()
-                .map(|url| {
-                    let opts = opts.clone();
-                    offload(move || {
-                        let start = web_time::Instant::now();
-                        let url_for_call = url.clone();
-                        // SEC-015a: route through the SSRF-aware reqwest client so
-                        // the connect-time DNS lookup goes through
-                        // `SsrfBlockingResolver` (no equivalent on `ureq`).
-                        let (status, body): (u16, Result<String, String>) =
-                            match run_user_http_request::<_, _, (u16, Result<String, String>)>(
-                                move |client| async move {
-                                    let resp = opts
-                                        .apply(client.get(&url_for_call), &[])
-                                        .send()
-                                        .await
-                                        .map_err(|e| {
-                                            format!(
-                                                "Request failed: {}",
-                                                describe_request_error(&e)
-                                            )
-                                        })?;
-                                    let code = resp.status().as_u16();
-                                    if !resp.status().is_success() {
-                                        let body =
-                                            read_capped_text_async(resp).await.unwrap_or_default();
-                                        return Ok((
-                                            code,
-                                            Err(format!("HTTP {} error: {}", code, body)),
-                                        ));
-                                    }
-                                    let body = read_capped_text_async(resp)
-                                        .await
-                                        .map_err(|e| format!("Failed to read response: {}", e));
-                                    Ok((code, body))
-                                },
-                            ) {
-                                Ok(pair) => pair,
-                                Err(e) => (0, Err(e)),
-                            };
-                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                        let stats = ParallelCallStats {
-                            method: "GET".to_string(),
-                            url,
-                            start,
-                            duration_ms,
-                            status,
-                            error: body.as_ref().err().cloned(),
+        let handles: Vec<_> = chunk
+            .into_iter()
+            .map(|url| {
+                let opts = opts.clone();
+                offload(move || {
+                    let start = web_time::Instant::now();
+                    let url_for_call = url.clone();
+                    // SEC-015a: route through the SSRF-aware reqwest client so
+                    // the connect-time DNS lookup goes through
+                    // `SsrfBlockingResolver` (no equivalent on `ureq`).
+                    let (status, body): (u16, Result<String, String>) =
+                        match run_user_http_request_with::<_, _, (u16, Result<String, String>)>(
+                            opts.follow_redirects,
+                            move |client| async move {
+                                let resp = opts
+                                    .apply(client.get(&url_for_call), &[])
+                                    .send()
+                                    .await
+                                    .map_err(|e| {
+                                        format!("Request failed: {}", describe_request_error(&e))
+                                    })?;
+                                let code = resp.status().as_u16();
+                                if !resp.status().is_success() {
+                                    let body =
+                                        read_capped_text_async(resp).await.unwrap_or_default();
+                                    return Ok((
+                                        code,
+                                        Err(format!("HTTP {} error: {}", code, body)),
+                                    ));
+                                }
+                                let body = read_capped_text_async(resp)
+                                    .await
+                                    .map_err(|e| format!("Failed to read response: {}", e));
+                                Ok((code, body))
+                            },
+                        ) {
+                            Ok(pair) => pair,
+                            Err(e) => (0, Err(e)),
                         };
-                        (body, stats)
-                    })
+                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let stats = ParallelCallStats {
+                        method: "GET".to_string(),
+                        url,
+                        start,
+                        duration_ms,
+                        status,
+                        error: body.as_ref().err().cloned(),
+                    };
+                    (body, stats)
                 })
-                .collect();
+            })
+            .collect();
         for h in handles {
             joined.push(h.join().unwrap_or_else(|_| {
                 (
@@ -3175,62 +3281,59 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
         if chunk.is_empty() {
             break;
         }
-        let handles: Vec<_> =
-            chunk
-                .into_iter()
-                .map(|url| {
-                    let opts = opts.clone();
-                    offload(move || {
-                        let start = web_time::Instant::now();
-                        let url_for_call = url.clone();
-                        // SEC-015a: SSRF-aware reqwest client.
-                        let (status, body): (u16, Result<String, String>) =
-                            match run_user_http_request::<_, _, (u16, Result<String, String>)>(
-                                move |client| async move {
-                                    let resp = opts
-                                        .apply(
-                                            client.get(&url_for_call),
-                                            &[("Accept", "application/json")],
-                                        )
-                                        .send()
-                                        .await
-                                        .map_err(|e| {
-                                            format!(
-                                                "Request failed: {}",
-                                                describe_request_error(&e)
-                                            )
-                                        })?;
-                                    let code = resp.status().as_u16();
-                                    if !resp.status().is_success() {
-                                        let body =
-                                            read_capped_text_async(resp).await.unwrap_or_default();
-                                        return Ok((
-                                            code,
-                                            Err(format!("HTTP {} error: {}", code, body)),
-                                        ));
-                                    }
-                                    let body = read_capped_text_async(resp)
-                                        .await
-                                        .map_err(|e| format!("Failed to read response: {}", e));
-                                    Ok((code, body))
-                                },
-                            ) {
-                                Ok(pair) => pair,
-                                Err(e) => (0, Err(e)),
-                            };
-                        let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-                        let stats = ParallelCallStats {
-                            method: "GET".to_string(),
-                            url,
-                            start,
-                            duration_ms,
-                            status,
-                            error: body.as_ref().err().cloned(),
+        let handles: Vec<_> = chunk
+            .into_iter()
+            .map(|url| {
+                let opts = opts.clone();
+                offload(move || {
+                    let start = web_time::Instant::now();
+                    let url_for_call = url.clone();
+                    // SEC-015a: SSRF-aware reqwest client.
+                    let (status, body): (u16, Result<String, String>) =
+                        match run_user_http_request_with::<_, _, (u16, Result<String, String>)>(
+                            opts.follow_redirects,
+                            move |client| async move {
+                                let resp = opts
+                                    .apply(
+                                        client.get(&url_for_call),
+                                        &[("Accept", "application/json")],
+                                    )
+                                    .send()
+                                    .await
+                                    .map_err(|e| {
+                                        format!("Request failed: {}", describe_request_error(&e))
+                                    })?;
+                                let code = resp.status().as_u16();
+                                if !resp.status().is_success() {
+                                    let body =
+                                        read_capped_text_async(resp).await.unwrap_or_default();
+                                    return Ok((
+                                        code,
+                                        Err(format!("HTTP {} error: {}", code, body)),
+                                    ));
+                                }
+                                let body = read_capped_text_async(resp)
+                                    .await
+                                    .map_err(|e| format!("Failed to read response: {}", e));
+                                Ok((code, body))
+                            },
+                        ) {
+                            Ok(pair) => pair,
+                            Err(e) => (0, Err(e)),
                         };
-                        (body, stats)
-                    })
+                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let stats = ParallelCallStats {
+                        method: "GET".to_string(),
+                        url,
+                        start,
+                        duration_ms,
+                        status,
+                        error: body.as_ref().err().cloned(),
+                    };
+                    (body, stats)
                 })
-                .collect();
+            })
+            .collect();
         for h in handles {
             joined.push(h.join().unwrap_or_else(|_| {
                 (
@@ -3323,7 +3426,8 @@ fn execute_request(config: RequestConfig) -> Result<HttpResponse, String> {
     // SEC-015a: SSRF-aware reqwest client with `SsrfBlockingResolver`.
     // Was on `ureq_agent()` which had no DNS-resolver hook, so the
     // SEC-015 DNS-rebinding TOCTOU defense couldn't apply here.
-    run_user_http_request::<_, _, HttpResponse>(move |client| async move {
+    let follow_redirects = config.follow_redirects;
+    run_user_http_request_with::<_, _, HttpResponse>(follow_redirects, move |client| async move {
         let mut request = match config.method.as_str() {
             "GET" => client.get(&config.url),
             "POST" => client.post(&config.url),
@@ -3495,6 +3599,7 @@ struct StreamCall {
     idle: std::time::Duration,
     headers: Vec<(String, String)>,
     body: Option<OutgoingBody>,
+    follow_redirects: bool,
 }
 
 /// Reads `(method, url, options?, body?)`: `options` as `HTTP.request`'s
@@ -3513,11 +3618,15 @@ fn stream_call(args: &[Value], what: &str) -> Result<StreamCall, String> {
     validate_url_for_ssrf(&url)?;
     let idle =
         extract_timeout(args.get(2))?.unwrap_or(std::time::Duration::from_secs(HTTP_STREAM_IDLE));
+    let follow_redirects = extract_follow_redirects(args.get(2))?;
     let mut headers = extract_headers(args.get(2))?;
     if let Some(Value::Hash(options)) = args.get(2) {
         for (key, value) in options.borrow().iter() {
             let HashKey::String(key) = key else { continue };
-            if matches!(key.as_ref(), "timeout" | "headers" | "multipart") {
+            if matches!(
+                key.as_ref(),
+                "timeout" | "headers" | "multipart" | "follow_redirects"
+            ) {
                 continue;
             }
             let value = match value {
@@ -3542,6 +3651,7 @@ fn stream_call(args: &[Value], what: &str) -> Result<StreamCall, String> {
         idle,
         headers,
         body,
+        follow_redirects,
     })
 }
 
@@ -3558,8 +3668,9 @@ fn open_stream(
     headers: &[(String, String)],
     body: Option<OutgoingBody>,
     idle: std::time::Duration,
+    follow_redirects: bool,
 ) -> Result<OpenedStream, String> {
-    let client = get_user_http_client().clone();
+    let client = user_http_client(follow_redirects).clone();
     let (method, url, headers) = (method.to_string(), url.to_string(), headers.to_vec());
     let response = block_on_user_http_local(async move {
         let request = stream_request(&client, &method, &url, &headers, body)?;
@@ -3689,8 +3800,14 @@ fn stream_id(args: &[Value], what: &str) -> Result<i64, String> {
 #[cfg(not(target_arch = "wasm32"))]
 fn http_stream(args: &[Value]) -> Result<Value, String> {
     let call = stream_call(args, "HTTP.stream")?;
-    let (id, status, response_headers) =
-        open_stream(&call.method, &call.url, &call.headers, call.body, call.idle)?;
+    let (id, status, response_headers) = open_stream(
+        &call.method,
+        &call.url,
+        &call.headers,
+        call.body,
+        call.idle,
+        call.follow_redirects,
+    )?;
     let class = STREAM_CLASS
         .with(|c| c.borrow().clone())
         .unwrap_or_else(|| {
@@ -3803,8 +3920,15 @@ mod http_stream_tests {
             std::time::Duration::from_millis(150),
             std::time::Duration::ZERO,
         );
-        let (id, status, headers) =
-            open_stream("GET", &url, &[], None, std::time::Duration::from_secs(5)).unwrap();
+        let (id, status, headers) = open_stream(
+            "GET",
+            &url,
+            &[],
+            None,
+            std::time::Duration::from_secs(5),
+            true,
+        )
+        .unwrap();
         assert_eq!(status, 200);
         assert!(headers
             .iter()
@@ -3829,8 +3953,15 @@ mod http_stream_tests {
             std::time::Duration::from_millis(300),
             std::time::Duration::ZERO,
         );
-        let (id, _, _) =
-            open_stream("GET", &url, &[], None, std::time::Duration::from_secs(1)).unwrap();
+        let (id, _, _) = open_stream(
+            "GET",
+            &url,
+            &[],
+            None,
+            std::time::Duration::from_secs(1),
+            true,
+        )
+        .unwrap();
         let mut count = 0;
         while stream_next_line(id).unwrap().is_some() {
             count += 1;
@@ -3842,8 +3973,15 @@ mod http_stream_tests {
             std::time::Duration::ZERO,
             std::time::Duration::from_secs(3),
         );
-        let (id, _, _) =
-            open_stream("GET", &url, &[], None, std::time::Duration::from_secs(1)).unwrap();
+        let (id, _, _) = open_stream(
+            "GET",
+            &url,
+            &[],
+            None,
+            std::time::Duration::from_secs(1),
+            true,
+        )
+        .unwrap();
         assert_eq!(stream_next_line(id).unwrap().as_deref(), Some("only"));
         let err = stream_next_line(id).expect_err("silence past the idle time");
         assert!(err.contains("nothing received for 1 s"), "got: {err}");
@@ -4166,6 +4304,7 @@ mod parallel_logging_tests {
                 headers: vec![],
                 body: None,
                 timeout: None,
+                follow_redirects: true,
             },
             RequestConfig {
                 method: "POST".to_string(),
@@ -4173,6 +4312,7 @@ mod parallel_logging_tests {
                 headers: vec![],
                 body: Some("{}".to_string()),
                 timeout: None,
+                follow_redirects: true,
             },
         ];
         let _ = run_parallel_requests(configs);
@@ -4581,6 +4721,7 @@ mod per_call_timeout_tests {
             RequestOptions {
                 timeout: Some(std::time::Duration::from_millis(300)),
                 headers: vec![],
+                ..RequestOptions::default()
             },
         );
         let elapsed = started.elapsed();
@@ -4800,6 +4941,7 @@ mod request_header_tests {
                 ),
                 ("X-Custom".to_string(), "yes".to_string()),
             ],
+            ..RequestOptions::default()
         };
         let req = opts
             .apply(
@@ -4941,6 +5083,7 @@ mod request_header_tests {
                 ),
                 ("X-Request-Source".to_string(), "soli-test".to_string()),
             ],
+            ..RequestOptions::default()
         };
         let results = run_parallel_gets(vec![url], opts);
         let head = results[0]
@@ -5022,6 +5165,7 @@ mod response_headers_tests {
             headers: vec![],
             body: None,
             timeout: Some(std::time::Duration::from_secs(10)),
+            follow_redirects: true,
         }])
         .pop()
         .unwrap()
@@ -5060,8 +5204,15 @@ mod response_headers_tests {
     #[test]
     fn a_stream_keeps_every_cookie_too() {
         let url = server(TWO_COOKIES);
-        let (_, _, raw) =
-            open_stream("GET", &url, &[], None, std::time::Duration::from_secs(5)).unwrap();
+        let (_, _, raw) = open_stream(
+            "GET",
+            &url,
+            &[],
+            None,
+            std::time::Duration::from_secs(5),
+            true,
+        )
+        .unwrap();
         let headers = response_headers_hash(
             raw.iter()
                 .map(|(name, value)| (name.as_str(), value.as_str())),
@@ -5093,5 +5244,156 @@ mod response_headers_tests {
         assert_eq!(string(header(&direct, "vary")), "accept, origin");
         let names: Vec<String> = direct.keys().map(|k| k.to_string()).collect();
         assert_eq!(names, ["set-cookie", "vary"], "lowercase, first-seen order");
+    }
+}
+
+#[cfg(test)]
+mod redirect_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// `/hop/N` answers 302 to `/hop/N-1`; `/hop/0` answers 200 "landed".
+    fn redirect_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut s = stream;
+                let mut buf = [0u8; 4096];
+                let mut got = Vec::new();
+                while !got.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => got.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let request = String::from_utf8_lossy(&got);
+                let path = request.split_whitespace().nth(1).unwrap_or("/");
+                let hops: u32 = path
+                    .strip_prefix("/hop/")
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0);
+                let answer = if hops == 0 {
+                    "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nlanded"
+                        .to_string()
+                } else {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: http://{addr}/hop/{}\r\n\
+                         Content-Length: 5\r\nConnection: close\r\n\r\nmoved",
+                        hops - 1
+                    )
+                };
+                let _ = s.write_all(answer.as_bytes());
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn get(url: String, follow_redirects: bool) -> Result<HttpResponse, String> {
+        // Each followed hop is re-checked against the SSRF blocklist, which
+        // refuses loopback outside the test runner.
+        enable_ssrf_test_mode();
+        run_parallel_requests(vec![RequestConfig {
+            method: "GET".to_string(),
+            url,
+            headers: vec![],
+            body: None,
+            timeout: Some(std::time::Duration::from_secs(10)),
+            follow_redirects,
+        }])
+        .pop()
+        .expect("one request, one result")
+    }
+
+    fn location(response: &HttpResponse) -> Option<&str> {
+        response
+            .headers
+            .iter()
+            .find(|(name, _)| name == "location")
+            .map(|(_, value)| value.as_str())
+    }
+
+    #[test]
+    fn a_redirect_is_followed_by_default() {
+        let base = redirect_server();
+        let response = get(format!("{base}/hop/2"), true).expect("followed");
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, "landed");
+        assert_eq!(location(&response), None);
+    }
+
+    #[test]
+    fn follow_redirects_false_returns_the_first_answer() {
+        let base = redirect_server();
+        let response = get(format!("{base}/hop/2"), false).expect("answered");
+        assert_eq!(response.status, 302);
+        assert_eq!(response.body, "moved");
+        assert_eq!(location(&response), Some(format!("{base}/hop/1").as_str()));
+    }
+
+    #[test]
+    fn a_chain_longer_than_ten_still_errors_by_default() {
+        let base = redirect_server();
+        let ten = get(format!("{base}/hop/10"), true).expect("ten hops are allowed");
+        assert_eq!(ten.status, 200);
+        let err = match get(format!("{base}/hop/11"), true) {
+            Ok(response) => panic!("eleven hops followed, got {}", response.status),
+            Err(e) => e,
+        };
+        assert!(err.contains("too many redirects"), "got: {err}");
+    }
+
+    #[test]
+    fn a_stream_can_stop_at_the_redirect_too() {
+        let base = redirect_server();
+        let url = format!("{base}/hop/1");
+        let timeout = std::time::Duration::from_secs(5);
+        let (_, status, headers) = open_stream("GET", &url, &[], None, timeout, false).unwrap();
+        assert_eq!(status, 302);
+        assert!(headers.iter().any(|(name, _)| name == "location"));
+        let (_, status, _) = open_stream("GET", &url, &[], None, timeout, true).unwrap();
+        assert_eq!(status, 200);
+    }
+
+    #[test]
+    fn follow_redirects_is_a_bool_and_defaults_to_true() {
+        let options = |value: Value| hash_from_pairs([("follow_redirects".to_string(), value)]);
+        assert_eq!(extract_follow_redirects(None), Ok(true));
+        assert_eq!(extract_follow_redirects(Some(&Value::Null)), Ok(true));
+        assert_eq!(
+            extract_follow_redirects(Some(&options(Value::Null))),
+            Ok(true)
+        );
+        assert_eq!(
+            extract_follow_redirects(Some(&options(Value::Bool(false)))),
+            Ok(false)
+        );
+        let err = extract_follow_redirects(Some(&options(Value::String("false".into()))))
+            .expect_err("a string is not a bool");
+        assert!(err.contains("true or false"), "got: {err}");
+        assert!(
+            !extract_options(Some(&options(Value::Bool(false))))
+                .unwrap()
+                .follow_redirects
+        );
+    }
+
+    #[test]
+    fn follow_redirects_is_not_sent_as_a_header() {
+        let call = stream_call(
+            &[
+                Value::String("GET".into()),
+                Value::String("https://example.com/".into()),
+                hash_from_pairs([
+                    ("follow_redirects".to_string(), Value::Bool(false)),
+                    ("X-Thing".to_string(), Value::String("yes".into())),
+                ]),
+            ],
+            "HTTP.stream",
+        )
+        .unwrap();
+        assert!(!call.follow_redirects);
+        assert_eq!(call.headers, [("X-Thing".to_string(), "yes".to_string())]);
     }
 }

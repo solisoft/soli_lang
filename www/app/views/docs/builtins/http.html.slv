@@ -41,7 +41,7 @@ stream = HTTP.stream("GET", "https://api.example.com/events")   # read line by l
                 Every URL passed to <code class="text-amber-400">HTTP.*</code> is validated up-front: schemes other than <code class="text-amber-400">http</code>/<code class="text-amber-400">https</code> are rejected, as are hosts that resolve to loopback / private / link-local IP ranges. A request to <code class="text-amber-400">http://169.254.169.254/...</code> (cloud metadata) or <code class="text-amber-400">http://10.0.0.1/</code> fails immediately. The blocklist also covers <code class="text-amber-400">0.0.0.0/8</code>, <code class="text-amber-400">192.0.0.0/24</code>, <code class="text-amber-400">198.18.0.0/15</code> and <code class="text-amber-400">240.0.0.0/4</code>, and IPv6 addresses that embed a blocked IPv4 &mdash; NAT64 (<code class="text-amber-400">64:ff9b::/96</code>, <code class="text-amber-400">64:ff9b:1::/48</code>), 6to4 (<code class="text-amber-400">2002::/16</code>), Teredo and IPv4-compatible forms.
             </p>
             <p class="text-gray-300 text-sm">
-                Redirects are followed (up to 10 hops) by every <code class="text-amber-400">HTTP.*</code> call, <code class="text-amber-400">HTTP.request</code> included, and the SSRF check runs again on each hop: a 3xx whose <code class="text-amber-400">Location</code> points at a blocked address fails with <code class="text-amber-400">SSRF: redirect target rejected: &hellip;</code> instead of being followed.
+                Redirects are followed (up to 10 hops) by every <code class="text-amber-400">HTTP.*</code> call, <code class="text-amber-400">HTTP.request</code> included, and the SSRF check runs again on each hop: a 3xx whose <code class="text-amber-400">Location</code> points at a blocked address fails with <code class="text-amber-400">SSRF: redirect target rejected: &hellip;</code> instead of being followed. An 11th hop fails with <code class="text-amber-400">too many redirects (max 10)</code>. Pass <code class="text-amber-400">"follow_redirects": false</code> to get the 3xx itself back instead.
             </p>
         </div>
     </section>
@@ -98,13 +98,14 @@ resp = HTTP.get("https://api.example.com/slow", { "timeout": 5 })</code></pre>
                 <code class="text-amber-400">delete</code>, <code class="text-amber-400">head</code>, the
                 <code class="text-amber-400">*_json</code> / <code class="text-amber-400">get_jsonp</code> variants and
                 (applied to every URL) <code class="text-amber-400">get_all</code> / <code class="text-amber-400">get_all_json</code>
-                all take the same trailing options hash with two keys:
+                all take the same trailing options hash with three keys:
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-2">
                     <li><code class="text-amber-400">headers</code> &mdash; a hash of <code>name =&gt; value</code>. Strings go out as-is, numbers and booleans are stringified, a <code>null</code> value skips that header. A header you set <strong>replaces</strong> the builtin's own default (<code class="text-amber-400">Content-Type</code> on <code class="text-amber-400">post</code>/<code class="text-amber-400">put</code>/<code class="text-amber-400">patch</code>, <code class="text-amber-400">Accept</code> on the JSON variants), matched case-insensitively, so you never send two. A name or value the client would refuse (spaces in the name, a CR/LF in the value) raises before anything is sent &mdash; the message names the header but never echoes the value, so a rejected token stays out of the error page and logs. <code class="text-amber-400">Content-Length</code> and <code class="text-amber-400">Transfer-Encoding</code> are refused outright: they are derived from the body, and a caller-supplied length would be sent verbatim and desync the upstream connection. <strong>Redirects:</strong> the client drops <code class="text-amber-400">Authorization</code>, <code class="text-amber-400">Cookie</code> and <code class="text-amber-400">Proxy-Authorization</code> when a redirect changes host or port, but any <em>other</em> header you set (an <code class="text-amber-400">X-Api-Key</code>, say) follows the redirect to the new host.</li>
                     <li><code class="text-amber-400">timeout</code> &mdash; per-call timeout in <strong>seconds</strong> (<code class="text-amber-400">Int</code> or <code class="text-amber-400">Float</code>). Overrides the default 30s client timeout for that one request; must be positive, fractions such as <code class="text-amber-400">0.5</code> are allowed.</li>
+                    <li><code class="text-amber-400">follow_redirects</code> &mdash; <code class="text-amber-400">Bool</code>, default <code class="text-amber-400">true</code>. <code class="text-amber-400">false</code> returns the first answer as-is instead of following a 3xx: no hop is made, so you read the <code class="text-amber-400">location</code> header and decide yourself. With the verb helpers a 3xx is then a non-2xx and raises (<code class="text-amber-400">HTTP 302 error: &hellip;</code>) &mdash; use <code class="text-amber-400">HTTP.request</code> to read it. Anything but a Bool raises (<code class="text-amber-400">"false"</code> is a String). Not available on the Cloudflare edge build, whose <code>fetch</code> always follows: <code class="text-amber-400">false</code> raises there.</li>
                 </ul>
                 For <code class="text-amber-400">HTTP.request</code>, the third argument is a flat headers hash: its
-                <code class="text-amber-400">timeout</code> key is consumed rather than sent as a header, and a nested
+                <code class="text-amber-400">timeout</code> and <code class="text-amber-400">follow_redirects</code> keys are consumed rather than sent as headers, and a nested
                 <code class="text-amber-400">headers</code> hash is merged in, so the same options shape works there too. Flat and nested pairs go through the same validation.
             </div>
         </section>
@@ -352,6 +353,11 @@ resp = HTTP.request("PATCH", url, headers, json)
 
 # Custom header plus a 3-second per-call timeout.
 resp = HTTP.request("GET", url, { "Authorization": "Bearer " + token, "timeout": 3 })</code></pre>
+            <p class="text-gray-400 mb-3"><strong class="text-white">Handling a redirect yourself.</strong> <code class="text-amber-400">"follow_redirects": false</code> stops at the first answer: a 301/302/303/307/308 comes back with its status, its body and its <code class="text-amber-400">location</code> header, and nothing else is requested &mdash; for a login flow that must keep the <code class="text-amber-400">set-cookie</code> of the 302, or to check where a link leads before going there.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("GET", "https://example.com/short/abc", { "follow_redirects": false })
+if [301, 302, 303, 307, 308].includes?(resp["status"])
+  target = resp["headers"]["location"]   # as the server sent it: may be relative
+end</code></pre>
         </section>
 
         <section id="def-http-stream" class="scroll-mt-20 mb-6">
@@ -362,7 +368,7 @@ resp = HTTP.request("GET", url, { "Authorization": "Bearer " + token, "timeout":
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Opens a request and answers as soon as its headers are in, with an object the body is read from one line at a time, as it arrives: an AI model answering in server-sent events, a long export, a log tail. <code class="text-amber-400">HTTP.request</code> waits for the whole body, and its timeout counts from the start; a stream runs as long as it keeps sending.</p>
-            <p class="text-gray-400 mb-3">Parameters are <code class="text-amber-400">HTTP.request</code>&rsquo;s. The <code class="text-amber-400">timeout</code> (seconds, default 120) is the longest wait <strong>for the next bytes</strong>, not for the whole answer.</p>
+            <p class="text-gray-400 mb-3">Parameters are <code class="text-amber-400">HTTP.request</code>&rsquo;s, <code class="text-amber-400">follow_redirects</code> included. The <code class="text-amber-400">timeout</code> (seconds, default 120) is the longest wait <strong>for the next bytes</strong>, not for the whole answer.</p>
             <p class="text-gray-400 mb-3">Returns an <code class="text-amber-400">HTTPStream</code>:</p>
             <ul class="list-disc list-inside text-gray-400 mb-3 space-y-1">
                 <li><code class="text-amber-400">stream.status</code> (Int) and <code class="text-amber-400">stream.headers</code> (Hash, <code class="text-amber-400">HTTP.request</code>&rsquo;s shape: <code class="text-amber-400">set-cookie</code> an Array), read when it opened;</li>
@@ -497,7 +503,7 @@ es.addEventListener("done", () =&gt; es.close())</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (<code class="text-amber-400">headers</code>, <code class="text-amber-400">timeout</code> &mdash; see <a href="#def-http-get" class="text-amber-400 hover:underline">HTTP.get</a>) applies to every request in the batch.</p>
+                <p class="text-gray-400 mb-3">Execute multiple GET requests in parallel. Returns response bodies as strings; failed requests appear as <code>{"error": ...}</code> hashes. An optional trailing options hash (<code class="text-amber-400">headers</code>, <code class="text-amber-400">timeout</code>, <code class="text-amber-400">follow_redirects</code> &mdash; see <a href="#def-http-get" class="text-amber-400 hover:underline">HTTP.get</a>) applies to every request in the batch.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.get_all([
   "https://api.example.com/users",
   "https://api.example.com/posts"
@@ -540,7 +546,7 @@ if users.has_key("error") {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel. Each request hash accepts <code class="text-amber-400">method</code>, <code class="text-amber-400">url</code>, optional <code class="text-amber-400">headers</code>, optional <code class="text-amber-400">body</code>, and an optional per-request <code class="text-amber-400">timeout</code> (seconds).</p>
+                <p class="text-gray-400 mb-3">Execute multiple requests of different methods in parallel. Each request hash accepts <code class="text-amber-400">method</code>, <code class="text-amber-400">url</code>, optional <code class="text-amber-400">headers</code>, optional <code class="text-amber-400">body</code>, an optional per-request <code class="text-amber-400">timeout</code> (seconds) and an optional per-request <code class="text-amber-400">follow_redirects</code> (Bool).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">responses = HTTP.parallel([
   { "method": "GET", "url": "https://api.example.com/users", "timeout": 5 },
   { "method": "POST", "url": "https://api.example.com/logs", "body": "{}" }

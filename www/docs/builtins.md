@@ -848,7 +848,9 @@ this class-based API.
 > and IPv4-compatible forms. Redirects are followed (up to 10 hops) by every
 > `HTTP.*` call, `HTTP.request` included, and the SSRF check runs again on each
 > hop: a 3xx whose `Location` points at a blocked address fails with
-> `SSRF: redirect target rejected: …` instead of being followed.
+> `SSRF: redirect target rejected: …` instead of being followed. An 11th hop
+> fails with `too many redirects (max 10)`. Pass `"follow_redirects": false` to
+> get the 3xx itself back instead (see below).
 >
 > **Reaching a trusted sidecar.** An app that must call something on loopback —
 > a control plane talking to a proxy admin API, for instance — should name it in
@@ -904,6 +906,13 @@ Performs an HTTP GET request.
   - `timeout` (Int|Float) - Per-call timeout in **seconds**, overriding the
     default 30s client timeout for this request only. Fractional seconds are
     allowed (`0.5`). Must be positive.
+  - `follow_redirects` (Bool, default `true`) - `false` returns the first
+    answer as-is instead of following a 3xx: no hop is made, so you read the
+    `location` header and decide yourself. With the verb helpers a 3xx is then
+    a non-2xx and raises (`HTTP 302 error: …`) — use `HTTP.request` to read
+    it. Anything but a Bool raises (`"false"` is a String, not `false`). Not
+    available on the Cloudflare edge build, whose `fetch` always follows:
+    `false` raises there.
 
 The same options hash is accepted, in the same position, by every `HTTP.*`
 verb: `get`, `post`, `put`, `patch`, `delete`, `head`, `get_json`,
@@ -1110,7 +1119,7 @@ Performs a custom HTTP request.
 - `url` (String) - The URL
 - `headers` (Hash, optional) - Request headers. A `timeout` key (Int|Float
   seconds) in this hash is consumed as the per-call timeout rather than being
-  sent as a header, and a nested `headers` hash is merged in — so the
+  sent as a header, as is `follow_redirects` (Bool, see `HTTP.get`), and a nested `headers` hash is merged in — so the
   `{ "headers": {...}, "timeout": n }` options shape the other verbs take
   works here too. Both the flat and the nested pairs go through the same
   validation as `HTTP.get`'s `headers` (bad name/value and framing
@@ -1153,6 +1162,19 @@ response = HTTP.request("GET", "https://api.example.com/slow", {
 })
 ```
 
+**Handling a redirect yourself.** `"follow_redirects": false` stops at the
+first answer: a 301/302/303/307/308 comes back with its status, its body and
+its `location` header, and nothing else is requested — for a login flow that
+must keep the `set-cookie` of the 302, or to check where a link leads before
+going there.
+
+```soli
+response = HTTP.request("GET", "https://example.com/short/abc", { "follow_redirects": false })
+if [301, 302, 303, 307, 308].includes?(response["status"])
+  target = response["headers"]["location"]   # as the server sent it: may be relative
+end
+```
+
 ### HTTP.stream(method, url, options?, body?)
 
 Opens a request and answers as soon as its headers are in, with an object the
@@ -1161,8 +1183,9 @@ server-sent events, a long export, a log tail. `HTTP.request` waits for the
 whole body, and its timeout counts from the start; a stream runs as long as it
 keeps sending.
 
-**Parameters:** as `HTTP.request`'s. The `timeout` (Int|Float seconds, default
-120) is the longest wait **for the next bytes**, not for the whole answer.
+**Parameters:** as `HTTP.request`'s, `follow_redirects` included. The `timeout`
+(Int|Float seconds, default 120) is the longest wait **for the next bytes**,
+not for the whole answer.
 
 **Returns:** an `HTTPStream`:
 - `stream.status` (Int), `stream.headers` (Hash) - read when it opened;
@@ -1350,8 +1373,9 @@ Performs multiple custom requests in parallel.
 
 **Parameters:**
 - `requests` (Array) - Array of request hashes with `method`, `url`, optional
-  `headers`, optional `body`, and an optional per-request `timeout` (Int|Float
-  seconds)
+  `headers`, optional `body`, an optional per-request `timeout` (Int|Float
+  seconds) and an optional per-request `follow_redirects` (Bool, see
+  `HTTP.get`)
 
 **Returns:** Array - one `{ "status", "status_text", "headers", "body" }` hash
 per request, in order (no raise on 4xx/5xx, as with `HTTP.request`)

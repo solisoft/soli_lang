@@ -29,6 +29,26 @@
   `src/xml/stream_tests.rs`, and the `doctype:` cases in
   `tests/builtins/xml_spec.sl` and `tests/builtins/xml_stream_spec.sl`.
 
+- **`follow_redirects: false` — the HTTP client can stop at a redirect.**
+  Every `HTTP.*` call followed up to 10 redirects with no way to read the 3xx
+  itself (Bonfire card #658). `HTTP.request("GET", url, {"follow_redirects":
+  false})` now returns the first answer as-is — status 301/302/303/307/308,
+  body and `location` header — and requests nothing else. The key is read by
+  `HTTP.request`, every verb helper (`get`, `post`, `put`, `patch`, `delete`,
+  `head`, `download`, the `*_json` variants, `get_all`, `get_all_json` — a 3xx
+  there raises like any non-2xx), each `HTTP.parallel` item and
+  `HTTP.stream` / `HTTP.stream_to`; it is consumed rather than sent as a
+  header, and a non-Bool value raises. Implemented as a second cached user
+  client with `redirect::Policy::none()` and the same SSRF resolver, pool,
+  timeouts and TLS floor, picked per request; `SOAP.call` and every internal
+  caller keep the following client. The SEC-007 policy's cap is now the 10
+  hops its message names: `previous()` counts the first URL, so `>= 10`
+  stopped at 9. On the edge (wasm) build reqwest's `fetch` backend has no
+  manual-redirect mode, so `false` raises there. Tests:
+  `http_class::redirect_tests` (default follows, `false` returns the 302 and
+  its `location`, 10 hops pass and 11 fail, streams, option parsing, not sent
+  as a header) and the `redirects` block of `tests/builtins/http_spec.sl`.
+
 ## [2.30.2] - 2026-11-06
 
 ### Fixed

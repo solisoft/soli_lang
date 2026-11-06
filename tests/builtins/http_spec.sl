@@ -136,6 +136,47 @@ describe("HTTP") do
     end
   end
 
+  describe("redirects") do
+    before_each() do
+      mock_http_route("/http-spec/moved", 302, "moved", {"Location": url("hello")})
+    end
+
+    test("are followed by default") do
+      response = HTTP.request("GET", url("moved"))
+      assert_eq(response["status"], 200)
+      assert_eq(response["body"], "hello")
+      assert_eq(HTTP.get(url("moved")), "hello")
+    end
+
+    test("follow_redirects: false returns the 3xx and its location") do
+      response = HTTP.request("GET", url("moved"), {"follow_redirects": false})
+      assert_eq(response["status"], 302)
+      assert_eq(response["status_text"], "Found")
+      assert_eq(response["headers"]["location"], url("hello"))
+      assert_eq(response["body"], "moved")
+    end
+
+    test("follow_redirects: false reaches the verb helpers and HTTP.parallel") do
+      assert_eq(HTTP.head(url("moved"), {"follow_redirects": false}), "302 Found")
+      assert_raises("HTTP 302 error: moved") do
+        HTTP.get(url("moved"), {"follow_redirects": false})
+      end
+      results = HTTP.parallel([
+        {"url": url("moved"), "follow_redirects": false},
+        {"url": url("moved")}
+      ])
+      assert_eq(results[0]["status"], 302)
+      assert_eq(results[0]["headers"]["location"], url("hello"))
+      assert_eq(results[1]["status"], 200)
+    end
+
+    test("follow_redirects must be a bool") do
+      assert_raises("HTTP follow_redirects must be true or false, got string") do
+        HTTP.request("GET", url("moved"), {"follow_redirects": "false"})
+      end
+    end
+  end
+
   describe("stream") do
     test("reads the answer line by line, then nil") do
       mock_http_route("/http-spec/events", 200, "data: {\"a\":1}\n\ndata: {\"a\":2}\n\ndata: [DONE]")
