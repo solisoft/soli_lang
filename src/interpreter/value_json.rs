@@ -242,6 +242,10 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             }
             Value::Instance(inst) => {
                 let borrow = inst.borrow();
+                // An XML node serialises as its `to_xml` string.
+                if let Some(xml) = crate::interpreter::builtins::xml::value::display(&borrow) {
+                    return Ok(serde_json::Value::String(xml));
+                }
                 // Enum value → tag string (unit) or { "variant": tag, ...payload }
                 // (payload). This is what gets stored in the DB; the model
                 // `enum_field` DSL reconstructs it on read.

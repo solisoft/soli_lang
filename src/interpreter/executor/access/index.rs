@@ -73,6 +73,12 @@ impl Interpreter {
             // Used by generic helpers (e.g. uploader prelude) that need to
             // read fields like `<field>_blob_id` where `<field>` is a param.
             (Value::Instance(inst), Value::String(key)) => {
+                // `node["id"]`: an XML node's attribute, never a field.
+                if let Some(attr) =
+                    crate::interpreter::builtins::xml::value::index_get(&inst.borrow(), key)
+                {
+                    return Ok(attr);
+                }
                 self.check_private_access(object, &obj_val, key, span)?;
                 Ok(inst.borrow().get(key).unwrap_or(Value::Null))
             }
@@ -122,6 +128,16 @@ impl Interpreter {
             // model read-only metadata and translated fields included). It
             // used to be "invalid assignment target".
             (Value::Instance(inst), Value::String(key)) => {
+                // `node["id"] = v`: an XML node's attribute, never a field.
+                let xml = crate::interpreter::builtins::xml::value::index_set(
+                    &inst.borrow(),
+                    key,
+                    &new_value,
+                );
+                if let Some(result) = xml {
+                    result.map_err(|message| RuntimeError::type_error(message, span))?;
+                    return Ok(new_value);
+                }
                 self.check_private_access(object, &obj_val, key, span)?;
                 crate::interpreter::executor::expressions::set_instance_field(
                     inst,

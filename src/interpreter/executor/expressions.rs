@@ -931,6 +931,14 @@ pub(crate) fn set_instance_field(
     name: &str,
     value: Value,
 ) -> Result<(), String> {
+    // An XML handle has no fields to write: `node.text = s` and
+    // `node.name = s` edit the tree, anything else is refused. Both engines
+    // reach this (the handle's `const` field keeps the VM off its fast path).
+    if let Some(result) =
+        crate::interpreter::builtins::xml::value::field_write(&inst.borrow(), name, &value)
+    {
+        return result;
+    }
     if crate::interpreter::domain::value_objects_declared() {
         let inst_ref = inst.borrow();
         crate::interpreter::domain::check_writable(inst, &inst_ref.class, name)?;

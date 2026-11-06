@@ -132,6 +132,12 @@ pub enum Op {
     /// instance that has no such property pushes Null instead of raising, so
     /// `@items ||= []` can initialise a field nothing has set yet.
     GetPropertyOrNull(u16),
+    /// `GetProperty` for the callee of a member call with named arguments
+    /// (`node.to_xml(indent: 2)`, `Xml.document("rss", version: "2.0")`): a
+    /// native method of a non-model instance or class is read, not
+    /// auto-invoked, as the tree-walker resolves a callee. Anything else
+    /// reads as `GetProperty`.
+    GetMethod(u16),
     /// Set a property by name constant index.
     SetProperty(u16),
     /// A declared field's default, written by the constructor before its

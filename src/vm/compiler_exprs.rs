@@ -810,6 +810,14 @@ impl Compiler {
         // The callee is read, not called: `clock()` calls `clock` once.
         match &callee.kind {
             ExprKind::Variable(name) => self.compile_variable_get(name, line)?,
+            // A member call with named arguments (the positional form took
+            // the CallMethod path above): the member is the callee, so a
+            // native method is bound rather than auto-invoked.
+            ExprKind::Member { object, name } => {
+                self.compile_expr(object)?;
+                let idx = self.add_string_constant(name);
+                self.emit(Op::GetMethod(idx), line);
+            }
             _ => self.compile_expr(callee)?,
         }
         self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)
