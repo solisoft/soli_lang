@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.30.0] - 2026-11-06
+
 ### Changed
 
 - **`SOAP.parse` and `SOAP.call` read XML with the `Xml.parse` parser**, which
