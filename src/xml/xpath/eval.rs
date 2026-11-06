@@ -449,10 +449,9 @@ impl<'t> Eval<'t> {
                 .collect()),
             Pred::Last => Ok(candidates.last().copied().into_iter().collect()),
             Pred::Expr(expr) => {
-                let size = candidates.len();
                 let mut out = Vec::new();
                 for (i, id) in candidates.iter().enumerate() {
-                    if self.test(expr, *id, i as u64 + 1, size)? {
+                    if self.test(expr, *id, i as u64 + 1)? {
                         out.push(*id);
                     }
                 }
@@ -461,17 +460,11 @@ impl<'t> Eval<'t> {
         }
     }
 
-    fn test(
-        &mut self,
-        expr: &Expr,
-        node: NodeId,
-        position: u64,
-        size: usize,
-    ) -> Result<bool, XPathError> {
+    fn test(&mut self, expr: &Expr, node: NodeId, position: u64) -> Result<bool, XPathError> {
         Ok(match expr {
             Expr::Or(items) => {
                 for item in items {
-                    if self.test(item, node, position, size)? {
+                    if self.test(item, node, position)? {
                         return Ok(true);
                     }
                 }
@@ -479,13 +472,13 @@ impl<'t> Eval<'t> {
             }
             Expr::And(items) => {
                 for item in items {
-                    if !self.test(item, node, position, size)? {
+                    if !self.test(item, node, position)? {
                         return Ok(false);
                     }
                 }
                 true
             }
-            Expr::Not(inner) => !self.test(inner, node, position, size)?,
+            Expr::Not(inner) => !self.test(inner, node, position)?,
             Expr::Position(op, n) => op.holds(position, *n),
             Expr::Exists(operand) => self.any_value(operand, node, None)?,
             Expr::Cmp {

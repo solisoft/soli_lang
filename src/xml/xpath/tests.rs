@@ -668,7 +668,7 @@ fn detached_fragments_have_a_virtual_root() -> TestResult {
         return Err(format!("document after detach: {got:?}"));
     }
     // A dup keeps the prefixes its output declares for the root fallback.
-    let mut tree = doc(ATOM)?;
+    let tree = doc(ATOM)?;
     let entry = tree.descendants(NodeId::DOCUMENT)[2];
     let (mut copy, top) = tree.dup(entry).map_err(|e| e.to_string())?;
     let got = run(
