@@ -64,6 +64,9 @@ fn add(
     now: i64,
 ) {
     let detail = super::error_tracker::truncate_chars(detail, MAX_DETAIL_CHARS);
+    // Compared as stored: a long subject is kept cut, and must still find
+    // its own entry instead of starting a new one each time.
+    let subject = super::error_tracker::truncate_chars(subject, MAX_DETAIL_CHARS);
     if let Some(event) = events
         .iter_mut()
         .find(|e| e.tenant == tenant && e.kind == kind && e.subject == subject)
@@ -86,7 +89,7 @@ fn add(
     events.push(EngineEvent {
         tenant,
         kind,
-        subject: super::error_tracker::truncate_chars(subject, MAX_DETAIL_CHARS),
+        subject,
         detail,
         count: 1,
         first_at: now,
@@ -129,6 +132,17 @@ mod tests {
         assert_eq!(events[0].count, 2);
         assert_eq!((events[0].first_at, events[0].last_at), (10, 20));
         assert_eq!(events[0].detail, "b");
+    }
+
+    #[test]
+    fn a_long_subject_still_counts_on_one_entry() {
+        let mut events = Vec::new();
+        let long = format!("GET /{}", "a".repeat(MAX_DETAIL_CHARS * 2));
+        for at in 0..3 {
+            add(&mut events, T, EngineKind::Panic, &long, "", at);
+        }
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].count, 3);
     }
 
     #[test]

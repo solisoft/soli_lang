@@ -114,6 +114,17 @@ pub(crate) struct Signals {
 }
 
 impl Signals {
+    /// A count with no hourly history to compare (a job row, a queue, the last
+    /// hour of traffic): its volume and recency count, and no growth, so it
+    /// cannot outrank a source that is really rising just for lacking a past.
+    pub(crate) fn no_history(count: u64, last_seen: Option<i64>) -> Signals {
+        Signals {
+            last_24h: count,
+            last_seen,
+            ..Signals::default()
+        }
+    }
+
     /// Average per hour over the 23 hours before the last one.
     pub(crate) fn previous_average(&self) -> f64 {
         self.previous_hours as f64 / 23.0
@@ -255,8 +266,9 @@ pub(crate) fn hourly_signals(
             .unwrap_or(0)
     };
     let into_hour = (now.rem_euclid(3600)) as f64 / 3600.0;
-    let last_hour = at(0) + (at(1) as f64 * (1.0 - into_hour)).round() as u64;
-    let last_24h: u64 = (0..24).map(at).sum();
+    // Stored counts: saturating, so a corrupt document cannot overflow.
+    let last_hour = at(0).saturating_add((at(1) as f64 * (1.0 - into_hour)).round() as u64);
+    let last_24h: u64 = (0..24).map(at).fold(0, u64::saturating_add);
     Signals {
         last_hour: last_hour.min(last_24h),
         previous_hours: last_24h.saturating_sub(last_hour),
@@ -539,18 +551,20 @@ pub(crate) const MAX_QUERY_ITEMS: usize = 5;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct JobSummary {
-    /// Dead in the last 24 hours.
+    /// Dead in the last 24 hours, as the database counted them.
     pub dead_24h: u64,
-    /// Due and waiting for a worker.
+    /// Due and waiting for a worker, as the database counted them.
     pub queued: u64,
     /// How long the oldest due job has waited, in seconds.
     pub oldest_wait: Option<i64>,
-    /// The rows read were the page's whole window (the jobs page reads 500).
+    /// A read hit its row limit: the groups below were built from part of the
+    /// rows (the totals above are still whole).
     pub window_full: bool,
 }
 
-/// The queue rows the jobs page reads (`jobs::store::list(None)`, oldest
-/// `run_at` first, at most 500).
+/// What the queue needs (`jobs::store::attention`): the open rows, oldest
+/// `run_at` first, and the rows dead in the last 24 hours, newest first, each
+/// at most `window`, with the due and dead totals counted by the database.
 ///
 /// - **Critical**: jobs dead in the last hour (retries exhausted); a backlog
 ///   whose oldest due job has waited 30 minutes or more.
@@ -561,7 +575,7 @@ pub(crate) struct JobSummary {
 /// Dead jobs are grouped per handler. A group of one offers the jobs page's own
 /// Retry; more link to the dead jobs there.
 pub(crate) fn job_items(
-    rows: &[serde_json::Value],
+    queue: &crate::jobs::store::QueueAttention,
     window: usize,
     now: i64,
 ) -> (Vec<Item>, JobSummary) {
@@ -578,7 +592,7 @@ pub(crate) fn job_items(
     }
 
     let mut summary = JobSummary {
-        window_full: rows.len() >= window,
+        window_full: queue.open.len() >= window || queue.dead.len() >= window,
         ..JobSummary::default()
     };
     let mut dead: BTreeMap<String, Group> = BTreeMap::new();
@@ -587,7 +601,7 @@ pub(crate) fn job_items(
     let mut stuck_since: i64 = i64::MAX;
     let mut queues: BTreeMap<String, u64> = BTreeMap::new();
 
-    for row in rows {
+    for row in queue.open.iter().chain(&queue.dead) {
         let state = str_field(row, "state");
         let handler = str_field(row, "handler").to_string();
         let id = str_field(row, "_key");
@@ -643,6 +657,10 @@ pub(crate) fn job_items(
         }
     }
 
+    // The rows may be a part of the queue; the database counted the whole.
+    summary.queued = summary.queued.max(queue.due);
+    summary.dead_24h = summary.dead_24h.max(queue.dead_since);
+
     let mut items = Vec::new();
     let valid = |id: &str| {
         !id.is_empty()
@@ -695,10 +713,19 @@ pub(crate) fn job_items(
                 format!("{name} \u{d7} {} \u{b7} {}", group.count, group.last_error)
             },
             why: format!(
-                "Last one died {} \u{b7} tried {} time{}",
+                "Last one died {} \u{b7} tried {} time{}{}",
                 ago(now - group.last_at),
                 group.attempts,
-                if group.attempts == 1 { "" } else { "s" }
+                if group.attempts == 1 { "" } else { "s" },
+                if queue.dead.len() >= window {
+                    format!(
+                        " \u{b7} {} dead in 24 h, grouped over the newest {}",
+                        thousands(queue.dead_since),
+                        window
+                    )
+                } else {
+                    String::new()
+                }
             ),
             metric: group.count.to_string(),
             metric_note: "dead".to_string(),
@@ -714,12 +741,7 @@ pub(crate) fn job_items(
             handler.as_str()
         };
         let next = group.last_at - now;
-        let signals = Signals {
-            last_hour: group.count,
-            last_24h: group.count,
-            last_seen: Some(now),
-            ..Signals::default()
-        };
+        let signals = Signals::no_history(group.count, Some(now));
         items.push(Item {
             tier: Tier::Warning,
             source: Source::Jobs,
@@ -772,15 +794,7 @@ pub(crate) fn job_items(
                 href: "/__soli/jobs?state=running".to_string(),
                 label: "See jobs",
             },
-            score: score(
-                &Signals {
-                    last_hour: stuck,
-                    last_24h: stuck,
-                    last_seen: Some(stuck_since),
-                    ..Signals::default()
-                },
-                now,
-            ),
+            score: score(&Signals::no_history(stuck, Some(stuck_since)), now),
             last_seen: stuck_since,
         });
     }
@@ -809,7 +823,7 @@ pub(crate) fn job_items(
                 "The oldest due job has waited {}{}",
                 span(oldest),
                 if summary.window_full {
-                    " \u{b7} counted over the first 500 rows"
+                    " \u{b7} the busiest queue is judged over the oldest rows"
                 } else {
                     ""
                 }
@@ -820,15 +834,7 @@ pub(crate) fn job_items(
                 href: "/__soli/jobs?state=pending".to_string(),
                 label: "See jobs",
             },
-            score: score(
-                &Signals {
-                    last_hour: summary.queued,
-                    last_24h: summary.queued,
-                    last_seen: Some(now),
-                    ..Signals::default()
-                },
-                now,
-            ),
+            score: score(&Signals::no_history(summary.queued, Some(now)), now),
             last_seen: now,
         });
     }
@@ -843,15 +849,21 @@ pub(crate) struct SpamSummary {
     pub last_24h: u64,
 }
 
-/// Refused posts (`spam::list("spam", limit)`, newest first).
+/// Refused posts (`spam::list("spam", limit)`, newest first). When the read
+/// came back full, the counts are a floor and show as `200+`.
 ///
 /// - **Warning**: a spike — 20 or more in the last hour and five times the
 ///   hourly average of the 23 before.
 /// - **Info**: any refused in the last 24 hours. Refused is handled; it is
 ///   listed so a wave is seen, not because something failed.
-pub(crate) fn spam_items(rows: &[serde_json::Value], now: i64) -> (Vec<Item>, SpamSummary) {
+pub(crate) fn spam_items(
+    rows: &[serde_json::Value],
+    limit: usize,
+    now: i64,
+) -> (Vec<Item>, SpamSummary) {
     use std::collections::{BTreeMap, BTreeSet};
 
+    let floor = if rows.len() >= limit { "+" } else { "" };
     let mut summary = SpamSummary::default();
     let mut last_seen: Option<i64> = None;
     let mut paths: BTreeMap<String, u64> = BTreeMap::new();
@@ -883,7 +895,7 @@ pub(crate) fn spam_items(rows: &[serde_json::Value], now: i64) -> (Vec<Item>, Sp
     }
     let signals = Signals {
         last_hour: summary.last_hour,
-        previous_hours: summary.last_24h - summary.last_hour,
+        previous_hours: summary.last_24h.saturating_sub(summary.last_hour),
         last_24h: summary.last_24h,
         last_seen,
     };
@@ -907,12 +919,12 @@ pub(crate) fn spam_items(rows: &[serde_json::Value], now: i64) -> (Vec<Item>, Sp
         .join(", ");
     let why = if summary.last_hour > 0 {
         format!(
-            "In the last hour \u{b7} refused by {reasons} \u{b7} {} in 24 h",
+            "In the last hour \u{b7} refused by {reasons} \u{b7} {}{floor} in 24 h",
             thousands(summary.last_24h)
         )
     } else {
         format!(
-            "{} in 24 h \u{b7} last {}",
+            "{}{floor} in 24 h \u{b7} last {}",
             thousands(summary.last_24h),
             ago(now - last_seen.unwrap_or(now))
         )
@@ -927,11 +939,14 @@ pub(crate) fn spam_items(rows: &[serde_json::Value], now: i64) -> (Vec<Item>, Sp
         },
         detail,
         why,
-        metric: thousands(if summary.last_hour > 0 {
-            summary.last_hour
-        } else {
-            summary.last_24h
-        }),
+        metric: format!(
+            "{}{floor}",
+            thousands(if summary.last_hour > 0 {
+                summary.last_hour
+            } else {
+                summary.last_24h
+            })
+        ),
         metric_note: if summary.last_hour > 0 {
             "refused / h".to_string()
         } else {
@@ -952,8 +967,10 @@ pub(crate) fn spam_items(rows: &[serde_json::Value], now: i64) -> (Vec<Item>, Sp
 /// What the engines recorded on this process ([`super::engine_events`]).
 ///
 /// - **Critical**: a handler panicked within the hour.
-/// - **Warning**: an older panic; a handler the VM refused (it now runs on the
-///   slower tree-walker); a handler the two engines disagree on.
+/// - **Warning**: a panic within the last 24 hours.
+/// - **Info**: an older panic; a handler the VM refused (it runs on the slower
+///   tree-walker); a handler the two engines disagree on. The last two are the
+///   framework's to fix — worth knowing and reporting, not an app fault.
 pub(crate) fn engine_items(events: &[EngineEvent], now: i64) -> Vec<Item> {
     events
         .iter()
@@ -970,17 +987,17 @@ pub(crate) fn engine_items(events: &[EngineEvent], now: i64) -> Vec<Item> {
             };
             let (tier, title, what, note) = match event.kind {
                 EngineKind::Panic => (
-                    if now - event.last_at < 3600 {
-                        Tier::Critical
-                    } else {
-                        Tier::Warning
+                    match now - event.last_at {
+                        age if age < 3600 => Tier::Critical,
+                        age if age < 86_400 => Tier::Warning,
+                        _ => Tier::Info,
                     },
                     "A handler panicked",
                     "the request got a 500 and the worker survived; the backtrace is on stderr",
                     if event.count == 1 { "panic" } else { "panics" },
                 ),
                 EngineKind::Refused => (
-                    Tier::Warning,
+                    Tier::Info,
                     "A handler runs on the slower engine",
                     "refused by the VM, it still answers on the interpreter",
                     if event.count == 1 {
@@ -990,7 +1007,7 @@ pub(crate) fn engine_items(events: &[EngineEvent], now: i64) -> Vec<Item> {
                     },
                 ),
                 EngineKind::Divergence => (
-                    Tier::Warning,
+                    Tier::Info,
                     "The two engines disagree on a handler",
                     "failed on the VM, then succeeded on the interpreter: a VM bug worth reporting",
                     if event.count == 1 { "time" } else { "times" },
@@ -1056,12 +1073,7 @@ pub(crate) fn traffic_items(hour: &UsageView, errors_page: bool, now: i64) -> Ve
             None => String::new(),
         };
         let critical = errors >= 10 && rate >= 0.05;
-        let signals = Signals {
-            last_hour: errors,
-            last_24h: errors,
-            last_seen: Some(now),
-            ..Signals::default()
-        };
+        let signals = Signals::no_history(errors, Some(now));
         items.push(Item {
             tier: if critical {
                 Tier::Critical
@@ -1111,15 +1123,7 @@ pub(crate) fn traffic_items(hour: &UsageView, errors_page: bool, now: i64) -> Ve
             metric: fmt_us(p95),
             metric_note: "p95".to_string(),
             action: Action::None,
-            score: score(
-                &Signals {
-                    last_hour: row.window.requests(),
-                    last_24h: row.window.requests(),
-                    last_seen: Some(now),
-                    ..Signals::default()
-                },
-                now,
-            ),
+            score: score(&Signals::no_history(row.window.requests(), Some(now)), now),
             last_seen: now,
         });
     }
@@ -1145,7 +1149,9 @@ pub(crate) fn fmt_rate(rate: f64) -> String {
 // --- the trackers themselves ------------------------------------------------------------
 
 /// A tracker that lost or failed to write what it recorded, since the process
-/// started: **Warning**.
+/// started: **Warning** while the last miss is under an hour old, **Info**
+/// after that (the counts never go down, so a blip an hour ago is history,
+/// not a standing warning).
 pub(crate) fn recording_item(
     what: &str,
     page: &str,
@@ -1166,12 +1172,21 @@ pub(crate) fn recording_item(
     if stats.failed > 0 {
         parts.push(format!("{} failed writes", thousands(stats.failed)));
     }
+    let last = stats.last_problem_at as i64;
+    let recent = last == 0 || now - last < 3600;
     Some(Item {
-        tier: Tier::Warning,
+        tier: if recent { Tier::Warning } else { Tier::Info },
         source: Source::Recording,
         title: format!("Not every {what} was stored"),
         detail: parts.join(" \u{b7} "),
-        why: "Since this process started \u{b7} the stderr lines say why".to_string(),
+        why: if last == 0 {
+            "Since this process started \u{b7} the stderr lines say why".to_string()
+        } else {
+            format!(
+                "Since this process started \u{b7} the last one {} \u{b7} the stderr lines say why",
+                ago(now - last)
+            )
+        },
         metric: thousands(lost + stats.failed),
         metric_note: "missed".to_string(),
         action: if page.is_empty() {
@@ -1183,7 +1198,7 @@ pub(crate) fn recording_item(
             }
         },
         score: 0.0,
-        last_seen: now,
+        last_seen: if last == 0 { now } else { last },
     })
 }
 
@@ -1209,6 +1224,7 @@ pub(crate) fn unreadable_item(what: &str, page: &str, error: &str, now: i64) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jobs::store::QueueAttention;
     use serde_json::json;
 
     /// 2025-11-06 14:30:00 UTC.
@@ -1401,7 +1417,13 @@ mod tests {
             json!({"_key": "j-8", "state": "failed", "handler": "SyncJob", "run_at": iso(NOW + 120),
                    "attempts": 2, "max_retries": 5, "last_error": "timeout"}),
         ];
-        let (mut items, summary) = job_items(&rows, 500, NOW);
+        let (open, dead): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r["state"] != "dead");
+        let queue = QueueAttention {
+            open,
+            dead,
+            ..QueueAttention::default()
+        };
+        let (mut items, summary) = job_items(&queue, 500, NOW);
         assert_eq!(summary.dead_24h, 3, "the 3-day-old one is history");
         assert_eq!(summary.queued, 1, "a future run is not queued");
         assert_eq!(summary.oldest_wait, Some(2_400));
@@ -1429,7 +1451,49 @@ mod tests {
         assert!(items.iter().any(|i| i.metric_note == "stuck"));
         assert!(items.iter().any(|i| i.metric_note == "failing"));
         assert!(!items.iter().any(|i| i.title.contains("OldJob")));
-        assert_eq!(job_items(&[], 500, NOW).0, Vec::new());
+        assert_eq!(
+            job_items(&QueueAttention::default(), 500, NOW).0,
+            Vec::new()
+        );
+    }
+
+    /// The rows are capped; the totals the database counted are not. A
+    /// backlog bigger than the rows read is still a backlog, and the tile
+    /// counts every death of the day.
+    #[test]
+    fn job_totals_come_from_the_database_counts() {
+        let open: Vec<serde_json::Value> = (0..3)
+            .map(|i| json!({"_key": format!("p-{i}"), "state": "pending", "queue": "mail", "run_at": iso(NOW - 60)}))
+            .collect();
+        let dead: Vec<serde_json::Value> = (0..3)
+            .map(|i| json!({"_key": format!("d-{i}"), "state": "dead", "handler": "MailJob", "finished_at": iso(NOW - 600)}))
+            .collect();
+        let queue = QueueAttention {
+            open,
+            dead,
+            due: 4_200,
+            dead_since: 90,
+        };
+        let (items, summary) = job_items(&queue, 3, NOW);
+        assert_eq!(summary.queued, 4_200);
+        assert_eq!(summary.dead_24h, 90);
+        assert!(summary.window_full);
+        let backlog = items
+            .iter()
+            .find(|i| i.title == "The queue is backing up")
+            .expect("4,200 waiting is a backlog");
+        assert_eq!(backlog.metric, "4,200");
+        let dead_group = items
+            .iter()
+            .find(|i| i.metric_note == "dead")
+            .expect("the dead group");
+        assert!(
+            dead_group
+                .why
+                .contains("90 dead in 24 h, grouped over the newest 3"),
+            "{}",
+            dead_group.why
+        );
     }
 
     #[test]
@@ -1437,7 +1501,7 @@ mod tests {
         let mut rows: Vec<serde_json::Value> = (0..30)
             .map(|i| json!({"created_at": iso(NOW - 60 * i), "path": "/posts/42/comments", "ip": format!("10.0.0.{}", i % 3), "reason": "honeypot"}))
             .collect();
-        let (items, summary) = spam_items(&rows, NOW);
+        let (items, summary) = spam_items(&rows, 200, NOW);
         assert_eq!(summary.last_hour, 30);
         assert_eq!(items[0].tier, Tier::Warning);
         assert!(
@@ -1446,10 +1510,13 @@ mod tests {
             items[0].detail
         );
         assert!(items[0].detail.contains("3 source IPs"));
+        // A read that came back full is a floor, not a count.
+        assert_eq!(spam_items(&rows, 30, NOW).0[0].metric, "30+");
+        assert_eq!(items[0].metric, "30");
         rows.truncate(2);
-        assert_eq!(spam_items(&rows, NOW).0[0].tier, Tier::Info);
+        assert_eq!(spam_items(&rows, 200, NOW).0[0].tier, Tier::Info);
         let old = vec![json!({"created_at": iso(NOW - 2 * 86_400), "path": "/x"})];
-        assert!(spam_items(&old, NOW).0.is_empty());
+        assert!(spam_items(&old, 200, NOW).0.is_empty());
     }
 
     #[test]
@@ -1498,13 +1565,16 @@ mod tests {
                 event(EngineKind::Panic, NOW - 60),
                 event(EngineKind::Panic, NOW - 7_200),
                 event(EngineKind::Refused, NOW - 60),
+                event(EngineKind::Panic, NOW - 2 * 86_400),
             ],
             NOW,
         );
         assert_eq!(items[0].tier, Tier::Critical);
         assert_eq!(items[1].tier, Tier::Warning);
         assert_eq!(items[2].title, "A handler runs on the slower engine");
+        assert_eq!(items[2].tier, Tier::Info, "the framework's to fix");
         assert_eq!(items[2].detail, "reports#export \u{b7} unsupported opcode");
+        assert_eq!(items[3].tier, Tier::Info, "a panic two days ago is history");
     }
 
     #[test]
@@ -1534,6 +1604,33 @@ mod tests {
         assert_eq!(ago(30), "just now");
         assert_eq!(ago(38 * 60), "38 min ago");
         assert_eq!(span(9 * 60), "9 min");
+    }
+
+    /// The counters only grow: a write that failed an hour ago is history,
+    /// not a warning that stands until the next restart.
+    #[test]
+    fn a_recording_miss_fades_to_info_after_an_hour() {
+        let stats = StatsSnapshot {
+            failed: 2,
+            last_problem_at: (NOW - 120) as u64,
+            ..StatsSnapshot::default()
+        };
+        let fresh = recording_item("usage hour", "", &stats, NOW).expect("a row");
+        assert_eq!(fresh.tier, Tier::Warning);
+        assert!(
+            fresh.why.contains("the last one 2 min ago"),
+            "{}",
+            fresh.why
+        );
+        let old = StatsSnapshot {
+            last_problem_at: (NOW - 2 * 3600) as u64,
+            ..stats
+        };
+        assert_eq!(
+            recording_item("usage hour", "", &old, NOW).map(|i| i.tier),
+            Some(Tier::Info)
+        );
+        assert!(recording_item("usage hour", "", &StatsSnapshot::default(), NOW).is_none());
     }
 
     #[test]

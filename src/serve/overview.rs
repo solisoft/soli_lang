@@ -10,7 +10,7 @@
 //! plain 404.
 //!
 //! What it reads is what the pages already read — the open error groups, the
-//! slow-query groups, the refused posts, the queue window of the jobs page —
+//! slow-query groups, the refused posts, and the queue's open and recently dead jobs —
 //! each a bounded list, plus the in-memory usage recorder ([`usage`]) and
 //! engine events ([`engine_events`]). It has no forms of its own: a row's
 //! action is a link, or the POST form of an action its page already offers.
@@ -62,10 +62,17 @@ pub(crate) struct Allowed {
     pub slow_queries: bool,
     pub spam: bool,
     pub jobs: bool,
+    /// The mobile page: it has nothing to summarise here, but whoever may
+    /// open it may open the overview its brand link points at.
+    pub mobile: bool,
 }
 
 impl Allowed {
     fn any(&self) -> bool {
+        self.mobile || self.shows_something()
+    }
+
+    fn shows_something(&self) -> bool {
         self.overview || self.errors || self.slow_queries || self.spam || self.jobs
     }
 }
@@ -90,6 +97,7 @@ pub(crate) fn gate(decide: impl Fn(&str) -> DashAuth) -> Result<Allowed, DashAut
         slow_queries: check("SLOW_QUERIES"),
         spam: check("SPAM"),
         jobs: check("JOBS"),
+        mobile: check("MOBILE"),
     };
     if allowed.any() {
         Ok(allowed)
@@ -139,7 +147,19 @@ fn serve(
     };
     let params = Params::parse(query);
     let sources = fetch(&allowed, params.range);
-    html_ok(render_page(&params, &allowed, &sources, now, dev_mode))
+    let mut resp = html_ok(render_page(&params, &allowed, &sources, now, dev_mode));
+    // Operational data and a POST form: never kept by a shared cache, never
+    // framed by another site.
+    let headers = resp.headers_mut();
+    headers.insert(
+        hyper::header::CACHE_CONTROL,
+        hyper::header::HeaderValue::from_static("no-store"),
+    );
+    headers.insert(
+        hyper::header::X_FRAME_OPTIONS,
+        hyper::header::HeaderValue::from_static("SAMEORIGIN"),
+    );
+    resp
 }
 
 /// `?range=1h|24h|7d` and `?refresh=30`.
@@ -177,11 +197,13 @@ pub(crate) struct Sources {
     pub slow: Option<Result<Vec<serde_json::Value>, String>>,
     pub slow_threshold_ms: u64,
     pub spam: Option<Result<Vec<serde_json::Value>, String>>,
-    pub jobs: Option<Result<Vec<serde_json::Value>, String>>,
+    pub jobs: Option<Result<crate::jobs::store::QueueAttention, String>>,
     /// The chosen range.
     pub usage: Option<UsageView>,
     /// The last hour, for the traffic rows.
     pub usage_hour: Option<UsageView>,
+    /// Usage hours go to the app's database (one is configured).
+    pub usage_stored: bool,
     pub engine: Vec<EngineEvent>,
     /// (what, its page, the tracker's counters) for the trackers the caller
     /// may see.
@@ -189,21 +211,22 @@ pub(crate) struct Sources {
 }
 
 /// A collection that was never created is an empty one.
-fn or_empty(
-    result: Result<Vec<serde_json::Value>, String>,
-) -> Result<Vec<serde_json::Value>, String> {
+fn or_empty<T: Default>(result: Result<T, String>) -> Result<T, String> {
     match result {
-        Err(e) if super::internal_store::is_missing_collection(&e) => Ok(Vec::new()),
+        Err(e) if super::internal_store::is_missing_collection(&e) => Ok(T::default()),
         other => other,
     }
 }
 
 fn fetch_live(allowed: &Allowed, range: Range) -> Sources {
+    let now = chrono::Utc::now().timestamp();
     let mut sources = Sources {
         slow_threshold_ms: super::slow_queries::threshold_ms(),
         ..Sources::default()
     };
-    if allowed.errors {
+    // A tracker that is switched off records nothing: reading its store
+    // would only turn a missing database into a warning row on every load.
+    if allowed.errors && super::error_tracker::enabled() {
         sources.errors = Some(or_empty(super::error_tracker::list("open", ERROR_LIMIT)));
         sources
             .recording
@@ -212,7 +235,7 @@ fn fetch_live(allowed: &Allowed, range: Range) -> Sources {
             .recording
             .push(("notification", "/__soli/errors", super::notify::stats()));
     }
-    if allowed.slow_queries {
+    if allowed.slow_queries && super::slow_queries::enabled() {
         sources.slow = Some(or_empty(super::slow_queries::list("recent", SLOW_LIMIT)));
         sources.recording.push((
             "slow query",
@@ -220,14 +243,18 @@ fn fetch_live(allowed: &Allowed, range: Range) -> Sources {
             super::slow_queries::stats(),
         ));
     }
-    if allowed.spam {
+    if allowed.spam && super::spam::enabled() {
         sources.spam = Some(or_empty(super::spam::list("spam", SPAM_LIMIT)));
         sources
             .recording
             .push(("spam post", "/__soli/spam", super::spam::stats()));
     }
     if allowed.jobs {
-        sources.jobs = Some(or_empty(crate::jobs::store::list(None)));
+        sources.jobs = Some(or_empty(crate::jobs::store::attention(
+            &crate::jobs::iso_from_unix(now),
+            &crate::jobs::iso_from_unix(now - 86_400),
+            JOB_WINDOW,
+        )));
     }
     if allowed.overview {
         if usage::enabled() {
@@ -238,7 +265,10 @@ fn fetch_live(allowed: &Allowed, range: Range) -> Sources {
                 usage::snapshot(Range::Hour)
             });
             sources.usage = Some(view);
-            sources.recording.push(("usage hour", "", usage::stats()));
+            sources.usage_stored = usage::store_configured();
+            if sources.usage_stored {
+                sources.recording.push(("usage hour", "", usage::stats()));
+            }
         }
         sources.engine = super::engine_events::snapshot();
     }
@@ -292,9 +322,9 @@ fn collect(allowed: &Allowed, sources: &Sources, now: i64) -> Collected {
             now,
         )),
     });
-    let jobs = sources.jobs.as_ref().map(|rows| match rows {
-        Ok(rows) => {
-            let (found, summary) = attention::job_items(rows, JOB_WINDOW, now);
+    let jobs = sources.jobs.as_ref().map(|queue| match queue {
+        Ok(queue) => {
+            let (found, summary) = attention::job_items(queue, JOB_WINDOW, now);
             items.extend(found);
             Ok(summary)
         }
@@ -302,7 +332,7 @@ fn collect(allowed: &Allowed, sources: &Sources, now: i64) -> Collected {
     });
     if let Some(rows) = &sources.spam {
         match rows {
-            Ok(rows) => items.extend(attention::spam_items(rows, now).0),
+            Ok(rows) => items.extend(attention::spam_items(rows, SPAM_LIMIT, now).0),
             Err(e) => {
                 let _ = unreadable(&mut items, "spam quarantine", "/__soli/spam", e, now);
             }
@@ -327,7 +357,9 @@ fn collect(allowed: &Allowed, sources: &Sources, now: i64) -> Collected {
 }
 
 fn intro(allowed: &Allowed, range: Range) -> String {
-    if allowed.overview {
+    if !allowed.shows_something() {
+        "Your credentials open the mobile page, which has nothing to summarise here.".to_string()
+    } else if allowed.overview {
         format!(
             "What needs your attention, most urgent first. Usage over {}.",
             range.phrase()
@@ -350,7 +382,11 @@ pub(crate) fn render_page(
     body.push_str(&tiles(allowed, sources, &collected, params));
     body.push_str(&attention_list(&collected.items));
     if allowed.overview {
-        body.push_str(&usage_section(params, sources.usage.as_ref()));
+        body.push_str(&usage_section(
+            params,
+            sources.usage.as_ref(),
+            sources.usage_stored,
+        ));
     }
     body.push_str("</div>");
     body.push_str(AGE_SCRIPT);
@@ -668,7 +704,7 @@ fn item_row(item: &Item) -> String {
 
 // --- usage ------------------------------------------------------------------------------
 
-fn usage_section(params: &Params, view: Option<&UsageView>) -> String {
+fn usage_section(params: &Params, view: Option<&UsageView>, stored: bool) -> String {
     let mut range_links = String::new();
     for range in Range::ALL {
         let current = if range == params.range {
@@ -695,11 +731,16 @@ fn usage_section(params: &Params, view: Option<&UsageView>) -> String {
     };
     out.push_str(&format!(
         "<p class=\"muted\">Requests this process answered{}, all workers together; \
-the framework's own pages and probes are left out. Times are UTC.</p>",
-        if view.range == Range::Week {
+the framework's own pages and probes are left out. Times are UTC.{}</p>",
+        if view.range == Range::Week && stored {
             ", plus the hours stored before it started"
         } else {
             ""
+        },
+        if stored {
+            ""
+        } else {
+            " Kept in memory only: no database is configured, so a restart starts over."
         }
     ));
     if view.current.requests() == 0 {
@@ -780,7 +821,7 @@ fn chart(view: &UsageView) -> String {
     });
     let peak_requests = peak.map(|b| b.requests).unwrap_or(0);
     let step = nice_step(peak_requests.div_ceil(3));
-    let top = step * 3;
+    let top = step.saturating_mul(3);
     let peak_at = peak.map(|b| clock(b.start, view.range)).unwrap_or_default();
     let mut cols = String::new();
     let last = view.bars.len().saturating_sub(1);
@@ -829,7 +870,7 @@ fn chart(view: &UsageView) -> String {
         peak = thousands(peak_requests),
         peak_at = esc(&peak_at),
         total = thousands(total),
-        y3 = compact(step * 3),
+        y3 = compact(step.saturating_mul(3)),
         y2 = compact(step * 2),
         y1 = compact(step),
         label = esc(&label),
@@ -930,6 +971,7 @@ mod tests {
     use super::super::engine_events::EngineKind;
     use super::super::usage::{Bar, RouteRow};
     use super::*;
+    use crate::jobs::store::QueueAttention;
     use serde_json::json;
 
     /// 2025-11-06 14:30:00 UTC.
@@ -948,6 +990,7 @@ mod tests {
             slow_queries: true,
             spam: true,
             jobs: true,
+            mobile: true,
         }
     }
 
@@ -1013,12 +1056,17 @@ mod tests {
             spam: Some(Ok(vec![
                 json!({"created_at": iso(NOW - 120), "path": "/users/sign_up", "ip": "10.0.0.1", "reason": "honeypot"}),
             ])),
-            jobs: Some(Ok(vec![json!({
-                "_key": "job-1", "state": "dead", "handler": "InvoiceMailerJob", "finished_at": iso(NOW - 720),
-                "attempts": 6, "max_retries": 5, "last_error": "SMTP connection refused",
-            })])),
+            jobs: Some(Ok(QueueAttention {
+                dead: vec![json!({
+                    "_key": "job-1", "state": "dead", "handler": "InvoiceMailerJob", "finished_at": iso(NOW - 720),
+                    "attempts": 6, "max_retries": 5, "last_error": "SMTP connection refused",
+                })],
+                dead_since: 1,
+                ..QueueAttention::default()
+            })),
             usage: Some(usage_view()),
             usage_hour: Some(usage_view()),
+            usage_stored: true,
             engine: vec![EngineEvent {
                 tenant: crate::serve::tenant::TenantId::PRIMARY,
                 kind: EngineKind::Refused,
@@ -1038,7 +1086,7 @@ mod tests {
             slow: Some(Ok(Vec::new())),
             slow_threshold_ms: 200,
             spam: Some(Ok(Vec::new())),
-            jobs: Some(Ok(Vec::new())),
+            jobs: Some(Ok(QueueAttention::default())),
             usage: Some(UsageView {
                 range: Range::Day,
                 now: NOW as u64,
@@ -1048,6 +1096,7 @@ mod tests {
                 routes: Vec::new(),
             }),
             usage_hour: None,
+            usage_stored: false,
             engine: Vec::new(),
             recording: Vec::new(),
         }
@@ -1133,6 +1182,8 @@ mod tests {
         };
         let resp = serve(None, decide, &fetch, NOW, false);
         assert_eq!(resp.status(), 200);
+        assert_eq!(resp.headers()["cache-control"], "no-store");
+        assert_eq!(resp.headers()["x-frame-options"], "SAMEORIGIN");
         let html = body_of(resp);
         assert!(html.contains("InvoiceMailerJob"));
         assert!(!html.contains("Open errors"));
@@ -1142,6 +1193,45 @@ mod tests {
             "engine events are the overview's own"
         );
         assert!(!html.contains("NoMethodError"));
+    }
+
+    /// The brand link of every operator page, `/__soli/mobile` included,
+    /// points here: credentials for the mobile page alone open it, and read
+    /// nothing.
+    #[test]
+    fn mobile_credentials_open_the_overview_and_read_nothing() {
+        let decide = |p: &str| {
+            if p == "MOBILE" {
+                DashAuth::Allow
+            } else {
+                DashAuth::NeedAuth
+            }
+        };
+        assert_eq!(
+            gate(decide),
+            Ok(Allowed {
+                mobile: true,
+                ..Allowed::default()
+            })
+        );
+        let fetch = |allowed: &Allowed, _: Range| {
+            assert!(!allowed.shows_something());
+            Sources::default()
+        };
+        let resp = serve(None, decide, &fetch, NOW, false);
+        assert_eq!(resp.status(), 200);
+        let html = body_of(resp);
+        assert!(html.contains("open the mobile page"), "{html}");
+        assert!(!html.contains("id=\"usage-h\""));
+        // Configured elsewhere, presented nowhere: still a challenge.
+        let only_mobile_configured = |p: &str| {
+            if p == "MOBILE" {
+                DashAuth::NeedAuth
+            } else {
+                DashAuth::Hidden
+            }
+        };
+        assert_eq!(gate(only_mobile_configured), Err(DashAuth::NeedAuth));
     }
 
     #[test]
@@ -1197,6 +1287,10 @@ mod tests {
         assert!(html.contains("No requests recorded over the last 24 hours yet."));
         assert!(html.contains("nothing waiting"));
         assert!(!html.contains("<ol>"));
+        // No database configured: said once, and no warning row about it.
+        assert!(html.contains("Kept in memory only"));
+        let html = render_page(&params(), &all(), &populated(), NOW, false);
+        assert!(!html.contains("Kept in memory only"));
         // Not recording at all.
         let mut off = empty();
         off.usage = None;
@@ -1229,9 +1323,12 @@ mod tests {
         sources.spam = Some(Ok(vec![
             json!({"created_at": iso(NOW - 60), "path": evil, "ip": evil}),
         ]));
-        sources.jobs = Some(Ok(vec![json!({
-            "_key": "x\"><script>", "state": "dead", "handler": evil, "finished_at": iso(NOW - 60), "last_error": evil,
-        })]));
+        sources.jobs = Some(Ok(QueueAttention {
+            dead: vec![json!({
+                "_key": "x\"><script>", "state": "dead", "handler": evil, "finished_at": iso(NOW - 60), "last_error": evil,
+            })],
+            ..QueueAttention::default()
+        }));
         if let Some(view) = sources.usage.as_mut() {
             view.routes[0].label = format!("GET {evil}");
         }
