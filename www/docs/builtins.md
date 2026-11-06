@@ -2765,11 +2765,12 @@ Creates a signed JWT token.
   - `typ` (String) - Overrides the header `typ` (default `"JWT"`). Set `"at+jwt"` for RFC 9068 access tokens.
   - `exp` (Int) - Expiration as an **absolute** Unix timestamp. Mutually exclusive with `expires_in` — supplying both raises, since they are different units and silently picking one would produce a token expiring at a time you never meant.
   - `nbf` (Int) - Not-before, as an absolute Unix timestamp
+  - `iat` (Int) - Issued-at, as an absolute Unix timestamp (default: now). A non-Int raises. `expires_in` still counts from now, not from `iat`.
   - `aud` (String or Array) - Audience. RFC 7519 §4.1.3 allows either form.
   - `iss` (String) - Issuer
   - `jti` (String) - Unique token ID
 
-Registered claims come from `options`; everything else in `payload` becomes a custom claim. `sub` is the exception — it is read from `payload`. An option always wins over a same-named key in the payload.
+Registered claims come from `options`; everything else in `payload` becomes a custom claim. `sub` is the exception — it is read from `payload`. An option always wins over a same-named key in the payload. `exp` or `iat` in the payload **raises**, naming the option to use — they used to be dropped silently.
 
 **Returns:** String - The JWT token
 

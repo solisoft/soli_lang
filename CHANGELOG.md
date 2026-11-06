@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`jwt_sign` takes an `iat` option, and refuses `exp`/`iat` in the
+  payload.** `iat` was always `now`: the payload copy dropped an `iat` key
+  silently and no option set it, so a token could not be antedated or given a
+  fixed `iat` (a deterministic spec, a reissue that keeps the original). The
+  `iat` option is an absolute Unix timestamp; a non-Int raises. `expires_in`
+  still counts from now. An `exp` or `iat` key in the payload — dropped
+  silently until now, so the caller believed the token carried it — raises
+  and names the option to use (`exp`/`expires_in`, `iat`). **Breaking** for a
+  caller that put either there; none in the scaffolds. Tests:
+  `jwt_sign_accepts_iat_option`, `jwt_sign_rejects_non_int_iat_option`,
+  `jwt_sign_rejects_exp_and_iat_in_payload`, `tests/builtins/jwt_spec.sl`.
+
 ## [2.30.0] - 2026-11-06
 
 ### Changed

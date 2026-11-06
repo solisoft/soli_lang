@@ -41,9 +41,34 @@ describe("JWT") do
       assert_eq(claims["exp"], 4102444800)
     end
 
-    test("an exp in the payload is ignored: registered claims come from the options") do
-      claims = jwt_decode_unsafe(jwt_sign({"sub": "a", "exp": 1000}, SECRET))["claims"]
-      assert_not(claims.has_key("exp"))
+    test("an exp in the payload raises and names the option") do
+      assert_raises("jwt_sign() takes `exp` from the options, not the payload") do
+        jwt_sign({"sub": "a", "exp": 1000}, SECRET)
+      end
+    end
+
+    test("an iat in the payload raises and names the option") do
+      assert_raises("jwt_sign() takes `iat` from the options, not the payload") do
+        jwt_sign({"sub": "a", "iat": 1000}, SECRET)
+      end
+    end
+
+    test("iat defaults to now") do
+      before = DateTime.utc.to_unix
+      claims = jwt_decode_unsafe(jwt_sign({"sub": "a"}, SECRET))["claims"]
+      assert(claims["iat"] >= before)
+      assert(claims["iat"] <= DateTime.utc.to_unix)
+    end
+
+    test("the iat option is an absolute timestamp") do
+      claims = jwt_decode_unsafe(jwt_sign({"sub": "a"}, SECRET, {"iat": 1700000000}))["claims"]
+      assert_eq(claims["iat"], 1700000000)
+    end
+
+    test("refuses an iat option that is not an Int") do
+      assert_raises("jwt_sign() option `iat` must be an Int (Unix timestamp), got string") do
+        jwt_sign({"sub": "a"}, SECRET, {"iat": "yesterday"})
+      end
     end
 
     test("refuses exp and expires_in together") do

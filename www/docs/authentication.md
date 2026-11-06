@@ -100,7 +100,9 @@ jwt_sign(payload, secret, options)
 |-----------|------|-------------|
 | `payload` | Hash | Claims to include in the token |
 | `secret` | String | Secret key for signing |
-| `options.expires_in` | Int | Expiration in seconds (optional) |
+| `options.expires_in` | Int | Expiration in seconds from now (optional) |
+| `options.exp` | Int | Expiration as an absolute Unix timestamp (optional, not with `expires_in`) |
+| `options.iat` | Int | Issued-at as an absolute Unix timestamp (optional, default: now) |
 | `options.algorithm` | String | Algorithm: "HS256", "HS384", "HS512", "RS256", "EdDSA" (optional) |
 | `options.key` | String | PEM-encoded private key for RS256/EdDSA (optional) |
 

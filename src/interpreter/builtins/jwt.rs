@@ -107,6 +107,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let mut typ: Option<String> = None;
             let mut absolute_exp: Option<i64> = None;
             let mut not_before: Option<i64> = None;
+            let mut issued_at: Option<i64> = None;
             let mut audience: Option<JsonValue> = None;
             let mut issuer: Option<String> = None;
             let mut jwt_id: Option<String> = None;
@@ -168,6 +169,19 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                         not_before = Some(*ts);
                                     }
                                 }
+                                // Absolute Unix timestamp; defaults to now.
+                                // Strict on type: a new option has no
+                                // callers relying on a silent skip.
+                                "iat" => match v {
+                                    Value::Int(ts) => issued_at = Some(*ts),
+                                    other => {
+                                        return Err(format!(
+                                            "jwt_sign() option `iat` must be an Int \
+                                             (Unix timestamp), got {}",
+                                            other.type_name()
+                                        ))
+                                    }
+                                },
                                 // RFC 7519 §4.1.3 allows `aud` to be a single
                                 // string or an array of them.
                                 "aud" => {
@@ -218,27 +232,48 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             // `aud` can serialize as either a string or an array. Custom claims
             // still come from the payload and registered ones from the options,
             // which keeps the split unambiguous.
+            //
+            // `exp` and `iat` in the payload used to be dropped silently, so
+            // a caller who put them there believed the token carried them.
+            // They raise now and name the option that does the job.
             let mut claims = serde_json::Map::new();
             if let Value::Hash(hash) = payload {
                 for (k, v) in hash.borrow().iter() {
                     if let HashKey::String(key) = k {
-                        // Skip reserved claims
-                        if **key != *"exp" && **key != *"iat" && **key != *"sub" {
-                            claims.insert(key.to_string(), value_to_json(v)?);
+                        match key.as_ref() {
+                            "exp" => {
+                                return Err("jwt_sign() takes `exp` from the options, \
+                                            not the payload: pass {\"exp\": <timestamp>} \
+                                            or {\"expires_in\": <seconds>} as the third \
+                                            argument"
+                                    .to_string())
+                            }
+                            "iat" => {
+                                return Err("jwt_sign() takes `iat` from the options, \
+                                            not the payload: pass {\"iat\": <timestamp>} \
+                                            as the third argument (it defaults to now)"
+                                    .to_string())
+                            }
+                            // Read separately below: only a string is kept.
+                            "sub" => {}
+                            _ => {
+                                claims.insert(key.to_string(), value_to_json(v)?);
+                            }
                         }
                     }
                 }
             }
 
-            let now = current_timestamp();
+            let now = i64::try_from(current_timestamp()).unwrap_or(i64::MAX);
+            let iat = issued_at.unwrap_or(now);
             if let Some(sub) = extract_string_claim(payload, "sub") {
                 claims.insert("sub".to_string(), JsonValue::String(sub));
             }
-            claims.insert("iat".to_string(), JsonValue::from(now));
+            claims.insert("iat".to_string(), JsonValue::from(iat));
             if let Some(exp) = absolute_exp {
                 claims.insert("exp".to_string(), JsonValue::from(exp));
             } else if let Some(secs) = expires_in {
-                let exp = i64::try_from(now).unwrap_or(i64::MAX).saturating_add(secs);
+                let exp = now.saturating_add(secs);
                 claims.insert("exp".to_string(), JsonValue::from(exp));
             }
             if let Some(nbf) = not_before {
@@ -1140,6 +1175,59 @@ mod tests {
         ])
         .expect_err("exp + expires_in must be rejected");
         assert!(err.contains("not both"), "{}", err);
+    }
+
+    /// `iat` comes from the options and replaces the default `now`.
+    #[test]
+    fn jwt_sign_accepts_iat_option() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("iat", Value::Int(1_700_000_000)),
+                ("exp", Value::Int(4_102_444_800)),
+            ],
+        );
+        assert_eq!(
+            verify_claim(&token, &[], "iat"),
+            Some(Value::Int(1_700_000_000))
+        );
+    }
+
+    #[test]
+    fn jwt_sign_rejects_non_int_iat_option() {
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+        let err = (sign.func)(&[
+            opts(&[("sub", Value::String("u1".into()))]),
+            Value::String(TEST_SECRET.into()),
+            opts(&[("iat", Value::String("yesterday".into()))]),
+        ])
+        .expect_err("a string iat must be rejected");
+        assert!(err.contains("`iat` must be an Int"), "{}", err);
+    }
+
+    /// `exp` / `iat` in the payload were dropped silently; they raise now
+    /// and name the option to use instead.
+    #[test]
+    fn jwt_sign_rejects_exp_and_iat_in_payload() {
+        let env = fresh_env();
+        let sign = jwt_fn(&env, "jwt_sign");
+        for (claim, hint) in [("exp", "expires_in"), ("iat", "{\"iat\":")] {
+            let err = (sign.func)(&[
+                opts(&[
+                    ("sub", Value::String("u1".into())),
+                    (claim, Value::Int(1000)),
+                ]),
+                Value::String(TEST_SECRET.into()),
+            ])
+            .expect_err("a registered time claim in the payload must be rejected");
+            assert!(
+                err.contains(&format!("takes `{}` from the options", claim)),
+                "{}",
+                err
+            );
+            assert!(err.contains(hint), "{}", err);
+        }
     }
 
     /// SEC-091 core attack: an attacker who knows the verifier's RSA

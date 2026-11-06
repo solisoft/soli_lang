@@ -51,11 +51,12 @@
                     <div><code class="text-amber-400">typ</code> : <code class="text-orange-400">String</code> - Overrides the header <code>typ</code> (default <code>"JWT"</code>). Use <code>"at+jwt"</code> for RFC 9068 access tokens.</div>
                     <div><code class="text-amber-400">exp</code> : <code class="text-orange-400">Int</code> - Expiration as an <strong>absolute</strong> Unix timestamp. Mutually exclusive with <code>expires_in</code>; supplying both raises, since they are different units.</div>
                     <div><code class="text-amber-400">nbf</code> : <code class="text-orange-400">Int</code> - Not-before, as an absolute Unix timestamp</div>
+                    <div><code class="text-amber-400">iat</code> : <code class="text-orange-400">Int</code> - Issued-at, as an absolute Unix timestamp (default: now). A non-Int raises. <code>expires_in</code> still counts from now, not from <code>iat</code>.</div>
                     <div><code class="text-amber-400">aud</code> : <code class="text-orange-400">String | Array</code> - Audience (RFC 7519 &sect;4.1.3 allows either form)</div>
                     <div><code class="text-amber-400">iss</code> : <code class="text-orange-400">String</code> - Issuer</div>
                     <div><code class="text-amber-400">jti</code> : <code class="text-orange-400">String</code> - Unique token ID</div>
                 </div>
-                <p class="text-gray-400 text-sm mt-3">Registered claims come from <code class="text-amber-300">options</code>; everything else in <code class="text-amber-300">payload</code> becomes a custom claim. <code class="text-amber-300">sub</code> is the exception &mdash; it is read from the payload. An option always wins over a same-named payload key.</p>
+                <p class="text-gray-400 text-sm mt-3">Registered claims come from <code class="text-amber-300">options</code>; everything else in <code class="text-amber-300">payload</code> becomes a custom claim. <code class="text-amber-300">sub</code> is the exception &mdash; it is read from the payload. An option always wins over a same-named payload key. <code class="text-amber-300">exp</code> or <code class="text-amber-300">iat</code> in the payload <strong>raises</strong>, naming the option to use &mdash; they used to be dropped silently.</p>
                 <pre data-filename="HMAC Example"><code class="language-soli text-sm">token = jwt_sign(
   { "sub": "user123", "role": "admin" },
   getenv("JWT_SECRET"),
