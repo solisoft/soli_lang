@@ -14,6 +14,7 @@ const ROUTES: &str = r#"
 get("/", "home#index")
 get("/posts/:id", "posts#show")
 get("/boom", "home#boom")
+get("/cached", "home#cached")
 "#;
 
 const TOKEN: &str = "overview-e2e-token";
@@ -25,7 +26,7 @@ fn write_app(dir: &Path) {
     std::fs::write(dir.join("config/routes.sl"), ROUTES).expect("routes");
     std::fs::write(
         dir.join("app/controllers/home_controller.sl"),
-        "class HomeController < Controller\n  def index\n    render_text(\"home\")\n  end\n\n  def boom\n    throw \"boom\"\n  end\nend\n",
+        "class HomeController < Controller\n  def index\n    render_text(\"home\")\n  end\n\n  def boom\n    throw \"boom\"\n  end\n\n  def cached\n    {\"status\": 200, \"headers\": {\"Soli-Response-Cache\": \"60\"}, \"body\": \"kept #{Math.random}\"}\n  end\nend\n",
     )
     .expect("home controller");
     std::fs::write(
@@ -41,7 +42,7 @@ struct Server {
 }
 
 impl Server {
-    fn start(dir: &Path) -> Self {
+    fn start(dir: &Path, env: &[(&str, String)]) -> Self {
         let port = TcpListener::bind("127.0.0.1:0")
             .and_then(|l| l.local_addr())
             .map(|a| a.port())
@@ -65,6 +66,9 @@ impl Server {
             .env_remove("SOLI_ADMIN_PASSWORD")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        for (name, value) in env {
+            command.env(name, value);
+        }
         let server = Server {
             child: command.spawn().expect("spawn soli serve"),
             port,
@@ -105,7 +109,7 @@ impl Drop for Server {
 fn the_overview_counts_route_patterns_behind_its_gate() {
     let dir = tempfile::tempdir().expect("tempdir");
     write_app(dir.path());
-    let server = Server::start(dir.path());
+    let server = Server::start(dir.path(), &[]);
 
     for path in ["/", "/", "/", "/posts/41", "/posts/42", "/missing", "/boom"] {
         let (status, _) = server.get(path, None);
@@ -146,4 +150,55 @@ fn the_overview_counts_route_patterns_behind_its_gate() {
     let (status, hour) = server.get("/__soli/?range=1h", Some(TOKEN));
     assert_eq!(status, 200);
     assert!(hour.contains("Requests \u{b7} 1 h"));
+}
+
+/// A reply the response cache answers never reaches a worker; it is still the
+/// app's traffic, counted under the route its worker counted it for. Without
+/// that, a cached page's route drops out of the top routes and every 5xx rate
+/// is measured against too few requests.
+#[cfg(feature = "sqlite")]
+#[test]
+fn replies_from_the_response_cache_are_counted() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_app(dir.path());
+    // The response cache watches the app's SQLite file; it must exist.
+    let db = dir.path().join("app.sqlite3");
+    rusqlite::Connection::open(&db)
+        .and_then(|c| c.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE t (x INTEGER);"))
+        .expect("the database file");
+    let server = Server::start(
+        dir.path(),
+        &[
+            ("SOLI_DB_ADAPTER", "sqlite".to_string()),
+            ("DATABASE_URL", format!("sqlite://{}", db.display())),
+        ],
+    );
+
+    // The action answers a new random number each time it runs: the same
+    // body three times is the cache answering.
+    let bodies: Vec<String> = (0..3)
+        .map(|_| {
+            let (status, body) = server.get("/cached", None);
+            assert_eq!(status, 200, "{body}");
+            assert!(body.starts_with("kept "), "{body}");
+            body
+        })
+        .collect();
+    assert!(
+        bodies.iter().all(|b| b == &bodies[0]),
+        "the second and third replies came from the cache: {bodies:?}"
+    );
+    server.get("/", None);
+
+    let (status, html) = server.get("/__soli/", Some(TOKEN));
+    assert_eq!(status, 200, "{html}");
+    assert!(html.contains("<code>GET /cached</code>"), "{html}");
+    assert!(
+        html.contains("<span class=\"tile-value\">4</span>"),
+        "the two replies from the cache are counted too: {html}"
+    );
+    assert!(
+        !html.contains("Kept in memory only"),
+        "a database is configured"
+    );
 }

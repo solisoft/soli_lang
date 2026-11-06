@@ -1,7 +1,9 @@
 //! App usage stats for the `/__soli/` overview: requests per route pattern and
 //! per period, their status classes and a latency histogram.
 //!
-//! Recorded on the worker, around [`super::dispatch_http_request`]: every
+//! Recorded on the worker, around [`super::dispatch_http_request`] — and on
+//! the connection's task for a reply the response cache answered, under the
+//! route its worker counted it for ([`record_cache_hit`]): every
 //! request the application answered, whatever its status, minus the framework's
 //! own endpoints (`/__soli/*`, `/__solidev/*`, the probes, `/up`) and a miss
 //! for what looks like a static file. Static files and the operator pages are
@@ -52,7 +54,7 @@
 //! [`tenant_writer`]: super::tenant_writer
 
 use std::cell::{Cell as StdCell, RefCell};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -839,15 +841,19 @@ pub(crate) fn note_route(index: usize) {
     CURRENT.with(|c| c.set(slot));
 }
 
-/// The request begun by [`begin_request`] answered `status`.
-pub(crate) fn finish_request(started: Option<Instant>, path: &str, status: u16) {
-    let Some(started) = started else {
-        return;
-    };
+/// The request begun by [`begin_request`] answered `status`. Returns the slot
+/// it was counted under, or `None` when it was not counted.
+pub(crate) fn finish_request(started: Option<Instant>, path: &str, status: u16) -> Option<u16> {
+    let started = started?;
     let slot = CURRENT.with(|c| c.replace(UNMATCHED));
     if excluded(path, slot) {
-        return;
+        return None;
     }
+    record_since(started, slot, status);
+    Some(slot)
+}
+
+fn record_since(started: Instant, slot: u16, status: u16) {
     let ended = Instant::now();
     let micros = ended
         .saturating_duration_since(started)
@@ -861,6 +867,34 @@ pub(crate) fn finish_request(started: Option<Instant>, path: &str, status: u16) 
         unix_at(ended),
     );
     ensure_collector();
+}
+
+/// The internal header a cacheable reply carries from the worker to the
+/// response cache: the slot it was counted under, so a reply answered from
+/// the cache is counted under the same route. Never leaves the server — the
+/// cache strips it with its own header.
+pub(crate) const SLOT_HEADER: &str = "soli-usage-slot";
+
+/// Tag a reply the application asked the response cache to keep with the
+/// slot it was counted under. Only such a reply carries it.
+pub(crate) fn tag_cacheable(headers: &mut Vec<(String, String)>, slot: Option<u16>) {
+    let Some(slot) = slot else {
+        return;
+    };
+    if headers
+        .iter()
+        .any(|(k, _)| k.eq_ignore_ascii_case(super::response_cache::HEADER))
+    {
+        headers.push((SLOT_HEADER.to_string(), slot.to_string()));
+    }
+}
+
+/// A reply the response cache answered without a worker, under the slot its
+/// worker counted it under; timed from `started`, when the request arrived.
+pub(crate) fn record_cache_hit(started: Instant, slot: u16, status: u16) {
+    if enabled() {
+        record_since(started, slot, status);
+    }
 }
 
 /// `GET /posts/:id` for the route this worker is serving, if one matched.
@@ -928,9 +962,8 @@ pub(crate) struct HourDelta {
     pub routes: Vec<(String, Cell)>,
 }
 
+/// One minute's new hours for one application.
 struct Batch {
-    /// Read the stored hours back first (the writer's first batch).
-    load: bool,
     hours: Vec<HourDelta>,
 }
 
@@ -963,13 +996,11 @@ fn start_collector() {
 }
 
 fn run_collector() {
-    let mut loaded: HashSet<TenantId> = HashSet::new();
     loop {
         std::thread::sleep(COLLECT_EVERY);
         resync_clock();
         for (tenant, hours) in RECORDER.take_pending(unix_now()) {
-            let load = loaded.insert(tenant);
-            WRITERS.deliver(tenant, Batch { load, hours }, &spawn_writer);
+            WRITERS.deliver(tenant, Batch { hours }, &spawn_writer);
         }
     }
 }
@@ -980,42 +1011,178 @@ fn spawn_writer(tenant: TenantId, receiver: Receiver<Batch>, stats: Arc<Stats>) 
     })
 }
 
+/// Whether the current application configured a database for usage hours to
+/// go to: a `config/database.toml`, a SQL adapter, or SoliDB settings in the
+/// environment. Without one, usage stays in memory — the default SoliDB
+/// address is not the app's database, and a write every minute that fails (or
+/// lands in someone else's `default` database) would only be noise.
+pub(crate) fn store_configured() -> bool {
+    let registry = crate::db::registry::registry();
+    registry.from_file
+        || registry.default_spec().adapter.is_sql()
+        || [
+            "SOLIDB_HOST",
+            "SOLIDB_DATABASE",
+            "SOLIDB_USERNAME",
+            "SOLIDB_API_KEY",
+        ]
+        .iter()
+        .any(|name| crate::platform::env::var(name).is_ok())
+}
+
 fn run_writer(tenant: TenantId, receiver: Receiver<Batch>, stats: &Stats) {
-    let mut ensured = false;
-    let mut since_prune = u32::MAX;
+    if !store_configured() {
+        // Memory only: take the batches so the collector never sees a full
+        // queue, and store nothing.
+        while receiver.recv().is_ok() {}
+        return;
+    }
+    let mut writer = Persist::default();
+    let mut store = LiveStore;
     while let Ok(batch) = receiver.recv() {
-        if !ensured {
-            ensured = match tenant_writer::fenced(|| internal_store::ensure(USAGE_COLLECTION, "at"))
-            {
-                Ok(()) => true,
-                Err(e) => {
-                    eprintln!("[usage] could not prepare {USAGE_COLLECTION}: {e}");
-                    stats
-                        .failed
-                        .fetch_add(batch.hours.len() as u64, Ordering::Relaxed);
-                    continue;
+        writer.handle(&mut store, batch.hours, unix_now(), stats, |stored| {
+            RECORDER.add_stored(tenant, &stored, unix_now())
+        });
+    }
+}
+
+/// Where the writer keeps hours: `_soli_usage`, or a fake in the tests.
+trait UsageStore {
+    fn ensure(&mut self) -> Result<(), String>;
+    fn load(&mut self) -> Result<Vec<HourDelta>, String>;
+    fn write(&mut self, delta: &HourDelta) -> Result<(), String>;
+    fn prune(&mut self) -> Result<(), String>;
+}
+
+struct LiveStore;
+
+impl UsageStore for LiveStore {
+    fn ensure(&mut self) -> Result<(), String> {
+        tenant_writer::fenced(|| internal_store::ensure(USAGE_COLLECTION, "at"))
+    }
+    fn load(&mut self) -> Result<Vec<HourDelta>, String> {
+        tenant_writer::fenced(load_stored)
+    }
+    fn write(&mut self, delta: &HourDelta) -> Result<(), String> {
+        tenant_writer::fenced(|| write_delta(delta))
+    }
+    fn prune(&mut self) -> Result<(), String> {
+        tenant_writer::fenced(prune_stored)
+    }
+}
+
+/// Batches to wait, at most, before trying an unreachable store again.
+const MAX_BACKOFF: u32 = 30;
+
+/// One application's writer, between batches.
+#[derive(Default)]
+struct Persist {
+    ensured: bool,
+    /// The stored hours were read back. Until then nothing is written: a
+    /// read after this process's own writes would count them twice.
+    loaded: bool,
+    /// Hours not stored yet, merged per hour.
+    held: Vec<HourDelta>,
+    /// Failed attempts in a row to prepare or read the store.
+    failures: u32,
+    /// Batches left before the next attempt.
+    wait: u32,
+    since_prune: u32,
+}
+
+/// Add `routes` to `into`, label by label, up to twice the slot cap.
+fn merge_routes(into: &mut Vec<(String, Cell)>, routes: &[(String, Cell)]) {
+    for (label, cell) in routes {
+        match into.iter().position(|(l, _)| l == label) {
+            Some(i) => into[i].1.merge(cell),
+            None if into.len() < MAX_ROUTES * 2 => into.push((label.clone(), *cell)),
+            None => {}
+        }
+    }
+}
+
+impl Persist {
+    /// Take one batch: hold its hours, then — once the store answers and the
+    /// stored hours have been read back — write everything held.
+    ///
+    /// The read-back is retried with every batch until it works, not only on
+    /// the first: a database that was not up yet when the first minute ended
+    /// must not cost the 7 d view for the life of the process. While the store
+    /// does not answer, hours are kept (for as long as they are worth
+    /// storing) rather than counted lost, and the attempts back off.
+    fn handle(
+        &mut self,
+        store: &mut impl UsageStore,
+        hours: Vec<HourDelta>,
+        now: u64,
+        stats: &Stats,
+        mut add_stored: impl FnMut(Vec<HourDelta>),
+    ) {
+        for delta in hours {
+            match self.held.iter_mut().find(|h| h.hour == delta.hour) {
+                Some(held) => merge_routes(&mut held.routes, &delta.routes),
+                None => self.held.push(delta),
+            }
+        }
+        let floor = (now / HOUR_SECS).saturating_sub(TOTAL_HOURS_KEPT - 1);
+        let before = self.held.len();
+        self.held.retain(|h| h.hour >= floor);
+        if self.held.len() < before {
+            stats.note_failed((before - self.held.len()) as u64);
+        }
+
+        if self.wait > 0 {
+            self.wait -= 1;
+            return;
+        }
+        if !self.ensured {
+            if let Err(e) = store.ensure() {
+                return self.failed(&format!("could not prepare {USAGE_COLLECTION}: {e}"));
+            }
+            self.ensured = true;
+        }
+        if !self.loaded {
+            match store.load() {
+                Ok(stored) => {
+                    add_stored(stored);
+                    self.loaded = true;
                 }
-            };
-        }
-        if batch.load {
-            match tenant_writer::fenced(load_stored) {
-                Ok(stored) => RECORDER.add_stored(tenant, &stored, unix_now()),
-                Err(e) => eprintln!("[usage] could not read {USAGE_COLLECTION} back: {e}"),
+                Err(e) => {
+                    return self.failed(&format!("could not read {USAGE_COLLECTION} back: {e}"))
+                }
             }
         }
-        for delta in &batch.hours {
-            if let Err(e) = tenant_writer::fenced(|| write_delta(delta)) {
+        if self.failures > 0 {
+            eprintln!("[usage] {USAGE_COLLECTION} answers again");
+            self.failures = 0;
+        }
+        for delta in std::mem::take(&mut self.held) {
+            if let Err(e) = store.write(&delta) {
                 eprintln!("[usage] could not store an hour: {e}");
-                stats.failed.fetch_add(1, Ordering::Relaxed);
+                stats.note_failed(1);
             }
         }
-        since_prune = since_prune.saturating_add(1);
-        if since_prune >= 60 {
-            since_prune = 0;
-            if let Err(e) = tenant_writer::fenced(prune_stored) {
+        self.since_prune = self.since_prune.saturating_add(1);
+        if self.since_prune >= 60 {
+            self.since_prune = 0;
+            if let Err(e) = store.prune() {
                 eprintln!("[usage] could not prune {USAGE_COLLECTION}: {e}");
             }
         }
+    }
+
+    /// The store did not answer: wait 1, 2, 4 … up to [`MAX_BACKOFF`] batches
+    /// before the next try, and say so on stderr at the 1st, 2nd, 4th … failure.
+    fn failed(&mut self, what: &str) {
+        self.failures = self.failures.saturating_add(1);
+        if self.failures.is_power_of_two() {
+            eprintln!(
+                "[usage] {what} ({} attempt{}; hours are kept and retried)",
+                self.failures,
+                if self.failures == 1 { "" } else { "s" }
+            );
+        }
+        self.wait = (1u32 << (self.failures - 1).min(5)).min(MAX_BACKOFF);
     }
 }
 
@@ -1032,13 +1199,7 @@ pub(crate) fn merged_doc(
     delta: &HourDelta,
 ) -> serde_json::Value {
     let mut routes: Vec<(String, Cell)> = existing.map(parse_routes).unwrap_or_default();
-    for (label, cell) in &delta.routes {
-        match routes.iter().position(|(l, _)| l == label) {
-            Some(i) => routes[i].1.merge(cell),
-            None if routes.len() < MAX_ROUTES * 2 => routes.push((label.clone(), *cell)),
-            None => {}
-        }
-    }
+    merge_routes(&mut routes, &delta.routes);
     serde_json::json!({
         "at": delta.hour * HOUR_SECS,
         "routes": routes
@@ -1462,5 +1623,178 @@ mod tests {
             "[usage bench] {threads} threads, clocks included: worst {worst_full:.1} ns/request per thread"
         );
         assert!(worst_full < 10_000.0, "{worst_full} ns per request");
+    }
+
+    /// A store that refuses its first `ensure_fails` prepares and its first
+    /// `load_fails` reads, and remembers what was written.
+    #[derive(Default)]
+    struct FlakyStore {
+        ensure_fails: u32,
+        load_fails: u32,
+        stored: Vec<HourDelta>,
+        loads: u32,
+        written: Vec<HourDelta>,
+    }
+
+    impl UsageStore for FlakyStore {
+        fn ensure(&mut self) -> Result<(), String> {
+            if self.ensure_fails > 0 {
+                self.ensure_fails -= 1;
+                return Err("connection refused".into());
+            }
+            Ok(())
+        }
+        fn load(&mut self) -> Result<Vec<HourDelta>, String> {
+            self.loads += 1;
+            if self.load_fails > 0 {
+                self.load_fails -= 1;
+                return Err("timeout".into());
+            }
+            Ok(self.stored.clone())
+        }
+        fn write(&mut self, delta: &HourDelta) -> Result<(), String> {
+            self.written.push(delta.clone());
+            Ok(())
+        }
+        fn prune(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn hour_of(hour: u64, label: &str, n: u64) -> HourDelta {
+        let mut cell = Cell::default();
+        for _ in 0..n {
+            cell.add(0, 0);
+        }
+        HourDelta {
+            hour,
+            routes: vec![(label.to_string(), cell)],
+        }
+    }
+
+    /// The database is not up when the first minute ends, then answers, then
+    /// fails a read once: the stored hours are still read back (once), and no
+    /// hour this process counted is lost or written before that read.
+    #[test]
+    fn the_stored_hours_are_read_back_once_the_store_answers() {
+        let now = NOON;
+        let hour = now / HOUR_SECS;
+        let mut store = FlakyStore {
+            ensure_fails: 1,
+            load_fails: 1,
+            stored: vec![hour_of(hour - 30, "GET /", 5)],
+            ..FlakyStore::default()
+        };
+        let stats = Stats::default();
+        let mut writer = Persist::default();
+        let mut loaded: Vec<HourDelta> = Vec::new();
+        let mut minute = |writer: &mut Persist, store: &mut FlakyStore, n: u64| {
+            writer.handle(store, vec![hour_of(hour, "GET /", n)], now, &stats, |h| {
+                loaded.extend(h)
+            });
+        };
+
+        minute(&mut writer, &mut store, 1); // prepare fails
+        assert_eq!((store.loads, store.written.len()), (0, 0));
+        minute(&mut writer, &mut store, 1); // backing off
+        minute(&mut writer, &mut store, 1); // prepared; the read fails
+        assert_eq!((store.loads, store.written.len()), (1, 0));
+        for _ in 0..2 {
+            minute(&mut writer, &mut store, 1); // backing off
+        }
+        minute(&mut writer, &mut store, 1); // read back, then written
+        assert_eq!(store.loads, 2);
+        assert_eq!(
+            store.written,
+            vec![hour_of(hour, "GET /", 6)],
+            "six minutes held, merged into their hour"
+        );
+        minute(&mut writer, &mut store, 2);
+        assert_eq!(store.loads, 2, "read back once");
+        assert_eq!(store.written.last(), Some(&hour_of(hour, "GET /", 2)));
+        assert_eq!(stats.snapshot().failed, 0, "nothing was lost");
+        assert_eq!(loaded, vec![hour_of(hour - 30, "GET /", 5)]);
+    }
+
+    /// Hours older than the stored history are dropped from the hold, and
+    /// counted as failed then.
+    #[test]
+    fn held_hours_past_the_history_are_counted_lost() {
+        let hour = NOON / HOUR_SECS;
+        let mut store = FlakyStore {
+            ensure_fails: u32::MAX,
+            ..FlakyStore::default()
+        };
+        let stats = Stats::default();
+        let mut writer = Persist::default();
+        writer.handle(
+            &mut store,
+            vec![hour_of(hour, "GET /", 1)],
+            NOON,
+            &stats,
+            |_| {},
+        );
+        let much_later = NOON + TOTAL_HOURS_KEPT * HOUR_SECS;
+        writer.handle(&mut store, Vec::new(), much_later, &stats, |_| {});
+        assert!(writer.held.is_empty());
+        assert_eq!(stats.snapshot().failed, 1);
+    }
+
+    /// An app with no database configured keeps usage in memory: the default
+    /// SoliDB address is not its database. A database file, a SQL adapter or
+    /// SoliDB settings turn storing on.
+    #[test]
+    fn usage_is_stored_only_where_a_database_is_configured() {
+        use crate::db::registry::{
+            clear_registry_override, registry_test_lock, set_registry_for_tests,
+            ConnectionRegistry, ConnectionSpec,
+        };
+        use crate::db::Adapter;
+
+        let _guard = registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let solidb_env = [
+            "SOLIDB_HOST",
+            "SOLIDB_DATABASE",
+            "SOLIDB_USERNAME",
+            "SOLIDB_API_KEY",
+        ]
+        .iter()
+        .any(|name| crate::platform::env::var(name).is_ok());
+        let registry = |adapter: Adapter, url: Option<&str>, from_file: bool| {
+            let spec = ConnectionSpec {
+                name: "primary".to_string(),
+                adapter,
+                url: url.map(str::to_string),
+                solidb_host: Some("http://localhost:6745".to_string()),
+                solidb_database: Some("default".to_string()),
+                solidb_username: None,
+                solidb_password: None,
+                solidb_api_key: None,
+                pool_size: None,
+            };
+            ConnectionRegistry {
+                default: "primary".to_string(),
+                connections: HashMap::from([("primary".to_string(), spec)]),
+                from_file,
+            }
+        };
+        set_registry_for_tests(registry(Adapter::Solidb, None, false));
+        let defaults_only = store_configured();
+        set_registry_for_tests(registry(Adapter::Solidb, None, true));
+        let from_file = store_configured();
+        set_registry_for_tests(registry(Adapter::Sqlite, Some("sqlite://app.db"), false));
+        let sql = store_configured();
+        clear_registry_override();
+
+        if !solidb_env {
+            assert!(
+                !defaults_only,
+                "the default SoliDB address is not a database"
+            );
+        }
+        assert!(from_file);
+        assert!(sql);
     }
 }

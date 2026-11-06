@@ -2743,7 +2743,11 @@ async fn handle_hyper_request(
     } else {
         response_cache::begin(&method, &path, raw_query.as_deref(), req.headers())
     };
-    if let Some(kept) = cache_ticket.as_ref().and_then(response_cache::lookup) {
+    if let Some((kept, usage_slot)) = cache_ticket.as_ref().and_then(response_cache::lookup) {
+        // Counted like the worker counted the reply it keeps.
+        if let Some(slot) = usage_slot {
+            usage::record_cache_hit(request_start, slot, kept.status);
+        }
         let headers = req.headers();
         let if_none_match = header_str(headers, "if-none-match").map(str::to_owned);
         let is_prefetch = prefetch::is_prefetch_request(|name| header_str(headers, name));
@@ -4688,9 +4692,10 @@ where
                 "[soli] handler panicked serving {} {} — returning 500 (worker survived)",
                 method, path
             );
-            // For the overview: the route pattern, never the raw path.
+            // For the overview: the route pattern, never the raw path — not
+            // even masked, since a path can carry a token no mask recognises.
             let subject = usage::current_route_label()
-                .unwrap_or_else(|| format!("{method} {}", attention::pattern_like(path)));
+                .unwrap_or_else(|| format!("{method} (route not recorded)"));
             engine_events::record(engine_events::EngineKind::Panic, &subject, "");
             crate::interpreter::builtins::streaming::clear_pending_stream();
             blob_stream::clear_pending();
@@ -4788,7 +4793,8 @@ fn dispatch_http_request(
         &method,
         &path,
     );
-    usage::finish_request(usage_started, &path, resp_data.status);
+    let usage_slot = usage::finish_request(usage_started, &path, resp_data.status);
+    usage::tag_cacheable(&mut resp_data.headers, usage_slot);
     slow_queries::end_unit();
 
     // `solidb_blob_response` parked a blob for the async side to relay. The
