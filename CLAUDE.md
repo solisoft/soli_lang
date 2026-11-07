@@ -346,10 +346,11 @@ soli lint path/to/file.sl   # Lint specific file
 - `style/redundant-model-import` - no `import "../models/*.sl"` inside `app/controllers/` (models are auto-loaded)
 - `smell/unreachable-code` - no code after return
 - `smell/empty-catch` - catch blocks shouldn't be empty
-- `smell/duplicate-methods` - no duplicate methods
+- `smell/duplicate-methods` - no duplicate methods (an instance `def x` and a `static def x` are distinct)
 - `smell/duplicate-global` - two files of an app declaring the same top-level class, module, `def` or `const` (the later one replaces the earlier); `soli serve` refuses to boot on it. Controllers' top-level `def`s (function-style actions) are exempt
 - `smell/deep-nesting` - nesting ≤4 levels
 - `smell/undefined-local` - reads of a bare name never assigned in the function scope (catches typos that bypass `let` because `let` is optional)
+- `smell/shadowed-builtin` - a local (bare assignment, or a parameter annotated with a value type) named after a builtin — `options`, `stream`, `page_url` — in a scope that also calls that builtin: the call reaches the local. `let x = …` and a lambda value are deliberate shadows and pass
 - `smell/closure-cycle` - a closure assigned onto `this` (`this.x = fn…`, `@x = |y| …`, `this.h["k"] = fn…`) captures the env holding `this`, so instance and closure never free; store a method name or pass the closure per call
 - `idiom/nil-comparison` - prefer `.nil?` / `!x.nil?` over `== nil` / `!= nil` (also catches `null`)
 - `idiom/prefer-blank` - prefer `.blank?` / `.present?` over comparing to `""`

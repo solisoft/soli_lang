@@ -55,16 +55,42 @@ class MyClass end
 |---|---|
 | `smell/unreachable-code` | code after `return` |
 | `smell/empty-catch` | a `catch` that swallows the error silently |
-| `smell/duplicate-methods` | two methods of one class sharing a name |
+| `smell/duplicate-methods` | two methods of one class sharing a name — an instance `def kind_label` and a `static def kind_label` are distinct and pass |
 | `smell/duplicate-global` | two files of an app declaring the same top-level class, module, `def` or `const`: the one loaded last would replace the other, so `soli serve` refuses to boot on it too. Controllers' top-level `def`s (function-style actions) are exempt |
 | `smell/deep-nesting` | more than four levels |
 | `smell/undefined-local` | a bare name never assigned in this scope |
 | `smell/dangerous-server-builtin` | an injection sink reached from a request layer |
 | `smell/closure-cycle` | a closure stored onto `this` — the instance and the closure keep each other alive |
+| `smell/shadowed-builtin` | a local named after a builtin, in a scope that also calls the builtin |
 
 `smell/undefined-local` exists because `let` is optional: `x = 1` declares `x`,
 so a typo like `optsx.push(...)` fails only at run time. The rule finds it
 statically.
+
+`smell/shadowed-builtin` flags a local — a bare assignment, or a parameter
+annotated with a value type (`options: Hash`) — named after a global the runtime
+installs, when the same scope also calls that global. The call then reaches the
+local, not the builtin; and the tree-walking engine reads a bare assignment to
+an existing global as rebinding it, so the builtin is gone for the rest of the
+program:
+
+```soli
+def register(path)
+  options = "a#b"          # flagged: options() is a builtin...
+  options(path, options)   # ...and this calls the String
+end
+```
+
+Only a scope that uses the builtin is reported — a local `post`, `json` or
+`stream` in an action that never calls `post(...)` is ordinary Soli. Not
+reported either: `let options = …` (the documented way to shadow a function on
+purpose), a lambda assigned to the name, an unannotated parameter the body
+calls (a callback), and a name the app itself declares. Blocks belong to the
+enclosing scope, and the file's top level is a scope too. `soli check` names
+the builtin in the same situation: assigning a value over one says so and
+suggests renaming, and calling a `let`-shadowed name reports that the local
+shadows the builtin (`` `options` is a local String here, shadowing the builtin
+options(); rename it ``).
 
 `smell/closure-cycle` flags a closure assigned onto the instance —
 `this.x = fn(...) ...`, `@x = |y| ...`, `this.handlers["k"] = fn ...`. The closure
@@ -297,8 +323,14 @@ Two consequences:
 - **A name declared without `let` counts.** `MAX_WIDTH = 280` at the top of a
   file declares `MAX_WIDTH` for the whole project, exactly as `const` would.
 
-Naming a single file keeps the narrower per-file view: a loose script has no
-project around it. A neighbour's *type* is not inferred, only its existence —
+A target *inside* an application — `soli check app`, `soli check
+app/controllers`, `soli check app/models/user.sl` — reads the auto-loaded set of
+the application's root (the nearest directory up holding `soli.toml` or
+`config/routes.sl`), and still checks only the files it names. `soli check app`
+used to look for `app/app/models` and report every model as undefined.
+
+A loose file or directory with no application around it keeps the narrower
+per-file view. A neighbour's *type* is not inferred, only its existence —
 what it is would mean checking the file that declares it, so its calls are
 unconstrained rather than wrongly constrained.
 

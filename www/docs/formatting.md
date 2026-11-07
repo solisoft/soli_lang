@@ -40,6 +40,7 @@ A few details worth knowing:
 | Comment marker | `//` line comments are normalized to `#` |
 | Blank lines | Multiple consecutive blank lines collapse to one |
 | Guard clauses | `if cond return … end` with no `else` gets a trailing blank line |
+| Postfix guards | A one-statement `if`/`unless` block with no `else` is folded to `return x if cond` — only when the folded line fits in 120 columns, the limit `style/line-length` enforces (the two share one constant), so `soli fmt` never writes a line `soli lint` then rejects |
 | Early returns | A `return` is followed by a blank line, unless the next statement is another `return` or the block's `end` follows |
 | Raw strings | `""" … """` and `r"…"` are copied from source verbatim — never re-escaped |
 | Escapes | A `"…"` literal written with `\u`, `\e` or `\0` is kept as written; elsewhere, control and invisible characters (NBSP, zero-width, bidi) are written as `\e`, `\0` or `\u{…}`, never as raw bytes |

@@ -21,6 +21,13 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.32.0.</p>
+        <h3 id="unreleased-fixes-tooling" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools &mdash; fmt, lint and check</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> no longer writes a line <code class="text-cyan-400">soli lint</code> rejects.</strong> Folding a one-statement <code class="text-cyan-400">if &hellip; end</code> into a postfix guard now happens only when the folded line fits in 120 columns &mdash; measured on the printed line, against the constant <code class="text-cyan-400">style/line-length</code> itself uses (<a href="/docs/development-tools/formatting" class="text-amber-400 hover:underline">Formatting</a>).</li>
+            <li><strong class="text-white">New lint rule <code class="text-cyan-400">smell/shadowed-builtin</code>.</strong> A local named after a builtin &mdash; <code class="text-cyan-400">options</code>, <code class="text-cyan-400">stream</code>, <code class="text-cyan-400">page_url</code> &mdash; in a scope that also calls that builtin: the call reaches the local. <code class="text-cyan-400">let x = &hellip;</code> stays the way to shadow on purpose. <code class="text-cyan-400">soli check</code> now names the builtin in that situation instead of printing <code class="text-cyan-400">expected (Any, Any) -&gt; String, found String</code> (<a href="/docs/development-tools/linting" class="text-amber-400 hover:underline">Linting</a>).</li>
+            <li><strong class="text-white"><code class="text-cyan-400">smell/duplicate-methods</code> tells static from instance.</strong> <code class="text-cyan-400">def kind_label</code> and <code class="text-cyan-400">static def kind_label</code> in one class are distinct at runtime and no longer reported.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">soli check app</code> sees the app.</strong> A subdirectory or file of an application reads the auto-loaded set of its root (<code class="text-cyan-400">soli.toml</code> or <code class="text-cyan-400">config/routes.sl</code>), so models are no longer reported undefined; only the named files are checked.</li>
+        </ul>
     </section>
 
     <section id="v2-32-0" class="mb-16 scroll-mt-24">

@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tooling papercuts from building a real app (#678).**
+  - `soli fmt` no longer folds a multi-line `if … end` / `unless … end` into a
+    postfix guard longer than 120 columns, which `soli lint` then flagged
+    (`style/line-length`). The fold's width estimate knew nothing of a ternary,
+    among others; the printed line is now measured, against the lint rule's own
+    constant (`lint::rules::style::MAX_LINE_LENGTH`, which
+    `fmt::printer::MAX_LINE_LENGTH` now reads).
+  - `smell/duplicate-methods` keys methods by name *and* `static`: an instance
+    `def kind_label` and a `static def kind_label` are distinct at runtime and
+    no longer reported.
+  - `soli check app` (or any subdirectory or file of an application) reads the
+    auto-loaded set of the application's root — the nearest directory up with
+    `soli.toml` or `config/routes.sl` — instead of reporting every model as
+    undefined, and still checks only the files named.
+  - `soli check` names the builtin when a local shadows one: `page_url = "x"`
+    used to fail as `expected (Any, Any) -> String, found String`, and calling
+    a `let`-shadowed `options` as `Cannot call non-function type 'String'`.
+
+### Added
+
+- **Lint rule `smell/shadowed-builtin` (#678).** A local — a bare assignment, or
+  a parameter annotated with a value type — named after a runtime global
+  (`options`, `stream`, `page_url`, the test DSL's `context` in a spec) in a
+  scope that also calls that global: the call reaches the local, and the
+  tree-walker even rebinds the builtin. `let x = …`, a lambda value, an
+  unannotated (callback) parameter and app-declared names are not reported.
+
 ## [2.32.0] - 2026-11-07
 
 ### Added

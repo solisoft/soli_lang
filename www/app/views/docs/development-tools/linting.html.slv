@@ -173,12 +173,22 @@ end</code></pre>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">smell/duplicate-methods</code>
-                <p class="text-gray-400 mt-2">A class should not have two methods with the same name.</p>
+                <p class="text-gray-400 mt-2">A class should not have two methods with the same name. An instance <code>def kind_label</code> and a <code>static def kind_label</code> live apart at runtime and are not duplicates.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">smell/duplicate-global</code>
                 <p class="text-gray-400 mt-2">Two files of an app declaring the same top-level class, module, <code>def</code> or <code>const</code>: the one loaded last would replace the other, so <code>soli serve</code> refuses to boot on it too, naming both files. Controllers' top-level <code>def</code>s (function-style actions) are exempt.</p>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-amber-400 font-mono text-sm">smell/shadowed-builtin</code>
+                <p class="text-gray-400 mt-2">A local &mdash; a bare assignment, or a parameter annotated with a value type (<code>options: Hash</code>) &mdash; named after a global the runtime installs, in a scope that also calls that global. The call reaches the local, not the builtin; and the tree-walking engine reads a bare assignment to an existing global as rebinding it, so the builtin is gone for the rest of the program.</p>
+                <pre><code class="language-soli text-sm">def register(path)
+  options = "a#b"          # flagged: options() is a builtin...
+  options(path, options)   # ...and this calls the String
+end</code></pre>
+                <p class="text-gray-400 mt-2">Only a scope that uses the builtin is reported: a local <code>post</code>, <code>json</code> or <code>stream</code> in an action that never calls <code>post(...)</code> is ordinary Soli. Not reported either: <code>let options = &hellip;</code> (the documented way to shadow a function on purpose), a lambda assigned to the name, an unannotated parameter the body calls (a callback), and a name the app itself declares. <code>soli check</code> names the builtin in the same situation instead of printing a bare type mismatch.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -427,7 +437,7 @@ soli check app/models/user.sl
                 Two consequences. A project declaration <strong class="text-white">overrides a built-in of the same name</strong>, because that is what happens at run time &mdash; a project that defines its own three-argument <code class="text-cyan-400">input</code> is checked against that one. And a name declared without <code class="text-cyan-400">let</code> counts: <code class="text-cyan-400">MAX_WIDTH = 280</code> at the top of a file declares <code class="text-cyan-400">MAX_WIDTH</code> for the whole project, exactly as <code class="text-cyan-400">const</code> would.
             </p>
             <p class="text-gray-400 mt-3">
-                Naming a single file &mdash; <code class="text-cyan-400">soli check app/models/user.sl</code> &mdash; keeps the narrower per-file view, since a loose script has no project around it. A neighbour's type is not inferred, only its existence: what it <em>is</em> would mean checking the file that declares it, so its calls are unconstrained rather than wrongly constrained.
+                A target <em>inside</em> an application &mdash; <code class="text-cyan-400">soli check app</code>, <code class="text-cyan-400">soli check app/controllers</code>, <code class="text-cyan-400">soli check app/models/user.sl</code> &mdash; reads the auto-loaded set of the application's root (the nearest directory up holding <code class="text-cyan-400">soli.toml</code> or <code class="text-cyan-400">config/routes.sl</code>) and still checks only the files it names; <code class="text-cyan-400">soli check app</code> used to report every model as undefined. A loose file or directory with no application around it keeps the narrower per-file view. A neighbour's type is not inferred, only its existence: what it <em>is</em> would mean checking the file that declares it, so its calls are unconstrained rather than wrongly constrained.
             </p>
 
             <h3 class="text-lg font-semibold text-white mt-8 mb-3">The builtins are learnt from the runtime</h3>
