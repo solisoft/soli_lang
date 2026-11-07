@@ -554,6 +554,9 @@ pub fn run_test(
     // assume all targets live within the same Soli project.
     let test_path = test_paths[0].clone();
 
+    // `--profile`: the specs run on worker threads; this one only waits.
+    solilang::debug::profiler::detach_thread();
+
     std::env::set_var("APP_ENV", "test");
     // Specs create their fixture users in this process, so the cheap hashing
     // profile has to be on here as well as on the servers spawned below —
@@ -1227,6 +1230,11 @@ pub fn run_test(
                             // backing the redirect fills.
                             let print_guard =
                                 solilang::interpreter::builtins::StdoutCaptureGuard::start();
+                            // `--profile`: this worker's samples belong to
+                            // this spec file until the next one.
+                            solilang::debug::profiler::set_thread_entry(Some(
+                                file.to_string_lossy().as_ref(),
+                            ));
                             let panic_result =
                                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     solilang::run_with_path_and_coverage(
@@ -1239,6 +1247,15 @@ pub fn run_test(
                                     )
                                 }));
                             let _ = print_guard.finish();
+                            // `--profile`: charge what is left to this file,
+                            // drop any frame a panic left open, and stop
+                            // charging until the next file starts (the wait
+                            // between files is not this file's time).
+                            if solilang::debug::profiler::is_running() {
+                                solilang::debug::profiler::set_thread_entry(None);
+                                solilang::debug::return_to(0);
+                                solilang::debug::profiler::detach_thread();
+                            }
                             if let Some(ref tracker) = tracker_clone {
                                 let mut tracker_guard = tracker.lock().unwrap();
                                 tracker_guard.end_test();
@@ -1640,6 +1657,7 @@ pub fn run_test(
 
                 if let Some(min) = coverage_min {
                     if app_coverage.total_line_coverage_percent() < min {
+                        super::finish_profile();
                         eprintln!(
                             "\n❌ Coverage {:.1}% is below threshold {:.0}%",
                             app_coverage.total_line_coverage_percent(),
@@ -1673,6 +1691,9 @@ pub fn run_test(
     println!();
 
     drop(test_server_children);
+
+    // `--profile`: written before the exit below, which skips everything after.
+    super::finish_profile();
 
     if failed > 0 {
         process::exit(1);

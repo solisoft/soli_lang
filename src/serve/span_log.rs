@@ -120,6 +120,9 @@ pub fn set_enabled(enabled: bool) {
         EVER_ENABLED.store(true, std::sync::atomic::Ordering::Relaxed);
     }
     ENABLED.with(|e| e.set(enabled));
+    // Both engines report Soli calls through `crate::debug`; the flame bit
+    // makes them hand those calls to `push_fn` / `pop_fn` below.
+    crate::debug::set_thread_listener(crate::debug::FLAME, enabled);
 }
 
 #[inline]
@@ -352,9 +355,10 @@ pub fn current_span() -> Option<u32> {
     current_parent()
 }
 
-// Deep-mode (`fn:<name>` per Soli function call) hooks. Mirrors
-// `Interpreter::push_frame` / `pop_frame` strict pairing: every
-// `push_fn(name)` must be followed by exactly one `pop_fn()`.
+// Deep-mode (`fn:<name>` per Soli function call) hooks, driven by
+// `crate::debug::enter` / `return_to`, which both engines call on every Soli
+// frame they open and close: every `push_fn(name)` is followed by exactly
+// one `pop_fn()`.
 // Cheaper than SpanGuard because the call sites already guarantee
 // matched push/pop, so no Drop guard is needed.
 

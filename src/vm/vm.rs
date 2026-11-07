@@ -253,6 +253,10 @@ pub struct Vm {
     /// constructor — see it set and are not timed again: their time is
     /// already inside the outer one.
     pub(crate) timed_run_open: bool,
+    /// Frames reported to `crate::debug` (flamegraph `fn` spans, profiler
+    /// stacks) and not yet closed: frame depth, the frame's closure, and the
+    /// mark `debug::enter` returned. Empty unless a listener is on.
+    pub(crate) debug_open: Vec<(usize, usize, usize)>,
 }
 
 /// Times one outermost `Vm::run` while `SOLI_METRICS` is on, and records it
@@ -635,6 +639,7 @@ impl Vm {
             check_return_types: false,
             time_runs: metrics_enabled(),
             timed_run_open: false,
+            debug_open: Vec::new(),
         }
     }
 
@@ -643,10 +648,19 @@ impl Vm {
         let closure = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
         self.push(Value::VmClosure(closure.clone()));
 
+        let base = self.frames.len();
         self.frames
             .push(CallFrame::new(closure, 0, self.iter_stack.len(), None, 0));
 
-        self.run()
+        let result = self.run();
+        // An uncaught error leaves its frames on the VM (until `reset`, or
+        // never when the VM is then dropped, as a script's is before the
+        // tree-walker fallback runs): close the ones the debug hooks saw, so
+        // the profiler and flamegraph do not nest later work under them.
+        if result.is_err() && !self.debug_open.is_empty() {
+            self.debug_close_above(base);
+        }
+        result
     }
 
     /// An undefined-variable error for a global, with a "did you mean"
@@ -1034,6 +1048,7 @@ impl Vm {
                     $class,
                     positional_supplied_mask($argc),
                 ));
+                self.debug_entered();
                 (code, code_len, constants, base, ip) = load_frame!();
             }};
         }
@@ -1825,6 +1840,7 @@ impl Vm {
                             // stack beneath it as it found it.
                             self.stack.pop();
                             let frame = self.frames.pop().unwrap();
+                            self.debug_left();
                             self.stack.truncate(frame.stack_base);
                             self.iter_stack.truncate(frame.iter_base);
                             while self
@@ -1866,6 +1882,7 @@ impl Vm {
                     // same order: result, frame, stack, iterators, handlers.
                     let result = self.pop();
                     let frame = self.frames.pop().unwrap();
+                    self.debug_left();
                     self.stack.truncate(frame.stack_base);
                     self.iter_stack.truncate(frame.iter_base);
                     while self
@@ -2762,6 +2779,7 @@ impl Vm {
                             None,
                             positional_supplied_mask(argc),
                         ));
+                        self.debug_entered();
                     } else {
                         let span = self.current_span();
                         self.call_value(argc, span)?;
@@ -3715,6 +3733,7 @@ impl Vm {
                         self.check_return_type(&result)?;
                     }
                     let frame = self.frames.pop().unwrap();
+                    self.debug_left();
 
                     // Close the cells on this frame's slots — one comparison
                     // when none is open there, however many are open below.

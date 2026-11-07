@@ -182,3 +182,10 @@ src/serve/coroutine.rs WOULD_WAIT
 # declares for each variable.
 src/request_local.rs REGISTRY
 src/request_local.rs KEY
+
+# Engine-hook listeners (src/debug): the per-worker listener mask, set at boot
+# like span_log's ENABLED, and the sampling profiler's per-thread clock reading
+# and current spec file (soli test workers), which belong to the thread.
+src/debug/mod.rs MASK
+src/debug/profiler.rs LAST
+src/debug/profiler.rs THREAD_ENTRY

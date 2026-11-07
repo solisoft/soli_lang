@@ -4,6 +4,29 @@
 
 ### Added
 
+- **A sampling profiler for scripts and test suites, and VM functions in the
+  dev flamegraph (card #697, phases 0 and 1).** New `src/debug/` module: one
+  hook both engines call on every Soli frame they open and close
+  (`debug::enter` / `return_to`, mark-based so a frame an unwind skipped is
+  closed by the next exit below it) and on every tree-walker statement
+  (`debug::on_line`), gated by a process-wide `EVER_ON` atomic so production
+  pays one relaxed load. The tree-walker's `push_frame`/`pop_frame` and the
+  VM's frame pushes and pops (`Vm::debug_entered` / `debug_left`, depth- and
+  closure-reconciled in `Vm::debug_open`) feed it; `span_log::set_enabled`
+  sets its flame bit, so the `--dev` flamegraph's `fn` spans now cover
+  VM-run actions too. `debug::profiler`: `soli <script> --profile`,
+  `soli -e … --profile` and `soli test --profile` (`--profile=cpu`,
+  `--profile-out FILE`, `--profile-hz N`, 1–10000, default 1000) run a
+  sampler thread that advances a tick clock; engine threads poll at frame
+  entry/exit, tree-walker statements and the VM's deadline checks
+  (`deadline::expired`'s slow path) and charge elapsed ticks to their Soli
+  stack. Writes folded stacks (default `soli-profile.folded`) or speedscope
+  JSON (`*.json`) and prints a top-15 self/total table on stderr; under
+  `soli test` each spec file is its own `<main> (file)` root and the
+  coordinator thread is not charged. `--profile` with `--watch` is refused.
+  Docs: `debugging.md` and its page now say `debug()` stops (not pauses) the
+  request and answers `500` outside `--dev` (it was documented as ignored).
+
 - **`soli check` reports zero false positives on the in-repo corpus, and a
   test keeps it there (card #693, phases 0 and 1).** `tests/check_corpus_test.rs`
   checks `www/`, `examples/` and what `soli new`, `soli new --eui`,

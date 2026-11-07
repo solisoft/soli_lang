@@ -1118,6 +1118,69 @@ fn kill_previous_process(pid_file: &Path) {
     let _ = fs::remove_file(pid_file);
 }
 
+/// The profile `--profile` started, with where to write it. Global so that
+/// the exits buried in the test runner can still write it first.
+struct ProfileSession {
+    profiler: solilang::debug::profiler::Profiler,
+    out: String,
+    name: String,
+}
+
+static PROFILE_SESSION: std::sync::Mutex<Option<ProfileSession>> = std::sync::Mutex::new(None);
+
+/// How many functions the `--profile` summary lists.
+const PROFILE_TOP: usize = 15;
+
+/// Start the sampling profiler for `--profile`. `name` labels the profile
+/// (the script, or the test run).
+pub(crate) fn start_profile(
+    args: &crate::cli::args::ProfileArgs,
+    name: &str,
+    entry_file: Option<&str>,
+) {
+    let Some(profiler) = solilang::debug::profiler::start_with_entry(args.hz, entry_file) else {
+        return;
+    };
+    let out = args
+        .out
+        .clone()
+        .unwrap_or_else(|| "soli-profile.folded".to_string());
+    if let Ok(mut session) = PROFILE_SESSION.lock() {
+        *session = Some(ProfileSession {
+            profiler,
+            out,
+            name: name.to_string(),
+        });
+    }
+}
+
+/// Stop the profiler `--profile` started, if any, write the profile and print
+/// the hottest functions on stderr. Safe to call more than once.
+pub(crate) fn finish_profile() {
+    let Some(session) = PROFILE_SESSION.lock().ok().and_then(|mut s| s.take()) else {
+        return;
+    };
+    let report = session.profiler.finish();
+    let body = if session.out.ends_with(".json") {
+        report.to_speedscope(&session.name)
+    } else {
+        report.to_folded()
+    };
+    let total_ms = report.period.as_secs_f64() * 1000.0 * report.total_ticks() as f64;
+    eprintln!();
+    eprintln!(
+        "Profile: {:.0} ms sampled over {:.0} ms wall time, every {} µs",
+        total_ms,
+        report.elapsed.as_secs_f64() * 1000.0,
+        report.period.as_micros()
+    );
+    eprint!("{}", report.top_table(PROFILE_TOP));
+    match fs::write(&session.out, body) {
+        Ok(()) => eprintln!("Profile written to {}", session.out),
+        Err(err) => eprintln!("Could not write the profile to {}: {}", session.out, err),
+    }
+}
+
 pub fn run_file(path: &str, options: &Options) {
     let path = Path::new(path);
 
@@ -1143,6 +1206,7 @@ pub fn run_file(path: &str, options: &Options) {
     // A script's HTTP.stream_to streams run on a runtime that dies with this
     // process: let them finish (their jobs enqueued) before it ends.
     solilang::interpreter::builtins::http_class::wait_for_background_streams();
+    finish_profile();
 
     if let Err(failure) = result {
         report_run_failure(&failure);
@@ -1154,6 +1218,7 @@ pub fn run_eval(code: &str, options: &Options) {
     // The same engine choice as a script file, so `soli --vm -e` and
     // `soli --tree -e` check what they say they check.
     let result = solilang::run_script_report(code, None, !options.no_type_check, options.engine);
+    finish_profile();
 
     if let Err(failure) = result {
         report_run_failure(&failure);
@@ -1970,6 +2035,10 @@ pub fn run_test(
     watch: bool,
 ) {
     if watch {
+        if PROFILE_SESSION.lock().is_ok_and(|s| s.is_some()) {
+            eprintln!("--profile cannot be combined with --watch");
+            process::exit(64);
+        }
         watch_tests(paths);
         return;
     }

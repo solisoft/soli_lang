@@ -5,7 +5,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Debugging & Breakpoints</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Learn how to use soli's powerful debugging tools including breakpoints, interactive REPL, and the development error page.
+            Learn how to use soli's debugging tools: breakpoints, the interactive REPL, the development error page, the per-request flamegraph, and the <code>--profile</code> sampling profiler for scripts and test suites.
         </p>
     </div>
 
@@ -42,6 +42,10 @@
                 <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-sm font-mono">6</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Page Requests</span>
             </a>
+            <a href="#profiling" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-sm font-mono">5b</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Profiling Scripts &amp; Tests</span>
+            </a>
             <a href="#development-mode" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">7</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Development Mode</span>
@@ -65,7 +69,7 @@
         </h2>
 
         <p class="text-gray-400 mb-6">
-            Use the <code class="text-amber-400">debug()</code> function to pause execution and open the interactive debug page. This is useful for inspecting variable state and understanding program flow.
+            Use the <code class="text-amber-400">debug()</code> function to stop the request where it stands and answer with the interactive debug page, holding a snapshot of the locals at that line. This is useful for inspecting variable state and understanding program flow.
         </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Setting Breakpoints</h3>
@@ -113,9 +117,12 @@ end</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                    <h4 class="text-blue-400 font-semibold mb-1">Tip</h4>
+                    <h4 class="text-blue-400 font-semibold mb-1">A stop, not a pause</h4>
                     <p class="text-sm text-gray-300">
-                        Breakpoints only work in development mode. In production, <code class="text-amber-400">debug()</code> calls are ignored.
+                        The request unwinds at <code class="text-amber-400">debug()</code> and cannot be resumed or stepped; the REPL runs against the snapshot, not the live frame. Only <code class="text-amber-400">debug()</code> on a line of its own is a breakpoint &mdash; <code class="text-amber-400">x = debug()</code> just stores a marker value. The VM does not compile <code class="text-amber-400">debug()</code>: a handler that calls it runs on the tree-walker instead, with the same result.
+                    </p>
+                    <p class="text-sm text-gray-300 mt-2">
+                        <strong class="text-white">Remove it before you deploy.</strong> Outside <code>--dev</code>, <code class="text-amber-400">debug()</code> is not ignored: the request fails and the visitor gets the generic production error page with status <code>500</code> (the breakpoint is kept out of the error log). Under <code>--dev</code> the debug page answers <code>200</code>.
                     </p>
                     <p class="text-sm text-gray-300 mt-2">
                         This builtin was previously named <code class="text-amber-400">break()</code>. It was renamed because <code class="text-amber-400">break</code> is now a loop keyword — see <a href="/docs/language/control-flow#kw-break" class="text-amber-400 hover:text-amber-300 underline">Control Flow</a>.
@@ -416,10 +423,14 @@ end</code></pre>
                     <tr><td class="py-2 px-4 font-mono text-emerald-300">view / partial</td><td class="py-2 px-4 text-gray-400">green</td><td class="py-2 px-4 text-gray-400">Each <code>render(...)</code> / <code>render_partial(...)</code></td></tr>
                     <tr><td class="py-2 px-4 font-mono text-orange-300">db</td><td class="py-2 px-4 text-gray-400">purple</td><td class="py-2 px-4 text-gray-400">Each AQL query (name = first 80 chars)</td></tr>
                     <tr><td class="py-2 px-4 font-mono text-orange-300">http</td><td class="py-2 px-4 text-gray-400">pink</td><td class="py-2 px-4 text-gray-400">Each outbound <code>HTTP.*</code> call</td></tr>
-                    <tr><td class="py-2 px-4 font-mono text-gray-400">fn</td><td class="py-2 px-4 text-gray-400">slate</td><td class="py-2 px-4 text-gray-400">Every Soli function call (interpreter path)</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-gray-400">fn</td><td class="py-2 px-4 text-gray-400">slate</td><td class="py-2 px-4 text-gray-400">Every Soli function call, on the VM and the tree-walker alike</td></tr>
                 </tbody>
             </table>
         </div>
+
+        <p class="text-gray-400 mb-6">
+            <code class="text-orange-400">fn</code> spans come from both engines: an action the VM runs shows its own functions, methods and blocks, as a tree-walked one does. A typed numeric function compiled to a native kernel opens no frame, so its time stays in its caller's span.
+        </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Export to Perfetto / chrome://tracing</h3>
         <p class="text-gray-400 mb-4">
@@ -455,6 +466,75 @@ end</code></pre>
             <li>Many narrow purple rectangles at the same depth → likely an N+1; the AQL panel will flag it.</li>
             <li>A very wide cyan <code>action</code> with thin children → time is spent in user code outside the framework hooks; turn on the <code>fn</code> spans (always on under <code>--dev</code>) and zoom in to find the hot function.</li>
         </ul>
+    </section>
+
+    <!-- Section 4b2: Profiling -->
+    <section id="profiling" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+            </span>
+            Profiling Scripts &amp; Tests
+        </h2>
+
+        <p class="text-gray-400 mb-6">
+            <code class="text-rose-400">--profile</code> runs a script, <code>-e</code> code or a test suite under a sampling profiler and prints the hottest functions when it ends.
+        </p>
+
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli report.sl --profile
+soli test --profile
+soli test tests/models --profile --profile-out models.json</code></pre>
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="text-sm">Profile: 1840 ms sampled over 1843 ms wall time, every 1000 µs
+   self ms  self%   total ms total%  function
+    1610.0  87.5%     1620.0  88.0%  score (report.sl:12)
+     150.0   8.2%     1790.0  97.3%  rank (report.sl:30)
+      60.0   3.3%     1840.0 100.0%  &lt;main&gt;
+Profile written to soli-profile.folded</code></pre>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium">Flag</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">Meaning</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr><td class="py-2 px-4 font-mono text-rose-300">--profile</td><td class="py-2 px-4 text-gray-400">Turn the profiler on (<code>--profile=cpu</code> is the same)</td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-rose-300">--profile-out FILE</td><td class="py-2 px-4 text-gray-400">Where to write the profile (default <code>soli-profile.folded</code>); implies <code>--profile</code></td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-rose-300">--profile-hz N</td><td class="py-2 px-4 text-gray-400">Samples per second, 1 to 10&nbsp;000 (default 1000); implies <code>--profile</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-gray-400 mb-6">
+            The file is <strong class="text-white">folded stacks</strong> &mdash; one <code>&lt;main&gt;;outer (app.sl:3);inner (app.sl:9) 42</code> line per distinct stack &mdash; unless its name ends in <code>.json</code>, which writes a <strong class="text-white">speedscope</strong> profile. Load either into <a href="https://www.speedscope.app" class="text-rose-400 hover:underline">speedscope.app</a>, or feed the folded file to <code>flamegraph.pl</code> or <code>inferno-flamegraph</code> for an SVG. On a script the flags may come before or after its name (<code>soli app.sl --profile</code>), up to the first argument that belongs to the script.
+        </p>
+
+        <h3 class="text-xl font-semibold text-white mb-4">Reading a profile</h3>
+        <ul class="list-disc pl-6 mb-6 space-y-2 text-gray-400">
+            <li><strong class="text-white">Wall time, both engines.</strong> A sampler thread ticks <code>--profile-hz</code> times a second; the engine charges the ticks to the Soli stack it is in at its next function entry or exit, tree-walker statement or VM loop check. A script waiting on the database or the network shows that wait, charged to the function that made the call.</li>
+            <li><strong class="text-white">Safepoint bias.</strong> Time lands where the engine next checks, not at the instant the tick fired, so a very short function can absorb the time of the native call just before it returns. Totals are right; single-line precision is not the point.</li>
+            <li><strong class="text-white">What has a frame.</strong> Functions, methods, constructors, lambdas and blocks. A typed numeric function compiled to a native kernel runs without a frame and is charged to its caller. <code>&lt;main&gt;</code> is the top level of the script.</li>
+            <li><strong class="text-white"><code>soli test</code>.</strong> Every spec file's top level is its own <code>&lt;main&gt; (file)</code> root, and the specs' worker threads are added together, so the total can exceed the wall time. Request specs run their controllers in a separate test-server process, which is not profiled. <code>--profile</code> cannot be combined with <code>--watch</code>.</li>
+        </ul>
+
+        <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <p class="text-amber-300 text-sm">
+                <strong>No cost when off.</strong> Without <code>--profile</code> the hooks cost one relaxed atomic load per call and per statement, and <code>soli serve</code> never turns them on.
+            </p>
+        </div>
     </section>
 
     <!-- Section 4c: Page Requests -->
@@ -576,7 +656,7 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; sol
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-white/5">
-                    <tr><td class="py-2 px-4 text-gray-400">Breakpoints</td><td class="py-2 px-4 text-emerald-400">Enabled</td><td class="py-2 px-4 text-red-400">Disabled</td></tr>
+                    <tr><td class="py-2 px-4 text-gray-400">Breakpoints</td><td class="py-2 px-4 text-emerald-400">The debug page (200)</td><td class="py-2 px-4 text-red-400">The request fails (500)</td></tr>
                     <tr><td class="py-2 px-4 text-gray-400">Debug Page</td><td class="py-2 px-4 text-emerald-400">Full interactive</td><td class="py-2 px-4 text-red-400">Simple error</td></tr>
                     <tr><td class="py-2 px-4 text-gray-400">Hot Reload</td><td class="py-2 px-4 text-emerald-400">Enabled</td><td class="py-2 px-4 text-red-400">Disabled</td></tr>
                     <tr><td class="py-2 px-4 text-gray-400">Stack Traces</td><td class="py-2 px-4 text-emerald-400">Detailed</td><td class="py-2 px-4 text-amber-400">Minimal</td></tr>

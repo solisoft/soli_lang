@@ -458,6 +458,7 @@ soli test -n checkout                 # short form; matches describe names too
 soli test --fail-fast                 # stop scheduling tests after the first failure
 soli test --require-assertions        # fail any test that makes no assertion
 soli test --watch                     # rerun the suite whenever a .sl / .slv file changes
+soli test --profile                   # sample the specs; hottest functions on stderr
 ```
 
 `--filter` matches case-insensitively against the full description: the enclosing
@@ -468,7 +469,11 @@ failure without a wall of follow-on noise. `--require-assertions` fails a test t
 passes without asserting anything (`made no assertions`); without it the summary only
 counts them (`3 tests made no assertions (--require-assertions fails them)`). A mock's
 `assert_received` / `assert_not_received` count as assertions; a test with nothing to
-check should call `skip("why")`. `--watch` (`-w`) runs the suite, then polls `app/`, `config/`, `lib/`, `db/`, `tests/` and any path you passed, and reruns it in a fresh process on every change; the other flags are passed through. Both compose with `--jobs`, `--coverage`
+check should call `skip("why")`. `--profile` samples the run and prints the hottest
+functions when it ends, each spec file's top level as its own `<main> (file)` root, and
+writes `soli-profile.folded` (or `--profile-out FILE`; a `.json` name gives speedscope) —
+see [Debugging](debugging.md#profiling-scripts-and-tests). It cannot be combined with
+`--watch`, and a request spec's controllers run in the test server, which is not profiled. `--watch` (`-w`) runs the suite, then polls `app/`, `config/`, `lib/`, `db/`, `tests/` and any path you passed, and reruns it in a fresh process on every change; the other flags are passed through. Both compose with `--jobs`, `--coverage`
 and the rest.
 
 ## Coverage Reporting

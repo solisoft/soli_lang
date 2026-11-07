@@ -61,6 +61,10 @@ pub struct StackFrame {
     pub file_path: Option<String>,
     pub line: usize,
     pub column: usize,
+    /// The `crate::debug::enter` mark when a listener (flamegraph, profiler)
+    /// saw this frame open; handed back to `crate::debug::return_to` when it
+    /// closes.
+    pub(crate) debug_mark: Option<usize>,
 }
 
 /// Internal result type that can carry return values and exceptions.
@@ -513,6 +517,15 @@ impl Interpreter {
     /// worker failed with "call stack too deep".
     pub fn restore_engine_mark(&mut self, mark: EngineMark) {
         self.environment = mark.environment;
+        // The outermost frame the unwind skipped closes the debug frames
+        // opened above it (its flamegraph span, its profiler stack entry).
+        if let Some(debug_mark) = self
+            .call_stack
+            .get(mark.call_depth..)
+            .and_then(|skipped| skipped.iter().find_map(|frame| frame.debug_mark))
+        {
+            crate::debug::return_to(debug_mark);
+        }
         self.call_stack.truncate(mark.call_depth);
     }
 
@@ -529,31 +542,38 @@ impl Interpreter {
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string())
         });
+        // Both engines report every Soli frame to `crate::debug`: the dev
+        // flamegraph's `fn` spans and the sampling profiler's stacks. One
+        // relaxed load when nothing listens. The definition site goes along,
+        // so an anonymous lambda (an empty `function_name`) still says where
+        // in the source it came from.
+        let debug_mark = if crate::debug::active() {
+            Some(crate::debug::enter(
+                function_name,
+                file_path.as_deref(),
+                span.line_usize(),
+            ))
+        } else {
+            None
+        };
         self.call_stack.push(StackFrame {
             function_name: function_name.to_string(),
-            file_path: file_path.clone(),
+            file_path,
             line: span.line_usize(),
             column: span.column_usize(),
+            debug_mark,
         });
-        // Deep-mode flamegraph hook: every Soli function call gets a span.
-        // No-op when --dev is off (gated inside push_fn). The source
-        // location goes into `meta` so anonymous lambdas (which carry an
-        // empty `function_name`) still show *where* in the source they
-        // came from in the flamegraph tooltip.
-        let meta = file_path.as_ref().map(|p| {
-            if span.line_usize() > 0 {
-                format!("{}:{}", p, span.line_usize())
-            } else {
-                p.clone()
-            }
-        });
-        crate::serve::span_log::push_fn(function_name, meta);
     }
 
     /// Pop a frame from the call stack.
     pub(crate) fn pop_frame(&mut self) {
-        self.call_stack.pop();
-        crate::serve::span_log::pop_fn();
+        if let Some(StackFrame {
+            debug_mark: Some(mark),
+            ..
+        }) = self.call_stack.pop()
+        {
+            crate::debug::return_to(mark);
+        }
     }
 
     /// Get the current file path from the call stack (top frame) or fallback to current_source_path.

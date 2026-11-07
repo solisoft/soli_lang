@@ -25,6 +25,7 @@ impl Vm {
                 let frame = self.frames.pop().unwrap();
                 close_from = close_from.min(frame.stack_base);
             }
+            self.debug_left();
 
             // Close the cells of every variable the unwinding drops — the
             // popped frames', and the `try` body's own locals above the

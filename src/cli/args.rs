@@ -557,7 +557,93 @@ pub enum DbSeedAction {
     Generate { name: String },
 }
 
+/// `--profile[=cpu]`, `--profile-out FILE`, `--profile-hz N` on `soli
+/// <script>`, `soli -e` and `soli test`: run under the sampling profiler.
+#[derive(Debug, Clone)]
+pub struct ProfileArgs {
+    /// Where to write the profile: `*.json` gets speedscope JSON, anything
+    /// else folded stacks. `None` writes `soli-profile.folded`.
+    pub out: Option<String>,
+    /// Samples per second.
+    pub hz: u32,
+}
+
+impl Default for ProfileArgs {
+    fn default() -> Self {
+        Self {
+            out: None,
+            hz: solilang::debug::profiler::DEFAULT_HZ,
+        }
+    }
+}
+
+/// Parse the profiler flag at `args[*i]` (any argument starting with
+/// `--profile`), advancing `*i` past a separate value. Any of them turns the
+/// profiler on.
+fn parse_profile_flag(args: &[String], i: &mut usize, profile: &mut Option<ProfileArgs>) {
+    let arg = args[*i].as_str();
+    let (flag, inline_value) = match arg.split_once('=') {
+        Some((flag, value)) => (flag, Some(value.to_string())),
+        None => (arg, None),
+    };
+    let mut value_for = |flag: &str| -> String {
+        if let Some(value) = &inline_value {
+            return value.clone();
+        }
+        *i += 1;
+        match args.get(*i) {
+            Some(value) => value.clone(),
+            None => {
+                eprintln!("{} requires a value", flag);
+                process::exit(64);
+            }
+        }
+    };
+    match flag {
+        "--profile" => {
+            if let Some(kind) = &inline_value {
+                if kind != "cpu" {
+                    eprintln!(
+                        "Unknown profile kind '{}': only --profile=cpu is supported (the default)",
+                        kind
+                    );
+                    process::exit(64);
+                }
+            }
+            profile.get_or_insert_with(ProfileArgs::default);
+        }
+        "--profile-out" => {
+            let out = value_for(flag);
+            profile.get_or_insert_with(ProfileArgs::default).out = Some(out);
+        }
+        "--profile-hz" => {
+            let raw = value_for(flag);
+            let max = solilang::debug::profiler::MAX_HZ;
+            let hz = match raw.parse::<u32>() {
+                Ok(hz) if (1..=max).contains(&hz) => hz,
+                _ => {
+                    eprintln!(
+                        "Invalid --profile-hz '{}': expected a number from 1 to {}",
+                        raw, max
+                    );
+                    process::exit(64);
+                }
+            };
+            profile.get_or_insert_with(ProfileArgs::default).hz = hz;
+        }
+        other => {
+            eprintln!(
+                "Unknown option: {} (profiler options: --profile[=cpu], --profile-out FILE, --profile-hz N)",
+                other
+            );
+            process::exit(64);
+        }
+    }
+}
+
 pub struct Options {
+    /// `--profile` and friends: run under the sampling profiler.
+    pub profile: Option<ProfileArgs>,
     pub command: Command,
     pub no_type_check: bool,
     /// Which engine runs a script or `-e`: `--tree`, `--vm`, or `SOLI_ENGINE`;
@@ -622,7 +708,7 @@ pub fn print_usage() {
     eprintln!("       soli jobs retry <id> [folder]");
     eprintln!("       soli jobs cancel <id> [folder]");
     eprintln!("       soli worker [folder] [--workers N]");
-    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--require-assertions] [--watch] [--browser] [--headed]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--require-assertions] [--watch] [--browser] [--headed] [--profile]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
@@ -746,6 +832,9 @@ pub fn print_usage() {
     eprintln!("  --tree          Run a script on the tree-walking interpreter instead of the VM");
     eprintln!("  --vm            Run a script on the VM, with no fallback to the interpreter");
     eprintln!("  --no-native     Run typed numeric functions interpreted, not as native code");
+    eprintln!("  --profile       Sample a script, -e or soli test; print the hottest functions");
+    eprintln!("  --profile-out F Write the profile to F (*.json: speedscope; else folded stacks)");
+    eprintln!("  --profile-hz N  Samples per second for --profile (default: 1000)");
     eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 5011)");
@@ -815,6 +904,8 @@ pub fn print_usage() {
     eprintln!("  soli test --require-assertions  Fail any test that makes no assertion");
     eprintln!("  soli test --watch             Rerun the suite whenever a .sl/.slv file changes");
     eprintln!("  soli test --browser           Also run browser specs (needs Chrome)");
+    eprintln!("  soli test --profile           Profile the specs; hottest functions on stderr");
+    eprintln!("  soli app.sl --profile --profile-out app.json  Profile a script for speedscope");
     eprintln!("  soli db:migrate up            Run pending migrations");
     eprintln!("  soli db:migrate down          Rollback last migration");
     eprintln!("  soli db:migrate down --step 3 Rollback the last 3 migrations (or STEP=3)");
@@ -841,6 +932,7 @@ pub fn print_usage() {
 pub fn parse_args() -> Options {
     let args: Vec<String> = env::args().skip(1).collect();
     let mut options = Options {
+        profile: None,
         command: Command::Repl,
         no_type_check: false,
         engine: solilang::Engine::from_env().unwrap_or(solilang::Engine::Auto),
@@ -859,9 +951,15 @@ pub fn parse_args() -> Options {
                 arg.as_str(),
                 "--" | "--vm" | "--tree" | "--no-type-check" | "--no-native"
             )
+            && !arg.starts_with("--profile")
         {
             solilang::interpreter::builtins::system::set_script_args(args[i..].to_vec());
             break;
+        }
+        if arg.starts_with("--profile") {
+            parse_profile_flag(&args, &mut i, &mut options.profile);
+            i += 1;
+            continue;
         }
         match arg.as_str() {
             "new" => {
@@ -2559,6 +2657,11 @@ pub fn parse_args() -> Options {
                 let mut require_assertions = false;
                 let mut watch = false;
                 while i < args.len() {
+                    if args[i].starts_with("--profile") {
+                        parse_profile_flag(&args, &mut i, &mut options.profile);
+                        i += 1;
+                        continue;
+                    }
                     if args[i].starts_with('-') {
                         // Support `--coverage=html`, `--coverage=json,xml`,
                         // `--coverage=html --coverage=json`, etc. Any non-empty

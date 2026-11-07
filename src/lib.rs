@@ -23,6 +23,7 @@ pub mod cleanup;
 pub mod compiled_cache;
 pub mod coverage;
 pub mod db;
+pub mod debug;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod desktop;
 #[cfg(not(target_arch = "wasm32"))]

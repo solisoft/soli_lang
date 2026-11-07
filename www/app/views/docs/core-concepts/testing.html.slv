@@ -1287,8 +1287,10 @@ soli test --jobs=1           # Sequential (debug)</code></pre>
 soli test -n checkout                 # short form; matches describe names too
 soli test --fail-fast                 # stop scheduling tests after the first failure
 soli test --require-assertions        # fail any test that makes no assertion
-soli test --watch                     # rerun the suite whenever a .sl / .slv file changes</code></pre>
+soli test --watch                     # rerun the suite whenever a .sl / .slv file changes
+soli test --profile                   # sample the specs; hottest functions on stderr</code></pre>
         <p class="text-gray-400 mb-4"><code class="text-emerald-300">--filter</code> matches case-insensitively against the full description: the enclosing <code class="text-emerald-300">describe</code> names followed by the test name, space-joined (<code class="text-emerald-300">Posts creates a post</code>). With <code class="text-emerald-300">--fail-fast</code> the remaining tests and files are skipped once one test fails. <code class="text-emerald-300">--require-assertions</code> fails a test that passes without asserting anything. All of them compose with <code class="text-emerald-300">--jobs</code>, <code class="text-emerald-300">--coverage</code> and the rest.</p>
+        <p class="text-gray-400 mb-4"><code class="text-emerald-300">--profile</code> samples the run and prints the hottest functions when it ends, each spec file's top level as its own <code class="text-emerald-300">&lt;main&gt; (file)</code> root, and writes <code class="text-emerald-300">soli-profile.folded</code> (or <code class="text-emerald-300">--profile-out FILE</code>; a <code>.json</code> name gives speedscope) &mdash; see <a href="/docs/development-tools/debugging#profiling" class="text-emerald-400 hover:underline">Debugging</a>. It cannot be combined with <code class="text-emerald-300">--watch</code>, and a request spec's controllers run in the test server, which is not profiled.</p>
 
         <h2 class="text-2xl font-bold text-white mb-6">Live Progress</h2>
         <p class="text-gray-400 mb-4">While the suite runs, each worker gets a row and the aggregate bar at the bottom carries the running totals. A row names its spec by its path under the tested directory, and a narrow terminal shortens the folders before the filename:</p>

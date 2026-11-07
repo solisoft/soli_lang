@@ -25,6 +25,12 @@ impl Interpreter {
                 span: stmt.span,
             });
         }
+        // Statement hook (`crate::debug`): the profiler polls here, so a
+        // tree-walked loop with no call in it is still sampled. One relaxed
+        // load when nothing listens.
+        if crate::debug::active() {
+            crate::debug::on_line();
+        }
         // ATTRIBUER LA LIGNE AU FICHIER QUI LA PORTE, PAS AU FICHIER D'ENTREE.
         //
         // `current_source_path` est le script d'entree (la spec en cours, la

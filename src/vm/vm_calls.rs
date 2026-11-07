@@ -645,6 +645,7 @@ impl Vm {
             class,
             crate::vm::vm::positional_supplied_mask(argc),
         ));
+        self.debug_entered();
 
         Ok(())
     }
@@ -718,6 +719,7 @@ impl Vm {
             class,
             supplied,
         ));
+        self.debug_entered();
         Ok(())
     }
 
@@ -999,6 +1001,7 @@ impl Vm {
             defining_class,
             supplied,
         ));
+        self.debug_entered();
         // The field defaults that are not literals run before the
         // constructor's body, as in `call_class`.
         match defaults {
@@ -3208,6 +3211,7 @@ impl Vm {
             Some(defining_class),
             crate::vm::vm::positional_supplied_mask(params),
         ));
+        self.debug_entered();
         Ok(())
     }
 
@@ -3292,6 +3296,7 @@ impl Vm {
             class,
             crate::vm::vm::positional_supplied_mask(argc),
         ));
+        self.debug_entered();
         Ok(())
     }
 
@@ -3567,6 +3572,87 @@ impl Vm {
         })
     }
 
+    /// A frame was just pushed: report it to `crate::debug` when something
+    /// listens (the dev flamegraph, the profiler). One relaxed load when
+    /// nothing does.
+    #[inline(always)]
+    pub(crate) fn debug_entered(&mut self) {
+        if crate::debug::active() {
+            self.debug_open_top_frame();
+        }
+    }
+
+    /// Frames were just popped: close the ones `debug_entered` reported.
+    #[inline(always)]
+    pub(crate) fn debug_left(&mut self) {
+        if !self.debug_open.is_empty() {
+            self.debug_close_popped_frames();
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn debug_open_top_frame(&mut self) {
+        let depth = self.frames.len();
+        let Some(frame) = self.frames.last() else {
+            return;
+        };
+        let closure = Rc::as_ptr(&frame.closure) as usize;
+        // Close what a missed exit left behind: anything deeper, or another
+        // closure at this very depth.
+        let mut close_to = None;
+        while let Some(&(open_depth, open_closure, mark)) = self.debug_open.last() {
+            if open_depth > depth || (open_depth == depth && open_closure != closure) {
+                close_to = Some(mark);
+                self.debug_open.pop();
+            } else {
+                break;
+            }
+        }
+        if let Some(mark) = close_to {
+            crate::debug::return_to(mark);
+        }
+        if self
+            .debug_open
+            .last()
+            .is_some_and(|&(open_depth, ..)| open_depth == depth)
+        {
+            return;
+        }
+        let proto = &frame.closure.proto;
+        let file = proto
+            .source_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned());
+        let mark = crate::debug::enter(&proto.name, file.as_deref(), proto.decl_span.line_usize());
+        self.debug_open.push((depth, closure, mark));
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn debug_close_popped_frames(&mut self) {
+        self.debug_close_above(self.frames.len());
+    }
+
+    /// Close every reported frame deeper than `depth` — the frames popped, or
+    /// the ones an error left on the VM when it escapes `execute`.
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn debug_close_above(&mut self, depth: usize) {
+        let mut close_to = None;
+        while let Some(&(open_depth, _, mark)) = self.debug_open.last() {
+            if open_depth > depth {
+                close_to = Some(mark);
+                self.debug_open.pop();
+            } else {
+                break;
+            }
+        }
+        if let Some(mark) = close_to {
+            crate::debug::return_to(mark);
+        }
+    }
+
     /// Reset VM state between requests (preserves globals).
     ///
     /// Upvalues still open are closed first, over the value their slot holds
@@ -3581,6 +3667,7 @@ impl Vm {
         }
         self.stack.clear();
         self.frames.clear();
+        self.debug_left();
         self.open_upvalues.clear();
         self.open_upvalue_top = 0;
         self.exception_handlers.clear();

@@ -2,7 +2,8 @@
 
 Breakpoints, an interactive REPL, a per-request query log and flamegraph, a
 request inspector, and a mail inbox — all under `soli serve --dev`, all costing
-nothing in production.
+nothing in production — plus a sampling profiler for scripts and test suites
+(`--profile`).
 
 ## Errors on the command line
 
@@ -26,7 +27,8 @@ and the `--format json` output of `soli check` and `soli lint`.
 
 ## Breakpoints
 
-`debug()` pauses execution and opens the interactive debug page.
+`debug()` stops the request where it stands and answers with the interactive
+debug page, holding a snapshot of the locals at that line.
 
 ```soli
 def process_user(user_id: Int) -> Hash
@@ -43,7 +45,18 @@ def process_user(user_id: Int) -> Hash
 end
 ```
 
-Breakpoints work in development only. In production `debug()` is ignored.
+`debug()` is a stop, not a pause: the request unwinds there and cannot be
+resumed or stepped, and the REPL runs against the snapshot, not the live frame.
+Only `debug()` on a line of its own is a breakpoint — `x = debug()` just stores
+a marker value.
+
+**Remove it before you deploy.** Outside `--dev`, `debug()` is not ignored: the
+request fails and the visitor gets the generic production error page with
+status `500` (the breakpoint is kept out of the error log). Under `--dev` the
+debug page answers `200`.
+
+The VM does not compile `debug()`; a handler that calls it runs on the
+tree-walker instead, with the same result.
 
 > The builtin was once named `break()`. It was renamed because `break` is now a
 > loop keyword.
@@ -170,7 +183,7 @@ click to zoom, double-click to reset.
 | view / partial | green | each `render(...)` / `render_partial(...)` |
 | db | purple | each query (name = first 80 chars) |
 | http | pink | each outbound `HTTP.*` call |
-| fn | slate | every Soli function call |
+| fn | slate | every Soli function call, on the VM and the tree-walker alike |
 
 X is request time in microseconds from request start; Y is stack depth, parents
 above children. Reading it:
@@ -200,6 +213,66 @@ Up to 64 KB it is inlined in the link; above that the link points at
 `/__solidev/trace/<request-id>`, a dev-only endpoint that serves the complete
 trace from the same ring buffer the requests panel reads (404 once the request
 has aged out).
+
+`fn` spans come from both engines: an action the VM runs shows its own
+functions, methods and blocks, as a tree-walked one does. A typed numeric
+function compiled to a native kernel opens no frame, so its time stays in its
+caller's span.
+
+## Profiling scripts and tests
+
+`--profile` runs a script, `-e` code or a test suite under a sampling profiler
+and prints the hottest functions when it ends:
+
+```bash
+soli report.sl --profile
+soli test --profile
+soli test tests/models --profile --profile-out models.json
+```
+
+```text
+Profile: 1840 ms sampled over 1843 ms wall time, every 1000 µs
+   self ms  self%   total ms total%  function
+    1610.0  87.5%     1620.0  88.0%  score (report.sl:12)
+     150.0   8.2%     1790.0  97.3%  rank (report.sl:30)
+      60.0   3.3%     1840.0 100.0%  <main>
+Profile written to soli-profile.folded
+```
+
+| Flag | Meaning |
+|---|---|
+| `--profile` (or `--profile=cpu`) | turn the profiler on |
+| `--profile-out FILE` | where to write the profile (default `soli-profile.folded`); implies `--profile` |
+| `--profile-hz N` | samples per second, 1 to 10 000 (default 1000); implies `--profile` |
+
+The file is **folded stacks** — one `<main>;outer (app.sl:3);inner (app.sl:9) 42`
+line per distinct stack — unless its name ends in `.json`, which writes a
+**speedscope** profile. Load either into [speedscope.app](https://www.speedscope.app),
+or feed the folded file to `flamegraph.pl` or `inferno-flamegraph` for an SVG.
+On a script the flags may come before or after its name (`soli app.sl
+--profile`), up to the first argument that belongs to the script.
+
+How it works, and what that means for reading it:
+
+- **Wall time, both engines.** A sampler thread ticks `--profile-hz` times a
+  second; the engine charges the ticks to the Soli stack it is in at its next
+  function entry or exit, tree-walker statement or VM loop check. A script
+  waiting on the database or the network shows that wait, charged to the
+  function that made the call.
+- **Safepoint bias.** Time lands where the engine next checks, not at the
+  instant the tick fired, so a very short function can absorb the time of the
+  native call just before it returns. Totals are right; single-line precision
+  is not the point.
+- **What has a frame.** Functions, methods, constructors, lambdas and blocks.
+  A typed numeric function compiled to a native kernel runs without a frame and
+  is charged to its caller. `<main>` is the top level of the script.
+- **`soli test`.** Every spec file's top level is its own `<main> (file)` root,
+  and the specs' worker threads are added together, so the total can exceed the
+  wall time. Request specs run their controllers in a separate test-server
+  process, which is not profiled. `--profile` cannot be combined with `--watch`.
+
+With no `--profile`, the hooks cost one relaxed atomic load per call and per
+statement, and `soli serve` never turns them on.
 
 ## The requests panel
 
@@ -273,7 +346,7 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=<long-random-string> \
 
 | | Development | Production |
 |---|---|---|
-| Breakpoints | enabled | ignored |
+| Breakpoints | the debug page (`200`) | the request fails (`500`) |
 | Debug page | full, interactive | a simple error page |
 | Hot reload | enabled | disabled |
 | Stack traces | detailed | minimal |

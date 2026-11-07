@@ -20,6 +20,24 @@ pub fn run() {
 
     let options = parse_args();
 
+    // `--profile`: sample the script, `-e` code or test run (`crate::debug`).
+    if let Some(profile) = &options.profile {
+        let name = match &options.command {
+            Command::Run { file } => file.clone(),
+            Command::Eval { .. } => "-e".to_string(),
+            Command::Test { .. } => "soli test".to_string(),
+            _ => {
+                eprintln!("--profile applies to a script, -e or soli test");
+                std::process::exit(64);
+            }
+        };
+        let entry_file = match &options.command {
+            Command::Run { file } => Some(file.as_str()),
+            _ => None,
+        };
+        commands::start_profile(profile, &name, entry_file);
+    }
+
     match &options.command {
         Command::Repl => commands::run_repl(),
         Command::Run { file } => commands::run_file(file, &options),
@@ -370,6 +388,8 @@ pub fn run() {
             url.as_deref(),
         ),
     }
+    // A command that returned normally; the ones that exit write it first.
+    commands::finish_profile();
 }
 
 /// `soli update-keygen` — a P-256 keypair for signing update manifests.

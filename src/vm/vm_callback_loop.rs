@@ -1596,6 +1596,7 @@ impl Vm {
         );
         frame.on_return = FrameReturn::DrivesLoop;
         self.frames.push(frame);
+        self.debug_entered();
         Ok(())
     }
 
@@ -1626,6 +1627,7 @@ impl Vm {
     #[cold]
     fn rerun_loop_failed(&mut self, message: &'static str, stack_base: usize) -> RuntimeError {
         self.frames.pop();
+        self.debug_left();
         self.stack.truncate(stack_base);
         self.iter_stack.pop();
         RuntimeError::type_error(message, self.current_span())
@@ -1638,6 +1640,7 @@ impl Vm {
     #[cold]
     fn rerun_loop_timed_out(&mut self, stack_base: usize) -> RuntimeError {
         self.frames.pop();
+        self.debug_left();
         self.stack.truncate(stack_base);
         self.iter_stack.pop();
         crate::interpreter::deadline::timeout_error(self.current_span())
@@ -1706,6 +1709,7 @@ impl Vm {
             match run_kernel(state, kernel, &mut self.stack) {
                 Ok(KernelRun::Done) => {
                     self.frames.pop();
+                    self.debug_left();
                     self.stack.truncate(stack_base);
                     self.finish_callback_loop()?;
                     return Ok(false);
@@ -1720,6 +1724,7 @@ impl Vm {
             return Ok(true);
         }
         self.frames.pop();
+        self.debug_left();
         self.stack.truncate(stack_base);
         if let Refill::NotAnArray = refilled {
             return Err(self.parts_of_a_non_array());

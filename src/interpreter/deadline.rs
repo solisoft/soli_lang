@@ -103,6 +103,9 @@ pub fn expired() -> bool {
     if remaining != 0 {
         return false;
     }
+    // Every few thousand backward jumps and calls: a point where the sampling
+    // profiler can charge a VM loop that calls nothing (`crate::debug`).
+    crate::debug::profiler::poll();
     let expired = exhausted();
     // Sticky: once the budget is gone, read the clock on every call (it
     // stays gone) instead of granting another few thousand iterations. The
