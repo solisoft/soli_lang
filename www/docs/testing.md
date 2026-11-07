@@ -100,7 +100,10 @@ myapp/
 ```
 
 Every spec file, whatever its name, starts with the app's `app/models`,
-`policies`, `services`, `helpers`, `middleware` and `jobs` loaded. Job classes
+`policies`, `services`, `mailers`, `helpers`, `middleware`, `jobs` and
+`subscribers` loaded — the directories `soli serve` loads — and with the
+template system pointed at `app/views`, so a service a spec calls can render
+and send its mailer's email. Job classes
 get the same facade as in the server (`perform_later`, `perform_now`,
 `perform_in`…), and `HTTP.*` calls block as they do in a request, so a `try`
 or `rescue` around one catches its failure.

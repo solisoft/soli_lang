@@ -152,6 +152,8 @@ pub(crate) mod slow_queries;
 pub(crate) mod spam;
 pub(crate) mod tailwind;
 mod tenant_writer;
+#[cfg(not(target_arch = "wasm32"))]
+mod test_session;
 mod worker_pool;
 
 pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
@@ -2752,6 +2754,14 @@ async fn handle_hyper_request(
     // behind the one trusted-peer gate that keeps them off the LAN. See
     // `dev_routes`.
     req = match dev_routes::dispatch(req, &method, &path, peer_addr, request_tx, dev_mode).await {
+        Ok(response) => return Ok(response),
+        Err(req) => req,
+    };
+
+    // `soli test`'s session writes (`with_session`, `as_user`, `sign_in`)
+    // and the spec client's CSRF token, answered only to the runner that
+    // spawned this process. See `test_session`.
+    req = match test_session::dispatch(req, &method, &path, peer_addr).await {
         Ok(response) => return Ok(response),
         Err(req) => req,
     };

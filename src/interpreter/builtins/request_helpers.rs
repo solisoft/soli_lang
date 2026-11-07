@@ -296,12 +296,18 @@ fn http_request(
             }
         }
     }
-    let cookies = COOKIES.with(|cell| cell.borrow().clone());
-
     let body_str = match body {
         None | Some(Value::Null) => None,
         Some(body_val) => Some(value_to_string(body_val)?),
     };
+
+    if is_unsafe_method(method) {
+        add_same_origin_headers(&mut all_headers, port);
+        add_csrf_token(&mut all_headers, body_str.as_deref())?;
+    }
+    // Read after `add_csrf_token`, which may have installed the session
+    // cookie the token belongs to.
+    let cookies = COOKIES.with(|cell| cell.borrow().clone());
 
     let (status, response_headers, set_cookies, body_text) = raw_http_request(
         port,
@@ -471,6 +477,134 @@ fn http_request(
     }
 
     Ok(response)
+}
+
+/// Methods the server's CSRF barriers look at.
+fn is_unsafe_method(method: &str) -> bool {
+    !matches!(
+        method.to_ascii_uppercase().as_str(),
+        "GET" | "HEAD" | "OPTIONS"
+    )
+}
+
+/// The key of `name` in `headers`, compared case-insensitively.
+fn header_key(headers: &HashMap<String, String>, name: &str) -> Option<String> {
+    headers
+        .keys()
+        .find(|k| k.eq_ignore_ascii_case(name))
+        .cloned()
+}
+
+/// Behave like a same-origin browser: a state-changing request carries an
+/// `Origin` naming the test server, so the server's Origin/Referer gate sees
+/// what a page it served would send. Without it, every `post`/`patch`/`delete`
+/// made after `login()` was refused — "missing both Origin and Referer on
+/// cookie-bearing request" (#676).
+///
+/// A spec still drives the gate by hand: an `Origin` or `Referer` it passes is
+/// sent as given (so a foreign origin is refused as it should be), and an
+/// `Origin` set to `""` sends the request with neither header.
+fn add_same_origin_headers(headers: &mut HashMap<String, String>, port: u16) {
+    if let Some(key) = header_key(headers, "origin") {
+        if headers.get(&key).is_some_and(|v| v.trim().is_empty()) {
+            headers.remove(&key);
+        }
+        return;
+    }
+    if header_key(headers, "referer").is_some() {
+        return;
+    }
+    headers.insert("Origin".to_string(), format!("http://127.0.0.1:{}", port));
+}
+
+fn is_form_content_type(content_type: &str) -> bool {
+    let content_type = content_type.trim().to_ascii_lowercase();
+    content_type.starts_with("application/x-www-form-urlencoded")
+        || content_type.starts_with("multipart/form-data")
+}
+
+/// A form post (urlencoded or multipart) carries the session's CSRF token as
+/// `X-CSRF-Token`, the way a page rendered with `csrf_meta_tag()` would — so a
+/// suite runs under `SOLI_CSRF_TOKENS=require`. JSON bodies are never
+/// token-gated and get nothing.
+///
+/// A token the spec supplies itself — the header, or a `_csrf_token` field in
+/// the body — is left alone, and `X-CSRF-Token` set to `""` sends the form with
+/// no token at all, to test the refusal.
+fn add_csrf_token(headers: &mut HashMap<String, String>, body: Option<&str>) -> Result<(), String> {
+    if let Some(key) = header_key(headers, "x-csrf-token") {
+        if headers.get(&key).is_some_and(|v| v.trim().is_empty()) {
+            headers.remove(&key);
+        }
+        return Ok(());
+    }
+    let is_form = header_key(headers, "content-type")
+        .and_then(|key| headers.get(&key))
+        .is_some_and(|ct| is_form_content_type(ct));
+    if !is_form || body.is_some_and(|b| b.contains("_csrf_token")) {
+        return Ok(());
+    }
+    if let Some(reply) = test_session_call(serde_json::Map::new(), true)? {
+        if let Some(token) = reply.csrf_token {
+            headers.insert("X-CSRF-Token".to_string(), token);
+        }
+    }
+    Ok(())
+}
+
+/// What a test server answered `/__soli/test/session`.
+pub(crate) struct TestSessionReply {
+    pub csrf_token: Option<String>,
+}
+
+/// Write `fields` into the test server's session store — the one requests
+/// read — and point the jar's `session_id` cookie at that session.
+///
+/// `Ok(None)` when there is no test server this process spawned (a spec run
+/// against no controllers, a unit test): the caller then writes locally.
+pub(crate) fn test_session_call(
+    fields: serde_json::Map<String, serde_json::Value>,
+    csrf: bool,
+) -> Result<Option<TestSessionReply>, String> {
+    let (Some(port), Some(token)) = (
+        get_test_server_port(),
+        super::test_server::internal_runner_token(),
+    ) else {
+        return Ok(None);
+    };
+    let mut headers: HashMap<String, String> = HashMap::new();
+    headers.insert("X-Soli-Test-Token".to_string(), token.to_string());
+    headers.insert("Content-Type".to_string(), "application/json".to_string());
+    let body = serde_json::json!({ "set": fields, "csrf": csrf }).to_string();
+    let cookies = current_cookies();
+    let (status, _headers, _set_cookies, text) = raw_http_request(
+        port,
+        "POST",
+        "/__soli/test/session",
+        &headers,
+        &cookies,
+        Some(&body),
+    )?;
+    if status != 200 {
+        return Err(format!(
+            "the test server refused the session write ({}): {}",
+            status,
+            text.trim()
+        ));
+    }
+    let reply: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("the test server's session reply is not JSON: {}", e))?;
+    if let Some(cookie) = reply.get("cookie").and_then(|c| c.as_str()) {
+        if !cookie.is_empty() {
+            set_cookie_inner("session_id".to_string(), cookie.to_string());
+        }
+    }
+    Ok(Some(TestSessionReply {
+        csrf_token: reply
+            .get("csrf_token")
+            .and_then(|t| t.as_str())
+            .map(str::to_string),
+    }))
 }
 
 /// Read `args[index]` as a string, or raise.
@@ -700,4 +834,100 @@ fn uppercase_prefix_alias(name: &str) -> Option<String> {
         return Some(out);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn only_state_changing_methods_are_unsafe() {
+        for method in ["GET", "head", "OPTIONS"] {
+            assert!(!is_unsafe_method(method), "{method}");
+        }
+        for method in ["POST", "put", "PATCH", "DELETE"] {
+            assert!(is_unsafe_method(method), "{method}");
+        }
+    }
+
+    /// A request with no Origin/Referer gets the test server's own origin —
+    /// the authority `raw_http_request` puts in `Host`.
+    #[test]
+    fn same_origin_is_added_when_the_spec_sent_neither_header() {
+        let mut h = headers(&[]);
+        add_same_origin_headers(&mut h, 4321);
+        assert_eq!(
+            h.get("Origin").map(String::as_str),
+            Some("http://127.0.0.1:4321")
+        );
+    }
+
+    /// A spec's own Origin or Referer is sent untouched — that is how a
+    /// cross-origin refusal is tested.
+    #[test]
+    fn a_spec_supplied_origin_or_referer_wins() {
+        let mut h = headers(&[("origin", "https://evil.test")]);
+        add_same_origin_headers(&mut h, 4321);
+        assert_eq!(h.len(), 1);
+        assert_eq!(
+            h.get("origin").map(String::as_str),
+            Some("https://evil.test")
+        );
+
+        let mut h = headers(&[("Referer", "https://evil.test/x")]);
+        add_same_origin_headers(&mut h, 4321);
+        assert!(header_key(&h, "origin").is_none());
+    }
+
+    /// `"Origin": ""` sends the request with neither header.
+    #[test]
+    fn an_empty_origin_opts_out() {
+        let mut h = headers(&[("Origin", "")]);
+        add_same_origin_headers(&mut h, 4321);
+        assert!(h.is_empty());
+    }
+
+    #[test]
+    fn csrf_token_is_left_to_the_spec_when_it_sends_one_or_opts_out() {
+        let mut h = headers(&[
+            ("X-CSRF-Token", "abc"),
+            ("Content-Type", "application/x-www-form-urlencoded"),
+        ]);
+        add_csrf_token(&mut h, Some("a=1")).unwrap();
+        assert_eq!(h.get("X-CSRF-Token").map(String::as_str), Some("abc"));
+
+        let mut h = headers(&[
+            ("x-csrf-token", " "),
+            ("Content-Type", "application/x-www-form-urlencoded"),
+        ]);
+        add_csrf_token(&mut h, Some("a=1")).unwrap();
+        assert!(header_key(&h, "x-csrf-token").is_none());
+    }
+
+    /// JSON is never token-gated, and with no test server there is no
+    /// session to read a token from: nothing is added either way.
+    #[test]
+    fn csrf_token_is_not_added_to_json_or_without_a_test_server() {
+        let mut h = headers(&[("Content-Type", "application/json")]);
+        add_csrf_token(&mut h, Some("{}")).unwrap();
+        assert!(header_key(&h, "x-csrf-token").is_none());
+
+        let mut h = headers(&[("Content-Type", "multipart/form-data; boundary=x")]);
+        add_csrf_token(&mut h, Some("--x--")).unwrap();
+        assert!(header_key(&h, "x-csrf-token").is_none());
+    }
+
+    #[test]
+    fn form_content_types_are_recognised() {
+        assert!(is_form_content_type("application/x-www-form-urlencoded"));
+        assert!(is_form_content_type("Multipart/Form-Data; boundary=x"));
+        assert!(!is_form_content_type("application/json"));
+    }
 }

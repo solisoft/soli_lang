@@ -408,8 +408,8 @@ work without coupling to the rendered HTML.
 
 ```soli
 as_guest()                          # clear all auth (default state for before_each)
-as_user(user_id)                    # log in as a given user
-as_user(user_id, { "role": "..." }) # user + session opts (writes to server-side store)
+as_user(user)                       # log in: an Int id, a SoliDB string key, or the record
+as_user(user, { "role": "..." })    # user + extra session keys
 as_role("admin")                    # first user with role == "admin" (single-table apps)
 sign_in("admin", id)                # separate-collection auth: writes session.admin_id
 sign_in("admin")                    # same, but uses Admin.first
@@ -428,6 +428,18 @@ Pick the helper that matches your auth shape:
 - **Distinct `User` / `Admin` models with separate session keys** → `sign_in("admin", id)` / `sign_in("admin")`.
 - **Just need a logged-in user, no role checks** → `as_user(id)`.
 - **Non-conventional session keys, arbitrary seeding** → `with_session({ ... })`.
+
+`as_user`, `sign_in` and `with_session` write into the test server's own
+session store, so the next request is signed in whatever the session driver.
+
+The request helpers act like a same-origin browser: `post`/`put`/`patch`/
+`delete` send an `Origin` naming the test server, and a form post
+(`Content-Type: application/x-www-form-urlencoded` or multipart) carries the
+session's CSRF token — so specs pass the CSRF gate, even under
+`SOLI_CSRF_TOKENS=require`, with no `SOLI_DISABLE_CSRF`. To test a refusal,
+pass the header yourself: `{"headers": {"Origin": "https://evil.test"}}` is a
+cross-origin request, `"Origin": ""` sends none, `"X-CSRF-Token": ""` sends no
+token.
 
 ### Request modifiers
 

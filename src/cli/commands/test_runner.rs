@@ -616,6 +616,15 @@ pub fn run_test(
 
     solilang::interpreter::builtins::model::init_db_config();
 
+    // Specs call services, and services send mail: a mailer renders
+    // `app/views/<mailer>/<action>.html.slv`, which needs the template system
+    // the server initialises at boot. Without it a preloaded mailer failed
+    // with "Template system not initialized" (#676).
+    let views_dir = app_dir.join("app").join("views");
+    if views_dir.is_dir() {
+        solilang::interpreter::builtins::template::init_templates(views_dir);
+    }
+
     let mut test_files: Vec<PathBuf> = Vec::new();
     for p in &test_paths {
         if p.is_file() {
@@ -681,13 +690,23 @@ pub fn run_test(
     // They sort before `helpers`, whose `current_user` / `signed_in?` must stay
     // the ones a spec sees (`app/policies/application_policy.sl` defines
     // identical globals; last write wins).
+    //
+    // Mailers and subscribers complete the list `soli serve` loads: a service
+    // that sends `AlertMailer.alert(...).deliver` failed in a spec with
+    // "Undefined variable 'AlertMailer'" (#676), and a service that publishes
+    // an event ran without the handlers `app/subscribers/` registers.
+    // Subscribers load last, after the jobs and mailers they name; the
+    // registry is emptied before each spec file (`run_with_path_and_coverage`)
+    // so a worker thread never subscribes a handler twice.
     for sub in [
         "models",
         "policies",
         "services",
+        "mailers",
         "helpers",
         "middleware",
         "jobs",
+        "subscribers",
     ] {
         let dir = app_dir.join("app").join(sub);
         if !dir.is_dir() {
@@ -834,6 +853,12 @@ pub fn run_test(
     } else {
         String::new()
     };
+
+    // The spec client presents the same token to `/__soli/test/session`, so
+    // `with_session` / `as_user` / `sign_in` write where the server reads.
+    solilang::interpreter::builtins::test_server::set_internal_runner_token(
+        internal_test_runner_token.clone(),
+    );
 
     if needs_test_server {
         println!("Starting {} test server(s)...", num_workers);

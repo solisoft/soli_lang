@@ -275,12 +275,15 @@ before_each(fn()
 end)
 ```
 
-**as_user(user_id)** simulates a logged-in regular user with the specified ID:
+**as_user(user)** signs a user in: it writes `user_id` into the test server's session and points the client's `session_id` cookie at it, so the next request runs as that user. `user` is an Int id, a String key (SoliDB `_key`s are strings), or the record itself, read for its `_key` and then its `id`:
 
 ```soli
-as_user(42);
-response = get("/profile");
-assert_eq(res_status(response), 200);
+as_user(42)
+response = get("/profile")
+assert_eq(res_status(response), 200)
+
+ada = User.find_by("email", "ada@example.com")
+as_user(ada)            # same as as_user(ada._key)
 ```
 
 **as_user(user_id, options)** writes both the user id and an options hash into the server-side session store. Use this when middleware reads more than `user_id` (e.g. a `role` field on the single-table users collection):
@@ -326,7 +329,7 @@ assert_eq(res_status(response), 200);
 
 - **Single-table role-column auth** (one `users` collection, role string field): use `as_role("admin")` or `as_user(id, {"role": "admin"})`.
 - **Separate-collection auth** (distinct `User`, `Admin`, ... models): use `sign_in("admin", id)` / `sign_in("admin")`.
-- **Just need a logged-in user** (no role checks): `as_user(id)` is the lightest path.
+- **Just need a logged-in user** (no role checks): `as_user(user)` is the lightest path.
 - **Anything else** (non-conventional session keys, arbitrary session seeding): fall back to `with_session({...})`.
 
 ### Login and Logout
@@ -393,7 +396,7 @@ assert(signed_out());
 
 ### Custom Session Data
 
-**with_session(data)** writes arbitrary key/value pairs into the server-side session and sets a matching `session_id` cookie. Subsequent requests in the same test see the data via `session_get(...)` on the server.
+**with_session(data)** writes arbitrary key/value pairs into the test server's session and sets a matching `session_id` cookie. Subsequent requests in the same test see the data via `session_get(...)` on the server — under every session driver, the default in-memory one included: `as_user`, `sign_in` and `with_session` write into the server's own store, not the runner's.
 
 ```soli
 with_session({
@@ -405,6 +408,31 @@ assert_eq(res_status(response), 200)
 ```
 
 > **Test-runner only.** `with_session` writes to the live session store and is gated to processes started by `soli test` (or test-server children spawned by it). Calling it from `soli run`, the REPL, a job, or a `soli serve --dev` script raises `with_session is a test-only helper; ...` so an attacker who can inject Soli code into one of those contexts cannot forge an authenticated session.
+
+### CSRF in specs
+
+The request helpers behave like a same-origin browser, so a spec passes both CSRF barriers without `SOLI_DISABLE_CSRF`:
+
+- `post`, `put`, `patch`, `delete` and `request` send an `Origin` naming the test server — after `login()` a cookie-bearing request with neither `Origin` nor `Referer` is refused, as it is for a real browser.
+- A form post (`Content-Type: application/x-www-form-urlencoded` or `multipart/form-data`) carries the session's CSRF token as `X-CSRF-Token`, the way a page rendered with `csrf_meta_tag()` would — so a suite runs under `SOLI_CSRF_TOKENS=require`. JSON bodies are never token-gated and get nothing.
+
+To test a refusal, pass the header yourself — what a spec sets is sent as given:
+
+```soli
+login("ada@example.com", "secret")
+
+response = post("/posts", {"title": "x"}, {"headers": {"Origin": "https://evil.test"}})
+assert_eq(res_status(response), 403)     # cross-origin
+
+response = post("/posts", {"title": "x"}, {"headers": {"Origin": ""}})
+assert_eq(res_status(response), 403)     # neither Origin nor Referer
+
+form = {"Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": ""}
+response = post("/posts", "title=x", {"headers": form})
+assert_eq(res_status(response), 403)     # no token, under SOLI_CSRF_TOKENS=require
+```
+
+Assert the status of a sign-in made with `post("/login", …)`. A refused one leaves the test a guest, and the failure surfaces later and elsewhere — a layout's `current_user().email` raising on `nil` turns the next page into a 500.
 
 ### Token Authentication
 

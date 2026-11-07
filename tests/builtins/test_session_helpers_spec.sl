@@ -1,6 +1,7 @@
 # The spec-side auth helpers (as_user, as_guest, create_session…) keep the
-# signed-in user in a thread-local, and the HTTP verb helpers need a test
-# server, which a plain spec file does not start.
+# signed-in user in a thread-local and write the session the server reads
+# (here the runner's own store: a plain spec file starts no test server), and
+# the HTTP verb helpers need a test server.
 
 describe("auth test helpers") do
   before_each() do
@@ -25,9 +26,24 @@ describe("auth test helpers") do
     assert_eq(current_user(), {"id": 9})
   end
 
-  test("as_user refuses anything but an integer id") do
-    assert_raises("as_user(user_id) expects integer argument") do
-      as_user({"id": 3})
+  test("as_user takes a SoliDB string key") do
+    as_user("u-abc")
+    assert_eq(current_user(), {"id": "u-abc"})
+  end
+
+  test("as_user takes a record, by its _key then its id") do
+    as_user({"_key": "k-7", "email": "ada@example.com"})
+    assert_eq(current_user(), {"id": "k-7"})
+    as_user({"id": 3})
+    assert_eq(current_user(), {"id": 3})
+  end
+
+  test("as_user refuses a record with no key, and other types") do
+    assert_raises("as_user: the record has no `_key` or `id` — save it first, or pass its id") do
+      as_user({"email": "ada@example.com"})
+    end
+    assert_raises("as_user expects a user id (Int or String) or a record, got bool") do
+      as_user(true)
     end
   end
 
