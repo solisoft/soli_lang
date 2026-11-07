@@ -609,6 +609,17 @@ Two things keep this from reaching anything real:
 Never set it on a machine that stores real passwords: a hash made under it
 carries its weakness for as long as it is stored.
 
+### Running the CLI from a spec
+
+`soli test` exports `SOLI_TEST_EXE`, the path of the binary running the
+suite. A spec that runs a script through the CLI uses it rather than `soli`
+from `PATH`, which may be missing or another version:
+
+```soli
+result = System.run_sync([getenv("SOLI_TEST_EXE"), "tmp/script.sl"])
+assert_eq(result["stdout"], "done\n")
+```
+
 ## Test Doubles: `Mock`
 
 `Mock` is a hand-rolled double for the collaborator your code takes as an argument.

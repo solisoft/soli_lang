@@ -7,6 +7,7 @@
 - Int answers `round`, `floor`, `ceil`, `truncate` (and `round(digits)`, negative digits rounding to tens/hundreds) like Float (#679).
 - `xs.first(n)` / `xs.last(n)` return arrays on both engines and in the checker; bare `first`/`last` stay the element (#679).
 - `Cron.every` accepts second intervals: `"30 seconds"` → `*/30 * * * * *` (#679).
+- `soli test` exports `SOLI_TEST_EXE`, the path of the binary running the suite, so a spec that runs a script through the CLI no longer guesses `soli` on `PATH` or `target/debug/soli` (`tests/builtins/error_spec.sl` failed on hosts with neither).
 - **Lint rule `smell/shadowed-builtin` (#678).** A local — a bare assignment, or
   a parameter annotated with a value type — named after a runtime global
   (`options`, `stream`, `page_url`, the test DSL's `context` in a spec) in a

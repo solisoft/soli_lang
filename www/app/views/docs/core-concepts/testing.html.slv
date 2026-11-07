@@ -1115,6 +1115,16 @@ persisted = Factory.insert("user")</code></pre>
             weakness for as long as it is stored.
         </p>
 
+        <h3 class="text-xl font-semibold text-white mb-4" id="section-test-exe">Running the CLI from a spec</h3>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">soli test</code> exports
+            <code class="text-cyan-400">SOLI_TEST_EXE</code>, the path of the binary running the
+            suite. A spec that runs a script through the CLI uses it rather than
+            <code>soli</code> from <code>PATH</code>, which may be missing or another version:
+        </p>
+        <pre class="mb-8"><code class="language-soli text-sm">result = System.run_sync([getenv("SOLI_TEST_EXE"), "tmp/script.sl"])
+assert_eq(result["stdout"], "done\n")</code></pre>
+
         <h3 class="text-xl font-semibold text-white mb-4" id="section-mock-queries">Mock Database Queries</h3>
         <p class="text-gray-400 mb-4">For integration tests without a real database, use <code>Model.mock_query_result()</code> to intercept queries and return predefined data:</p>
 

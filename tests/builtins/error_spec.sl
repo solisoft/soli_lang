@@ -171,8 +171,8 @@ describe("typed catch in a script run on the VM") do
   end
 
   test("a sole typed catch lets execution continue") do
-    # `soli` on PATH, or the build `cargo run -- test` runs (CI).
-    soli_path = System.run_sync(["sh", "-c", "command -v soli || echo target/debug/soli"])["stdout"].trim
+    # The binary running this spec, which `soli test` exports.
+    soli_path = getenv("SOLI_TEST_EXE")
     script = "try\n  throw new ValueError()\ncatch ValueError e\n  print(\"c\")\nend\nprint(\"after\")\n"
     barf(TYPED_CATCH_SCRIPT, script)
     result = System.run_sync([soli_path, TYPED_CATCH_SCRIPT])

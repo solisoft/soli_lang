@@ -560,6 +560,13 @@ pub fn run_test(
     // otherwise the suite still pays full Argon2 for every `User.create`.
     // `crypto::argon2_hasher` explains what it does and does not weaken.
     std::env::set_var("SOLI_ARGON2_FAST", "1");
+    // A spec that runs a script through the CLI needs the binary running it:
+    // `soli` on PATH or `target/debug/soli` is the right one only on some
+    // hosts (a remote or release build has neither), and may be another
+    // version. `System.run_sync([getenv("SOLI_TEST_EXE"), "script.sl"])`.
+    if let Ok(exe) = std::env::current_exe() {
+        std::env::set_var("SOLI_TEST_EXE", exe);
+    }
 
     // SEC-017: tell the SSRF blocklist this process is a test runner so
     // loopback/private addresses are reachable for spec fixtures. The
