@@ -121,10 +121,11 @@ impl Linter {
                         &mut self.diagnostics,
                     );
                 }
-                rules::scope::check_undefined_locals(
+                crate::lint::check_scope(
                     &decl.params,
                     &decl.body,
                     &self.program_names,
+                    self.test_file,
                     &mut self.diagnostics,
                 );
                 self.lint_body(&decl.body);
@@ -154,10 +155,11 @@ impl Linter {
                             &mut self.diagnostics,
                         );
                     }
-                    rules::scope::check_undefined_locals(
+                    crate::lint::check_scope(
                         &method.params,
                         &method.body,
                         &self.program_names,
+                        self.test_file,
                         &mut self.diagnostics,
                     );
                     self.lint_body(&method.body);
@@ -222,10 +224,11 @@ impl Linter {
             } else {
                 &instance_scope_names
             };
-            rules::scope::check_undefined_locals(
+            crate::lint::check_scope(
                 &method.params,
                 &method.body,
                 visible_names,
+                self.test_file,
                 &mut self.diagnostics,
             );
             self.class_level_this = method.is_static;
@@ -238,10 +241,11 @@ impl Linter {
             for param in &ctor.params {
                 rules::naming::check_variable_name(&param.name, param.span, &mut self.diagnostics);
             }
-            rules::scope::check_undefined_locals(
+            crate::lint::check_scope(
                 &ctor.params,
                 &ctor.body,
                 &instance_scope_names,
+                self.test_file,
                 &mut self.diagnostics,
             );
             self.lint_body(&ctor.body);

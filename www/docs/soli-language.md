@@ -4875,7 +4875,8 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `smell/unreachable-code` | Code after a `return` statement is unreachable |
 | `smell/empty-catch` | Catch blocks should not be empty (silently swallowing errors) |
 | `smell/deep-nesting` | Nesting depth should not exceed 4 levels |
-| `smell/duplicate-methods` | A class should not have two methods with the same name |
+| `smell/duplicate-methods` | A class should not have two methods with the same name (an instance `def x` and a `static def x` are distinct) |
+| `smell/shadowed-builtin` | A local named after a builtin (`options`, `stream`, `page_url`…) in a scope that also calls it — the call reaches the local; rename it, or use `let` to shadow on purpose |
 | `smell/dangerous-server-builtin` | Calls to `db_query_raw`, `Trusted.*`, `System.shell` / `System.shell_sync`, or backtick command substitution from `app/controllers/`, `app/middleware/`, or `app/views/`. Suggests the safe alternative: parameterised `@sdbql{ ... #{value} ... }`, the jailed `File.*` API, or `System.run([...])` with an argv array. Models, migrations, and tests are out of scope. |
 | `style/redundant-model-import` | No `import "../models/*.sl"` inside `app/controllers/` — models are auto-loaded |
 | `idiom/nil-comparison` | Prefer `.nil?` / `!x.nil?` over `== nil` / `!= nil` (also catches `null`) |

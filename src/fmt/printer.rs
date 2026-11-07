@@ -16,8 +16,8 @@ const INDENT_WIDTH: usize = 2;
 
 /// Maximum line length the formatter will produce. Lines exceeding this
 /// trigger `style/line-length` in `soli lint`, so the formatter must stay
-/// under it. Based on the lint rule default of 120.
-pub const MAX_LINE_LENGTH: usize = 120;
+/// under it — it is the lint rule's own constant, not a copy of it.
+pub const MAX_LINE_LENGTH: usize = crate::lint::rules::style::MAX_LINE_LENGTH;
 
 pub struct Printer<'a> {
     pub(super) source: &'a str,
@@ -69,6 +69,20 @@ impl<'a> Printer<'a> {
     /// For text that cannot span lines in the source, like a `"…"` literal,
     /// where a multi-line rendering would not even lex.
     pub(super) fn try_single_line(&mut self, f: impl FnOnce(&mut Self)) -> bool {
+        self.try_single_line_within(usize::MAX, f)
+    }
+
+    /// [`Self::try_single_line`], and the line must also end at or before
+    /// column `max_width`. For a rewrite the formatter chooses on its own —
+    /// folding a block `if … end` into a postfix guard — where producing a
+    /// line `soli lint` then rejects (`style/line-length`) is worse than
+    /// keeping the block the author wrote. The width estimate that gates the
+    /// fold can undershoot; this measures what was actually printed.
+    pub(super) fn try_single_line_within(
+        &mut self,
+        max_width: usize,
+        f: impl FnOnce(&mut Self),
+    ) -> bool {
         let out_len = self.out.len();
         let saved = (
             self.indent,
@@ -80,7 +94,7 @@ impl<'a> Printer<'a> {
             self.suppress_do_block,
         );
         f(self);
-        if !self.out[out_len..].contains('\n') {
+        if !self.out[out_len..].contains('\n') && self.column <= max_width {
             return true;
         }
         self.out.truncate(out_len);

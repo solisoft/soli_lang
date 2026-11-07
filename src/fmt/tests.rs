@@ -1332,3 +1332,47 @@ fn raw_and_triple_quoted_strings_hide_comment_markers() {
     assert_unchanged_and_idempotent("p = r\"C:\\\"  # trailing\nq = 1\n");
     assert_unchanged_and_idempotent("t = \"\"\"a // \"#{b}\" # c\"\"\"\n");
 }
+
+// #678: folding a block `if … end` into a postfix guard must not produce a
+// line `style/line-length` rejects. The fold is gated by a width estimate
+// that knows nothing of a ternary (it guesses 8 columns), so the fold went
+// ahead and printed a 140-column line; the printed width is now measured.
+#[test]
+fn block_if_is_not_folded_into_a_postfix_line_over_the_limit() {
+    let src = "def label(user)\n  if user.present?\n    return user.admin? ? \"administrator of the whole \
+monitoring workspace\" : \"member of the monitoring workspace\"\n  end\n\n  \"guest\"\nend\n";
+    let longest = src.lines().map(str::len).max().unwrap_or(0);
+    assert!(
+        longest <= super::printer::MAX_LINE_LENGTH,
+        "fixture itself must fit"
+    );
+    assert_within_line_limit(src);
+    assert_fmt(src, src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn block_unless_is_not_folded_into_a_postfix_line_over_the_limit() {
+    let src =
+        "def label(user)\n  unless user.present?\n    return user.admin? ? \"administrator of the \
+whole monitoring workspace\" : \"member of the monitoring workspace\"\n  end\n\n  \"guest\"\nend\n";
+    assert_within_line_limit(src);
+    assert_fmt(src, src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn a_short_block_if_is_still_folded() {
+    let src = "def label(user)\n  if user.present?\n    return user.admin? ? \"admin\" : \"member\"\n  end\n  \"guest\"\nend\n";
+    let expected =
+        "def label(user)\n  return user.admin? ? \"admin\" : \"member\" if user.present?\n\n  \"guest\"\nend\n";
+    assert_fmt(src, expected);
+}
+
+#[test]
+fn fmt_and_lint_share_the_line_limit() {
+    assert_eq!(
+        super::printer::MAX_LINE_LENGTH,
+        crate::lint::rules::style::MAX_LINE_LENGTH
+    );
+}

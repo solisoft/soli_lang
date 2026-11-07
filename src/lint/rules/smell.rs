@@ -36,15 +36,26 @@ pub fn check_empty_catch(catch_block: &Stmt, diagnostics: &mut Vec<LintDiagnosti
     }
 }
 
+/// `smell/duplicate-methods`: two methods of one class with the same name.
+///
+/// An instance method and a `static def` of the same name live in different
+/// tables at runtime (`Post.kind_label` vs `post.kind_label`), so they are
+/// keyed apart: only a second instance method, or a second static one, is a
+/// duplicate.
 pub fn check_duplicate_methods(class: &ClassDecl, diagnostics: &mut Vec<LintDiagnostic>) {
     let mut seen = HashSet::new();
     for method in &class.methods {
-        if !seen.insert(&method.name) {
+        if !seen.insert((&method.name, method.is_static)) {
+            let kind = if method.is_static {
+                "static method"
+            } else {
+                "method"
+            };
             diagnostics.push(LintDiagnostic {
                 rule: "smell/duplicate-methods",
                 message: format!(
-                    "duplicate method '{}' in class '{}'",
-                    method.name, class.name
+                    "duplicate {} '{}' in class '{}'",
+                    kind, method.name, class.name
                 ),
                 span: method.span,
                 severity: Severity::Warning,
@@ -401,5 +412,47 @@ mod tests {
         check_deep_nesting(5, span(), &mut d);
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].rule, "smell/deep-nesting");
+    }
+}
+
+#[cfg(test)]
+mod duplicate_methods_tests {
+    use crate::lexer::Scanner;
+    use crate::lint::Linter;
+    use crate::parser::Parser;
+
+    fn messages(src: &str) -> Vec<String> {
+        let tokens = Scanner::new(src).scan_tokens().expect("lex");
+        let program = Parser::new(tokens).parse().expect("parse");
+        Linter::new(src)
+            .lint(&program)
+            .into_iter()
+            .filter(|d| d.rule == "smell/duplicate-methods")
+            .map(|d| d.message)
+            .collect()
+    }
+
+    #[test]
+    fn an_instance_method_and_a_static_def_of_one_name_are_distinct() {
+        let src = "class Probe\n  def kind_label\n    \"x\"\n  end\n\n  static def kind_label(kind)\n    kind\n  end\nend\n";
+        assert!(messages(src).is_empty(), "{:?}", messages(src));
+    }
+
+    #[test]
+    fn two_instance_methods_of_one_name_are_flagged() {
+        let src = "class Probe\n  def kind_label\n    \"x\"\n  end\n\n  def kind_label\n    \"y\"\n  end\nend\n";
+        assert_eq!(
+            messages(src),
+            vec!["duplicate method 'kind_label' in class 'Probe'"]
+        );
+    }
+
+    #[test]
+    fn two_static_methods_of_one_name_are_flagged() {
+        let src = "class Probe\n  static def kind_label\n    \"x\"\n  end\n\n  static def kind_label\n    \"y\"\n  end\nend\n";
+        assert_eq!(
+            messages(src),
+            vec!["duplicate static method 'kind_label' in class 'Probe'"]
+        );
     }
 }

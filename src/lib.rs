@@ -735,7 +735,7 @@ fn is_application_path(path: &std::path::Path) -> bool {
 /// wrong in the generous direction costs an unreported `describe` in an odd
 /// place, and in the strict direction costs an error on every spec in the
 /// project.
-fn is_test_path(path: &std::path::Path) -> bool {
+pub(crate) fn is_test_path(path: &std::path::Path) -> bool {
     let in_test_dir = path.components().any(|c| {
         matches!(
             c.as_os_str().to_str(),

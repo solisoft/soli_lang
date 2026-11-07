@@ -178,6 +178,24 @@ impl TypeChecker {
         let target_type = self.check_expr(target)?;
 
         if !value_type.is_assignable_to(&target_type) {
+            // `page_url = "x"` inside a method: the name is a builtin, so the
+            // assignment reads as rebinding it, and the bare mismatch
+            // ("expected (Any, Any) -> String, found String") named neither
+            // the builtin nor the way out.
+            if let ExprKind::Variable(name) = &target.kind {
+                if matches!(target_type, Type::Function { .. })
+                    && crate::types::runtime_globals::is_builtin_name(name)
+                {
+                    return Err(TypeError::General {
+                        message: format!(
+                            "`{name} = …` assigns a {value_type} to the builtin {name}(), \
+                             which a bare assignment rebinds rather than shadows; rename the \
+                             local (or declare it with `let {name} = …`)"
+                        ),
+                        span,
+                    });
+                }
+            }
             return Err(TypeError::mismatch(
                 format!("{}", target_type),
                 format!("{}", value_type),

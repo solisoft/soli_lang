@@ -4,5 +4,6 @@ pub mod naming;
 pub mod props;
 pub mod scope;
 pub mod security;
+pub mod shadow;
 pub mod smell;
 pub mod style;
