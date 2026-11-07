@@ -381,20 +381,22 @@ anything inside a request, and `serve` does not type-check.
 
 ## Editor integration
 
-The VS Code / Cursor extension speaks LSP: real-time linting, hover
-documentation, autocomplete, go-to-definition, find-references.
+The VS Code / Cursor extension starts `soli lsp`: real-time linting (the
+path-aware rules included), hover documentation, autocomplete,
+go-to-definition, find-references. When the server cannot run, it falls back
+to `soli lint` on open and save.
 
 ```bash
 cd editors/vscode
-vsce package    # then install the generated .vsix
+npm ci && npm run package    # then install soli-language.vsix
 ```
 
 | Setting | Default |
 |---|---|
-| `soli.lsp.enable` | `true` |
-| `soli.lsp.executablePath` | `"soli"` |
-| `soli.lint.enable` | `true` |
-| `soli.lint.onSave` | `true` |
+| `soli.lsp.enabled` | `true` |
+| `soli.lsp.path` | `""` (`PATH`, then `~/.local/bin`, `~/.cargo/bin`, `/usr/local/bin`) |
+| `soli.lint.enable` | `true` (fallback only) |
+| `soli.lint.onSave` | `true` (fallback only) |
 
 For an editor that takes an LSP server directly:
 

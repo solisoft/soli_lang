@@ -388,7 +388,7 @@ data   = Trusted.read(path)
             </span>
             Editor Integration
         </h2>
-        <p class="text-gray-400 mb-6">The VS Code / Cursor extension provides full Language Server Protocol (LSP) support with real-time linting, hover documentation, autocomplete, and more.</p>
+        <p class="text-gray-400 mb-6">The VS Code / Cursor extension starts the language server, <code class="text-amber-400">soli lsp</code>: real-time linting (the path-aware rules included), hover documentation, autocomplete, and more. When the server cannot run, it falls back to <code class="text-amber-400">soli lint</code> on open and save.</p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-base font-semibold text-white mb-3">Features</h3>
@@ -404,17 +404,17 @@ data   = Trusted.read(path)
         <h3 class="text-lg font-semibold text-white mb-3">Installation</h3>
         <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
             <pre data-filename="Terminal"><code class="language-bash text-sm">cd editors/vscode
-vsce package
-# Install the generated .vsix file in Cursor or VS Code</code></pre>
+npm ci && npm run package
+# Install soli-language.vsix in Cursor or VS Code</code></pre>
         </div>
 
         <h3 class="text-lg font-semibold text-white mb-3">Settings</h3>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <ul class="list-disc list-inside text-gray-400 space-y-2">
-                <li><code class="text-amber-400">soli.lsp.enable</code> &mdash; Enable/disable LSP server (default: <code>true</code>)</li>
-                <li><code class="text-amber-400">soli.lsp.executablePath</code> &mdash; Path to the <code>soli</code> binary (default: <code>"soli"</code>)</li>
-                <li><code class="text-amber-400">soli.lint.enable</code> &mdash; Enable/disable linting (default: <code>true</code>)</li>
-                <li><code class="text-amber-400">soli.lint.onSave</code> &mdash; Run linter on file save (default: <code>true</code>)</li>
+                <li><code class="text-amber-400">soli.lsp.enabled</code> &mdash; Run the language server (default: <code>true</code>)</li>
+                <li><code class="text-amber-400">soli.lsp.path</code> &mdash; Path to the <code>soli</code> binary (default: empty &mdash; <code>PATH</code>, then <code>~/.local/bin</code>, <code>~/.cargo/bin</code>, <code>/usr/local/bin</code>)</li>
+                <li><code class="text-amber-400">soli.lint.enable</code> &mdash; Run <code>soli lint</code> while the server is not running (default: <code>true</code>)</li>
+                <li><code class="text-amber-400">soli.lint.onSave</code> &mdash; Lint again on save, fallback only (default: <code>true</code>)</li>
             </ul>
         </div>
 

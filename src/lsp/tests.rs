@@ -59,6 +59,11 @@ async fn native_async_backend_serves_the_document_lifecycle_over_lsp() {
         initialized["result"]["capabilities"]["definitionProvider"],
         true
     );
+    assert_eq!(initialized["result"]["serverInfo"]["name"], "soli");
+    assert_eq!(
+        initialized["result"]["serverInfo"]["version"],
+        env!("CARGO_PKG_VERSION")
+    );
 
     send(
         &mut client,

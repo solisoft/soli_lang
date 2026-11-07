@@ -1,29 +1,91 @@
 {
   "comments": {
-    "lineComment": "//",
-    "blockComment": ["/*", "*/"]
+    "lineComment": "#",
+    "blockComment": [
+      "/*",
+      "*/"
+    ]
   },
   "brackets": [
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"]
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
   ],
   "autoClosingPairs": [
-    { "open": "{", "close": "}" },
-    { "open": "[", "close": "]" },
-    { "open": "(", "close": ")" },
-    { "open": "\"", "close": "\"", "notIn": ["string"] },
-    { "open": "'", "close": "'", "notIn": ["string"] }
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string"
+      ]
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "`",
+      "close": "`",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    }
   ],
   "surroundingPairs": [
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"],
-    ["\"", "\""],
-    ["'", "'"]
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ],
+    [
+      "`",
+      "`"
+    ]
   ],
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|(@?[A-Za-z_][\\w]*[?!]?)",
   "indentationRules": {
-    "increaseIndentPattern": "^.*(\\{[^}]*|\\[[^\\]]*|\\([^)]*)$",
-    "decreaseIndentPattern": "^\\s*(\\}|\\]|\\))"
+    "increaseIndentPattern": "^\\s*(?:(?:def|class|module|interface|enum|if|unless|elsif|else|while|for|case|when|begin|try|catch|rescue|ensure|finally|new)\\b(?!.*\\bend\\s*$).*|.*\\bdo(?:\\s*\\|[^|]*\\|)?|.*[\\{\\[\\(][^\\}\\]\\)]*)\\s*$",
+    "decreaseIndentPattern": "^\\s*(end\\b|else\\b|elsif\\b|when\\b|catch\\b|rescue\\b|ensure\\b|finally\\b|\\}|\\]|\\))"
   }
 }

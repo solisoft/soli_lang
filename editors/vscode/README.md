@@ -1,71 +1,76 @@
-# Soli Language Support for VSCode
+# Soli for VS Code, Cursor, VSCodium and Windsurf
 
-This extension provides syntax highlighting for the Soli programming language in VSCode and other editors that support TextMate grammars.
-
-## Installation
-
-### From Source
-
-1. Navigate to this directory:
-   ```bash
-   cd editors/vscode
-   ```
-
-2. Install VSCE (VSCode Extension Publisher) if not already installed:
-   ```bash
-   npm install -g vsce
-   ```
-
-3. Package the extension:
-   ```bash
-   vsce package
-   ```
-
-4. Install the generated `.vsix` file in VSCode:
-   - Open VSCode
-   - Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
-   - Type "Extensions: Install from VSIX"
-   - Select the generated `.vsix` file
-
-### Manual Installation
-
-Copy the `syntaxes/` folder and `language-configuration.json` to your VSCode extensions folder:
-
-- **Windows**: `%USERPROFILE%\.vscode\extensions\soli-language\`
-- **macOS**: `~/.vscode/extensions/soli-language/`
-- **Linux**: `~/.vscode/extensions/soli-language/`
+Language support for [Soli](https://soli.solisoft.net), the Ruby-like
+language and web framework: the `soli lsp` language server, and highlighting
+for `.sl` files and `.slv` view templates.
 
 ## Features
 
-- Syntax highlighting for Soli source files (`.sl`)
-- Support for:
-  - Keywords (let, fn, if, else, class, etc.)
-  - Types (Int, Float, Bool, String, Void)
-  - String literals (including escape sequences)
-  - Numbers (decimal, hex, binary, octal)
-  - Comments (single-line and multi-line)
-  - Operators and punctuation
+- **Diagnostics** while you type: syntax errors, and the `soli lint` rules,
+  including the path-aware ones for `app/controllers` and `app/services`
+  (`security/unfiltered-mass-assignment`, `style/redundant-model-import`…).
+  `.slv` templates have their `<% %>` code checked.
+- **Hover**, **completion** (the receiver's members after `.` and `@`),
+  **go to definition** across the application, **references**, **rename**,
+  **document symbols**, **folding**, **code actions**, and **Format Document**
+  with the same formatter as `soli fmt`.
+- **Highlighting** for Soli (`#{}` interpolation, `@ivars`, `@sdbql{…}`
+  blocks, symbols, raw and triple-quoted strings) and for `.slv` templates
+  (HTML with Soli inside `<% %>`, `<%= %>` and `<%- -%>`).
 
-## Language Support
+Everything but highlighting comes from the `soli` binary: install it first.
 
-This extension recognizes the following Soli language features:
+```bash
+curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh | sh
+```
 
-### Keywords
-- Control flow: `if`, `else`, `elsif`, `while`, `for`, `in`, `match`, `case`, `when`, `end`, `unless`
-- Error handling: `try`, `catch`, `finally`, `throw`
-- Functions: `fn`, `return`
-- Variables: `let`
-- Classes: `class`, `extends`, `implements`, `interface`, `new`, `this`, `super`
-- Visibility: `public`, `private`, `protected`, `static`
-- Modules: `import`, `export`, `from`, `as`
-- Async: `async`, `await`
+## Finding `soli`
 
-### Types
-- `Int`, `Float`, `Bool`, `String`, `Void`, `Any`
+The extension runs, in order: the `soli.lsp.path` setting; `soli` on `PATH`;
+then `~/.local/bin/soli`, `~/.cargo/bin/soli` and `/usr/local/bin/soli`
+(on Windows `soli.exe` in `%USERPROFILE%\.cargo\bin` and
+`%USERPROFILE%\.local\bin`). An editor started from the dock or the start
+menu often lacks your shell's `PATH`, which is why those directories are
+tried. If nothing is found, a notification lists every place it looked.
 
-### Built-in Values
-- `true`, `false`, `null`
+## Settings
 
-## File Extension
+| Setting | Default | |
+|---|---|---|
+| `soli.lsp.enabled` | `true` | Run the language server. Off: highlighting, plus `soli lint` on open and save. |
+| `soli.lsp.path` | `""` | Absolute path to `soli`. Empty: `PATH`, then the directories above. |
+| `soli.lsp.trace` | `"off"` | `messages` or `verbose` traces the LSP traffic in the **Soli** output. |
+| `soli.lint.enable` | `true` | Run `soli lint` when the language server is not running. |
+| `soli.lint.onSave` | `true` | Lint again on each save (fallback lint only). |
+| `soli.lint.executablePath` | `""` | Deprecated: read only when `soli.lsp.path` is empty. |
 
-Files with the `.sl` extension are recognized as Soli source files.
+The names match the Nova extension's. `soli.lsp.path` and
+`soli.lint.executablePath` are read from user settings only, so a
+repository's `.vscode/settings.json` cannot make the editor run another
+binary; the extension stays off in an untrusted workspace.
+
+## When the language server cannot run
+
+`soli lint` takes over, on open and save, when the server is disabled, when
+the `soli` found was built without the `lsp` feature (detected from its
+message, and not restarted), or when the server stopped five times in three
+minutes. It never runs while the server does, so a finding is reported once.
+
+## Commands
+
+- **Soli: Restart Language Server** — picks up a rebuilt `soli`.
+- **Soli: Show Output** — the server's log, and the trace.
+- **Soli: Lint Current File** — the fallback lint, on demand.
+
+## Building from source
+
+```bash
+cd editors/vscode
+npm ci
+npm test            # unit and grammar tests
+npm run package     # writes soli-language.vsix
+code --install-extension soli-language.vsix   # or: cursor --install-extension …
+```
+
+The grammars are generated: edit `editors/grammars/*.tmLanguage.json` and run
+`scripts/sync-grammars.sh`.

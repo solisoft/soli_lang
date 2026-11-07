@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Editor Integration</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Soli ships a language server, <code class="text-amber-400">soli lsp</code>, spoken over stdio. Nova and Neovim use it today, and so can any editor with a generic LSP client. The VS Code / Cursor extension does not start it yet: it runs <code class="text-amber-400">soli lint</code> instead.
+            Soli ships a language server, <code class="text-amber-400">soli lsp</code>, spoken over stdio. The VS Code / Cursor and Nova extensions start it, Neovim and Helix take a few lines of configuration, and any editor with a generic LSP client can use it. The server reports its version in <code class="text-amber-400">initialize</code> (<code class="text-amber-400">serverInfo</code>).
         </p>
     </div>
 
@@ -112,19 +112,62 @@
         </p>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Cursor &amp; VS Code</h2>
+    <h2 class="text-2xl font-bold text-white mb-6">VS Code &amp; Cursor</h2>
     <p class="text-gray-400 mb-6">
-        The extension in <code class="text-amber-400">editors/vscode/</code> gives syntax highlighting and runs <code class="text-amber-400">soli lint</code> on a file when it is opened and saved, showing the findings as diagnostics; <strong class="text-white">Soli: Lint Current File</strong> runs it on demand. It does not start the language server yet, so hover, completion, go-to-definition, rename and formatting are not available in these editors.
+        The extension in <code class="text-amber-400">editors/vscode/</code> (<code class="text-amber-400">solilang.soli-language</code>) starts <code class="text-amber-400">soli lsp</code>, so VS Code, Cursor, VSCodium and Windsurf get everything in the table above, and highlights <code class="text-amber-400">.sl</code> files and <code class="text-amber-400">.slv</code> templates. It needs VS Code 1.82 or a build based on it.
+    </p>
+    <p class="text-gray-400 mb-4">
+        It is not on the Marketplace or Open VSX yet. Download <code class="text-amber-400">soli-language.vsix</code> from the artifacts of the <strong class="text-white">vscode extension</strong> workflow run on GitHub, or build it:
     </p>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="bash"><code class="language-bash text-sm">code --install-extension editors/vscode/soli-language-0.2.0.vsix
+        <pre data-filename="bash"><code class="language-bash text-sm">cd editors/vscode
+npm ci
+npm run package        # writes soli-language.vsix
+code --install-extension soli-language.vsix
 # Cursor:
-cursor --install-extension editors/vscode/soli-language-0.2.0.vsix</code></pre>
+cursor --install-extension soli-language.vsix</code></pre>
     </div>
-    <p class="text-gray-400 mb-4">or build it with <code class="text-amber-400">vsce package</code> from <code class="text-amber-400">editors/vscode/</code>. Settings (<code class="text-amber-400">settings.json</code>):</p>
+    <p class="text-gray-400 mb-6">A 0.2 install upgrades in place: the extension id is unchanged.</p>
 
-    <div class="overflow-hidden rounded-xl border border-white/10 mb-12">
+    <h3 class="text-lg font-semibold text-white mb-4">Languages</h3>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
+        <table class="w-full text-sm">
+            <thead class="bg-white/5 text-left text-gray-300">
+                <tr>
+                    <th class="px-4 py-3 font-semibold">Language</th>
+                    <th class="px-4 py-3 font-semibold">Files</th>
+                    <th class="px-4 py-3 font-semibold">What the server does</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top">Soli <code class="text-amber-400">soli</code></td>
+                    <td class="px-4 py-3 align-top"><code class="text-amber-400">.sl</code>, <code class="text-amber-400">Solifile</code></td>
+                    <td class="px-4 py-3">Everything above.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top">Soli Template <code class="text-amber-400">soli-template</code></td>
+                    <td class="px-4 py-3 align-top"><code class="text-amber-400">.slv</code></td>
+                    <td class="px-4 py-3">Diagnostics, hover, go-to-definition, and completion inside <code class="text-amber-400">&lt;% %&gt;</code>. Highlighting: HTML with Soli inside <code class="text-amber-400">&lt;% %&gt;</code>, <code class="text-amber-400">&lt;%= %&gt;</code>, <code class="text-amber-400">&lt;%- -%&gt;</code>, and <code class="text-amber-400">&lt;%# %&gt;</code> comments.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Finding <code class="text-amber-400">soli</code></h3>
+    <p class="text-gray-400 mb-4">The extension runs the first <code class="text-amber-400">soli</code> it finds:</p>
+    <ol class="list-decimal list-inside text-gray-400 space-y-2 mb-4">
+        <li>the <code class="text-amber-400">soli.lsp.path</code> setting (an absolute path, <code class="text-amber-400">~/&hellip;</code>, or a name looked up on <code class="text-amber-400">PATH</code>);</li>
+        <li><code class="text-amber-400">soli</code> on <code class="text-amber-400">PATH</code>;</li>
+        <li><code class="text-amber-400">~/.local/bin/soli</code> (where <code class="text-amber-400">install.sh</code> puts it), <code class="text-amber-400">~/.cargo/bin/soli</code> (<code class="text-amber-400">$CARGO_HOME/bin</code>), <code class="text-amber-400">/usr/local/bin/soli</code>, and <code class="text-amber-400">/opt/homebrew/bin/soli</code> on macOS. On Windows: <code class="text-amber-400">soli.exe</code> on <code class="text-amber-400">PATH</code>, then <code class="text-amber-400">%USERPROFILE%\.cargo\bin</code> and <code class="text-amber-400">%USERPROFILE%\.local\bin</code>.</li>
+    </ol>
+    <p class="text-gray-400 mb-6">
+        An editor started from the dock or the start menu often lacks your shell&rsquo;s <code class="text-amber-400">PATH</code>, which is why the install directories are tried. When nothing is found, a notification lists every place it looked, with a button to set the path. A <code class="text-amber-400">soli.lsp.path</code> that does not exist is reported, not replaced by another <code class="text-amber-400">soli</code>.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Settings</h3>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
         <table class="w-full text-sm">
             <thead class="bg-white/5 text-left text-gray-300">
                 <tr>
@@ -134,12 +177,33 @@ cursor --install-extension editors/vscode/soli-language-0.2.0.vsix</code></pre>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
-                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lint.enable</code></td><td class="px-4 py-3"><code class="text-amber-400">true</code></td><td class="px-4 py-3">Lint Soli files.</td></tr>
-                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lint.onSave</code></td><td class="px-4 py-3"><code class="text-amber-400">true</code></td><td class="px-4 py-3">Lint again on every save.</td></tr>
-                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lint.executablePath</code></td><td class="px-4 py-3"><code class="text-amber-400">"soli"</code></td><td class="px-4 py-3">The <code class="text-amber-400">soli</code> binary to run.</td></tr>
+                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lsp.enabled</code></td><td class="px-4 py-3"><code class="text-amber-400">true</code></td><td class="px-4 py-3">Run the language server.</td></tr>
+                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lsp.path</code></td><td class="px-4 py-3"><code class="text-amber-400">""</code></td><td class="px-4 py-3">Absolute path to <code class="text-amber-400">soli</code>. Empty: the search above.</td></tr>
+                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lsp.trace</code></td><td class="px-4 py-3"><code class="text-amber-400">"off"</code></td><td class="px-4 py-3"><code class="text-amber-400">messages</code> or <code class="text-amber-400">verbose</code> traces the LSP traffic in the <strong class="text-white">Soli</strong> output.</td></tr>
+                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lint.enable</code></td><td class="px-4 py-3"><code class="text-amber-400">true</code></td><td class="px-4 py-3">Run <code class="text-amber-400">soli lint</code> when the language server is not running (see below).</td></tr>
+                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lint.onSave</code></td><td class="px-4 py-3"><code class="text-amber-400">true</code></td><td class="px-4 py-3">Lint again on every save (fallback only).</td></tr>
+                <tr><td class="px-4 py-3"><code class="text-amber-400">soli.lint.executablePath</code></td><td class="px-4 py-3"><code class="text-amber-400">""</code></td><td class="px-4 py-3">Deprecated: read only when <code class="text-amber-400">soli.lsp.path</code> is empty.</td></tr>
             </tbody>
         </table>
     </div>
+    <p class="text-gray-400 mb-6">The <code class="text-amber-400">soli.lsp.*</code> names are the Nova extension&rsquo;s. <code class="text-amber-400">soli.lsp.path</code> and <code class="text-amber-400">soli.lint.executablePath</code> are read from your user settings only: a repository&rsquo;s <code class="text-amber-400">.vscode/settings.json</code> cannot make the editor run another binary. The extension stays off in a workspace you have not trusted.</p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">When the server cannot run</h3>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">soli lint &lt;file&gt;</code> on open and save takes over only when the server is not running: <code class="text-amber-400">soli.lsp.enabled</code> is off, the <code class="text-amber-400">soli</code> found was built without the <code class="text-amber-400">lsp</code> cargo feature (the extension recognises its refusal and does not restart it), or the server stopped five times in three minutes. While the server runs the fallback is off, so each finding is reported once &mdash; the server applies the same rules, path-aware ones included.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Commands</h3>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
+        <li><strong class="text-white">Soli: Restart Language Server</strong> &mdash; picks up a rebuilt <code class="text-amber-400">soli</code>.</li>
+        <li><strong class="text-white">Soli: Show Output</strong> &mdash; the server&rsquo;s log and trace.</li>
+        <li><strong class="text-white">Soli: Lint Current File</strong> &mdash; the fallback lint, on demand.</li>
+    </ul>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Grammars</h3>
+    <p class="text-gray-400 mb-12">
+        The TextMate grammars live in <code class="text-amber-400">editors/grammars/</code> (<code class="text-amber-400">soli.tmLanguage.json</code>, scope <code class="text-amber-400">source.soli</code>; <code class="text-amber-400">soli-template.tmLanguage.json</code>, scope <code class="text-amber-400">text.html.soli</code>). <code class="text-amber-400">scripts/sync-grammars.sh</code> copies them into the VS Code and Nova bundles, and CI fails when a copy is stale (<code class="text-amber-400">--check</code>). A Rust test fails when the grammar&rsquo;s keywords and the lexer&rsquo;s disagree. Any editor that reads TextMate grammars (Sublime Text, TextMate, JetBrains through its TextMate bundle support) can load these files.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Nova <span class="text-base font-medium text-gray-400">(macOS)</span></h2>
     <p class="text-gray-400 mb-6">

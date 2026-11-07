@@ -4963,30 +4963,22 @@ The VS Code / Cursor extension (`editors/vscode/`) provides full Language Server
 
 #### Installation
 
-**From VSIX (recommended):**
+The extension starts `soli lsp`; it is not on the Marketplace or Open VSX
+yet. Install the `.vsix` built by the **vscode extension** CI workflow, or
+build it:
 
 ```bash
 cd editors/vscode
-vsce package
-# Install the generated .vsix file in Cursor/VS Code
+npm ci && npm run package
+code --install-extension soli-language.vsix   # or: cursor --install-extension …
 ```
-
-**From source:**
-
-Copy the extension folder to your editor's extensions directory:
-
-- **Cursor/VS Code (Linux):** `~/.cursor/extensions/` or `~/.vscode/extensions/`
-- **Cursor/VS Code (macOS):** `~/.cursor/extensions/` or `~/.vscode/extensions/`
-- **Cursor/VS Code (Windows):** `%USERPROFILE%\.cursor\extensions\` or `%USERPROFILE%\.vscode\extensions\`
 
 #### Configuration
 
-The extension works with sensible defaults but supports customization:
-
 ```json
 {
- "soli.lsp.enable": true,
- "soli.lsp.executablePath": "soli",
+ "soli.lsp.enabled": true,
+ "soli.lsp.path": "",
  "soli.lint.enable": true,
  "soli.lint.onSave": true
 }
@@ -4994,10 +4986,13 @@ The extension works with sensible defaults but supports customization:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `soli.lsp.enable` | `true` | Enable/disable LSP server |
-| `soli.lsp.executablePath` | `"soli"` | Path to the `soli` binary |
-| `soli.lint.enable` | `true` | Run linter on save |
-| `soli.lint.onSave` | `true` | Lint file when saving |
+| `soli.lsp.enabled` | `true` | Run the language server |
+| `soli.lsp.path` | `""` | Path to `soli`; empty: `PATH`, then `~/.local/bin`, `~/.cargo/bin`, `/usr/local/bin` |
+| `soli.lsp.trace` | `"off"` | Trace LSP traffic in the Soli output |
+| `soli.lint.enable` | `true` | Run `soli lint` on open/save while the server is not running |
+| `soli.lint.onSave` | `true` | Lint again on save (fallback only) |
+
+See [Editor Integration](editor-integration.md) for the full setup.
 
 #### Manual LSP Setup
 

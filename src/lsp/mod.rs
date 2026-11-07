@@ -271,6 +271,11 @@ impl LanguageServer for Backend {
                 )),
                 ..Default::default()
             },
+            // Lets a client show which `soli` it reached and warn about an old one.
+            server_info: Some(lsp_types::ServerInfo {
+                name: "soli".to_string(),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            }),
             ..Default::default()
         })
     }

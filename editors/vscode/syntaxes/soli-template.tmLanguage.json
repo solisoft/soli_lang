@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Soli Template",
+  "scopeName": "text.html.soli",
+  "fileTypes": ["slv", "html.slv"],
+  "comment": "Soli view templates (.slv): HTML with <% %>, <%= %>, <%- %> and <%# %> tags whose code is source.soli. Edit this file, then run scripts/sync-grammars.sh.",
+  "patterns": [
+    { "include": "#tags" },
+    { "include": "text.html.basic" }
+  ],
+  "injections": {
+    "L:text.html.soli - (meta.embedded.block.soli | meta.embedded.line.soli | comment.block.template.soli)": {
+      "patterns": [{ "include": "#tags" }]
+    }
+  },
+  "repository": {
+    "tags": {
+      "patterns": [
+        {
+          "name": "comment.block.template.soli",
+          "begin": "<%#",
+          "beginCaptures": { "0": { "name": "punctuation.definition.comment.begin.soli" } },
+          "end": "-?%>",
+          "endCaptures": { "0": { "name": "punctuation.definition.comment.end.soli" } }
+        },
+        {
+          "name": "meta.embedded.block.soli",
+          "begin": "<%[=-]?(?!.*%>)",
+          "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.soli" } },
+          "end": "-?%>",
+          "endCaptures": { "0": { "name": "punctuation.section.embedded.end.soli" } },
+          "contentName": "source.soli",
+          "patterns": [{ "include": "#code" }]
+        },
+        {
+          "name": "meta.embedded.line.soli",
+          "begin": "<%[=-]?",
+          "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.soli" } },
+          "end": "-?%>",
+          "endCaptures": { "0": { "name": "punctuation.section.embedded.end.soli" } },
+          "contentName": "source.soli",
+          "patterns": [{ "include": "#code" }]
+        }
+      ]
+    },
+    "code": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.soli",
+          "match": "#(?!\\{).*?(?=-?%>|$)"
+        },
+        { "include": "source.soli" }
+      ]
+    }
+  }
+}

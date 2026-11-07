@@ -1,27 +1,69 @@
 {
   "name": "soli-language",
   "displayName": "Soli Language",
-  "description": "Syntax highlighting and linting for the Soli programming language",
-  "version": "0.2.0",
+  "description": "Soli language support: the soli language server (hover, completion, go-to-definition, rename, formatting, diagnostics) and highlighting for .sl files and .slv templates.",
+  "version": "0.3.0",
   "publisher": "solilang",
+  "license": "MIT",
+  "icon": "icon.png",
+  "homepage": "https://soli.solisoft.net/docs/development-tools/editor-integration",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/solisoft/soli_lang.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/solisoft/soli_lang/issues"
+  },
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages",
-    "Linters"
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "soli",
+    "lsp",
+    "web framework"
   ],
   "activationEvents": [
-    "onLanguage:soli"
+    "workspaceContains:soli.toml"
   ],
   "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The extension runs the `soli` executable on the workspace's files."
+    }
+  },
   "contributes": {
     "languages": [
       {
         "id": "soli",
-        "aliases": ["Soli", "soli"],
-        "extensions": [".sl"],
+        "aliases": [
+          "Soli",
+          "soli"
+        ],
+        "extensions": [
+          ".sl"
+        ],
+        "filenames": [
+          "Solifile"
+        ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "soli-template",
+        "aliases": [
+          "Soli Template",
+          "soli-template"
+        ],
+        "extensions": [
+          ".slv"
+        ],
+        "configuration": "./template-language-configuration.json"
       }
     ],
     "grammars": [
@@ -29,33 +71,98 @@
         "language": "soli",
         "scopeName": "source.soli",
         "path": "./syntaxes/soli.tmLanguage.json"
+      },
+      {
+        "language": "soli-template",
+        "scopeName": "text.html.soli",
+        "path": "./syntaxes/soli-template.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.soli": "soli",
+          "source.css": "css",
+          "source.js": "javascript"
+        }
       }
     ],
     "configuration": {
       "title": "Soli",
       "properties": {
+        "soli.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the language server (`soli lsp`) for hover, completion, go-to-definition, rename, formatting and diagnostics. When off, the extension runs `soli lint` on open and save instead."
+        },
+        "soli.lsp.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to the `soli` executable (user settings only: a workspace cannot point the extension at another binary). Leave empty to look on PATH, then in ~/.local/bin, ~/.cargo/bin and /usr/local/bin (%USERPROFILE%\\.cargo\\bin and %USERPROFILE%\\.local\\bin on Windows)."
+        },
+        "soli.lsp.trace": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace the messages between the editor and the language server in the Soli output channel."
+        },
         "soli.lint.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Enable linting of .sl files on save."
-        },
-        "soli.lint.executablePath": {
-          "type": "string",
-          "default": "soli",
-          "description": "Path to the soli executable."
+          "description": "Run `soli lint` on open and save when the language server is not running (disabled, missing, or a `soli` built without it). The language server reports the same rules itself."
         },
         "soli.lint.onSave": {
           "type": "boolean",
           "default": true,
-          "description": "Run linter automatically when a file is saved."
+          "description": "Lint again on every save (fallback lint only)."
+        },
+        "soli.lint.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDeprecationMessage": "Use `#soli.lsp.path#`. Still read when `soli.lsp.path` is empty.",
+          "description": "Deprecated: use soli.lsp.path."
         }
       }
     },
     "commands": [
       {
+        "command": "soli.restartServer",
+        "title": "Restart Language Server",
+        "category": "Soli"
+      },
+      {
+        "command": "soli.showOutput",
+        "title": "Show Output",
+        "category": "Soli"
+      },
+      {
         "command": "soli.lint",
-        "title": "Soli: Lint Current File"
+        "title": "Lint Current File",
+        "category": "Soli"
       }
     ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node esbuild.mjs --tests && node --test out-test/*.test.js",
+    "package": "npm run build -- --production && vsce package --out soli-language.vsix",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/vscode": "~1.82.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.25.12",
+    "ovsx": "^0.10.12",
+    "typescript": "^5.9.3",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   }
 }

@@ -149,6 +149,69 @@ pub enum TokenKind {
     Eof,
 }
 
+/// Every identifier [`TokenKind::keyword`] turns into a keyword, aliases
+/// included. The editor grammars (`editors/grammars/soli.tmLanguage.json`)
+/// are checked against it, and it against the `match` below, by tests.
+pub const KEYWORDS: &[&str] = &[
+    "let",
+    "const",
+    "fn",
+    "def",
+    "return",
+    "break",
+    "if",
+    "else",
+    "elsif",
+    "while",
+    "for",
+    "in",
+    "class",
+    "module",
+    "extends",
+    "implements",
+    "interface",
+    "enum",
+    "new",
+    "this",
+    "self",
+    "super",
+    "public",
+    "private",
+    "protected",
+    "static",
+    "true",
+    "false",
+    "null",
+    "nil",
+    "try",
+    "begin",
+    "catch",
+    "finally",
+    "ensure",
+    "throw",
+    "rescue",
+    "not",
+    "and",
+    "or",
+    "match",
+    "case",
+    "when",
+    "do",
+    "end",
+    "then",
+    "unless",
+    "import",
+    "export",
+    "from",
+    "as",
+    "Int",
+    "Float",
+    "Bool",
+    "Decimal",
+    "String",
+    "Void",
+];
+
 impl TokenKind {
     /// Check if this token is a keyword and return the corresponding kind.
     ///
@@ -464,6 +527,80 @@ mod tests {
         assert_eq!(TokenKind::keyword(""), None);
         // Trailing whitespace is not stripped — caller must trim.
         assert_eq!(TokenKind::keyword("let "), None);
+    }
+
+    // ---------- KEYWORDS, and the editor grammar ----------
+
+    /// The string literals of `keyword`'s match arms, read from this file:
+    /// the list cannot be taken from the `match` at run time.
+    fn keyword_arms() -> Vec<String> {
+        let source = include_str!("token.rs");
+        let start = source.find("pub fn keyword(ident: &str)").unwrap();
+        let end = start + source[start..].find("_ => None").unwrap();
+        let mut words = Vec::new();
+        for line in source[start..end].lines() {
+            let Some((arms, _)) = line.split_once("=>") else {
+                continue;
+            };
+            words.extend(
+                arms.split('|')
+                    .map(|arm| arm.trim().trim_matches('"').to_string())
+                    .filter(|arm| !arm.is_empty()),
+            );
+        }
+        words
+    }
+
+    #[test]
+    fn keywords_lists_exactly_the_keyword_match_arms() {
+        let mut arms = keyword_arms();
+        let mut listed: Vec<String> = KEYWORDS.iter().map(|k| k.to_string()).collect();
+        arms.sort();
+        listed.sort();
+        assert_eq!(arms, listed, "KEYWORDS and TokenKind::keyword disagree");
+        for keyword in KEYWORDS {
+            assert!(TokenKind::keyword(keyword).is_some(), "{keyword}");
+        }
+    }
+
+    /// The words of every `(a|b|c)` alternation in the grammar's `keywords`
+    /// and `types` entries.
+    fn grammar_keywords() -> Vec<String> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("editors/grammars/soli.tmLanguage.json");
+        let grammar: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let mut words = Vec::new();
+        for entry in ["keywords", "types"] {
+            for pattern in grammar["repository"][entry]["patterns"].as_array().unwrap() {
+                let regex = pattern["match"].as_str().unwrap();
+                let open = regex.find("])(").map(|i| i + 3).unwrap();
+                let close = open + regex[open..].find(')').unwrap();
+                words.extend(regex[open..close].split('|').map(str::to_string));
+            }
+        }
+        words
+    }
+
+    #[test]
+    fn the_editor_grammar_highlights_exactly_the_keywords() {
+        let mut highlighted = grammar_keywords();
+        highlighted.sort();
+        for word in &highlighted {
+            assert!(
+                TokenKind::keyword(word).is_some(),
+                "editors/grammars/soli.tmLanguage.json highlights `{word}`, which the lexer does not reserve"
+            );
+        }
+        for keyword in KEYWORDS {
+            assert!(
+                highlighted.iter().any(|word| word == keyword),
+                "the keyword `{keyword}` is missing from editors/grammars/soli.tmLanguage.json"
+            );
+        }
+        let mut deduped = highlighted.clone();
+        deduped.dedup();
+        assert_eq!(deduped, highlighted, "a word is highlighted twice");
     }
 
     // ---------- Display ----------

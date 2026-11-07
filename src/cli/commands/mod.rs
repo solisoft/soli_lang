@@ -1233,7 +1233,10 @@ impl log::Log for StderrLogger {
 }
 
 /// The same command in a build without the `lsp` feature: an editor gets
-/// a plain refusal on stderr instead of a server that never answers.
+/// a plain refusal on stderr instead of a server that never answers. The VS
+/// Code extension recognises it by "built without the `lsp` feature"
+/// (`editors/vscode/src/lint.ts`) and falls back to `soli lint`: keep that
+/// phrase.
 #[cfg(not(feature = "lsp"))]
 pub fn run_lsp() {
     eprintln!("This build of soli has no language server: it was built without the `lsp` feature.");

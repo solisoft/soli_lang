@@ -4,6 +4,47 @@
 
 ### Added
 
+- **The VS Code / Cursor extension starts `soli lsp` (card #692, phase 1).**
+  `editors/vscode/` is now TypeScript bundled with esbuild
+  (`vscode-languageclient` 9, VS Code ^1.82), version 0.3.0, same id
+  `solilang.soli-language`. It runs `soli lsp` for `.sl`, `Solifile` and
+  `.slv` (new `soli-template` language) buffers, finds `soli` through
+  `soli.lsp.path`, then `PATH` (PATHEXT on Windows), then `~/.local/bin`,
+  `$CARGO_HOME/bin` or `~/.cargo/bin`, `/usr/local/bin` (and
+  `/opt/homebrew/bin` on macOS; `%USERPROFILE%\.cargo\bin` and
+  `%USERPROFILE%\.local\bin` on Windows), and names every path tried when it
+  finds none. `soli lint` on open/save survives only as a fallback, active
+  while the server is not running: disabled, a binary built without the `lsp`
+  feature (recognised by its refusal message, not restarted), or more than
+  four crashes in three minutes. Settings are Nova's `soli.lsp.enabled`,
+  `soli.lsp.path`, `soli.lsp.trace`; `soli.lint.executablePath` is a deprecated
+  alias. Both path settings are machine-scoped (user settings only), so a
+  cloned repository's `.vscode/settings.json` cannot choose the binary that
+  runs, and the extension declares no support for untrusted workspaces. Commands: *Restart Language Server*, *Show Output*, *Lint Current
+  File*. The committed `.vsix` files and `out/extension.js` are gone; the
+  new `vscode extension` workflow typechecks, tests (`node --test`: binary
+  resolution, fallback switch, lint parsing, grammar tokenization through
+  vscode-textmate) and packages the `.vsix` as an artifact, with a publish job
+  on `ext-vscode-*` tags that runs only when the `VSCE_PAT` / `OVSX_PAT`
+  secrets exist (nothing is published yet). `soli lsp` now returns
+  `serverInfo` (`soli`, the crate version) from `initialize`; its path-aware
+  diagnostics already came with #691.
+- **One TextMate grammar, checked against the lexer, and `.slv` highlighting
+  (card #692, phase 3).** `editors/grammars/soli.tmLanguage.json` and
+  `soli-template.tmLanguage.json` (scope `text.html.soli`) are the canonical
+  grammars; `scripts/sync-grammars.sh [--check]` copies them into the VS Code
+  and Nova bundles. The keywords now match `TokenKind::keyword` (added
+  `module`, `enum`, `self`, `nil`, `begin`, `ensure`, `rescue`, `not`, `and`,
+  `or`, `do`, `then`, `Decimal`; dropped `async`, `await`, `Any`, and the
+  hex/binary/octal literals the lexer never had), and new `lexer::token::KEYWORDS`
+  backs two tests: it lists exactly the `keyword()` match arms, and the
+  grammar's keyword scopes name exactly those words. New highlighting:
+  `#{}` interpolation as code, `@ivar`, `r"…"`, backtick strings,
+  `@sdbql{…}`/`@sdql{…}` with SDBQL keywords and interpolation, symbols,
+  `%w[]`/`%i[]`/`%n[]`, `19.99D`, `?`/`!` method names, definitions, block
+  parameters, nested `/* */`. The Nova grammar (0.2.0) drops the removed
+  `[[ … ]]` strings and `\U` escape.
+
 - **`soli lsp` knows the whole application (card #691, phases 1–3).**
   Diagnostics go through `lint_file` with the buffer's path: a `.slv` template
   has its `<% %>` code linted instead of showing a false syntax error at its

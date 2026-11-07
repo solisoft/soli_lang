@@ -3,7 +3,7 @@
   "name": "Soli",
   "organization": "Solilang",
   "description": "Soli language support for Nova: syntax highlighting, LSP-powered hover, member completion, project-wide go-to-definition, rename, format, and diagnostics for .sl files and .slv templates.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": "https://github.com/solisoft/soli_lang",
   "bugs": "https://github.com/solisoft/soli_lang/issues",

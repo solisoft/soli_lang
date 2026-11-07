@@ -1,0 +1,13 @@
+# Only out/extension.js, the grammars, the language configurations and the
+# metadata files ship: the bundle carries vscode-languageclient.
+src/**
+test/**
+out-test/**
+node_modules/**
+**/*.map
+**/*.ts
+tsconfig.json
+esbuild.mjs
+package-lock.json
+*.vsix
+.gitignore

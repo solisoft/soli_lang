@@ -1,9 +1,9 @@
 # Editor Integration
 
-Soli ships a language server, `soli lsp`, spoken over stdio. Nova and Neovim
-use it today, and so can any editor with a generic LSP client. The VS Code /
-Cursor extension does not start it yet: it runs `soli lint` instead (see
-below).
+Soli ships a language server, `soli lsp`, spoken over stdio. The VS Code /
+Cursor and Nova extensions start it, Neovim and Helix take a few lines of
+configuration, and any editor with a generic LSP client can use it. The
+server reports its version in `initialize` (`serverInfo`).
 
 ## What the language server does
 
@@ -63,29 +63,91 @@ its views.
 
 ## VS Code & Cursor
 
-The extension in `editors/vscode/` gives syntax highlighting and runs
-`soli lint` on a file when it is opened and saved, showing the findings as
-diagnostics; **Soli: Lint Current File** runs it on demand. It does not start
-the language server yet, so hover, completion, go-to-definition, rename and
-formatting are not available in these editors.
+The extension in `editors/vscode/` (`solilang.soli-language`) starts
+`soli lsp`, so VS Code, Cursor, VSCodium and Windsurf get everything in the
+table above, and highlights `.sl` files and `.slv` templates. It needs VS Code
+1.82 or a build based on it.
 
-Install the packaged extension:
+It is not on the Marketplace or Open VSX yet. Download `soli-language.vsix`
+from the artifacts of the **vscode extension** workflow run on GitHub, or
+build it:
 
 ```bash
-code --install-extension editors/vscode/soli-language-0.2.0.vsix
+cd editors/vscode
+npm ci
+npm run package        # writes soli-language.vsix
+code --install-extension soli-language.vsix
 # Cursor:
-cursor --install-extension editors/vscode/soli-language-0.2.0.vsix
+cursor --install-extension soli-language.vsix
 ```
 
-or build it with `vsce package` from `editors/vscode/`.
+A 0.2 install upgrades in place: the extension id is unchanged.
 
-Settings (`settings.json`):
+### Languages
+
+| Language | Files | What the server does |
+|---|---|---|
+| **Soli** (`soli`) | `.sl`, `Solifile` | Everything above. |
+| **Soli Template** (`soli-template`) | `.slv` | Diagnostics, hover, go-to-definition, and completion inside `<% %>`. Highlighting: HTML with Soli inside `<% %>`, `<%= %>`, `<%- -%>`, and `<%# %>` comments. |
+
+### Finding `soli`
+
+The extension runs the first `soli` it finds:
+
+1. the `soli.lsp.path` setting (an absolute path, `~/…`, or a name looked up
+   on `PATH`);
+2. `soli` on `PATH`;
+3. `~/.local/bin/soli` (where `install.sh` puts it), `~/.cargo/bin/soli`
+   (`$CARGO_HOME/bin`), `/usr/local/bin/soli`, and `/opt/homebrew/bin/soli`
+   on macOS. On Windows: `soli.exe` on `PATH`, then
+   `%USERPROFILE%\.cargo\bin` and `%USERPROFILE%\.local\bin`.
+
+An editor started from the dock or the start menu often lacks your shell's
+`PATH`, which is why the install directories are tried. When nothing is
+found, a notification lists every place it looked, with a button to set the
+path. A `soli.lsp.path` that does not exist is reported, not replaced by
+another `soli`.
+
+### Settings
 
 | Setting | Default | |
 |---|---|---|
-| `soli.lint.enable` | `true` | Lint Soli files. |
-| `soli.lint.onSave` | `true` | Lint again on every save. |
-| `soli.lint.executablePath` | `"soli"` | The `soli` binary to run. |
+| `soli.lsp.enabled` | `true` | Run the language server. |
+| `soli.lsp.path` | `""` | Absolute path to `soli`. Empty: the search above. |
+| `soli.lsp.trace` | `"off"` | `messages` or `verbose` traces the LSP traffic in the **Soli** output. |
+| `soli.lint.enable` | `true` | Run `soli lint` when the language server is not running (see below). |
+| `soli.lint.onSave` | `true` | Lint again on every save (fallback only). |
+| `soli.lint.executablePath` | `""` | Deprecated: read only when `soli.lsp.path` is empty. |
+
+The `soli.lsp.*` names are the Nova extension's. `soli.lsp.path` and
+`soli.lint.executablePath` are read from your user settings only: a
+repository's `.vscode/settings.json` cannot make the editor run another
+binary. The extension stays off in a workspace you have not trusted.
+
+### When the server cannot run
+
+`soli lint <file>` on open and save takes over only when the server is not
+running: `soli.lsp.enabled` is off, the `soli` found was built without the
+`lsp` cargo feature (the extension recognises its refusal and does not
+restart it), or the server stopped five times in three minutes. While the
+server runs the fallback is off, so each finding is reported once — the
+server applies the same rules, path-aware ones included.
+
+### Commands
+
+- **Soli: Restart Language Server** — picks up a rebuilt `soli`.
+- **Soli: Show Output** — the server's log and trace.
+- **Soli: Lint Current File** — the fallback lint, on demand.
+
+### Grammars
+
+The TextMate grammars live in `editors/grammars/` (`soli.tmLanguage.json`,
+scope `source.soli`; `soli-template.tmLanguage.json`, scope
+`text.html.soli`). `scripts/sync-grammars.sh` copies them into the VS Code
+and Nova bundles, and CI fails when a copy is stale (`--check`). A Rust test
+fails when the grammar's keywords and the lexer's disagree. Any editor that
+reads TextMate grammars (Sublime Text, TextMate, JetBrains via its TextMate
+bundle support) can load these files.
 
 ## Nova (macOS)
 

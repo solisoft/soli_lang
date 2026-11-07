@@ -1,0 +1,129 @@
+# The VS Code / Cursor extension in editors/vscode/.
+#
+# On pull requests and pushes that touch the editors or the grammar sync:
+# check the grammar copies against editors/grammars/, typecheck, run the unit
+# and grammar tests, package the .vsix and keep it as a build artifact (what
+# to install until the extension is on the Marketplace and Open VSX).
+#
+# Publishing runs only on a tag `ext-vscode-X.Y.Z` pushed to this repository,
+# and only when the publishing secrets exist. The prefix must not start with
+# `v`: ci.yml's binary release fires on `v*` tags. Nothing is published from a
+# pull request or a fork.
+name: vscode extension
+
+on:
+  push:
+    branches: [main]
+    tags: ['ext-vscode-*']
+    paths:
+      - 'editors/**'
+      - 'scripts/sync-grammars.sh'
+      - '.github/workflows/vscode-extension.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'editors/**'
+      - 'scripts/sync-grammars.sh'
+      - '.github/workflows/vscode-extension.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Grammar copies match editors/grammars/
+        working-directory: .
+        run: scripts/sync-grammars.sh --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: The package holds no sources, dependencies or old packages
+        run: |
+          npx vsce ls > files.txt
+          cat files.txt
+          if grep -E '^(src/|test/|node_modules/)|\.vsix$|\.ts$' files.txt; then
+            echo "unexpected files in the package" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soli-language-vsix
+          path: editors/vscode/soli-language.vsix
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/ext-vscode-') && github.repository == 'solisoft/soli_lang'
+    runs-on: ubuntu-latest
+    # Holds VSCE_PAT and OVSX_PAT; protect it with required reviewers.
+    environment: vscode-marketplace
+    permissions:
+      contents: write
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - run: npm ci
+
+      - name: The tag matches package.json
+        run: |
+          tag="${GITHUB_REF_NAME#ext-vscode-}"
+          version="$(node -p 'require("./package.json").version')"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: soli-language-vsix
+          path: editors/vscode
+
+      - name: Publish to the Visual Studio Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx vsce publish --packagePath soli-language.vsix
+
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: npx ovsx publish soli-language.vsix
+
+      - name: Attach the package to a GitHub release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" editors/vscode/soli-language.vsix \
+            --title "Soli for VS Code ${GITHUB_REF_NAME#ext-vscode-}" \
+            --notes "See editors/vscode/CHANGELOG.md." \
+            || gh release upload "$GITHUB_REF_NAME" editors/vscode/soli-language.vsix --clobber

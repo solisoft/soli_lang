@@ -15,7 +15,7 @@ editors/nova/
     ├── Scripts/
     │   └── main.js           # activate() spawns `soli lsp` via LanguageClient
     └── Syntaxes/
-        └── soli.tmLanguage.json   # TextMate grammar (shared with VS Code)
+        └── soli.tmLanguage.json   # copy of editors/grammars/ (scripts/sync-grammars.sh)
 ```
 
 ## Releasing
