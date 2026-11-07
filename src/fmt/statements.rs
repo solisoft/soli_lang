@@ -238,7 +238,7 @@ impl Printer<'_> {
                         // The width estimate can miss a condition the printer
                         // splits; a postfix that wraps would be expanded back
                         // by the next pass, so keep it only on one line.
-                        self.try_single_line(|p| {
+                        self.try_single_line_within(MAX_LINE_LENGTH, |p| {
                             p.print_postfix_if(condition, inner, PostfixIfKind::If, false)
                         })
                     })
@@ -261,7 +261,7 @@ impl Printer<'_> {
                 if self
                     .guard_clause_to_rewrite(stmt, condition, then_branch, else_branch.is_some())
                     .is_some_and(|inner| {
-                        self.try_single_line(|p| {
+                        self.try_single_line_within(MAX_LINE_LENGTH, |p| {
                             p.print_postfix_if(condition, inner, PostfixIfKind::Unless, false)
                         })
                     })

@@ -10,12 +10,21 @@ pub fn check_empty_block(span: Span, diagnostics: &mut Vec<LintDiagnostic>) {
     });
 }
 
+/// The longest line `style/line-length` accepts, in bytes. `soli fmt` reads
+/// the same constant (`fmt::printer::MAX_LINE_LENGTH`) so it never produces
+/// a line this rule then flags.
+pub const MAX_LINE_LENGTH: usize = 120;
+
 pub fn check_line_lengths(source: &str, diagnostics: &mut Vec<LintDiagnostic>) {
     for (i, line) in source.lines().enumerate() {
-        if line.len() > 120 {
+        if line.len() > MAX_LINE_LENGTH {
             diagnostics.push(LintDiagnostic {
                 rule: "style/line-length",
-                message: format!("line exceeds 120 characters ({} chars)", line.len()),
+                message: format!(
+                    "line exceeds {} characters ({} chars)",
+                    MAX_LINE_LENGTH,
+                    line.len()
+                ),
                 span: Span::new(0, 0, i + 1, 1),
                 severity: Severity::Warning,
             });
