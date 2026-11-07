@@ -39,7 +39,7 @@ use super::dev_catalog::{
 use super::pipeline;
 use super::repl_session::REPL_STORE;
 use super::{
-    add_header_checked, dev_bar, dev_inbox, dev_store, full, load_models, prod_log,
+    add_header_checked, dev_agent_api, dev_bar, dev_inbox, dev_store, full, load_models, prod_log,
     server_constants, RequestData, ResponseBody, WorkerResponse, WorkerSender,
 };
 
@@ -139,8 +139,14 @@ pub(super) async fn dispatch(
 
         // The rest are addressed by prefix. None of these arms consumes `req`,
         // so a miss still hands it back.
+        // JSON twins of the inspector and the error groups, for `soli agent`.
+        ("GET", "/__solidev/requests") => Ok(dev_agent_api::handle_requests()),
+        ("GET", "/__solidev/errors") => Ok(dev_agent_api::handle_errors(req.uri().query())),
+
         ("GET", _) => {
-            if let Some(id) = path.strip_prefix("/__solidev/request/") {
+            if let Some(id) = path.strip_prefix("/__solidev/requests/") {
+                Ok(dev_agent_api::handle_request(id))
+            } else if let Some(id) = path.strip_prefix("/__solidev/request/") {
                 Ok(request_snapshot(id))
             } else if let Some(id) = path.strip_prefix("/__solidev/trace/") {
                 Ok(request_trace(id))

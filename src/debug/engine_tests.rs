@@ -104,24 +104,25 @@ fn profiler_names_the_hot_function_on_both_engines() {
         // The profiler samples every engine thread of the process, so other
         // tests running beside this one show up too: judge only the stacks
         // under `outer`.
-        let id_of = |name: &str| {
-            report
-                .frames
-                .iter()
-                .position(|frame| frame.name == name)
-                .unwrap_or_else(|| panic!("{engine:?}: {name} never sampled\n{folded}"))
-                as u32
-        };
-        let (outer, burn) = (id_of("outer"), id_of("burn"));
+        // Judged by name, not by one frame id: the same function can be
+        // interned under more than one key (with and without its line), and
+        // which one comes first depends on what else the process ran.
+        let named = |id: u32, name: &str| report.frames[id as usize].name == name;
+        for name in ["outer", "burn"] {
+            assert!(
+                report.frames.iter().any(|frame| frame.name == name),
+                "{engine:?}: {name} never sampled\n{folded}"
+            );
+        }
         let under_outer: Vec<&(Vec<u32>, u64)> = report
             .stacks
             .iter()
-            .filter(|(ids, _)| ids.get(1) == Some(&outer))
+            .filter(|(ids, _)| ids.get(1).is_some_and(|&id| named(id, "outer")))
             .collect();
         let total: u64 = under_outer.iter().map(|(_, ticks)| ticks).sum();
         let in_burn: u64 = under_outer
             .iter()
-            .filter(|(ids, _)| ids.last() == Some(&burn))
+            .filter(|(ids, _)| ids.last().is_some_and(|&id| named(id, "burn")))
             .map(|(_, ticks)| ticks)
             .sum();
         assert!(total >= 5, "{engine:?}: too few samples\n{folded}");

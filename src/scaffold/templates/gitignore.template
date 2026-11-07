@@ -8,6 +8,8 @@ node_modules/
 
 # Process files
 *.pid
+# Written by `soli serve --dev` for `soli agent`; holds the dev REPL token
+.soli/dev-server.json
 
 # Logs
 *.log

@@ -313,6 +313,56 @@ so the header follows HTMx navigations instead: when HTMx pushes the URL
 requests that do not change the URL are added to the panel but leave the header
 alone.
 
+## Attaching a coding agent (`soli agent`)
+
+`soli agent` lets a coding agent (Claude Code, Cursor, Codex CLI, any MCP client)
+read what the dev bar shows for the running `soli serve --dev`: the recent
+requests, each one's queries with binds and durations, the N+1 alert, and the
+open error groups. It can also replay a request, run one spec, and use the dev
+REPL. The agent edits files itself; `soli agent` writes nothing in the app.
+
+It is an [MCP](https://modelcontextprotocol.io) server on stdin/stdout: the
+client starts it, and it opens no port. Declare it in your client from the app
+root — for Claude Code, a `.mcp.json` next to `soli.toml`:
+
+```json
+{
+  "mcpServers": {
+    "soli": { "command": "soli", "args": ["agent"] }
+  }
+}
+```
+
+Start `soli serve . --dev` first. When it binds, the dev server writes
+`.soli/dev-server.json` (pid, port, app root and the dev REPL token, mode
+`0600`) and removes it on shutdown; `soli new` gitignores it. `soli agent` reads
+that file from the current directory and exits with `dev server is not running`
+when it is missing or its process is gone — it never scans ports. It then calls
+the dev server on `127.0.0.1` through the same `/__solidev/*` and `/__dev/repl`
+endpoints the dev bar uses, so the same gates apply: loopback peer, local
+`Host`, same-origin POST, REPL token.
+
+| Tool | What it returns |
+|---|---|
+| `requests` | The last 64 requests, newest first: id, method, path, status, `elapsed_us`, route, query count |
+| `request` | One request: phase timings, middleware and template timings, every query (statement, binds, duration), outgoing HTTP and KV calls, `n_plus_one` when the dev bar flags one |
+| `replay` | Re-runs a request (see **Replay** above) and returns the new request id and status. Anything but `GET`/`HEAD` needs `confirm: true` |
+| `errors` | Open [error groups](observability.md#error-tracking-__solierrors) with their latest sample: message, stack, a `curl` line, locals — redacted when stored |
+| `graph` | `soli graph query --json` for a question (needs `soli graph build` and SolidB) |
+| `test` | `soli test <path>` for one spec file or directory, never the whole suite; failures only, 120 s timeout, 20 failures / 8 KB at most |
+| `repl` | Runs Soli code inside the dev process — models, config, database. Pass `repl_session_id` back to keep variables |
+
+The JSON behind `requests`, `request` and `errors` is served at
+`GET /__solidev/requests`, `GET /__solidev/requests/:id` and
+`GET /__solidev/errors`, dev-only like the rest of `/__solidev/`. It carries no
+request headers, cookies or bodies: only what the dev bar and the error page
+already show.
+
+A typical loop: `requests` shows `GET /orders` at 400 ms with 53 queries;
+`request` shows 50 of them are the same `customers` lookup; the agent adds an
+`includes(...)`; `replay` of the same id shows 4 queries; `test` on
+`tests/controllers/orders_controller_spec.sl` passes.
+
 ## The mail inbox
 
 Under `--dev`, `/__soli/inbox` — or the **tools** button — reads every email the

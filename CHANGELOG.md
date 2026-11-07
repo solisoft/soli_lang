@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`soli agent`: a local MCP server that attaches a coding agent to the
+  running `soli serve --dev`.** New `src/dev_agent/`: newline-delimited
+  JSON-RPC on stdin/stdout (`initialize`, `notifications/initialized`, `ping`,
+  `tools/list`, `tools/call`; protocol `2025-06-18`), no socket of its own, fd 1
+  pointed at stderr so a stray `println!` cannot corrupt the protocol, and a
+  blocking HTTP/1.1 client to `127.0.0.1` that sends `Host`, plus `Origin` on
+  POSTs and `X-Soli-Dev-Token` on the REPL, so the existing gates in
+  `dev_routes::dispatch` apply unchanged. Discovery: `serve --dev` writes
+  `.soli/dev-server.json` (pid, port, app root, dev REPL token; mode 0600,
+  skipped under `APP_ENV=test`) once bound and removes it in the drain path;
+  `soli agent` exits with "dev server is not running" when the file is missing
+  or the pid is dead, before any connection. Tools: `requests`, `request`,
+  `replay` (non-GET/HEAD needs `confirm: true`; the method is read from the
+  snapshot first), `errors`, `graph` (in-process `graph::run_query`), `test`
+  (`soli test <path> --no-coverage`, refuses the app root and `tests/`, 120 s
+  timeout, failures only, 20 blocks / 8 KB) and `repl`. New dev-only endpoints
+  in `serve/dev_agent_api.rs`: `GET /__solidev/requests`,
+  `GET /__solidev/requests/:id` (calls `detect_n_plus_one` /
+  `detect_ungrouped_reads`) and `GET /__solidev/errors`
+  (`error_tracker::list("open")` + the latest sample through
+  `dev_errors::sample_for_agent`, which reuses the page's `curl` builder). The
+  HTML `/__solidev/request/:id` is unchanged. `.soli/dev-server.json` added to
+  the scaffold `.gitignore`.
+
 ## [2.34.0] - 2026-11-07
 
 ### Added

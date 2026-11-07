@@ -66,6 +66,7 @@ mod attention;
 pub mod cors;
 mod coverage;
 mod csrf;
+mod dev_agent_api;
 pub mod dev_bar;
 mod dev_catalog;
 mod dev_errors;
@@ -1433,6 +1434,13 @@ fn run_hyper_server_worker_pool(
     // opens a browser won't race the first request.
     if let Some(hook) = on_bound_port {
         hook(actual_port);
+    }
+
+    // `soli agent` finds this process through `.soli/dev-server.json`. Not for
+    // the `soli test` server children (`APP_ENV=test`), which would otherwise
+    // replace the file of the developer's own dev server in the same app.
+    if dev_mode && crate::platform::env::var("APP_ENV").as_deref() != Ok("test") {
+        crate::dev_agent::discovery::write(folder, actual_port, dev_routes::dev_repl_auth_token());
     }
 
     if !quiet() {
@@ -4925,6 +4933,8 @@ fn spawn_drain_on_signal() {
                 }
             } => false,
         };
+
+        crate::dev_agent::discovery::remove();
 
         if !drained {
             let stranded = shutdown::in_flight();

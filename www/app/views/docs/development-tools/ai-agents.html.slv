@@ -55,6 +55,24 @@
 
     <p class="text-gray-400 mb-12">The <code>/soli-verify</code> slash command bundles <code>soli lint</code> + <code>soli test --coverage --coverage-min 90</code>. If any step fails, the rule is to fix the root cause — never weaken assertions, lower the coverage gate, or skip hooks.</p>
 
+    <h2 id="soli-agent" class="text-2xl font-bold text-white mb-6">Seeing the running server (<code>soli agent</code>)</h2>
+    <p class="text-gray-400 mb-6">The guides above tell an agent how to write Soli; they cannot tell it what the app just did. <code>soli agent</code> can: it is a local MCP server that attaches the agent to the running <code>soli serve --dev</code>, so it reads the recent requests with their queries and N+1 alerts, the open error groups, replays a request after a fix, and runs the one spec it touched.</p>
+
+    <div class="mb-6 rounded-xl bg-[#171412]/50 border border-white/10 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+            <span class="text-sm font-mono text-gray-400">.mcp.json</span>
+        </div>
+        <div>
+            <pre class="text-sm font-mono text-gray-300 px-4 py-4">{
+  "mcpServers": {
+    "soli": { "command": "soli", "args": ["agent"] }
+  }
+}</pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">Put that in <code>.mcp.json</code> at the app root (Claude Code) or in your client's MCP settings, and start <code>soli serve . --dev</code> before the agent session. Tools, safeguards and the discovery file are described in <a href="/docs/development-tools/debugging#soli-agent" class="text-amber-400 hover:text-amber-300">Debugging &rarr; Attaching a coding agent</a>.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Slash commands</h2>
 
     <div class="overflow-hidden rounded-xl border border-white/10 mb-12">

@@ -17,7 +17,7 @@ use crate::serve::tenant::TenantValue;
 
 /// Max snapshots retained. A page plus its handful of XHR/HTMx calls fits many
 /// times over; older requests age out.
-const CAP: usize = 64;
+pub(crate) const CAP: usize = 64;
 
 /// Per application: a snapshot carries that request's queries, HTTP calls and
 /// timings, and the dev bar of one app must not list another's traffic.
@@ -42,6 +42,12 @@ pub fn get(id: &str) -> Option<DevBarContext> {
             .find(|(rid, _)| rid == id)
             .map(|(_, ctx)| ctx.clone())
     })
+}
+
+/// Map every stored snapshot, oldest first, without cloning the snapshots.
+/// Feeds `GET /__solidev/requests`.
+pub fn map_all<T>(f: impl Fn(&str, &DevBarContext) -> T) -> Vec<T> {
+    STORE.read(|q| q.iter().map(|(id, ctx)| f(id, ctx)).collect())
 }
 
 /// The raw wire fields of a captured request, enough to re-dispatch it through

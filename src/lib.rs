@@ -27,6 +27,8 @@ pub mod debug;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod desktop;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod dev_agent;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod edge_build;
 pub mod embedding;
 pub mod error;

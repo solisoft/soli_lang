@@ -36,6 +36,27 @@ soli serve . --dev                      # if a UI/route changed, hit it in a bro
 
 The `/soli-verify` slash command bundles `soli lint` + `soli test --coverage --coverage-min 90`. If any step fails, the rule is to fix the root cause — never weaken assertions, lower the coverage gate, or skip hooks.
 
+## Seeing the running server (`soli agent`)
+
+The guides above tell an agent how to write Soli; they cannot tell it what the
+app just did. `soli agent` can: it is a local MCP server that attaches the agent
+to the running `soli serve --dev`, so it reads the recent requests with their
+queries and N+1 alerts, the open error groups, replays a request after a fix,
+and runs the one spec it touched.
+
+```json
+{
+  "mcpServers": {
+    "soli": { "command": "soli", "args": ["agent"] }
+  }
+}
+```
+
+Put that in `.mcp.json` at the app root (Claude Code) or your client's MCP
+settings, and start `soli serve . --dev` before the agent session. Tools,
+safeguards and the discovery file are described in
+[Debugging → Attaching a coding agent](debugging.md#attaching-a-coding-agent-soli-agent).
+
 ## Slash commands
 
 | Command | What it does |

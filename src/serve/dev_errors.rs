@@ -525,6 +525,26 @@ fn render_sample(sample: &serde_json::Value, open: bool, hit: bool) -> String {
     out
 }
 
+/// One stored sample as `GET /__solidev/errors` returns it to `soli agent`:
+/// the fields [`render_sample`] shows, as data. The sample was redacted when
+/// `error_tracker` stored it, and the `reproduce` line drops credential headers
+/// exactly as the page's does.
+pub(super) fn sample_for_agent(sample: &serde_json::Value) -> serde_json::Value {
+    let has_req_local = sample.get("env").and_then(|env| env.get("req")).is_some();
+    let field = |name: &str| sample.get(name).filter(|v| !v.is_null()).cloned();
+    serde_json::json!({
+        "request_id": str_field(sample, "request_id"),
+        "at": str_field(sample, "at"),
+        "method": str_field(sample, "method"),
+        "path": str_field(sample, "path"),
+        "error": str_field(sample, "error"),
+        "stack": field("stack"),
+        "reproduce": reproducible_request(sample).map(curl_command),
+        "request": field("request").filter(|_| !has_req_local),
+        "locals": field("env"),
+    })
+}
+
 /// The fullest redacted view of the request a sample holds. The handler's
 /// `req` local carries the query and headers; the snapshot taken where the
 /// error is logged can have neither, so it is only the fallback.

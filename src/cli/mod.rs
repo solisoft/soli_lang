@@ -164,6 +164,14 @@ pub fn run() {
             kind.as_deref(),
             *json,
         ),
+        Command::Agent { port, dev_token } => {
+            let dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
+            std::process::exit(solilang::dev_agent::run(solilang::dev_agent::Options {
+                dir,
+                port: *port,
+                dev_token: dev_token.clone(),
+            }));
+        }
         Command::Serve(serve) => commands::run_serve(serve),
         Command::Jobs(cmd) => commands::run_jobs(cmd),
         Command::Lint {

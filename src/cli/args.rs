@@ -274,6 +274,15 @@ pub enum Command {
         /// Emit JSON instead of the human-readable summary.
         json: bool,
     },
+    /// `soli agent` — a local MCP server on stdin/stdout that lets a coding
+    /// agent read the running `soli serve --dev` (requests, queries, errors),
+    /// replay a request, run one spec and use the dev REPL.
+    Agent {
+        /// Tests only: talk to this port instead of reading `.soli/dev-server.json`.
+        port: Option<u16>,
+        /// Tests only, with `--port`: the dev REPL token.
+        dev_token: Option<String>,
+    },
     Lint {
         paths: Vec<String>,
         /// `--format json`: one JSON document instead of one line per issue.
@@ -733,6 +742,7 @@ pub fn print_usage() {
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
     eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N] [--path PREFIX] [--kind KINDS]");
+    eprintln!("  soli agent");
     eprintln!();
     eprintln!("Commands:");
     eprintln!("  new <app_name>       Create a new Soli MVC application");
@@ -824,6 +834,7 @@ pub fn print_usage() {
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
     eprintln!("  graph build [folder] Build a code graph in SolidB for agents (graph RAG); --dry-run for JSON");
     eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents, --path PREFIX / --kind KINDS to filter");
+    eprintln!("  agent                MCP server on stdio: lets a coding agent read the running `serve --dev` (requests, queries, errors), replay, test, REPL");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
     eprintln!();
@@ -1616,6 +1627,35 @@ pub fn parse_args() -> Options {
                     i += 1;
                 }
                 options.command = Command::Routes { folder, grep, json };
+                return options;
+            }
+            "agent" => {
+                i += 1;
+                let mut port: Option<u16> = None;
+                let mut dev_token: Option<String> = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--port" => {
+                            i += 1;
+                            port = args.get(i).and_then(|v| v.parse().ok());
+                            if port.is_none() {
+                                eprintln!("agent: --port needs a port number");
+                                process::exit(64);
+                            }
+                        }
+                        "--dev-token" => {
+                            i += 1;
+                            dev_token = args.get(i).cloned();
+                        }
+                        other => {
+                            eprintln!("Unknown option for agent: {}", other);
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::Agent { port, dev_token };
                 return options;
             }
             "graph" => {

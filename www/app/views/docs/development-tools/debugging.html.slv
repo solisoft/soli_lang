@@ -42,6 +42,10 @@
                 <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-sm font-mono">6</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Page Requests</span>
             </a>
+            <a href="#soli-agent" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-violet-500/20 flex items-center justify-center text-violet-400 text-sm font-mono">6b</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Attaching a Coding Agent</span>
+            </a>
             <a href="#profiling" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-sm font-mono">5b</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Profiling Scripts &amp; Tests</span>
@@ -590,6 +594,61 @@ Profile written to soli-profile.folded</code></pre>
                 <strong>Scope &amp; caveats.</strong> Only <strong>same-origin</strong> requests that hit a Soli route (i.e. carry <code>X-Soli-Route</code>) become rows — static assets, cross-origin fetches, and 404s are ignored. The list <strong>resets on each full page load</strong> (it reflects the current page). Only the most recent requests are kept for inspection, so a long-idle row may report it has aged out. WebSocket, SSE, and <code>sendBeacon</code> traffic is not captured, and a request fired before the dev bar's script runs may be missed.
             </p>
         </div>
+    </section>
+
+    <!-- soli agent -->
+    <section id="soli-agent" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Attaching a Coding Agent (<code>soli agent</code>)
+        </h2>
+        <p class="text-gray-400 mb-6">
+            <code class="text-cyan-400">soli agent</code> lets a coding agent (Claude Code, Cursor, Codex CLI, any MCP client) read what the dev bar shows for the running <code>soli serve --dev</code>: the recent requests, each one's queries with binds and durations, the N+1 alert, and the open error groups. It can also replay a request, run one spec, and use the dev REPL. The agent edits files itself; <code>soli agent</code> writes nothing in the app.
+        </p>
+        <p class="text-gray-400 mb-4">
+            It is an <a href="https://modelcontextprotocol.io" class="text-amber-400 hover:text-amber-300">MCP</a> server on stdin/stdout: the client starts it, and it opens no port. Declare it from the app root &mdash; for Claude Code, a <code>.mcp.json</code> next to <code>soli.toml</code>:
+        </p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-json text-sm">{
+  "mcpServers": {
+    "soli": { "command": "soli", "args": ["agent"] }
+  }
+}</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-6">
+            Start <code>soli serve . --dev</code> first. When it binds, the dev server writes <code class="text-amber-400">.soli/dev-server.json</code> (pid, port, app root and the dev REPL token, mode <code>0600</code>) and removes it on shutdown; <code>soli new</code> gitignores it. <code>soli agent</code> reads that file from the current directory and exits with <code>dev server is not running</code> when it is missing or its process is gone &mdash; it never scans ports. It then calls the dev server on <code>127.0.0.1</code> through the same <code>/__solidev/*</code> and <code>/__dev/repl</code> endpoints the dev bar uses, so the same gates apply: loopback peer, local <code>Host</code>, same-origin POST, REPL token.
+        </p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium">Tool</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium">What it returns</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">requests</td><td class="py-2 px-4 text-gray-400">The last 64 requests, newest first: id, method, path, status, <code>elapsed_us</code>, route, query count</td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">request</td><td class="py-2 px-4 text-gray-400">One request: phase, middleware and template timings, every query (statement, binds, duration), outgoing HTTP and KV calls, and <code>n_plus_one</code> when the dev bar flags one</td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">replay</td><td class="py-2 px-4 text-gray-400">Re-runs a request like the &#8635; button and returns the new request id and status. Anything but <code>GET</code>/<code>HEAD</code> needs <code>confirm: true</code></td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">errors</td><td class="py-2 px-4 text-gray-400">Open <a href="/docs/development-tools/observability#error-tracking" class="text-amber-400 hover:text-amber-300">error groups</a> with their latest sample: message, stack, a <code>curl</code> line, locals &mdash; redacted when stored</td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">graph</td><td class="py-2 px-4 text-gray-400"><code>soli graph query --json</code> for a question (needs <code>soli graph build</code> and SolidB)</td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">test</td><td class="py-2 px-4 text-gray-400"><code>soli test &lt;path&gt;</code> for one spec file or directory, never the whole suite; failures only, 120&nbsp;s timeout, at most 20 failures / 8&nbsp;KB</td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">repl</td><td class="py-2 px-4 text-gray-400">Runs Soli code inside the dev process &mdash; models, config, database. Pass <code>repl_session_id</code> back to keep variables</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            The JSON behind <code>requests</code>, <code>request</code> and <code>errors</code> is served at <code class="text-cyan-400">GET /__solidev/requests</code>, <code class="text-cyan-400">GET /__solidev/requests/:id</code> and <code class="text-cyan-400">GET /__solidev/errors</code>, dev-only like the rest of <code>/__solidev/</code>. It carries no request headers, cookies or bodies: only what the dev bar and the error page already show.
+        </p>
+        <p class="text-gray-400 mb-4">
+            A typical loop: <code>requests</code> shows <code>GET /orders</code> at 400&nbsp;ms with 53 queries; <code>request</code> shows 50 of them are the same <code>customers</code> lookup; the agent adds an <code>includes(...)</code>; <code>replay</code> of the same id shows 4 queries; <code>test</code> on the controller spec passes.
+        </p>
     </section>
 
     <!-- Mail inbox -->

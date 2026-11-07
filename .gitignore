@@ -58,3 +58,6 @@ __pycache__/
 # deploy-www workflow from the eui revision Cargo.lock pins (xtask-web), not
 # committed: several megabytes, rebuilt on every client change.
 www/public/eui/
+
+# Written by `soli serve --dev` (www/, examples/) for `soli agent`; holds the dev REPL token.
+**/.soli/dev-server.json
