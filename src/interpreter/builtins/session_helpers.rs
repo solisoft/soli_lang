@@ -31,20 +31,21 @@ pub fn register_session_helpers(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("as_user", None, |args| {
             if args.is_empty() || args.len() > 2 {
                 return Err(format!(
-                    "as_user expects 1 or 2 arguments (id, options?), got {}",
+                    "as_user expects 1 or 2 arguments (user, options?), got {}",
                     args.len()
                 ));
             }
-            let user_id = extract_int(&args[0], "as_user(user_id)")?;
-            if args.len() == 1 {
-                set_test_user_id(user_id);
-                return Ok(Value::Null);
+            let user_id = user_id_json(&args[0], "as_user")?;
+            // Signed in on the server, like `login()`: `user_id` goes into the
+            // session the test server reads, plus every option key. The
+            // single-argument form used to set only a runner-side marker, so a
+            // spec "signed in" with `as_user(id)` still hit the app as a guest.
+            let mut fields = vec![("user_id".to_string(), user_id.clone())];
+            if let Some(options) = args.get(1) {
+                fields.extend(hash_to_field_pairs(options, "as_user")?);
             }
-            // 2-arg form: write user_id + options into the server-side session
-            // store so the test server's middleware sees them on next request.
-            let mut fields = vec![("user_id".to_string(), serde_json::json!(user_id))];
-            fields.extend(hash_to_field_pairs(&args[1], "as_user")?);
             write_session_fields(fields, "as_user")?;
+            set_test_user_id(user_id);
             Ok(Value::Null)
         })),
     );
@@ -52,7 +53,9 @@ pub fn register_session_helpers(env: &mut Environment) {
     env.define(
         "as_admin".to_string(),
         Value::NativeFunction(NativeFunction::new("as_admin", Some(0), |_args| {
-            set_test_user_id(1);
+            let user_id = serde_json::json!(1);
+            write_session_fields(vec![("user_id".to_string(), user_id.clone())], "as_admin")?;
+            set_test_user_id(user_id);
             Ok(Value::Null)
         })),
     );
@@ -106,16 +109,7 @@ pub fn register_session_helpers(env: &mut Environment) {
             let session_key = format!("{}_id", name);
 
             let id_json: serde_json::Value = if args.len() == 2 {
-                match &args[1] {
-                    Value::Int(n) => serde_json::json!(n),
-                    Value::String(s) => serde_json::json!(s),
-                    other => {
-                        return Err(format!(
-                            "sign_in: id must be an integer or string, got {}",
-                            other.type_name()
-                        ))
-                    }
-                }
+                user_id_json(&args[1], "sign_in")?
             } else {
                 let class_name = pascalize(&name);
                 let collection = super::model::class_name_to_collection(&class_name);
@@ -222,7 +216,7 @@ pub fn register_session_helpers(env: &mut Environment) {
     env.define(
         "create_session".to_string(),
         Value::NativeFunction(NativeFunction::new("create_session", Some(1), |args| {
-            let user_id = extract_int(&args[0], "create_session(user_id)")?;
+            let user_id = user_id_json(&args[0], "create_session")?;
             create_test_session(user_id)
         })),
     );
@@ -242,10 +236,45 @@ fn clear_auth() {
     clear_test_user();
 }
 
-fn extract_int(value: &Value, context: &str) -> Result<i64, String> {
+/// The id a session stores for a user: an Int (SQL ids), a String (SoliDB
+/// `_key`s), or a record — a Model instance or a hash — read for its `_key`,
+/// then its `id`. `as_user(user)` reads like the spec it sits in; an Int-only
+/// check refused every SoliDB key (#676).
+fn user_id_json(value: &Value, helper_name: &str) -> Result<serde_json::Value, String> {
+    let from_record =
+        |key: Option<Value>, id: Option<Value>| -> Result<serde_json::Value, String> {
+            match key
+                .filter(|v| !matches!(v, Value::Null))
+                .or(id.filter(|v| !matches!(v, Value::Null)))
+            {
+                Some(Value::Int(n)) => Ok(serde_json::json!(n)),
+                Some(Value::String(s)) if !s.is_empty() => Ok(serde_json::json!(s.to_string())),
+                _ => Err(format!(
+                    "{}: the record has no `_key` or `id` — save it first, or pass its id",
+                    helper_name
+                )),
+            }
+        };
     match value {
-        Value::Int(n) => Ok(*n),
-        _ => Err(format!("{} expects integer argument", context)),
+        Value::Int(n) => Ok(serde_json::json!(n)),
+        Value::String(s) if !s.is_empty() => Ok(serde_json::json!(s.to_string())),
+        Value::String(_) => Err(format!("{}: the user id must not be empty", helper_name)),
+        Value::Instance(inst) => {
+            let inst = inst.borrow();
+            from_record(inst.get("_key"), inst.get("id"))
+        }
+        Value::Hash(hash) => {
+            let hash = hash.borrow();
+            from_record(
+                hash.get(&HashKey::String("_key".into())).cloned(),
+                hash.get(&HashKey::String("id".into())).cloned(),
+            )
+        }
+        other => Err(format!(
+            "{} expects a user id (Int or String) or a record, got {}",
+            helper_name,
+            other.type_name()
+        )),
     }
 }
 
@@ -268,6 +297,23 @@ fn write_session_fields(
             helper_name
         ));
     }
+    // The session lives in the test server, another process: write it there.
+    // Writing into this process's store only ever worked for the cookie
+    // driver, whose payload travels in the cookie — under the default
+    // in-memory driver the cookie named a session the server had never seen,
+    // and the request ran as a guest (#676).
+    let mut remote_fields = serde_json::Map::new();
+    for (key, value) in &fields {
+        remote_fields.insert(key.clone(), value.clone());
+    }
+    if super::request_helpers::test_session_call(remote_fields, false)
+        .map_err(|e| format!("{}: {}", helper_name, e))?
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    // No test server (no controllers, or a unit test): this process's store.
     let store = super::session::get_current_store();
     let session_id = match session_id_from_cookies() {
         Some(id) if !id.is_empty() => store.get_or_create(&id),
@@ -333,11 +379,16 @@ fn pascalize(s: &str) -> String {
     out
 }
 
-fn set_test_user_id(user_id: i64) {
+fn set_test_user_id(user_id: serde_json::Value) {
+    let id = match user_id {
+        serde_json::Value::String(s) => Value::String(s.into()),
+        serde_json::Value::Number(n) => n.as_i64().map(Value::Int).unwrap_or(Value::Null),
+        _ => Value::Null,
+    };
     TEST_USER.with(|cell| {
         let mut user = cell.borrow_mut();
         let mut pairs: HashPairs = HashPairs::default();
-        pairs.insert(HashKey::String("id".into()), Value::Int(user_id));
+        pairs.insert(HashKey::String("id".into()), id);
         *user = Some(Value::Hash(Rc::new(RefCell::new(pairs))));
     });
 }
@@ -384,6 +435,8 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     let response = agent
         .post(&url)
         .set("Content-Type", "application/json")
+        // Same-origin, like every other unsafe request the spec client makes.
+        .set("Origin", &format!("http://127.0.0.1:{}", port))
         .send_string(&login_data);
 
     let (status, set_cookies, body) = match response {
@@ -470,9 +523,13 @@ fn is_signed_in() -> bool {
     false
 }
 
-fn create_test_session(user_id: i64) -> Result<Value, String> {
+fn create_test_session(user_id: serde_json::Value) -> Result<Value, String> {
+    let label = match &user_id {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
     set_test_user_id(user_id);
-    let session_id = format!("session_test_{}", user_id);
+    let session_id = format!("session_test_{}", label);
     set_cookie_inner("session_id".to_string(), session_id.clone());
     Ok(Value::String(session_id.into()))
 }
@@ -577,15 +634,15 @@ mod tests {
         assert!(err.contains("expects a hash"), "got: {err}");
     }
 
-    /// `as_user(id)` (single arg) keeps the legacy thread-local behavior:
-    /// it sets `TEST_USER` so `current_user()` returns it, and does NOT touch
-    /// the server-side session store or the cookie jar.
+    /// `as_user(id)` signs the user in on the server: `user_id` goes into
+    /// the session store and the jar's `session_id` cookie points at it (here
+    /// the runner's own store, as no test server is running). `current_user()`
+    /// reports the id too.
     #[test]
-    fn as_user_one_arg_sets_thread_local_only() {
+    fn as_user_one_arg_writes_the_session_and_the_marker() {
         let env = fresh_env();
         call_fn(&env, "as_user", &[Value::Int(7)]).unwrap();
 
-        // TEST_USER is populated.
         let user = call_fn(&env, "current_user", &[]).unwrap();
         match user {
             Value::Hash(h) => {
@@ -596,17 +653,61 @@ mod tests {
             other => panic!("expected hash, got {other:?}"),
         }
 
-        // No session cookie was set, no store write happened.
-        assert!(
-            session_id_from_cookies().is_none(),
-            "single-arg as_user must not set a session cookie"
-        );
+        let session_id =
+            session_id_from_cookies().expect("as_user(id) must set the session_id cookie");
+        let store = super::super::session::get_current_store();
+        assert_eq!(store.get(&session_id, "user_id"), Some(json!(7)));
+    }
+
+    /// SoliDB keys are strings: `as_user("k1")` stores the string as is.
+    #[test]
+    fn as_user_accepts_a_string_key() {
+        let env = fresh_env();
+        call_fn(&env, "as_user", &[Value::String("u-abc".into())]).unwrap();
+        let session_id = session_id_from_cookies().unwrap();
+        let store = super::super::session::get_current_store();
+        assert_eq!(store.get(&session_id, "user_id"), Some(json!("u-abc")));
+    }
+
+    /// A record signs in by its `_key`, falling back to `id`.
+    #[test]
+    fn as_user_accepts_a_record() {
+        let env = fresh_env();
+        let user = make_hash(vec![
+            ("_key", Value::String("k-42".into())),
+            ("email", Value::String("a@b.c".into())),
+        ]);
+        call_fn(&env, "as_user", &[user]).unwrap();
+        let session_id = session_id_from_cookies().unwrap();
+        let store = super::super::session::get_current_store();
+        assert_eq!(store.get(&session_id, "user_id"), Some(json!("k-42")));
+
+        let env = fresh_env();
+        call_fn(&env, "as_user", &[make_hash(vec![("id", Value::Int(9))])]).unwrap();
+        let session_id = session_id_from_cookies().unwrap();
+        let store = super::super::session::get_current_store();
+        assert_eq!(store.get(&session_id, "user_id"), Some(json!(9)));
+    }
+
+    #[test]
+    fn as_user_rejects_a_record_without_a_key_and_other_types() {
+        let env = fresh_env();
+        let err = call_fn(
+            &env,
+            "as_user",
+            &[make_hash(vec![("email", Value::String("a@b.c".into()))])],
+        )
+        .unwrap_err();
+        assert!(err.contains("no `_key` or `id`"), "got: {err}");
+        let err = call_fn(&env, "as_user", &[Value::Bool(true)]).unwrap_err();
+        assert!(err.contains("expects a user id"), "got: {err}");
+        let err = call_fn(&env, "as_user", &[Value::String("".into())]).unwrap_err();
+        assert!(err.contains("must not be empty"), "got: {err}");
     }
 
     /// `as_user(id, {options})` writes `user_id` plus every option key into the
     /// server-side session store and sets a `session_id` cookie pointing at
-    /// the new server-side session. It does NOT populate the thread-local
-    /// `TEST_USER` — middleware reads from the store on the next request.
+    /// the new server-side session.
     #[test]
     fn as_user_two_arg_writes_to_store() {
         let env = fresh_env();
@@ -709,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn sign_in_rejects_non_scalar_id() {
+    fn sign_in_rejects_an_id_it_cannot_read() {
         let env = fresh_env();
         let err = call_fn(
             &env,
@@ -720,7 +821,14 @@ mod tests {
             ],
         )
         .unwrap_err();
-        assert!(err.contains("integer or string"), "got: {err}");
+        assert!(err.contains("no `_key` or `id`"), "got: {err}");
+        let err = call_fn(
+            &env,
+            "sign_in",
+            &[Value::String("admin".into()), Value::Float(1.5)],
+        )
+        .unwrap_err();
+        assert!(err.contains("expects a user id"), "got: {err}");
     }
 
     #[test]

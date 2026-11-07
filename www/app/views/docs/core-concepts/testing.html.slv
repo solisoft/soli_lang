@@ -126,7 +126,7 @@ end</code></pre>
 
         <p class="text-gray-400 mb-4">Rails-like end-to-end testing framework for Soli MVC applications. Test your controllers with real HTTP requests.</p>
         <p class="text-gray-400 mb-4">The E2E testing framework provides a comprehensive set of helpers for testing your Soli controllers with real HTTP requests. Built on a test server that runs alongside your test suite, it enables you to write integration tests that simulate actual browser requests and verify controller responses, sessions, and view data.</p>
-        <p class="text-gray-400 mb-4">Every spec file, whatever its name, starts with the app's <code class="text-amber-400">app/models</code>, <code class="text-amber-400">policies</code>, <code class="text-amber-400">services</code>, <code class="text-amber-400">helpers</code>, <code class="text-amber-400">middleware</code> and <code class="text-amber-400">jobs</code> loaded. Job classes get the same facade as in the server (<code class="text-amber-400">perform_later</code>, <code class="text-amber-400">perform_now</code>, <code class="text-amber-400">perform_in</code>&hellip;), and <code class="text-amber-400">HTTP.*</code> calls block as they do in a request, so a <code class="text-amber-400">try</code> or <code class="text-amber-400">rescue</code> around one catches its failure.</p>
+        <p class="text-gray-400 mb-4">Every spec file, whatever its name, starts with the app's <code class="text-amber-400">app/models</code>, <code class="text-amber-400">policies</code>, <code class="text-amber-400">services</code>, <code class="text-amber-400">mailers</code>, <code class="text-amber-400">helpers</code>, <code class="text-amber-400">middleware</code>, <code class="text-amber-400">jobs</code> and <code class="text-amber-400">subscribers</code> loaded &mdash; the directories <code class="text-amber-400">soli serve</code> loads &mdash; and with the template system pointed at <code class="text-amber-400">app/views</code>, so a service a spec calls can render and send its mailer&rsquo;s email. Job classes get the same facade as in the server (<code class="text-amber-400">perform_later</code>, <code class="text-amber-400">perform_now</code>, <code class="text-amber-400">perform_in</code>&hellip;), and <code class="text-amber-400">HTTP.*</code> calls block as they do in a request, so a <code class="text-amber-400">try</code> or <code class="text-amber-400">rescue</code> around one catches its failure.</p>
         <p class="text-gray-400 mb-8">This framework follows conventions inspired by RSpec Rails testing patterns, making it familiar to developers coming from Ruby on Rails backgrounds while providing the safety and expressiveness of Soli's type system.</p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Basic Test Structure</h3>
@@ -322,11 +322,11 @@ assert_eq(location, "/expected/path")</code></pre>
                 <p class="text-sm text-gray-400 mt-1">Clears all authentication state</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">as_user(user_id)</code>
-                <p class="text-sm text-gray-400 mt-1">Simulates logged-in user with given id</p>
+                <code class="text-emerald-300 font-bold">as_user(user)</code>
+                <p class="text-sm text-gray-400 mt-1">Signs a user in: an Int id, a String key, or the record</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">as_user(user_id, opts)</code>
+                <code class="text-emerald-300 font-bold">as_user(user, opts)</code>
                 <p class="text-sm text-gray-400 mt-1">User id + session opts (e.g. <code>{"role": "admin"}</code>)</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
@@ -352,7 +352,7 @@ assert_eq(location, "/expected/path")</code></pre>
             <ul class="text-sm text-gray-300 space-y-1 list-disc list-inside">
                 <li><strong>Single-table role-column</strong> (one <code>users</code> collection, role string field): use <code class="text-emerald-300">as_role("admin")</code> or <code class="text-emerald-300">as_user(id, {"role": "admin"})</code>.</li>
                 <li><strong>Separate-collection</strong> (distinct <code>User</code>, <code>Admin</code>, ... models): use <code class="text-emerald-300">sign_in("admin", id)</code> / <code class="text-emerald-300">sign_in("admin")</code>.</li>
-                <li><strong>Just need a logged-in user</strong> (no role checks): <code class="text-emerald-300">as_user(id)</code> is the lightest path.</li>
+                <li><strong>Just need a logged-in user</strong> (no role checks): <code class="text-emerald-300">as_user(user)</code> is the lightest path.</li>
                 <li><strong>Anything else</strong> (non-conventional session keys): fall back to <code class="text-emerald-300">with_session({...})</code>.</li>
             </ul>
         </div>
@@ -372,19 +372,22 @@ end)</code></pre>
         <section id="def-as-user" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-as-user" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">as_user(user_id)</code>
+                    <code class="font-mono text-amber-400">as_user(user)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Simulates a logged-in regular user with the specified ID.</p>
+                <p class="text-gray-400 mb-2">Signs a user in: writes <code>user_id</code> into the test server&rsquo;s session and points the client&rsquo;s <code>session_id</code> cookie at it, so the next request runs as that user. <code>user</code> is an Int id, a String key (SoliDB <code>_key</code>s are strings), or the record itself, read for its <code>_key</code> and then its <code>id</code>.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">as_user(42)
 response = get("/profile")
-assert_eq(res_status(response), 200)</code></pre>
+assert_eq(res_status(response), 200)
+
+ada = User.find_by("email", "ada@example.com")
+as_user(ada)            # same as as_user(ada._key)</code></pre>
             </div>
         </section>
 
         <section id="def-as-user-opts" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-as-user-opts" class="group flex items-center gap-2 mb-3">
-                    <code class="font-mono text-amber-400">as_user(user_id, options)</code>
+                    <code class="font-mono text-amber-400">as_user(user, options)</code>
                 </a>
                 <p class="text-gray-400 mb-2">Writes the user id <em>and</em> an options hash into the server-side session store. Use this when middleware reads more than <code>user_id</code> (e.g. a <code>role</code> field on the single-table users collection). Any keys work — extend as your auth needs grow.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">as_user(42, {"role": "admin"})
@@ -561,7 +564,7 @@ assert(signed_out())</code></pre>
                 <a href="#def-with-session" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-amber-400">with_session(data)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Writes arbitrary key/value pairs into the server-side session and sets a matching <code>session_id</code> cookie. Subsequent requests in the same test see the data via <code>session_get(...)</code> on the server.</p>
+                <p class="text-gray-400 mb-2">Writes arbitrary key/value pairs into the test server&rsquo;s session and sets a matching <code>session_id</code> cookie. Subsequent requests in the same test see the data via <code>session_get(...)</code> on the server &mdash; under every session driver, the default in-memory one included: <code>as_user</code>, <code>sign_in</code> and <code>with_session</code> write into the server&rsquo;s own store, not the runner&rsquo;s.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">with_session({
   "user_id": 42,
   "role": "editor"
@@ -575,6 +578,26 @@ assert_eq(res_status(response), 200)</code></pre>
                 </div>
             </div>
         </section>
+
+        <h3 id="csrf-in-specs" class="text-xl font-semibold text-white mb-4 scroll-mt-20">CSRF in specs</h3>
+        <p class="text-gray-400 mb-3">The request helpers behave like a same-origin browser, so a spec passes both CSRF barriers without <code class="text-amber-400">SOLI_DISABLE_CSRF</code>:</p>
+        <ul class="text-gray-400 mb-4 space-y-2 list-disc list-inside">
+            <li><code class="text-emerald-300">post</code>, <code class="text-emerald-300">put</code>, <code class="text-emerald-300">patch</code>, <code class="text-emerald-300">delete</code> and <code class="text-emerald-300">request</code> send an <code>Origin</code> naming the test server &mdash; after <code class="text-emerald-300">login()</code> a cookie-bearing request with neither <code>Origin</code> nor <code>Referer</code> is refused, as it is for a real browser.</li>
+            <li>A form post (<code>application/x-www-form-urlencoded</code> or <code>multipart/form-data</code>) carries the session&rsquo;s CSRF token as <code>X-CSRF-Token</code>, the way a page rendered with <code>csrf_meta_tag()</code> would &mdash; so a suite runs under <code class="text-amber-400">SOLI_CSRF_TOKENS=require</code>. JSON bodies are never token-gated and get nothing.</li>
+        </ul>
+        <p class="text-gray-400 mb-3">To test a refusal, pass the header yourself &mdash; what a spec sets is sent as given:</p>
+        <pre data-filename="Example"><code class="language-soli text-sm">login("ada@example.com", "secret")
+
+response = post("/posts", {"title": "x"}, {"headers": {"Origin": "https://evil.test"}})
+assert_eq(res_status(response), 403)     # cross-origin
+
+response = post("/posts", {"title": "x"}, {"headers": {"Origin": ""}})
+assert_eq(res_status(response), 403)     # neither Origin nor Referer
+
+form = {"Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": ""}
+response = post("/posts", "title=x", {"headers": form})
+assert_eq(res_status(response), 403)     # no token, under SOLI_CSRF_TOKENS=require</code></pre>
+        <p class="text-gray-400 mt-4 mb-12">Assert the status of a sign-in made with <code class="text-emerald-300">post("/login", &hellip;)</code>. A refused one leaves the test a guest, and the failure surfaces later and elsewhere &mdash; a layout&rsquo;s <code>current_user().email</code> raising on <code>nil</code> turns the next page into a 500.</p>
 
         <h2 class="text-2xl font-bold text-white mb-6">Assigns Helpers</h2>
         <p class="text-gray-400 mb-4">Assigns helpers inspect data passed to views during template rendering.</p>

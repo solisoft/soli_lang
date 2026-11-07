@@ -285,10 +285,9 @@ test("the dashboard greets the user", fn() {
 Cookies flow both ways: a sign-in performed *in the browser* is visible to a
 later `get()` and to `signed_in()`.
 
-> `as_user(id)` with a single argument only sets a thread-local and does **not**
-> authenticate a real request. Use the two-argument form, `as_user(7, {"role":
-> "admin"})`, which writes the session store and sets the cookie — that one
-> carries into the browser.
+> `as_user(user)` writes the test server's session store and sets the cookie,
+> so it carries into the browser too — with or without the options hash
+> (`as_user(7, {"role": "admin"})`).
 
 ## What resets between tests
 

@@ -52,6 +52,29 @@
   headers (they were dropped; only `status`/`layout` were read), replacing a
   default of the same name in any case; a non-token name or a CR/LF in a value
   raises.
+- **`soli test`: the spec client passes the CSRF gate like a same-origin
+  browser (#676).** After `login()`, every `post`/`patch`/`delete` was refused
+  403 ("missing both Origin and Referer on cookie-bearing request"): the client
+  sent cookies and no `Origin`. State-changing requests now send the test
+  server's origin, and a form post (urlencoded or multipart) carries the
+  session's CSRF token as `X-CSRF-Token` — fetched from the new test-only
+  `/__soli/test/session` endpoint — so suites run under
+  `SOLI_CSRF_TOKENS=require` with no `SOLI_DISABLE_CSRF`. A header the spec sets
+  is sent as given (`"Origin": "https://evil.test"`), and `"Origin": ""` /
+  `"X-CSRF-Token": ""` send none, to test the refusals. This also explains a
+  500 seen after `post("/login", …)`: the sign-in was refused, the test stayed
+  a guest, and a layout's `current_user().email` raised on `nil`.
+- **`soli test`: `as_user`, `sign_in` and `with_session` sign the request in
+  (#676).** They wrote into the runner's session store while the app runs in a
+  separate test-server process, so under the default in-memory driver the
+  cookie named a session the server never saw. They now write through
+  `/__soli/test/session`, answered only to the runner that spawned the server
+  (per-run token, loopback). `as_user(id)` with one argument signs in too, and
+  takes a String key or a record (`_key`, then `id`) as well as an Int.
+- **`soli test` preloads `app/mailers` and `app/subscribers` (#676)**, as
+  `soli serve` does, and initialises templates from `app/views`, so a spec
+  calling a service that sends mail no longer fails with "Undefined variable
+  'AlertMailer'".
 
 ## [2.32.0] - 2026-11-07
 

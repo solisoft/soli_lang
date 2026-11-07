@@ -214,12 +214,12 @@
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_guest()</td>
                 </tr>
                 <tr class="hover:bg-white/5">
-                    <td class="py-3 px-4"><code class="text-emerald-300">as_user(id)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Simulate user</td>
-                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_user(42)</td>
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_user(user)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Sign in (Int id, String key or record)</td>
+                    <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_user(42), as_user(ada)</td>
                 </tr>
                 <tr class="hover:bg-white/5">
-                    <td class="py-3 px-4"><code class="text-emerald-300">as_user(id, opts)</code></td>
+                    <td class="py-3 px-4"><code class="text-emerald-300">as_user(user, opts)</code></td>
                     <td class="py-3 px-4 text-gray-400">User + session opts (e.g. role)</td>
                     <td class="py-3 px-4 text-gray-500 font-mono text-sm">as_user(42, {"role": "admin"})</td>
                 </tr>

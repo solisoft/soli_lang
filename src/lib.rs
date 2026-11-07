@@ -812,6 +812,10 @@ fn run_with_path_and_coverage_inner(
     }
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
+    // `app/subscribers/` is part of the preamble, and the registry is per
+    // thread: without this, every spec file a worker ran subscribed the
+    // handlers again, holding closures of interpreters long gone.
+    crate::interpreter::events::clear_subscribers();
 
     run_preamble_files(&mut interpreter, preamble_files, type_check)?;
 

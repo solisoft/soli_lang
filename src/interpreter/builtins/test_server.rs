@@ -159,6 +159,26 @@ pub fn is_test_runner_process() -> bool {
     crate::interpreter::builtins::http_class::ssrf_test_mode()
 }
 
+/// The per-run token `soli test` hands its test servers as
+/// `SOLI_INTERNAL_TEST_RUNNER`. The runner keeps it so the spec client can
+/// present it to `/__soli/test/session` (see `serve::test_session`), the
+/// endpoint that writes session fields where the server reads them.
+static INTERNAL_RUNNER_TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Record the token minted for this run's test servers. Set once, by the
+/// runner, before any spec runs.
+pub fn set_internal_runner_token(token: String) {
+    if !token.is_empty() {
+        let _ = INTERNAL_RUNNER_TOKEN.set(token);
+    }
+}
+
+/// The token to present to this run's test servers, when this process
+/// spawned any.
+pub fn internal_runner_token() -> Option<&'static str> {
+    INTERNAL_RUNNER_TOKEN.get().map(String::as_str)
+}
+
 /// Get the test server port. Prefers the thread-local override (set by
 /// the parallel test runner) so each worker reaches its own subprocess.
 pub fn get_test_server_port() -> Option<u16> {
