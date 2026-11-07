@@ -21,6 +21,15 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.32.0.</p>
+        <h3 id="unreleased-auth-signup-policy" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security &mdash; <code>generate auth</code></h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Sign-up is no longer open to anyone by default.</strong> The scaffolded <code>/signup</code> obeys <code class="text-cyan-400">AUTH_SIGNUP</code>: <code>first_user</code> (the default) creates one account &mdash; the first, which becomes the admin &mdash; and then closes; <code>open</code> lets anyone sign up; <code>closed</code> lets nobody, and any other value counts as <code>closed</code>. A closed <code>/signup</code> answers <code>403</code> and the &ldquo;Create one&rdquo; link hides. The per-IP throttle now reads <code class="text-cyan-400">AUTH_ATTEMPTS_PER_IP</code> and <code class="text-cyan-400">AUTH_IP_WINDOW_SECONDS</code> from the environment (defaults 15 and 300 s). See <a href="/docs/security/authorization" class="text-cyan-400 hover:underline">Authorization</a>.</li>
+            <li><strong class="text-white">The generated code follows the house style.</strong> <code>@field</code> and <code>@method</code> instead of <code>this.</code>, <code>nil</code> instead of <code>null</code>, no <code>()</code> on zero-argument calls, helpers <code>_</code>-prefixed under <code>private</code>, and views without the double-escaping <code>&lt;%= h(x) %&gt;</code>. The account-locked email now links to <code>/password/reset</code> (it pointed at <code>/password/new</code>, which is not a route). The output passes <code>soli fmt --check</code> and <code>soli lint</code>.</li>
+        </ul>
+        <h3 id="unreleased-fixes-orm-validator-identity" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes &mdash; ORM</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Custom validators see the record&rsquo;s identity on update.</strong> <code>record.update(attrs)</code> and <code>save</code> on a loaded record handed validators a record without <code>_key</code>, so a &ldquo;unique except me&rdquo; check (<code>taken._key != @_key</code>) refused every update of a record that already held the value. On every update path &mdash; <code>Model.update(id, attrs)</code> included, which validates the merged record &mdash; <code>@_key</code> is the key being updated, and <code>@id</code> the row&rsquo;s own <code>id</code> or that key. The built-in <code>uniqueness: true</code> keeps excluding the record itself. See <a href="/docs/database/validations#custom-validators" class="text-cyan-400 hover:underline">Custom Validators</a>.</li>
+        </ul>
     </section>
 
     <section id="v2-32-0" class="mb-16 scroll-mt-24">

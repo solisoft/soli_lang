@@ -174,8 +174,12 @@ pub fn print_auth_success_message() {
     println!("    1. Run the migrations:  \x1b[36msoli db:migrate up\x1b[0m");
     println!("    2. Start the server:    \x1b[36msoli serve . --dev\x1b[0m");
     println!(
-        "    3. Visit \x1b[36m/signup\x1b[0m to create an account, then \x1b[36m/login\x1b[0m."
+        "    3. Visit \x1b[36m/signup\x1b[0m to create the first account (it becomes the admin)."
     );
+    println!();
+    println!("  \x1b[2mSign-up policy:\x1b[0m \x1b[36mAUTH_SIGNUP\x1b[0m=first_user (default: /signup closes once");
+    println!("  an account exists), open (anyone) or closed (nobody). The per-IP throttle reads");
+    println!("  \x1b[36mAUTH_ATTEMPTS_PER_IP\x1b[0m (15) per \x1b[36mAUTH_IP_WINDOW_SECONDS\x1b[0m (300).");
     println!();
     println!("  \x1b[2mIncluded flows:\x1b[0m password reset (/password/reset), email");
     println!("  confirmation (/confirmation/resend), remember-me, account lockout.");

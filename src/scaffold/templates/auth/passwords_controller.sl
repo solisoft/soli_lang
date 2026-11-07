@@ -29,50 +29,24 @@ class PasswordsController < Controller
     # used to mail-bomb one known address (or to burn the app's sending
     # reputation across many).
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
-    unless limiter.allowed()
-      return render(
-        "passwords/new",
-        {
-          "title": "Reset password",
-          "notice": "",
-          "error": "Too many reset requests. Try again in a few minutes."
-        },
-        {"status": 429}
-      )
-    end
+    return @_request_form("", "Too many reset requests. Try again in a few minutes.", 429) unless limiter.allowed
 
-    email = params["email"].to_s.trim().downcase()
+    email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
-    if !user.nil?
-      token = user.start_password_reset()
-      AuthMailer.reset_password(user, token).deliver_now() rescue null
+    unless user.nil?
+      token = user.start_password_reset
+      AuthMailer.reset_password(user, token).deliver_now rescue nil
     end
 
-    return render(
-      "passwords/new",
-      {
-        "title": "Reset password",
-        "notice": "If that email exists, a reset link is on its way.",
-        "error": ""
-      }
-    )
+    @_request_form("If that email exists, a reset link is on its way.", "", 200)
   end
 
   # GET /password/edit?token=... — the form behind the emailed link
   def edit
     user = @_user_for_token(params["token"])
-    if user.nil?
-      return render(
-        "passwords/new",
-        {
-          "title": "Reset password",
-          "notice": "",
-          "error": "That reset link is invalid or has expired. Request a new one."
-        }
-      )
-    end
+    return @_invalid_link if user.nil?
 
-    return render(
+    render(
       "passwords/edit",
       {
         "title": "Choose a new password",
@@ -85,32 +59,22 @@ class PasswordsController < Controller
   # POST /password/update
   def update
     user = @_user_for_token(params["token"])
-    if user.nil?
-      return render(
-        "passwords/new",
-        {
-          "title": "Reset password",
-          "notice": "",
-          "error": "That reset link is invalid or has expired. Request a new one."
-        }
-      )
-    end
+    return @_invalid_link if user.nil?
 
     password = params["password"].to_s
     # One rule, one place: `password_error` is what sign-up enforces too, so
     # the reset flow can't quietly become the way to install a weaker password
     # than registration would have accepted.
     password_error = user.password_error(password)
-    return this._reject_edit(password_error) unless password_error.nil?
-
-    return this._reject_edit("Passwords don't match.") if password != params["password_confirmation"].to_s
+    return @_reject_edit(password_error) unless password_error.nil?
+    return @_reject_edit("Passwords don't match.") if password != params["password_confirmation"].to_s
 
     user.finish_password_reset(password)
     # Sign the user straight in with a fresh session.
     session_regenerate()
-    session_set("user_id", user["_key"])
+    session_set("user_id", user._key)
     # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version())
+    session_set("session_version", user.current_session_version)
     redirect("/")
   end
 
@@ -119,7 +83,7 @@ class PasswordsController < Controller
   # Re-render the "choose a new password" form with an error, keeping the
   # token so the user doesn't have to click the emailed link again.
   def _reject_edit(message)
-    return render(
+    render(
       "passwords/edit",
       {
         "title": "Choose a new password",
@@ -132,11 +96,30 @@ class PasswordsController < Controller
 
   # Resolve a reset token to its (non-expired) user, or nil. `_`: not an action.
   def _user_for_token(token)
-    return null if token.blank?
+    return nil if token.blank?
 
     user = User.find_by("reset_token_digest", Crypto.sha256(token.to_s))
-    return null if user.nil?
-    return null if user.reset_token_expired?()
+    return nil if user.nil?
+    return nil if user.reset_token_expired?
+
     user
+  end
+
+  # A missing, unknown or expired token: back to the request form.
+  def _invalid_link
+    @_request_form("", "That reset link is invalid or has expired. Request a new one.", 200)
+  end
+
+  # The "request a reset link" form with a notice or an error.
+  def _request_form(notice, error, status)
+    render(
+      "passwords/new",
+      {
+        "title": "Reset password",
+        "notice": notice,
+        "error": error
+      },
+      {"status": status}
+    )
   end
 end

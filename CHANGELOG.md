@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`soli generate auth`: sign-up is no longer open to anyone by default**
+  (card #677). A new `AUTH_SIGNUP` setting decides who may create an account
+  at `/signup`: `first_user` (the default) allows one account — the first,
+  which becomes the admin — then closes; `open` allows anyone; `closed`
+  allows nobody; any other value counts as `closed`. A closed `/signup`
+  answers `403` with the sign-in form, and the "Create one" link hides. The
+  per-IP throttle reads `AUTH_ATTEMPTS_PER_IP` and `AUTH_IP_WINDOW_SECONDS`
+  from the environment (defaults 15 and 300). The generated code now follows
+  the house style — `@field` / `@method` instead of `this.`, `nil` instead of
+  `null`, no `()` on zero-argument method calls, `_`-prefixed helpers under
+  `private`, and views that no longer double-escape with `<%= h(x) %>`. The account-locked email
+  linked to `/password/new`, which is not a route; it now links to
+  `/password/reset`. The output passes `soli fmt --check` and `soli lint`, and
+  a served test drives the sign-up policy and the throttle.
+
+### Fixed
+
+- **Custom validators see the record's identity on update** (card #674).
+  `record.update(attrs)` and `save` on a loaded record built the record handed
+  to validators from its non-`_` fields only, so `@_key` (and
+  `record["_key"]` in the closure form) was `nil`: a "unique except me"
+  validator (`taken._key != @_key`) refused every update of a record that
+  already held the value. Every update path — including `Model.update(id,
+  attrs)`, which validates the merged record — now sets `_key` to the key
+  being updated, and `id` to it when the record holds no `id` of its own (a
+  SQL row keeps its column). The built-in `uniqueness: true` already excluded
+  the record being updated; it is now covered by a test on each path.
+
 ## [2.32.0] - 2026-11-07
 
 ### Added

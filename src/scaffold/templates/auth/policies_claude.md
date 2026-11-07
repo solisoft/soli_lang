@@ -11,10 +11,11 @@ the class. Restart the server after adding a new policy.
 ## Using a policy in a controller
 
 ```soli
+# PATCH /posts/:id
 def update
   post = Post.find(params["id"])
   authorize(post)            # 403 unless PostPolicy#update? is true
-  post.update(this._permit_params(params))
+  post.update(@_permit_params(params))
   redirect(post_path(post))
 end
 ```
@@ -31,9 +32,9 @@ class PostPolicy < ApplicationPolicy
   end
 
   def update?
-    return false unless signed_in?()      # `this.user` is the current user
+    return false unless @signed_in?       # `@user` is the current user
 
-    this.user["_key"] == this.record["author_id"]
+    @user["_key"] == @record["author_id"]
   end
 end
 ```

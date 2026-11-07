@@ -22,14 +22,15 @@ class SessionsController < Controller
       {
         "title": "Sign in",
         "error": "",
-        "email": ""
+        "email": "",
+        "signup_open": auth_signup_open?()
       }
     )
   end
 
   # POST /login
   def create
-    email = params["email"].to_s.trim().downcase()
+    email = params["email"].to_s.trim.downcase
     password = params["password"].to_s
 
     # First gate: how many sign-in attempts this source address gets. The
@@ -37,9 +38,7 @@ class SessionsController < Controller
     # each against thousands of accounts) and it is itself abusable as a
     # denial of service against a known address. This closes both.
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
-    unless limiter.allowed()
-      return this._reject("Too many sign-in attempts. Try again in a few minutes.", email, 429)
-    end
+    return @_reject("Too many sign-in attempts. Try again in a few minutes.", email, 429) unless limiter.allowed
 
     user = User.find_by("email", email)
 
@@ -60,9 +59,9 @@ class SessionsController < Controller
     # from an address that was never registered. The owner learns about the lock
     # from the notification `register_failed_attempt` sends when it trips, not
     # from this response.
-    if !user.nil? && user.locked?()
+    if !user.nil? && user.locked?
       User.burn_password_work(password)
-      return this._reject("Invalid email or password", email, 401)
+      return @_reject("Invalid email or password", email, 401)
     end
 
     # Both branches must cost the same. `authenticate` runs Argon2id (~100ms);
@@ -72,27 +71,27 @@ class SessionsController < Controller
     authenticated = user.nil? ? User.burn_password_work(password) : user.authenticate(password)
 
     unless authenticated
-      user.register_failed_attempt() unless user.nil?
-      return this._reject("Invalid email or password", email, 401)
+      user.register_failed_attempt unless user.nil?
+      return @_reject("Invalid email or password", email, 401)
     end
 
-    if auth_require_confirmed_email() && !user.confirmed?()
-      return this._reject("Please confirm your email address first — check your inbox.", email, 403)
+    if auth_require_confirmed_email() && !user.confirmed?
+      return @_reject("Please confirm your email address first — check your inbox.", email, 403)
     end
 
-    user.clear_failed_attempts()
+    user.clear_failed_attempts
     # New session id after a successful login defeats session fixation.
     session_regenerate()
-    session_set("user_id", user["_key"])
+    session_set("user_id", user._key)
     # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version())
+    session_set("session_version", user.current_session_version)
 
     if params["remember_me"].to_s == "1"
-      token = user.start_remember_me()
+      token = user.start_remember_me
       # `secure` matters more here than on the session cookie: this one is a
       # 30-day bearer credential, and without the flag a single plaintext
       # request to the same host hands it to anyone on the path.
-      set_cookie("remember_token", user["_key"] + ":" + token, {
+      set_cookie("remember_token", "#{user._key}:#{token}", {
         "max_age": AUTH_REMEMBER_DAYS * 86400,
         "http_only": true,
         "same_site": "Lax",
@@ -103,27 +102,12 @@ class SessionsController < Controller
     redirect("/")
   end
 
-  # Re-render the sign-in form with an error and an accurate status code.
-  # Every failure path goes through here so none of them can drift into
-  # leaking more than the others.
-  def _reject(message, email, status)
-    return render(
-      "sessions/new",
-      {
-        "title": "Sign in",
-        "error": message,
-        "email": email
-      },
-      {"status": status}
-    )
-  end
-
   # DELETE /logout
   def destroy
     user_id = session_get("user_id")
-    if !user_id.blank?
-      user = User.find_by("_key", user_id) rescue null
-      user&.forget_me()
+    unless user_id.blank?
+      user = User.find_by("_key", user_id) rescue nil
+      user&.forget_me
     end
     # Expire the remember-me cookie immediately.
     set_cookie("remember_token", "", {
@@ -134,5 +118,23 @@ class SessionsController < Controller
     })
     session_destroy()
     redirect("/login")
+  end
+
+  private
+
+  # Re-render the sign-in form with an error and an accurate status code.
+  # Every failure path goes through here so none of them can drift into
+  # leaking more than the others.
+  def _reject(message, email, status)
+    render(
+      "sessions/new",
+      {
+        "title": "Sign in",
+        "error": message,
+        "email": email,
+        "signup_open": auth_signup_open?()
+      },
+      {"status": status}
+    )
   end
 end

@@ -19,8 +19,8 @@ class ApplicationPolicy
   record: Any
 
   new(context)
-    this.user = context["user"]
-    this.record = context["record"]
+    @user = context["user"]
+    @record = context["record"]
   end
 
   def index?
@@ -37,7 +37,7 @@ class ApplicationPolicy
 
   # `new?` mirrors `create?` and `edit?` mirrors `update?` by convention.
   def new?
-    this.send("create?")
+    @create?
   end
 
   def update?
@@ -45,7 +45,7 @@ class ApplicationPolicy
   end
 
   def edit?
-    this.send("update?")
+    @update?
   end
 
   def destroy?
@@ -54,25 +54,26 @@ class ApplicationPolicy
 
   # Handy in subclasses: any signed-in user.
   def signed_in?
-    !this.user.nil?
+    !@user.nil?
   end
 end
 
 # Build the policy object for `record`. Denies (403) when no policy class
 # exists, so a forgotten policy fails closed rather than open.
 def policy_for(record)
-  policy_class = const_get(record.class + "Policy")
-  forbidden("No policy class '" + record.class + "Policy'. Add app/policies/<model>_policy.sl") if policy_class.nil?
+  policy_class = const_get("#{record.class}Policy")
+  forbidden("No policy class '#{record.class}Policy'. Add app/policies/<model>_policy.sl") if policy_class.nil?
+
   policy_class.new({"user": current_user(), "record": record})
 end
 
 # Authorize `record` for the current action (or an explicit one). Returns the
 # record when allowed; raises a 403 otherwise.
-def authorize(record, action = null)
+def authorize(record, action = nil)
   act = action ?? current_action()
   act = "show" if act.blank?
   policy = policy_for(record)
-  forbidden("Not authorized to " + act + " this " + record.class) if !policy.send(act + "?")
+  forbidden("Not authorized to #{act} this #{record.class}") unless policy.send("#{act}?")
   record
 end
 
@@ -80,7 +81,7 @@ end
 # `load_current_user` middleware. Defined here (global scope) so controllers
 # and policies can call it; views use the copy in app/helpers/auth_helper.sl.
 def current_user
-  req["current_user"] rescue null
+  req["current_user"] rescue nil
 end
 
 def signed_in?
