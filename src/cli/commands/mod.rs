@@ -1320,16 +1320,33 @@ fn locale_skip_note(count: usize) -> String {
 /// Top-level names declared anywhere in the auto-loaded directories under any
 /// of `targets`, for [`solilang::type_check_source_with_ambient`].
 ///
-/// Returns nothing for a file target or a directory that is not a project: the
+/// A target inside an application — `soli check app`, `soli check
+/// app/controllers/posts_controller.sl` — is widened to that application's
+/// root (see [`enclosing_app_root`]): its auto-loaded set is what the running
+/// server puts in scope, whichever subset of files is being checked.
+///
+/// Returns nothing for a loose file or a directory that is not a project: the
 /// narrower per-file view is right when there is no project to widen it to.
 fn collect_ambient_names(targets: &[std::path::PathBuf]) -> Vec<String> {
     use std::collections::HashSet;
 
-    let mut names: HashSet<String> = HashSet::new();
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    let mut seen_roots: HashSet<std::path::PathBuf> = HashSet::new();
     for target in targets {
-        if !target.is_dir() {
-            continue;
+        let candidates = [
+            target.is_dir().then(|| target.clone()),
+            enclosing_app_root(target),
+        ];
+        for root in candidates.into_iter().flatten() {
+            let key = root.canonicalize().unwrap_or_else(|_| root.clone());
+            if seen_roots.insert(key) {
+                roots.push(root);
+            }
         }
+    }
+
+    let mut names: HashSet<String> = HashSet::new();
+    for target in &roots {
         for dir in solilang::AUTOLOADED_DIRS {
             let dir = target.join(dir);
             if !dir.is_dir() {
@@ -1361,6 +1378,27 @@ fn collect_ambient_names(targets: &[std::path::PathBuf]) -> Vec<String> {
     let mut names: Vec<String> = names.into_iter().collect();
     names.sort();
     names
+}
+
+/// The root of the Soli application `target` sits in: the nearest directory,
+/// `target` itself included, holding `soli.toml` or `config/routes.sl`.
+///
+/// `soli check app` used to read `app/` as the project and look for
+/// `app/app/models`, so every auto-loaded class came out undefined while
+/// `soli check .` was clean. `None` outside any application.
+fn enclosing_app_root(target: &std::path::Path) -> Option<std::path::PathBuf> {
+    let absolute = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
+    let start = if absolute.is_dir() {
+        absolute.as_path()
+    } else {
+        absolute.parent()?
+    };
+    start
+        .ancestors()
+        .find(|dir| dir.join("soli.toml").is_file() || dir.join("config/routes.sl").is_file())
+        .map(std::path::Path::to_path_buf)
 }
 
 pub fn run_check(paths: &[String]) {
@@ -1401,8 +1439,10 @@ pub fn run_check(paths: &[String]) {
     // application that was 137 errors out of 176, all naming five functions
     // declared in a sibling file of the same catalogue.
     //
-    // Only for a *directory* target: `soli check one.sl` on a loose script has
-    // no project around it and keeps the narrower view.
+    // A directory target is its own project root; a subdirectory or a file
+    // of an application is widened to that application's root (`soli check
+    // app` sees the models `soli check .` sees). `soli check one.sl` on a
+    // loose script has no project around it and keeps the narrower view.
     let ambient = collect_ambient_names(&targets);
 
     let checked = files.len();
