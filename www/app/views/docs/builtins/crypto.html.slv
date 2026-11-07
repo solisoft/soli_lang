@@ -965,13 +965,28 @@ print("#{info["subject"]} expires #{info["not_after"]} (#{info["days_left"]} day
                 </a>
                 <p class="text-gray-400 mb-3">Completes a TLS handshake with <code>host:port</code> and returns <code class="text-amber-400">X509.info</code> of the certificate the server presents. No application data is sent. This is what an expiry probe needs: watch your own endpoints without shelling out to <code>openssl</code>.</p>
                 <p class="text-gray-400 mb-3">The chain is <strong class="text-white">not validated</strong>, on purpose: an expiry probe has to be able to report an expired or self-signed certificate, which a validating client would refuse before showing it. The handshake signature is still checked, so the server must hold the key of the certificate it presents.</p>
-                <p class="text-gray-400 mb-3">It goes through the same SSRF guard as <code class="text-amber-400">HTTP</code> &mdash; loopback and private ranges are refused outside <code>soli test</code> and <code>SOLI_DEV_ALLOW_SSRF</code> &mdash; tries every resolved address in turn, and raises on refusal, DNS failure, timeout or a failed handshake. <code>timeout</code> is in seconds, up to 60.</p>
+                <p class="text-gray-400 mb-3">It goes through the same SSRF guard as <code class="text-amber-400">HTTP</code> &mdash; loopback and private ranges are refused outside <code>soli test</code> and <code>SOLI_DEV_ALLOW_SSRF</code> &mdash; tries every resolved address in turn, and raises on refusal, DNS failure, timeout or a failed handshake. <code>timeout</code> is in seconds, up to 60, and bounds the whole handshake. Pointed at a port that does not speak TLS, the error says so &mdash; <code>no TLS handshake from host:80 within 10.0s &mdash; is it a TLS port?</code> &mdash; rather than the socket's <code>Resource temporarily unavailable</code>.</p>
                 <pre data-filename="Warn before a certificate expires"><code class="language-soli text-sm">peer = X509.peer_certificate("example.com")
 if peer["days_left"] &lt;= 30
   alert("renew #{peer["host"]}: expires #{peer["not_after"]}")
 end</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> - the fields of <code>X509.info</code>, plus <code>host</code>, <code>port</code> and <code>chain_length</code>.</div>
+            </div>
+        </section>
+
+        <section id="def-tcp-check" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-tcp-check" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">TCP.check(host, port, timeout: seconds)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Is a TCP port reachable? Connects, measures, and closes &mdash; no byte is sent or read. An unreachable port is an answer (<code>open: false</code> with the reason), not an exception. <code>timeout</code> (positional or named) is in seconds, default 5, up to 60.</p>
+                <p class="text-gray-400 mb-3">It applies the same SSRF policy as <code class="text-amber-400">HTTP</code>: loopback, private, link-local and CGNAT addresses are refused (it raises) unless the host is listed in <code>SOLI_HTTP_ALLOW_HOSTS</code> (<code>host</code> or <code>host:port</code>), or under <code>soli test</code> / <code>SOLI_DEV_ALLOW_SSRF=1</code>. The check is made on the host as written and again on every address it resolves to, so DNS cannot swap in a private address. There is deliberately no general socket API. Not available on the edge (Cloudflare Workers) build.</p>
+                <pre data-filename="Health check"><code class="language-soli text-sm">probe = TCP.check("db.example.com", 5432, timeout: 2)
+alert("database unreachable: #{probe["error"]}") unless probe["open"]
+probe["latency_ms"]   # 3.412</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> - <code>open</code> (Bool), <code>latency_ms</code> (Float, <code>nil</code> when closed), <code>error</code> (String, <code>nil</code> when open).</div>
             </div>
         </section>
 

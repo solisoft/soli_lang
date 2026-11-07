@@ -58,6 +58,80 @@ pub fn arm_parent_death(command: &mut std::process::Command) {
 #[cfg(not(target_os = "linux"))]
 pub fn arm_parent_death(_command: &mut std::process::Command) {}
 
+/// Children to SIGKILL when this process exits, whatever the path out.
+///
+/// An owning guard's `Drop` covers a normal return and an unwinding panic,
+/// but not `std::process::exit` — which the SIGINT/SIGTERM handler calls, as
+/// do early-exit paths such as a coverage threshold miss — and
+/// `PR_SET_PDEATHSIG` ([`arm_parent_death`]) exists only on Linux. `soli
+/// test | head` on macOS left `soli serve --workers 1` test servers running
+/// after the runner was gone (#679). `exit` runs `atexit` handlers, so one
+/// registered here reaches every one of those paths.
+///
+/// Fixed slots of atomics rather than a `Mutex<Vec<_>>`: the handler can run
+/// from inside a signal handler's `exit`, where taking a lock another thread
+/// holds would deadlock. 0 is an empty slot.
+#[cfg(unix)]
+static EXIT_KILL_PIDS: [std::sync::atomic::AtomicI32; 64] =
+    [const { std::sync::atomic::AtomicI32::new(0) }; 64];
+
+#[cfg(unix)]
+extern "C" fn kill_registered_children() {
+    use std::sync::atomic::Ordering;
+    for slot in &EXIT_KILL_PIDS {
+        let pid = slot.swap(0, Ordering::SeqCst);
+        if pid > 0 {
+            // SAFETY: `kill` is async-signal-safe; the pid is a child this
+            // process spawned and has not reaped (reaping clears the slot).
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+/// SIGKILL `pid` when this process exits, unless [`forget_exit_kill`] runs
+/// first. Returns false when every slot is taken (the child is then covered
+/// only by its owner's `Drop`).
+#[cfg(unix)]
+pub fn kill_on_exit(pid: u32) -> bool {
+    use std::sync::atomic::Ordering;
+    use std::sync::Once;
+    static REGISTER: Once = Once::new();
+    REGISTER.call_once(|| {
+        // SAFETY: registering a plain `extern "C" fn()` with `atexit`.
+        unsafe {
+            libc::atexit(kill_registered_children);
+        }
+    });
+    let Ok(pid) = i32::try_from(pid) else {
+        return false;
+    };
+    EXIT_KILL_PIDS.iter().any(|slot| {
+        slot.compare_exchange(0, pid, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    })
+}
+
+/// Stop tracking `pid` — call once it has been reaped, so a recycled id is
+/// never signalled.
+#[cfg(unix)]
+pub fn forget_exit_kill(pid: u32) {
+    use std::sync::atomic::Ordering;
+    let Ok(pid) = i32::try_from(pid) else { return };
+    for slot in &EXIT_KILL_PIDS {
+        let _ = slot.compare_exchange(pid, 0, Ordering::SeqCst, Ordering::SeqCst);
+    }
+}
+
+#[cfg(not(unix))]
+pub fn kill_on_exit(_pid: u32) -> bool {
+    false
+}
+
+#[cfg(not(unix))]
+pub fn forget_exit_kill(_pid: u32) {}
+
 /// `value` as one POSIX shell word: single-quoted, with each `'` written
 /// `'\''`.
 pub fn shell_quote(value: &str) -> String {
@@ -67,6 +141,40 @@ pub fn shell_quote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One test, not two: the slots are process-global and the exit handler
+    /// clears all of them, so two tests touching them would race.
+    #[test]
+    #[cfg(unix)]
+    fn registered_children_are_killed_by_the_exit_handler_and_forgotten_ones_are_not() {
+        use std::sync::atomic::Ordering;
+        let tracked = |pid: i32| {
+            EXIT_KILL_PIDS
+                .iter()
+                .any(|s| s.load(Ordering::SeqCst) == pid)
+        };
+
+        // A pid no process can have: registering and forgetting it must leave
+        // no slot behind.
+        let fake = i32::MAX as u32;
+        assert!(kill_on_exit(fake));
+        assert!(tracked(i32::MAX));
+        forget_exit_kill(fake);
+        assert!(!tracked(i32::MAX));
+
+        // The handler `exit` runs: a registered child is SIGKILLed and its
+        // slot cleared.
+        let mut sleeper = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let pid = sleeper.id();
+        assert!(kill_on_exit(pid));
+        kill_registered_children();
+        let status = sleeper.wait().expect("reap");
+        assert!(!status.success(), "the child should have been killed");
+        assert!(!tracked(pid as i32));
+    }
 
     #[test]
     fn the_current_process_is_alive() {

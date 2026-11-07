@@ -2647,12 +2647,35 @@ certificate it presents. It goes through the same SSRF guard as `HTTP`
 (loopback and private ranges refused outside `soli test` and
 `SOLI_DEV_ALLOW_SSRF`), tries every resolved address in turn, and raises on
 refusal, DNS failure, timeout or a failed handshake. `timeout` is in seconds,
-up to 60.
+up to 60, and bounds the whole handshake. Pointed at a port that does not speak
+TLS, the error says so — `no TLS handshake from host:80 within 10.0s — is it a
+TLS port?` — rather than the socket's `Resource temporarily unavailable`.
 
 ```soli
 peer = X509.peer_certificate("example.com")
 alert("renew #{peer["host"]}") if peer["days_left"] <= 30
 ```
+
+#### TCP.check(host, port, timeout: seconds)
+
+Is a TCP port reachable? Connects, measures, and closes — no byte is sent or
+read. Returns `{"open": Bool, "latency_ms": Float|nil, "error": String|nil}`;
+an unreachable port is an answer (`open: false` with the reason), not an
+exception. `timeout` (positional or named) is in seconds, default 5, up to 60.
+
+```soli
+probe = TCP.check("db.example.com", 5432, timeout: 2)
+alert("database unreachable: #{probe["error"]}") unless probe["open"]
+probe["latency_ms"]   # 3.412
+```
+
+It applies the same SSRF policy as `HTTP`: loopback, private, link-local and
+CGNAT addresses are refused (it raises) unless the host is listed in
+`SOLI_HTTP_ALLOW_HOSTS` (`host` or `host:port`), or under `soli test` /
+`SOLI_DEV_ALLOW_SSRF=1`. The check is made on the host as written and again on
+every address it resolves to, so DNS cannot swap in a private address. There
+is deliberately no general socket API. Not available on the edge
+(Cloudflare Workers) build.
 
 #### X509.spki_pin(cert)
 
@@ -3673,14 +3696,16 @@ The `DateTime` class provides a convenient way to work with dates and times. Cre
 
 #### DateTime.now()
 
-Gets the current local date and time.
+Gets the current instant, read in the server's local zone (`$TZ`, else the
+system zone). The only constructor that reads local time — use
+`DateTime.utc` for a value that reads the same on every host.
 
 **Returns:** DateTime - A DateTime instance
 
 **Example:**
 ```soli
 now = DateTime.now()
-println(now.to_iso())  # "2024-01-15T10:30:00"
+println(now.to_iso())  # "2024-01-15T10:30:00+01:00" on a Paris host
 ```
 
 #### DateTime.utc()
@@ -3692,7 +3717,7 @@ Gets the current UTC date and time.
 **Example:**
 ```soli
 utc = DateTime.utc()
-println(utc.to_iso())  # "2024-01-15T15:30:00Z"
+println(utc.to_iso())  # "2024-01-15T15:30:00+00:00"
 ```
 
 #### DateTime.parse(string)
@@ -3703,22 +3728,29 @@ Parses a datetime string in ISO 8601 or RFC format.
 - `string` (String) - Date string to parse
 
 Supported formats:
-- RFC 3339: `"2024-01-15T10:30:00Z"`
+- RFC 3339: `"2024-01-15T10:30:00Z"`, `"2024-01-15T10:30:00+02:00"`, `"…-05:00"`
 - RFC 2822: `"Mon, 15 Jan 2024 10:30:00 +0000"`
-- ISO datetime: `"2024-01-15T10:30:00"` or `"2024-01-15 10:30:00"`
+- ISO datetime: `"2024-01-15T10:30:00"` or `"2024-01-15 10:30:00"` (fractional seconds allowed)
 - ISO date only: `"2024-01-15"`
+
+A string that carries an offset keeps it: the value reads in that offset.
+A string without one is read as **UTC** — never as the server's zone, so the
+same text is the same instant, and the same date, on every host.
 
 **Returns:** DateTime - A DateTime instance
 
 **Example:**
 ```soli
-dt = DateTime.parse("2024-01-15T10:30:00Z")
-date_only = DateTime.parse("2024-01-15")
+dt = DateTime.parse("2024-01-15T10:30:00+02:00")
+dt.hour                        # 10
+dt.to_iso                      # "2024-01-15T10:30:00+02:00"
+dt.utc.hour                    # 8
+DateTime.parse("2024-01-15").format("%Y-%m-%d")   # "2024-01-15", whatever $TZ is
 ```
 
 #### DateTime.epoch()
 
-Creates a DateTime at Unix epoch (1970-01-01 00:00:00 UTC).
+Creates a DateTime at Unix epoch (1970-01-01 00:00:00 UTC), reading in UTC.
 
 **Returns:** DateTime - A DateTime instance
 
@@ -3730,7 +3762,7 @@ println(epoch.year())  # 1970
 
 #### DateTime.from_unix(timestamp)
 
-Creates a DateTime from a Unix timestamp (seconds since epoch).
+Creates a DateTime from a Unix timestamp (seconds since epoch), reading in UTC.
 
 **Parameters:**
 - `timestamp` (Int) - Unix timestamp in seconds
@@ -3740,7 +3772,8 @@ Creates a DateTime from a Unix timestamp (seconds since epoch).
 **Example:**
 ```soli
 dt = DateTime.from_unix(1704067200)
-println(dt.to_iso())  # "2024-01-01T00:00:00Z"
+println(dt.to_iso())  # "2024-01-01T00:00:00+00:00"
+dt.format("%H:%M")    # "00:00" — on any host
 ```
 
 #### DateTime.microtime()
@@ -3757,63 +3790,75 @@ println(mt)  # 1712832000000000.0
 
 ### Instance Methods - Components
 
-All component accessors (`year`, `month`, `day`, `hour`, `minute`, `second`,
-`millisecond`, `weekday`) and `format` / `to_string` use the **same wall-clock
-view**:
+Every DateTime carries its **own zone**, and all component accessors (`year`,
+`month`, `day`, `hour`, `minute`, `second`, `millisecond`, `weekday`), `format`,
+`to_iso`, `to_string` and the `beginning_of_*` / `end_of_*` boundaries read in
+it — they cannot disagree about which hour or day an instant falls on:
 
-- **local** (default) — the process timezone (`$TZ` / system zone)
-- **UTC** — after calling `.utc()` on the value
+| Made by | Reads in |
+|---------|----------|
+| `DateTime.utc`, `from_unix`, `epoch`, `parse` of text without an offset | UTC |
+| `parse` of text with an offset (`Z`, `+02:00`, `-0500`) | that offset |
+| `DateTime.now`, `.local` | the server's local zone (`$TZ` / system zone) |
+| `.utc` | UTC |
 
-`to_unix` and `to_iso` always describe the absolute instant (UTC / epoch),
-independent of the view. Equality and ordering also compare by instant only,
-so `t == t.utc()` is always true for the same moment.
+Arithmetic (`add_days`, `add_hours`, …) keeps the zone. `to_unix` and JSON
+always describe the instant (JSON is the UTC form, `dt.utc.to_iso`), and
+equality and ordering compare by instant only, so `t == t.utc()` is always true
+for the same moment.
+
+Up to 2.32.0, `to_iso` always printed UTC while the components read the server's
+zone: on a Paris host `DateTime.from_unix(0)` was `…T00:00:00+00:00` yet
+`format("%H:%M")` said `01:00`, and `DateTime.parse("2026-03-02")` formatted as
+the 1st in New York.
 
 #### .year()
 
-Gets the year component in the current view (e.g., 2024).
+Gets the year component in the value's zone (e.g., 2024).
 
 **Returns:** Int
 
 #### .month()
 
-Gets the month component (1-12) in the current view.
+Gets the month component (1-12) in the value's zone.
 
 **Returns:** Int - 1 = January, 12 = December
 
 #### .day()
 
-Gets the day of month (1-31) in the current view.
+Gets the day of month (1-31) in the value's zone.
 
 **Returns:** Int
 
 #### .hour()
 
-Gets the hour component (0-23) in the current view (local by default).
+Gets the hour component (0-23) in the value's zone.
 
 **Returns:** Int
 
 #### .minute()
 
-Gets the minute component (0-59) in the current view.
+Gets the minute component (0-59) in the value's zone.
 
 **Returns:** Int
 
 #### .second()
 
-Gets the second component (0-59) in the current view.
+Gets the second component (0-59) in the value's zone.
 
 **Returns:** Int
 
 #### .utc() / .local()
 
-Return a DateTime for the **same instant** with the component view set to UTC
-or the process-local zone. Chainable with any component accessor:
+Return a DateTime for the **same instant** that reads in UTC or in the
+server's local zone. Chainable with any component accessor:
 
 ```soli
 t = DateTime.parse("2026-01-01T23:30:00Z")
+t.hour()          # 23  (the zone it was written in)
 t.utc().hour()    # 23  (UTC)
 t.local().hour()  # local wall hour (e.g. 0 in Europe/Paris in winter)
-t.hour()          # same as t.local().hour() — local is the default
+t.local().to_iso  # "2026-01-02T00:30:00+01:00" — agrees with hour
 ```
 
 Static `DateTime.utc()` still means “now, with the UTC view”; instance
@@ -3821,14 +3866,14 @@ Static `DateTime.utc()` still means “now, with the UTC view”; instance
 
 #### .weekday()
 
-Gets the day of the week as a string in the current view.
+Gets the day of the week as a string in the value's zone.
 
 **Returns:** String - Weekday name (e.g., "Monday", "Tuesday")
 
 **Example:**
 ```soli
 dt = DateTime.parse("2024-01-15")
-println(dt.weekday())  # "Monday" (local); use dt.utc().weekday() for UTC
+println(dt.weekday())  # "Monday" — in UTC, as the text has no offset
 ```
 
 ### Instance Methods - Formatting
@@ -3847,14 +3892,16 @@ println(dt.to_unix())  # 1705315800
 
 #### .to_iso()
 
-Gets the date/time as an ISO 8601 string.
+Gets the date/time as an RFC 3339 string in the value's zone, offset included
+— the same wall clock `format` and `hour` read.
 
 **Returns:** String
 
 **Example:**
 ```soli
-dt = DateTime.now()
-println(dt.to_iso())  # "2024-01-15T10:30:00"
+DateTime.from_unix(0).to_iso                       # "1970-01-01T00:00:00+00:00"
+DateTime.parse("2024-01-15T10:30:00+02:00").to_iso  # "2024-01-15T10:30:00+02:00"
+DateTime.now().to_iso                              # "2024-01-15T10:30:00+01:00" (Paris host)
 ```
 
 #### .format(pattern, locale?)
@@ -4043,16 +4090,19 @@ Sets the date to December 31st and time to 23:59:59.999, keeping the same year.
 
 #### How a DateTime prints and serialises
 
-A `DateTime` is a value, not an object. In string position it renders as local
-wall clock — the same thing `to_string()` returns — and in JSON it becomes an
-RFC 3339 string, matching `to_iso()`:
+A `DateTime` is a value, not an object. In string position it renders as the
+wall clock of its zone — the same thing `to_string()` returns — and in JSON (and
+when bound to a SQL column) it becomes the RFC 3339 string of the **UTC
+instant**, `dt.utc.to_iso`, so stored timestamps share one offset and sort as
+text:
 
 ```soli
-dt = DateTime.parse("2026-11-15 12:00:00")
+dt = DateTime.parse("2026-11-15 12:00:00+02:00")
 
-str(dt)                      # "2026-11-15 12:00:00"   (local)
+str(dt)                      # "2026-11-15 12:00:00"
 "#{dt}"                      # "2026-11-15 12:00:00"
-{"at": dt}.to_json()         # {"at":"2026-11-15T12:00:00+00:00"}
+dt.to_iso                    # "2026-11-15T12:00:00+02:00"
+{"at": dt}.to_json()         # {"at":"2026-11-15T10:00:00+00:00"}
 ```
 
 Because it is a value rather than an object, two DateTimes built from the same
@@ -4061,9 +4111,11 @@ around copies it rather than sharing a reference.
 
 #### Boundary methods and daylight saving
 
-The `beginning_of_*` / `end_of_*` methods work on **local** wall-clock time, so
-on the two days a year the clocks change, the boundary they ask for may not be
-a real instant. Both cases resolve to a value — these methods never fail:
+The `beginning_of_*` / `end_of_*` methods work on the value's own wall clock.
+For a UTC or fixed-offset value that is plain arithmetic; for a **local** value
+(`DateTime.now`, `.local`), on the two days a year the clocks change, the
+boundary they ask for may not be a real instant. Both cases resolve to a value
+— these methods never fail:
 
 - **The hour repeats** (clocks go back). `2026-11-01 00:00:00` happens twice in
   `America/Havana`. The **earliest** of the two instants is used — the first
@@ -4077,7 +4129,7 @@ matching the behaviour of the rest of the runtime.
 
 ```soli
 # Under TZ=America/Havana
-dt = DateTime.parse("2026-11-15 12:00:00")
+dt = DateTime.parse("2026-11-15 12:00:00").local
 dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00
 ```
 
@@ -4867,6 +4919,7 @@ Pure string builders — six-field expressions (`sec min hour day-of-month month
 
 | Helper | Cron string |
 |--------|-------------|
+| `Cron.every("30 seconds")` | `*/30 * * * * *` |
 | `Cron.every("5 minutes")` | `0 */5 * * * *` |
 | `Cron.every("1 hour")` | `0 0 * * * *` |
 | `Cron.every("2 hours")` | `0 0 */2 * * *` |
@@ -4880,12 +4933,15 @@ that never runs:
 
 | Rejected | Why |
 |----------|-----|
-| `"90 seconds"` | Cron has no sub-minute field; the remainder would be dropped |
+| `"90 seconds"` | Above 59 seconds the interval must be whole minutes; the remainder would be dropped |
+| `"0 seconds"` | The interval must be at least 1 second |
 | `"90 minutes"` | The minute field only reaches 59, and 90 is not a whole number of hours |
 | `"25 hours"` | The hour field only reaches 23 |
 | `"40 days"` | The day-of-month field only reaches 31 |
 
-Every in-range value is accepted. Note that `*/N` means "every value of this
+Every in-range value is accepted, down to one second: the scheduler sleeps
+until the next due slot, so `Cron.every("30 seconds")` fires on time (up to
+2.32.0 it was refused, though the raw `"*/30 * * * * *"` worked). Note that `*/N` means "every value of this
 field divisible by N", and each field restarts on its own cycle — so
 `Cron.every("45 minutes")` fires at `:00` and `:45`, and the gap across the hour
 boundary is 15 minutes, not 45. That is how cron works everywhere; pick a divisor

@@ -801,6 +801,7 @@ pub fn run_test(
             }
             for mut c in self.0.drain(..) {
                 let _ = c.wait();
+                solilang::platform::process::forget_exit_kill(c.id());
             }
         }
     }
@@ -964,6 +965,10 @@ pub fn run_test(
             // only party that can promise this, so ask it.
             arm_parent_death(&mut cmd);
             let child = cmd.spawn().expect("Failed to spawn test server subprocess");
+            // `Drop` is skipped by `process::exit` — the Ctrl-C handler's
+            // and this runner's own early exits — and PDEATHSIG is Linux
+            // only, so on macOS those paths orphaned the servers (#679).
+            solilang::platform::process::kill_on_exit(child.id());
             test_server_children.0.push(child);
         }
 

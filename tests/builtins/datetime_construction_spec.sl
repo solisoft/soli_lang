@@ -36,10 +36,11 @@ describe("DateTime.parse") do
     assert_eq(DateTime.parse("2024-01-15T10:30:00Z").to_unix, 1705314600)
   end
 
-  test("applies a timezone offset") do
+  test("applies a timezone offset, and keeps it") do
     moment = DateTime.parse("2024-01-15T10:00:00+05:30")
     assert_eq(moment.to_unix, 1705293000)
-    assert_eq(moment.to_iso, "2024-01-15T04:30:00+00:00")
+    assert_eq(moment.to_iso, "2024-01-15T10:00:00+05:30")
+    assert_eq(moment.utc.to_iso, "2024-01-15T04:30:00+00:00")
   end
 
   test("keeps fractional seconds") do
@@ -169,10 +170,21 @@ describe("component accessors") do
     assert_eq(moment.format("%S"), pad2(moment.second))
   end
 
-  test("the default view is the local view") do
+  # #673: a parsed value reads in its own offset, not the server's zone.
+  test("a parsed value reads in the offset it was written with") do
     moment = DateTime.parse("2026-01-01T23:30:00Z")
-    assert_eq(moment.hour, moment.local.hour)
-    assert_eq(moment.day, moment.local.day)
+    assert_eq(moment.hour, 23)
+    assert_eq(moment.day, 1)
+    shifted = DateTime.parse("2026-01-01T23:30:00-05:00")
+    assert_eq(shifted.hour, 23)
+    assert_eq(shifted.utc.hour, 4)
+    assert_eq(shifted.utc.day, 2)
+  end
+
+  test("DateTime.now reads in the local zone") do
+    now = DateTime.now
+    assert_eq(now.hour, now.local.hour)
+    assert_eq(now.day, now.local.day)
   end
 
   test("utc and local change the view, not the instant") do

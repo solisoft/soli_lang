@@ -43,13 +43,13 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the current local date and time.</p>
+                <p class="text-gray-400 mb-3">Get the current instant, read in the server's local zone (<code>$TZ</code>, else the system zone). The only constructor that reads local time &mdash; use <code class="text-amber-400">DateTime.utc</code> for a value that reads the same on every host.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">DateTime</code> - A DateTime instance representing the current local time
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">now = DateTime.now
-println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
+println(now.to_iso())  # "2024-01-15T10:30:00+01:00" on a Paris host</code></pre>
             </div>
         </section>
 
@@ -67,7 +67,7 @@ println(now.to_iso())  # "2024-01-15T10:30:00"</code></pre>
                     <code class="text-orange-400">DateTime</code> - A DateTime instance representing the current UTC time
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">utc = DateTime.utc
-println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
+println(utc.to_iso())  # "2024-01-15T15:30:00+00:00"</code></pre>
             </div>
         </section>
 
@@ -79,7 +79,7 @@ println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Parse a date/time string in ISO 8601 or RFC format.</p>
+                <p class="text-gray-400 mb-3">Parse a date/time string in ISO 8601 or RFC format. A string that carries an offset (<code>Z</code>, <code>+02:00</code>, <code>-0500</code>) keeps it: the value reads in that offset. A string without one is read as <strong class="text-white">UTC</strong> &mdash; never the server's zone, so the same text is the same instant, and the same date, on every host.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">string</code> : <code class="text-orange-400">String</code> - The date string to parse
@@ -88,8 +88,11 @@ println(utc.to_iso())  # "2024-01-15T15:30:00Z"</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">DateTime</code> - A DateTime instance
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-01-15T10:30:00Z")
-date_only = DateTime.parse("2024-01-15")</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.parse("2024-01-15T10:30:00+02:00")
+dt.hour       # 10
+dt.to_iso     # "2024-01-15T10:30:00+02:00"
+dt.utc.hour   # 8
+DateTime.parse("2024-01-15").format("%Y-%m-%d")   # "2024-01-15", whatever $TZ is</code></pre>
             </div>
         </section>
 
@@ -101,7 +104,7 @@ date_only = DateTime.parse("2024-01-15")</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Create a DateTime at Unix epoch (1970-01-01 00:00:00 UTC).</p>
+                <p class="text-gray-400 mb-3">Create a DateTime at Unix epoch (1970-01-01 00:00:00 UTC), reading in UTC.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">DateTime</code> - A DateTime instance at epoch
@@ -119,7 +122,7 @@ println(epoch.year())  # 1970</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Create a DateTime from a Unix timestamp (seconds since epoch).</p>
+                <p class="text-gray-400 mb-3">Create a DateTime from a Unix timestamp (seconds since epoch), reading in UTC.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">timestamp</code> : <code class="text-orange-400">Int</code> - Unix timestamp in seconds
@@ -129,7 +132,8 @@ println(epoch.year())  # 1970</code></pre>
                     <code class="text-orange-400">DateTime</code> - A DateTime instance
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.from_unix(1704067200)
-println(dt.to_iso())  # "2024-01-01T00:00:00Z"</code></pre>
+println(dt.to_iso())  # "2024-01-01T00:00:00+00:00"
+dt.format("%H:%M")    # "00:00" — on any host</code></pre>
             </div>
         </section>
 
@@ -160,11 +164,20 @@ println(mt)  # 1712832000000000.0</code></pre>
             All component accessors (<code class="text-cyan-400">year</code>, <code class="text-cyan-400">month</code>,
             <code class="text-cyan-400">day</code>, <code class="text-cyan-400">hour</code>, <code class="text-cyan-400">minute</code>,
             <code class="text-cyan-400">second</code>, <code class="text-cyan-400">format</code>, <code class="text-cyan-400">to_string</code>)
-            share one wall-clock <strong class="text-white">view</strong>:
-            <strong class="text-white">local</strong> by default (process <code class="text-cyan-400">$TZ</code> / system zone),
-            or <strong class="text-white">UTC</strong> after <code class="text-cyan-400">.utc()</code>.
-            <code class="text-cyan-400">to_unix</code> and <code class="text-cyan-400">to_iso</code> always describe the absolute
-            instant. Equality compares by instant only, so <code class="text-cyan-400">t == t.utc()</code>.
+            and <code class="text-cyan-400">to_iso</code> read in the value's <strong class="text-white">own zone</strong>, so they
+            cannot disagree about which hour or day an instant falls on:
+            <strong class="text-white">UTC</strong> for <code class="text-cyan-400">DateTime.utc</code>, <code class="text-cyan-400">from_unix</code>,
+            <code class="text-cyan-400">epoch</code> and <code class="text-cyan-400">parse</code> of text without an offset;
+            <strong class="text-white">the written offset</strong> for <code class="text-cyan-400">parse("…+02:00")</code>;
+            <strong class="text-white">the server's local zone</strong> (<code class="text-cyan-400">$TZ</code> / system zone) for
+            <code class="text-cyan-400">DateTime.now</code> and <code class="text-cyan-400">.local</code>. Arithmetic keeps the zone.
+            <code class="text-cyan-400">to_unix</code> and JSON describe the instant (JSON is <code class="text-cyan-400">dt.utc.to_iso</code>),
+            and equality compares by instant only, so <code class="text-cyan-400">t == t.utc()</code>.
+        </p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-6">
+            Up to 2.32.0, <code class="text-cyan-400">to_iso</code> always printed UTC while the components read the server's zone:
+            on a Paris host <code class="text-cyan-400">DateTime.from_unix(0)</code> was <code>…T00:00:00+00:00</code> yet
+            <code class="text-cyan-400">format("%H:%M")</code> said <code>01:00</code>.
         </p>
 
         <section id="def-utc-view" class="scroll-mt-20 mb-6">
@@ -175,11 +188,12 @@ println(mt)  # 1712832000000000.0</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Same instant, different component view. Chain with any accessor.</p>
+                <p class="text-gray-400 mb-3">Same instant, read in UTC or in the server's local zone. Chain with any accessor.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">t = DateTime.parse("2026-01-01T23:30:00Z")
+t.hour()          # 23 (the zone it was written in)
 t.utc().hour()    # 23
 t.local().hour()  # local wall hour (e.g. 0 in Europe/Paris in winter)
-t.hour()          # same as t.local().hour() — local is the default</code></pre>
+t.local().to_iso  # "2026-01-02T00:30:00+01:00" — agrees with hour</code></pre>
             </div>
         </section>
 
@@ -191,7 +205,7 @@ t.hour()          # same as t.local().hour() — local is the default</code></pr
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the year component in the current view (e.g., 2024).</p>
+                <p class="text-gray-400 mb-3">Get the year component in the value's zone (e.g., 2024).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">Int</code> - The year
@@ -239,7 +253,7 @@ t.hour()          # same as t.local().hour() — local is the default</code></pr
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the hour component (0-23) in the current view (local by default).</p>
+                <p class="text-gray-400 mb-3">Get the hour component (0-23) in the value's zone.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">Int</code> - The hour in 24-hour format
@@ -328,13 +342,14 @@ println(dt.to_unix())  # 1705315800</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Get the date/time as an ISO 8601 string.</p>
+                <p class="text-gray-400 mb-3">Get the date/time as an RFC 3339 string in the value's zone, offset included &mdash; the same wall clock <code>format</code> and <code>hour</code> read.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">String</code> - ISO 8601 formatted string
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">dt = DateTime.now
-println(dt.to_iso())  # "2024-01-15T10:30:00"</code></pre>
+                <pre data-filename="Example"><code class="language-soli text-sm">DateTime.from_unix(0).to_iso                        # "1970-01-01T00:00:00+00:00"
+DateTime.parse("2024-01-15T10:30:00+02:00").to_iso  # "2024-01-15T10:30:00+02:00"
+DateTime.now.to_iso                                 # "2024-01-15T10:30:00+01:00" (Paris host)</code></pre>
             </div>
         </section>
 
@@ -640,15 +655,17 @@ dt.end_of_month().hour()   # 23</code></pre>
             <div class="rounded-xl border border-white/10 bg-white/5 p-5 mt-8">
                 <h3 class="text-lg font-semibold text-white mb-3">How a DateTime prints and serialises</h3>
                 <p class="text-gray-300 text-sm leading-relaxed mb-3">
-                    A <code class="text-amber-400">DateTime</code> is a value, not an object. In string position it renders as local wall clock
-                    &mdash; the same thing <code class="text-amber-400">to_string()</code> returns &mdash; and in JSON it becomes an RFC 3339
-                    string, matching <code class="text-amber-400">to_iso()</code>.
+                    A <code class="text-amber-400">DateTime</code> is a value, not an object. In string position it renders as the wall clock of its zone
+                    &mdash; the same thing <code class="text-amber-400">to_string()</code> returns &mdash; and in JSON (and when bound to a SQL column) it
+                    becomes the RFC 3339 string of the <strong class="text-white">UTC instant</strong>, <code class="text-amber-400">dt.utc.to_iso</code>, so
+                    stored timestamps share one offset and sort as text.
                 </p>
-                <pre class="bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto mb-3"><code class="language-soli">dt = DateTime.parse("2026-11-15 12:00:00")
+                <pre class="bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto mb-3"><code class="language-soli">dt = DateTime.parse("2026-11-15 12:00:00+02:00")
 
-str(dt)                      # "2026-11-15 12:00:00"   (local)
+str(dt)                      # "2026-11-15 12:00:00"
 "#{dt}"                      # "2026-11-15 12:00:00"
-{"at": dt}.to_json()         # {"at":"2026-11-15T12:00:00+00:00"}</code></pre>
+dt.to_iso                    # "2026-11-15T12:00:00+02:00"
+{"at": dt}.to_json()         # {"at":"2026-11-15T10:00:00+00:00"}</code></pre>
                 <p class="text-gray-300 text-sm leading-relaxed">
                     Because it is a value rather than an object, two DateTimes built from the same instant are equal
                     (<code class="text-amber-400">==</code> compares the moment, not identity), and passing one around copies it rather than
@@ -660,8 +677,9 @@ str(dt)                      # "2026-11-15 12:00:00"   (local)
                 <h3 class="text-lg font-semibold text-amber-400 mb-3">Boundary methods and daylight saving</h3>
                 <p class="text-gray-300 text-sm leading-relaxed mb-3">
                     The <code class="text-amber-400">beginning_of_*</code> / <code class="text-amber-400">end_of_*</code> methods work on
-                    <strong class="text-white">local</strong> wall-clock time, so on the two days a year the clocks change, the boundary they
-                    ask for may not be a real instant. Both cases resolve to a value &mdash; these methods never fail:
+                    the value's own wall clock. For a UTC or fixed-offset value that is plain arithmetic; for a
+                    <strong class="text-white">local</strong> value (<code class="text-amber-400">DateTime.now</code>, <code class="text-amber-400">.local</code>),
+                    on the two days a year the clocks change, the boundary they ask for may not be a real instant. Both cases resolve to a value &mdash; these methods never fail:
                 </p>
                 <ul class="list-disc pl-6 text-gray-400 text-sm space-y-2 mb-3">
                     <li><strong class="text-white">The hour repeats</strong> (clocks go back). <code class="text-amber-400">2026-11-01 00:00:00</code>
@@ -676,7 +694,7 @@ str(dt)                      # "2026-11-15 12:00:00"   (local)
                     behaviour of the rest of the runtime.
                 </p>
                 <pre class="bg-black/40 border border-white/10 rounded-lg p-4 overflow-x-auto"><code class="language-soli"># Under TZ=America/Havana
-dt = DateTime.parse("2026-11-15 12:00:00")
+dt = DateTime.parse("2026-11-15 12:00:00").local
 dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00</code></pre>
             </div>
         </section>

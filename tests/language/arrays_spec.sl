@@ -195,6 +195,19 @@ describe("Core array methods") do
     assert_eq(["a", "b"].join(", "), "a, b")
     assert_eq([1, 2, 3].take(2), [1, 2])
     assert_eq([1, 2, 3].drop(2), [3])
+  end
+
+  # #679: `xs.last(2)` was "Cannot call non-function type 'Int'".
+  test("first(n) and last(n) answer arrays; bare first and last the element") do
+    assert_eq([1, 2, 3, 4].first(2), [1, 2])
+    assert_eq([1, 2, 3, 4].last(2), [3, 4])
+    assert_eq([1, 2].last(5), [1, 2])
+    assert_eq([].first(2), [])
+    assert_eq([1, 2, 3].last, 3)
+    assert_eq([1, 2, 3].first + 1, 2)
+    assert_raises("must not be negative") do
+      [1, 2].last(-1)
+    end
     assert_eq([1, 2].zip(["a", "b"]), [[1, "a"], [2, "b"]])
   end
 

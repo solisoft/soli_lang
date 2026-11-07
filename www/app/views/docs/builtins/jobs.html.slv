@@ -359,6 +359,10 @@ Cron.delete("maybe_gone") rescue false   # tolerate a missing entry</code></pre>
                     </thead>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("30 seconds")</code></td>
+                            <td class="py-3"><code class="text-orange-400">*/30 * * * * *</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">Cron.every("5 minutes")</code></td>
                             <td class="py-3"><code class="text-orange-400">0 */5 * * * *</code></td>
                         </tr>
@@ -392,10 +396,11 @@ Cron.delete("maybe_gone") rescue false   # tolerate a missing entry</code></pre>
             <p class="text-gray-400 mt-3 text-sm">You can always pass a raw cron string instead.</p>
             <p class="text-gray-400 mt-3 text-sm">
                 <code>Cron.every</code> refuses an interval cron cannot express, rather than emitting one that never
-                runs: <code>"90 seconds"</code> (no sub-minute field), <code>"90 minutes"</code> (the minute field
+                runs: <code>"90 seconds"</code> (above 59 seconds the interval must be whole minutes), <code>"90 minutes"</code> (the minute field
                 reaches 59 and 90 is not a whole number of hours), <code>"25 hours"</code> (the hour field reaches 23)
                 and <code>"40 days"</code> (day-of-month reaches 31) are each an error naming what to use instead.
-                Every in-range value is accepted &mdash; but note <code>*/N</code> means &ldquo;every value of this
+                Every in-range value is accepted, down to one second &mdash; the scheduler sleeps until the next due slot,
+                so <code>Cron.every("30 seconds")</code> fires on time (up to 2.32.0 it was refused) &mdash; but note <code>*/N</code> means &ldquo;every value of this
                 field divisible by N&rdquo;, and each field restarts on its own cycle, so
                 <code>Cron.every("45 minutes")</code> fires at <code>:00</code> and <code>:45</code> and the gap across
                 the hour is 15 minutes. That is how cron works everywhere; pick a divisor of 60 (or of 24 for hours)

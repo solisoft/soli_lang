@@ -163,13 +163,25 @@ fn format_iso_utc(unix_seconds: i64) -> String {
 /// never fired. Each is now an error that says what to use instead.
 fn cron_every(arg: &Value) -> Result<String, String> {
     let secs = parse_duration(arg)?;
+    if secs < 1 {
+        return Err(format!(
+            "Cron.every() needs an interval of at least 1 second, got {secs}s"
+        ));
+    }
+    // Under a minute -> the leading seconds field, 0-59. The poller sleeps
+    // until the next due slot, so a seconds schedule fires on time — the raw
+    // `"*/15 * * * * *"` always worked; `every` refused it (#679).
     if secs < 60 {
-        return Err("Cron.every() minimum granularity is 1 minute".to_string());
+        if secs == 1 {
+            return Ok("* * * * * *".to_string());
+        }
+        return Ok(format!("*/{secs} * * * * *"));
     }
     if secs % 60 != 0 {
         return Err(format!(
-            "Cron.every() takes whole minutes; {secs}s is {}m{}s. Cron has no \
-             sub-minute field, so the remainder would be dropped silently.",
+            "Cron.every() takes whole minutes above 59 seconds; {secs}s is {}m{}s. \
+             Cron's fields restart every minute, so the remainder would be dropped \
+             silently.",
             secs / 60,
             secs % 60
         ));
@@ -1197,8 +1209,15 @@ mod cron_expr_tests {
     }
 
     #[test]
-    fn every_rejects_sub_minute_granularity() {
-        assert!(cron_every(&Value::String("30 seconds".to_string().into())).is_err());
+    fn every_accepts_second_intervals() {
+        assert_eq!(every("30 seconds"), "*/30 * * * * *");
+        assert_eq!(every("15 s"), "*/15 * * * * *");
+        assert_eq!(every("1 second"), "* * * * * *");
+        for secs in 1..=59u64 {
+            assert_valid(&every(&format!("{secs} seconds")));
+        }
+        assert!(cron_every(&Value::Int(0)).is_err());
+        assert!(cron_every(&Value::String("-5 seconds".to_string().into())).is_err());
     }
 
     #[test]

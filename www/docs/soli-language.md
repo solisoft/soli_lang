@@ -4426,6 +4426,10 @@ let nums = range(1, 6);  # [1, 2, 3, 4, 5]
 push(arr, 6);   # [1, 2, 3, 4, 5, 6]
 let last = pop(arr);  # 6, arr is now [1, 2, 3, 4, 5]
 
+# Ends: bare, the element; with a count, an array
+print(arr.first);     # 1
+print(arr.last(2));   # [4, 5]
+
 # Sort
 let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
 let sorted = unsorted.sort();  # [1, 1, 2, 3, 4, 5, 6, 9]
@@ -4460,6 +4464,8 @@ print(3.7.floor);      # 3
 print(3.2.ceil);       # 4
 print(3.5.round);      # 4
 print(38.995.round(2)); # 39.0 — rounds the decimal value, not the binary float
+print(5.round);        # 5 — an Int answers round/floor/ceil/truncate as itself
+print(1250.round(-2)); # 1300 — negative digits round to tens, hundreds…
 
 # Random — use the crypto builtins (there is no Math.random)
 token = Crypto.random_hex(16);   # CSPRNG hex, see Builtins → Secure Random

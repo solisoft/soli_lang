@@ -13,7 +13,7 @@ use super::datetime::local_zone;
 
 use super::i18n::helpers::{get_locale as i18n_get_locale, interpolate, lookup_translation};
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+use crate::interpreter::value::{Class, DtZone, Instance, NativeFunction, Value};
 
 /// DateTime's instance-method table, keyed by method name.
 type DateTimeMethodMap = HashMap<String, Rc<NativeFunction>>;
@@ -29,7 +29,7 @@ thread_local! {
     /// avoids rebuilding a Class per returned instance.
     static DATETIME_INSTANCE_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
     /// DateTime's instance methods, reachable without a receiver object.
-    /// A `DateTime` is a `Value::DateTime(nanos, use_utc)` rather than an `Instance`, so
+    /// A `DateTime` is a `Value::DateTime(nanos, zone)` rather than an `Instance`, so
     /// dispatch cannot go through a class's `native_methods` — both engines
     /// look methods up here instead. One map, so the two engines cannot drift.
     static DATETIME_METHODS: RefCell<Option<Rc<DateTimeMethodMap>>> = const { RefCell::new(None) };
@@ -60,60 +60,46 @@ fn weekday_name(wday: chrono::Weekday) -> String {
     .to_string()
 }
 
-fn parse_datetime_string(s: &str) -> Result<i64, String> {
+/// Parse a datetime string to `(nanos, zone)`. Text that carries an offset
+/// (`Z`, `+02:00`, `-0500`, RFC 2822's `+0000`) keeps it as the value's zone,
+/// so `DateTime.parse("2026-03-02T10:00:00+02:00").hour` is 10; text without
+/// one is read as UTC — never as the server's zone, which would make the
+/// same string a different instant on each host.
+fn parse_datetime_string(s: &str) -> Result<(i64, DtZone), String> {
     let s = s.trim();
-    let datetime = if s.ends_with('Z') || s.contains("+") {
-        chrono::DateTime::parse_from_rfc3339(s).or_else(|_| chrono::DateTime::parse_from_rfc2822(s))
-    } else {
-        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-            .map(|nd| {
-                chrono::DateTime::from_naive_utc_and_offset(
-                    nd,
-                    chrono::FixedOffset::east_opt(0).unwrap(),
-                )
-            })
-            .or_else(|_| {
-                chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map(|d| {
-                    chrono::DateTime::from_naive_utc_and_offset(
-                        d.and_hms_opt(0, 0, 0).unwrap(),
-                        chrono::FixedOffset::east_opt(0).unwrap(),
-                    )
-                })
-            })
-            .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").map(|nd| {
-                    chrono::DateTime::from_naive_utc_and_offset(
-                        nd,
-                        chrono::FixedOffset::east_opt(0).unwrap(),
-                    )
-                })
-            })
+    let nanos_of = |dt: chrono::DateTime<chrono::FixedOffset>| {
+        dt.timestamp_nanos_opt()
+            .ok_or_else(|| format!("DateTime.parse(): {s:?} is outside the representable range"))
     };
-
-    match datetime {
-        Ok(dt) => match dt.timestamp_nanos_opt() {
-            Some(nanos) => Ok(nanos),
-            None => Ok(dt.timestamp() * 1_000_000_000),
-        },
-        Err(_) => Err(format!("Invalid datetime format: {}", s)),
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s)
+        .or_else(|_| chrono::DateTime::parse_from_rfc2822(s))
+        .or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%:z"))
+        .or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%:z"))
+    {
+        let zone = DtZone::fixed(dt.offset().local_minus_utc());
+        return Ok((nanos_of(dt)?, zone));
     }
+    let naive = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f"))
+        .or_else(|_| {
+            chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                .map(|d| d.and_time(chrono::NaiveTime::MIN))
+        })
+        .map_err(|_| format!("Invalid datetime format: {}", s))?;
+    Ok((nanos_of(naive.and_utc().fixed_offset())?, DtZone::UTC))
 }
 
-/// Unpack a DateTime receiver: `(nanos, use_utc)`.
-fn recv_dt(args: &[Value], method: &str) -> Result<(i64, bool), String> {
+/// Unpack a DateTime receiver: `(nanos, zone)`.
+fn recv_dt(args: &[Value], method: &str) -> Result<(i64, DtZone), String> {
     match args.first() {
         Some(Value::DateTime(t, u)) => Ok((*t, *u)),
         _ => Err(format!("{method}() called on non-DateTime")),
     }
 }
 
-/// Wall-clock components in the DateTime's selected view (local or UTC).
-fn wall_clock(nanos: i64, use_utc: bool) -> chrono::DateTime<chrono::FixedOffset> {
-    if use_utc {
-        chrono::DateTime::from_timestamp_nanos(nanos).fixed_offset()
-    } else {
-        local_zone::local_from_nanos(nanos)
-    }
+/// Wall-clock components in the DateTime's own zone.
+fn wall_clock(nanos: i64, zone: DtZone) -> chrono::DateTime<chrono::FixedOffset> {
+    zone.wall_clock(nanos)
 }
 
 /// Human-readable **magnitude** of a duration (e.g. `"1 hour 1 minute"`).
@@ -234,55 +220,56 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     // Build DateTime instance methods
     let mut dt_native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
-    // Component accessors all use the same wall-clock view (local by default;
-    // UTC after `.utc()`). Previously hour/minute were hard-coded to UTC while
-    // year/month/day/second/format used local — composing parts could yield a
-    // moment that never existed.
+    // Component accessors, `format`, `to_iso` and `to_string` all read the
+    // value's own zone (`DtZone`). Previously hour/minute were hard-coded to
+    // UTC while the rest used local, and later `to_iso` printed UTC while
+    // `format`/`hour` read the server's zone (#673) — composing parts could
+    // yield a moment that never existed.
     dt_native_methods.insert(
         "year".to_string(),
         Rc::new(NativeFunction::new("DateTime.year", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.year")?;
-            Ok(Value::Int(wall_clock(t, use_utc).year() as i64))
+            let (t, zone) = recv_dt(args, "DateTime.year")?;
+            Ok(Value::Int(wall_clock(t, zone).year() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "month".to_string(),
         Rc::new(NativeFunction::new("DateTime.month", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.month")?;
-            Ok(Value::Int(wall_clock(t, use_utc).month() as i64))
+            let (t, zone) = recv_dt(args, "DateTime.month")?;
+            Ok(Value::Int(wall_clock(t, zone).month() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "day".to_string(),
         Rc::new(NativeFunction::new("DateTime.day", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.day")?;
-            Ok(Value::Int(wall_clock(t, use_utc).day() as i64))
+            let (t, zone) = recv_dt(args, "DateTime.day")?;
+            Ok(Value::Int(wall_clock(t, zone).day() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "hour".to_string(),
         Rc::new(NativeFunction::new("DateTime.hour", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.hour")?;
-            Ok(Value::Int(wall_clock(t, use_utc).hour() as i64))
+            let (t, zone) = recv_dt(args, "DateTime.hour")?;
+            Ok(Value::Int(wall_clock(t, zone).hour() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "minute".to_string(),
         Rc::new(NativeFunction::new("DateTime.minute", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.minute")?;
-            Ok(Value::Int(wall_clock(t, use_utc).minute() as i64))
+            let (t, zone) = recv_dt(args, "DateTime.minute")?;
+            Ok(Value::Int(wall_clock(t, zone).minute() as i64))
         })),
     );
 
     dt_native_methods.insert(
         "second".to_string(),
         Rc::new(NativeFunction::new("DateTime.second", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.second")?;
-            Ok(Value::Int(wall_clock(t, use_utc).second() as i64))
+            let (t, zone) = recv_dt(args, "DateTime.second")?;
+            Ok(Value::Int(wall_clock(t, zone).second() as i64))
         })),
     );
 
@@ -292,9 +279,9 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             "DateTime.millisecond",
             Some(0),
             |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.millisecond")?;
+                let (t, zone) = recv_dt(args, "DateTime.millisecond")?;
                 Ok(Value::Int(
-                    wall_clock(t, use_utc).timestamp_subsec_millis() as i64
+                    wall_clock(t, zone).timestamp_subsec_millis() as i64
                 ))
             },
         )),
@@ -303,9 +290,9 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "weekday".to_string(),
         Rc::new(NativeFunction::new("DateTime.weekday", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.weekday")?;
+            let (t, zone) = recv_dt(args, "DateTime.weekday")?;
             Ok(Value::String(
-                weekday_name(wall_clock(t, use_utc).weekday()).into(),
+                weekday_name(wall_clock(t, zone).weekday()).into(),
             ))
         })),
     );
@@ -321,19 +308,18 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     dt_native_methods.insert(
         "to_iso".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_iso", Some(0), |args| {
-            let (t, _) = recv_dt(args, "DateTime.to_iso")?;
-            let dt = chrono::DateTime::from_timestamp_nanos(t);
-            Ok(Value::String(dt.to_rfc3339().into()))
+            let (t, zone) = recv_dt(args, "DateTime.to_iso")?;
+            Ok(Value::String(zone.wall_clock(t).to_rfc3339().into()))
         })),
     );
 
     dt_native_methods.insert(
         "to_string".to_string(),
         Rc::new(NativeFunction::new("DateTime.to_string", Some(0), |args| {
-            let (t, use_utc) = recv_dt(args, "DateTime.to_string")?;
+            let (t, zone) = recv_dt(args, "DateTime.to_string")?;
             // Same text `str(d)` and interpolation produce, without chrono's
             // runtime-parsed strftime.
-            Ok(Value::String(Value::render_datetime(t, use_utc).into()))
+            Ok(Value::String(Value::render_datetime(t, zone).into()))
         })),
     );
 
@@ -342,7 +328,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "utc".to_string(),
         Rc::new(NativeFunction::new("DateTime.utc", Some(0), |args| {
             let (t, _) = recv_dt(args, "DateTime.utc")?;
-            Ok(Value::DateTime(t, true))
+            Ok(Value::DateTime(t, DtZone::UTC))
         })),
     );
 
@@ -350,7 +336,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "local".to_string(),
         Rc::new(NativeFunction::new("DateTime.local", Some(0), |args| {
             let (t, _) = recv_dt(args, "DateTime.local")?;
-            Ok(Value::DateTime(t, false))
+            Ok(Value::DateTime(t, DtZone::LOCAL))
         })),
     );
 
@@ -482,13 +468,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "add_days".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_days", Some(1), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.add_days")?;
+                let (t, zone) = recv_dt(args, "DateTime.add_days")?;
                 let days = match args.get(1) {
                     Some(Value::Int(d)) => *d,
                     Some(Value::Float(d)) => *d as i64,
                     _ => return Err("DateTime.add_days() requires number".to_string()),
                 };
-                Ok(Value::DateTime(t + days * 86400 * 1_000_000_000, use_utc))
+                Ok(Value::DateTime(t + days * 86400 * 1_000_000_000, zone))
             }
         })),
     );
@@ -497,13 +483,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "add_hours".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_hours", Some(1), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.add_hours")?;
+                let (t, zone) = recv_dt(args, "DateTime.add_hours")?;
                 let hours = match args.get(1) {
                     Some(Value::Int(h)) => *h,
                     Some(Value::Float(h)) => *h as i64,
                     _ => return Err("DateTime.add_hours() requires number".to_string()),
                 };
-                Ok(Value::DateTime(t + hours * 3600 * 1_000_000_000, use_utc))
+                Ok(Value::DateTime(t + hours * 3600 * 1_000_000_000, zone))
             }
         })),
     );
@@ -512,13 +498,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "add_minutes".to_string(),
         Rc::new(NativeFunction::new("DateTime.add_minutes", Some(1), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.add_minutes")?;
+                let (t, zone) = recv_dt(args, "DateTime.add_minutes")?;
                 let minutes = match args.get(1) {
                     Some(Value::Int(m)) => *m,
                     Some(Value::Float(m)) => *m as i64,
                     _ => return Err("DateTime.add_minutes() requires number".to_string()),
                 };
-                Ok(Value::DateTime(t + minutes * 60 * 1_000_000_000, use_utc))
+                Ok(Value::DateTime(t + minutes * 60 * 1_000_000_000, zone))
             }
         })),
     );
@@ -527,13 +513,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "subtract_days".to_string(),
         Rc::new(NativeFunction::new("DateTime.subtract_days", Some(1), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.subtract_days")?;
+                let (t, zone) = recv_dt(args, "DateTime.subtract_days")?;
                 let days = match args.get(1) {
                     Some(Value::Int(d)) => *d,
                     Some(Value::Float(d)) => *d as i64,
                     _ => return Err("DateTime.subtract_days() requires number".to_string()),
                 };
-                Ok(Value::DateTime(t - days * 86400 * 1_000_000_000, use_utc))
+                Ok(Value::DateTime(t - days * 86400 * 1_000_000_000, zone))
             }
         })),
     );
@@ -549,7 +535,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                         args.len() - 1
                     ));
                 }
-                let (t, use_utc) = recv_dt(args, "DateTime.format")?;
+                let (t, zone) = recv_dt(args, "DateTime.format")?;
                 let fmt = match args.get(1) {
                     Some(Value::String(f)) => f.clone(),
                     _ => return Err("DateTime.format() requires format string".to_string()),
@@ -564,7 +550,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 // `to_string()` turns that into a panic, so `format("%")` was a
                 // 500 on any route that let a user choose the format.
                 super::datetime::helpers::validate_strftime(&fmt)?;
-                let wall = wall_clock(t, use_utc);
+                let wall = wall_clock(t, zone);
                 let formatted = super::datetime::helpers::format_or_empty(&wall.format(&fmt));
                 match locale {
                     Some(ref loc) if **loc != *"en" => {
@@ -581,15 +567,9 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     );
 
     // Boundary helpers operate in the DateTime's selected view and preserve it.
-    fn boundary_from_naive(naive: chrono::NaiveDateTime, use_utc: bool) -> Result<Value, String> {
-        let boundary = if use_utc {
-            use chrono::TimeZone;
-            chrono::Utc.from_utc_datetime(&naive).fixed_offset()
-        } else {
-            local_zone::resolve_local(&naive)
-        };
-        let new_ts = boundary.timestamp_nanos_opt().unwrap_or(0);
-        Ok(Value::DateTime(new_ts, use_utc))
+    fn boundary_from_naive(naive: chrono::NaiveDateTime, zone: DtZone) -> Result<Value, String> {
+        let new_ts = zone.resolve(&naive).timestamp_nanos_opt().unwrap_or(0);
+        Ok(Value::DateTime(new_ts, zone))
     }
 
     dt_native_methods.insert(
@@ -599,14 +579,14 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_minute")?;
-                    let wall = wall_clock(t, use_utc);
+                    let (t, zone) = recv_dt(args, "DateTime.beginning_of_minute")?;
+                    let wall = wall_clock(t, zone);
                     let naive = wall
                         .naive_local()
                         .with_second(0)
                         .and_then(|d| d.with_nanosecond(0))
                         .ok_or_else(|| "Failed to compute beginning_of_minute".to_string())?;
-                    boundary_from_naive(naive, use_utc)
+                    boundary_from_naive(naive, zone)
                 }
             },
         )),
@@ -616,14 +596,14 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_minute".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_minute", Some(0), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.end_of_minute")?;
-                let wall = wall_clock(t, use_utc);
+                let (t, zone) = recv_dt(args, "DateTime.end_of_minute")?;
+                let wall = wall_clock(t, zone);
                 let naive = wall
                     .naive_local()
                     .with_second(59)
                     .and_then(|d| d.with_nanosecond(999_000_000))
                     .ok_or_else(|| "Failed to compute end_of_minute".to_string())?;
-                boundary_from_naive(naive, use_utc)
+                boundary_from_naive(naive, zone)
             }
         })),
     );
@@ -635,15 +615,15 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_hour")?;
-                    let wall = wall_clock(t, use_utc);
+                    let (t, zone) = recv_dt(args, "DateTime.beginning_of_hour")?;
+                    let wall = wall_clock(t, zone);
                     let naive = wall
                         .naive_local()
                         .with_minute(0)
                         .and_then(|d| d.with_second(0))
                         .and_then(|d| d.with_nanosecond(0))
                         .ok_or_else(|| "Failed to compute beginning_of_hour".to_string())?;
-                    boundary_from_naive(naive, use_utc)
+                    boundary_from_naive(naive, zone)
                 }
             },
         )),
@@ -653,15 +633,15 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_hour".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_hour", Some(0), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.end_of_hour")?;
-                let wall = wall_clock(t, use_utc);
+                let (t, zone) = recv_dt(args, "DateTime.end_of_hour")?;
+                let wall = wall_clock(t, zone);
                 let naive = wall
                     .naive_local()
                     .with_minute(59)
                     .and_then(|d| d.with_second(59))
                     .and_then(|d| d.with_nanosecond(999_000_000))
                     .ok_or_else(|| "Failed to compute end_of_hour".to_string())?;
-                boundary_from_naive(naive, use_utc)
+                boundary_from_naive(naive, zone)
             }
         })),
     );
@@ -670,8 +650,8 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "beginning_of_day".to_string(),
         Rc::new(NativeFunction::new("DateTime.beginning_of_day", Some(0), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_day")?;
-                let wall = wall_clock(t, use_utc);
+                let (t, zone) = recv_dt(args, "DateTime.beginning_of_day")?;
+                let wall = wall_clock(t, zone);
                 let naive = wall
                     .naive_local()
                     .with_hour(0)
@@ -679,7 +659,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     .and_then(|d| d.with_second(0))
                     .and_then(|d| d.with_nanosecond(0))
                     .ok_or_else(|| "Failed to compute beginning_of_day".to_string())?;
-                boundary_from_naive(naive, use_utc)
+                boundary_from_naive(naive, zone)
             }
         })),
     );
@@ -688,8 +668,8 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_day".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_day", Some(0), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.end_of_day")?;
-                let wall = wall_clock(t, use_utc);
+                let (t, zone) = recv_dt(args, "DateTime.end_of_day")?;
+                let wall = wall_clock(t, zone);
                 let naive = wall
                     .naive_local()
                     .with_hour(23)
@@ -697,7 +677,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     .and_then(|d| d.with_second(59))
                     .and_then(|d| d.with_nanosecond(999_000_000))
                     .ok_or_else(|| "Failed to compute end_of_day".to_string())?;
-                boundary_from_naive(naive, use_utc)
+                boundary_from_naive(naive, zone)
             }
         })),
     );
@@ -709,13 +689,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_month")?;
-                    let wall = wall_clock(t, use_utc);
+                    let (t, zone) = recv_dt(args, "DateTime.beginning_of_month")?;
+                    let wall = wall_clock(t, zone);
                     let naive = NaiveDate::from_ymd_opt(wall.year(), wall.month(), 1)
                         .ok_or_else(|| "Failed to compute beginning_of_month".to_string())?
                         .and_hms_nano_opt(0, 0, 0, 0)
                         .ok_or_else(|| "Failed to compute beginning_of_month".to_string())?;
-                    boundary_from_naive(naive, use_utc)
+                    boundary_from_naive(naive, zone)
                 }
             },
         )),
@@ -725,8 +705,8 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_month".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_month", Some(0), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.end_of_month")?;
-                let wall = wall_clock(t, use_utc);
+                let (t, zone) = recv_dt(args, "DateTime.end_of_month")?;
+                let wall = wall_clock(t, zone);
                 let (next_year, next_month) = if wall.month() == 12 {
                     (wall.year() + 1, 1)
                 } else {
@@ -738,7 +718,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                 let naive = last_day
                     .and_hms_nano_opt(23, 59, 59, 999_000_000)
                     .ok_or_else(|| "Failed to compute end_of_month".to_string())?;
-                boundary_from_naive(naive, use_utc)
+                boundary_from_naive(naive, zone)
             }
         })),
     );
@@ -750,13 +730,13 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Some(0),
             {
                 move |args| {
-                    let (t, use_utc) = recv_dt(args, "DateTime.beginning_of_year")?;
-                    let wall = wall_clock(t, use_utc);
+                    let (t, zone) = recv_dt(args, "DateTime.beginning_of_year")?;
+                    let wall = wall_clock(t, zone);
                     let naive = NaiveDate::from_ymd_opt(wall.year(), 1, 1)
                         .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?
                         .and_hms_nano_opt(0, 0, 0, 0)
                         .ok_or_else(|| "Failed to compute beginning_of_year".to_string())?;
-                    boundary_from_naive(naive, use_utc)
+                    boundary_from_naive(naive, zone)
                 }
             },
         )),
@@ -766,15 +746,15 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "end_of_year".to_string(),
         Rc::new(NativeFunction::new("DateTime.end_of_year", Some(0), {
             move |args| {
-                let (t, use_utc) = recv_dt(args, "DateTime.end_of_year")?;
-                let wall = wall_clock(t, use_utc);
+                let (t, zone) = recv_dt(args, "DateTime.end_of_year")?;
+                let wall = wall_clock(t, zone);
                 let first_of_next = NaiveDate::from_ymd_opt(wall.year() + 1, 1, 1)
                     .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
                 let last_day = first_of_next - Duration::days(1);
                 let naive = last_day
                     .and_hms_nano_opt(23, 59, 59, 999_000_000)
                     .ok_or_else(|| "Failed to compute end_of_year".to_string())?;
-                boundary_from_naive(naive, use_utc)
+                boundary_from_naive(naive, zone)
             }
         })),
     );
@@ -796,7 +776,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             Ok(Value::DateTime(
                 now.timestamp_nanos_opt()
                     .unwrap_or_else(|| now.timestamp() * 1_000_000_000),
-                false,
+                DtZone::LOCAL,
             ))
         })),
     );
@@ -808,7 +788,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             let now = chrono::Utc::now();
             Ok(Value::DateTime(
                 now.timestamp_nanos_opt().unwrap_or(0),
-                true,
+                DtZone::UTC,
             ))
         })),
     );
@@ -823,8 +803,8 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
                     Some(Value::String(s)) => s.clone(),
                     _ => return Err("DateTime.parse() requires string".to_string()),
                 };
-                let timestamp = parse_datetime_string(&s)?;
-                Ok(Value::DateTime(timestamp, false))
+                let (timestamp, zone) = parse_datetime_string(&s)?;
+                Ok(Value::DateTime(timestamp, zone))
             },
         )),
     );
@@ -853,7 +833,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         Rc::new(NativeFunction::new(
             "DateTime.epoch",
             Some(0),
-            move |_args| Ok(Value::DateTime(0, false)),
+            move |_args| Ok(Value::DateTime(0, DtZone::UTC)),
         )),
     );
 
@@ -869,7 +849,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
             // Use checked multiplication to avoid overflow
             let ts_nanos = ts.checked_mul(1_000_000_000)
                 .ok_or_else(|| "DateTime.from_unix(): timestamp overflow (value too large, expected seconds not milliseconds)".to_string())?;
-            Ok(Value::DateTime(ts_nanos, false))
+            Ok(Value::DateTime(ts_nanos, DtZone::UTC))
         })),
     );
 

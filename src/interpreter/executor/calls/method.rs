@@ -344,10 +344,10 @@ impl Interpreter {
             }
             // A DateTime is a native value, not an object, so it dispatches
             // like the other primitives rather than through a class.
-            Value::DateTime(ts, use_utc) => {
+            Value::DateTime(ts, zone) => {
                 crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                     ts,
-                    use_utc,
+                    zone,
                     &method.method_name,
                     &arguments,
                     span,
@@ -486,18 +486,10 @@ impl Interpreter {
                     .collect();
                 Some(Ok(Value::Array(Rc::new(RefCell::new(result)))))
             }
-            "first" => {
-                if !arguments.is_empty() {
-                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
-                }
-                Some(Ok(items.first().cloned().unwrap_or(Value::Null)))
-            }
-            "last" => {
-                if !arguments.is_empty() {
-                    return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
-                }
-                Some(Ok(items.last().cloned().unwrap_or(Value::Null)))
-            }
+            "first" | "last" => Some(
+                super::array_ops::first_or_last(items, method_name == "last", arguments)
+                    .map_err(|e| RuntimeError::type_error(e, span)),
+            ),
             "empty?" => {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
@@ -1551,10 +1543,8 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if !arguments.is_empty() {
-            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
-        }
-        Ok(items.first().cloned().unwrap_or(Value::Null))
+        super::array_ops::first_or_last(items, false, &arguments)
+            .map_err(|e| RuntimeError::type_error(e, span))
     }
 
     fn array_last(
@@ -1563,10 +1553,8 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if !arguments.is_empty() {
-            return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
-        }
-        Ok(items.last().cloned().unwrap_or(Value::Null))
+        super::array_ops::first_or_last(items, true, &arguments)
+            .map_err(|e| RuntimeError::type_error(e, span))
     }
 
     fn array_empty(

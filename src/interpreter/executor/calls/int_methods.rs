@@ -191,6 +191,13 @@ pub(crate) fn call_int_method_impl(
         "clamp" => int_clamp(n, arguments, span),
         "is_a?" => int_is_a(arguments, span),
         "to_s" | "to_string" => int_to_s(n, arguments, span),
+        "round" => int_round(n, arguments, span),
+        "floor" | "ceil" | "truncate" => {
+            if !arguments.is_empty() {
+                return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
+            }
+            Ok(Value::Int(n))
+        }
         "succ" | "next" => {
             if !arguments.is_empty() {
                 return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
@@ -230,6 +237,37 @@ pub(crate) fn call_int_method_impl(
             span,
         )),
     }
+}
+
+/// `n.round` is `n`; `n.round(digits)` rounds to `10^-digits` when `digits`
+/// is negative (`1250.round(-2) == 1300`, half away from zero, as Float's
+/// `round` and Ruby's `Integer#round` do) and is `n` otherwise. Always an Int.
+fn int_round(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
+    let digits = match arguments {
+        [] => return Ok(Value::Int(n)),
+        [Value::Int(d)] => *d,
+        [_] => {
+            return Err(RuntimeError::type_error(
+                "round expects an integer argument",
+                span,
+            ))
+        }
+        _ => return Err(RuntimeError::wrong_arity(1, arguments.len(), span)),
+    };
+    if digits >= 0 {
+        return Ok(Value::Int(n));
+    }
+    // 10^19 exceeds every i64 magnitude: anything rounds to 0 there.
+    if digits < -18 {
+        return Ok(Value::Int(0));
+    }
+    let step = 10_i128.pow((-digits) as u32);
+    let magnitude = (n as i128).abs();
+    let rounded = (magnitude + step / 2) / step * step;
+    let signed = if n < 0 { -rounded } else { rounded };
+    i64::try_from(signed).map(Value::Int).map_err(|_| {
+        RuntimeError::type_error(format!("{n}.round({digits}) overflows an Int"), span)
+    })
 }
 
 fn int_pow(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {

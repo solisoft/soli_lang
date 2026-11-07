@@ -199,6 +199,7 @@ pub mod sql_ddl;
 pub mod streaming;
 pub mod strings;
 pub mod system;
+pub mod tcp;
 pub mod template;
 pub mod tenancy;
 pub mod test_dsl;
@@ -536,6 +537,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register X509 class (certificate public-key extraction for SAML)
     x509::register_x509_builtins(env);
+
+    // Register TCP class (`TCP.check`: connect-only port probe, SSRF-guarded)
+    tcp::register_tcp_builtins(env);
 
     // Register Deflate class (raw DEFLATE for the SAML HTTP-Redirect binding)
     deflate::register_deflate_builtins(env);

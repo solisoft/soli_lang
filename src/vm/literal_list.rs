@@ -284,7 +284,7 @@ mod tests {
             Value::Array(Rc::new(RefCell::new(Vec::new()))),
             class("Account"),
             class("User"),
-            Value::DateTime(0, true),
+            Value::DateTime(0, crate::interpreter::value::DtZone::UTC),
         ]
     }
 

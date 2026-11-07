@@ -228,6 +228,45 @@ pub(crate) fn flatten_values(items: &[Value], max_depth: Option<usize>) -> Vec<V
     recur(items, 0, max_depth)
 }
 
+/// `xs.first` / `xs.last` — the element, nil when empty — and, with a count,
+/// `xs.first(n)` / `xs.last(n)`: an array of at most `n` elements from that
+/// end, Ruby's shape. One definition for both engines; the count form used to
+/// be a wrong-arity error (#679). Errors are messages for the caller's span.
+pub(crate) fn first_or_last(
+    items: &[Value],
+    from_end: bool,
+    args: &[Value],
+) -> Result<Value, String> {
+    let name = if from_end { "last" } else { "first" };
+    match args {
+        [] => Ok(if from_end {
+            items.last()
+        } else {
+            items.first()
+        }
+        .cloned()
+        .unwrap_or(Value::Null)),
+        [Value::Int(n)] if *n >= 0 => {
+            let take = (*n as usize).min(items.len());
+            let slice = if from_end {
+                &items[items.len() - take..]
+            } else {
+                &items[..take]
+            };
+            Ok(Value::Array(Rc::new(RefCell::new(slice.to_vec()))))
+        }
+        [Value::Int(n)] => Err(format!("{name}({n}): the count must not be negative")),
+        [other] => Err(format!(
+            "{name}() expects an Int count, got {}",
+            other.type_name()
+        )),
+        _ => Err(format!(
+            "{name}() takes at most 1 argument (a count), got {}",
+            args.len()
+        )),
+    }
+}
+
 /// Deduplicate `items`, preserving first-occurrence order (value equality).
 ///
 /// Uses a hash set rather than scanning the output. The scan made this O(n·k)

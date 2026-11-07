@@ -89,9 +89,13 @@ describe("DateTime .utc view") do
     assert_eq(late_evening.utc.weekday, "Monday")
   end
 
-  test("to_iso is always UTC, whatever the view") do
+  # #673: to_iso reads in the value's zone, like format and hour.
+  test("to_iso follows the view, like format") do
     assert_eq(late_evening.utc.to_iso, "2024-01-15T23:30:00+00:00")
-    assert_eq(late_evening.local.to_iso, "2024-01-15T23:30:00+00:00")
+    local = late_evening.local
+    assert_eq(local.to_iso.substring(0, 19), local.format("%Y-%m-%dT%H:%M:%S"))
+    assert_eq(local.to_iso.substring(19, 25), local.format("%:z"))
+    assert(local == late_evening)
   end
 
   test("renders and formats in UTC") do

@@ -13,18 +13,33 @@ describe("DateTime serialisation") do
     assert_eq(moment.to_unix, 1705314600)
   end
 
-  test("to_iso is RFC 3339 in UTC, whatever the view") do
+  # #673: to_iso printed UTC while format/hour read the server's zone.
+  test("to_iso is RFC 3339 in the value's own zone, like format") do
     assert_eq(moment.to_iso, "2024-01-15T10:30:00+00:00")
     assert_eq(moment.utc.to_iso, "2024-01-15T10:30:00+00:00")
-    assert_eq(moment.local.to_iso, "2024-01-15T10:30:00+00:00")
+    local = moment.local
+    assert_eq(local.to_iso.substring(0, 19), local.format("%Y-%m-%dT%H:%M:%S"))
+    assert_eq(local.to_iso.substring(19, 25), local.format("%:z"))
   end
 
   test("to_iso keeps milliseconds") do
     assert_eq(DateTime.parse("2024-01-15T10:30:00.123Z").to_iso, "2024-01-15T10:30:00.123+00:00")
   end
 
-  test("to_iso normalises an offset to UTC") do
-    assert_eq(DateTime.parse("2024-01-15T12:30:00+02:00").to_iso, "2024-01-15T10:30:00+00:00")
+  test("to_iso keeps a parsed offset; utc normalises it") do
+    stamped = DateTime.parse("2024-01-15T12:30:00+02:00")
+    assert_eq(stamped.to_iso, "2024-01-15T12:30:00+02:00")
+    assert_eq(stamped.hour, 12)
+    assert_eq(stamped.format("%H:%M %z"), "12:30 +0200")
+    assert_eq(stamped.utc.to_iso, "2024-01-15T10:30:00+00:00")
+    assert_eq(DateTime.parse("2024-01-15T05:30:00-05:00").to_iso, "2024-01-15T05:30:00-05:00")
+  end
+
+  test("text without an offset, and from_unix, read in UTC") do
+    assert_eq(DateTime.parse("2026-03-02").format("%Y-%m-%d %H:%M"), "2026-03-02 00:00")
+    assert_eq(DateTime.parse("2026-03-02 23:30:00").day, 2)
+    epoch = DateTime.from_unix(0)
+    assert_eq(epoch.to_iso + " " + epoch.format("%H:%M"), "1970-01-01T00:00:00+00:00 00:00")
   end
 
   test("to_string is the wall clock of the view") do
@@ -53,8 +68,10 @@ describe("DateTime serialisation") do
     assert_eq(DateTime.from_unix(4107542399).utc.to_s, "2100-02-28 23:59:59")
   end
 
-  test("JSON renders it as to_iso") do
+  test("JSON renders the UTC instant, whatever the zone") do
     assert_eq({"at": moment}.to_json, "{\"at\":\"2024-01-15T10:30:00+00:00\"}")
+    stamped = DateTime.parse("2024-01-15T12:30:00+02:00")
+    assert_eq({"at": stamped}.to_json, "{\"at\":\"2024-01-15T10:30:00+00:00\"}")
   end
 end
 
@@ -82,9 +99,9 @@ describe("DateTime#format") do
     assert_eq(moment.format(""), "")
   end
 
-  test("uses the local view by default") do
-    local = DateTime.parse("2024-01-15T10:30:05Z")
-    assert_eq(local.format("%H"), local.local.format("%H"))
+  test("uses the value's own zone") do
+    assert_eq(DateTime.parse("2024-01-15T10:30:05Z").format("%H"), "10")
+    assert_eq(DateTime.parse("2024-01-15T10:30:05+03:00").format("%H"), "10")
   end
 
   test("raises without a pattern") do

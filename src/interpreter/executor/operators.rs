@@ -858,8 +858,14 @@ mod tests {
     /// compared the `i64`.
     #[test]
     fn datetime_ordering_is_exact() {
-        let early = Value::DateTime(1_767_225_600_000_000_100, false);
-        let late = Value::DateTime(1_767_225_600_000_000_110, false);
+        let early = Value::DateTime(
+            1_767_225_600_000_000_100,
+            crate::interpreter::value::DtZone::UTC,
+        );
+        let late = Value::DateTime(
+            1_767_225_600_000_000_110,
+            crate::interpreter::value::DtZone::UTC,
+        );
         assert_eq!(order(&early, &late), [true, true, false, false]);
         assert_eq!(order(&late, &early), [false, false, true, true]);
         assert_eq!(order(&early, &early), [false, true, false, true]);

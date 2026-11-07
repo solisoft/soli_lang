@@ -2611,6 +2611,22 @@ impl TypeEnvironment {
         );
         self.classes.insert("X509".to_string(), x509_class);
 
+        // TCP.check(host, port, timeout?) -> {"open", "latency_ms", "error"}.
+        // One `Any` param: the timeout is positional or `timeout:`.
+        let mut tcp_class = ClassType::new("TCP".to_string());
+        tcp_class.methods.insert(
+            "check".to_string(),
+            MethodInfo {
+                name: "check".to_string(),
+                params: vec![("args".to_string(), Type::Any)],
+                return_type: Type::Any,
+                is_private: false,
+                is_protected: false,
+                is_static: true,
+            },
+        );
+        self.classes.insert("TCP".to_string(), tcp_class);
+
         // HTTP class
         // HTTP client. Every verb takes a trailing optional options hash
         // (`headers`, `timeout`), so each signature ends in an `Any` param:

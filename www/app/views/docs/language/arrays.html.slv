@@ -1044,6 +1044,24 @@ print(shuffled);  # Randomized order (e.g., [3, 1, 5, 2, 4])</code></pre>
                 </div>
             </section>
 
+            <section id="method-first-last" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-first-last" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.first</code> / <code class="text-lg font-mono text-amber-400">.last</code> / <code class="text-lg font-mono text-amber-400">.first(n)</code> / <code class="text-lg font-mono text-amber-400">.last(n)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Bare, the element at that end (<code>nil</code> when empty). With a count, an array of at most <code>n</code> elements from that end.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">arr = [1, 2, 3, 4, 5]
+arr.first      # 1
+arr.last       # 5
+arr.first(2)   # [1, 2]
+arr.last(2)    # [4, 5]
+arr.last(10)   # [1, 2, 3, 4, 5]</code></pre>
+                </div>
+            </section>
+
             <section id="method-take-drop" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-take-drop" class="group flex items-center gap-2 mb-3">

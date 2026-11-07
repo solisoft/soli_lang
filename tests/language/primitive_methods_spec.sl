@@ -62,6 +62,23 @@ describe("Nil method dispatch") do
 end
 
 describe("Int method dispatch") do
+  # #679: `5.round` was "Cannot access property 'round' on int".
+  context("rounding, like Float") do
+    test("round, floor, ceil and truncate answer the int itself") do
+      assert_eq(5.round, 5)
+      assert_eq(5.round(), 5)
+      assert_eq(7.floor + 7.ceil + 7.truncate, 21)
+      assert_eq(5.round(2), 5)
+    end
+
+    test("round with negative digits rounds half away from zero") do
+      assert_eq(1250.round(-2), 1300)
+      assert_eq(1249.round(-2), 1200)
+      assert_eq((-1250).round(-2), -1300)
+      assert_eq(42.round(-30), 0)
+    end
+  end
+
   context("gcd and lcm") do
     test("gcd returns the greatest common divisor") do
       assert_eq((12).gcd(8), 4)

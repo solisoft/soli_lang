@@ -332,9 +332,9 @@ impl Vm {
             // A DateTime is a native value with no class, so it resolves
             // through the same helper the tree-walker uses — one definition of
             // what `d.year` means, for both engines.
-            Value::DateTime(ts, use_utc) => {
+            Value::DateTime(ts, zone) => {
                 crate::interpreter::executor::Interpreter::datetime_member_access(
-                    *ts, *use_utc, name, span,
+                    *ts, *zone, name, span,
                 )
             }
             Value::Instance(inst)

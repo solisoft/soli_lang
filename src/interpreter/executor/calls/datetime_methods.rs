@@ -1,6 +1,6 @@
 //! Method dispatch for `Value::DateTime`.
 //!
-//! A DateTime is a native `Value::DateTime(nanos, use_utc)` rather than an
+//! A DateTime is a native `Value::DateTime(nanos, zone)` rather than an
 //! `Instance`, so it has no class to look methods up on. Both engines route
 //! here, and both read the same registered map, so they cannot drift apart.
 //!
@@ -23,12 +23,12 @@ use crate::interpreter::executor::RuntimeResult;
 use crate::interpreter::value::Value;
 use crate::span::Span;
 
-/// Call one of DateTime's instance methods. `nanos`/`use_utc` are the
+/// Call one of DateTime's instance methods. `nanos`/`zone` are the
 /// receiver; they are passed as `args[0]`, matching how the methods were
 /// written when the receiver was an object.
 pub(crate) fn call_datetime_method_impl(
     nanos: i64,
-    use_utc: bool,
+    zone: crate::interpreter::value::DtZone,
     method_name: &str,
     arguments: &[Value],
     span: Span,
@@ -55,7 +55,7 @@ pub(crate) fn call_datetime_method_impl(
             span,
         ));
     };
-    let recv = Value::DateTime(nanos, use_utc);
+    let recv = Value::DateTime(nanos, zone);
     let call = |args: &[Value]| (func.func)(args).map_err(|e| RuntimeError::type_error(e, span));
     match arguments {
         [] => call(&[recv]),

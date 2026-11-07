@@ -474,12 +474,12 @@ pub enum Value {
     /// An instant, as nanoseconds since the Unix epoch. Native rather than
     /// an `Instance` so a DateTime costs no allocation and no hash lookup.
     ///
-    /// The `bool` is a **display/component view**: `false` = process-local
-    /// zone (default), `true` = UTC. Component accessors (`year`, `hour`,
-    /// `format`, …) and string rendering honour it; equality, ordering,
-    /// `to_unix`, and `to_iso` always use the instant. Toggle with
-    /// `.utc()` / `.local()`.
-    DateTime(i64, bool),
+    /// The [`DtZone`] is the value's **own offset**: the wall clock every
+    /// component accessor (`year`, `hour`, …), `format`, `to_iso` and string
+    /// rendering read in — UTC, a fixed offset kept from the parsed text, or
+    /// the process-local zone (`DateTime.now`, `.local`). Equality, ordering,
+    /// `to_unix` and JSON serialisation use the instant alone.
+    DateTime(i64, DtZone),
     /// Future value (async result that auto-resolves when used)
     Future(Arc<Mutex<FutureState>>),
     /// Method on a value (array/hash) - captures receiver and method name.
@@ -697,10 +697,10 @@ impl Value {
         None
     }
 
-    /// Construct a DateTime in the default (local-component) view.
+    /// Construct a DateTime that reads in UTC.
     #[inline]
     pub fn datetime(nanos: i64) -> Value {
-        Value::DateTime(nanos, false)
+        Value::DateTime(nanos, DtZone::UTC)
     }
 
     /// Whether calling this value with `()` can dispatch somewhere — i.e.
@@ -720,20 +720,20 @@ impl Value {
     }
 
     /// How a `DateTime` renders in string position — wall clock in the
-    /// selected view (local by default, UTC after `.utc()`), the same format
+    /// value's own zone (see [`DtZone`]), the same format
     /// `to_string()` produces, so `str(d)` and `d.to_string()` agree.
     /// Previously a DateTime was an `Instance` and rendered with the
     /// generic object form, leaking the internal field as
     /// `<DateTime _ts: 1794744000000000000>`.
-    pub fn render_datetime(ts: i64, use_utc: bool) -> String {
-        Self::datetime_text(ts, use_utc).as_str().to_string()
+    pub fn render_datetime(ts: i64, zone: DtZone) -> String {
+        Self::datetime_text(ts, zone).as_str().to_string()
     }
 
     /// Append a `DateTime`'s string form to `out` without an intermediate
     /// String. Byte-identical to `format("%Y-%m-%d %H:%M:%S")`.
     #[inline]
-    pub fn write_datetime(ts: i64, use_utc: bool, out: &mut String) {
-        out.push_str(Self::datetime_text(ts, use_utc).as_str());
+    pub fn write_datetime(ts: i64, zone: DtZone, out: &mut String) {
+        out.push_str(Self::datetime_text(ts, zone).as_str());
     }
 
     /// `YYYY-MM-DD HH:MM:SS` on the stack. This used to go through chrono's
@@ -747,16 +747,13 @@ impl Value {
     /// Always 19 bytes: an `i64` of nanoseconds spans 1677-09-21 to
     /// 2262-04-11, and no zone moves that by more than a day, so `%Y` is
     /// always the four-digit, unsigned form chrono prints for 0..=9999.
-    pub fn datetime_text(ts: i64, use_utc: bool) -> DateTimeText {
-        let offset = if use_utc {
-            0
-        } else {
-            crate::interpreter::builtins::datetime::local_zone::local_offset_secs(ts)
-        };
-        DateTimeText::new(ts, offset)
+    pub fn datetime_text(ts: i64, zone: DtZone) -> DateTimeText {
+        DateTimeText::new(ts, zone.offset_secs(ts))
     }
 
-    /// How a `DateTime` serialises to JSON: RFC 3339, matching `to_iso()`.
+    /// How a `DateTime` serialises to JSON (and binds to SQL): RFC 3339 of
+    /// the **UTC instant**, i.e. `dt.utc.to_iso` — whatever zone the value
+    /// reads in, so stored timestamps share one offset and sort as text.
     /// Previously it serialised as `{}` — an `Instance` with only a private
     /// field, so every DateTime in an API response came out an empty object.
     pub fn datetime_to_rfc3339(ts: i64) -> String {
@@ -1033,7 +1030,7 @@ impl Value {
     #[inline]
     pub fn write_to_string(&self, s: &mut String) {
         match self {
-            Value::DateTime(ts, use_utc) => Self::write_datetime(*ts, *use_utc, s),
+            Value::DateTime(ts, zone) => Self::write_datetime(*ts, *zone, s),
             // itoa writes into a stack buffer; `to_string()` allocated one
             // String per element. Integers have a single decimal form, so the
             // output is byte-identical.
@@ -1396,9 +1393,7 @@ impl fmt::Display for Value {
 impl Value {
     fn fmt_inner(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::DateTime(ts, use_utc) => {
-                f.write_str(Value::datetime_text(*ts, *use_utc).as_str())
-            }
+            Value::DateTime(ts, zone) => f.write_str(Value::datetime_text(*ts, *zone).as_str()),
             Value::Int(n) => write!(f, "{}", n),
             Value::Float(n) => write!(f, "{}", n),
             Value::Decimal(d) => write!(f, "{}", d),
@@ -3978,6 +3973,85 @@ impl TypeCheck {
     }
 }
 
+/// The wall clock a `Value::DateTime` reads in: a fixed offset from UTC in
+/// seconds east, or the process-local zone (whose offset depends on the
+/// instant, DST included). Four bytes, so `Value::DateTime` stays 16.
+///
+/// Every reader of a DateTime's components goes through
+/// [`DtZone::offset_secs`] / [`DtZone::wall_clock`]: `year`, `hour`,
+/// `format`, `to_iso`, `to_string` and the boundary helpers cannot disagree
+/// about which day or hour an instant falls on. They used to: `to_iso`
+/// always printed UTC while `format`/`hour` read the server's zone, so
+/// `DateTime.from_unix(0)` was `…T00:00:00+00:00` and `format("%H")` `01`
+/// on a Paris host (#673).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DtZone(i32);
+
+impl DtZone {
+    /// Sentinel for "the process-local zone"; no real offset is this large.
+    const LOCAL_TAG: i32 = i32::MIN;
+    pub const UTC: DtZone = DtZone(0);
+    pub const LOCAL: DtZone = DtZone(Self::LOCAL_TAG);
+
+    /// A fixed offset in seconds east of UTC. Out-of-range offsets (chrono
+    /// accepts strictly less than a day either way) clamp to UTC.
+    pub fn fixed(secs: i32) -> DtZone {
+        if secs.abs() < 86_400 {
+            DtZone(secs)
+        } else {
+            DtZone::UTC
+        }
+    }
+
+    pub fn is_local(self) -> bool {
+        self.0 == Self::LOCAL_TAG
+    }
+
+    pub fn is_utc(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The raw encoding, for hashing a value's rendered identity.
+    pub fn bits(self) -> i32 {
+        self.0
+    }
+
+    /// Seconds east of UTC this zone applies at instant `nanos`.
+    #[inline]
+    pub fn offset_secs(self, nanos: i64) -> i32 {
+        if self.is_local() {
+            crate::interpreter::builtins::datetime::local_zone::local_offset_secs(nanos)
+        } else {
+            self.0
+        }
+    }
+
+    /// The instant `nanos` as a wall clock in this zone.
+    pub fn wall_clock(self, nanos: i64) -> chrono::DateTime<chrono::FixedOffset> {
+        let utc = chrono::DateTime::from_timestamp_nanos(nanos);
+        match chrono::FixedOffset::east_opt(self.offset_secs(nanos)) {
+            Some(offset) => utc.with_timezone(&offset),
+            None => utc.fixed_offset(),
+        }
+    }
+
+    /// Resolve a naive wall-clock time in this zone to an instant. Total:
+    /// the local zone resolves DST gaps and repeats (see `resolve_local`).
+    pub fn resolve(self, naive: &chrono::NaiveDateTime) -> chrono::DateTime<chrono::FixedOffset> {
+        use chrono::TimeZone;
+        if self.is_local() {
+            return crate::interpreter::builtins::datetime::local_zone::resolve_local(naive);
+        }
+        match chrono::FixedOffset::east_opt(self.0) {
+            Some(offset) => match offset.from_local_datetime(naive) {
+                chrono::LocalResult::Single(dt) => dt,
+                _ => chrono::Utc.from_utc_datetime(naive).fixed_offset(),
+            },
+            None => chrono::Utc.from_utc_datetime(naive).fixed_offset(),
+        }
+    }
+}
+
 /// A `DateTime`'s `YYYY-MM-DD HH:MM:SS` form, formatted on the stack. See
 /// [`Value::datetime_text`].
 pub struct DateTimeText([u8; DateTimeText::LEN]);
@@ -5447,7 +5521,7 @@ mod construction_tests {
 
 #[cfg(test)]
 mod datetime_text_tests {
-    use super::{DateTimeText, Value};
+    use super::{DateTimeText, DtZone, Value};
     use crate::interpreter::builtins::datetime::local_zone::{local_from_nanos, offset_secs_in};
     use chrono::{DateTime, TimeZone, Utc};
     use chrono_tz::Tz;
@@ -5565,18 +5639,24 @@ mod datetime_text_tests {
     #[test]
     fn all_string_paths_agree_in_both_views() {
         for ts in edge_instants() {
-            for use_utc in [true, false] {
-                let expected = if use_utc {
+            for zone in [DtZone::UTC, DtZone::LOCAL, DtZone::fixed(-12_600)] {
+                let expected = if zone.is_utc() {
                     via_chrono_utc(ts)
-                } else {
+                } else if zone.is_local() {
                     local_from_nanos(ts).format(FMT).to_string()
+                } else {
+                    let offset = chrono::FixedOffset::west_opt(12_600).unwrap();
+                    DateTime::from_timestamp_nanos(ts)
+                        .with_timezone(&offset)
+                        .format(FMT)
+                        .to_string()
                 };
-                let value = Value::DateTime(ts, use_utc);
+                let value = Value::DateTime(ts, zone);
                 let mut written = String::from(">");
                 value.write_to_string(&mut written);
                 assert_eq!(written, format!(">{expected}"));
                 assert_eq!(value.to_string(), expected);
-                assert_eq!(Value::render_datetime(ts, use_utc), expected);
+                assert_eq!(Value::render_datetime(ts, zone), expected);
                 assert_eq!(value.display_len(), expected.len());
             }
         }

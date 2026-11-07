@@ -273,7 +273,13 @@ impl TypeChecker {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),
-            "first" | "last" | "sample" | "min" | "max" | "shift" => Ok(Type::Function {
+            // `xs.first(n)` / `xs.last(n)` take a count and answer an array;
+            // bare, `builtin_member_type` types them as the element.
+            "first" | "last" => Ok(Type::Function {
+                params: vec![Type::Int],
+                return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
+            }),
+            "sample" | "min" | "max" | "shift" => Ok(Type::Function {
                 params: vec![],
                 return_type: Box::new(inner_type.clone()),
             }),
@@ -967,6 +973,11 @@ fn builtin_member_type(ty: Type, receiver_type: &str, name: &str, called_with_ar
         // Called with a block it answers the receiver; bare, it answers the
         // `[item, index]` pairs (`xs.each_with_index.map { |pair| … }`).
         ("array", "each_with_index") => Type::Array(Box::new(Type::Array(Box::new(Type::Any)))),
+        // With a count they answer an array; bare, the element.
+        ("array", "first" | "last") => match *return_type {
+            Type::Array(element) => *element,
+            other => other,
+        },
         _ => *return_type,
     }
 }
@@ -1076,6 +1087,15 @@ mod optional_arg_builtin_tests {
 
     fn refuses(source: &str) {
         assert!(check(source).is_err(), "{source:?} should be refused");
+    }
+
+    /// #679: `xs.last(2)` was refused with "Cannot call non-function type
+    /// 'Int'" — the bare element type was called.
+    #[test]
+    fn first_and_last_take_a_count_and_read_bare_as_the_element() {
+        accepts("xs = [1, 2, 3]\nprint(xs.last(2).length + xs.first(1)[0])\n");
+        accepts("xs = [1, 2, 3]\nprint(xs.last + xs.first + 1)\n");
+        accepts("xs = [1, 2, 3]\nprint(xs.last() + 1)\n");
     }
 
     #[test]

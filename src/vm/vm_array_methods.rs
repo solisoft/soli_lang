@@ -282,18 +282,12 @@ impl Vm {
                 }
                 Ok(Value::Bool(arr.borrow().is_empty()))
             }
-            "first" => {
-                if !args.is_empty() {
-                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
-                }
-                Ok(arr.borrow().first().cloned().unwrap_or(Value::Null))
-            }
-            "last" => {
-                if !args.is_empty() {
-                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
-                }
-                Ok(arr.borrow().last().cloned().unwrap_or(Value::Null))
-            }
+            "first" | "last" => crate::interpreter::executor::calls::array_ops::first_or_last(
+                &arr.borrow(),
+                name == "last",
+                args,
+            )
+            .map_err(|e| RuntimeError::type_error(e, span)),
             "reverse" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));

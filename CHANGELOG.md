@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- `TCP.check(host, port, timeout: seconds)` → `{"open", "latency_ms", "error"}`: a connect-only port probe under the `HTTP` SSRF policy (`SOLI_HTTP_ALLOW_HOSTS`, private ranges refused, re-checked on each resolved address); not on the edge build (#679).
+- Int answers `round`, `floor`, `ceil`, `truncate` (and `round(digits)`, negative digits rounding to tens/hundreds) like Float (#679).
+- `xs.first(n)` / `xs.last(n)` return arrays on both engines and in the checker; bare `first`/`last` stay the element (#679).
+- `Cron.every` accepts second intervals: `"30 seconds"` → `*/30 * * * * *` (#679).
+
+### Fixed
+- DateTime reads in its own zone (#673): `to_iso`, `format`, `hour`/`day`/`weekday`, `to_string` and the boundary helpers agree. `from_unix`, `epoch`, `DateTime.utc` and `parse` without an offset read in UTC; `parse` with an offset keeps it; only `DateTime.now`/`.local` read the server's zone (and their `to_iso` prints the local offset). `parse` also accepts negative offsets and fractional seconds without an offset. JSON/SQL still serialise the UTC instant. Behaviour change for code that relied on parsed values reading in the server zone: use `.local`.
+- `X509.peer_certificate` on a non-TLS port reports "no TLS handshake from host:port … — is it a TLS port?" instead of "Resource temporarily unavailable (os error 35)", and its timeout bounds the whole handshake (#679).
+- `soli test` kills its `soli serve` test servers from an `atexit` handler, so a `process::exit` path (Ctrl-C, coverage threshold) no longer orphans them on macOS, where `PR_SET_PDEATHSIG` does not exist (#679).
+
 ## [2.32.0] - 2026-11-07
 
 ### Added

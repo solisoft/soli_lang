@@ -407,6 +407,21 @@ fn host_is_allowlisted(url: &reqwest::Url) -> bool {
         })
 }
 
+/// [`host_is_allowlisted`] for a bare `host` and `port` rather than a URL —
+/// for callers that dial a socket themselves (`TCP.check`).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn host_is_allowlisted_str(host: &str, port: u16) -> bool {
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    let url = if bare.contains(':') {
+        format!("http://[{bare}]:{port}/")
+    } else {
+        format!("http://{bare}:{port}/")
+    };
+    reqwest::Url::parse(&url)
+        .map(|parsed| host_is_allowlisted(&parsed))
+        .unwrap_or(false)
+}
+
 fn is_blocked_host(host: &str) -> bool {
     if let Ok(ip) = host.parse::<IpAddr>() {
         return is_blocked_ip(ip);

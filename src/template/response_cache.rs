@@ -384,10 +384,10 @@ impl Walk {
                 mix(h, b'Y' as u64);
                 mix_str(h, s.as_bytes());
             }
-            Value::DateTime(nanos, utc) => {
+            Value::DateTime(nanos, zone) => {
                 mix(h, b'D' as u64);
                 mix(h, *nanos as u64);
-                mix(h, *utc as u64);
+                mix(h, zone.bits() as u32 as u64);
             }
             Value::Array(arr) => {
                 self.enter(arr)?;
@@ -826,17 +826,35 @@ mod tests {
 
         let day = 86_400_000_000_000i64;
         assert_ne!(
-            sig(Value::DateTime(3 * day, true)),
-            sig(Value::DateTime(6 * day, true))
+            sig(Value::DateTime(
+                3 * day,
+                crate::interpreter::value::DtZone::UTC
+            )),
+            sig(Value::DateTime(
+                6 * day,
+                crate::interpreter::value::DtZone::UTC
+            ))
         );
         assert_eq!(
-            sig(Value::DateTime(3 * day, true)),
-            sig(Value::DateTime(3 * day, true))
+            sig(Value::DateTime(
+                3 * day,
+                crate::interpreter::value::DtZone::UTC
+            )),
+            sig(Value::DateTime(
+                3 * day,
+                crate::interpreter::value::DtZone::UTC
+            ))
         );
         // One instant, shown in UTC or in the local zone.
         assert_ne!(
-            sig(Value::DateTime(3 * day, true)),
-            sig(Value::DateTime(3 * day, false))
+            sig(Value::DateTime(
+                3 * day,
+                crate::interpreter::value::DtZone::UTC
+            )),
+            sig(Value::DateTime(
+                3 * day,
+                crate::interpreter::value::DtZone::LOCAL
+            ))
         );
     }
 

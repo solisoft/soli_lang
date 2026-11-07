@@ -650,9 +650,7 @@ impl Interpreter {
                         self.hash_member_access(&hash_ref, name, span, Value::Hash(hash_rc))
                     }
                     Value::Symbol(ref s) => Self::symbol_member_access(s, name, span),
-                    Value::DateTime(ts, use_utc) => {
-                        Self::datetime_member_access(ts, use_utc, name, span)
-                    }
+                    Value::DateTime(ts, zone) => Self::datetime_member_access(ts, zone, name, span),
                     Value::Int(n) => Self::int_member_access(n, name, span),
                     Value::Float(n) => Self::float_member_access(n, name, span),
                     Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -681,7 +679,7 @@ impl Interpreter {
             Value::QueryBuilder(_) => self.query_builder_member_access(name, span, obj_val),
             Value::String(ref _s) => self.string_member_access(name, span, obj_val),
             Value::Symbol(ref _s) => Self::symbol_member_access(_s, name, span),
-            Value::DateTime(ts, use_utc) => Self::datetime_member_access(ts, use_utc, name, span),
+            Value::DateTime(ts, zone) => Self::datetime_member_access(ts, zone, name, span),
             Value::Int(n) => Self::int_member_access(n, name, span),
             Value::Float(n) => Self::float_member_access(n, name, span),
             Value::Bool(b) => Self::bool_member_access(b, name, span),
@@ -2722,7 +2720,7 @@ impl Interpreter {
     /// method for the call path to invoke with its arguments.
     pub(crate) fn datetime_member_access(
         ts: i64,
-        use_utc: bool,
+        zone: crate::interpreter::value::DtZone,
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -2734,14 +2732,14 @@ impl Interpreter {
                 // "takes no user arguments" and bare access invokes it.
                 crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                     ts,
-                    use_utc,
+                    zone,
                     name,
                     &[],
                     span,
                 )
             }
             Some(_) => Ok(Value::method(crate::interpreter::value::ValueMethod {
-                receiver: Box::new(Value::DateTime(ts, use_utc)),
+                receiver: Box::new(Value::DateTime(ts, zone)),
                 method_name: name.to_string(),
             })),
             // Universal members every other value answers. A DateTime answered
@@ -2759,13 +2757,13 @@ impl Interpreter {
                 // dispatch — `if v.is_a?("string") { … }` — raised on a
                 // DateTime instead of answering false.
                 "is_a?" => Ok(Value::method(crate::interpreter::value::ValueMethod {
-                    receiver: Box::new(Value::DateTime(ts, use_utc)),
+                    receiver: Box::new(Value::DateTime(ts, zone)),
                     method_name: name.to_string(),
                 })),
                 "inspect" | "to_s" => {
                     crate::interpreter::executor::calls::datetime_methods::call_datetime_method_impl(
                         ts,
-                        use_utc,
+                        zone,
                         "to_string",
                         &[],
                         span,
@@ -2809,6 +2807,10 @@ impl Interpreter {
             "inspect" => Ok(Value::String(n.to_string().into())),
             "abs" => Ok(Value::Int(n.abs())),
             "sqrt" => Ok(Value::Float((n as f64).sqrt())),
+            // An int is already whole: Float's rounding family answers it
+            // unchanged, so a value that may be either (`price.round`) does
+            // not need a type test first (#679). `round(digits)` below.
+            "floor" | "ceil" | "truncate" => Ok(Value::Int(n)),
             "even?" => Ok(Value::Bool(n % 2 == 0)),
             "odd?" => Ok(Value::Bool(n % 2 != 0)),
             "zero?" => Ok(Value::Bool(n == 0)),
@@ -2839,11 +2841,14 @@ impl Interpreter {
             // Methods with args (return ValueMethod).
             // `to_s`/`to_string` with 0 args is auto-invoked via
             // is_zero_arg_builtin_method; with 1 arg it's a radix conversion.
+            // `round` with 0 args is auto-invoked via is_zero_arg_builtin_method.
             "times" | "upto" | "downto" | "pow" | "gcd" | "lcm" | "between?" | "clamp"
-            | "is_a?" | "divmod" | "to_s" | "to_string" => Ok(Value::method(ValueMethod {
-                receiver: Box::new(Value::Int(n)),
-                method_name: name.to_string(),
-            })),
+            | "is_a?" | "divmod" | "to_s" | "to_string" | "round" => {
+                Ok(Value::method(ValueMethod {
+                    receiver: Box::new(Value::Int(n)),
+                    method_name: name.to_string(),
+                }))
+            }
             _ => Err(RuntimeError::no_such_property(
                 "int".to_string(),
                 name.to_string(),

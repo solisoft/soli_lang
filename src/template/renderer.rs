@@ -1153,7 +1153,10 @@ mod tests {
             write_value_to_output(&decimal, escaped, &mut out);
             assert_eq!(out, expected);
         }
-        let datetime = Value::DateTime(1_700_000_000_000_000_000, true);
+        let datetime = Value::DateTime(
+            1_700_000_000_000_000_000,
+            crate::interpreter::value::DtZone::UTC,
+        );
         let mut out = String::new();
         write_value_to_output(&datetime, true, &mut out);
         assert_eq!(out, "2023-11-14 22:13:20");

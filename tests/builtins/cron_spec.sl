@@ -26,9 +26,11 @@ describe("Cron expression builders") do
       assert_eq(Cron.every("3 days"), "0 0 0 */3 * *")
     end
 
-    test("refuses less than a minute") do
-      assert_raises("Cron.every() minimum granularity is 1 minute") do
-        Cron.every("30 seconds")
+    test("accepts second intervals") do
+      assert_eq(Cron.every("30 seconds"), "*/30 * * * * *")
+      assert_eq(Cron.every("1 second"), "* * * * * *")
+      assert_raises("at least 1 second") do
+        Cron.every(0)
       end
     end
 

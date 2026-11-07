@@ -477,9 +477,15 @@ fn fetch_peer_chain(
         .map_err(|_| format!("invalid TLS server name: {}", bare))?;
     let mut conn = ClientConnection::new(Arc::new(config), server_name)
         .map_err(|e| format!("TLS setup failed: {}", e))?;
+    // The socket timeouts bound each read; this bounds the handshake, so a
+    // server that drips a byte at a time cannot hold the caller past it.
+    let deadline = std::time::Instant::now() + timeout;
     while conn.is_handshaking() {
+        if std::time::Instant::now() >= deadline {
+            return Err(no_tls_answer(bare, port, timeout));
+        }
         conn.complete_io(&mut tcp)
-            .map_err(|e| format!("TLS handshake with {}:{} failed: {}", bare, port, e))?;
+            .map_err(|e| describe_handshake_error(&e, bare, port, timeout))?;
     }
     let chain: Vec<Vec<u8>> = conn
         .peer_certificates()
@@ -494,6 +500,47 @@ fn fetch_peer_chain(
     }
     Ok(chain)
 }
+/// The message for a port that never answered the ClientHello.
+#[cfg(not(target_arch = "wasm32"))]
+fn no_tls_answer(host: &str, port: u16, timeout: Duration) -> String {
+    format!(
+        "no TLS handshake from {host}:{port} within {:.1}s — is it a TLS port?",
+        timeout.as_secs_f64()
+    )
+}
+
+/// Say why the handshake failed in terms of the likely cause. Pointed at a
+/// plain-text port (HTTP on 80, SSH, a database), the raw error was the
+/// socket's — `Resource temporarily unavailable (os error 35)` for a server
+/// that waits for a request of its own (the read timeout surfaces as
+/// `WouldBlock` on macOS), `received corrupt message` for one that answers in
+/// its own protocol — and neither says "this is not TLS" (#679).
+#[cfg(not(target_arch = "wasm32"))]
+fn describe_handshake_error(
+    e: &std::io::Error,
+    host: &str,
+    port: u16,
+    timeout: Duration,
+) -> String {
+    use std::io::ErrorKind;
+    match e.kind() {
+        ErrorKind::WouldBlock | ErrorKind::TimedOut => no_tls_answer(host, port, timeout),
+        ErrorKind::UnexpectedEof
+        | ErrorKind::ConnectionReset
+        | ErrorKind::ConnectionAborted
+        | ErrorKind::BrokenPipe => {
+            format!(
+                "{host}:{port} closed the connection during the TLS handshake — is it a TLS port? ({e})"
+            )
+        }
+        // rustls reports a peer that does not speak TLS as InvalidData.
+        ErrorKind::InvalidData => {
+            format!("{host}:{port} did not answer with TLS — is it a TLS port? ({e})")
+        }
+        _ => format!("TLS handshake with {host}:{port} failed: {e}"),
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 fn fetch_peer_chain(
     _host: &str,
@@ -854,6 +901,44 @@ IZV30Dp1
         drop(listener);
         let err = fetch_peer_chain("127.0.0.1", port, Duration::from_secs(2), false).unwrap_err();
         assert!(err.contains("failed"), "{}", err);
+    }
+
+    /// A port that accepts the connection but never answers the ClientHello
+    /// (a server waiting for a request of its own) used to surface the read
+    /// timeout as "Resource temporarily unavailable (os error 35)".
+    #[test]
+    fn peer_certificate_on_a_silent_port_says_it_is_not_tls() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_millis(1500));
+            drop(socket);
+        });
+        let started = std::time::Instant::now();
+        let err =
+            fetch_peer_chain("127.0.0.1", port, Duration::from_millis(500), false).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(3), "{err}");
+        assert!(err.contains("is it a TLS port?"), "{err}");
+        assert!(!err.contains("os error"), "{err}");
+        server.join().unwrap();
+    }
+
+    /// A port that answers in another protocol (an SSH banner, an HTTP 400).
+    #[test]
+    fn peer_certificate_on_a_plain_text_port_says_it_is_not_tls() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut hello = [0u8; 512];
+            let _ = socket.read(&mut hello);
+            let _ = socket.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n");
+        });
+        let err = fetch_peer_chain("127.0.0.1", port, Duration::from_secs(2), false).unwrap_err();
+        assert!(err.contains("is it a TLS port?"), "{err}");
+        server.join().unwrap();
     }
 
     /// Loopback is refused outside the test runner, like `HTTP`. The flag is
