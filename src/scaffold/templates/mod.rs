@@ -16,4 +16,5 @@ pub mod model;
 pub mod oauth;
 pub mod offline;
 pub mod oidc;
+pub mod passkeys;
 pub mod view;

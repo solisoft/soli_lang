@@ -72,6 +72,7 @@ may still exist under another name — try a synonym before writing it by hand.
 |---|---|---|
 | Login / signup, sessions, `current_user` | `soli generate auth` | `docs/sessions.md`, `docs/authorization.md` |
 | Policies (who may do what) | Pundit-style policies, `authorize` | `docs/authorization.md` |
+| Passkeys (WebAuthn sign-in, no password typed) | `soli generate auth --passkeys`; `WebAuthn.*` to hand-roll | `docs/authentication.md` → Passkeys, `docs/builtins.md` → WebAuthn |
 | Two-factor auth (TOTP, authenticator apps) | `Crypto.totp_generate` / `totp_verify` / `totp_uri` | `docs/builtins.md` → TOTP |
 | Password hashing | `password_hash` / `password_verify` (Argon2id) | `docs/builtins.md` → Password Hashing |
 | Sign in with GitHub / Google | `soli generate oauth github\|google` | `docs/oauth-client.md` |

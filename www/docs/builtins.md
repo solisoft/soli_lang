@@ -3135,6 +3135,127 @@ which is exactly why a key id belongs there.
 
 ---
 
+## WebAuthn Functions (Passkeys)
+
+The `WebAuthn` class is the server half of passkeys: it builds the options a
+browser hands to `navigator.credentials.create()` / `.get()`, and verifies what
+the browser sends back (WebAuthn Level 3, §7.1 registration and §7.2
+authentication). Full guide: [WebAuthn](/docs/builtins/webauthn); the
+generated sign-in flow is `soli generate auth --passkeys`
+([Authentication → Passkeys](/docs/security/authentication#passkeys)).
+
+The class is **stateless**. Keeping the challenge between the two requests
+(single use, short TTL, in the session) and storing the credential are the
+app's job — the generator writes both.
+
+```soli
+# 1. Options: send `options` to the browser, keep `challenge` in the session
+result = WebAuthn.registration_options({
+  "rp_id": "example.com",
+  "rp_name": "Example",
+  "user_id": user._key,
+  "user_name": user.email
+})
+session_set("webauthn_challenge", result["challenge"])
+render_json(result["options"])
+
+# 2. Verify what navigator.credentials.create() returned (its toJSON())
+challenge = session_get("webauthn_challenge")
+session_delete("webauthn_challenge")
+record = WebAuthn.verify_registration(req["json"], {
+  "challenge": challenge,
+  "origins": ["https://example.com"],
+  "rp_id": "example.com"
+})
+# store record["credential_id"], record["public_key"], record["sign_count"]
+```
+
+Every failed check **raises** — `WebAuthn.verify_registration(): origin
+mismatch (expected https://example.com, got https://evil.example)` — so a
+forgotten check cannot turn a rejection into a login. `rescue nil` keeps it to
+one line.
+
+### WebAuthn.registration_options(opts)
+
+Returns `{"options": Hash, "challenge": String}`: `options` is
+`PublicKeyCredentialCreationOptionsJSON` (what
+`PublicKeyCredential.parseCreationOptionsFromJSON` takes), `challenge` is 32
+random bytes, base64url.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `rp_id` | required | the domain passkeys are scoped to (`example.com` also covers `app.example.com`) |
+| `rp_name` | `rp_id` | shown by the browser |
+| `user_id` | required | a String of at most 64 bytes, sent as the user handle — use the user's key, never an email |
+| `user_name` | required | the account name the browser shows |
+| `display_name` | `user_name` | |
+| `exclude_credentials` | `[]` | credential ids (or `{id, transports}` hashes) already registered, so one authenticator is not added twice |
+| `user_verification` | `"preferred"` | `required`, `preferred` or `discouraged` |
+| `resident_key` | `"required"` | discoverable credentials: what makes username-less sign-in work |
+| `authenticator_attachment` | none | `platform` or `cross-platform` |
+| `algorithms` | `[-7, -257]` | COSE ids: ES256 and RS256 are supported |
+| `timeout` | `300000` | milliseconds |
+
+`attestation` is always `"none"`.
+
+### WebAuthn.verify_registration(credential, expected)
+
+`credential` is the browser's `PublicKeyCredential.toJSON()`. `expected` takes
+`challenge`, `origins` (a String or an Array, exact match — scheme, host and
+port), `rp_id`, and optionally `require_user_verification` (default `false`)
+and `algorithms`. Returns the record to store:
+
+| Key | |
+|---|---|
+| `credential_id` | base64url — look the passkey up by it at sign-in |
+| `public_key` | the COSE key, base64url — what verifies future signatures |
+| `algorithm` | `-7` or `-257` |
+| `sign_count` | the authenticator's counter (0 for synced passkeys) |
+| `transports` | from the browser, e.g. `["internal", "hybrid"]` |
+| `aaguid` | the authenticator model, as a UUID (all zeros for most passkeys) |
+| `user_verified`, `backup_eligible`, `backed_up` | the UV, BE and BS flags |
+| `attestation_format` | reported, **never verified** (see below) |
+
+### WebAuthn.authentication_options(opts)
+
+Returns `{"options", "challenge"}` for `navigator.credentials.get()`. Takes
+`rp_id` (required), `allow_credentials` (default `[]`: the browser offers every
+passkey it holds for the site, which is what conditional UI needs),
+`user_verification` and `timeout`.
+
+### WebAuthn.verify_authentication(credential, expected)
+
+`expected` is the same as for registration plus the stored passkey:
+`public_key` (required), `sign_count` (default 0) and optionally
+`credential_id`, which must then match the response. Verifies the signature
+over `authenticatorData || SHA-256(clientDataJSON)` and returns:
+
+| Key | |
+|---|---|
+| `credential_id` | which passkey answered |
+| `user_handle` | the `user_id` given at registration, or `nil` |
+| `sign_count` | store it back |
+| `counter_regressed` | `true` when the counter did not move forward (both 0 is fine): possibly a cloned authenticator — the app decides |
+| `user_verified`, `backup_eligible`, `backed_up` | flags |
+
+### What is checked
+
+Type `public-key`, `id` == `rawId`; clientData `type`, `challenge` (constant
+time) and `origin` (exact); `crossOrigin` is refused; `rpIdHash`; the user
+presence flag; user verification when required; backup state only with backup
+eligibility; on registration, attested credential data whose id matches, a
+valid COSE key (P-256 on the curve, RSA ≥ 2048 bits) of an allowed algorithm,
+and an empty statement for `"none"`; on authentication, the signature. CBOR is
+decoded strictly: definite lengths, no duplicate keys, no trailing bytes.
+
+**Attestation is not verified.** The options ask for `"none"`, and whatever
+format an authenticator still sends is reported in `attestation_format` without
+its statement being checked. That is the right ceiling for consumer passkeys —
+synced passkeys carry no attestation — but not for a policy that admits only
+certain authenticator models. EdDSA (COSE `-8`) is not supported yet.
+
+---
+
 ## VAPID / Web Push Functions
 
 Soli has native Web Push support — see [VAPID / Web Push Functions](/docs/builtins/vapid) for the full

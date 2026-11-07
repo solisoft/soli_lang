@@ -16,6 +16,7 @@ pub mod model_generator;
 pub mod oauth_generator;
 pub mod offline_generator;
 pub mod oidc_generator;
+pub mod passkeys_generator;
 pub mod seed_generator;
 pub mod templates;
 pub mod ui;
@@ -227,7 +228,7 @@ pub fn print_scaffold_success_message(name: &str) {
 // Re-export public functions for backward compatibility
 pub use app_generator::create_app;
 pub use app_links_generator::{create_app_links, print_app_links_success_message, AppLinksOptions};
-pub use auth_generator::{create_auth, print_auth_success_message};
+pub use auth_generator::{create_auth, create_auth_with, print_auth_success_message};
 pub use client_generator::{
     create_client, print_client_success_message, ClientFlags, ClientOptions,
 };
@@ -238,3 +239,4 @@ pub use mailer_generator::create_mailer;
 pub use oauth_generator::create_oauth;
 pub use offline_generator::{create_offline, print_offline_success_message};
 pub use oidc_generator::{create_oidc_provider, print_oidc_success_message};
+pub use passkeys_generator::{create_passkeys, print_passkeys_success_message};

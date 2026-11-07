@@ -196,7 +196,7 @@ if (soli.nativeBridge.supports("nfc")) {
 ```
 
 Biometrics confirm the person holding the device. They are **not** a login
-credential — use WebAuthn when you need proof for the server. Camera tracks are
+credential — use [WebAuthn passkeys](/docs/security/authentication#passkeys) when you need proof for the server. Camera tracks are
 stopped when a `camera_preview` element leaves the DOM, so instant navigation
 does not leave the green indicator on after the user has moved on.
 

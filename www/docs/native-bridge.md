@@ -160,7 +160,7 @@ Two rules explain the shape of the rest of this table:
 | Vibration / haptics | ✅ Android | ✗ | ✗ | ✅ trackpad only | ✅ haptics | ✅ shipped |
 | [Deep links into the app](/docs/native/deep-links) | — | ✅ protocol / `soli desktop` open | ✅ protocol / desktop open | ✅ scheme | ✅ scheme | ✅ shipped |
 | NFC | Chrome Android only | ✗ | ✗ | ✗ no hardware | ✅ Core NFC | ✅ shipped |
-| Biometric unlock | ✅ WebAuthn | ✅ browser | ✅ browser | ✅ Touch ID | ✅ Face/Touch ID | ✅ shipped |
+| Biometric unlock | ✅ [WebAuthn](/docs/security/authentication#passkeys) | ✅ browser | ✅ browser | ✅ Touch ID | ✅ Face/Touch ID | ✅ shipped |
 | Badge count | ✅ Badging API | ✅ browser | ✅ browser | ✅ dock tile | ✅ shipped | ✅ via notification |
 | Share sheet | ✅ Web Share | ✅ browser | ✅ generated shell | ✅ shipped | ✅ shipped | ✅ shipped |
 | Keep screen awake | ✅ Wake Lock | ✅ browser | ✅ browser | ✅ shipped | ✅ shipped | ✅ shipped |

@@ -5,10 +5,18 @@ use std::fs;
 use std::path::Path;
 
 use crate::scaffold::app_generator::{write_file, write_if_absent, write_migration_once};
+use crate::scaffold::passkeys_generator;
 use crate::scaffold::templates::auth;
 
 /// Generate the auth scaffold into the application at `folder`.
 pub fn create_auth(folder: &str) -> Result<(), String> {
+    create_auth_with(folder, false)
+}
+
+/// `create_auth`, plus passkey registration and sign-in when `passkeys`
+/// (`soli generate auth --passkeys`). Re-running it on an app that already
+/// has the auth scaffold adds only the passkey files.
+pub fn create_auth_with(folder: &str, passkeys: bool) -> Result<(), String> {
     let app_path = Path::new(folder);
 
     if !app_path.exists() {
@@ -22,6 +30,11 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
     }
 
     ensure_directory_structure(app_path)?;
+    if passkeys {
+        // Before the base files, so a fresh sign-in view gets the passkey
+        // button; an existing one is left alone.
+        passkeys_generator::write_sessions_view_if_absent(app_path)?;
+    }
 
     // (relative path, contents) — written only if absent so re-running never
     // clobbers a User model or policy you've already customized.
@@ -97,6 +110,9 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
         &auth::auth_token_indexes_migration(),
     )?;
     add_routes(app_path)?;
+    if passkeys {
+        passkeys_generator::create_passkeys(folder)?;
+    }
 
     Ok(())
 }

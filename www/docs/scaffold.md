@@ -11,8 +11,16 @@ SoliLang includes a scaffold generator that quickly creates a complete MVC resou
 | `soli generate app_links` | Well-known deep-link proof routes — [docs](/docs/native/deep-links) |
 | `soli generate offline` | Outbox sync push/pull + `soli_outbox.js` — [docs](/docs/native/offline) |
 
-Also: `soli generate auth`, `oidc_provider`, `mailer`, `component`, and `soli desktop build` for local
-desktop products.
+## Authentication generators
+
+| Command | Creates |
+|---------|---------|
+| `soli generate auth` | User model, sign-in/sign-up/reset/confirmation flows, policies — [docs](/docs/security/authorization) |
+| `soli generate auth --passkeys` | The same plus passkey (WebAuthn) registration and sign-in; on an app that already has auth, only the passkey files — [docs](/docs/security/authentication#passkeys) |
+| `soli generate oauth <provider>` | Sign in with GitHub, Google… — [docs](/docs/security/oauth-client) |
+| `soli generate oidc_provider` | An OpenID Connect provider — [docs](/docs/security/oidc-provider) |
+
+Also: `mailer`, `component`, and `soli desktop build` for local desktop products.
 
 ## Basic Usage
 

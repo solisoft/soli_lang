@@ -2440,6 +2440,33 @@ impl TypeEnvironment {
             self.classes.insert("Paseto".to_string(), paseto_class);
         }
 
+        // WebAuthn class — server-side passkey ceremonies. Each method takes
+        // one or two Hashes and returns a Hash (`{options, challenge}` or the
+        // verified credential), so every return type is `Any` like Paseto's
+        // hash-returning methods; `Any` params keep the arity check out of it.
+        {
+            let mut webauthn_class = ClassType::new("WebAuthn".to_string());
+            for name in [
+                "registration_options",
+                "verify_registration",
+                "authentication_options",
+                "verify_authentication",
+            ] {
+                webauthn_class.methods.insert(
+                    name.to_string(),
+                    MethodInfo {
+                        name: name.to_string(),
+                        params: vec![("args".to_string(), Type::Any)],
+                        return_type: Type::Any,
+                        is_private: false,
+                        is_protected: false,
+                        is_static: true,
+                    },
+                );
+            }
+            self.classes.insert("WebAuthn".to_string(), webauthn_class);
+        }
+
         // Base64 class — `encode` returns a String; `decode` returns a String when
         // the bytes are valid UTF-8 and an Array of byte ints otherwise, so it is
         // typed `Any`. Both accept a String or a byte array, hence the `Any` param.

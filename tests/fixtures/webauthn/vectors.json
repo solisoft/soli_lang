@@ -1,0 +1,66 @@
+{
+ "es256": {
+  "registration": {
+   "id": "GUDDt1dwVI7R37FdhYMyJg",
+   "rawId": "GUDDt1dwVI7R37FdhYMyJg",
+   "type": "public-key",
+   "response": {
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiektibDhMNUxpaEF1R3JPR2VrYlJLYWdud2dubEM1WnhvREZoMU9zbFIwNCIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+    "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUo3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdNAAAAAK3OAAI1vMYKZIsLJfHwVQMAEBlAw7dXcFSO0d-xXYWDMialAQIDJiABIVggn3XEarzg6KQybpt8xowLYtKxTDozElgChpPUOr6OEf8iWCCM6UQpUiB5ZSk4trnTV5ApwbJVKNZ4FSRxFZ99Zy17JA",
+    "transports": [
+     "internal",
+     "hybrid"
+    ]
+   },
+   "clientExtensionResults": {}
+  },
+  "registration_challenge": "zKbl8L5LihAuGrOGekbRKagnwgnlC5ZxoDFh1OslR04",
+  "authentication": {
+   "id": "GUDDt1dwVI7R37FdhYMyJg",
+   "rawId": "GUDDt1dwVI7R37FdhYMyJg",
+   "type": "public-key",
+   "response": {
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiRU9ZcjRBTWEzdnozUEQtV3ZEbjVrNGdHVjl2RDNhenZIUUFZOFhDd2NlTSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+    "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcNAAAAAQ",
+    "signature": "MEUCIDGFnGsXK7oYmJQ2M-pxoTw4HyO2wr_QKY6_aUlG8UHUAiEAqSGkCOBRNY0DLuwg3zLXlF9x7V9fw2vsTVZtnmKa3L0",
+    "userHandle": "dXNlci0x"
+   },
+   "clientExtensionResults": {}
+  },
+  "authentication_challenge": "EOYr4AMa3vz3PD-WvDn5k4gGV9vD3azvHQAY8XCwceM",
+  "public_key": "pQECAyYgASFYIJ91xGq84OikMm6bfMaMC2LSsUw6MxJYAoaT1Dq-jhH_IlggjOlEKVIgeWUpOLa501eQKcGyVSjWeBUkcRWffWcteyQ",
+  "credential_id": "GUDDt1dwVI7R37FdhYMyJg"
+ },
+ "rs256": {
+  "registration": {
+   "id": "mRCcNV8hQeoi1kP5GmbbJg",
+   "rawId": "mRCcNV8hQeoi1kP5GmbbJg",
+   "type": "public-key",
+   "response": {
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQ3pORGt5ZWZyVk9uRVNVMVNQSVloZ1dlNUJZcXJVNG9TeHdITWtyOEpDdyIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+    "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVkBV6N5pvbur7mlXjeMEYA04nUeaC-rny0wqxPSElWGzhlHTQAAAACtzgACNbzGCmSLCyXx8FUDABCZEJw1XyFB6iLWQ_kaZtsmpAEDAzkBACBZAQDj6OIXYswVyBKQVHuQbeFgVrTgXGotBDlnVK1NaVcSDmmxoj_rWzcipIS__qpd8RpEBvRSsC-pVfXMICwyfuXQ70i8AxLtH2z0o9N6RwVCdL9Kzn9xr9Zs_TtveM4clT2Iei2wW6a-Ou54sQg_bWQ4uOkSldLGSN09hAh7zqaWS_aNeI19FkREx1E1QRhMc0Eb7ZsN15obqEF754ds8HvhV2vYH78kKFbMDpC7jNLblBtRZm3xLAszHNpIrHyAlA4FOm9EsZdmiqQ-aObuEaa-zcxAIq8nl-iWukl3xUKm2e97vgrYZpjJvM4YWXCZlSypqSgJTwS9yKec94zwE7ydIUMBAAE",
+    "transports": [
+     "internal",
+     "hybrid"
+    ]
+   },
+   "clientExtensionResults": {}
+  },
+  "registration_challenge": "CzNDkyefrVOnESU1SPIYhgWe5BYqrU4oSxwHMkr8JCw",
+  "authentication": {
+   "id": "mRCcNV8hQeoi1kP5GmbbJg",
+   "rawId": "mRCcNV8hQeoi1kP5GmbbJg",
+   "type": "public-key",
+   "response": {
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoidG9MZVpkN3Y4cVNSY0hyMGRzYTh2aU5PelR5NjBMcEpuSUE2N2NKOTNyTSIsIm9yaWdpbiI6Imh0dHBzOi8vZXhhbXBsZS5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+    "authenticatorData": "o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUcNAAAAAQ",
+    "signature": "DT_qFYG4VCHjKJdrUvYkfgz8WJtqlefuTQWcR6xgOqTDSUj9jlXyoh_612sGNiJT1fGcjPoYVu3H1i_6egcuStm0HFNNWTH5Vqf20PZBHfb8YrDRElM8BdySOZcz4eIyx4BNq9YKOFUevT8pbU4GiHJmBUCQ5-7PvXlSnGPosHolNmB0Isn1oaGejmbFtHuueMdC54zDMzsBX-qr2gCu_v_xZuzsENQTw7_DFqX_OuZxJMGb-hYY1gGW-lKJMG7r7_UDJ5CRFAhD2QGlPlyQNtB1h2w6qTvlsnSfjnjw2jo2VX2HeFDEBx2ZLLH4Al7tH-Kmzsr9MwRdPTcz6F3VSg",
+    "userHandle": "dXNlci0x"
+   },
+   "clientExtensionResults": {}
+  },
+  "authentication_challenge": "toLeZd7v8qSRcHr0dsa8viNOzTy60LpJnIA67cJ93rM",
+  "public_key": "pAEDAzkBACBZAQDj6OIXYswVyBKQVHuQbeFgVrTgXGotBDlnVK1NaVcSDmmxoj_rWzcipIS__qpd8RpEBvRSsC-pVfXMICwyfuXQ70i8AxLtH2z0o9N6RwVCdL9Kzn9xr9Zs_TtveM4clT2Iei2wW6a-Ou54sQg_bWQ4uOkSldLGSN09hAh7zqaWS_aNeI19FkREx1E1QRhMc0Eb7ZsN15obqEF754ds8HvhV2vYH78kKFbMDpC7jNLblBtRZm3xLAszHNpIrHyAlA4FOm9EsZdmiqQ-aObuEaa-zcxAIq8nl-iWukl3xUKm2e97vgrYZpjJvM4YWXCZlSypqSgJTwS9yKec94zwE7ydIUMBAAE",
+  "credential_id": "mRCcNV8hQeoi1kP5GmbbJg"
+ }
+}

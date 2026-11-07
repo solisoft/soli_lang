@@ -271,7 +271,7 @@ end
 # ============================================================================
 
 def security_authentication
-  render_docs("docs/security/authentication", "Authentication with JWT", "security", "authentication")
+  render_docs("docs/security/authentication", "Authentication with JWT and Passkeys", "security", "authentication")
 end
 
 def security_sessions
@@ -631,6 +631,11 @@ end
 
 def builtins_paseto
   render_docs("docs/builtins/paseto", "PASETO Tokens", "builtins", "paseto")
+end
+
+# GET /docs/builtins/webauthn
+def builtins_webauthn
+  render_docs("docs/builtins/webauthn", "WebAuthn (Passkeys)", "builtins", "webauthn")
 end
 
 def builtins_xml_signatures

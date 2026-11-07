@@ -216,6 +216,7 @@ pub mod url_class;
 pub mod uuid;
 pub mod validation;
 pub mod vapid;
+pub mod webauthn;
 pub mod x509;
 pub mod xml;
 
@@ -705,6 +706,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register VAPID / Web Push builtins
     vapid::register_vapid_builtins(env);
+
+    // Register the WebAuthn class (server-side passkey ceremonies)
+    webauthn::register_webauthn_builtins(env);
 
     // Register PDF / Factur-X builtins
     #[cfg(feature = "pdf")]

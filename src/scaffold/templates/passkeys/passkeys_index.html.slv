@@ -1,0 +1,39 @@
+<div class="max-w-2xl mx-auto px-4 py-10" data-passkeys data-csrf-token="<%= csrf_token() %>">
+  <h1 class="text-2xl font-bold mb-2">Passkeys</h1>
+  <p class="mb-6 text-sm text-slate-400">
+    A passkey signs you in with your device's screen lock or a security key instead of a password.
+  </p>
+
+  <% if passkeys.length > 0 %>
+    <ul class="mb-6 divide-y divide-slate-800 rounded-xl border border-slate-800 bg-slate-900">
+      <% passkeys.each do |passkey| %>
+        <li class="flex items-center justify-between px-4 py-3">
+          <div>
+            <p class="font-medium text-white"><%= passkey.name %></p>
+            <p class="text-xs text-slate-400">
+              <%= passkey.backed_up ? "Synced" : "This device only" %>
+              <% if passkey.last_used_at.present? %> · last used <%= passkey.last_used_at %><% end %>
+            </p>
+          </div>
+          <%- button_to("Remove", "/passkeys/" + passkey._key.to_s, {
+            "method": "delete", "confirm": "Remove this passkey?",
+            "class": "text-sm text-red-400 hover:text-red-300", "form_class": "inline"
+          }) %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="mb-6 text-sm text-slate-400">No passkey yet.</p>
+  <% end %>
+
+  <form data-passkey-register class="flex gap-2">
+    <input name="name" type="text" placeholder="Name it (e.g. MacBook)" maxlength="60"
+           class="flex-1 rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+    <button type="submit"
+            class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+      Add a passkey
+    </button>
+  </form>
+  <p data-passkey-error class="hidden mt-3 text-sm text-red-300"></p>
+</div>
+<script src="/js/passkeys.js" defer></script>

@@ -4,6 +4,48 @@
 
 ### Added
 
+- **Passkeys: a native `WebAuthn` class and `soli generate auth --passkeys`
+  (card #696, phases 1 and 3).** `WebAuthn.registration_options(opts)` /
+  `WebAuthn.authentication_options(opts)` return `{options, challenge}` —
+  `PublicKeyCredentialCreationOptionsJSON` / `RequestOptionsJSON` with a
+  32-byte base64url challenge, `attestation: "none"`, discoverable credentials
+  by default. `WebAuthn.verify_registration(credential, expected)` and
+  `WebAuthn.verify_authentication(credential, expected)` take the browser's
+  `PublicKeyCredential.toJSON()` and check, per WebAuthn L3 §7.1/§7.2: type
+  and id/rawId, clientData type, challenge (constant time), exact origin
+  allow-list, no cross-origin, rpIdHash, UP, UV when required, BS only with
+  BE, attested credential data (registration), the COSE key (EC2 P-256 on
+  the curve for ES256, RSA ≥ 2048 bits for RS256; EdDSA refused) against an
+  algorithm allow-list, an empty `none` statement, and the signature over
+  authData || SHA-256(clientDataJSON). Results: the credential record
+  (`credential_id`, COSE `public_key`, `algorithm`, `sign_count`,
+  `transports`, `aaguid`, UV/BE/BS flags, `attestation_format`) and the
+  assertion (`user_handle`, `sign_count`, `counter_regressed`). Failures
+  raise `WebAuthn.<method>(): <reason>`. Attestation is reported, never
+  verified. CBOR is decoded by a strict in-tree decoder (definite lengths, no
+  duplicate keys, no trailing bytes, bounded depth and container sizes) — no
+  new dependency.
+  RS256 goes through a new `rsa_key::verify_pkcs1_v15_components(n, e, …)`,
+  which the PEM `RsaKey.verify` path now delegates to. Test vectors in
+  `tests/fixtures/webauthn/` are signed by the OpenSSL CLI
+  (`generate.py`). `soli generate auth --passkeys` (flag before or after the
+  folder; also on an app that already ran `generate auth`) writes
+  `PasskeyCredential` with the session challenge helpers
+  (`webauthn_store_challenge` / `webauthn_take_challenge`, single use,
+  `WEBAUTHN_CHALLENGE_TTL` = 300 s), `PasskeysController` (`GET /passkeys`,
+  `POST /passkeys/options`, `POST /passkeys`, `DELETE /passkeys/:id`),
+  `PasskeySessionsController` (`POST /passkeys/login/options`,
+  `POST /passkeys/login`, mirroring the password login's throttle, gates,
+  `session_regenerate` and `session_version`, requiring a user handle that
+  names the passkey's owner, with one uniform 401), the
+  `/passkeys` page, a `passkeys/sign_in` partial, `public/js/passkeys.js`
+  (conditional UI, `X-CSRF-Token` from `data-csrf-token`), a migration with
+  a unique `credential_id` index, and routes behind their own marker. A fresh
+  sign-in view renders the partial with `autocomplete="username webauthn"`;
+  an existing one is never patched. RP ID and origins come from
+  `APP_BASE_URL`, `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS`. `soli generate
+  auth` now rejects an unknown option instead of ignoring it.
+
 - **Broadcasts reach every instance through an opt-in realtime bus (card
   #695, phase 1).** `SOLI_REALTIME_BUS=solidb` makes `broadcast`,
   `Model.broadcast`, `ws_broadcast`, `ws_broadcast_room`, `sse_broadcast` and

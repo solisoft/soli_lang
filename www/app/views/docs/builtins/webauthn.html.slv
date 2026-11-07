@@ -1,0 +1,189 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">WebAuthn</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">WebAuthn (Passkeys)</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            The server half of passkeys: the options a browser needs, and the verification of what it sends back.
+        </p>
+        <p class="text-gray-400 mt-4 text-sm leading-relaxed">
+            <code class="text-cyan-400">WebAuthn</code> implements the relying-party side of the WebAuthn Level 3
+            registration (&sect;7.1) and authentication (&sect;7.2) ceremonies, natively and without a dependency on
+            OpenSSL. For a ready-made sign-in flow, run <code class="text-cyan-400">soli generate auth --passkeys</code>
+            &mdash; see <a href="/docs/security/authentication#passkeys" class="text-amber-400 hover:underline">Authentication &rarr; Passkeys</a>.
+        </p>
+    </div>
+
+    <!-- Stateless -->
+    <section id="section-stateless" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Stateless by design</h2>
+        <p class="text-gray-400 mb-4">
+            The class keeps nothing. Each ceremony is two requests: the options call returns a fresh challenge, and the
+            verify call needs that same challenge back. Keeping it in between &mdash; single use, a short TTL, in the
+            session &mdash; and storing the credential are the app's job; the generator writes both.
+        </p>
+        <pre data-filename="Registration, by hand"><code class="language-soli text-sm"># 1. Options: send `options` to the browser, keep `challenge` in the session
+result = WebAuthn.registration_options({
+  "rp_id": "example.com",
+  "rp_name": "Example",
+  "user_id": user._key,
+  "user_name": user.email
+})
+session_set("webauthn_challenge", result["challenge"])
+render_json(result["options"])
+
+# 2. Verify what navigator.credentials.create() returned (its toJSON())
+challenge = session_get("webauthn_challenge")
+session_delete("webauthn_challenge")
+record = WebAuthn.verify_registration(req["json"], {
+  "challenge": challenge,
+  "origins": ["https://example.com"],
+  "rp_id": "example.com"
+})
+# store record["credential_id"], record["public_key"], record["sign_count"]</code></pre>
+    </section>
+
+    <!-- Failure contract -->
+    <section id="section-failures" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Failures raise</h2>
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5">
+            <p class="text-gray-300 mb-3">
+                Both verify methods return a Hash on success and <strong class="text-white">throw</strong> on any failed
+                check, with a stable message naming it:
+                <code class="text-amber-300">WebAuthn.verify_registration(): origin mismatch (expected https://example.com, got https://evil.example)</code>.
+                Nothing fails by returning <code>false</code>, so a forgotten check at the call site cannot turn a rejection
+                into a login.
+            </p>
+            <pre data-filename="Fail closed"><code class="language-soli text-sm">result = WebAuthn.verify_authentication(req["json"], passkey.expected(challenge)) rescue nil
+return render_json({"error": "Passkey sign-in failed."}, 401) if result.nil?</code></pre>
+        </div>
+    </section>
+
+    <!-- Options -->
+    <section id="section-options" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Options</h2>
+
+        <section id="def-webauthn-registration-options" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webauthn-registration-options" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">WebAuthn.registration_options(opts)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Returns <code>{"options": Hash, "challenge": String}</code>. <code>options</code> is
+                    <code>PublicKeyCredentialCreationOptionsJSON</code>, what
+                    <code>PublicKeyCredential.parseCreationOptionsFromJSON</code> takes; <code>challenge</code> is 32 random
+                    bytes, base64url. <code>attestation</code> is always <code>"none"</code>.
+                </p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">rp_id</code> : <code class="text-orange-400">String</code> - Required. The domain passkeys are scoped to (<code>example.com</code> also covers <code>app.example.com</code>).</div>
+                    <div><code class="text-amber-400">rp_name</code> : <code class="text-orange-400">String</code> - Shown by the browser. Default: <code>rp_id</code>.</div>
+                    <div><code class="text-amber-400">user_id</code> : <code class="text-orange-400">String</code> - Required, at most 64 bytes, sent as the user handle. Use the user's key, never an email.</div>
+                    <div><code class="text-amber-400">user_name</code> : <code class="text-orange-400">String</code> - Required. The account name the browser shows. <code>display_name</code> defaults to it.</div>
+                    <div><code class="text-amber-400">exclude_credentials</code> : <code class="text-orange-400">Array</code> - Credential ids (or <code>{id, transports}</code> hashes) already registered, so one authenticator is not added twice.</div>
+                    <div><code class="text-amber-400">user_verification</code> : <code class="text-orange-400">String</code> - <code>required</code>, <code>preferred</code> (default) or <code>discouraged</code>.</div>
+                    <div><code class="text-amber-400">resident_key</code> : <code class="text-orange-400">String</code> - Default <code>required</code>: discoverable credentials are what makes username-less sign-in work.</div>
+                    <div><code class="text-amber-400">authenticator_attachment</code> : <code class="text-orange-400">String</code> - <code>platform</code> or <code>cross-platform</code>; unset by default.</div>
+                    <div><code class="text-amber-400">algorithms</code> : <code class="text-orange-400">Array</code> - COSE ids. Default <code>[-7, -257]</code> (ES256, RS256), the two supported.</div>
+                    <div><code class="text-amber-400">timeout</code> : <code class="text-orange-400">Int</code> - Milliseconds. Default <code>300000</code>.</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="def-webauthn-authentication-options" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webauthn-authentication-options" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">WebAuthn.authentication_options(opts)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    Returns <code>{"options", "challenge"}</code> for <code>navigator.credentials.get()</code>. Takes
+                    <code>rp_id</code> (required), <code>allow_credentials</code> (default <code>[]</code>: the browser offers
+                    every passkey it holds for the site, which is what conditional UI needs), <code>user_verification</code>
+                    and <code>timeout</code>.
+                </p>
+            </div>
+        </section>
+    </section>
+
+    <!-- Verification -->
+    <section id="section-verify" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Verification</h2>
+
+        <section id="def-webauthn-verify-registration" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webauthn-verify-registration" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">WebAuthn.verify_registration(credential, expected)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    <code>credential</code> is the browser's <code>PublicKeyCredential.toJSON()</code>, so a controller passes
+                    <code>req["json"]</code> straight through. <code>expected</code> takes <code>challenge</code>,
+                    <code>origins</code> (a String or an Array, exact match on scheme, host and port), <code>rp_id</code>, and
+                    optionally <code>require_user_verification</code> (default <code>false</code>) and <code>algorithms</code>.
+                </p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">credential_id</code> - base64url; look the passkey up by it at sign-in.</div>
+                    <div><code class="text-amber-400">public_key</code> - the COSE key, base64url; what verifies future signatures.</div>
+                    <div><code class="text-amber-400">algorithm</code> - <code>-7</code> or <code>-257</code>.</div>
+                    <div><code class="text-amber-400">sign_count</code> - the authenticator's counter (0 for synced passkeys).</div>
+                    <div><code class="text-amber-400">transports</code> - from the browser, e.g. <code>["internal", "hybrid"]</code>.</div>
+                    <div><code class="text-amber-400">aaguid</code> - the authenticator model, as a UUID (all zeros for most passkeys).</div>
+                    <div><code class="text-amber-400">user_verified</code>, <code class="text-amber-400">backup_eligible</code>, <code class="text-amber-400">backed_up</code> - the UV, BE and BS flags.</div>
+                    <div><code class="text-amber-400">attestation_format</code> - reported, never verified (below).</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="def-webauthn-verify-authentication" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-webauthn-verify-authentication" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">WebAuthn.verify_authentication(credential, expected)</code>
+                </a>
+                <p class="text-gray-400 mb-3">
+                    <code>expected</code> is the same as for registration plus the stored passkey: <code>public_key</code>
+                    (required), <code>sign_count</code> (default 0) and optionally <code>credential_id</code>, which must then
+                    match the response. Verifies the signature over
+                    <code>authenticatorData || SHA-256(clientDataJSON)</code>.
+                </p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">credential_id</code> - which passkey answered.</div>
+                    <div><code class="text-amber-400">user_handle</code> - the <code>user_id</code> given at registration, or <code>nil</code>.</div>
+                    <div><code class="text-amber-400">sign_count</code> - store it back.</div>
+                    <div><code class="text-amber-400">counter_regressed</code> - <code>true</code> when the counter did not move forward (both 0 is fine): possibly a cloned authenticator. The app decides; the generated controller refuses the sign-in.</div>
+                    <div><code class="text-amber-400">user_verified</code>, <code class="text-amber-400">backup_eligible</code>, <code class="text-amber-400">backed_up</code> - flags.</div>
+                </div>
+            </div>
+        </section>
+    </section>
+
+    <!-- Checks -->
+    <section id="section-checks" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">What is checked</h2>
+        <ul class="list-disc list-inside space-y-2 text-gray-400 mb-4">
+            <li>The credential: type <code>public-key</code>, <code>id</code> equal to <code>rawId</code>.</li>
+            <li>clientDataJSON: <code>type</code> (<code>webauthn.create</code> / <code>webauthn.get</code>), <code>challenge</code> in constant time, <code>origin</code> exactly; <code>crossOrigin</code> is refused.</li>
+            <li>authenticatorData: <code>rpIdHash</code>, the user presence flag, user verification when required, backup state only with backup eligibility.</li>
+            <li>Registration: attested credential data whose id matches, a valid COSE key (P-256 point on the curve, RSA of at least 2048 bits) of an allowed algorithm, and an empty statement for <code>"none"</code>.</li>
+            <li>Authentication: the signature, with the stored key.</li>
+            <li>CBOR is decoded strictly: definite lengths, no duplicate map keys, no trailing bytes, bounded nesting.</li>
+        </ul>
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5">
+            <p class="text-gray-300 mb-0">
+                <strong class="text-white">Attestation is not verified.</strong> The options ask for <code>"none"</code>, and
+                whatever format an authenticator still sends is reported in <code>attestation_format</code> without its
+                statement being checked. That is the right ceiling for consumer passkeys &mdash; synced passkeys carry no
+                attestation &mdash; but not for a policy that admits only certain authenticator models. EdDSA (COSE
+                <code>-8</code>) is not supported yet.
+            </p>
+        </div>
+    </section>
+</div>

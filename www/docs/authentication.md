@@ -138,3 +138,84 @@ The legacy `jwt_decode(token)` was removed in SEC-029 because it returned the sa
 3. **Store secrets securely** in environment variables
 4. **Validate all claims** before trusting token data
 5. **Consider refresh tokens** for long-lived sessions
+
+## Passkeys
+
+Passkeys (WebAuthn) replace the password with a key pair the user's device
+keeps: the server stores only a public key, and a signature over a fresh
+challenge proves possession. They cannot be phished — the browser binds every
+response to the site's origin — and there is nothing to leak or reuse.
+
+### Generate it
+
+```bash
+soli generate auth --passkeys
+```
+
+On a new app this writes session auth and passkeys together; on an app that
+already ran `soli generate auth` it adds only the passkey files. The flag goes
+before or after the folder. It writes, never overwriting a file that exists:
+
+| File | |
+|---|---|
+| `app/models/passkey_credential.sl` | `PasskeyCredential` (one row per passkey) and the challenge helpers |
+| `app/controllers/passkeys_controller.sl` | `GET /passkeys`, `POST /passkeys/options`, `POST /passkeys`, `DELETE /passkeys/:id` — the signed-in user's passkeys |
+| `app/controllers/passkey_sessions_controller.sl` | `POST /passkeys/login/options`, `POST /passkeys/login` — sign-in |
+| `app/views/passkeys/index.html.slv` | list, add, remove |
+| `app/views/passkeys/_sign_in.html.slv` | the sign-in button, for `partial("passkeys/sign_in")` |
+| `public/js/passkeys.js` | the browser side, no dependency |
+| `db/migrations/…_create_passkey_credentials.sl` | unique index on `credential_id`, index on `user_id` |
+
+On a fresh app the sign-in view already renders the partial and its email
+field has `autocomplete="username webauthn"`, so the browser also offers
+passkeys in its autofill (conditional UI). An existing sign-in view is left
+alone: add `<%- partial("passkeys/sign_in") %>` and the `autocomplete` value
+yourself. Run `soli db:migrate up`, sign in, and add a passkey at `/passkeys`.
+
+### Relying party and origins
+
+| Variable | Default | |
+|---|---|---|
+| `WEBAUTHN_RP_ID` | the host of `APP_BASE_URL` | the domain passkeys belong to; set the parent domain (`example.com`) to share them with `app.example.com` |
+| `WEBAUTHN_ORIGINS` | `APP_BASE_URL` | comma-separated, exact origins (scheme, host, port) a ceremony may come from |
+| `WEBAUTHN_RP_NAME` | the RP ID | shown by the browser |
+
+Browsers allow passkeys on `https://` and on `http://localhost` only. The
+default `APP_BASE_URL` (`http://localhost:5011`) works in development as long
+as you browse that exact origin; behind a proxy, set `APP_BASE_URL` to the
+public `https://` URL.
+
+### How sign-in works
+
+1. `POST /passkeys/login/options` returns request options with an empty
+   `allowCredentials` (discoverable credentials: no username needed) and keeps
+   the challenge in the session under `webauthn_challenge`, tagged with its
+   purpose and an expiry (`WEBAUTHN_CHALLENGE_TTL`, 300 s).
+2. The browser signs it; `passkeys.js` posts the credential's `toJSON()`.
+3. `POST /passkeys/login` takes the challenge out of the session *before*
+   verifying (a replay or a second tab fails closed), finds the passkey by
+   `credential_id` with `find_by`, verifies it with
+   `WebAuthn.verify_authentication`, and checks that the user handle is present
+   and names the same account.
+4. It then opens the session exactly as the password login does: the per-IP
+   throttle (`AUTH_ATTEMPTS_PER_IP`), the locked and confirmed gates,
+   `session_regenerate()`, `user_id` and `session_version`.
+
+Every failure — unknown credential, bad signature, expired challenge, locked
+account, a sign counter that went backwards — gets the same `401`, so the
+endpoint reveals nothing about which passkeys exist. The JSON requests carry
+the page's CSRF token in `X-CSRF-Token` (the views emit it in
+`data-csrf-token`), so they also pass with `SOLI_CSRF_TOKENS=require`.
+
+### Hand-rolled ceremonies
+
+The generated code is a thin layer over the native `WebAuthn` class —
+`registration_options`, `verify_registration`, `authentication_options`,
+`verify_authentication` — documented in
+[Built-ins → WebAuthn](/docs/builtins/webauthn). Use it directly for an API or
+a different storage model.
+
+**Limits.** Attestation is never verified (the options ask for `"none"`), so
+passkeys cannot be restricted to certain authenticator models. ES256 and RS256
+are supported; EdDSA is not yet. Passkeys are an additional credential: an
+account still has a password.

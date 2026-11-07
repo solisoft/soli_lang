@@ -909,9 +909,14 @@ pub fn run_generate(scaffold_name: &str, fields: &[String], folder: &str) {
     }
 }
 
-pub fn run_generate_auth(folder: &str) {
-    match solilang::scaffold::create_auth(folder) {
-        Ok(()) => solilang::scaffold::print_auth_success_message(),
+pub fn run_generate_auth(folder: &str, passkeys: bool) {
+    match solilang::scaffold::create_auth_with(folder, passkeys) {
+        Ok(()) => {
+            solilang::scaffold::print_auth_success_message();
+            if passkeys {
+                solilang::scaffold::print_passkeys_success_message(folder);
+            }
+        }
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);

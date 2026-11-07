@@ -5,10 +5,10 @@
             <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
                 Authentication
             </span>
-            <span class="text-white">with JWT</span>
+            <span class="text-white">with JWT and Passkeys</span>
         </h1>
         <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
-            Implement secure, stateless authentication for your APIs and web applications using JSON Web Tokens.
+            Implement secure, stateless authentication for your APIs and web applications using JSON Web Tokens, and phishing-resistant sign-in with <a href="#passkeys" class="text-amber-400 hover:text-amber-300">passkeys</a>.
         </p>
     </div>
 
@@ -116,5 +116,98 @@ end</code></pre>
 or a secure secrets manager. If your secret is compromised, all issued tokens become insecure.
         </p>
     </div>
+
+    <!-- Passkeys -->
+    <section id="passkeys" class="scroll-mt-20">
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">3</span>
+            Passkeys
+        </h2>
+        <p class="text-gray-400 mb-4">
+            Passkeys (WebAuthn) replace the password with a key pair the user's device keeps: the server stores only a
+            public key, and a signature over a fresh challenge proves possession. They cannot be phished &mdash; the
+            browser binds every response to the site's origin &mdash; and there is nothing to leak or reuse.
+        </p>
+
+        <h3 id="passkeys-generate" class="text-xl font-semibold text-white mt-8 mb-3">Generate it</h3>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth --passkeys</code></pre>
+        <p class="text-gray-400 my-4">
+            On a new app this writes session auth and passkeys together; on an app that already ran
+            <code class="text-amber-300">soli generate auth</code> it adds only the passkey files. The flag goes before or
+            after the folder, and no existing file is overwritten:
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">File</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>app/models/passkey_credential.sl</code></td><td class="py-3 px-4"><code>PasskeyCredential</code> (one row per passkey) and the challenge helpers</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/passkeys_controller.sl</code></td><td class="py-3 px-4"><code>GET /passkeys</code>, <code>POST /passkeys/options</code>, <code>POST /passkeys</code>, <code>DELETE /passkeys/:id</code> &mdash; the signed-in user's passkeys</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/passkey_sessions_controller.sl</code></td><td class="py-3 px-4"><code>POST /passkeys/login/options</code>, <code>POST /passkeys/login</code> &mdash; sign-in</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/views/passkeys/index.html.slv</code></td><td class="py-3 px-4">List, add, remove</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/views/passkeys/_sign_in.html.slv</code></td><td class="py-3 px-4">The sign-in button, for <code>partial("passkeys/sign_in")</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>public/js/passkeys.js</code></td><td class="py-3 px-4">The browser side, no dependency</td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_create_passkey_credentials.sl</code></td><td class="py-3 px-4">Unique index on <code>credential_id</code>, index on <code>user_id</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            On a fresh app the sign-in view already renders the partial, and its email field has
+            <code class="text-amber-300">autocomplete="username webauthn"</code> so the browser also offers passkeys in its
+            autofill (conditional UI). An existing sign-in view is left alone: add
+            <code class="text-amber-300">&lt;%- partial("passkeys/sign_in") %&gt;</code> and the <code>autocomplete</code>
+            value yourself. Run <code>soli db:migrate up</code>, sign in, and add a passkey at <code>/passkeys</code>.
+        </p>
+
+        <h3 id="passkeys-config" class="text-xl font-semibold text-white mt-8 mb-3">Relying party and origins</h3>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Variable</th><th class="py-3 px-4 font-semibold">Default</th><th class="py-3 px-4 font-semibold"></th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code class="text-amber-400">WEBAUTHN_RP_ID</code></td><td class="py-3 px-4">the host of <code>APP_BASE_URL</code></td><td class="py-3 px-4">The domain passkeys belong to; set the parent domain (<code>example.com</code>) to share them with <code>app.example.com</code></td></tr>
+                    <tr><td class="py-3 px-4"><code class="text-amber-400">WEBAUTHN_ORIGINS</code></td><td class="py-3 px-4"><code>APP_BASE_URL</code></td><td class="py-3 px-4">Comma-separated, exact origins (scheme, host, port) a ceremony may come from</td></tr>
+                    <tr><td class="py-3 px-4"><code class="text-amber-400">WEBAUTHN_RP_NAME</code></td><td class="py-3 px-4">the RP ID</td><td class="py-3 px-4">Shown by the browser</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Browsers allow passkeys on <code>https://</code> and on <code>http://localhost</code> only. The default
+            <code>APP_BASE_URL</code> (<code>http://localhost:5011</code>) works in development as long as you browse that
+            exact origin; behind a proxy, set <code>APP_BASE_URL</code> to the public <code>https://</code> URL.
+        </p>
+
+        <h3 id="passkeys-sign-in" class="text-xl font-semibold text-white mt-8 mb-3">How sign-in works</h3>
+        <ol class="list-decimal list-inside space-y-2 text-gray-400 mb-4">
+            <li><code>POST /passkeys/login/options</code> returns request options with an empty <code>allowCredentials</code> (discoverable credentials: no username needed) and keeps the challenge in the session under <code>webauthn_challenge</code>, tagged with its purpose and an expiry (<code>WEBAUTHN_CHALLENGE_TTL</code>, 300&nbsp;s).</li>
+            <li>The browser signs it; <code>passkeys.js</code> posts the credential's <code>toJSON()</code>.</li>
+            <li><code>POST /passkeys/login</code> takes the challenge out of the session <em>before</em> verifying (a replay or a second tab fails closed), finds the passkey by <code>credential_id</code> with <code>find_by</code>, verifies it with <code>WebAuthn.verify_authentication</code>, and checks that the user handle is present and names the same account.</li>
+            <li>It then opens the session exactly as the password login does: the per-IP throttle (<code>AUTH_ATTEMPTS_PER_IP</code>), the locked and confirmed gates, <code>session_regenerate()</code>, <code>user_id</code> and <code>session_version</code>.</li>
+        </ol>
+        <p class="text-gray-400 mb-4">
+            Every failure &mdash; unknown credential, bad signature, expired challenge, locked account, a sign counter that
+            went backwards &mdash; gets the same <code>401</code>, so the endpoint reveals nothing about which passkeys exist.
+            The JSON requests carry the page's CSRF token in <code>X-CSRF-Token</code> (the views emit it in
+            <code>data-csrf-token</code>), so they also pass with <code>SOLI_CSRF_TOKENS=require</code>.
+        </p>
+
+        <h3 id="passkeys-native" class="text-xl font-semibold text-white mt-8 mb-3">Hand-rolled ceremonies</h3>
+        <p class="text-gray-400 mb-4">
+            The generated code is a thin layer over the native <code class="text-amber-300">WebAuthn</code> class &mdash;
+            <code>registration_options</code>, <code>verify_registration</code>, <code>authentication_options</code>,
+            <code>verify_authentication</code> &mdash; documented in
+            <a href="/docs/builtins/webauthn" class="text-amber-400 hover:text-amber-300">Built-ins &rarr; WebAuthn</a>.
+            Use it directly for an API or a different storage model.
+        </p>
+        <div class="callout callout-warning">
+            <p class="text-yellow-200/80 text-sm mb-0">
+                <strong>Limits.</strong> Attestation is never verified (the options ask for <code>"none"</code>), so passkeys
+                cannot be restricted to certain authenticator models. ES256 and RS256 are supported; EdDSA is not yet.
+                Passkeys are an additional credential: an account still has a password.
+            </p>
+        </div>
+    </section>
 
 </div>

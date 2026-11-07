@@ -188,6 +188,7 @@ def docs_nav_sections()
         { "path": "/docs/builtins/crypto", "label": "Crypto / TOTP" },
         { "path": "/docs/builtins/jwt", "label": "JWT" },
         { "path": "/docs/builtins/paseto", "label": "PASETO" },
+        { "path": "/docs/builtins/webauthn", "label": "WebAuthn (Passkeys)" },
         { "path": "/docs/builtins/xml-signatures", "label": "XML Signatures & Keys" },
         { "path": "/docs/builtins/regex", "label": "Regex" },
         { "path": "/docs/builtins/env", "label": "Env" },

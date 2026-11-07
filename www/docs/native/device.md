@@ -28,7 +28,7 @@ if (soli.nativeBridge.supports("nfc")) { ... }
 | `share({title, text, url})` | `NSSharingServicePicker` | `ACTION_SEND` chooser | `navigator.share` |
 | `badge(count)` | dock tile | notification badge | Badging API |
 | `keepAwake(on)` | power assertion | `FLAG_KEEP_SCREEN_ON` | — |
-| `authenticate(reason)` | Touch ID / password | `BiometricPrompt` | — (use WebAuthn) |
+| `authenticate(reason)` | Touch ID / password | `BiometricPrompt` | — (use [WebAuthn](/docs/security/authentication#passkeys)) |
 | `readTag()` | ✗ no hardware | NFC reader mode | — |
 | `print()` | `NSPrintOperation` | `PrintManager` | `window.print()` |
 
@@ -59,7 +59,7 @@ Four rows above are not oversights, and each fails for a different reason:
 - **macOS haptics mean the trackpad**, and only Force Touch ones. A no-op elsewhere rather than an
   error, since a page asking to buzz should not have to care.
 - **Biometrics do not authenticate anything to your server.** They confirm the person holding the
-  device, locally. For an actual credential use WebAuthn — this is a lock on a UI action, not proof
+  device, locally. For an actual credential use [WebAuthn passkeys](/docs/security/authentication#passkeys) — this is a lock on a UI action, not proof
   of identity.
 
 ## Badges, open and closed

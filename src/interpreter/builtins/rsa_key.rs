@@ -159,6 +159,20 @@ fn verify_pkcs1_v15(
     algorithm: &str,
 ) -> Result<bool, String> {
     let (n, e) = parse_public_components(pem)?;
+    verify_pkcs1_v15_components(&n, &e, message, signature, algorithm)
+}
+
+/// RSASSA-PKCS1-v1_5 verification from the raw big-endian modulus `n` and
+/// exponent `e` — the form a COSE RSA key (WebAuthn RS256) or a JWK carries,
+/// so callers never round-trip through PEM. `algorithm` is `sha1`, `sha256`
+/// or `sha512`. Returns `Ok(false)` for any signature that does not verify.
+pub(crate) fn verify_pkcs1_v15_components(
+    n: &[u8],
+    e: &[u8],
+    message: &[u8],
+    signature: &[u8],
+    algorithm: &str,
+) -> Result<bool, String> {
     let n: Vec<u8> = n.iter().skip_while(|b| **b == 0).copied().collect();
     let k = n.len();
     let t = digest_info(algorithm, message)?;
@@ -169,7 +183,7 @@ fn verify_pkcs1_v15(
     if num_bigint::BigUint::from_bytes_be(signature) >= num_bigint::BigUint::from_bytes_be(&n) {
         return Ok(false);
     }
-    let em = crate::interpreter::builtins::crypto::do_modexp(signature, &e, &n)?;
+    let em = crate::interpreter::builtins::crypto::do_modexp(signature, e, &n)?;
     let mut expected = vec![0x00u8, 0x01];
     expected.extend(std::iter::repeat_n(0xffu8, k - t.len() - 3));
     expected.push(0x00);
