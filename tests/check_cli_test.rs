@@ -92,3 +92,28 @@ fn a_loose_directory_keeps_the_narrow_view() {
     assert!(!ok, "{text}");
     assert!(text.contains("report_title"), "{text}");
 }
+
+#[test]
+fn jobs_and_subscribers_are_auto_loaded_too() {
+    // `soli check`'s list had neither (#691); the server loads both into the
+    // application's environment.
+    let dir = app();
+    write(
+        dir.path(),
+        "app/jobs/cleanup_job.sl",
+        "def schedule_cleanup(days)\n  days\nend\n",
+    );
+    write(
+        dir.path(),
+        "app/subscribers/audit_subscriber.sl",
+        "def audit_topic\n  \"audit\"\nend\n",
+    );
+    write(
+        dir.path(),
+        "app/services/maintenance.sl",
+        "def run_maintenance\n  schedule_cleanup(7)\n  audit_topic()\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/services/maintenance.sl");
+    assert!(ok, "{text}");
+    assert!(!text.contains("Undefined"), "{text}");
+}

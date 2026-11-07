@@ -345,3 +345,60 @@ pub use validation::{register_validation, run_validations, ValidationError, Vali
 
 // Re-export value_to_json from value module for backward compatibility
 pub use crate::interpreter::value::value_to_json;
+
+/// The names of `Model`'s class methods (`where`, `find_by`, `create`…),
+/// sorted, for tools that list them without a running interpreter (the
+/// language server's completion after `Post.`). Built from the same
+/// `register_*` groups `Model` is installed from; nothing here runs at
+/// request time.
+pub fn model_static_method_names() -> Vec<String> {
+    let mut methods = std::collections::HashMap::new();
+    register_dsl::register(&mut methods);
+    register_chain::register(&mut methods);
+    register_crud::register(&mut methods);
+    register_mutate::register(&mut methods);
+    register_finders::register(&mut methods);
+    register_aggregate::register(&mut methods);
+    register_search::register(&mut methods);
+    let mut names: Vec<String> = methods.into_keys().collect();
+    names.sort();
+    names
+}
+
+/// The names of a model instance's built-in methods (`save`, `update`,
+/// `errors`…), sorted; see [`model_static_method_names`].
+pub fn model_instance_method_names() -> Vec<String> {
+    let mut methods = std::collections::HashMap::new();
+    register_instance::register(&mut methods);
+    let mut names: Vec<String> = methods.into_keys().collect();
+    names.sort();
+    names
+}
+
+#[cfg(test)]
+mod method_name_tests {
+    use super::*;
+    use crate::interpreter::environment::Environment;
+    use crate::interpreter::value::Value;
+
+    /// The accessors list exactly what `register_model_builtins` installs, so
+    /// a method added outside the `register_*` groups fails here.
+    #[test]
+    fn the_name_accessors_match_the_installed_model_class() {
+        let mut env = Environment::new();
+        register_model_builtins(&mut env);
+        let Some(Value::Class(model)) = env.get("Model") else {
+            panic!("Model is not installed");
+        };
+        let mut statics: Vec<String> = model.native_static_methods.keys().cloned().collect();
+        statics.sort();
+        let mut instance: Vec<String> = model.native_methods.keys().cloned().collect();
+        instance.sort();
+        assert_eq!(model_static_method_names(), statics);
+        assert_eq!(model_instance_method_names(), instance);
+        for name in ["where", "find_by", "create", "all", "scope"] {
+            assert!(statics.iter().any(|s| s == name), "{name}");
+        }
+        assert!(instance.iter().any(|s| s == "save"));
+    }
+}

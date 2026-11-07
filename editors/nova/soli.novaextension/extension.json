@@ -2,7 +2,7 @@
   "identifier": "com.solilang.soli",
   "name": "Soli",
   "organization": "Solilang",
-  "description": "Soli language support for Nova: syntax highlighting, LSP-powered hover, completion, go-to-definition, rename, format, and diagnostics.",
+  "description": "Soli language support for Nova: syntax highlighting, LSP-powered hover, member completion, project-wide go-to-definition, rename, format, and diagnostics for .sl files and .slv templates.",
   "version": "0.1.0",
   "license": "MIT",
   "repository": "https://github.com/solisoft/soli_lang",
@@ -20,7 +20,8 @@
     "filesystem": "readonly"
   },
   "activationEvents": [
-    "onLanguage:soli"
+    "onLanguage:soli",
+    "onLanguage:soli-template"
   ],
   "contributes": {
     "languages": [
@@ -30,6 +31,12 @@
         "extensions": ["sl"],
         "files": ["Solifile"],
         "syntax": "soli"
+      },
+      {
+        "id": "soli-template",
+        "name": "Soli Template",
+        "extensions": ["slv"],
+        "syntax": "html"
       }
     ],
     "configuration": [

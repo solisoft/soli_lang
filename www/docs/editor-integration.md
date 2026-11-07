@@ -9,10 +9,10 @@ below).
 
 | Feature | What you get |
 |---|---|
-| Diagnostics | The lint rules as warnings while you type, and a syntax error as an error at its position. |
-| Hover | On a name declared in the file — at its declaration or at any use — its kind or declared type (`greet : function`). On a common builtin (`print`, `len`, `json_parse`, `HTTP`, `DateTime`…), its signature. |
-| Completion | Keywords, types, and the names declared in the file. No member completion after `.` yet. |
-| Go to definition | The declaration of the name under the cursor, in the same file. |
+| Diagnostics | The lint rules as warnings while you type, and a syntax error as an error at its position. A file under `app/` gets the path-aware rules too (`security/unfiltered-mass-assignment`, `style/redundant-model-import`…), with the names its auto-loaded neighbours declare in scope, as `soli lint` does. A `.slv` template has its `<% %>` code linted, not its HTML: an unclosed tag or an `<% if %>` without its `end` is an error on its line, and a finding covers its whole line. |
+| Hover | On a name declared in the file — at its declaration or at any use — its kind or declared type (`greet : function`). On a name declared elsewhere in the application — `Post` in a controller, a helper in a view, `post.summary` — its signature and the file and line it is in. On a common builtin (`print`, `len`, `json_parse`, `HTTP`, `DateTime`…), its signature. |
+| Completion | Keywords, types, the names declared in the file, and the application's classes and functions. After `.` or `@`, the receiver's members — see below. |
+| Go to definition | The declaration of the name under the cursor: in the file first, then anywhere in the application's auto-loaded files (`app/models`, `app/controllers`, `app/services`, `app/policies`, `app/mailers`, `app/middleware`, `app/jobs`, `app/subscribers`, and `app/helpers` from a helper or a view). `Post` in a controller lands on `class Post` in `app/models/post.sl`; `post.summary` on the `def summary` of the class `post` holds. A name declared twice answers with both. |
 | References | Every use of the name in the file, `#{…}` interpolations included — not words in plain strings or comments. |
 | Rename | The same occurrences, in one edit. A new name that is not an identifier is refused. |
 | Document symbols | An outline of the file's classes, functions and variables. |
@@ -20,17 +20,45 @@ below).
 | Formatting | The whole document, with the same formatter as `soli fmt`. A file that does not parse is left alone. |
 | Code actions | On a lint finding: rename to the expected case for the naming rules (every occurrence), or insert `# soli-lint-disable-next-line <rule>` above the line. |
 
-**Limits.** Everything works on one file at a time: a model used in a
-controller is not resolved to `app/models/`, and references and rename do not
-cross files. Names are matched by spelling, so two variables called `count` in
-two functions count as one name. The server is for `.sl` files; `.slv`
-templates get no diagnostics from it.
+Formatting, document symbols, folding, code actions, references and rename
+are for `.sl` files; on a `.slv` template they answer nothing (rename would
+otherwise reach words in the markup). In a template, completion works inside
+`<% %>` tags only, and nowhere does a `.` or `@` in a comment or a string open
+the member list. A file that is neither `.sl` nor `.slv` — an HTML buffer an
+editor sends along — gets nothing from the server.
+
+### Member completion
+
+Typing `.` or `@` asks for the members of what is before it. The server reads
+that receiver from the text, without parsing — while you type `post.` the file
+usually does not parse — and offers members only when it can tell exactly
+what the receiver is:
+
+| Receiver | Members offered |
+|---|---|
+| A class: `Post.` | Its `static def`s and its `scope("…")`s, inherited ones included, `new`, and — for a model — `Model`'s class methods (`where`, `find_by`, `create`…). |
+| An instance: `post.` after `post = Post.find(id)` (or `Post.new(…)`, `find_by`, `first_by`, `first`, `last`, `create`), or a parameter typed `post: Post` | The class's methods, fields and `has_many` / `has_one` / `belongs_to` relations, inherited ones included, and — for a model — `Model`'s instance methods (`save`, `update`, `errors`…). |
+| `@` or `this.` inside a class | The same, for the enclosing class. |
+| A literal, or a local assigned one: `"x".`, `[1, 2].`, `{…}.`, `42.` | The built-in methods of a string, an array, a hash, a number. |
+| Anything else (`a.b.`, a local of unknown origin) | Every method name declared in the application, marked *receiver not resolved*. |
+
+The application is indexed once, on the first request that needs it, then
+kept current file by file: an open buffer on every change (a buffer that does
+not parse keeps its last good version), a file on save, and — when the editor
+supports watching files — a file changed, added or deleted outside the editor.
+
+**Limits.** References and rename still work within one file, and names are
+matched by spelling there, so two variables called `count` in two functions
+count as one name. Member completion follows one step: `post.` is resolved,
+`post.author.` is not. Instance variables a controller sets are not offered in
+its views.
 
 ## Requirements
 
 - The `soli` binary on your `PATH` (`soli --version` should work), or its
   absolute path in the editor's settings.
-- Files with the `.sl` extension.
+- Files with the `.sl` extension, and `.slv` view templates — the editor must
+  send those to the server too (see the Neovim and Helix setups below).
 - A `soli.toml` at the project root, so editors find the workspace.
 
 ## VS Code & Cursor
@@ -78,7 +106,8 @@ Nova's `LanguageClient` API to spawn `soli lsp` on stdio.
      "$HOME/Library/Application Support/Nova/Extensions/com.solilang.soli.novaextension"
    ```
 3. Launch (or restart) Nova. Open any `.sl` file — diagnostics, hover, and
-   completion should activate within a second.
+   completion should activate within a second. `.slv` templates are sent to
+   the server as the **Soli Template** language, for their diagnostics.
 
 ### Install from the Extension Library
 
@@ -107,17 +136,20 @@ example, `/Users/you/.cargo/bin/soli`).
 
 Neovim 0.11+ configures the server natively. Two things are needed besides
 the server itself: `.sl` is S-Lang (`slang`) to Neovim by default, so map it
-to a `soli` filetype first, and `nvim-lspconfig` has no `soli` entry, so
-declare the server yourself:
+to a `soli` filetype first — and `.slv` to a filetype of its own, so templates
+reach the server for their diagnostics — and `nvim-lspconfig` has no `soli`
+entry, so declare the server yourself:
 
 ```lua
 -- ~/.config/nvim/after/plugin/soli.lua (or anywhere in your config)
-vim.filetype.add({ extension = { sl = "soli" } })
+vim.filetype.add({ extension = { sl = "soli", slv = "soli_template" } })
+-- Highlight templates as HTML with embedded code.
+vim.treesitter.language.register("embedded_template", "soli_template")
 
 vim.lsp.config("soli", {
   cmd = { "soli", "lsp" },
-  filetypes = { "soli" },
-  root_markers = { "soli.toml", ".git" },
+  filetypes = { "soli", "soli_template" },
+  root_markers = { "soli.toml", "config/routes.sl", ".git" },
 })
 
 vim.lsp.enable("soli")
@@ -128,18 +160,49 @@ Neovim's default mappings, `K` hovers, `CTRL-]` jumps to the definition, `grr`
 lists references, `grn` renames and `gra` offers the code actions; format with
 `:lua vim.lsp.buf.format()`.
 
+## Helix
+
+In `~/.config/helix/languages.toml`:
+
+```toml
+[language-server.soli]
+command = "soli"
+args = ["lsp"]
+
+[[language]]
+name = "soli"
+scope = "source.soli"
+file-types = ["sl"]
+roots = ["soli.toml", "config/routes.sl"]
+comment-token = "#"
+language-servers = ["soli"]
+
+[[language]]
+name = "soli-template"
+scope = "text.html.soli"
+file-types = ["slv"]
+roots = ["soli.toml", "config/routes.sl"]
+grammar = "embedded-template"
+language-servers = ["soli"]
+```
+
 ## Other editors
 
-Any editor with an LSP client can start `soli lsp` on stdio for `.sl` files.
-The shape of the entry, in the style most clients use:
+Any editor with an LSP client can start `soli lsp` on stdio for `.sl` and
+`.slv` files. The shape of the entry, in the style most clients use:
 
 ```json
 {
   "name": "soli",
   "command": ["soli", "lsp"],
-  "filetypes": ["soli"],
-  "fileExtensions": [".sl"],
-  "rootPatterns": ["soli.toml"],
+  "filetypes": ["soli", "soli_template"],
+  "fileExtensions": [".sl", ".slv"],
+  "rootPatterns": ["soli.toml", "config/routes.sl"],
   "languageId": "soli"
 }
 ```
+
+The server tells a template by its `.slv` extension, whatever language id the
+client sends. It reads the application root from the workspace folders the
+client sends in `initialize`, or from the nearest `soli.toml` or
+`config/routes.sl` above the open file.

@@ -6,9 +6,11 @@
 
 - Syntax highlighting (TextMate grammar shared with the official VS Code extension).
 - Language Server integration via `soli lsp` (stdio):
-  - Hover with type/kind info
-  - Auto-completion (keywords, types, locals)
-  - Go-to-definition
+  - Hover with type/kind info, and the signature and file of a name declared
+    elsewhere in the application
+  - Auto-completion (keywords, types, locals, project classes and functions),
+    and member completion after `.` and `@`
+  - Go-to-definition, across the application's auto-loaded files
   - Find references
   - Rename symbol
   - Document & range formatting
@@ -16,7 +18,8 @@
   - Folding ranges
   - Inlay hints
   - Code actions (quick-fixes for lint rules)
-  - Diagnostics from `soli lint`
+  - Diagnostics from `soli lint`, including `.slv` view templates (opened as
+    the **Soli Template** language)
 
 ## Requirements
 

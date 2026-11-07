@@ -895,6 +895,15 @@ impl SolilangError {
         }
     }
 
+    /// The 1-based template line of a [`Self::Template`] error, read from its
+    /// message (see [`crate::template::parser::error_line`]).
+    pub fn template_line(&self) -> Option<usize> {
+        match self {
+            Self::Template(message) => crate::template::parser::error_line(message),
+            _ => None,
+        }
+    }
+
     /// The message of the wrapped error, without this enum's phase prefix
     /// (`Runtime error: `), its trailing ` at L:C` still on.
     pub fn inner_message(&self) -> String {

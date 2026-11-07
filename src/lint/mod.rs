@@ -48,6 +48,10 @@ pub struct Linter {
     /// The file is a spec (`tests/`, `*_spec.sl`…): the test DSL's globals
     /// count as builtins for `smell/shadowed-builtin`. Set by `lint()`.
     pub(crate) test_file: bool,
+    /// The names the file's auto-loaded neighbours declare, handed in by a
+    /// caller that already has them (the language server's project index).
+    /// When set, `lint()` does not walk `app/` on disk for them.
+    known_names: Option<std::collections::HashSet<String>>,
 }
 
 impl Linter {
@@ -60,11 +64,20 @@ impl Linter {
             program_names: std::collections::HashSet::new(),
             class_level_this: false,
             test_file: false,
+            known_names: None,
         }
     }
 
     pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
         self.file_path = Some(path.into());
+        self
+    }
+
+    /// The top-level names declared by the file's auto-loaded neighbours,
+    /// precomputed: they count as in scope, and `lint()` skips its own walk of
+    /// `app/` (which re-parses every sibling on each call).
+    pub fn with_known_names(mut self, names: std::collections::HashSet<String>) -> Self {
+        self.known_names = Some(names);
         self
     }
 
@@ -99,13 +112,22 @@ impl Linter {
         self.diagnostics
     }
 
-    /// Soli MVC auto-loads every `.sl` file in `app/controllers/`,
-    /// `app/helpers/`, `app/middleware/`, `app/models/`, `app/services/`,
-    /// and `app/jobs/` into a shared scope at runtime. When we lint one
-    /// file, top-level definitions from *all* of those directories are
-    /// effectively in-scope too. We find the nearest `app/` ancestor, then
-    /// scan every auto-load subdirectory under it.
+    /// Soli MVC auto-loads every `.sl` file in the application's global
+    /// directories (`app/models`, `app/controllers`, `app/services`,
+    /// `app/policies`, `app/mailers`, `app/middleware`, `app/jobs`,
+    /// `app/subscribers` — see [`crate::app_layout`]) into one shared scope,
+    /// and the view helpers in `app/helpers` next to it. When we lint one
+    /// file, top-level definitions from all of those directories are in scope
+    /// too. Helpers are counted for every file: a name the linter cannot see
+    /// is a false `smell/undefined-local`, and one it sees too generously only
+    /// misses a rare mistake. We find the nearest `app/` ancestor and scan
+    /// those directories under its parent, unless the caller already handed
+    /// the names in ([`Linter::with_known_names`]).
     fn collect_sibling_definitions(&mut self) {
+        if let Some(known) = self.known_names.take() {
+            self.program_names.extend(known);
+            return;
+        }
         let Some(file_path) = &self.file_path else {
             return;
         };
@@ -114,59 +136,22 @@ impl Linter {
         // Walk up the directory tree to find the nearest ancestor named "app/".
         // If the file is not inside any "app/" tree it's a standalone script —
         // return early so we don't silently pull names from random neighbours.
-        let app_dir = {
-            let mut dir = path.parent();
-            loop {
-                match dir {
-                    None => break None,
-                    Some(d) if d.file_name().and_then(|n| n.to_str()) == Some("app") => {
-                        break Some(d.to_path_buf());
-                    }
-                    Some(d) => dir = d.parent(),
-                }
-            }
-        };
-        let Some(app_dir) = app_dir else {
+        let Some(root) = path
+            .ancestors()
+            .skip(1)
+            .find(|d| d.file_name().and_then(|n| n.to_str()) == Some("app"))
+            .and_then(|app| app.parent())
+        else {
             return;
         };
 
-        const AUTOLOAD_DIRS: &[&str] = &[
-            "controllers",
-            "helpers",
-            "middleware",
-            "models",
-            "services",
-            "jobs",
-        ];
-
-        for dir_name in AUTOLOAD_DIRS {
-            let dir_path = app_dir.join(dir_name);
-            let Ok(entries) = std::fs::read_dir(&dir_path) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let sibling = entry.path();
-                if sibling == path {
-                    continue;
-                }
-                if sibling.extension().and_then(|e| e.to_str()) != Some("sl") {
-                    continue;
-                }
-                let Ok(source) = std::fs::read_to_string(&sibling) else {
-                    continue;
-                };
-                let Ok(tokens) = crate::lexer::Scanner::new(&source).scan_tokens() else {
-                    continue;
-                };
-                let Ok(sibling_program) = crate::parser::Parser::new(tokens).parse() else {
-                    continue;
-                };
-                rules::scope::collect_program_names(
-                    &sibling_program.statements,
-                    &mut self.program_names,
-                );
-            }
-        }
+        let dirs: Vec<&str> = crate::app_layout::APP_GLOBAL_DIRS
+            .iter()
+            .chain(crate::app_layout::HELPER_DIRS)
+            .copied()
+            .collect();
+        let names = crate::app_layout::top_level_names(root, &dirs, Some(path));
+        self.program_names.extend(names);
     }
 
     /// Whether the file is one `soli test` runs, where the test DSL

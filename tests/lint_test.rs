@@ -634,3 +634,36 @@ fn shadowed_builtin_can_be_suppressed() {
     let src = "def a\n  # soli-lint-disable-next-line smell/shadowed-builtin\n  options = \"x\"\n  options(1, 2)\nend\n";
     assert!(shadowed(&lint(src)).is_empty());
 }
+
+/// `app/policies`, `app/mailers` and `app/subscribers` are auto-loaded like
+/// the rest of the application (#691): a name declared there and read bare in
+/// a controller is not undefined. The linter's own list used to leave them out.
+#[test]
+fn names_from_policies_mailers_and_subscribers_are_in_scope() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    for (rel, source) in [
+        ("app/policies/limits.sl", "max_edits = 3\n"),
+        ("app/mailers/defaults.sl", "mail_from = \"a@b.c\"\n"),
+        (
+            "app/subscribers/audit/topics.sl",
+            "audit_topic = \"audit\"\n",
+        ),
+    ] {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    }
+    std::fs::create_dir_all(root.join("app/controllers")).unwrap();
+    let src = "def edit(req)\n  [max_edits, mail_from, audit_topic, not_declared]\nend\n";
+    let controller = root.join("app/controllers/posts_controller.sl");
+    std::fs::write(&controller, src).unwrap();
+
+    let undefined: Vec<String> = lint_with_path(src, &controller)
+        .into_iter()
+        .filter(|d| d.rule == "smell/undefined-local")
+        .map(|d| d.message)
+        .collect();
+    assert_eq!(undefined.len(), 1, "{undefined:?}");
+    assert!(undefined[0].contains("not_declared"), "{undefined:?}");
+}

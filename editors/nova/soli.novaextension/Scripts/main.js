@@ -62,7 +62,11 @@ function startServer() {
   };
 
   var clientOptions = {
-    syntaxes: ["soli"],
+    // `.slv` view templates go to the server too, for their diagnostics; it
+    // tells them apart by their extension. They may open under Nova's `html`
+    // syntax rather than `soli-template`, so HTML buffers are sent as well:
+    // the server answers nothing for a file that is not `.sl` or `.slv`.
+    syntaxes: ["soli", "soli-template", "html"],
     initializationOptions: {
       trace: nova.workspace.config.get("soli.lsp.trace", "string") || "off",
     },

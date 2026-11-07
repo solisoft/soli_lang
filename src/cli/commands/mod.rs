@@ -1419,7 +1419,7 @@ fn locale_skip_note(count: usize) -> String {
 ///
 /// A target inside an application — `soli check app`, `soli check
 /// app/controllers/posts_controller.sl` — is widened to that application's
-/// root (see [`enclosing_app_root`]): its auto-loaded set is what the running
+/// root (see [`solilang::app_layout::app_root`]): its auto-loaded set is what the running
 /// server puts in scope, whichever subset of files is being checked.
 ///
 /// Returns nothing for a loose file or a directory that is not a project: the
@@ -1432,7 +1432,7 @@ fn collect_ambient_names(targets: &[std::path::PathBuf]) -> Vec<String> {
     for target in targets {
         let candidates = [
             target.is_dir().then(|| target.clone()),
-            enclosing_app_root(target),
+            solilang::app_layout::app_root(target),
         ];
         for root in candidates.into_iter().flatten() {
             let key = root.canonicalize().unwrap_or_else(|_| root.clone());
@@ -1475,27 +1475,6 @@ fn collect_ambient_names(targets: &[std::path::PathBuf]) -> Vec<String> {
     let mut names: Vec<String> = names.into_iter().collect();
     names.sort();
     names
-}
-
-/// The root of the Soli application `target` sits in: the nearest directory,
-/// `target` itself included, holding `soli.toml` or `config/routes.sl`.
-///
-/// `soli check app` used to read `app/` as the project and look for
-/// `app/app/models`, so every auto-loaded class came out undefined while
-/// `soli check .` was clean. `None` outside any application.
-fn enclosing_app_root(target: &std::path::Path) -> Option<std::path::PathBuf> {
-    let absolute = target
-        .canonicalize()
-        .unwrap_or_else(|_| target.to_path_buf());
-    let start = if absolute.is_dir() {
-        absolute.as_path()
-    } else {
-        absolute.parent()?
-    };
-    start
-        .ancestors()
-        .find(|dir| dir.join("soli.toml").is_file() || dir.join("config/routes.sl").is_file())
-        .map(std::path::Path::to_path_buf)
 }
 
 /// How `soli check` and `soli lint` print what they found.

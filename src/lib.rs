@@ -14,6 +14,7 @@
     allow(dead_code, unused_imports, unused_variables, unused_mut)
 )]
 
+pub mod app_layout;
 pub mod ast;
 pub mod bundle;
 pub mod cdp;
@@ -762,14 +763,17 @@ pub fn type_check_source(
 /// declaration in any of them is reachable from all of them with no import.
 ///
 /// `soli check` reads them to build its ambient name set; see
-/// [`type_check_source_with_ambient`].
+/// [`type_check_source_with_ambient`]. It is [`app_layout::APP_GLOBAL_DIRS`]
+/// followed by [`app_layout::SUPPORT_DIRS`] (a test keeps them in step).
 pub const AUTOLOADED_DIRS: &[&str] = &[
-    "app/controllers",
     "app/models",
     "app/services",
     "app/policies",
-    "app/middleware",
     "app/mailers",
+    "app/controllers",
+    "app/middleware",
+    "app/jobs",
+    "app/subscribers",
     "config",
     "stdlib",
 ];
@@ -1702,12 +1706,29 @@ pub fn lint(source: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
 /// `style/empty-block` is dropped for templates because control-flow bodies
 /// that contain only HTML legitimately have no Soli statements.
 pub fn lint_file(source: &str, path: &str) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
+    lint_file_with_names(source, path, None)
+}
+
+/// [`lint_file`], with the names the file's auto-loaded neighbours declare
+/// already known (`Some`): the linter takes them as in scope instead of
+/// re-parsing every file under `app/` — what the language server does on each
+/// keystroke. `None` walks the disk, as `lint_file` does.
+pub fn lint_file_with_names(
+    source: &str,
+    path: &str,
+    known_names: Option<&std::collections::HashSet<String>>,
+) -> Result<Vec<lint::LintDiagnostic>, SolilangError> {
+    let linter = |code: &str| {
+        let linter = lint::Linter::new(code).with_file_path(path);
+        match known_names {
+            Some(names) => linter.with_known_names(names.clone()),
+            None => linter,
+        }
+    };
     if !path.ends_with(".slv") {
         let tokens = lexer::Scanner::new(source).scan_tokens()?;
         let program = parser::Parser::new(tokens).parse()?;
-        return Ok(lint::Linter::new(source)
-            .with_file_path(path)
-            .lint(&program));
+        return Ok(linter(source).lint(&program));
     }
 
     // Template: extract only the embedded code. A genuine malformed-template
@@ -1726,7 +1747,7 @@ pub fn lint_file(source: &str, path: &str) -> Result<Vec<lint::LintDiagnostic>, 
         return Ok(Vec::new());
     };
 
-    let mut diagnostics = lint::Linter::new(&code).with_file_path(path).lint(&program);
+    let mut diagnostics = linter(&code).lint(&program);
     // HTML-only control-flow bodies (`<% if x %>…markup…<% end %>`) extract to
     // empty blocks; that isn't a real empty block in the template.
     diagnostics.retain(|d| d.rule != "style/empty-block");

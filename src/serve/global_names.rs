@@ -22,19 +22,10 @@ use std::path::{Path, PathBuf};
 use crate::ast::stmt::{Stmt, StmtKind};
 
 /// Directories loaded into the application's global environment.
-const APPLICATION_DIRS: &[&str] = &[
-    "app/models",
-    "app/services",
-    "app/policies",
-    "app/mailers",
-    "app/controllers",
-    "app/middleware",
-    "app/jobs",
-    "app/subscribers",
-];
+const APPLICATION_DIRS: &[&str] = crate::app_layout::APP_GLOBAL_DIRS;
 
 /// Directories loaded into the views' helper environment.
-const HELPER_DIRS: &[&str] = &["app/helpers"];
+const HELPER_DIRS: &[&str] = crate::app_layout::HELPER_DIRS;
 
 /// One top-level declaration.
 #[derive(Clone, Debug, PartialEq, Eq)]

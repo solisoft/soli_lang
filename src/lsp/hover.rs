@@ -1,17 +1,26 @@
 //! Hover provider for LSP.
-use super::util::{extract_word_at_offset, position_to_offset};
+use super::goto::{local_declaration, project_targets, ProjectScope};
+use super::util::{position_to_offset, word_bounds};
+use crate::lsp::symbols::SymbolTable;
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkedString, Position};
 
 /// What the identifier under the cursor is: its declaration's kind or type when
-/// the file declares it (at the `def` or at any use), and the builtin's doc for
-/// a builtin. It used to answer only on a declaration itself — never on a call.
-pub fn get_hover(source: &str, position: Position) -> Option<Hover> {
+/// the file declares it (at the `def` or at any use); else the project
+/// declaration it names — its signature and the file it is in; else the
+/// builtin's doc for a builtin.
+///
+/// `table` is the document's cached symbol table; without one (the buffer
+/// never parsed) only the project and the builtins answer.
+pub fn get_hover(
+    source: &str,
+    position: Position,
+    table: Option<&SymbolTable>,
+    project: ProjectScope<'_>,
+) -> Option<Hover> {
     let offset = position_to_offset(source, position)?;
-    let word = extract_word_at_offset(source, offset)?;
-    let table = crate::lsp::symbols::build_symbol_table(source);
-    let declaration = table
-        .as_ref()
-        .and_then(|table| crate::lsp::goto::declaration_of(table, &word, offset));
+    let (word_start, word_end) = word_bounds(source, offset)?;
+    let word = &source[word_start..word_end];
+    let declaration = table.and_then(|table| local_declaration(table, source, word, word_start));
 
     let mut contents = Vec::new();
     if let Some(symbol) = declaration {
@@ -31,10 +40,30 @@ pub fn get_hover(source: &str, position: Position) -> Option<Hover> {
             }
         };
         contents.push(MarkedString::String(type_info));
+    } else if let Some((index, namespace)) = project {
+        for symbol in project_targets(source, word_start, word_end, index, namespace) {
+            let place = symbol
+                .path
+                .strip_prefix(&index.root)
+                .unwrap_or(&symbol.path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let owner = symbol
+                .owner
+                .as_ref()
+                .map(|owner| format!(" of {owner}"))
+                .unwrap_or_default();
+            let mut text = format!("**{}** : {}{owner}", symbol.name, symbol.kind.label());
+            if let Some(signature) = &symbol.signature {
+                text.push_str(&format!("\n\n```soli\n{signature}\n```"));
+            }
+            text.push_str(&format!("\n\n{place}:{}", symbol.range.start.line + 1));
+            contents.push(MarkedString::String(text));
+        }
     }
-    // A name the file declares itself is that declaration, not the builtin.
-    if declaration.is_none() {
-        if let Some(docs) = get_builtin_docs(&word) {
+    // A name the project declares is that declaration, not the builtin.
+    if contents.is_empty() {
+        if let Some(docs) = get_builtin_docs(word) {
             contents.push(MarkedString::String(docs));
         }
     }
@@ -78,7 +107,8 @@ mod tests {
     use super::*;
 
     fn hover_text(source: &str, line: u32, character: u32) -> Option<String> {
-        match get_hover(source, Position::new(line, character))?.contents {
+        let table = crate::lsp::symbols::build_symbol_table(source);
+        match get_hover(source, Position::new(line, character), table.as_ref(), None)?.contents {
             HoverContents::Array(items) => Some(
                 items
                     .into_iter()

@@ -4,6 +4,42 @@
 
 ### Added
 
+- **`soli lsp` knows the whole application (card #691, phases 1–3).**
+  Diagnostics go through `lint_file` with the buffer's path: a `.slv` template
+  has its `<% %>` code linted instead of showing a false syntax error at its
+  first HTML apostrophe; an unclosed tag, or an `<% if %>` the template engine
+  never sees closed, is an ERROR on its line (template errors expose their line
+  through `SolilangError::template_line` / `template::parser::error_line`), and
+  template findings cover their whole line. A `.sl` file under `app/` gets the
+  path-aware rules (`security/unfiltered-mass-assignment`,
+  `style/redundant-model-import`, test-file detection), its neighbours' names
+  coming from the server's index through the new `Linter::with_known_names` /
+  `lint_file_with_names` instead of a re-parse of `app/` on every keystroke.
+  A warning's range now ends at the end of its span on its line (it ended at
+  the column plus the length of the message). Formatting, document symbols,
+  folding, code actions, references and rename answer nothing on `.slv`, and
+  nothing at all answers for a file that is neither `.sl` nor `.slv` (an HTML
+  buffer the Nova client sends along); completion in a template works inside
+  `<% %>` tags only, and a `.` or `@` in a comment or a string opens no
+  member list. The server reads the
+  workspace folders from `initialize`, keeps a project index (`src/lsp/project.rs`:
+  top-level declarations, and members with their owner class and the class's
+  superclass, plus `scope(...)` and `has_many`/`has_one`/`belongs_to`
+  declarations), declares `didSave` and registers `workspace/didChangeWatchedFiles`
+  when the client allows dynamic registration. Go-to-definition and hover fall
+  back to the index: `Post` in a controller lands on `class Post` in
+  `app/models/post.sl`, `post.summary` on the `def` of the class the receiver
+  resolves to, helpers are reached from helpers and views only. Completion
+  triggers on `.` and `@` and offers the receiver's members, resolved by a
+  backward text scan (`src/lsp/receiver.rs`): a class's statics and scopes plus
+  `Model`'s class methods for a model, an instance's methods, fields and
+  relations plus `Model`'s instance methods (new read-only
+  `model_static_method_names()` / `model_instance_method_names()`), a
+  literal's `method_registry` methods, and every project method, marked
+  unresolved, otherwise. The Nova extension declares `.slv` as the
+  **Soli Template** language and sends it to the server; the Neovim, Helix and
+  generic client setups in the docs map `slv` too.
+
 - **Passkeys: a native `WebAuthn` class and `soli generate auth --passkeys`
   (card #696, phases 1 and 3).** `WebAuthn.registration_options(opts)` /
   `WebAuthn.authentication_options(opts)` return `{options, challenge}` —
@@ -126,6 +162,17 @@
   `www/docs/error-codes.md` and the new page
   `/docs/development-tools/error-codes`. Tests: `error::{codes, diagnostic,
   render, source_map}` unit tests, `tests/error_frames_test.rs`.
+
+### Changed
+
+- **One list of auto-loaded directories (card #691).** `solilang::app_layout`
+  holds `APP_GLOBAL_DIRS` (models, services, policies, mailers, controllers,
+  middleware, jobs, subscribers), `HELPER_DIRS` and `app_root()` (moved out of
+  the CLI). `soli check` now also treats `app/jobs` and `app/subscribers` as
+  ambient; `soli lint`'s `smell/undefined-local` now also counts names from
+  `app/policies`, `app/mailers` and `app/subscribers`, and walks the
+  directories recursively (it read only their top level). Helpers stay in
+  scope for the linter, as before.
 
 ### Fixed
 

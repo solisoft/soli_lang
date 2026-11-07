@@ -20,19 +20,19 @@
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Diagnostics</td>
-                    <td class="px-4 py-3">The lint rules as warnings while you type, and a syntax error as an error at its position.</td>
+                    <td class="px-4 py-3">The lint rules as warnings while you type, and a syntax error as an error at its position. A file under <code class="text-amber-400">app/</code> gets the path-aware rules too (<code class="text-amber-400">security/unfiltered-mass-assignment</code>, <code class="text-amber-400">style/redundant-model-import</code>&hellip;), with the names its auto-loaded neighbours declare in scope, as <code class="text-amber-400">soli lint</code> does. A <code class="text-amber-400">.slv</code> template has its <code class="text-amber-400">&lt;% %&gt;</code> code linted, not its HTML: an unclosed tag or an <code class="text-amber-400">&lt;% if %&gt;</code> without its <code class="text-amber-400">end</code> is an error on its line, and a finding covers its whole line.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Hover</td>
-                    <td class="px-4 py-3">On a name declared in the file &mdash; at its declaration or at any use &mdash; its kind or declared type (<code class="text-amber-400">greet : function</code>). On a common builtin (<code class="text-amber-400">print</code>, <code class="text-amber-400">len</code>, <code class="text-amber-400">json_parse</code>, <code class="text-amber-400">HTTP</code>, <code class="text-amber-400">DateTime</code>&hellip;), its signature.</td>
+                    <td class="px-4 py-3">On a name declared in the file &mdash; at its declaration or at any use &mdash; its kind or declared type (<code class="text-amber-400">greet : function</code>). On a name declared elsewhere in the application &mdash; <code class="text-amber-400">Post</code> in a controller, a helper in a view, <code class="text-amber-400">post.summary</code> &mdash; its signature and the file and line it is in. On a common builtin (<code class="text-amber-400">print</code>, <code class="text-amber-400">len</code>, <code class="text-amber-400">json_parse</code>, <code class="text-amber-400">HTTP</code>, <code class="text-amber-400">DateTime</code>&hellip;), its signature.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Completion</td>
-                    <td class="px-4 py-3">Keywords, types, and the names declared in the file. No member completion after <code class="text-amber-400">.</code> yet.</td>
+                    <td class="px-4 py-3">Keywords, types, the names declared in the file, and the application&rsquo;s classes and functions. After <code class="text-amber-400">.</code> or <code class="text-amber-400">@</code>, the receiver&rsquo;s members &mdash; see below.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Go to definition</td>
-                    <td class="px-4 py-3">The declaration of the name under the cursor, in the same file.</td>
+                    <td class="px-4 py-3">The declaration of the name under the cursor: in the file first, then anywhere in the application&rsquo;s auto-loaded files (<code class="text-amber-400">app/models</code>, <code class="text-amber-400">app/controllers</code>, <code class="text-amber-400">app/services</code>, <code class="text-amber-400">app/policies</code>, <code class="text-amber-400">app/mailers</code>, <code class="text-amber-400">app/middleware</code>, <code class="text-amber-400">app/jobs</code>, <code class="text-amber-400">app/subscribers</code>, and <code class="text-amber-400">app/helpers</code> from a helper or a view). <code class="text-amber-400">Post</code> in a controller lands on <code class="text-amber-400">class Post</code> in <code class="text-amber-400">app/models/post.sl</code>; <code class="text-amber-400">post.summary</code> on the <code class="text-amber-400">def summary</code> of the class <code class="text-amber-400">post</code> holds. A name declared twice answers with both.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">References</td>
@@ -62,9 +62,53 @@
         </table>
     </div>
 
+    <p class="text-gray-400 mb-12">
+        Formatting, document symbols, folding, code actions, references and rename are for <code class="text-amber-400">.sl</code> files; on a <code class="text-amber-400">.slv</code> template they answer nothing (rename would otherwise reach words in the markup). In a template, completion works inside <code class="text-amber-400">&lt;% %&gt;</code> tags only, and nowhere does a <code class="text-amber-400">.</code> or <code class="text-amber-400">@</code> in a comment or a string open the member list. A file that is neither <code class="text-amber-400">.sl</code> nor <code class="text-amber-400">.slv</code> &mdash; an HTML buffer an editor sends along &mdash; gets nothing from the server.
+    </p>
+
+    <h3 class="text-lg font-semibold text-white mb-4">Member completion</h3>
+    <p class="text-gray-400 mb-6">
+        Typing <code class="text-amber-400">.</code> or <code class="text-amber-400">@</code> asks for the members of what is before it. The server reads that receiver from the text, without parsing &mdash; while you type <code class="text-amber-400">post.</code> the file usually does not parse &mdash; and offers members only when it can tell exactly what the receiver is:
+    </p>
+    <div class="overflow-hidden rounded-xl border border-white/10 mb-6">
+        <table class="w-full text-sm">
+            <thead class="bg-white/5 text-left text-gray-300">
+                <tr>
+                    <th class="px-4 py-3 font-semibold">Receiver</th>
+                    <th class="px-4 py-3 font-semibold">Members offered</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top">A class: <code class="text-amber-400">Post.</code></td>
+                    <td class="px-4 py-3">Its <code class="text-amber-400">static def</code>s and its <code class="text-amber-400">scope(&quot;&hellip;&quot;)</code>s, inherited ones included, <code class="text-amber-400">new</code>, and &mdash; for a model &mdash; <code class="text-amber-400">Model</code>&rsquo;s class methods (<code class="text-amber-400">where</code>, <code class="text-amber-400">find_by</code>, <code class="text-amber-400">create</code>&hellip;).</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top">An instance</td>
+                    <td class="px-4 py-3"><code class="text-amber-400">post.</code> after <code class="text-amber-400">post = Post.find(id)</code> (or <code class="text-amber-400">Post.new(&hellip;)</code>, <code class="text-amber-400">find_by</code>, <code class="text-amber-400">first_by</code>, <code class="text-amber-400">first</code>, <code class="text-amber-400">last</code>, <code class="text-amber-400">create</code>), or a parameter typed <code class="text-amber-400">post: Post</code>: the class&rsquo;s methods, fields and <code class="text-amber-400">has_many</code> / <code class="text-amber-400">has_one</code> / <code class="text-amber-400">belongs_to</code> relations, inherited ones included, and &mdash; for a model &mdash; <code class="text-amber-400">Model</code>&rsquo;s instance methods (<code class="text-amber-400">save</code>, <code class="text-amber-400">update</code>, <code class="text-amber-400">errors</code>&hellip;).</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top"><code class="text-amber-400">@</code> or <code class="text-amber-400">this.</code></td>
+                    <td class="px-4 py-3">The same, for the enclosing class.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top">A literal</td>
+                    <td class="px-4 py-3"><code class="text-amber-400">&quot;x&quot;.</code>, <code class="text-amber-400">[1, 2].</code>, <code class="text-amber-400">{{&hellip;}}.</code>, <code class="text-amber-400">42.</code>, or a local assigned one: the built-in methods of a string, an array, a hash, a number.</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3 text-white font-medium align-top">Anything else</td>
+                    <td class="px-4 py-3"><code class="text-amber-400">a.b.</code>, a local of unknown origin: every method name declared in the application, marked <em>receiver not resolved</em>.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6">
+        The application is indexed once, on the first request that needs it, then kept current file by file: an open buffer on every change (a buffer that does not parse keeps its last good version), a file on save, and &mdash; when the editor supports watching files &mdash; a file changed, added or deleted outside the editor.
+    </p>
+
     <div class="my-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-200/90 text-sm">
-            <strong class="text-amber-300">Limits:</strong> everything works on one file at a time &mdash; a model used in a controller is not resolved to <code class="text-amber-300">app/models/</code>, and references and rename do not cross files. Names are matched by spelling, so two variables called <code class="text-amber-300">count</code> in two functions count as one name. The server is for <code class="text-amber-300">.sl</code> files; <code class="text-amber-300">.slv</code> templates get no diagnostics from it.
+            <strong class="text-amber-300">Limits:</strong> references and rename still work within one file, and names are matched by spelling there, so two variables called <code class="text-amber-300">count</code> in two functions count as one name. Member completion follows one step: <code class="text-amber-300">post.</code> is resolved, <code class="text-amber-300">post.author.</code> is not. Instance variables a controller sets are not offered in its views.
         </p>
     </div>
 
@@ -115,7 +159,7 @@ ln -s "$PWD/editors/nova/soli.novaextension" \
     </div>
 
     <p class="text-gray-400 mb-6">
-        Restart Nova and open any <code class="text-amber-400">.sl</code> file — diagnostics, hover, and completion should activate within a second.
+        Restart Nova and open any <code class="text-amber-400">.sl</code> file — diagnostics, hover, and completion should activate within a second. <code class="text-amber-400">.slv</code> templates are sent to the server as the <strong class="text-white">Soli Template</strong> language, for their diagnostics.
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">Install from the Extension Library</h3>
@@ -161,17 +205,19 @@ ln -s "$PWD/editors/nova/soli.novaextension" \
 
     <h2 class="text-2xl font-bold text-white mb-6">Neovim</h2>
     <p class="text-gray-400 mb-6">
-        Neovim 0.11+ configures the server natively. Two things are needed besides the server itself: <code class="text-amber-400">.sl</code> is S-Lang (<code class="text-amber-400">slang</code>) to Neovim by default, so map it to a <code class="text-amber-400">soli</code> filetype first, and <code class="text-amber-400">nvim-lspconfig</code> has no <code class="text-amber-400">soli</code> entry, so declare the server yourself:
+        Neovim 0.11+ configures the server natively. Two things are needed besides the server itself: <code class="text-amber-400">.sl</code> is S-Lang (<code class="text-amber-400">slang</code>) to Neovim by default, so map it to a <code class="text-amber-400">soli</code> filetype first &mdash; and <code class="text-amber-400">.slv</code> to a filetype of its own, so templates reach the server for their diagnostics &mdash; and <code class="text-amber-400">nvim-lspconfig</code> has no <code class="text-amber-400">soli</code> entry, so declare the server yourself:
     </p>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="lua"><code class="language-lua text-sm">-- ~/.config/nvim/after/plugin/soli.lua (or anywhere in your config)
-vim.filetype.add({ extension = { sl = "soli" } })
+vim.filetype.add({ extension = { sl = "soli", slv = "soli_template" } })
+-- Highlight templates as HTML with embedded code.
+vim.treesitter.language.register("embedded_template", "soli_template")
 
 vim.lsp.config("soli", {
   cmd = { "soli", "lsp" },
-  filetypes = { "soli" },
-  root_markers = { "soli.toml", ".git" },
+  filetypes = { "soli", "soli_template" },
+  root_markers = { "soli.toml", "config/routes.sl", ".git" },
 })
 
 vim.lsp.enable("soli")</code></pre>
@@ -181,27 +227,55 @@ vim.lsp.enable("soli")</code></pre>
         Open a <code class="text-amber-400">.sl</code> file and <code class="text-amber-400">:checkhealth vim.lsp</code> lists the <code class="text-amber-400">soli</code> client. With Neovim&rsquo;s default mappings, <code class="text-amber-400">K</code> hovers, <code class="text-amber-400">CTRL-]</code> jumps to the definition, <code class="text-amber-400">grr</code> lists references, <code class="text-amber-400">grn</code> renames and <code class="text-amber-400">gra</code> offers the code actions; format with <code class="text-amber-400">:lua vim.lsp.buf.format()</code>.
     </p>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Other Editors</h2>
-    <p class="text-gray-400 mb-6">
-        Any editor with an LSP client can start <code class="text-amber-400">soli lsp</code> on stdio for <code class="text-amber-400">.sl</code> files. The shape of the entry, in the style most clients use:
-    </p>
+    <h2 class="text-2xl font-bold text-white mb-6">Helix</h2>
+    <p class="text-gray-400 mb-6">In <code class="text-amber-400">~/.config/helix/languages.toml</code>:</p>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="languages.toml"><code class="language-toml text-sm">[language-server.soli]
+command = "soli"
+args = ["lsp"]
+
+[[language]]
+name = "soli"
+scope = "source.soli"
+file-types = ["sl"]
+roots = ["soli.toml", "config/routes.sl"]
+comment-token = "#"
+language-servers = ["soli"]
+
+[[language]]
+name = "soli-template"
+scope = "text.html.soli"
+file-types = ["slv"]
+roots = ["soli.toml", "config/routes.sl"]
+grammar = "embedded-template"
+language-servers = ["soli"]</code></pre>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Other Editors</h2>
+    <p class="text-gray-400 mb-6">
+        Any editor with an LSP client can start <code class="text-amber-400">soli lsp</code> on stdio for <code class="text-amber-400">.sl</code> and <code class="text-amber-400">.slv</code> files. The shape of the entry, in the style most clients use:
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="Generic LSP Config"><code class="language-json text-sm">{
   "name": "soli",
   "command": ["soli", "lsp"],
-  "filetypes": ["soli"],
-  "fileExtensions": [".sl"],
-  "rootPatterns": ["soli.toml"],
+  "filetypes": ["soli", "soli_template"],
+  "fileExtensions": [".sl", ".slv"],
+  "rootPatterns": ["soli.toml", "config/routes.sl"],
   "languageId": "soli"
 }</code></pre>
     </div>
+    <p class="text-gray-400 mb-12">
+        The server tells a template by its <code class="text-amber-400">.slv</code> extension, whatever language id the client sends. It reads the application root from the workspace folders the client sends in <code class="text-amber-400">initialize</code>, or from the nearest <code class="text-amber-400">soli.toml</code> or <code class="text-amber-400">config/routes.sl</code> above the open file.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>
     <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
         <ul class="list-disc list-inside text-gray-400 space-y-2">
             <li>The <code class="text-amber-400">soli</code> binary on your PATH (<code class="text-amber-400">soli --version</code> should work), or its absolute path in the editor&rsquo;s settings</li>
-            <li>Editor files should use the <code class="text-amber-400">.sl</code> extension</li>
+            <li>Editor files should use the <code class="text-amber-400">.sl</code> extension; <code class="text-amber-400">.slv</code> view templates must be sent to the server too (see the Neovim and Helix setups)</li>
             <li>For project root detection, include a <code class="text-amber-400">soli.toml</code> file in your project</li>
         </ul>
     </div>

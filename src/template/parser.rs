@@ -414,6 +414,15 @@ fn tokenize(source: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
+/// The template line a parse error names. Every error this parser returns
+/// says where it is as `… at line N …`; editors (the language server) need the
+/// number itself, not only the text.
+pub fn error_line(message: &str) -> Option<usize> {
+    let rest = &message[message.find("at line ")? + "at line ".len()..];
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok().filter(|&line| line > 0)
+}
+
 /// Extract a line-preserving Soli source string from a `.slv` template: only
 /// the code inside `<% %>` / `<%= %>` / `<%- %>` regions is kept, with the
 /// literal HTML dropped. The linter feeds this to the normal Soli lexer/parser
@@ -1640,6 +1649,15 @@ fn parse_core_expr(code: &str, line: usize) -> Result<crate::ast::expr::Expr, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parse_error_names_its_line() {
+        let unclosed = extract_lintable_code("<p>\n\n<% if x \n").unwrap_err();
+        assert_eq!(error_line(&unclosed), Some(3));
+        let block = parse_template("<p>it's</p>\n<% if x %>\n<p>a</p>\n").unwrap_err();
+        assert_eq!(error_line(&block), Some(2), "{block}");
+        assert_eq!(error_line("no line here"), None);
+    }
 
     /// Only a call of `component` opens a component block, not a variable
     /// of that name or a longer name.

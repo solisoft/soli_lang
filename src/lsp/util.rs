@@ -8,6 +8,12 @@ use tower_lsp_server::ls_types::{Position, Range};
 /// `position_to_offset`. It used to index a `Vec<char>` with that byte offset,
 /// which picked the wrong word after any non-ASCII text.
 pub(super) fn extract_word_at_offset(source: &str, offset: usize) -> Option<String> {
+    let (start, end) = word_bounds(source, offset)?;
+    Some(source[start..end].to_string())
+}
+
+/// The byte range of the identifier around byte `offset`.
+pub(super) fn word_bounds(source: &str, offset: usize) -> Option<(usize, usize)> {
     if offset >= source.len() || !source.is_char_boundary(offset) {
         return None;
     }
@@ -22,7 +28,7 @@ pub(super) fn extract_word_at_offset(source: &str, offset: usize) -> Option<Stri
         .char_indices()
         .find(|&(_, c)| !is_word(c))
         .map_or(source.len(), |(i, _)| offset + i);
-    (start < end).then(|| source[start..end].to_string())
+    (start < end).then_some((start, end))
 }
 
 /// The byte offset of an LSP position. `character` counts UTF-16 code units,
