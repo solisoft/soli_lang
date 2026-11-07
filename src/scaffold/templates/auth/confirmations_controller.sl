@@ -12,23 +12,18 @@ class ConfirmationsController < Controller
   # GET /confirm_email?token=... — the link from the email
   def show
     token = params["token"].to_s
-    let user = null
-    user = User.find_by("confirmation_token_digest", Crypto.sha256(token)) unless token.blank?
+    user = token.blank? ? nil : User.find_by("confirmation_token_digest", Crypto.sha256(token))
     # An expired link is indistinguishable from an invalid one to the visitor,
     # which is right: both mean "ask for a fresh one".
-    user = null if !user.nil? && user.confirmation_token_expired?()
-    if user.nil?
-      return render(
-        "confirmations/new",
-        {
-          "title": "Confirm your email",
-          "notice": "",
-          "error": "That confirmation link is invalid or was already used. Enter your email to get a fresh one."
-        }
+    if user.nil? || user.confirmation_token_expired?
+      return @_form(
+        "Confirm your email",
+        "",
+        "That confirmation link is invalid or was already used. Enter your email to get a fresh one."
       )
     end
 
-    user.confirm_email()
+    user.confirm_email
     # Confirm, but do not sign in.
     #
     # This is a GET reached from an email, so whoever (or whatever) follows the
@@ -37,43 +32,36 @@ class ConfirmationsController < Controller
     # is fine; handing out a logged-in session from one is not. The visitor
     # signs in normally, which is one form fill and proves they hold the
     # password.
-    return render(
-      "confirmations/new",
-      {
-        "title": "Email confirmed",
-        "notice": "Your email address is confirmed. Sign in to continue.",
-        "error": ""
-      }
-    )
+    @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
   end
 
   # GET /confirmation/resend
   def new
-    render(
-      "confirmations/new",
-      {
-        "title": "Confirm your email",
-        "notice": "",
-        "error": ""
-      }
-    )
+    @_form("Confirm your email", "", "")
   end
 
   # POST /confirmation/resend
   def create
-    email = params["email"].to_s.trim().downcase()
+    email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
-    if !user.nil? && !user.confirmed?()
-      token = user.start_email_confirmation()
-      AuthMailer.confirm_email(user, token).deliver_now() rescue null
+    if !user.nil? && !user.confirmed?
+      token = user.start_email_confirmation
+      AuthMailer.confirm_email(user, token).deliver_now rescue nil
     end
 
-    return render(
+    @_form("Confirm your email", "If that email needs confirming, a fresh link is on its way.", "")
+  end
+
+  private
+
+  # The confirmation page with a title, a notice and an error.
+  def _form(title, notice, error)
+    render(
       "confirmations/new",
       {
-        "title": "Confirm your email",
-        "notice": "If that email needs confirming, a fresh link is on its way.",
-        "error": ""
+        "title": title,
+        "notice": notice,
+        "error": error
       }
     )
   end

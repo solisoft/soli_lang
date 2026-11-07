@@ -16,6 +16,13 @@ layer:
 
 - Login/signup/logout controllers and views, plus a `load_current_user`
   middleware (which also honors remember-me cookies).
+- **Sign-up policy** (`AUTH_SIGNUP`): sign-up is not open to anyone by
+  default. `first_user` (the default) lets `/signup` create one account —
+  the first, which becomes the admin — and then closes it; `open` lets anyone
+  sign up (a public app); `closed` lets nobody (create accounts from a
+  console, a seed or an admin page). Any other value counts as `closed`, so a
+  typo fails shut. While sign-up is closed, `/signup` answers `403` with the
+  sign-in form and the "Create one" link is hidden.
 - **Password reset** (`/password/reset`): hashed one-time tokens, 2-hour
   expiry, no account enumeration, emailed via the scaffolded `AuthMailer`.
 - **Email confirmation** (`/confirm_email`, `/confirmation/resend`): sent on
@@ -32,7 +39,9 @@ layer:
   minutes) is the total across all credential traffic from that address, not
   15 each. The key is the peer address, or the proxy-recorded client only
   when `enable_trust_proxy()` is on — so a rotating `X-Forwarded-For` can't
-  widen it. Raise the constants if your users sit behind a shared NAT.
+  widen it. Both numbers are read from the environment (`AUTH_ATTEMPTS_PER_IP`,
+  `AUTH_IP_WINDOW_SECONDS`; unset, blank or non-positive falls back to the
+  default) — raise them if your users sit behind a shared NAT.
 - **Account lockout**: 10 failed logins lock the account for 30 minutes
   (auto-unlock); thresholds are constants at the top of the User model.
 - **No account enumeration on sign-in**: an unknown address and a wrong
@@ -63,8 +72,8 @@ models. **Restart the server after adding a new policy.**
 
 A policy is a class named `<Model>Policy` that extends `ApplicationPolicy`, with
 one predicate method per action: `index?`, `show?`, `create?`, `new?`,
-`update?`, `edit?`, `destroy?`. Inside a policy, `this.user` is the current user
-and `this.record` is the record being checked.
+`update?`, `edit?`, `destroy?`. Inside a policy, `@user` is the current user
+and `@record` is the record being checked.
 
 ```soli
 class PostPolicy < ApplicationPolicy
@@ -73,13 +82,13 @@ class PostPolicy < ApplicationPolicy
   end
 
   def update?
-    return false unless this.signed_in?()   # guard the nil user first
+    return false unless @signed_in?   # guard the nil user first
 
-    this.user["_key"] == this.record["author_id"]
+    @user["_key"] == @record["author_id"]
   end
 
   def destroy?
-    this.update?()                   # same rule as update
+    @update?                         # same rule as update
   end
 end
 ```
@@ -97,10 +106,11 @@ returns the record.
 
 ```soli
 class PostsController < Controller
+  # PATCH /posts/:id
   def update
     post = Post.find(params["id"])
     authorize(post)                          # 403 unless PostPolicy#update? is true
-    post.update(this._permit_params(params))
+    post.update(@_permit_params(params))
     redirect(post_path(post))
   end
 end
@@ -134,8 +144,9 @@ which reads the user id from the session and loads the `User` record.
 Use `forbidden()` directly for coarse checks that aren't tied to a record:
 
 ```soli
+# GET /admin
 def admin_dashboard
-  forbidden("Admins only") unless current_user()&.admin?()
+  forbidden("Admins only") unless current_user()&.admin?
   render("admin/dashboard")
 end
 ```

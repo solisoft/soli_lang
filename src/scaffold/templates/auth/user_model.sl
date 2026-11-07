@@ -14,13 +14,46 @@ const AUTH_CONFIRMATION_TOKEN_TTL = 172800  # confirmation links last 48 hours
 const AUTH_REMEMBER_DAYS = 30  # remember-me cookie lifetime
 const AUTH_MIN_PASSWORD_LENGTH = 12  # shortest password accepted at sign-up
 
+# A positive integer from the environment, or `fallback` when the variable is
+# unset, blank or not a positive number.
+def auth_env_int(name, fallback)
+  value = getenv(name).to_s.trim.to_i
+  value > 0 ? value : fallback
+end
+
 # Per-IP throttle on the credential endpoints (login, sign-up, reset). The
 # per-account lockout above cannot see these two attacks: credential stuffing
 # spread thinly across thousands of accounts never trips it, and an attacker
 # who knows an email address can lock its owner out on demand. Keying on the
-# source address covers both.
-const AUTH_ATTEMPTS_PER_IP = 15
-const AUTH_IP_WINDOW_SECONDS = 300
+# source address covers both. Tune per deployment with AUTH_ATTEMPTS_PER_IP and
+# AUTH_IP_WINDOW_SECONDS (an office behind one NAT may need a higher limit).
+const AUTH_ATTEMPTS_PER_IP = auth_env_int("AUTH_ATTEMPTS_PER_IP", 15)
+const AUTH_IP_WINDOW_SECONDS = auth_env_int("AUTH_IP_WINDOW_SECONDS", 300)
+
+# Who may create an account at /signup, from AUTH_SIGNUP:
+#
+#   first_user  (default) only while no account exists: the first visitor
+#               bootstraps the app and becomes its admin, then sign-up closes
+#   open        anyone, for a public app
+#   closed      nobody: create accounts from a console, a seed or an admin page
+#
+# Any other value counts as `closed`, so a typo fails shut rather than open.
+def auth_signup_mode
+  mode = getenv("AUTH_SIGNUP").to_s.trim.downcase
+  return "first_user" if mode.blank?
+  return mode if ["open", "closed", "first_user"].includes?(mode)
+
+  "closed"
+end
+
+# True when /signup may create an account right now.
+def auth_signup_open?
+  mode = auth_signup_mode()
+  return true if mode == "open"
+  return false if mode == "closed"
+
+  User.count == 0
+end
 
 # Base URL used in password-reset / confirmation emails.
 #
@@ -59,8 +92,8 @@ class User < Model
   before_save("normalize")
 
   def normalize
-    this.email = this.email.trim().downcase() unless this.email.blank?
-    this.role = "member" if this.role.blank?
+    @email = @email.trim.downcase unless @email.blank?
+    @role = "member" if @role.blank?
   end
 
   # Hash `plaintext` and store it in `password_digest`. No-op when blank so a
@@ -71,10 +104,10 @@ class User < Model
   def set_password(plaintext)
     return if plaintext.blank?
 
-    this.password_digest = Crypto.password_hash(plaintext)
+    @password_digest = Crypto.password_hash(plaintext)
   end
 
-  # Why `plaintext` is unacceptable as a new password, or null when it is fine.
+  # Why `plaintext` is unacceptable as a new password, or nil when it is fine.
   #
   # Length is the only rule here on purpose. Composition rules ("one digit,
   # one symbol") push people toward `Password1!` — they add a decimal digit of
@@ -84,17 +117,16 @@ class User < Model
     value = plaintext.to_s
     return "Password is required" if value.blank?
 
-    if value.length() < AUTH_MIN_PASSWORD_LENGTH
-      return "Password must be at least #{AUTH_MIN_PASSWORD_LENGTH} characters"
-    end
-    null
+    return "Password must be at least #{AUTH_MIN_PASSWORD_LENGTH} characters" if value.length < AUTH_MIN_PASSWORD_LENGTH
+
+    nil
   end
 
   # True when `plaintext` matches the stored Argon2id digest.
   def authenticate(plaintext)
-    return false if this.password_digest.blank?
+    return false if @password_digest.blank?
 
-    Crypto.password_verify(plaintext, this.password_digest)
+    Crypto.password_verify(plaintext, @password_digest)
   end
 
   # Spend the same Argon2id work as a real `authenticate` without having an
@@ -105,11 +137,11 @@ class User < Model
   # close. The result is deliberately discarded.
   static def burn_password_work(plaintext)
     Crypto.password_hash(plaintext.to_s)
-    return false
+    false
   end
 
   def admin?
-    this.role == "admin"
+    @role == "admin"
   end
 
   # --- Password reset ---------------------------------------------------------
@@ -118,16 +150,16 @@ class User < Model
   # only its digest is stored.
   def start_password_reset
     token = uuid_v4()
-    this.reset_token_digest = Crypto.sha256(token)
-    this.reset_sent_at = DateTime.utc().to_unix()
-    this.update()
+    @reset_token_digest = Crypto.sha256(token)
+    @reset_sent_at = DateTime.utc.to_unix
+    @update
     token
   end
 
   def reset_token_expired?
-    return true if this.reset_sent_at.nil?
+    return true if @reset_sent_at.nil?
 
-    DateTime.utc().to_unix() - this.reset_sent_at > AUTH_RESET_TOKEN_TTL
+    DateTime.utc.to_unix - @reset_sent_at > AUTH_RESET_TOKEN_TTL
   end
 
   # Set the new password, burn the token, and clear any lockout.
@@ -137,12 +169,12 @@ class User < Model
   # outlives it by up to AUTH_REMEMBER_DAYS — leaving it valid means the reset
   # doesn't actually evict the attacker.
   def finish_password_reset(plaintext)
-    this.set_password(plaintext)
-    this.reset_token_digest = null
-    this.reset_sent_at = null
-    this.remember_token_digest = null
-    this.failed_attempts = 0
-    this.locked_at = null
+    @set_password(plaintext)
+    @reset_token_digest = nil
+    @reset_sent_at = nil
+    @remember_token_digest = nil
+    @failed_attempts = 0
+    @locked_at = nil
     # Invalidate every session opened before this moment.
     #
     # Sessions are not indexed by user, so there is nothing to delete; instead
@@ -150,22 +182,22 @@ class User < Model
     # `load_current_user` refuses one that is behind. Without this, an attacker
     # who was already signed in stayed signed in through the victim's reset —
     # which is the one thing a password reset is supposed to stop.
-    this.session_version = (this.session_version ?? 0) + 1
-    this.update()
+    @session_version = (@session_version ?? 0) + 1
+    @update
   end
 
   # Bumped whenever every existing session must be invalidated (a password
   # reset today; add other events here as they appear).
   def current_session_version
-    this.session_version ?? 0
+    @session_version ?? 0
   end
 
   # --- Email confirmation -----------------------------------------------------
   def start_email_confirmation
     token = uuid_v4()
-    this.confirmation_token_digest = Crypto.sha256(token)
-    this.confirmation_sent_at = DateTime.utc().to_unix()
-    this.update()
+    @confirmation_token_digest = Crypto.sha256(token)
+    @confirmation_sent_at = DateTime.utc.to_unix
+    @update
     token
   end
 
@@ -176,52 +208,52 @@ class User < Model
   # security scanner could confirm the address (and, before the change below,
   # sign in as that user) months later.
   def confirmation_token_expired?
-    return true if this.confirmation_sent_at.nil?
+    return true if @confirmation_sent_at.nil?
 
-    DateTime.utc().to_unix() - this.confirmation_sent_at > AUTH_CONFIRMATION_TOKEN_TTL
+    DateTime.utc.to_unix - @confirmation_sent_at > AUTH_CONFIRMATION_TOKEN_TTL
   end
 
   def confirm_email
-    this.confirmed_at = DateTime.utc().to_unix()
-    this.confirmation_token_digest = null
-    this.confirmation_sent_at = null
-    this.update()
+    @confirmed_at = DateTime.utc.to_unix
+    @confirmation_token_digest = nil
+    @confirmation_sent_at = nil
+    @update
   end
 
   def confirmed?
-    !this.confirmed_at.nil?
+    !@confirmed_at.nil?
   end
 
   # --- Remember me ------------------------------------------------------------
   def start_remember_me
     token = uuid_v4()
-    this.remember_token_digest = Crypto.sha256(token)
-    this.update()
+    @remember_token_digest = Crypto.sha256(token)
+    @update
     token
   end
 
   def forget_me
-    return true if this.remember_token_digest.blank?
+    return true if @remember_token_digest.blank?
 
-    this.remember_token_digest = null
-    this.update()
+    @remember_token_digest = nil
+    @update
   end
 
   def remembered_by?(token)
-    return false if this.remember_token_digest.blank?
+    return false if @remember_token_digest.blank?
 
-    Crypto.secure_compare(Crypto.sha256(token.to_s), this.remember_token_digest)
+    Crypto.secure_compare(Crypto.sha256(token.to_s), @remember_token_digest)
   end
 
   # --- Account lockout --------------------------------------------------------
   def locked?
-    return false if this.locked_at.nil?
+    return false if @locked_at.nil?
 
-    if DateTime.utc().to_unix() - this.locked_at > AUTH_LOCKOUT_SECONDS
+    if DateTime.utc.to_unix - @locked_at > AUTH_LOCKOUT_SECONDS
       # The lockout window has passed — auto-unlock.
-      this.locked_at = null
-      this.failed_attempts = 0
-      this.update()
+      @locked_at = nil
+      @failed_attempts = 0
+      @update
       return false
     end
     true
@@ -233,39 +265,39 @@ class User < Model
     # an attacker who keeps knocking keeps the owner locked out indefinitely.
     # The lockout should expire on schedule no matter how loud the attack is.
     #
-    # Ask `locked?()` rather than testing `locked_at` directly — it is what
+    # Ask `locked?` rather than testing `locked_at` directly — it is what
     # clears an expired stamp. Testing the raw field meant that once the first
     # lockout landed, nothing on the failure path ever cleared it, so
     # `failed_attempts` froze and the account could never lock a second time:
     # after the first window elapsed the attacker guessed at full rate forever.
-    return true if this.locked?()
+    return true if @locked?
 
-    this.failed_attempts = (this.failed_attempts ?? 0) + 1
-    just_locked = this.failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
-    this.locked_at = DateTime.utc().to_unix() if just_locked
-    this.update()
+    @failed_attempts = (@failed_attempts ?? 0) + 1
+    just_locked = @failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
+    @locked_at = DateTime.utc.to_unix if just_locked
+    @update
 
     # Tell the owner once, when the lock trips. The sign-in response says only
     # "Invalid email or password" whether or not the account is locked, because
     # a distinct "locked" reply during the lockout tells an attacker which guess
     # was the right one. Delivery failures must not break sign-in.
     if just_locked
-      try {
-        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver()
-      } catch error {
-        Logger.warn("account-locked notification failed: " + str(error))
-      }
+      try
+        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver
+      catch error
+        Logger.warn("account-locked notification failed: #{error}")
+      end
     end
 
     true
   end
 
   def clear_failed_attempts
-    attempts = this.failed_attempts ?? 0
-    return if attempts == 0 && this.locked_at.nil?
+    attempts = @failed_attempts ?? 0
+    return if attempts == 0 && @locked_at.nil?
 
-    this.failed_attempts = 0
-    this.locked_at = null
-    this.update()
+    @failed_attempts = 0
+    @locked_at = nil
+    @update
   end
 end

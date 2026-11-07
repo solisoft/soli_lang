@@ -38,8 +38,14 @@
             Generate it
         </h2>
         <p class="text-gray-400 mb-6">
-            <code class="text-amber-300">soli generate auth</code> scaffolds the full Devise-style auth suite &mdash; login/signup, password reset (hashed one-time tokens, 2h expiry), email confirmation with resend, remember-me (HttpOnly + Secure persistent cookie, revoked on password reset), per-IP throttling on all three credential endpoints, account lockout with auto-unlock &mdash; and the policy layer together. Thresholds and the confirmation gate are constants/toggles at the top of the generated <code>app/models/user.sl</code>; configure SMTP (<code>SOLI_SMTP_*</code>) so the emails go out, and set <code class="text-orange-400">APP_BASE_URL</code> to your <code>https://</code> origin &mdash; unset in production, reset and confirmation emails carry <code>http://localhost:5011</code> links.
+            <code class="text-amber-300">soli generate auth</code> scaffolds the full Devise-style auth suite &mdash; login/signup, password reset (hashed one-time tokens, 2h expiry), email confirmation with resend, remember-me (HttpOnly + Secure persistent cookie, revoked on password reset), per-IP throttling on all three credential endpoints, account lockout with auto-unlock &mdash; and the policy layer together. Thresholds and the confirmation gate are constants/toggles at the top of the generated <code>app/models/user.sl</code>; configure SMTP (<code>SOLI_SMTP_*</code>) so the emails go out, and set <code class="text-orange-400">APP_BASE_URL</code> to your <code>https://</code> origin &mdash; unset in production, reset and confirmation emails carry <code>http://localhost:5011</code> links. The per-IP budget is read from the environment: <code class="text-orange-400">AUTH_ATTEMPTS_PER_IP</code> per <code class="text-orange-400">AUTH_IP_WINDOW_SECONDS</code> (default 15 per 300 s; unset, blank or non-positive falls back to the default).
         </p>
+        <div class="rounded-lg bg-amber-500/5 border border-amber-500/20 p-5 mb-6">
+            <h3 class="text-sm font-semibold text-amber-300 mb-2">Who may sign up: <code>AUTH_SIGNUP</code></h3>
+            <p class="text-gray-400 text-sm leading-relaxed">
+                Sign-up is not open to anyone by default. <code class="text-amber-300">first_user</code> (the default) lets <code>/signup</code> create one account &mdash; the first, which becomes the admin &mdash; and then closes it; <code class="text-amber-300">open</code> lets anyone sign up, for a public app; <code class="text-amber-300">closed</code> lets nobody (create accounts from a console, a seed or an admin page). Any other value counts as <code>closed</code>, so a typo fails shut. While sign-up is closed, <code>/signup</code> answers <code>403</code> with the sign-in form and the &ldquo;Create one&rdquo; link is hidden.
+            </p>
+        </div>
         <div class="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-5 mb-6">
             <h3 class="text-sm font-semibold text-emerald-300 mb-2">Sign-in tells an attacker nothing</h3>
             <p class="text-gray-400 text-sm leading-relaxed">
@@ -71,7 +77,7 @@ soli serve . --dev        # then visit /signup, /login</code></pre>
             Write a policy
         </h2>
         <p class="text-gray-400 mb-6">
-            A policy is a class named <code class="text-amber-300">&lt;Model&gt;Policy</code> with one predicate per action: <code class="text-amber-300">index?</code>, <code class="text-amber-300">show?</code>, <code class="text-amber-300">create?</code>, <code class="text-amber-300">new?</code>, <code class="text-amber-300">update?</code>, <code class="text-amber-300">edit?</code>, <code class="text-amber-300">destroy?</code>. Inside it, <code class="text-amber-300">this.user</code> is the current user and <code class="text-amber-300">this.record</code> is the record being checked.
+            A policy is a class named <code class="text-amber-300">&lt;Model&gt;Policy</code> with one predicate per action: <code class="text-amber-300">index?</code>, <code class="text-amber-300">show?</code>, <code class="text-amber-300">create?</code>, <code class="text-amber-300">new?</code>, <code class="text-amber-300">update?</code>, <code class="text-amber-300">edit?</code>, <code class="text-amber-300">destroy?</code>. Inside it, <code class="text-amber-300">@user</code> is the current user and <code class="text-amber-300">@record</code> is the record being checked.
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/5">
@@ -87,13 +93,13 @@ soli serve . --dev        # then visit /signup, /login</code></pre>
   end
 
   def update?
-    return false unless this.signed_in?()   # guard the nil user first
+    return false unless @signed_in?   # guard the nil user first
 
-    this.user["_key"] == this.record["author_id"]
+    @user["_key"] == @record["author_id"]
   end
 
   def destroy?
-    this.update?()                   # same rule as update
+    @update?                         # same rule as update
   end
 end</code></pre>
             </div>
@@ -120,11 +126,12 @@ end</code></pre>
                 <span class="ml-2 text-xs text-gray-500 font-mono">app/controllers/posts_controller.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">def update
+<pre><code class="language-soli text-sm"># PATCH /posts/:id
+def update
   post = Post.find(params["id"])
   authorize(post)                  # 403 unless PostPolicy#update? is true
-  post.update(this._permit_params(params))
-  return redirect(post_path(post))
+  post.update(@_permit_params(params))
+  redirect(post_path(post))
 end
 
 # Pass an explicit action when it differs from the controller action:

@@ -2,7 +2,7 @@
   <h1 style="font-size: 20px;">Your account is temporarily locked</h1>
   <p>
     There were too many failed sign-in attempts for
-    <strong><%= h(user.email) %></strong>, so we locked the account for
+    <strong><%= user.email %></strong>, so we locked the account for
     <%= lock_minutes %> minutes.
   </p>
   <p style="color: #666; font-size: 13px;">

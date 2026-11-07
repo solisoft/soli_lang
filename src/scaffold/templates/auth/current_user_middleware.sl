@@ -12,15 +12,15 @@
 
 def load_current_user(req)
   user_id = session_get("user_id")
-  if !user_id.blank?
-    user = User.find_by("_key", user_id) rescue null
+  unless user_id.blank?
+    user = User.find_by("_key", user_id) rescue nil
     # Sessions opened before the last password reset are refused.
     #
     # Server-side sessions are not indexed by user, so a reset cannot go and
     # delete them; each session instead carries the `session_version` it was
     # opened at. Without this an attacker who was already signed in survived the
     # victim's password reset, which defeats the one thing a reset is for.
-    if !user.nil? && session_get("session_version").to_i < user.current_session_version()
+    if !user.nil? && session_get("session_version").to_i < user.current_session_version
       session_destroy()
       return {"continue": true, "request": req}
     end
@@ -30,14 +30,14 @@ def load_current_user(req)
 
   # Remember-me: the cookie carries "<user key>:<token>"; only the token's
   # digest is stored, and the comparison is constant-time.
-  remember = cookies["remember_token"] rescue null
+  remember = cookies["remember_token"] rescue nil
   if !remember.blank? && remember.includes?(":")
     parts = remember.split(":")
-    user = User.find_by("_key", parts[0]) rescue null
+    user = User.find_by("_key", parts[0]) rescue nil
     if !user.nil? && user.remembered_by?(parts[1])
       session_regenerate()
-      session_set("user_id", user["_key"])
-      session_set("session_version", user.current_session_version())
+      session_set("user_id", user._key)
+      session_set("session_version", user.current_session_version)
       req["current_user"] = user
     end
   end
