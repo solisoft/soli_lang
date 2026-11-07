@@ -18847,6 +18847,57 @@
       ]
     },
     {
+      "title": "Error Messages & Codes",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/error-codes",
+      "signature": "soli explain E0301",
+      "description": "Code frames under every error (file, line, caret, did-you-mean), stable error codes, and soli explain.",
+      "keywords": [
+        "error codes",
+        "error code",
+        "code frame",
+        "caret",
+        "did you mean",
+        "E0301",
+        "soli explain",
+        "explain",
+        "diagnostics",
+        "NO_COLOR"
+      ]
+    },
+    {
+      "title": "soli explain",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/error-codes#section-explain",
+      "signature": "soli explain [code or lint rule]",
+      "description": "Print what an error code (E0301) or a lint rule (smell/undefined-local) means and how to fix it.",
+      "keywords": [
+        "soli explain",
+        "explain",
+        "error code",
+        "lint rule"
+      ]
+    },
+    {
+      "title": "--format json",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/error-codes#section-json",
+      "signature": "soli check --format json \u00b7 soli lint --format json",
+      "description": "Machine-readable diagnostics from soli check and soli lint, for editors and CI.",
+      "keywords": [
+        "json",
+        "--format json",
+        "machine readable",
+        "ci",
+        "diagnostics",
+        "soli check",
+        "soli lint"
+      ]
+    },
+    {
       "title": "Blog",
       "type": "page",
       "category": "Blog",

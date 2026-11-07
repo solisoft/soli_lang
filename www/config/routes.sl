@@ -121,6 +121,7 @@ get("/docs/development-tools/formatting", "docs#development_tools_formatting")
 get("/docs/development-tools/ai-agents", "docs#development_tools_ai_agents")
 get("/docs/development-tools/ai-evals", "docs#development_tools_ai_evals")
 get("/docs/development-tools/linting", "docs#development_tools_linting")
+get("/docs/development-tools/error-codes", "docs#development_tools_error_codes")
 get("/docs/development-tools/graph", "docs#development_tools_graph")
 
 # Language Reference

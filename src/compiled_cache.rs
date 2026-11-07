@@ -67,13 +67,9 @@ fn compile(
     if let Some(path) = source_path.filter(|_| has_imports(&program)) {
         let base_dir = crate::import_base_dir(path);
         let mut resolver = ModuleResolver::new(base_dir);
-        program =
-            resolver
-                .resolve(program, path)
-                .map_err(|e| crate::error::RuntimeError::General {
-                    message: format!("Module resolution error: {}", e),
-                    span: crate::span::Span::new(0, 0, 1, 1),
-                })?;
+        program = resolver
+            .resolve(program, path)
+            .map_err(crate::module_resolution_error)?;
     }
 
     if type_check {

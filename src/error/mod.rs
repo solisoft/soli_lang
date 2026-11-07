@@ -3,7 +3,12 @@
 use crate::span::Span;
 use thiserror::Error;
 
+pub mod codes;
+pub mod diagnostic;
+pub mod render;
+pub mod source_map;
 pub mod suggest;
+pub use diagnostic::Diagnostic;
 pub use suggest::Hint;
 
 /// Lexer errors.
@@ -37,6 +42,16 @@ impl LexerError {
 
     pub fn invalid_number(s: String, span: Span) -> Self {
         Self::InvalidNumber(s, span)
+    }
+
+    /// The stable error code (see [`codes`]).
+    pub fn code(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::UnexpectedChar(..) => "E0101",
+            Self::UnterminatedString(_) => "E0102",
+            Self::InvalidEscape(..) => "E0103",
+            Self::InvalidNumber(..) => "E0104",
+        })
     }
 
     pub fn span(&self) -> Span {
@@ -94,6 +109,16 @@ impl ParserError {
         Self::General {
             message: message.into(),
             span,
+        }
+    }
+
+    /// The stable error code (see [`codes`]). A `General` message has none.
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::UnexpectedToken { .. } => Some("E0201"),
+            Self::UnexpectedEof(_) => Some("E0202"),
+            Self::InvalidAssignmentTarget(_) => Some("E0203"),
+            Self::General { .. } => None,
         }
     }
 
@@ -199,6 +224,29 @@ impl TypeError {
             found: found.into(),
             span,
         }
+    }
+
+    /// The stable error code (see [`codes`]). A `General` message has none.
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::Mismatch { .. } => Some("E0401"),
+            Self::UndefinedVariable(..) => Some("E0301"),
+            Self::UndefinedType(..) => Some("E0303"),
+            Self::UndefinedFunction(..) => Some("E0302"),
+            Self::NotCallable(..) => Some("E0402"),
+            Self::WrongArity { .. } => Some("E0403"),
+            Self::NoSuchMember { .. } => Some("E0304"),
+            Self::NoSuperclass(..) => Some("E0307"),
+            Self::ThisOutsideClass(_) => Some("E0305"),
+            Self::SuperOutsideClass(_) => Some("E0306"),
+            Self::General { .. } => None,
+            Self::ExhaustivenessWarning { .. } => Some("W0401"),
+        }
+    }
+
+    /// Whether this is a non-blocking warning rather than an error.
+    pub fn is_warning(&self) -> bool {
+        matches!(self, Self::ExhaustivenessWarning { .. })
     }
 
     pub fn span(&self) -> Span {
@@ -430,6 +478,9 @@ pub struct DebugCapture {
     /// [`RuntimeError::with_env_from`]), which `message` alone has lost:
     /// a thrown `PaymentError` renders as its message only.
     pub exception_type: Option<String>,
+    /// The stable error code of the error this one wraps, for the same
+    /// reason as `exception_type`.
+    pub code: Option<&'static str>,
 }
 
 // The point of the boxing above. 48 = the widest remaining variants (a
@@ -674,6 +725,7 @@ impl RuntimeError {
             env_json: env_json.into(),
             stack_trace,
             exception_type: None,
+            code: None,
         }))
     }
 
@@ -690,6 +742,7 @@ impl RuntimeError {
             env_json: env_json.into(),
             stack_trace,
             exception_type: Some(err.exception_type()),
+            code: err.code(),
         }))
     }
 
@@ -725,6 +778,39 @@ impl RuntimeError {
         }
     }
 
+    /// The stable error code (see [`codes`]), when this kind of error has
+    /// one. A free-form `General` message has none, except the framework
+    /// sentinels it carries (record not found, forbidden).
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::DivisionByZero(_) => Some("E0501"),
+            Self::UndefinedVariable(..) => Some("E0301"),
+            Self::NotCallable(_) => Some("E0402"),
+            Self::WrongArity { .. } => Some("E0403"),
+            Self::TypeError { .. } => Some("E0401"),
+            Self::IndexOutOfBounds { .. } => Some("E0502"),
+            Self::NoSuchProperty(_) => Some("E0304"),
+            Self::NotAClass(..) => Some("E0503"),
+            Self::Thrown { .. } => Some("E0504"),
+            Self::General { .. } | Self::WithEnv(_) => {
+                let wrapped = match self {
+                    Self::WithEnv(capture) => capture.code,
+                    _ => None,
+                };
+                wrapped.or_else(|| {
+                    if self.is_record_not_found() {
+                        Some("E0601")
+                    } else if self.forbidden_message().is_some() {
+                        Some("E0602")
+                    } else {
+                        None
+                    }
+                })
+            }
+            Self::EngineFallback(..) | Self::Breakpoint(_) => None,
+        }
+    }
+
     /// Create a breakpoint error with captured environment and stack trace
     pub fn breakpoint(span: Span, env_json: String, stack_trace: Vec<String>) -> Self {
         Self::Breakpoint(Box::new(DebugCapture {
@@ -733,6 +819,7 @@ impl RuntimeError {
             env_json,
             stack_trace,
             exception_type: None,
+            code: None,
         }))
     }
 
@@ -782,6 +869,45 @@ pub enum SolilangError {
 
     #[error("Template error: {0}")]
     Template(String),
+}
+
+impl SolilangError {
+    /// The stable error code (see [`codes`]), when the error has one.
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::Lexer(e) => e.code(),
+            Self::Parser(e) => e.code(),
+            Self::Type(e) => e.code(),
+            Self::Compile(_) | Self::Io(_) | Self::Template(_) => None,
+            Self::Runtime(e) => e.code(),
+        }
+    }
+
+    /// The span the error carries, when it carries one.
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::Lexer(e) => Some(e.span()),
+            Self::Parser(e) => Some(e.span()),
+            Self::Type(e) => Some(e.span()),
+            Self::Compile(e) => Some(e.span()),
+            Self::Runtime(e) => Some(e.span()),
+            Self::Io(_) | Self::Template(_) => None,
+        }
+    }
+
+    /// The message of the wrapped error, without this enum's phase prefix
+    /// (`Runtime error: `), its trailing ` at L:C` still on.
+    pub fn inner_message(&self) -> String {
+        match self {
+            Self::Lexer(e) => e.to_string(),
+            Self::Parser(e) => e.to_string(),
+            Self::Type(e) => e.to_string(),
+            Self::Compile(e) => e.to_string(),
+            Self::Runtime(e) => e.to_string(),
+            Self::Io(e) => e.to_string(),
+            Self::Template(m) => m.clone(),
+        }
+    }
 }
 
 #[cfg(test)]

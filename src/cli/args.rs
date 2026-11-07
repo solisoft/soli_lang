@@ -274,10 +274,20 @@ pub enum Command {
     },
     Lint {
         paths: Vec<String>,
+        /// `--format json`: one JSON document instead of one line per issue.
+        json: bool,
+        /// `--frames`: a code frame under each issue.
+        frames: bool,
     },
     /// `soli check [paths...]` — static type-check without executing.
     Check {
         paths: Vec<String>,
+        /// `--format json`: one JSON document instead of framed text.
+        json: bool,
+    },
+    /// `soli explain [code]` — what an error code or a lint rule means.
+    Explain {
+        query: Option<String>,
     },
     Fmt {
         paths: Vec<String>,
@@ -553,6 +563,29 @@ pub struct Options {
     pub engine: solilang::Engine,
 }
 
+/// `--format json|text` (or `--format=json`) at `args[*i]`, advancing `*i`
+/// past a separate value: whether JSON was asked for.
+fn parse_output_format(args: &[String], i: &mut usize, command: &str) -> bool {
+    let value = match args[*i].split_once('=') {
+        Some((_, value)) => value.to_string(),
+        None => {
+            *i += 1;
+            args.get(*i).cloned().unwrap_or_default()
+        }
+    };
+    match value.as_str() {
+        "json" => true,
+        "text" => false,
+        other => {
+            eprintln!(
+                "Unknown format for {}: '{}' (expected json or text)",
+                command, other
+            );
+            process::exit(64);
+        }
+    }
+}
+
 pub fn print_usage() {
     eprintln!("Soli {} - Solilang Interpreter", VERSION);
     eprintln!();
@@ -682,7 +715,10 @@ pub fn print_usage() {
     eprintln!("                       jobs list / retry <id> / cancel <id> inspect the queue");
     eprintln!("  test [paths...]      Run tests (default: tests/ directory)");
     eprintln!("  lint [paths...]      Lint .sl files for style issues and code smells");
+    eprintln!("                       --frames: a code frame under each issue; --format json");
     eprintln!("  check [paths...]     Static type-check .sl files without running them");
+    eprintln!("                       --format json: one JSON document (editors, CI)");
+    eprintln!("  explain [code]       What an error code (E0301) or a lint rule means");
     eprintln!("  lsp                  Start the Soli LSP server on stdio (for editor plugins)");
     eprintln!(
         "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
@@ -2160,33 +2196,58 @@ pub fn parse_args() -> Options {
             "lint" => {
                 i += 1;
                 let mut paths: Vec<String> = Vec::new();
+                let mut json = false;
+                let mut frames = false;
                 while i < args.len() {
-                    if !args[i].starts_with('-') {
-                        paths.push(args[i].clone());
-                    } else {
-                        eprintln!("Unknown option for lint: {}", args[i]);
-                        print_usage();
-                        process::exit(64);
+                    match args[i].as_str() {
+                        "--frames" => frames = true,
+                        "--format" | "--format=json" | "--format=text" => {
+                            json = parse_output_format(&args, &mut i, "lint");
+                        }
+                        s if !s.starts_with('-') => paths.push(args[i].clone()),
+                        other => {
+                            eprintln!("Unknown option for lint: {}", other);
+                            print_usage();
+                            process::exit(64);
+                        }
                     }
                     i += 1;
                 }
-                options.command = Command::Lint { paths };
+                options.command = Command::Lint {
+                    paths,
+                    json,
+                    frames,
+                };
                 return options;
             }
             "check" => {
                 i += 1;
                 let mut paths: Vec<String> = Vec::new();
+                let mut json = false;
                 while i < args.len() {
-                    if !args[i].starts_with('-') {
-                        paths.push(args[i].clone());
-                    } else {
-                        eprintln!("Unknown option for check: {}", args[i]);
-                        print_usage();
-                        process::exit(64);
+                    match args[i].as_str() {
+                        "--format" | "--format=json" | "--format=text" => {
+                            json = parse_output_format(&args, &mut i, "check");
+                        }
+                        s if !s.starts_with('-') => paths.push(args[i].clone()),
+                        other => {
+                            eprintln!("Unknown option for check: {}", other);
+                            print_usage();
+                            process::exit(64);
+                        }
                     }
                     i += 1;
                 }
-                options.command = Command::Check { paths };
+                options.command = Command::Check { paths, json };
+                return options;
+            }
+            "explain" => {
+                let query = args.get(i + 1).cloned();
+                if args.len() > i + 2 {
+                    eprintln!("Usage: soli explain [code or lint rule]");
+                    process::exit(64);
+                }
+                options.command = Command::Explain { query };
                 return options;
             }
             "fmt" => {

@@ -3725,6 +3725,9 @@
   .p-24 {
     padding: calc(var(--spacing) * 24);
   }
+  .px-0 {
+    padding-inline: 0;
+  }
   .px-1 {
     padding-inline: var(--spacing);
   }

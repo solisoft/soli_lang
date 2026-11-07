@@ -96,12 +96,9 @@ fn run_preamble_files(
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new("."));
             let mut resolver = module::ModuleResolver::new(base_dir);
-            program = resolver.resolve(program, preamble_path).map_err(|e| {
-                error::RuntimeError::General {
-                    message: format!("Module resolution error: {}", e),
-                    span: span::Span::new(0, 0, 1, 1),
-                }
-            })?;
+            program = resolver
+                .resolve(program, preamble_path)
+                .map_err(module_resolution_error)?;
         }
 
         if type_check {
@@ -193,12 +190,48 @@ pub fn run_with_path(
     execute_program_tree(&program)
 }
 
+/// The error a failed module resolution raises: `Module resolution error:
+/// …` at the `1:1` placeholder, as it always read. Where the failure is —
+/// the `import` that failed, or the line of a module that does not parse —
+/// is noted as the error's [`error::source_map::Origin`] for the code frame
+/// `soli run` and `soli check` draw.
+pub(crate) fn module_resolution_error(e: module::ResolveError) -> error::RuntimeError {
+    let placeholder = span::Span::new(0, 0, 1, 1);
+    let (file, location) = match e.location() {
+        Some((file, span)) => (Some(file.to_path_buf()), span),
+        None => (None, placeholder),
+    };
+    error::source_map::note_origin(error::source_map::Origin {
+        error_span: placeholder,
+        file,
+        span: location,
+        code: e.code(),
+    });
+    error::RuntimeError::General {
+        message: format!("Module resolution error: {}", e),
+        span: placeholder,
+    }
+}
+
 /// Lex, parse, resolve imports (when there is a path to resolve them from)
 /// and, if asked, type-check: everything before a program runs.
 pub fn parse_resolve_check(
     source: &str,
     source_path: Option<&std::path::Path>,
     type_check: bool,
+) -> Result<ast::Program, SolilangError> {
+    let program = parse_and_resolve(source, source_path)?;
+    if type_check {
+        check_first_error(&program)?;
+    }
+    Ok(program)
+}
+
+/// Lex, parse and resolve imports (when there is a path to resolve them
+/// from).
+fn parse_and_resolve(
+    source: &str,
+    source_path: Option<&std::path::Path>,
 ) -> Result<ast::Program, SolilangError> {
     let tokens = lexer::Scanner::new(source).scan_tokens()?;
     let mut program = parser::Parser::new(tokens).parse()?;
@@ -208,19 +241,82 @@ pub fn parse_resolve_check(
         let mut resolver = module::ModuleResolver::new(base_dir);
         program = resolver
             .resolve(program, path)
-            .map_err(|e| error::RuntimeError::General {
-                message: format!("Module resolution error: {}", e),
-                span: span::Span::new(0, 0, 1, 1),
-            })?;
-    }
-
-    if type_check {
-        let mut checker = types::TypeChecker::new();
-        if let Err(errors) = checker.check(&program) {
-            return Err(errors.into_iter().next().unwrap().into());
-        }
+            .map_err(module_resolution_error)?;
     }
     Ok(program)
+}
+
+/// Type-check `program`, failing on the first error.
+fn check_first_error(program: &ast::Program) -> Result<(), SolilangError> {
+    let mut checker = types::TypeChecker::new();
+    if let Err(errors) = checker.check(program) {
+        return Err(errors.into_iter().next().unwrap().into());
+    }
+    Ok(())
+}
+
+/// A run that failed, with the sources it was built from: what a code frame
+/// needs ([`error::Diagnostic::from_error`], [`error::render::frame`]).
+#[derive(Debug)]
+pub struct RunFailure {
+    pub error: SolilangError,
+    pub sources: error::source_map::SourceSet,
+}
+
+impl RunFailure {
+    pub fn diagnostic(&self) -> error::Diagnostic {
+        error::Diagnostic::from_error(&self.error, &self.sources)
+    }
+}
+
+/// [`run_script_file`], keeping what is needed to draw the error's code
+/// frame. Powers `soli script.sl`.
+pub fn run_script_file_report(
+    path: &std::path::Path,
+    type_check: bool,
+    engine: Engine,
+) -> Result<(), Box<RunFailure>> {
+    let source = std::fs::read_to_string(path).map_err(|e| {
+        Box::new(RunFailure {
+            error: error::RuntimeError::General {
+                message: format!("Failed to read file '{}': {}", path.display(), e),
+                span: span::Span::new(0, 0, 1, 1),
+            }
+            .into(),
+            sources: error::source_map::SourceSet::new("", Some(path)),
+        })
+    })?;
+    run_script_report(&source, Some(path), type_check, engine)
+}
+
+/// [`run_script`], keeping what is needed to draw the error's code frame.
+/// Powers `soli script.sl` and `soli -e`.
+pub fn run_script_report(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    type_check: bool,
+    engine: Engine,
+) -> Result<(), Box<RunFailure>> {
+    error::source_map::clear_origin();
+    let mut sources = error::source_map::SourceSet::new(source, source_path);
+    let result = match parse_and_resolve(source, source_path) {
+        Ok(program) => {
+            sources = sources.with_program(&program);
+            if type_check {
+                check_first_error(&program)
+            } else {
+                Ok(())
+            }
+            .and_then(|()| execute_program_from(&program, engine, source_path))
+        }
+        Err(e) => Err(e),
+    };
+    result.map_err(|error| {
+        Box::new(RunFailure {
+            error,
+            sources: sources.with_origin(error::source_map::take_origin()),
+        })
+    })
 }
 
 /// A fresh interpreter with every builtin registered, as a script sees it.
@@ -313,11 +409,22 @@ pub fn run_script(
 
 /// Run a parsed, resolved and checked program on `engine`.
 pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), SolilangError> {
+    execute_program_from(program, engine, None)
+}
+
+/// [`execute_program`] for a script read from `source_path`, which the VM
+/// records as the file of the script's own code (for code frames).
+pub fn execute_program_from(
+    program: &ast::Program,
+    engine: Engine,
+    source_path: Option<&std::path::Path>,
+) -> Result<(), SolilangError> {
     #[cfg(feature = "eui")]
     serve::eui::script::remember_script(program);
+    let entry_path = source_path.map(|p| std::sync::Arc::new(p.to_path_buf()));
     match engine {
         Engine::Tree => execute_program_tree(program),
-        Engine::Vm => execute_program_vm(program),
+        Engine::Vm => execute_program_vm_from(program, entry_path),
         Engine::Auto => {
             if let Some(reason) = tree_walker_reason(program) {
                 log_engine(&format!("tree-walker — the script uses {reason}"));
@@ -333,7 +440,8 @@ pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), Sol
             let kernels = script_kernels(program, &interpreter);
             let env = interpreter.environment.clone();
             let is_builtin = |name: &str| env.borrow().get(name).is_some();
-            match vm::Compiler::compile_entry_script(program, kernels, &is_builtin) {
+            match vm::Compiler::compile_entry_script_from(program, kernels, &is_builtin, entry_path)
+            {
                 Ok(module) => {
                     log_engine("vm");
                     run_compiled_on_vm(&module, &interpreter)
@@ -598,16 +706,22 @@ pub fn bare_call_reason(
 pub fn execute_program_vm(program: &ast::Program) -> Result<(), SolilangError> {
     #[cfg(feature = "eui")]
     serve::eui::script::remember_script(program);
+    execute_program_vm_from(program, None)
+}
+
+/// [`execute_program_vm`], the script's own code compiled as `entry_path`'s.
+fn execute_program_vm_from(
+    program: &ast::Program,
+    entry_path: Option<std::sync::Arc<std::path::PathBuf>>,
+) -> Result<(), SolilangError> {
     let interpreter = script_interpreter();
     let kernels = script_kernels(program, &interpreter);
     let env = interpreter.environment.clone();
     let is_builtin = |name: &str| env.borrow().get(name).is_some();
-    let module =
-        vm::Compiler::compile_entry_script(program, kernels, &is_builtin).map_err(|e| {
-            error::RuntimeError::General {
-                message: format!("Compile error: {}", e),
-                span: span::Span::new(0, 0, 1, 1),
-            }
+    let module = vm::Compiler::compile_entry_script_from(program, kernels, &is_builtin, entry_path)
+        .map_err(|e| error::RuntimeError::General {
+            message: format!("Compile error: {}", e),
+            span: span::Span::new(0, 0, 1, 1),
         })?;
     run_compiled_on_vm(&module, &interpreter)
 }
@@ -679,24 +793,71 @@ pub fn type_check_source_with_ambient(
     source_path: Option<&std::path::Path>,
     ambient: &[String],
 ) -> Result<Vec<String>, Vec<SolilangError>> {
-    let tokens = lexer::Scanner::new(source)
-        .scan_tokens()
-        .map_err(|e| vec![e.into()])?;
-    let mut program = parser::Parser::new(tokens)
-        .parse()
-        .map_err(|e| vec![e.into()])?;
-
-    if let Some(path) = source_path.filter(|_| has_imports(&program)) {
-        let base_dir = import_base_dir(path);
-        let mut resolver = module::ModuleResolver::new(base_dir);
-        program = resolver.resolve(program, path).map_err(|e| {
-            vec![error::RuntimeError::General {
-                message: format!("Module resolution error: {}", e),
-                span: span::Span::new(0, 0, 1, 1),
-            }
-            .into()]
-        })?;
+    let report = type_check_report(source, source_path, ambient);
+    if report.errors.is_empty() {
+        Ok(report.warnings.iter().map(|w| w.to_string()).collect())
+    } else {
+        Err(report.errors)
     }
+}
+
+/// What `soli check` found in one file: every error, the warnings (reported
+/// only when there is no error), and the sources a code frame is drawn from.
+#[derive(Debug)]
+pub struct CheckReport {
+    pub errors: Vec<SolilangError>,
+    pub warnings: Vec<error::TypeError>,
+    pub sources: error::source_map::SourceSet,
+}
+
+impl CheckReport {
+    /// One diagnostic per error, or per warning when there is no error.
+    pub fn diagnostics(&self) -> Vec<error::Diagnostic> {
+        if self.errors.is_empty() {
+            self.warnings
+                .iter()
+                .map(|w| error::Diagnostic::from_type_warning(w, &self.sources))
+                .collect()
+        } else {
+            self.errors
+                .iter()
+                .map(|e| error::Diagnostic::from_error(e, &self.sources))
+                .collect()
+        }
+    }
+}
+
+/// [`type_check_source_with_ambient`], keeping what is needed for code frames.
+pub fn type_check_report(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    ambient: &[String],
+) -> CheckReport {
+    error::source_map::clear_origin();
+    let sources = error::source_map::SourceSet::new(source, source_path);
+    match type_check_program(source, source_path, ambient) {
+        Ok((program, warnings, errors)) => CheckReport {
+            errors,
+            warnings,
+            sources: sources.with_program(&program),
+        },
+        Err(error) => CheckReport {
+            errors: vec![error],
+            warnings: Vec::new(),
+            sources: sources.with_origin(error::source_map::take_origin()),
+        },
+    }
+}
+
+/// Parse, resolve and type-check: the resolved program, its warnings and
+/// its errors, or the lex/parse/resolution error that stopped it.
+#[allow(clippy::type_complexity)]
+fn type_check_program(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    ambient: &[String],
+) -> Result<(ast::Program, Vec<error::TypeError>, Vec<SolilangError>), SolilangError> {
+    let program = parse_and_resolve(source, source_path)?;
 
     let mut checker = types::TypeChecker::new();
     checker.declare_ambient(ambient);
@@ -707,10 +868,11 @@ pub fn type_check_source_with_ambient(
         checker.declare_request_scope();
     }
     let (result, warnings) = checker.check_collecting_warnings(&program);
-    match result {
-        Ok(()) => Ok(warnings.into_iter().map(|w| w.to_string()).collect()),
-        Err(errs) => Err(errs.into_iter().map(Into::into).collect()),
-    }
+    let errors = match result {
+        Ok(()) => Vec::new(),
+        Err(errs) => errs.into_iter().map(Into::into).collect(),
+    };
+    Ok((program, warnings, errors))
 }
 
 /// Whether a path belongs to an application rather than to a loose script.
@@ -828,10 +990,7 @@ fn run_with_path_and_coverage_inner(
         let mut resolver = module::ModuleResolver::new(base_dir);
         program = resolver
             .resolve(program, path)
-            .map_err(|e| error::RuntimeError::General {
-                message: format!("Module resolution error: {}", e),
-                span: span::Span::new(0, 0, 1, 1),
-            })?;
+            .map_err(module_resolution_error)?;
     }
 
     if type_check {

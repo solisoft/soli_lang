@@ -1,0 +1,314 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/development-tools/debugging" class="text-gray-400 hover:text-white transition-colors">Development Tools</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Error Codes</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-red-400 to-amber-400 bg-clip-text text-transparent">Error Messages &amp; Codes</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            When <code>soli</code> stops on an error, it says what went wrong, shows the line and points at the place.
+            Most kinds of error also carry a <strong class="text-white">stable code</strong> &mdash; <code>E0301</code> is an
+            undefined variable in every release &mdash; and <code>soli explain</code> prints what it means and how to fix it.
+        </p>
+    </div>
+
+    <!-- Code frames -->
+    <section id="section-frames" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Reading a code frame</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="report.sl"><code class="language-soli text-sm"># report.sl
+name = "Alice"
+print(nme)</code></pre>
+        </div>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">$ soli report.sl
+Error: Type error: Undefined variable 'nme' (did you mean 'name'?) at 3:7
+ --&gt; report.sl:3:7
+  |
+3 | print(nme)
+  |       ^^^
+  |
+  = help: did you mean 'name'?
+  = note: error[E0301] undefined-variable — `soli explain E0301`</code></pre>
+            </div>
+        </div>
+        <ul class="text-gray-400 space-y-2 mb-4 list-disc list-inside">
+            <li>The <strong class="text-white">first line is unchanged</strong>: <code>Error: &lt;message&gt; at line:column</code>, as it always read. A script or CI step that greps it keeps working; the frame is added below it.</li>
+            <li><code>--&gt; file:line:column</code> names the file. In a program with imports, an error raised inside an imported module is framed in <strong class="text-white">that module</strong>, not in the file you ran.</li>
+            <li>The underline covers the name or token at the error's column. Both engines draw the same frame: <code>soli x.sl</code> and <code>soli --tree x.sl</code> print the same error.</li>
+            <li><code>= help:</code> repeats the &ldquo;did you mean&rdquo; suggestion, when there is one; <code>= note:</code> names the code and the command that explains it.</li>
+        </ul>
+        <p class="text-gray-400 mb-4">
+            The same frame appears under <code>soli -e</code>, under <code>soli check</code> (one per error) and under
+            <code>soli lint --frames</code>. Colour is used only when the output is a terminal, and never when
+            <code>NO_COLOR</code> is set.
+        </p>
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">No frame rather than a wrong one</h4>
+            <p class="text-amber-200/80 text-sm">
+                An error whose place is not known for certain prints its first line only. <code>soli</code> names a file
+                only when the engine or the import resolver said where the error came from, or the program is a single
+                file, or the error's position agrees with exactly one of the program's files.
+            </p>
+        </div>
+    </section>
+
+    <!-- soli explain -->
+    <section id="section-explain" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4"><code class="text-amber-400">soli explain</code></h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli explain E0301                  # by code
+soli explain undefined-variable     # by name
+soli explain smell/undefined-local  # a lint rule
+soli explain                        # list every code and rule</code></pre>
+        </div>
+        <p class="text-gray-400 mb-4">
+            An unknown code exits with status <code>1</code> and suggests the closest one
+            (<code>Did you mean 'E0301'?</code>).
+        </p>
+    </section>
+
+    <!-- JSON -->
+    <section id="section-json" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Machine-readable output</h2>
+        <p class="text-gray-400 mb-4">
+            <code>soli check --format json</code> and <code>soli lint --format json</code> print one JSON document
+            instead of text, for editors and CI:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-json text-sm">{
+  "diagnostics": [
+    {
+      "code": "E0301",
+      "column": 7,
+      "file": "report.sl",
+      "hint": "did you mean 'name'?",
+      "line": 3,
+      "message": "Undefined variable 'nme'",
+      "name": "undefined-variable",
+      "notes": [],
+      "secondary": [],
+      "severity": "error"
+    }
+  ],
+  "errors": 1,
+  "files_checked": 1,
+  "warnings": 0
+}</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            For a lint finding, <code>code</code> is the rule id (<code>smell/undefined-local</code>) and <code>name</code>
+            is <code>null</code>; <code>soli lint</code> prints <code>files_linted</code> and <code>issues</code> instead of
+            the counts above. The exit status is the same as in text mode. The editor extension (LSP) reports the same
+            codes on syntax errors.
+        </p>
+    </section>
+
+    <!-- Codes -->
+    <section id="section-codes" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">The codes</h2>
+        <p class="text-gray-400 mb-4">
+            Codes are never renumbered or reused: a retired code stays reserved. An error that is still a free-form
+            message has no code yet, rather than a catch-all one. <code>E01xx</code> is the lexer, <code>E02xx</code> the
+            parser, <code>E03xx</code> names and scopes, <code>E04xx</code> types and calls (found by <code>soli check</code>
+            or at run time), <code>E05xx</code> other run-time failures, <code>E06xx</code> the framework, <code>E07xx</code>
+            imports, and <code>W0xxx</code> warnings.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-6">
+            <table class="w-full text-sm text-left text-gray-400">
+                <thead class="text-xs uppercase text-gray-300 bg-white/5">
+                    <tr>
+                        <th class="py-2 px-0 pr-4">Code</th>
+                        <th class="py-2 pr-4">Name</th>
+                        <th class="py-2 pr-4">Reported as</th>
+                        <th class="py-2">Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0101</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">unexpected-character</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2">a character that starts no token (<code>$</code>)</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0102</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">unterminated-string</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2">a string with no closing quote</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0103</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">invalid-escape</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2"><code>\q</code> and other unknown escapes</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0104</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">invalid-number</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2">an integer past 64 bits, <code>12D</code> with no decimals</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0201</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">unexpected-token</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2">the parser expected one token and found another</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0202</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">unexpected-end-of-file</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2">a <code>def</code>, block or bracket never closed</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0203</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">invalid-assignment-target</code></td>
+                        <td class="py-2 pr-4">syntax error</td>
+                        <td class="py-2"><code>add(1) = 2</code></td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0301</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">undefined-variable</code></td>
+                        <td class="py-2 pr-4"><code>NameError</code></td>
+                        <td class="py-2">a name no scope defines</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0302</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">undefined-function</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code></td>
+                        <td class="py-2">reserved &mdash; an unknown function reports as <code>E0301</code> today</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0303</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">undefined-type</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code></td>
+                        <td class="py-2">a typed <code>match</code> pattern naming an unknown type</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0304</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">unknown-member</code></td>
+                        <td class="py-2 pr-4"><code>NoMethodError</code></td>
+                        <td class="py-2">a method or field the value does not have</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0305</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">this-outside-class</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code></td>
+                        <td class="py-2"><code>this</code> with no instance</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0306</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">super-outside-class</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code></td>
+                        <td class="py-2"><code>super</code> outside a method</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0307</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">no-superclass</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code></td>
+                        <td class="py-2"><code>super</code> in a class with no parent</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0401</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">type-mismatch</code></td>
+                        <td class="py-2 pr-4"><code>TypeError</code></td>
+                        <td class="py-2">a value of the wrong type</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0402</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">not-callable</code></td>
+                        <td class="py-2 pr-4"><code>TypeError</code></td>
+                        <td class="py-2">calling something that is not a function</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0403</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">wrong-arity</code></td>
+                        <td class="py-2 pr-4"><code>ArgumentError</code></td>
+                        <td class="py-2">too many or too few arguments</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0501</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">division-by-zero</code></td>
+                        <td class="py-2 pr-4"><code>ZeroDivisionError</code></td>
+                        <td class="py-2">integer <code>/</code> or <code>%</code> by zero</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0502</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">index-out-of-bounds</code></td>
+                        <td class="py-2 pr-4"><code>IndexError</code></td>
+                        <td class="py-2">an index past the end</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0503</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">not-a-class</code></td>
+                        <td class="py-2 pr-4"><code>TypeError</code></td>
+                        <td class="py-2">a superclass or <code>new</code> target that is not a class</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0504</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">uncaught-exception</code></td>
+                        <td class="py-2 pr-4">the thrown class, or <code>Error</code></td>
+                        <td class="py-2">a <code>throw</code> nothing caught</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0601</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">record-not-found</code></td>
+                        <td class="py-2 pr-4"><code>404</code> in a request</td>
+                        <td class="py-2"><code>Model.find</code> found nothing</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0602</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">forbidden</code></td>
+                        <td class="py-2 pr-4"><code>403</code> in a request</td>
+                        <td class="py-2"><code>forbidden()</code> or a policy refused</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0701</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">module-not-found</code></td>
+                        <td class="py-2 pr-4">import error</td>
+                        <td class="py-2">an <code>import</code> of a file that does not exist</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0702</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">circular-import</code></td>
+                        <td class="py-2 pr-4">import error</td>
+                        <td class="py-2">files importing each other</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0703</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">import-error</code></td>
+                        <td class="py-2 pr-4">import error</td>
+                        <td class="py-2">an unexported name, or an absolute path</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0704</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">module-syntax-error</code></td>
+                        <td class="py-2 pr-4">import error</td>
+                        <td class="py-2">an imported file that does not parse</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">W0401</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">non-exhaustive-match</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code> warning</td>
+                        <td class="py-2">a <code>match</code> on an enum missing variants</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Lint rules keep their own ids (<code>smell/undefined-local</code>, <code>idiom/prefer-blank</code>, &hellip;);
+            see <a href="/docs/development-tools/linting" class="text-amber-400 hover:text-amber-300 underline">Linting</a>.
+            <code>soli explain</code> takes them too.
+        </p>
+    </section>
+</div>

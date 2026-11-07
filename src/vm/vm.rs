@@ -649,12 +649,11 @@ impl Vm {
         self.run()
     }
 
-    /// Get the current source span (only call on error paths).
-    #[cold]
     /// An undefined-variable error for a global, with a "did you mean"
     /// suggestion drawn from the globals. Bytecode locals are slots with no
     /// names, so a misspelt local is matched against globals only — the
     /// static checker, which sees the scopes, suggests locals.
+    #[cold]
     pub(crate) fn undefined_global(&self, name: impl Into<String>) -> RuntimeError {
         let name = name.into();
         let suggestion = crate::error::suggest::best_match(&name, self.globals.keys());
@@ -665,6 +664,8 @@ impl Vm {
         )
     }
 
+    /// Get the current source span (only call on error paths).
+    #[cold]
     pub(crate) fn current_span(&self) -> Span {
         let frame = self.frames.last().unwrap();
         let ip = frame.ip.saturating_sub(1);
@@ -935,6 +936,14 @@ impl Vm {
                 .last()
                 .is_some_and(|handler| handler.frame_depth > self.return_depth);
             if !catchable || err.is_engine_fallback() {
+                // The frame that raised it is still on top: note its file for
+                // the code frame `soli run` draws (VM spans carry no file).
+                if let Some(frame) = self.frames.last() {
+                    crate::error::source_map::note_vm_origin(
+                        err.span(),
+                        frame.closure.proto.source_path.as_ref(),
+                    );
+                }
                 return Err(err);
             }
             let span = err.span();

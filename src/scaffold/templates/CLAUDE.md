@@ -128,9 +128,10 @@ Everything else in `docs/`: language reference `docs/soli-language.md`,
 `docs/routing.md`, `docs/controllers.md`, `docs/models.md`, `docs/views.md`,
 `docs/middleware.md`, `docs/migrations.md`, `docs/scaffold.md`,
 `docs/static-server.md`, `docs/formatting.md`, `docs/linting.md`,
-`docs/editor-integration.md`, testing (`docs/testing.md`,
-`docs/testing-guide.md`, `docs/testing-e2e.md`, `docs/testing-assertions.md`,
-`docs/testing-browser.md`, `docs/testing-quick-reference.md`), agents
+`docs/error-codes.md` (code frames, `soli explain`),
+`docs/editor-integration.md`, testing (`docs/testing.md`, `docs/testing-guide.md`,
+`docs/testing-e2e.md`, `docs/testing-assertions.md`, `docs/testing-browser.md`,
+`docs/testing-quick-reference.md`), agents
 (`docs/ai.md`, `docs/ai-agents.md`, `docs/ai-evals.md`), `docs/benchmarks.md`.
 Worked tutorials live in `docs/blog/`.
 

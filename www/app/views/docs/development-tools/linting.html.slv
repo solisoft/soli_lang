@@ -84,6 +84,30 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 found in 1 file(s)</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-4">
+            The one-line form is the default, so CI output you grep does not change. Two flags add to it:
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli lint --frames          # a code frame (source line, caret, hint) under each issue
+soli lint --format json     # one JSON document instead, for editors and CI
+soli explain smell/undefined-local   # what a rule wants, and how to silence it</code></pre>
+        </div>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">app/main.sl:3:9 - [smell/undefined-local] variable 'totl' is read but never assigned in this scope (did you mean 'total'?)
+ --&gt; app/main.sl:3:9
+  |
+3 |   print(totl)
+  |         ^^^^
+  |
+  = help: did you mean 'total'?
+  = note: `soli explain smell/undefined-local`</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            The JSON shape is described on the
+            <a href="/docs/development-tools/error-codes#section-json" class="text-amber-400 hover:text-amber-300 underline">Error Codes</a> page.
+        </p>
     </section>
 
     <!-- Rules -->
@@ -422,10 +446,21 @@ vsce package
             <pre data-filename="Terminal"><code class="language-bash text-sm">soli check               # type-check the current project
 soli check app/models    # check a directory
 soli check app/models/user.sl
+soli check --format json   # one JSON document, for editors and CI</code></pre>
+            <p class="text-gray-400 mt-3">
+                Every type error of a file is reported, each on the line it always printed and with a code frame under it &mdash; the source line, a caret, the &ldquo;did you mean&rdquo; suggestion and the error code
+                (see <a href="/docs/development-tools/error-codes" class="text-amber-400 hover:text-amber-300 underline">Error Codes</a>):
+            </p>
+            <pre data-filename="Output"><code class="language-text text-sm">app/models/user.sl: Type error: Undefined variable 'ponits' (did you mean 'points'?) at 12:5
+  --&gt; app/models/user.sl:12:5
+   |
+12 |     ponits + bonus
+   |     ^^^^^^
+   |
+   = help: did you mean 'points'?
+   = note: error[E0301] undefined-variable — `soli explain E0301`
 
-# example output
-# app/models/user.sl: Type error: Type mismatch: expected Int, found String at 14:14
-# 1 error(s) in 1 of 38 file(s)</code></pre>
+1 error(s) in 1 of 38 file(s)</code></pre>
             <p class="text-gray-400 mt-3">
                 Running a file with <code class="text-cyan-400">soli &lt;file&gt;</code> type-checks it first too (use <code class="text-cyan-400">--no-type-check</code> to skip); <code class="text-cyan-400">soli check</code> is the standalone, whole-project form that never runs your app.
             </p>

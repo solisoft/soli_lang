@@ -4,6 +4,26 @@ Breakpoints, an interactive REPL, a per-request query log and flamegraph, a
 request inspector, and a mail inbox — all under `soli serve --dev`, all costing
 nothing in production.
 
+## Errors on the command line
+
+Outside the server, an error prints its usual line and a **code frame** under
+it — the file, the source line, a caret, the "did you mean" suggestion and a
+stable error code that `soli explain` describes:
+
+```text
+Error: Type error: Undefined variable 'nme' (did you mean 'name'?) at 2:7
+ --> report.sl:2:7
+  |
+2 | print(nme)
+  |       ^^^
+  |
+  = help: did you mean 'name'?
+  = note: error[E0301] undefined-variable — `soli explain E0301`
+```
+
+See [`error-codes.md`](error-codes.md) for how to read a frame, every code,
+and the `--format json` output of `soli check` and `soli lint`.
+
 ## Breakpoints
 
 `debug()` pauses execution and opens the interactive debug page.
@@ -283,6 +303,7 @@ added, so there is nothing to pay for.
 ## See also
 
 - [`linting.md`](linting.md) — `soli lint` and `soli check`
+- [`error-codes.md`](error-codes.md) — code frames, error codes, `soli explain`
 - [`mailer.md`](mailer.md) — the full inbox tour
 - [`observability.md`](observability.md) — production logs, metrics and traces
 - Rendered page: `/docs/development-tools/debugging`

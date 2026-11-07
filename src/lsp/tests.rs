@@ -168,3 +168,14 @@ async fn native_async_backend_serves_the_document_lifecycle_over_lsp() {
         .expect("LSP server did not exit")
         .unwrap();
 }
+
+#[test]
+fn a_syntax_error_diagnostic_carries_its_error_code() {
+    let error = crate::lint("def broken(\n").unwrap_err();
+    let diagnostic = syntax_error_diagnostic(&error);
+    let code = match diagnostic.code {
+        Some(lsp_types::NumberOrString::String(code)) => code,
+        other => panic!("no code: {other:?}"),
+    };
+    assert!(code.starts_with("E02"), "{code}");
+}

@@ -131,6 +131,7 @@ def docs_nav_sections()
         { "path": "/docs/development-tools/ai-agents", "label": "AI Agents" },
         { "path": "/docs/development-tools/ai-evals", "label": "Agents on Soli" },
         { "path": "/docs/development-tools/linting", "label": "Linting" },
+        { "path": "/docs/development-tools/error-codes", "label": "Error Codes" },
         { "path": "/docs/development-tools/graph", "label": "Code Graph" }
       ]
     },

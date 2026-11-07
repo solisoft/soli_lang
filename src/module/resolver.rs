@@ -55,6 +55,56 @@ pub enum ResolveError {
     ParseError(String),
     /// IO error
     IoError(std::io::Error),
+    /// A lexer or parser error in an imported module: `in <path>: <error>`,
+    /// with the error's own location in that module kept.
+    ModuleSyntax {
+        path: PathBuf,
+        message: String,
+        span: crate::span::Span,
+    },
+    /// `error`, raised by the `import` at `span` in `file`. Displays as
+    /// `error` alone: the location is for code frames, the text is unchanged.
+    At {
+        error: Box<ResolveError>,
+        file: PathBuf,
+        span: crate::span::Span,
+    },
+}
+
+impl ResolveError {
+    /// Attach the location of the import that failed, unless the error
+    /// already knows a more precise one (an inner import, a parse error).
+    fn at(self, file: &Path, span: crate::span::Span) -> Self {
+        match self {
+            ResolveError::At { .. } | ResolveError::ModuleSyntax { .. } => self,
+            other => ResolveError::At {
+                error: Box::new(other),
+                file: file.to_path_buf(),
+                span,
+            },
+        }
+    }
+
+    /// The file and span the error points at, when it has one.
+    pub fn location(&self) -> Option<(&Path, crate::span::Span)> {
+        match self {
+            ResolveError::At { file, span, .. } => Some((file, *span)),
+            ResolveError::ModuleSyntax { path, span, .. } => Some((path, *span)),
+            _ => None,
+        }
+    }
+
+    /// The stable error code (`E07xx`).
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            ResolveError::NotFound(_) => Some("E0701"),
+            ResolveError::CircularDependency(_) => Some("E0702"),
+            ResolveError::ImportError(_) => Some("E0703"),
+            ResolveError::ParseError(_) | ResolveError::ModuleSyntax { .. } => Some("E0704"),
+            ResolveError::IoError(_) => None,
+            ResolveError::At { error, .. } => error.code(),
+        }
+    }
 }
 
 impl std::fmt::Display for ResolveError {
@@ -67,6 +117,10 @@ impl std::fmt::Display for ResolveError {
             ResolveError::ImportError(msg) => write!(f, "Import error: {}", msg),
             ResolveError::ParseError(msg) => write!(f, "Parse error: {}", msg),
             ResolveError::IoError(e) => write!(f, "IO error: {}", e),
+            ResolveError::ModuleSyntax { path, message, .. } => {
+                write!(f, "Parse error: in {}: {}", path.display(), message)
+            }
+            ResolveError::At { error, .. } => write!(f, "{}", error),
         }
     }
 }
@@ -216,17 +270,22 @@ impl ModuleResolver {
                     e
                 ))
             })?;
-            let tokens = Scanner::new(&content).scan_tokens().map_err(|e| {
-                ResolveError::ParseError(format!("in {}: {}", module_path.display(), e))
-            })?;
+            let tokens =
+                Scanner::new(&content)
+                    .scan_tokens()
+                    .map_err(|e| ResolveError::ModuleSyntax {
+                        path: module_path.clone(),
+                        message: e.to_string(),
+                        span: e.span(),
+                    })?;
             match Parser::new(tokens).parse() {
                 Ok(p) => p,
                 Err(e) => {
-                    return Err(ResolveError::ParseError(format!(
-                        "in {}: {}",
-                        module_path.display(),
-                        e
-                    )))
+                    return Err(ResolveError::ModuleSyntax {
+                        path: module_path.clone(),
+                        message: e.to_string(),
+                        span: e.span(),
+                    })
                 }
             }
         };
@@ -279,9 +338,12 @@ impl ModuleResolver {
             let StmtKind::Import(import) = &stmt.kind else {
                 continue;
             };
-            let module = self.resolve_import(import, from_path)?;
+            let module = self
+                .resolve_import(import, from_path)
+                .map_err(|e| e.at(from_path, stmt.span))?;
             // Refuses a named import of something the module does not export.
-            let (requested, module_path) = get_imported_statements(&module, import)?;
+            let (requested, module_path) =
+                get_imported_statements(&module, import).map_err(|e| e.at(from_path, stmt.span))?;
             for definition in &module.definitions {
                 if seen.insert(definition.key.clone()) {
                     out.push(definition.clone());

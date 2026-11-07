@@ -1134,13 +1134,13 @@ pub fn run_file(path: &str, options: &Options) {
             crate::cli::standalone::run_thin_script(path, payload);
         }
     }
-    let result = solilang::run_script_file(path, !options.no_type_check, options.engine);
+    let result = solilang::run_script_file_report(path, !options.no_type_check, options.engine);
     // A script's HTTP.stream_to streams run on a runtime that dies with this
     // process: let them finish (their jobs enqueued) before it ends.
     solilang::interpreter::builtins::http_class::wait_for_background_streams();
 
-    if let Err(e) = result {
-        eprintln!("Error: {}", e);
+    if let Err(failure) = result {
+        report_run_failure(&failure);
         process::exit(70);
     }
 }
@@ -1148,11 +1148,45 @@ pub fn run_file(path: &str, options: &Options) {
 pub fn run_eval(code: &str, options: &Options) {
     // The same engine choice as a script file, so `soli --vm -e` and
     // `soli --tree -e` check what they say they check.
-    let result = solilang::run_script(code, None, !options.no_type_check, options.engine);
+    let result = solilang::run_script_report(code, None, !options.no_type_check, options.engine);
 
-    if let Err(e) = result {
-        eprintln!("Error: {}", e);
+    if let Err(failure) = result {
+        report_run_failure(&failure);
         process::exit(70);
+    }
+}
+
+/// `Error: <message>` — the line scripts have always grepped for — then the
+/// code frame under it, when the error's place is known.
+fn report_run_failure(failure: &solilang::RunFailure) {
+    eprintln!("Error: {}", failure.error);
+    let options = solilang::error::render::RenderOptions {
+        color: solilang::error::render::stderr_color(),
+    };
+    eprint!(
+        "{}",
+        solilang::error::render::frame(&failure.diagnostic(), &failure.sources, options)
+    );
+}
+
+/// `soli explain [code]`: what an error code or lint rule means.
+pub fn run_explain(query: Option<&str>) {
+    let Some(query) = query else {
+        print!("{}", solilang::error::codes::index());
+        return;
+    };
+    match solilang::error::codes::explain(query) {
+        Ok(text) => print!("{}", text),
+        Err(suggestion) => {
+            eprintln!("Error: no error code or lint rule named '{}'.", query);
+            match suggestion {
+                Some(close) => {
+                    eprintln!("Did you mean '{}'? (`soli explain` lists them all)", close)
+                }
+                None => eprintln!("Run `soli explain` to list the error codes and lint rules."),
+            }
+            process::exit(1);
+        }
     }
 }
 
@@ -1201,7 +1235,7 @@ pub fn run_lsp() {
     std::process::exit(1);
 }
 
-pub fn run_lint(paths: &[String]) {
+pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
     let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         vec![cwd]
@@ -1233,6 +1267,15 @@ pub fn run_lint(paths: &[String]) {
     }
 
     if files.is_empty() {
+        if format == OutputFormat::Json {
+            // Still one JSON document: a CI step parsing stdout must not
+            // trip over prose.
+            println!(
+                "{}",
+                serde_json::json!({ "files_linted": 0, "issues": 0, "diagnostics": [] })
+            );
+            return;
+        }
         println!(
             "No .sl or .slv files found.{}",
             locale_skip_note(skipped_locale_files)
@@ -1242,6 +1285,10 @@ pub fn run_lint(paths: &[String]) {
 
     let mut total_issues = 0;
     let mut files_with_issues = 0;
+    let mut json_findings: Vec<serde_json::Value> = Vec::new();
+    let render_options = solilang::error::render::RenderOptions {
+        color: solilang::error::render::stdout_color(),
+    };
 
     // Names two files declare: the one loaded last replaces the other. A
     // project-wide question, so asked once per application directory given.
@@ -1251,6 +1298,21 @@ pub fn run_lint(paths: &[String]) {
             files_with_issues += found.len();
         }
         for duplicate in &found {
+            if format == OutputFormat::Json {
+                json_findings.push(serde_json::json!({
+                    "severity": "warning",
+                    "code": "smell/duplicate-global",
+                    "name": null,
+                    "message": duplicate.message(target),
+                    "file": duplicate.again.file.display().to_string(),
+                    "line": duplicate.again.line,
+                    "column": 1,
+                    "hint": null,
+                    "secondary": [],
+                    "notes": [],
+                }));
+                continue;
+            }
             println!(
                 "{}:{}:1 - [smell/duplicate-global] {}",
                 duplicate.again.file.display(),
@@ -1280,7 +1342,14 @@ pub fn run_lint(paths: &[String]) {
 
         if !diagnostics.is_empty() {
             files_with_issues += 1;
+            let sources = (format == OutputFormat::Json || frames)
+                .then(|| solilang::error::source_map::SourceSet::new(&source, Some(file)));
             for d in &diagnostics {
+                if let Some(sources) = sources.as_ref().filter(|_| format == OutputFormat::Json) {
+                    let diagnostic = solilang::error::Diagnostic::from_lint(d, sources);
+                    json_findings.push(diagnostic_json(&diagnostic, sources, file));
+                    continue;
+                }
                 println!(
                     "{}:{}:{} - [{}] {}",
                     file.display(),
@@ -1289,9 +1358,32 @@ pub fn run_lint(paths: &[String]) {
                     d.rule,
                     d.message
                 );
+                if let Some(sources) = &sources {
+                    let diagnostic = solilang::error::Diagnostic::from_lint(d, sources);
+                    print!(
+                        "{}",
+                        solilang::error::render::frame(&diagnostic, sources, render_options)
+                    );
+                }
             }
             total_issues += diagnostics.len();
         }
+    }
+
+    if format == OutputFormat::Json {
+        let summary = serde_json::json!({
+            "files_linted": files.len(),
+            "issues": total_issues,
+            "diagnostics": json_findings,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&summary).unwrap_or_default()
+        );
+        if total_issues > 0 {
+            process::exit(1);
+        }
+        return;
     }
 
     if total_issues > 0 {
@@ -1401,7 +1493,31 @@ fn enclosing_app_root(target: &std::path::Path) -> Option<std::path::PathBuf> {
         .map(std::path::Path::to_path_buf)
 }
 
-pub fn run_check(paths: &[String]) {
+/// How `soli check` and `soli lint` print what they found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputFormat {
+    /// One line per finding (and, for `check`, its code frame).
+    #[default]
+    Text,
+    /// One JSON document on stdout, for editors and CI.
+    Json,
+}
+
+/// A diagnostic as a JSON object, its `file` falling back to the file being
+/// checked when the diagnostic has no location of its own.
+fn diagnostic_json(
+    diagnostic: &solilang::error::Diagnostic,
+    sources: &solilang::error::source_map::SourceSet,
+    file: &Path,
+) -> serde_json::Value {
+    let mut json = diagnostic.to_json(sources);
+    if json["file"].is_null() {
+        json["file"] = serde_json::Value::String(file.display().to_string());
+    }
+    json
+}
+
+pub fn run_check(paths: &[String], format: OutputFormat) {
     let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         vec![cwd]
@@ -1428,6 +1544,18 @@ pub fn run_check(paths: &[String]) {
     }
 
     if files.is_empty() {
+        if format == OutputFormat::Json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "files_checked": 0,
+                    "errors": 0,
+                    "warnings": 0,
+                    "diagnostics": [],
+                })
+            );
+            return;
+        }
         println!("No .sl files found.");
         return;
     }
@@ -1449,6 +1577,10 @@ pub fn run_check(paths: &[String]) {
     let mut total_errors = 0;
     let mut total_warnings = 0;
     let mut files_with_errors = 0;
+    let mut json_diagnostics: Vec<serde_json::Value> = Vec::new();
+    let render_options = solilang::error::render::RenderOptions {
+        color: solilang::error::render::stdout_color(),
+    };
 
     for file in &files {
         let source = match fs::read_to_string(file) {
@@ -1458,21 +1590,54 @@ pub fn run_check(paths: &[String]) {
                 continue;
             }
         };
-        match solilang::type_check_source_with_ambient(&source, Some(file.as_path()), &ambient) {
-            Ok(warnings) => {
-                total_warnings += warnings.len();
-                for warning in &warnings {
-                    println!("{}: {}", file.display(), warning);
+        let report = solilang::type_check_report(&source, Some(file.as_path()), &ambient);
+        let diagnostics = report.diagnostics();
+        if report.errors.is_empty() {
+            total_warnings += report.warnings.len();
+        } else {
+            files_with_errors += 1;
+            total_errors += report.errors.len();
+        }
+        match format {
+            OutputFormat::Json => {
+                for diagnostic in &diagnostics {
+                    json_diagnostics.push(diagnostic_json(diagnostic, &report.sources, file));
                 }
             }
-            Err(errors) => {
-                files_with_errors += 1;
-                total_errors += errors.len();
-                for err in &errors {
-                    println!("{}: {}", file.display(), err);
+            OutputFormat::Text => {
+                // The first line is the one tools have always read; the code
+                // frame follows it.
+                let lines: Vec<String> = if report.errors.is_empty() {
+                    report.warnings.iter().map(|w| w.to_string()).collect()
+                } else {
+                    report.errors.iter().map(|e| e.to_string()).collect()
+                };
+                for (line, diagnostic) in lines.iter().zip(&diagnostics) {
+                    println!("{}: {}", file.display(), line);
+                    print!(
+                        "{}",
+                        solilang::error::render::frame(diagnostic, &report.sources, render_options)
+                    );
                 }
             }
         }
+    }
+
+    if format == OutputFormat::Json {
+        let summary = serde_json::json!({
+            "files_checked": checked,
+            "errors": total_errors,
+            "warnings": total_warnings,
+            "diagnostics": json_diagnostics,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&summary).unwrap_or_default()
+        );
+        if total_errors > 0 {
+            process::exit(1);
+        }
+        return;
     }
 
     if total_errors > 0 {

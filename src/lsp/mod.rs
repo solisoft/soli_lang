@@ -331,6 +331,9 @@ fn syntax_error_diagnostic(error: &crate::error::SolilangError) -> lsp_types::Di
         range: lsp_types::Range::new(start, end),
         severity: Some(lsp_types::DiagnosticSeverity::ERROR),
         message: error.to_string(),
+        code: error
+            .code()
+            .map(|code| lsp_types::NumberOrString::String(code.to_string())),
         source: Some("soli".to_string()),
         ..Default::default()
     }

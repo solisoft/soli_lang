@@ -146,8 +146,13 @@ pub fn run() {
         ),
         Command::Serve(serve) => commands::run_serve(serve),
         Command::Jobs(cmd) => commands::run_jobs(cmd),
-        Command::Lint { paths } => commands::run_lint(paths),
-        Command::Check { paths } => commands::run_check(paths),
+        Command::Lint {
+            paths,
+            json,
+            frames,
+        } => commands::run_lint(paths, output_format(*json), *frames),
+        Command::Check { paths, json } => commands::run_check(paths, output_format(*json)),
+        Command::Explain { query } => commands::run_explain(query.as_deref()),
         Command::Fmt {
             paths,
             check,
@@ -382,4 +387,12 @@ fn run_sign_update(manifest: &str, key_path: &str) -> Result<(), Box<dyn std::er
     solilang::update::sign_manifest_file(std::path::Path::new(manifest), &key_pem)?;
     println!("Signed {}", manifest);
     Ok(())
+}
+
+fn output_format(json: bool) -> commands::OutputFormat {
+    if json {
+        commands::OutputFormat::Json
+    } else {
+        commands::OutputFormat::Text
+    }
 }

@@ -21,6 +21,40 @@
   names); `soli check` and the tree-walker suggest it. Message text before
   the suffix is unchanged, so `assert_raises` fragments keep matching. Tests:
   `error::suggest` unit tests, `tests/language/did_you_mean_spec.sl`.
+- **Errors point at the code (card #694, part 2).** `soli script.sl`,
+  `soli -e` and `soli check` print their usual first line, then a code frame:
+  ` --> file:line:col`, the source line, a caret under the token at the error's
+  column (measured in the source, so the VM — whose spans have no width —
+  and the tree-walker draw the same frame), the "did
+  you mean" suggestion as `= help:` and the error code as `= note:`. The first
+  line is unchanged, so greps keep matching; colour only on a terminal, never
+  under `NO_COLOR`. A frame is drawn only when the file is certain: the VM
+  notes the file of the frame an uncaught error leaves (imported statements
+  now compile with their module's path, the entry script with its own), the
+  resolver notes where an import failed, a single-file program needs nothing,
+  and a tree-walker or checker span is matched to the one file whose byte
+  offset agrees with its line and column. `ResolveError` keeps the failing
+  `import`'s location and a module's inner parse error (`At`,
+  `ModuleSyntax`), so a missing import and a syntax error in an imported file
+  are framed where they are, not at `1:1`; their message text is unchanged.
+  `soli check` frames every error of a file. New: `src/error/diagnostic.rs`
+  (`Diagnostic`, `Label`), `source_map.rs` (`SourceSet`, `Origin`),
+  `render.rs`; `solilang::run_script_report`, `type_check_report`.
+- **Stable error codes and `soli explain` (card #694, part 3).**
+  `src/error/codes.rs` registers `E01xx` lexer, `E02xx` parser, `E03xx`
+  names, `E04xx` types and calls, `E05xx` run time, `E06xx` framework,
+  `E07xx` imports and `W0xxx` warnings, each with a Markdown explanation in
+  `src/error/explain/`. `code()` on every error enum maps variants to codes;
+  free-form `General` messages have none. `soli explain <code|name|lint
+  rule>` prints the text, `soli explain` lists them, an unknown id exits 1
+  with the closest suggestion. `soli check --format json` and `soli lint
+  --format json` print one JSON document; `soli lint --frames` adds frames
+  (one-line output stays the default). LSP syntax-error diagnostics carry
+  the code. The registry is append-only (`codes.snapshot`), and tests check
+  every code is documented and every lint rule explained. Docs:
+  `www/docs/error-codes.md` and the new page
+  `/docs/development-tools/error-codes`. Tests: `error::{codes, diagnostic,
+  render, source_map}` unit tests, `tests/error_frames_test.rs`.
 
 ### Fixed
 

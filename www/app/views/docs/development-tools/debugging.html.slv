@@ -46,6 +46,10 @@
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">7</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Development Mode</span>
             </a>
+            <a href="#command-line-errors" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-sm font-mono">8</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Errors on the Command Line</span>
+            </a>
         </div>
     </nav>
 
@@ -622,4 +626,30 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; sol
             </a>
         </div>
     </div>
+
+    <!-- Section: Errors on the command line -->
+    <section id="command-line-errors" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6">Errors on the Command Line</h2>
+        <p class="text-gray-400 mb-4">
+            Outside the server, an error prints its usual line and a <strong class="text-white">code frame</strong> under it &mdash;
+            the file, the source line, a caret, the &ldquo;did you mean&rdquo; suggestion and a stable error code that
+            <code>soli explain</code> describes:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">Error: Type error: Undefined variable 'nme' (did you mean 'name'?) at 2:7
+ --&gt; report.sl:2:7
+  |
+2 | print(nme)
+  |       ^^^
+  |
+  = help: did you mean 'name'?
+  = note: error[E0301] undefined-variable — `soli explain E0301`</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400">
+            See <a href="/docs/development-tools/error-codes" class="text-amber-400 hover:text-amber-300 underline">Error Messages &amp; Codes</a>
+            for how to read a frame, every code, and the <code>--format json</code> output of <code>soli check</code> and <code>soli lint</code>.
+        </p>
+    </section>
 </div>

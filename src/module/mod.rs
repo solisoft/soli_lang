@@ -29,4 +29,4 @@ pub use package::{
     compare_versions, enforce_min_soli_version, is_valid_version, pinned_soli_version, Dependency,
     Package,
 };
-pub use resolver::{set_stmt_source_path, ModuleResolver, ResolvedModule};
+pub use resolver::{set_stmt_source_path, ModuleResolver, ResolveError, ResolvedModule};

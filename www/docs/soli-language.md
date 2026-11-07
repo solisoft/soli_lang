@@ -1191,6 +1191,12 @@ On the VM, a misspelt local is compared with globals only — compiled locals
 have no names at run time. `soli check`, which runs first on a script, and the
 tree-walker see the scopes and suggest the local.
 
+On the command line, an uncaught error also prints a code frame under its
+message — the source line, a caret, the suggestion as `= help:` and a stable
+error code (`E0301` for an undefined variable) that `soli explain E0301`
+describes. The message itself, the one `catch` sees, is unchanged. See
+[`error-codes.md`](error-codes.md).
+
 ### Brace Syntax
 
 Try/catch also supports brace-delimited blocks:

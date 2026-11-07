@@ -363,25 +363,54 @@ impl Compiler {
         kernels: Option<crate::native::KernelSet>,
         is_builtin: &dyn Fn(&str) -> bool,
     ) -> CompileResult<CompiledModule> {
+        Self::compile_entry_script_from(program, kernels, is_builtin, None)
+    }
+
+    /// [`Self::compile_entry_script`] for a script read from `source_path`.
+    /// The path names the file of a run-time error's code frame, so the
+    /// script's own code must carry it as surely as imported code carries
+    /// its module's (see `compile_script`).
+    pub fn compile_entry_script_from(
+        program: &Program,
+        kernels: Option<crate::native::KernelSet>,
+        is_builtin: &dyn Fn(&str) -> bool,
+        source_path: Option<Arc<std::path::PathBuf>>,
+    ) -> CompileResult<CompiledModule> {
         if optional_let_enabled() {
             let plan = super::compiler_script_locals::plan(&program.statements, is_builtin);
             if !plan.is_empty() {
-                if let Ok(module) = Self::compile_promoted(program, kernels.clone(), &plan) {
+                if let Ok(module) = Self::compile_promoted_from(
+                    program,
+                    kernels.clone(),
+                    &plan,
+                    source_path.clone(),
+                ) {
                     return Ok(module);
                 }
             }
         }
-        Self::compile_with_kernels(program, kernels)
+        Self::compile_full(program, std::iter::empty(), source_path, kernels)
+    }
+
+    /// [`Self::compile_promoted_from`] for a script with no file.
+    #[cfg(test)]
+    pub(crate) fn compile_promoted(
+        program: &Program,
+        kernels: Option<crate::native::KernelSet>,
+        plan: &[(usize, String)],
+    ) -> CompileResult<CompiledModule> {
+        Self::compile_promoted_from(program, kernels, plan, None)
     }
 
     /// [`Self::compile_with_kernels`], each `(index, name)` of `plan` declaring
     /// `name` in a frame slot at top-level statement `index`. An error when a
     /// function captures one of those slots, or a planned statement is not
     /// reached as planned.
-    pub(crate) fn compile_promoted(
+    fn compile_promoted_from(
         program: &Program,
         kernels: Option<crate::native::KernelSet>,
         plan: &[(usize, String)],
+        source_path: Option<Arc<std::path::PathBuf>>,
     ) -> CompileResult<CompiledModule> {
         let mut compiler = Compiler::new(FunctionType::Script, String::new());
         compiler.promotion_guard = Some(Rc::new(Cell::new(false)));
@@ -393,7 +422,7 @@ impl Compiler {
                 resolved_early: false,
             })
             .collect();
-        Self::compile_script(compiler, program, None, kernels)
+        Self::compile_script(compiler, program, source_path, kernels)
     }
 
     /// `compile_with_globals_from`, with the known globals given as a shared
@@ -444,8 +473,20 @@ impl Compiler {
     ) -> CompileResult<CompiledModule> {
         compiler.kernels = kernels;
         compiler.proto.source_path = source_path;
+        let own_path = compiler.proto.source_path.clone();
         for stmt in &program.statements {
-            compiler.compile_stmt(stmt)?;
+            // A statement an import spliced in carries its module's path: the
+            // functions and classes it declares live in that file, for code
+            // frames and coverage alike.
+            match &stmt.source_path {
+                Some(path) if own_path.as_deref() != Some(path) => {
+                    compiler.proto.source_path = Some(Arc::new(path.clone()));
+                    let compiled = compiler.compile_stmt(stmt);
+                    compiler.proto.source_path = own_path.clone();
+                    compiled?;
+                }
+                _ => compiler.compile_stmt(stmt)?,
+            }
         }
         // Top-level variables kept in frame slots (`compile_entry_script`):
         // a function captured one, or a planned declaration was never

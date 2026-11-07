@@ -213,6 +213,14 @@ greet(greting: "Hi")   # Undefined variable 'greting' (did you mean 'greeting'?)
             <code class="text-amber-400">soli check</code>, which runs first on a script, and the tree-walker see the
             scopes and suggest the local.
         </p>
+        <p class="text-gray-400 mb-4">
+            On the command line, an uncaught error also prints a code frame under its message &mdash; the source line, a
+            caret, the suggestion as <code class="text-amber-400">= help:</code> and a stable error code
+            (<code class="text-amber-400">E0301</code> for an undefined variable) that
+            <code class="text-amber-400">soli explain E0301</code> describes. The message itself, the one
+            <code class="text-amber-400">catch</code> sees, is unchanged. See
+            <a href="/docs/development-tools/error-codes" class="text-amber-400 hover:text-amber-300 underline">Error Messages &amp; Codes</a>.
+        </p>
     </section>
 
     <!-- Throwing Exceptions -->

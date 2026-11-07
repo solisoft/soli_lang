@@ -20,6 +20,28 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 2 issue(s) found in 1 file(s)
 ```
 
+The one-line form is the default, so CI output you grep does not change. Two
+flags add to it:
+
+```bash
+soli lint --frames          # a code frame (source line, caret, hint) under each issue
+soli lint --format json     # one JSON document instead, for editors and CI
+soli explain smell/undefined-local   # what a rule wants, and how to silence it
+```
+
+```text
+app/main.sl:3:9 - [smell/undefined-local] variable 'totl' is read but never assigned in this scope (did you mean 'total'?)
+ --> app/main.sl:3:9
+  |
+3 |   print(totl)
+  |         ^^^^
+  |
+  = help: did you mean 'total'?
+  = note: `soli explain smell/undefined-local`
+```
+
+The JSON shape is described in [`error-codes.md`](error-codes.md#machine-readable-output).
+
 ## The rules
 
 ### Naming
@@ -304,7 +326,27 @@ exiting non-zero when any are found.
 soli check                 # the current project
 soli check app/models      # a directory
 soli check app/models/user.sl
+soli check --format json   # one JSON document, for editors and CI
 ```
+
+Every type error of a file is reported, each on the line it always printed and
+with a code frame under it — the source line, a caret, the "did you mean"
+suggestion and the error code:
+
+```text
+app/models/user.sl: Type error: Undefined variable 'ponits' (did you mean 'points'?) at 12:5
+  --> app/models/user.sl:12:5
+   |
+12 |     ponits + bonus
+   |     ^^^^^^
+   |
+   = help: did you mean 'points'?
+   = note: error[E0301] undefined-variable — `soli explain E0301`
+
+1 error(s) in 1 of 38 file(s)
+```
+
+The codes are listed in [`error-codes.md`](error-codes.md).
 
 ### A directory is checked as one namespace
 

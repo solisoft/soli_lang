@@ -470,6 +470,11 @@ def development_tools_linting
   render_docs("docs/development-tools/linting", "Linting", "development_tools", "linting")
 end
 
+# GET /docs/development-tools/error-codes
+def development_tools_error_codes
+  render_docs("docs/development-tools/error-codes", "Error Messages & Codes", "development_tools", "error_codes")
+end
+
 def development_tools_graph
   render_docs("docs/development-tools/graph", "Code Graph", "development_tools", "graph")
 end
