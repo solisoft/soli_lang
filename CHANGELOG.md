@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.33.0] - 2026-11-07
+
 ### Added
 - `TCP.check(host, port, timeout: seconds)` → `{"open", "latency_ms", "error"}`: a connect-only port probe under the `HTTP` SSRF policy (`SOLI_HTTP_ALLOW_HOSTS`, private ranges refused, re-checked on each resolved address); not on the edge build (#679).
 - Int answers `round`, `floor`, `ceil`, `truncate` (and `round(digits)`, negative digits rounding to tens/hundreds) like Float (#679).
