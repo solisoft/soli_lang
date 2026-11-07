@@ -535,8 +535,13 @@ mod tests {
     /// the list cannot be taken from the `match` at run time.
     fn keyword_arms() -> Vec<String> {
         let source = include_str!("token.rs");
-        let start = source.find("pub fn keyword(ident: &str)").unwrap();
-        let end = start + source[start..].find("_ => None").unwrap();
+        let Some(start) = source.find("pub fn keyword(ident: &str)") else {
+            panic!("TokenKind::keyword not found in token.rs");
+        };
+        let Some(len) = source[start..].find("_ => None") else {
+            panic!("TokenKind::keyword has no `_ => None` arm");
+        };
+        let end = start + len;
         let mut words = Vec::new();
         for line in source[start..end].lines() {
             let Some((arms, _)) = line.split_once("=>") else {
@@ -568,15 +573,30 @@ mod tests {
     fn grammar_keywords() -> Vec<String> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("editors/grammars/soli.tmLanguage.json");
-        let grammar: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) => panic!("{}: {e}", path.display()),
+        };
+        let grammar: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(grammar) => grammar,
+            Err(e) => panic!("{}: {e}", path.display()),
+        };
         let mut words = Vec::new();
         for entry in ["keywords", "types"] {
-            for pattern in grammar["repository"][entry]["patterns"].as_array().unwrap() {
-                let regex = pattern["match"].as_str().unwrap();
-                let open = regex.find("])(").map(|i| i + 3).unwrap();
-                let close = open + regex[open..].find(')').unwrap();
-                words.extend(regex[open..close].split('|').map(str::to_string));
+            let Some(patterns) = grammar["repository"][entry]["patterns"].as_array() else {
+                panic!("the grammar has no {entry}.patterns array");
+            };
+            for pattern in patterns {
+                let Some(regex) = pattern["match"].as_str() else {
+                    panic!("a {entry} pattern has no `match` string");
+                };
+                let Some(open) = regex.find("])(").map(|i| i + 3) else {
+                    panic!("no alternation group in {regex}");
+                };
+                let Some(len) = regex[open..].find(')') else {
+                    panic!("unclosed alternation group in {regex}");
+                };
+                words.extend(regex[open..open + len].split('|').map(str::to_string));
             }
         }
         words
