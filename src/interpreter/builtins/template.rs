@@ -344,6 +344,7 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     let has_helpers = crate::serve::vfs_exists(&helpers_dir_str);
 
     let mut count = 0;
+    let mut constants: Vec<(std::path::PathBuf, crate::ast::stmt::Stmt)> = Vec::new();
 
     // Register the full builtin suite into the helpers' closure so helper
     // functions can call session_get / session_set / redirect / render /
@@ -400,15 +401,39 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
 
             let source_path = path.to_string_lossy().to_string();
 
-            // Extract function definitions and register them
-            for stmt in &program.statements {
-                if let StmtKind::Function(decl) = &stmt.kind {
-                    let func =
-                        Function::from_decl(decl, helper_env.clone(), Some(source_path.clone()));
-                    register_view_helper(decl.name.clone(), Value::Function(Rc::new(func)));
-                    count += 1;
+            // Extract function definitions and register them. A top-level
+            // `const` is kept for later: the helpers read it from their
+            // closure, so it is evaluated there once every helper exists.
+            for stmt in program.statements {
+                match &stmt.kind {
+                    StmtKind::Function(decl) => {
+                        let func = Function::from_decl(
+                            decl,
+                            helper_env.clone(),
+                            Some(source_path.clone()),
+                        );
+                        register_view_helper(decl.name.clone(), Value::Function(Rc::new(func)));
+                        count += 1;
+                    }
+                    StmtKind::Const { .. } => constants.push((path.clone(), stmt)),
+                    _ => {}
                 }
             }
+        }
+    }
+
+    // Top-level constants (`const STATUSES = [...]`), in file order, in the
+    // helpers' closure: a helper reading one found nothing there and saw
+    // `nil`, on both engines (the view VM fills a helper's upvalues from the
+    // same closure). The helpers are defined first, so an initializer may
+    // call one.
+    if !constants.is_empty() {
+        define_helpers_into(&helper_env);
+        let mut interpreter = crate::interpreter::Interpreter::with_environment(helper_env.clone());
+        for (path, stmt) in &constants {
+            interpreter
+                .execute(stmt)
+                .map_err(|e| format!("Error in helper {}: {}", path.display(), e))?;
         }
     }
 
@@ -418,12 +443,7 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     count += load_component_classes(helpers_dir, &helper_env)?;
 
     // Now update the helper environment so helpers can call each other
-    VIEW_HELPERS.with(|helpers| {
-        let helpers_map = helpers.borrow();
-        for (name, value) in helpers_map.iter() {
-            helper_env.borrow_mut().define(name.clone(), value.clone());
-        }
-    });
+    define_helpers_into(&helper_env);
 
     // Every helper call on this thread encloses this env: a helper body's
     // `h = ...` must define a local, not overwrite `h` for every later helper
@@ -438,6 +458,18 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     });
 
     Ok(count)
+}
+
+/// Define every registered helper (and component class) in `helper_env`, so
+/// helpers can call each other.
+fn define_helpers_into(helper_env: &Rc<RefCell<Environment>>) {
+    VIEW_HELPERS.with(|helpers| {
+        let helpers_map = helpers.borrow();
+        let mut env = helper_env.borrow_mut();
+        for (name, value) in helpers_map.iter() {
+            env.define(name.clone(), value.clone());
+        }
+    });
 }
 
 /// Load `app/components/*.sl` (a sibling of the helpers directory) and register
@@ -2489,6 +2521,116 @@ mod assigns_capture_tests {
     }
 }
 
+/// The keys `render(view, data, options)` reads from `options`.
+const RENDER_OPTIONS: [&str; 3] = ["layout", "status", "headers"];
+
+/// Check `render()`'s options hash and return its `headers`, in order.
+///
+/// An option `render` does not know raises, naming the ones it does: a
+/// misspelled or unsupported key used to be dropped without a word (`headers`
+/// itself was, until it was supported). A header name must be an HTTP token
+/// and a value must hold no control character (CR/LF/NUL), since either would
+/// otherwise be dropped at the socket; a string, number or boolean is
+/// accepted as a value, and `nil` leaves the header out.
+fn render_option_headers(
+    options: &Rc<RefCell<HashPairs>>,
+) -> Result<Vec<(SoliStr, SoliStr)>, String> {
+    let options = options.borrow();
+    for key in options.keys() {
+        let known = matches!(key, HashKey::String(name) if RENDER_OPTIONS.contains(&name.as_str()));
+        if !known {
+            return Err(format!(
+                "render() got an unknown option {}: it takes {}",
+                hash_key_label(key),
+                RENDER_OPTIONS.map(|name| format!("\"{name}\"")).join(", ")
+            ));
+        }
+    }
+    let headers = match options.get(&StrKey("headers")) {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Hash(headers)) => headers.clone(),
+        Some(other) => {
+            return Err(format!(
+                "render() option \"headers\" must be a hash, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let headers = headers.borrow();
+    let mut out = Vec::with_capacity(headers.len());
+    for (key, value) in headers.iter() {
+        let HashKey::String(name) = key else {
+            return Err(format!(
+                "render() header names must be strings, got {}",
+                hash_key_label(key)
+            ));
+        };
+        let is_tchar = |b: u8| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b);
+        if name.is_empty() || !name.bytes().all(is_tchar) {
+            return Err(format!(
+                "render() header name {name:?} is not a valid HTTP header name"
+            ));
+        }
+        let value: SoliStr = match value {
+            Value::Null => continue,
+            Value::String(text) => text.clone(),
+            Value::Int(_) | Value::Float(_) | Value::Bool(_) => value.to_string().into(),
+            other => {
+                return Err(format!(
+                    "render() header \"{name}\" must be a string, got {}",
+                    other.type_name()
+                ))
+            }
+        };
+        if value.bytes().any(|b| (b < 0x20 && b != b'\t') || b == 0x7f) {
+            return Err(format!(
+                "render() header \"{name}\" value contains a control character (CR, LF, NUL...)"
+            ));
+        }
+        out.push((name.clone(), value));
+    }
+    Ok(out)
+}
+
+/// A hash key as an error message shows it.
+fn hash_key_label(key: &HashKey) -> String {
+    match key {
+        HashKey::String(name) => format!("\"{name}\""),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Set `headers` on a rendered response hash, each replacing a header of
+/// the same name in any letter case (`cache-control` replaces the default
+/// `Cache-Control`).
+fn merge_response_headers(response: &Value, headers: Vec<(SoliStr, SoliStr)>) {
+    if headers.is_empty() {
+        return;
+    }
+    let Value::Hash(response) = response else {
+        return;
+    };
+    let mut response = response.borrow_mut();
+    let target = match response.get(&StrKey("headers")) {
+        Some(Value::Hash(existing)) => existing.clone(),
+        _ => {
+            let fresh = Rc::new(RefCell::new(HashPairs::default()));
+            response.insert(
+                HashKey::String("headers".into()),
+                Value::Hash(fresh.clone()),
+            );
+            fresh
+        }
+    };
+    let mut target = target.borrow_mut();
+    for (name, value) in headers {
+        target.retain(|key, _| {
+            !matches!(key, HashKey::String(existing) if existing.eq_ignore_ascii_case(&name))
+        });
+        target.insert(HashKey::String(name), Value::String(value));
+    }
+}
+
 /// Register template-related builtin functions.
 pub fn register_template_builtins(env: &mut Environment) {
     // dev_mode?() — is this process `soli serve --dev`?
@@ -2570,6 +2712,13 @@ pub fn register_template_builtins(env: &mut Environment) {
                 }
             } else {
                 None
+            };
+
+            // `headers` are merged onto the response once it is rendered; an
+            // unknown option raises here, before anything renders.
+            let extra_headers = match &options {
+                Some(opts) => render_option_headers(opts)?,
+                None => Vec::new(),
             };
 
             // Extract layout option - check options hash first, then data hash
@@ -2681,6 +2830,10 @@ pub fn register_template_builtins(env: &mut Environment) {
                 let _phase = crate::serve::phase_log::PhaseTimer::start("view");
                 cache.render_html_response(&template_name, &data, layout_arg, status)
             };
+
+            if let Ok(response) = &result {
+                merge_response_headers(response, extra_headers);
+            }
 
             match result {
                 Ok(response) => {
@@ -3795,6 +3948,112 @@ mod tests {
             let keys: Vec<String> = pairs.borrow().keys().map(|key| key.to_string()).collect();
             assert_eq!(keys, ["title"], "{name}");
         }
+        Ok(())
+    }
+
+    /// `render(view, data, {"headers": {...}})` sets those headers on the
+    /// response, replacing a default of the same name in any case. They used
+    /// to be dropped: only `status` was read. An option `render` does not
+    /// know, and a header that cannot go on the wire, raise.
+    #[test]
+    fn render_sets_the_headers_its_options_name() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(views.join("feed"))?;
+        std::fs::write(views.join("feed").join("show.html.slv"), "<p>feed</p>")?;
+        let options = |pairs: Vec<(&str, Value)>| {
+            let mut map = HashPairs::default();
+            map.insert(HashKey::String("layout".into()), Value::Bool(false));
+            for (key, value) in pairs {
+                map.insert(HashKey::String(key.into()), value);
+            }
+            Value::Hash(Rc::new(RefCell::new(map)))
+        };
+        let headers = |pairs: Vec<(&str, Value)>| {
+            let mut map = HashPairs::default();
+            for (key, value) in pairs {
+                map.insert(HashKey::String(key.into()), value);
+            }
+            Value::Hash(Rc::new(RefCell::new(map)))
+        };
+        let render = |opts: Value| {
+            call_builtin(
+                "render",
+                &[Value::String("feed/show".into()), string_hash(&[]), opts],
+            )
+        };
+        let header_of = |response: &Value, name: &str| -> Option<String> {
+            let Value::Hash(response) = response else {
+                return None;
+            };
+            let response = response.borrow();
+            let Some(Value::Hash(headers)) = response.get(&HashKey::String("headers".into()))
+            else {
+                return None;
+            };
+            let headers = headers.borrow();
+            headers
+                .get(&HashKey::String(name.into()))
+                .map(|value| value.to_string())
+        };
+
+        let tenant = crate::serve::tenant::register(dir.path().to_path_buf());
+        crate::serve::tenant::scoped(tenant, || -> Result<(), String> {
+            init_templates(views.clone());
+            let response = render(options(vec![
+                ("status", Value::Int(201)),
+                (
+                    "headers",
+                    headers(vec![
+                        ("cache-control", Value::String("public, max-age=60".into())),
+                        ("X-Count", Value::Int(3)),
+                        ("X-Skipped", Value::Null),
+                    ]),
+                ),
+            ]))?;
+            assert!(response_body(&response).starts_with("<p>feed</p>"));
+            let Value::Hash(pairs) = &response else {
+                unreachable!()
+            };
+            assert_eq!(
+                pairs.borrow().get(&HashKey::String("status".into())),
+                Some(&Value::Int(201))
+            );
+            assert_eq!(
+                header_of(&response, "cache-control").as_deref(),
+                Some("public, max-age=60")
+            );
+            assert_eq!(header_of(&response, "Cache-Control"), None, "replaced");
+            assert_eq!(header_of(&response, "X-Count").as_deref(), Some("3"));
+            assert_eq!(header_of(&response, "X-Skipped"), None);
+            assert!(header_of(&response, "Content-Type").is_some());
+
+            let unknown = render(options(vec![("header", headers(vec![]))]))
+                .expect_err("an unknown option raises");
+            assert!(
+                unknown.contains("unknown option \"header\"") && unknown.contains("\"headers\""),
+                "{unknown}"
+            );
+            let split = render(options(vec![(
+                "headers",
+                headers(vec![("X-A", Value::String("a\r\nSet-Cookie: x=1".into()))]),
+            )]))
+            .expect_err("a CR/LF in a value raises");
+            assert!(split.contains("control character"), "{split}");
+            let bad_name = render(options(vec![(
+                "headers",
+                headers(vec![("X A", Value::String("a".into()))]),
+            )]))
+            .expect_err("a space in a name raises");
+            assert!(
+                bad_name.contains("not a valid HTTP header name"),
+                "{bad_name}"
+            );
+            let not_hash = render(options(vec![("headers", Value::String("x".into()))]))
+                .expect_err("headers must be a hash");
+            assert!(not_hash.contains("must be a hash"), "{not_hash}");
+            Ok(())
+        })?;
         Ok(())
     }
 

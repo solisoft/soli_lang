@@ -383,6 +383,30 @@ def index
 end
 ```
 
+### Render options
+
+The third argument of `render(view, data, options)` takes three keys:
+
+| Key | Meaning |
+|-----|---------|
+| `layout` | A layout name, or `false` / `nil` for none (see below) |
+| `status` | The HTTP status, `200` by default |
+| `headers` | Response headers, merged onto the defaults |
+
+```soli
+def feed(req)
+  @posts = Post.all
+  render("posts/feed", {}, {"status": 200, "headers": {"Cache-Control": "public, max-age=60"}})
+end
+```
+
+A header in `headers` replaces the default of the same name in any letter
+case (`Cache-Control` is `private, no-cache` otherwise); a `nil` value leaves
+the header out. A name must be an HTTP token and a value a string, number or
+boolean with no control character — a CR or LF raises rather than reaching the
+wire. Any other key raises too, naming the three:
+`render() got an unknown option "header": it takes "layout", "status", "headers"`.
+
 ### Bare view names resolve to the controller's directory
 
 Inside an action, `render("new")` means this controller's own view: from `PostsController` it renders `posts/new`. That is the same directory the automatic render uses (`posts#index` → `posts/index`), so re-rendering a form after a failed save reads the way it does in Rails:

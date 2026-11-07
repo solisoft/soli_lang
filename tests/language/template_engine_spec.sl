@@ -30,6 +30,37 @@ describe("render() argument validation") do
       render("posts/index", {}, 5)
     end
   end
+
+  test("refuses an option it does not know, naming the ones it takes") do
+    assert_raises("unknown option \"header\": it takes \"layout\", \"status\", \"headers\"") do
+      render("posts/index", {}, {"header": {"X-A": "1"}})
+    end
+  end
+
+  test("refuses headers that are not a hash") do
+    assert_raises("render() option \"headers\" must be a hash, got string") do
+      render("posts/index", {}, {"headers": "Cache-Control: no-store"})
+    end
+  end
+
+  test("refuses a header value holding a CR or LF") do
+    assert_raises("control character") do
+      render("posts/index", {}, {"headers": {"X-A": "a\r\nSet-Cookie: x=1"}})
+    end
+  end
+
+  test("refuses a header name that is not an HTTP token") do
+    assert_raises("is not a valid HTTP header name") do
+      render("posts/index", {}, {"headers": {"X A": "1"}})
+    end
+  end
+
+  test("checks the headers before looking for the template") do
+    assert_raises("Template system not initialized") do
+      options = {"status": 200, "headers": {"Cache-Control": "no-store", "X-Count": 3}}
+      render("posts/index", {}, options)
+    end
+  end
 end
 
 describe("rendering without a template system") do

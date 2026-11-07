@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Views (#675).** A top-level `const` in `app/helpers/*.sl` is now visible to
+  the helpers: only the `def`s were loaded, so a helper reading one saw nil
+  (`cannot index null with int`) on both engines; constants are evaluated once
+  in the helpers' closure, after every helper is defined, so the view VM's
+  compiled helpers read them as upvalues too. A line opening with a variable
+  named `component` (`<% component["list"].each do |x| %>`) is no longer read
+  as the `component "x" do` block helper. `partial("components/x")` and
+  `component("x")` fall back to `components/_x.html.slv`, and the not-found
+  error names both files. `render(view, data, {"headers": {...}})` sets those
+  headers (they were dropped; only `status`/`layout` were read), replacing a
+  default of the same name in any case; a non-token name or a CR/LF in a value
+  raises.
+
+### Changed
+
+- `render()` raises on an option key other than `layout`, `status` and
+  `headers` (it used to ignore it).
+
 ## [2.32.0] - 2026-11-07
 
 ### Added
