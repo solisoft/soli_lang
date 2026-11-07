@@ -130,6 +130,9 @@
   must move to `_sum`.
 - Metrics collection (the built-in timers) is on when any sink is configured —
   `SOLI_METRICS`, DogStatsD or OTLP metrics — not only `SOLI_METRICS`.
+- The score engraver moves on to eui 1250ae9: words, rehearsal marks, tempo
+  marks and spans above the staff clear a note's accidental and the slur
+  under them, instead of being drawn across them.
 
 ## [2.31.0] - 2026-11-06
 
