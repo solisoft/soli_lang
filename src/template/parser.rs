@@ -225,11 +225,34 @@ fn component_block_parts(code: &str) -> Option<(&str, Option<String>)> {
         (code, None)
     };
     let head = before_var.strip_suffix("do")?.trim_end();
-    if head.starts_with("component") {
+    if is_component_call(head) {
         Some((head, var))
     } else {
         None
     }
+}
+
+/// Whether `head` calls `component`: `component(...)` or `component "name"…`.
+/// A variable named `component` read, indexed or called on
+/// (`component["list"].each do |x|`, `component.items.each do`) is not one, and
+/// neither is a longer name (`components.each do`).
+fn is_component_call(head: &str) -> bool {
+    let Some(rest) = head.strip_prefix("component") else {
+        return false;
+    };
+    if rest.starts_with('(') {
+        return true;
+    }
+    let args = rest.trim_start();
+    if args.len() == rest.len() {
+        // `components`, `component_list`, `component.x`, `component[...]`.
+        return false;
+    }
+    // `component "card"`, `component name, props` — the first argument, not
+    // an operator after the variable (`component == x`, `component [0]`...).
+    args.starts_with(|c: char| {
+        c == '"' || c == '\'' || c == '@' || c == ':' || c == '_' || c.is_alphabetic()
+    })
 }
 
 /// Detect a slot-builder opener `<var>.slot("name") do` inside a component block
@@ -1617,6 +1640,29 @@ fn parse_core_expr(code: &str, line: usize) -> Result<crate::ast::expr::Expr, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a call of `component` opens a component block, not a variable
+    /// of that name or a longer name.
+    #[test]
+    fn only_a_component_call_opens_a_component_block() {
+        for code in [
+            "component(\"card\") do",
+            "component \"card\", {\"title\": t} do |c|",
+            "component name, props do",
+            "component(\"card\", title: t) do",
+        ] {
+            assert!(component_block_parts(code).is_some(), "{code}");
+        }
+        for code in [
+            "component[\"list\"].each do |x|",
+            "component.items.each do |x|",
+            "components.each do |c|",
+            "component_rows.each do",
+            "component == x do",
+        ] {
+            assert!(component_block_parts(code).is_none(), "{code}");
+        }
+    }
 
     /// A template with absurdly nested `<% if %>` blocks must produce a clean
     /// parse error, never a native stack overflow (which aborts without

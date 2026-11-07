@@ -388,6 +388,16 @@ fn serve_app_in(
     files: &[(&str, &str)],
     env: &[(&str, &str)],
 ) -> ServerProcess {
+    serve_app_with_args(root, files, env, &[])
+}
+
+/// [`serve_app_in`], with more `soli serve` arguments (`--dev`).
+fn serve_app_with_args(
+    root: &std::path::Path,
+    files: &[(&str, &str)],
+    env: &[(&str, &str)],
+    args: &[&str],
+) -> ServerProcess {
     for (path, body) in files {
         let path = root.join(path);
         std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
@@ -402,6 +412,7 @@ fn serve_app_in(
         .arg(port.to_string())
         .arg("--workers")
         .arg("1")
+        .args(args)
         // `/_metrics` answers loopback without a token; the engine flags are
         // the test's to set.
         .env_remove("SOLI_METRICS_TOKEN")
@@ -2198,4 +2209,71 @@ end
                 )),
         "{lines:#?}"
     );
+}
+
+/// Four view bugs met building an app (#675), served in production, where
+/// the view and its helper run on the VM, and under `--dev`, where they run
+/// on the tree-walker: a helper reading its file's `const` saw nil; a block
+/// variable named `component` opened a component block; `partial()` did not
+/// find `components/_badge.html.slv`; `render`'s `headers` option was dropped.
+#[test]
+fn view_helpers_constants_components_and_render_headers_on_both_engines() {
+    const FILES: &[(&str, &str)] = &[
+        (
+            "config/routes.sl",
+            "get(\"/ping\", \"home#ping\")\nget(\"/vigie\", \"home#vigie\")\n",
+        ),
+        (
+            "app/controllers/home_controller.sl",
+            "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /vigie
+  def vigie(req)
+    @items = [{\"list\": [\"a\", \"b\"]}, {\"list\": [\"c\"]}]
+    cache_headers = {\"Cache-Control\": \"public, max-age=60\", \"X-Vigie\": \"1\"}
+    render(\"home/vigie\", {}, {\"layout\": false, \"status\": 203, \"headers\": cache_headers})
+  end
+end
+",
+        ),
+        (
+            "app/helpers/status_helper.sl",
+            "const STATUSES = [\"up\", \"down\"]\n\ndef status_name(i)\n  STATUSES[i]\nend\n",
+        ),
+        (
+            "app/views/home/vigie.html.slv",
+            "<%= status_name(1) %>|<% @items.each do |component| %>\
+             <% component[\"list\"].each do |x| %><%= x %><% end %><% end %>|\
+             <%- partial(\"components/badge\", {\"label\": \"ok\"}) %>",
+        ),
+        ("app/views/components/_badge.html.slv", "[<%= label %>]"),
+    ];
+    for args in [&[][..], &["--dev"][..]] {
+        let app = tempfile::tempdir().expect("temp app dir");
+        let server = serve_app_with_args(app.path(), FILES, &[], args);
+        let resp = ureq::get(&server.url("/vigie"))
+            .timeout(Duration::from_secs(10))
+            .call()
+            .unwrap_or_else(|e| panic!("{args:?}: GET /vigie: {e}"));
+        assert_eq!(resp.status(), 203, "{args:?}");
+        assert_eq!(
+            resp.header("Cache-Control"),
+            Some("public, max-age=60"),
+            "{args:?}"
+        );
+        assert_eq!(resp.header("X-Vigie"), Some("1"), "{args:?}");
+        // `--dev` marks each view and component with an HTML comment.
+        let mut body = body_string(resp);
+        while let Some(start) = body.find("<!--solidev:") {
+            let end = body[start..]
+                .find("-->")
+                .map_or(body.len(), |at| start + at + 3);
+            body.replace_range(start..end, "");
+        }
+        assert!(body.starts_with("down|abc|[ok]"), "{args:?}: {body}");
+    }
 }

@@ -905,6 +905,20 @@ def mail_to(email, text)
 end
 ```
 
+A top-level `const` in a helper file is visible to that file's helpers (and
+to the other helpers), so a lookup table can sit next to the helper that reads
+it. Constants are evaluated once, when helpers load, after every helper is
+defined — an initializer may call one:
+
+```soli
+# app/helpers/status_helper.sl
+const STATUS_LABELS = ["up", "late", "overdue"]
+
+def status_label(i)
+  STATUS_LABELS[i]
+end
+```
+
 A helper you define wins over a framework function of the same name — a
 route helper (`posts_path`), the form builder's `form_with`, `button_to` or
 `csrf_field`, `Retry`, a builtin — in every view, partial and component,
@@ -1182,7 +1196,7 @@ The function-call form passes only a data hash — it has no captured body, so a
 
 ### Component files
 
-Component files live under `app/views/components/`. They do **not** need a leading underscore (unlike partials).
+Component files live under `app/views/components/`. They do **not** need a leading underscore (unlike partials), and may have one: `component("stats_card")` and `partial("components/stats_card")` both render `components/stats_card.html.slv`, else `components/_stats_card.html.slv`. A file under `components/` is found the same way whichever helper asks for it; when neither exists, the error names both files.
 
 ```erb
 <!-- app/views/components/stats_card.html.slv -->
@@ -1253,7 +1267,10 @@ To pass body content, use the block form — the block body is captured and
 exposed to the component as the default slot. Props come from **named
 arguments** (`title: "…"`) or an explicit **parenthesized hash**; a paren-less
 `component "card", { … } do` does *not* pass the hash (`{` isn't a command
-argument), so reach for named args or parentheses:
+argument), so reach for named args or parentheses. Only a call of
+`component` opens the block — `component(…) do` or `component "card"… do`; a
+variable that happens to be called `component`
+(`<% component["items"].each do |x| %>`) is an ordinary block:
 
 ```erb
 <%- component "card", title: "Important Notice" do %>

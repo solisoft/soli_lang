@@ -860,7 +860,7 @@ impl TemplateCache {
         let is_component = is_component_kind
             || resolved_name.starts_with("components/")
             || resolved_name.contains("/components/");
-        let path = self.resolve_template_path(&resolved_name)?;
+        let (resolved_name, path) = self.resolve_include_path(resolved_name, is_component)?;
         let nodes = self.get_or_load_template(&path)?;
         let entry = Rc::new(IncludeEntry {
             markdown: is_markdown_template(&path),
@@ -885,6 +885,34 @@ impl TemplateCache {
             }
         });
         Ok(entry)
+    }
+
+    /// The file an include resolved to `name` renders. A component file needs
+    /// no leading `_`, and may have one: `components/card` is
+    /// `components/card.html.slv`, else `components/_card.html.slv`, whether
+    /// `partial()` or `component()` asked for it. A miss under `components/`
+    /// says so, since that directory does not follow the partial rule.
+    fn resolve_include_path(
+        &self,
+        name: String,
+        is_component: bool,
+    ) -> Result<(String, Arc<PathBuf>), String> {
+        let err = match self.resolve_template_path(&name) {
+            Ok(path) => return Ok((name, path)),
+            Err(err) if !is_component => return Err(err),
+            Err(err) => err,
+        };
+        let underscored = match name.rsplit_once('/') {
+            Some((dir, file)) if !file.starts_with('_') => format!("{dir}/_{file}"),
+            _ => return Err(err),
+        };
+        match self.resolve_template_path(&underscored) {
+            Ok(path) => Ok((underscored, path)),
+            Err(_) => Err(format!(
+                "{err} (looked for '{name}' and '{underscored}': a file under \
+                 components/ is a component, named with or without a leading `_`)"
+            )),
+        }
     }
 
     /// Render content with a named layout, reusing an existing interpreter.
@@ -3089,6 +3117,100 @@ mod tests {
 
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
+        Ok(())
+    }
+
+    /// A top-level `const` in a helper file is what the helpers read, in a
+    /// view on the tree-walker and in a compiled one, where the helper runs on
+    /// the view VM. Only the `def`s were taken from the file, so the helper
+    /// read `nil` and `M[i]` raised "cannot index null with int".
+    #[test]
+    fn a_helper_reads_its_files_constants() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::template::{clear_view_helpers, load_view_helpers};
+
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        let helpers = dir.path().join("helpers");
+        fs::create_dir_all(&views)?;
+        fs::create_dir_all(&helpers)?;
+        fs::write(
+            helpers.join("status_helper.sl"),
+            "const STATUSES = [\"up\", \"down\"]\n\
+             const LABELS = STATUSES.map { |s| shout(s) }\n\
+             def status_name(i)\n  STATUSES[i]\nend\n\
+             def status_label(i)\n  LABELS[i]\nend\n\
+             def shout(s)\n  s.upcase\nend\n",
+        )?;
+        let calls = "<%= status_name(0) %>-<%= status_label(1) %>";
+        fs::write(views.join("plain.html.slv"), calls)?;
+        fs::write(
+            views.join("looped.html.slv"),
+            format!("<% for i in [1] %>{calls}<% end %>"),
+        )?;
+
+        clear_view_helpers();
+        load_view_helpers(&helpers)?;
+        crate::template::core_eval::reset_builtins_rc();
+
+        let cache = TemplateCache::new(&views);
+        for (page, n) in [("plain", 1), ("looped", 2)] {
+            let data = hash_of(&[("n", Value::Int(n))]);
+            assert_eq!(cache.render(page, &data, Some(None))?, "up-DOWN", "{page}");
+        }
+        // The helper itself compiles for the view VM: the constant is one of
+        // the names its closure holds.
+        let helper = crate::interpreter::builtins::template::get_view_helper("status_name")
+            .ok_or("no status_name helper")?;
+        let Value::Function(func) = helper else {
+            return Err("status_name is not a function".into());
+        };
+        assert!(crate::vm::vm_view_helpers::view_helper(&func).is_some());
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        Ok(())
+    }
+
+    /// `components/` holds components, which need no leading `_` but may have
+    /// one: `partial("components/x")` and `component("x")` find
+    /// `components/_x.html.slv` as well as `components/x.html.slv`. The
+    /// partial used to be "not found" with no word about why.
+    #[test]
+    fn a_component_file_may_start_with_an_underscore() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("components"))?;
+        fs::write(
+            views.join("components").join("_badge.html.slv"),
+            "[<%= label %>]",
+        )?;
+        fs::write(
+            views.join("components").join("card.html.slv"),
+            "{<%= label %>}",
+        )?;
+        fs::write(
+            views.join("page.html.slv"),
+            "<%- partial(\"components/badge\", {\"label\": \"a\"}) %>\
+             <%- component(\"badge\", {\"label\": \"b\"}) %>\
+             <%- partial(\"components/card\", {\"label\": \"c\"}) %>\
+             <%- component(\"card\", {\"label\": \"d\"}) %>",
+        )?;
+        fs::write(
+            views.join("missing.html.slv"),
+            "<%- partial(\"components/nothing\", {}) %>",
+        )?;
+        let cache = TemplateCache::new(&views);
+        assert_eq!(
+            cache.render("page", &hash_of(&[]), Some(None))?,
+            "[a][b]{c}{d}"
+        );
+        let err = cache
+            .render("missing", &hash_of(&[]), Some(None))
+            .expect_err("no such component");
+        assert!(
+            err.contains("components/nothing") && err.contains("components/_nothing"),
+            "{err}"
+        );
         Ok(())
     }
 

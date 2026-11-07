@@ -23,6 +23,8 @@
   linked to `/password/new`, which is not a route; it now links to
   `/password/reset`. The output passes `soli fmt --check` and `soli lint`, and
   a served test drives the sign-up policy and the throttle.
+- `render()` raises on an option key other than `layout`, `status` and
+  `headers` (it used to ignore it).
 
 ### Fixed
 - DateTime reads in its own zone (#673): `to_iso`, `format`, `hour`/`day`/`weekday`, `to_string` and the boundary helpers agree. `from_unix`, `epoch`, `DateTime.utc` and `parse` without an offset read in UTC; `parse` with an offset keeps it; only `DateTime.now`/`.local` read the server's zone (and their `to_iso` prints the local offset). `parse` also accepts negative offsets and fractional seconds without an offset. JSON/SQL still serialise the UTC instant. Behaviour change for code that relied on parsed values reading in the server zone: use `.local`.
@@ -38,6 +40,18 @@
   being updated, and `id` to it when the record holds no `id` of its own (a
   SQL row keeps its column). The built-in `uniqueness: true` already excluded
   the record being updated; it is now covered by a test on each path.
+- **Views (#675).** A top-level `const` in `app/helpers/*.sl` is now visible to
+  the helpers: only the `def`s were loaded, so a helper reading one saw nil
+  (`cannot index null with int`) on both engines; constants are evaluated once
+  in the helpers' closure, after every helper is defined, so the view VM's
+  compiled helpers read them as upvalues too. A line opening with a variable
+  named `component` (`<% component["list"].each do |x| %>`) is no longer read
+  as the `component "x" do` block helper. `partial("components/x")` and
+  `component("x")` fall back to `components/_x.html.slv`, and the not-found
+  error names both files. `render(view, data, {"headers": {...}})` sets those
+  headers (they were dropped; only `status`/`layout` were read), replacing a
+  default of the same name in any case; a non-token name or a CR/LF in a value
+  raises.
 
 ## [2.32.0] - 2026-11-07
 

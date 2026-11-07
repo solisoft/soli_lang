@@ -1209,6 +1209,43 @@ mod tests {
         ])
     }
 
+    /// A block variable named `component` is a variable: a line opening
+    /// with it (`component["list"].each do |x|`) is not the `component "x"
+    /// do` block helper. It was read as one and failed with "component name
+    /// must evaluate to string, got Method".
+    #[test]
+    fn a_variable_named_component_opens_an_ordinary_block() {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let source = "<% @items.each do |component| %>\
+                      <% component[\"list\"].each do |x| %><%= x %><% end %>\
+                      <% component.list.each do |y| %><%= y %><% end %>;\
+                      <% end %>";
+        let strings = |items: &[&str]| {
+            array(
+                items
+                    .iter()
+                    .map(|item| Value::String((*item).into()))
+                    .collect(),
+            )
+        };
+        let data = hash(vec![(
+            "items",
+            array(vec![
+                hash(vec![("list", strings(&["a", "b"]))]),
+                hash(vec![("list", strings(&["c"]))]),
+            ]),
+        )]);
+        let nodes = parse_template(source).unwrap_or_else(|e| panic!("{e}"));
+        let tree = render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(tree, "abab;cc;");
+        let compiled = VmTemplate::compile(&nodes).unwrap_or_else(|e| panic!("{e}"));
+        let on_vm = compiled
+            .render(&mut Vm::new(), &data)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .html;
+        assert_eq!(on_vm, tree);
+    }
+
     /// Every template here renders byte for byte the same on both engines.
     #[test]
     fn the_vm_renders_what_the_tree_walker_renders() {
