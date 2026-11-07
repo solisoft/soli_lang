@@ -223,7 +223,7 @@ fn undefined_variable_errors() {
     let errors = check_err("let x = unknown_var;");
     assert_any(
         &errors,
-        |e| matches!(e, TypeError::UndefinedVariable(name, _) if name == "unknown_var"),
+        |e| matches!(e, TypeError::UndefinedVariable(name, _, _) if name == "unknown_var"),
         "UndefinedVariable(unknown_var)",
     );
 }

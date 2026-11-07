@@ -208,6 +208,21 @@ pub struct ClassType {
 }
 
 impl ClassType {
+    /// The methods and fields of this class and its ancestors, for the
+    /// "did you mean" search of an unknown-member error.
+    pub fn member_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut current = Some(self);
+        while let Some(class) = current {
+            out.extend(class.methods.keys().cloned());
+            out.extend(class.fields.keys().cloned());
+            current = class.superclass.as_deref();
+        }
+        out
+    }
+}
+
+impl ClassType {
     pub fn new(name: String) -> Self {
         Self {
             name,

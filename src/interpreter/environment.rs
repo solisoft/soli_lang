@@ -312,6 +312,24 @@ impl Environment {
         AssignResult::NotFound
     }
 
+    /// Every name bound in this scope and the scopes around it, template
+    /// locals included. Only the "did you mean" search of an
+    /// undefined-variable error reads it.
+    pub fn collect_names(&self, out: &mut Vec<String>) {
+        out.extend(self.values.keys().cloned());
+        out.extend(self.consts.keys().cloned());
+        if let Some(Ok(data)) = self.data_hash.as_ref().map(|d| d.try_borrow()) {
+            for key in data.keys() {
+                if let crate::interpreter::value::HashKey::String(s) = key {
+                    out.push(s.to_string());
+                }
+            }
+        }
+        if let Some(Ok(enclosing)) = self.enclosing.as_ref().map(|e| e.try_borrow()) {
+            enclosing.collect_names(out);
+        }
+    }
+
     /// Get all variable names in the current scope (for REPL introspection).
     pub fn get_var_names(&self) -> Vec<String> {
         self.values.keys().cloned().collect()

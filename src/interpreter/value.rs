@@ -3027,6 +3027,69 @@ impl Class {
     }
 
     /// Every declared instance field, inherited ones first.
+    /// Every name an instance of this class answers to — methods (Soli,
+    /// native, bytecode, mixed-in) and declared fields, inherited ones
+    /// included. Only the "did you mean" search of an unknown-member error
+    /// reads it, so it favours completeness over speed.
+    pub fn instance_member_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut current: Option<&Class> = Some(self);
+        while let Some(class) = current {
+            out.extend(class.methods.borrow().keys().cloned());
+            out.extend(class.native_methods.keys().cloned());
+            out.extend(class.vm_methods.borrow().keys().cloned());
+            out.extend(class.fields.keys().cloned());
+            out.extend(class.declared_fields.borrow().iter().cloned());
+            for module in class.included_modules.borrow().iter() {
+                out.extend(module.instance_member_names());
+            }
+            current = class.superclass.as_deref();
+        }
+        out.retain(|name| name != "init" && name != "new");
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// Every name the class itself answers to: static methods and fields
+    /// and nested classes, inherited ones included (see
+    /// [`Class::instance_member_names`]).
+    pub fn static_member_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut current: Option<&Class> = Some(self);
+        while let Some(class) = current {
+            out.extend(class.static_methods.keys().cloned());
+            out.extend(class.native_static_methods.keys().cloned());
+            out.extend(class.vm_static_methods.borrow().keys().cloned());
+            out.extend(class.static_fields.borrow().keys().cloned());
+            out.extend(class.nested_classes.borrow().keys().cloned());
+            out.extend(class.mixin_static_methods.borrow().keys().cloned());
+            out.extend(class.concern_static_methods.borrow().keys().cloned());
+            current = class.superclass.as_deref();
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// A lazy "did you mean" hint for an unknown instance member.
+    pub fn instance_member_hint(class: &Rc<Class>, name: &str) -> crate::error::Hint {
+        let class = class.clone();
+        let name = name.to_string();
+        crate::error::Hint::lazy(move || {
+            crate::error::suggest::best_match(&name, class.instance_member_names())
+        })
+    }
+
+    /// A lazy "did you mean" hint for an unknown class-level member.
+    pub fn static_member_hint(class: &Rc<Class>, name: &str) -> crate::error::Hint {
+        let class = class.clone();
+        let name = name.to_string();
+        crate::error::Hint::lazy(move || {
+            crate::error::suggest::best_match(&name, class.static_member_names())
+        })
+    }
+
     pub fn all_declared_fields(&self) -> Vec<String> {
         let mut out = match &self.superclass {
             Some(superclass) => superclass.all_declared_fields(),

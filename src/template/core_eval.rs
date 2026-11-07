@@ -328,7 +328,7 @@ mod tests {
         };
         match interp.evaluate(&expr) {
             Ok(value) => Ok(value),
-            Err(e) if e.to_string().contains("Undefined variable") => Ok(Value::Null),
+            Err(e) if e.is_undefined_variable() => Ok(Value::Null),
             Err(e) => Err(e.to_string()),
         }
     }

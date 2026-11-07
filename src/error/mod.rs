@@ -3,6 +3,9 @@
 use crate::span::Span;
 use thiserror::Error;
 
+pub mod suggest;
+pub use suggest::Hint;
+
 /// Lexer errors.
 #[derive(Debug, Error)]
 pub enum LexerError {
@@ -135,8 +138,9 @@ pub enum TypeError {
         span: Span,
     },
 
-    #[error("Undefined variable '{0}' at {1}")]
-    UndefinedVariable(String, Span),
+    /// The third field is a "did you mean" suggestion.
+    #[error("Undefined variable '{0}'{} at {1}", suggest::suffix(.2.as_deref()))]
+    UndefinedVariable(String, Span, Option<String>),
 
     #[error("Undefined type '{0}' at {1}")]
     UndefinedType(String, Span),
@@ -154,11 +158,13 @@ pub enum TypeError {
         span: Span,
     },
 
-    #[error("Cannot access member '{member}' on type '{type_name}' at {span}")]
+    #[error("Cannot access member '{member}' on type '{type_name}'{} at {span}", suggest::suffix(.suggestion.as_deref()))]
     NoSuchMember {
         type_name: String,
         member: String,
         span: Span,
+        /// A "did you mean" suggestion.
+        suggestion: Option<String>,
     },
 
     #[error("Class '{0}' has no superclass at {1}")]
@@ -198,7 +204,7 @@ impl TypeError {
     pub fn span(&self) -> Span {
         match self {
             Self::Mismatch { span, .. } => *span,
-            Self::UndefinedVariable(_, span) => *span,
+            Self::UndefinedVariable(_, span, _) => *span,
             Self::UndefinedType(_, span) => *span,
             Self::UndefinedFunction(_, span) => *span,
             Self::NotCallable(_, span) => *span,
@@ -288,8 +294,9 @@ pub enum RuntimeError {
     #[error("Division by zero at {0}")]
     DivisionByZero(Span),
 
-    #[error("Undefined variable '{0}' at {1}")]
-    UndefinedVariable(String, Span),
+    /// The third field is a "did you mean" suggestion, usually lazy.
+    #[error("Undefined variable '{0}'{} at {1}", .2.suffix())]
+    UndefinedVariable(String, Span, Hint),
 
     #[error("Cannot call non-function value at {0}")]
     NotCallable(Span),
@@ -381,14 +388,24 @@ pub struct NoSuchPropertyError {
     pub value_type: String,
     pub property: String,
     pub span: Span,
+    /// A "did you mean" suggestion. When it is empty and the receiver is a
+    /// primitive, the built-in method table is searched instead.
+    pub hint: Hint,
 }
 
 impl std::fmt::Display for NoSuchPropertyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let hint = if self.hint.is_none() {
+            suggest::suffix(
+                suggest::primitive_method_suggestion(&self.value_type, &self.property).as_deref(),
+            )
+        } else {
+            self.hint.suffix()
+        };
         write!(
             f,
-            "Cannot access property '{}' on {} at {}",
-            self.property, self.value_type, self.span
+            "Cannot access property '{}' on {}{} at {}",
+            self.property, self.value_type, hint, self.span
         )
     }
 }
@@ -522,7 +539,36 @@ impl RuntimeError {
     }
 
     pub fn undefined_variable(name: impl Into<String>, span: Span) -> Self {
-        Self::UndefinedVariable(name.into(), span)
+        Self::UndefinedVariable(name.into(), span, Hint::none())
+    }
+
+    /// An undefined-variable error whose suggestion is searched for only
+    /// when the message is shown.
+    pub fn undefined_variable_hinted(name: impl Into<String>, span: Span, hint: Hint) -> Self {
+        Self::UndefinedVariable(name.into(), span, hint)
+    }
+
+    /// Attach a "did you mean" hint to an undefined-variable or
+    /// unknown-property error; any other error is returned unchanged.
+    pub fn with_hint(mut self, hint: Hint) -> Self {
+        match &mut self {
+            Self::UndefinedVariable(_, _, slot) => *slot = hint,
+            Self::NoSuchProperty(info) => info.hint = hint,
+            _ => {}
+        }
+        self
+    }
+
+    /// Whether this is an undefined-variable error, without formatting it
+    /// (formatting would compute its suggestion). Template rendering reads an
+    /// undefined local as `nil` through this.
+    pub fn is_undefined_variable(&self) -> bool {
+        match self {
+            Self::UndefinedVariable(..) => true,
+            Self::General { message, .. } => message.contains("Undefined variable '"),
+            Self::WithEnv(capture) => capture.message.contains("Undefined variable '"),
+            _ => false,
+        }
     }
 
     pub fn not_callable(span: Span) -> Self {
@@ -547,7 +593,7 @@ impl RuntimeError {
     pub fn span(&self) -> Span {
         match self {
             Self::DivisionByZero(span) => *span,
-            Self::UndefinedVariable(_, span) => *span,
+            Self::UndefinedVariable(_, span, _) => *span,
             Self::NotCallable(span) => *span,
             Self::WrongArity { span, .. } => *span,
             Self::TypeError { span, .. } => *span,
@@ -700,6 +746,7 @@ impl RuntimeError {
             value_type,
             property,
             span,
+            hint: Hint::none(),
         }))
     }
 
@@ -846,7 +893,7 @@ mod tests {
                 found: "Str".into(),
                 span: s,
             },
-            TypeError::UndefinedVariable("x".into(), s),
+            TypeError::UndefinedVariable("x".into(), s, None),
             TypeError::UndefinedType("Foo".into(), s),
             TypeError::UndefinedFunction("f".into(), s),
             TypeError::NotCallable("Int".into(), s),
@@ -859,6 +906,7 @@ mod tests {
                 type_name: "Foo".into(),
                 member: "bar".into(),
                 span: s,
+                suggestion: None,
             },
             TypeError::NoSuperclass("A".into(), s),
             TypeError::ThisOutsideClass(s),
@@ -879,6 +927,7 @@ mod tests {
             type_name: "Array".into(),
             member: "frobnicate".into(),
             span: span(1, 1),
+            suggestion: None,
         };
         let msg = e.to_string();
         assert!(msg.contains("Array"));
@@ -905,7 +954,7 @@ mod tests {
         let s = span(2, 2);
         let cases = vec![
             RuntimeError::DivisionByZero(s),
-            RuntimeError::UndefinedVariable("x".into(), s),
+            RuntimeError::UndefinedVariable("x".into(), s, Hint::none()),
             RuntimeError::NotCallable(s),
             RuntimeError::WrongArity {
                 expected: 1,
@@ -1171,7 +1220,7 @@ mod tests {
             "ZeroDivisionError"
         );
         assert_eq!(
-            RuntimeError::UndefinedVariable("x".into(), s).exception_type(),
+            RuntimeError::UndefinedVariable("x".into(), s, Hint::none()).exception_type(),
             "NameError"
         );
         assert_eq!(

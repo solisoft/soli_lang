@@ -617,7 +617,11 @@ impl Interpreter {
                     return Err(RuntimeError::NotAClass(superclass_name.clone(), decl.span));
                 }
                 None => {
-                    return Err(RuntimeError::undefined_variable(superclass_name, decl.span));
+                    return Err(RuntimeError::undefined_variable_hinted(
+                        superclass_name,
+                        decl.span,
+                        self.undefined_name_hint(superclass_name),
+                    ));
                 }
             }
         } else {
@@ -1113,7 +1117,11 @@ impl Interpreter {
                 format!("expected module {}, got {}", name, other.type_name()),
                 span,
             )),
-            None => Err(RuntimeError::undefined_variable(name, span)),
+            None => Err(RuntimeError::undefined_variable_hinted(
+                name,
+                span,
+                self.undefined_name_hint(name),
+            )),
         }
     }
 

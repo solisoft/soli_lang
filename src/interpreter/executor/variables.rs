@@ -154,7 +154,34 @@ impl Interpreter {
         if TEMPLATE_LENIENT_VARS.with(|c| c.get()) {
             return Ok(Value::Null);
         }
-        Err(RuntimeError::undefined_variable(name, expr.span))
+        Err(RuntimeError::undefined_variable_hinted(
+            name,
+            expr.span,
+            self.undefined_name_hint(name),
+        ))
+    }
+
+    /// A lazy "did you mean" hint for an undefined name: the names bound in
+    /// scope, and the members of `this` when inside a method. Lazy because
+    /// an undefined name is control flow in places (a template reads it as
+    /// `nil`, the implicit-self fallback retries it) — the search only runs
+    /// when the message is shown.
+    pub(crate) fn undefined_name_hint(&self, name: &str) -> crate::error::Hint {
+        let env = self.environment.clone();
+        let name = name.to_string();
+        crate::error::Hint::lazy(move || {
+            let mut names = Vec::new();
+            // A message can be formatted anywhere, borrows included: never
+            // panic for a hint.
+            let Ok(env) = env.try_borrow() else {
+                return None;
+            };
+            env.collect_names(&mut names);
+            if let Some(Value::Instance(inst)) = env.get("this") {
+                names.extend(inst.borrow().class.instance_member_names());
+            }
+            crate::error::suggest::best_match(&name, names)
+        })
     }
 }
 

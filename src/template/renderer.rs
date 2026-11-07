@@ -479,11 +479,10 @@ pub(crate) fn render_walker(
                             match interpreter.evaluate(ctx_expr) {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    let msg = e.to_string();
-                                    if msg.contains("Undefined variable") {
+                                    if e.is_undefined_variable() {
                                         Value::Null
                                     } else {
-                                        return Err(format!("Evaluation error: {}", msg));
+                                        return Err(format!("Evaluation error: {}", e));
                                     }
                                 }
                             }
@@ -512,11 +511,10 @@ pub(crate) fn render_walker(
                     let value = match interpreter.evaluate(expr) {
                         Ok(v) => v,
                         Err(e) => {
-                            let msg = e.to_string();
-                            if msg.contains("Undefined variable") {
+                            if e.is_undefined_variable() {
                                 Value::Null
                             } else {
-                                return Err(format!("Evaluation error: {}", msg));
+                                return Err(format!("Evaluation error: {}", e));
                             }
                         }
                     };

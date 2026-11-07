@@ -434,6 +434,7 @@ pub fn is_likely_global(name: &str) -> bool {
 
 fn flag(
     name: &str,
+    suggestion: Option<String>,
     span: crate::span::Span,
     diagnostics: &mut Vec<LintDiagnostic>,
     reported: &mut HashSet<(String, u32, u32)>,
@@ -445,8 +446,9 @@ fn flag(
     diagnostics.push(LintDiagnostic {
         rule: "smell/undefined-local",
         message: format!(
-            "variable '{}' is read but never assigned in this scope",
-            name
+            "variable '{}' is read but never assigned in this scope{}",
+            name,
+            crate::error::suggest::suffix(suggestion.as_deref())
         ),
         span,
         severity: Severity::Warning,
@@ -540,7 +542,9 @@ fn check_expr(
             if defined.contains(name) || program.contains(name) || is_likely_global(name) {
                 return;
             }
-            flag(name, expr.span, diagnostics, reported);
+            let suggestion =
+                crate::error::suggest::best_match(name, defined.iter().chain(program.iter()));
+            flag(name, suggestion, expr.span, diagnostics, reported);
         }
         ExprKind::Assign { target, value } => {
             // LHS Variable is a binding site; don't flag it. Still recurse

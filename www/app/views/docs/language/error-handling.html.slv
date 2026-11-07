@@ -184,6 +184,37 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- Did you mean -->
+    <section id="section-did-you-mean" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">&ldquo;Did you mean&rdquo; suggestions</h2>
+        <p class="text-gray-400 mb-4">
+            An error about an unknown name names a close known one when there is one &mdash; within
+            <code class="text-amber-400">max(1, len / 3)</code> edits, counting a swap of two adjacent letters as one edit:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">counter = 1
+countr + 1        # Undefined variable 'countr' (did you mean 'counter'?) at 2:1
+"abc".upcse       # Cannot access property 'upcse' on String (did you mean 'upcase'?) at 3:7
+greet(greting: "Hi")   # Undefined variable 'greting' (did you mean 'greeting'?) at 4:7</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            It covers undefined variables and functions, unknown methods and fields on instances, classes and built-in
+            types, <code class="text-amber-400">super</code> members, named arguments no parameter takes, and a missing
+            superclass or module. <code class="text-amber-400">soli check</code> and the
+            <code class="text-amber-400">smell/undefined-local</code> lint rule suggest the same way. When nothing is close,
+            the message has no suffix. The suggestion sits before <code class="text-amber-400">at L:C</code> and the text
+            before it is unchanged, so a <code class="text-amber-400">catch</code> that tests the message, or an
+            <code class="text-amber-400">assert_raises</code> fragment, keeps matching.
+        </p>
+        <p class="text-gray-400 mb-4">
+            On the VM, a misspelt local is compared with globals only &mdash; compiled locals have no names at run time.
+            <code class="text-amber-400">soli check</code>, which runs first on a script, and the tree-walker see the
+            scopes and suggest the local.
+        </p>
+    </section>
+
     <!-- Throwing Exceptions -->
     <section id="section-throw" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

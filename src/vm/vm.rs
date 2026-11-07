@@ -651,6 +651,20 @@ impl Vm {
 
     /// Get the current source span (only call on error paths).
     #[cold]
+    /// An undefined-variable error for a global, with a "did you mean"
+    /// suggestion drawn from the globals. Bytecode locals are slots with no
+    /// names, so a misspelt local is matched against globals only — the
+    /// static checker, which sees the scopes, suggests locals.
+    pub(crate) fn undefined_global(&self, name: impl Into<String>) -> RuntimeError {
+        let name = name.into();
+        let suggestion = crate::error::suggest::best_match(&name, self.globals.keys());
+        RuntimeError::undefined_variable_hinted(
+            name,
+            self.current_span(),
+            crate::error::Hint::ready(suggestion),
+        )
+    }
+
     pub(crate) fn current_span(&self) -> Span {
         let frame = self.frames.last().unwrap();
         let ip = frame.ip.saturating_sub(1);
@@ -735,10 +749,7 @@ impl Vm {
     /// pushed, matching `<<` returning its left operand.
     fn append_named(&mut self, name: &str, before: Value, rhs: Value) -> Result<(), RuntimeError> {
         let Some(slot) = self.globals.get_mut(name) else {
-            return Err(RuntimeError::undefined_variable(
-                name.to_string(),
-                self.current_span(),
-            ));
+            return Err(self.undefined_global(name.to_string()));
         };
         let result = shovel_into(slot, before, rhs)
             .map_err(|m| RuntimeError::type_error(m, self.current_span()))?;
@@ -2314,12 +2325,7 @@ impl Vm {
                             // `Invoice` in a method of `Billing::PayInvoice`.
                             match self.namespaced(&name) {
                                 Some(class) => self.stack.push(class),
-                                None => {
-                                    return Err(RuntimeError::undefined_variable(
-                                        name,
-                                        self.current_span(),
-                                    ))
-                                }
+                                None => return Err(self.undefined_global(name)),
                             }
                         }
                     }
@@ -2354,10 +2360,7 @@ impl Vm {
                         if crate::vm::compiler::optional_let_enabled() {
                             self.globals.insert(name, val);
                         } else {
-                            return Err(RuntimeError::undefined_variable(
-                                name,
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(name));
                         }
                     }
                 }
@@ -2776,10 +2779,7 @@ impl Vm {
                         None => {
                             let name = self.read_string_constant_owned(name_idx);
                             let Some(func) = self.namespaced(&name) else {
-                                return Err(RuntimeError::undefined_variable(
-                                    name,
-                                    self.current_span(),
-                                ));
+                                return Err(self.undefined_global(name));
                             };
                             let insert_pos = self.stack.len() - argc as usize;
                             self.stack.insert(insert_pos, func);
@@ -2809,10 +2809,7 @@ impl Vm {
                         let value = self.op_get_property_member(&this, name, span)?;
                         self.push(value);
                     } else {
-                        return Err(RuntimeError::undefined_variable(
-                            name.to_string(),
-                            self.current_span(),
-                        ));
+                        return Err(self.undefined_global(name.to_string()));
                     }
                 }
                 Op::MarkPrivate(name_idx) => {
@@ -2863,10 +2860,7 @@ impl Vm {
                             _ => None,
                         };
                         let Some(marker) = found else {
-                            return Err(RuntimeError::undefined_variable(
-                                name.to_string(),
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(name.to_string()));
                         };
                         self.push(marker);
                     }
@@ -3447,12 +3441,7 @@ impl Vm {
                     let receiver = self.globals.get(gname).cloned();
                     let result = match receiver {
                         Some(v) => self.hash_get_nested(&v, unsafe { &*p1 }, unsafe { &*p2 })?,
-                        None => {
-                            return Err(RuntimeError::undefined_variable(
-                                gname.to_string(),
-                                self.current_span(),
-                            ))
-                        }
+                        None => return Err(self.undefined_global(gname.to_string())),
                     };
                     self.push(result);
                 }
@@ -3594,10 +3583,7 @@ impl Vm {
                             self.push(value);
                         }
                         None => {
-                            return Err(RuntimeError::undefined_variable(
-                                global_name.to_string(),
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(global_name.to_string()));
                         }
                     }
                 }
@@ -3630,10 +3616,7 @@ impl Vm {
                             ));
                         }
                         None => {
-                            return Err(RuntimeError::undefined_variable(
-                                global_name.to_string(),
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(global_name.to_string()));
                         }
                     };
                     self.push(result);
@@ -3671,10 +3654,7 @@ impl Vm {
                             ));
                         }
                         None => {
-                            return Err(RuntimeError::undefined_variable(
-                                global_name.to_string(),
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(global_name.to_string()));
                         }
                     }
                 }
@@ -3702,10 +3682,7 @@ impl Vm {
                             self.set_const_key_fallback(&other, key, value.clone())?;
                         }
                         None => {
-                            return Err(RuntimeError::undefined_variable(
-                                global_name.to_string(),
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(global_name.to_string()));
                         }
                     }
                     // The expression's value is the assigned value, matching the
@@ -4339,6 +4316,12 @@ impl Vm {
                             format!("super({})", superclass.name),
                             String::from(name.as_str()),
                             span,
+                        )
+                        .with_hint(
+                            crate::interpreter::value::Class::instance_member_hint(
+                                &superclass,
+                                &name,
+                            ),
                         ));
                     }
                 }
@@ -5533,10 +5516,7 @@ impl Vm {
                         }
                         None => {
                             let name = self.read_string_constant_owned(idx);
-                            return Err(RuntimeError::undefined_variable(
-                                name,
-                                self.current_span(),
-                            ));
+                            return Err(self.undefined_global(name));
                         }
                     };
                 }

@@ -325,7 +325,14 @@ impl Interpreter {
         let param_names: Vec<&str> = ctor.params.iter().map(|p| p.name.as_str()).collect();
         for name in named_args.keys() {
             if !param_names.contains(&name.as_str()) {
-                return Err(RuntimeError::undefined_variable(name.clone(), span));
+                return Err(RuntimeError::undefined_variable_hinted(
+                    name.clone(),
+                    span,
+                    crate::error::Hint::ready(crate::error::suggest::best_match(
+                        name,
+                        &param_names,
+                    )),
+                ));
             }
         }
         if positional_args.len() > param_names.len() {

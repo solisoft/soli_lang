@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Errors about an unknown name suggest the close one (card #694).** An
+  undefined variable or function, an unknown method or field on an instance,
+  a class or a built-in type, an unknown `super` member, a named argument no
+  parameter takes, and a missing superclass or module now end with
+  `(did you mean 'x'?)` before the location when a known name is within
+  `max(1, len / 3)` edits (Levenshtein plus adjacent swaps, so `lenght` →
+  `length`): `Undefined variable 'countr' (did you mean 'counter'?) at 3:3`,
+  `Cannot access property 'upcse' on String (did you mean 'upcase'?) at 2:5`.
+  `soli check` (`Undefined variable`, `Cannot access member`) and the lint
+  rule `smell/undefined-local` do the same. Nothing is suggested when no name
+  is close. The search runs only when the message is shown: a template that
+  reads an undefined local as `nil` and `@items ||= []` on an unset field pay
+  nothing (`Hint::lazy`, `RuntimeError::is_undefined_variable`). On the VM a
+  misspelt *local* is matched against globals only (bytecode locals have no
+  names); `soli check` and the tree-walker suggest it. Message text before
+  the suffix is unchanged, so `assert_raises` fragments keep matching. Tests:
+  `error::suggest` unit tests, `tests/language/did_you_mean_spec.sl`.
+
 ## [2.33.0] - 2026-11-07
 
 ### Added

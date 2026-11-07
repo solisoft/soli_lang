@@ -3219,6 +3219,24 @@ impl TypeEnvironment {
         None
     }
 
+    /// Every name a bare identifier could resolve to here — scopes,
+    /// functions, classes, enums, interfaces, and the members of the class
+    /// being checked. Read by the "did you mean" search only.
+    pub fn visible_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for scope in &self.scopes {
+            out.extend(scope.keys().cloned());
+        }
+        out.extend(self.functions.keys().cloned());
+        out.extend(self.classes.keys().cloned());
+        out.extend(self.enums.keys().cloned());
+        out.extend(self.interfaces.keys().cloned());
+        if let Some(class) = self.current_class_type() {
+            out.extend(class.member_names());
+        }
+        out
+    }
+
     /// Define a class type.
     pub fn define_class(&mut self, class: ClassType) {
         self.classes.insert(class.name.clone(), class);

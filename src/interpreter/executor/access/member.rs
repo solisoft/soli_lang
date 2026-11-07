@@ -1966,11 +1966,11 @@ impl Interpreter {
             return Ok(Value::Null);
         }
 
-        Err(RuntimeError::no_such_property(
-            class_name,
-            name.to_string(),
-            span,
-        ))
+        Err(
+            RuntimeError::no_such_property(class_name, name.to_string(), span).with_hint(
+                crate::interpreter::value::Class::instance_member_hint(&inst_ref.class, name),
+            ),
+        )
     }
 
     fn class_member_access(
@@ -2365,11 +2365,14 @@ impl Interpreter {
             return Ok(bound);
         }
 
-        Err(RuntimeError::no_such_property(
-            class.name.clone(),
-            name.to_string(),
-            span,
-        ))
+        let hint = match class_val {
+            Value::Class(rc) => crate::interpreter::value::Class::static_member_hint(rc, name),
+            _ => crate::error::Hint::none(),
+        };
+        Err(
+            RuntimeError::no_such_property(class.name.clone(), name.to_string(), span)
+                .with_hint(hint),
+        )
     }
 
     fn super_member_access(
@@ -2434,11 +2437,12 @@ impl Interpreter {
                 },
             )));
         }
-        Err(RuntimeError::no_such_property(
-            superclass.name.clone(),
-            name.to_string(),
-            span,
-        ))
+        Err(
+            RuntimeError::no_such_property(superclass.name.clone(), name.to_string(), span)
+                .with_hint(crate::error::Hint::ready(
+                    crate::error::suggest::best_match(name, superclass.instance_member_names()),
+                )),
+        )
     }
 
     fn array_member_access(&self, name: &str, span: Span, obj_val: Value) -> RuntimeResult<Value> {

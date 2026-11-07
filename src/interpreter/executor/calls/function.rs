@@ -2471,7 +2471,14 @@ impl Interpreter {
                 // Check for unknown named arguments
                 for name in named_args.keys() {
                     if !param_names.contains(name) {
-                        return Err(RuntimeError::undefined_variable(name.clone(), span));
+                        return Err(RuntimeError::undefined_variable_hinted(
+                            name.clone(),
+                            span,
+                            crate::error::Hint::ready(crate::error::suggest::best_match(
+                                name,
+                                &param_names,
+                            )),
+                        ));
                     }
                 }
 
@@ -2607,9 +2614,12 @@ impl Interpreter {
 
                             for name in named_args.keys() {
                                 if !param_names.contains(name) {
-                                    return Err(RuntimeError::undefined_variable(
+                                    return Err(RuntimeError::undefined_variable_hinted(
                                         name.clone(),
                                         span,
+                                        crate::error::Hint::ready(
+                                            crate::error::suggest::best_match(name, &param_names),
+                                        ),
                                     ));
                                 }
                             }

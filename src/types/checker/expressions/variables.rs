@@ -30,7 +30,12 @@ impl TypeChecker {
                 }
             }
         }
-        Err(TypeError::UndefinedVariable(name.to_string(), span))
+        let suggestion = crate::error::suggest::best_match(name, self.env.visible_names());
+        Err(TypeError::UndefinedVariable(
+            name.to_string(),
+            span,
+            suggestion,
+        ))
     }
 
     /// A variable read for its value. A bare

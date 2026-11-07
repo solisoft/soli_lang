@@ -1166,6 +1166,31 @@ catch e
 end
 ```
 
+### "Did you mean" suggestions
+
+An error about an unknown name names a close known one when there is one —
+within `max(1, len / 3)` edits, counting a swap of two adjacent letters as one
+edit:
+
+```soli
+counter = 1
+countr + 1        # Undefined variable 'countr' (did you mean 'counter'?) at 2:1
+"abc".upcse       # Cannot access property 'upcse' on String (did you mean 'upcase'?) at 3:7
+greet(greting: "Hi")   # Undefined variable 'greting' (did you mean 'greeting'?) at 4:7
+```
+
+It covers undefined variables and functions, unknown methods and fields on
+instances, classes and built-in types, `super` members, named arguments no
+parameter takes, and a missing superclass or module. `soli check` and the
+`smell/undefined-local` lint rule suggest the same way. When nothing is close,
+the message has no suffix. The suggestion sits before ` at L:C` and the text
+before it is unchanged, so a `catch` that tests `e.includes?("Undefined
+variable 'x'")` or an `assert_raises` fragment keeps matching.
+
+On the VM, a misspelt local is compared with globals only — compiled locals
+have no names at run time. `soli check`, which runs first on a script, and the
+tree-walker see the scopes and suggest the local.
+
 ### Brace Syntax
 
 Try/catch also supports brace-delimited blocks:
@@ -4231,8 +4256,8 @@ authors = ["Author Name <author@example.com>"]
 # Local dependency
 utils = { path = "./lib/utils" }
 
-# Git dependency (future)
-# math = { git = "https://github.com/user/math.sl" }
+# Git dependency (pin with tag, branch or rev)
+math = { git = "https://github.com/user/math.sl", tag = "v1.0.0" }
 
 [dev-dependencies]
 test-utils = { path = "./tests/test-utils" }

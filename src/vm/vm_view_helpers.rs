@@ -1085,7 +1085,7 @@ mod tests {
             .expect_err("an unknown label raises");
         for err in [&on_vm, &tree] {
             assert!(
-                matches!(err, RuntimeError::UndefinedVariable(name, _) if name == "nope"),
+                matches!(err, RuntimeError::UndefinedVariable(name, _, _) if name == "nope"),
                 "{err:?}"
             );
         }

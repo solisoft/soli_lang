@@ -452,7 +452,11 @@ impl Vm {
                     inst_ref.class.name.clone(),
                     name.to_string(),
                     span,
-                ))
+                )
+                .with_hint(crate::interpreter::value::Class::instance_member_hint(
+                    &inst_ref.class,
+                    name,
+                )))
             }
             Value::Class(class) => {
                 // A named scope on a model class comes first, as in the
@@ -675,7 +679,10 @@ impl Vm {
                     format!("super({})", superclass.name),
                     name.to_string(),
                     span,
-                ))
+                )
+                .with_hint(crate::interpreter::value::Class::instance_member_hint(
+                    superclass, name,
+                )))
             }
             Value::Function(_) | Value::NativeFunction(_) => match name {
                 "nil?" => Ok(Value::Bool(false)),

@@ -277,7 +277,14 @@ pub(crate) fn plan_named_binding<'a>(
     for (target, name) in named_targets.iter_mut().zip(names) {
         let Some(index) = proto.param_names.iter().position(|p| p.as_str() == name) else {
             // Same error the interpreter raises for `f(nope: 1)`.
-            return Err(RuntimeError::undefined_variable(name.to_string(), span));
+            return Err(RuntimeError::undefined_variable_hinted(
+                name.to_string(),
+                span,
+                crate::error::Hint::ready(crate::error::suggest::best_match(
+                    name,
+                    &proto.param_names,
+                )),
+            ));
         };
         // A label that names an already-positionally-filled parameter is
         // dropped, and the positional value wins. That is not an obviously good
@@ -2222,11 +2229,12 @@ impl Vm {
         let Some(bound) = crate::interpreter::executor::access::member::bind_class_method_missing(
             &class, &class_val, name,
         ) else {
-            return Err(RuntimeError::no_such_property(
-                class.name.clone(),
-                name.to_string(),
-                span,
-            ));
+            return Err(
+                RuntimeError::no_such_property(class.name.clone(), name.to_string(), span)
+                    .with_hint(crate::interpreter::value::Class::static_member_hint(
+                        &class, name,
+                    )),
+            );
         };
         let result = self.invoke_callable(bound, &user_args, span)?;
         self.stack.truncate(receiver_idx);

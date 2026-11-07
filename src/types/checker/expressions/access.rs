@@ -191,10 +191,12 @@ impl TypeChecker {
                     }
                     _ => {}
                 }
+                let suggestion = crate::error::suggest::best_match(name, class.member_names());
                 Err(TypeError::NoSuchMember {
                     type_name: class.name,
                     member: name.to_string(),
                     span,
+                    suggestion,
                 })
             }
             Type::Array(inner_type) => self
@@ -232,6 +234,7 @@ impl TypeChecker {
                 type_name: format!("{}", obj_type),
                 member: name.to_string(),
                 span,
+                suggestion: None,
             }),
         }
     }
@@ -437,6 +440,7 @@ impl TypeChecker {
                 type_name: format!("{}[]", inner_type),
                 member: name.to_string(),
                 span,
+                suggestion: crate::error::suggest::primitive_method_suggestion("Array", name),
             }),
         }
     }
@@ -584,6 +588,7 @@ impl TypeChecker {
                 type_name: format!("Hash({}, {})", key_type, value_type),
                 member: name.to_string(),
                 span,
+                suggestion: crate::error::suggest::primitive_method_suggestion("Hash", name),
             }),
         }
     }
@@ -746,6 +751,7 @@ impl TypeChecker {
                 type_name: "String".to_string(),
                 member: name.to_string(),
                 span,
+                suggestion: crate::error::suggest::primitive_method_suggestion("String", name),
             }),
         }
     }
