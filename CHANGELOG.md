@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.34.0] - 2026-11-07
+
 ### Added
 
 - **A sampling profiler for scripts and test suites, and VM functions in the
