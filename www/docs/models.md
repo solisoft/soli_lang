@@ -838,6 +838,28 @@ end
 The closure form, `custom: fn(value, record) { ... }`, receives the field value and the attribute hash and
 follows the same return rules. Before, `custom:` was accepted but never ran.
 
+On an update — `record.update(attrs)`, `save` on a loaded record, `Model.update(id, attrs)` — the record a
+validator sees is the merged one about to be written, identity included: `@_key` (and `record["_key"]` in
+the closure form) is the key being updated, and `@id` is the row's own `id`, or that key when the record has
+none. That is what "unique except me" needs:
+
+```soli
+class Site < Model
+  validates("slug", { "custom": "_slug_free" })
+
+  private
+
+  def _slug_free(slug)
+    taken = Site.find_by("slug", slug)
+    taken.nil? || taken._key == @_key || "is taken"
+  end
+end
+```
+
+Before, the instance paths built that record from the non-`_` fields only, so `@_key` was `nil` and such a
+validator refused every update of a record that already held the value. The built-in `uniqueness: true`
+always excluded the record being updated.
+
 ### Conditional and Per-Operation Rules
 
 Every rule in a `validates(...)` call can be restricted to one persistence

@@ -743,6 +743,21 @@ pub fn run_validations(
         OP_CREATE
     };
 
+    // An update validates the record it is about to write, so the validators
+    // see that record's identity. The instance paths (`record.update(attrs)`,
+    // `save` on a loaded record) build `data` from the non-`_` fields only,
+    // and a custom validator then saw no `_key` — so "unique except me"
+    // (`taken._key != @_key`) refused every update of a record that already
+    // held the value.
+    let with_identity;
+    let data = match exclude_key {
+        Some(key) => {
+            with_identity = with_record_identity(data, key);
+            &with_identity
+        }
+        None => data,
+    };
+
     let mut errors = Vec::new();
 
     for rule in &rules {
@@ -1004,6 +1019,23 @@ pub fn run_validations(
     Ok(errors)
 }
 
+/// A copy of `data` carrying the persisted record's identity: `_key` is the
+/// key being updated, and `id` — when the record holds none (a SoliDB
+/// document loaded by `find`) — is that key too, as `Model.create` sets it.
+/// A SQL row's own `id` column is kept as stored.
+fn with_record_identity(data: &Value, key: &str) -> Value {
+    let mut pairs = match data {
+        Value::Hash(hash) => hash.borrow().clone(),
+        _ => return data.clone(),
+    };
+    pairs.insert(HashKey::String("_key".into()), Value::String(key.into()));
+    let id = HashKey::String("id".into());
+    if matches!(pairs.get(&id), None | Some(Value::Null)) {
+        pairs.insert(id, Value::String(key.into()));
+    }
+    Value::Hash(Rc::new(RefCell::new(pairs)))
+}
+
 fn is_instance_of(class: &Class, name: &str) -> bool {
     class.name == name
         || class
@@ -1133,6 +1165,22 @@ mod tests {
 
     fn empty_hash() -> Value {
         Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    }
+
+    #[test]
+    fn an_update_record_carries_its_key_and_keeps_a_stored_id() {
+        let get = |v: &Value, k: &str| lookup_field(v, k);
+        let with_key = with_record_identity(&empty_hash(), "k1");
+        assert!(matches!(get(&with_key, "_key"), Some(Value::String(s)) if &*s == "k1"));
+        assert!(matches!(get(&with_key, "id"), Some(Value::String(s)) if &*s == "k1"));
+
+        let mut row = HashPairs::default();
+        row.insert(HashKey::String("id".into()), Value::Int(7));
+        let row = Value::Hash(Rc::new(RefCell::new(row)));
+        let with_key = with_record_identity(&row, "7");
+        assert!(matches!(get(&with_key, "id"), Some(Value::Int(7))));
+        // The caller's hash is left as it was.
+        assert!(get(&row, "_key").is_none());
     }
 
     #[test]
