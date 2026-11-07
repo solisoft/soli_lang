@@ -25,6 +25,10 @@
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Errors about an unknown name suggest the close one.</strong> A typo in a variable, function, method, field, named argument or superclass now ends its message with <code class="text-cyan-400">(did you mean 'x'?)</code> when a known name is a keystroke or two away: <code class="text-cyan-400">Undefined variable 'countr' (did you mean 'counter'?) at 3:3</code>, <code class="text-cyan-400">Cannot access property 'upcse' on String (did you mean 'upcase'?)</code>. <code class="text-cyan-400">soli check</code> and the <code class="text-cyan-400">smell/undefined-local</code> lint rule suggest too. The text before the suggestion is unchanged, and the search only runs when the message is shown, so a template reading an undefined local as <code class="text-cyan-400">nil</code> costs nothing more (<a href="/docs/language/error-handling#section-did-you-mean" class="text-amber-400 hover:underline">Error handling</a>).</li>
         </ul>
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A misspelt String or Array method errors in production.</strong> Read without parentheses, <code class="text-cyan-400">&quot;s&quot;.upcse</code> or <code class="text-cyan-400">[1].lenght</code> gave a method value on the VM &mdash; always truthy and never run, so <code class="text-cyan-400">if name.emtpy?</code> was always true &mdash; while <code class="text-cyan-400">--dev</code> raised. Both now raise <code class="text-cyan-400">Cannot access property</code> with a suggestion, and <code class="text-cyan-400">[1, 2].to_s</code> read bare answers on both.</li>
+        </ul>
     </section>
 
     <section id="v2-33-0" class="mb-16 scroll-mt-24">

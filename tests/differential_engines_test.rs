@@ -6233,6 +6233,19 @@ if xs.any? { |x|
   print("multiline")
 end"##,
     ),
+    // --- card #698: an unknown method read bare on a String / Array ---
+    (
+        "unknown_bare_string_method_errors",
+        "try\n  x = \"s\".upcse\n  print(\"bound\")\ncatch e\n  print(e)\nend",
+    ),
+    (
+        "unknown_bare_array_method_errors",
+        "try\n  x = [1].lenght\n  print(\"bound\")\ncatch e\n  print(e)\nend",
+    ),
+    (
+        "known_bare_string_method_binds",
+        "f = \"a,b\".split\nprint(f(\",\"))\nprint(\"ab\".upcase)\nprint([3, 1].sort)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

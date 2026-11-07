@@ -309,6 +309,7 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     md("unshift", false, "array"),
     md("take", false, "array"),
     md("to_json", true, "string"),
+    md("to_s", true, "string"),
     md("to_string", true, "string"),
     md("uniq", true, "array"),
     md("union", false, "array"),

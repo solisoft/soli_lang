@@ -2476,22 +2476,10 @@ impl Interpreter {
             _ => {}
         }
         match name {
-            "length" | "len" | "size" | "map" | "filter" | "select" | "each"
-            | "each_with_index" | "reduce" | "fold" | "find" | "index_of" | "any?" | "all?"
-            | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank" | "concat"
-            | "flatten" | "first" | "last" | "empty?" | "includes?" | "include?" | "contains"
-            | "contains?" | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "sum"
-            | "min" | "max" | "push" | "pop" | "clear" | "get" | "dig" | "pluck" | "pick"
-            | "to_string" | "sum_by" | "group_by" | "index_by" | "count_by" | "tally" | "avg"
-            | "avg_by" | "uniq_by" | "max_by" | "min_by" | "filter_by" | "find_by" | "to_json"
-            | "join" | "is_a?" | "all" | "includes" | "order" | "delete" | "delete_at"
-            | "shift" | "unshift" | "insert" | "rotate" | "reject" | "none?" | "one?"
-            | "values_at" | "count" | "intersection" | "union" | "difference" => {
-                Ok(Value::method(ValueMethod {
-                    receiver: Box::new(obj_val),
-                    method_name: name.to_string(),
-                }))
-            }
+            _ if is_array_method_name(name) => Ok(Value::method(ValueMethod {
+                receiver: Box::new(obj_val),
+                method_name: name.to_string(),
+            })),
             _ => Err(RuntimeError::no_such_property(
                 "Array".to_string(),
                 name.to_string(),
@@ -2695,25 +2683,15 @@ impl Interpreter {
             _ => {}
         }
         match name {
-            // Core string methods
-            "length" | "len" | "size" | "to_s" | "to_string" | "to_i" | "to_int" | "to_f" | "to_float"
-            | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "strip" | "contains" | "contains?" | "starts_with"
-            | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
-            | "rpad" | "join" | "empty?"
-            // Ruby-style methods
-            | "starts_with?" | "ends_with?" | "includes?" | "include?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
-            | "count" | "gsub" | "replace_all" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
-            | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
-            | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
-            | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
-            | "truncate" | "parse_json" | "to_h" | "to_sym" | "slugify" | "html_entities" | "camelize"
-            | "casecmp" | "casecmp?" | "prepend" | "chop" | "ascii_only?" | "succ" | "next"
-            // Universal method with args
-            | "is_a?" => Ok(Value::method(ValueMethod {
+            _ if is_string_method_name(name) => Ok(Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::no_such_property("String".to_string(), name.to_string(), span)),
+            _ => Err(RuntimeError::no_such_property(
+                "String".to_string(),
+                name.to_string(),
+                span,
+            )),
         }
     }
 
@@ -3521,6 +3499,124 @@ pub fn has_constructor(class: &crate::interpreter::value::Class) -> bool {
 /// [`Class::intercepts_new`]: crate::interpreter::value::Class::intercepts_new
 pub fn intercepts_new(class: &crate::interpreter::value::Class) -> bool {
     class.intercepts_new()
+}
+
+/// Whether `name` is a built-in String method, by the tree-walker's member
+/// table or the method registry. A bare `"s".name` binds it; any other name
+/// is an unknown property — on both engines (the VM asks this too, so a typo
+/// like `"s".upcse` errors instead of binding a method that never runs).
+pub(crate) fn is_string_method_name(name: &str) -> bool {
+    matches!(
+        name,
+        // Core string methods
+        "length" | "len" | "size" | "to_s" | "to_string" | "to_i" | "to_int" | "to_f" | "to_float"
+            | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "strip" | "contains" | "contains?" | "starts_with"
+            | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
+            | "rpad" | "join" | "empty?"
+            // Ruby-style methods
+            | "starts_with?" | "ends_with?" | "includes?" | "include?" | "chomp" | "lstrip" | "rstrip" | "squeeze"
+            | "count" | "gsub" | "replace_all" | "sub" | "match" | "scan" | "tr" | "center" | "ljust"
+            | "rjust" | "ord" | "chr" | "bytes" | "chars" | "lines" | "bytesize"
+            | "capitalize" | "swapcase" | "insert" | "delete" | "delete_prefix"
+            | "delete_suffix" | "partition" | "rpartition" | "reverse" | "hex" | "oct"
+            | "truncate" | "parse_json" | "to_h" | "to_sym" | "slugify" | "html_entities" | "camelize"
+            | "casecmp" | "casecmp?" | "prepend" | "chop" | "ascii_only?" | "succ" | "next"
+            // Universal method with args
+            | "is_a?"
+    ) || is_registry_method("string", name)
+}
+
+/// Whether `name` is a built-in Array method (see [`is_string_method_name`]).
+pub(crate) fn is_array_method_name(name: &str) -> bool {
+    matches!(
+        name,
+        "set"
+            | "to_s"
+            | "length"
+            | "len"
+            | "size"
+            | "map"
+            | "filter"
+            | "select"
+            | "each"
+            | "each_with_index"
+            | "reduce"
+            | "fold"
+            | "find"
+            | "index_of"
+            | "any?"
+            | "all?"
+            | "sort"
+            | "sort_by"
+            | "reverse"
+            | "uniq"
+            | "compact"
+            | "compact_blank"
+            | "concat"
+            | "flatten"
+            | "first"
+            | "last"
+            | "empty?"
+            | "includes?"
+            | "include?"
+            | "contains"
+            | "contains?"
+            | "sample"
+            | "shuffle"
+            | "take"
+            | "drop"
+            | "slice"
+            | "zip"
+            | "sum"
+            | "min"
+            | "max"
+            | "push"
+            | "pop"
+            | "clear"
+            | "get"
+            | "dig"
+            | "pluck"
+            | "pick"
+            | "to_string"
+            | "sum_by"
+            | "group_by"
+            | "index_by"
+            | "count_by"
+            | "tally"
+            | "avg"
+            | "avg_by"
+            | "uniq_by"
+            | "max_by"
+            | "min_by"
+            | "filter_by"
+            | "find_by"
+            | "to_json"
+            | "join"
+            | "is_a?"
+            | "all"
+            | "includes"
+            | "order"
+            | "delete"
+            | "delete_at"
+            | "shift"
+            | "unshift"
+            | "insert"
+            | "rotate"
+            | "reject"
+            | "none?"
+            | "one?"
+            | "values_at"
+            | "count"
+            | "intersection"
+            | "union"
+            | "difference"
+    ) || is_registry_method("array", name)
+}
+
+fn is_registry_method(type_name: &str, name: &str) -> bool {
+    crate::interpreter::executor::calls::method_registry::known_methods(type_name)
+        .iter()
+        .any(|m| m.name == name)
 }
 
 #[cfg(test)]

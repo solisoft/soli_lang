@@ -4,7 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
+use crate::interpreter::executor::access::member::{is_array_method_name, is_string_method_name};
 use crate::interpreter::executor::Interpreter;
+use crate::interpreter::value::PrimType;
 use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
@@ -627,22 +629,40 @@ impl Vm {
             // the builtin names before the key while the fast paths did not,
             // so `row.size ||= 0` wrote the entry count over a `size` field.
             Value::Hash(hash) => Ok(Interpreter::hash_member_value(hash, name, object.clone())),
+            // Array and String methods bind as a ValueMethod — for a name
+            // either engine knows. Any other name is an unknown property, as
+            // in the tree-walker: binding it made `"s".upcse` a truthy
+            // method value that never ran (card #698).
             Value::Array(_) => {
-                // Array methods like .length, .map, .filter, etc.
-                Ok(Value::method(ValueMethod {
-                    receiver: Box::new(object.clone()),
-                    method_name: name.to_string(),
-                }))
-            }
-            Value::String(s) => {
-                // String properties
-                if name == "length" {
-                    Ok(Value::Int(s.len() as i64))
-                } else {
+                if is_array_method_name(name) || has_primitive_user_method(PrimType::Array, name) {
                     Ok(Value::method(ValueMethod {
                         receiver: Box::new(object.clone()),
                         method_name: name.to_string(),
                     }))
+                } else {
+                    Err(RuntimeError::no_such_property(
+                        "Array".to_string(),
+                        name.to_string(),
+                        span,
+                    ))
+                }
+            }
+            Value::String(s) => {
+                if name == "length" {
+                    Ok(Value::Int(s.len() as i64))
+                } else if is_string_method_name(name)
+                    || has_primitive_user_method(PrimType::String, name)
+                {
+                    Ok(Value::method(ValueMethod {
+                        receiver: Box::new(object.clone()),
+                        method_name: name.to_string(),
+                    }))
+                } else {
+                    Err(RuntimeError::no_such_property(
+                        "String".to_string(),
+                        name.to_string(),
+                        span,
+                    ))
                 }
             }
             // Primitive member access shares the tree-walker's tables:
@@ -2002,4 +2022,11 @@ mod field_write_rules_tests {
             Some(Value::Int(3))
         );
     }
+}
+
+/// Whether a user-defined method (`class_eval` on `String` / `Array`)
+/// answers `name` on this primitive type.
+fn has_primitive_user_method(prim: PrimType, name: &str) -> bool {
+    use crate::interpreter::executor::calls::user_methods::{has_user_methods, lookup_user_method};
+    has_user_methods(prim) && lookup_user_method(prim, name).is_some()
 }

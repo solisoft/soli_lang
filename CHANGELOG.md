@@ -22,6 +22,20 @@
   the suffix is unchanged, so `assert_raises` fragments keep matching. Tests:
   `error::suggest` unit tests, `tests/language/did_you_mean_spec.sl`.
 
+### Fixed
+
+- **A misspelt String or Array method read without `()` errors on the VM
+  (card #698).** `"s".upcse` and `[1].lenght` bound a method value on the VM
+  — truthy, never run, so `if name.emtpy?` was always true in production —
+  while the tree-walker raised. Both engines now check the name against one
+  shared table (`is_string_method_name` / `is_array_method_name`: the
+  tree-walker's member list plus the method registry, and user methods added
+  with `class_eval`) and raise `Cannot access property` with its suggestion.
+  `[1, 2].to_s` read bare now answers on both engines (it raised on the
+  tree-walker). Tests: `tests/differential_engines_test.rs`
+  (`unknown_bare_string_method_errors`, `unknown_bare_array_method_errors`,
+  `known_bare_string_method_binds`).
+
 ## [2.33.0] - 2026-11-07
 
 ### Added
