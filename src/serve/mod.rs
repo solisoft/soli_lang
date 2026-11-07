@@ -108,6 +108,7 @@ pub mod pow;
 pub mod prefetch;
 mod probes;
 pub mod prod_log;
+pub mod realtime;
 mod request_input;
 mod request_scope;
 mod response_cache;
@@ -1666,6 +1667,10 @@ fn run_hyper_server_worker_pool(
         crate::live::bus::start(&runtime_handle);
     }
 
+    // Cross-process `broadcast` / `ws_broadcast*` / `sse_broadcast`: subscribe
+    // to the realtime bus when `SOLI_REALTIME_BUS` names one.
+    crate::serve::realtime::start(&runtime_handle);
+
     // The pinned queues (see `PINNED_LV_TX`): one per realtime worker, in
     // realtime-worker order. With no split every worker is a realtime one.
     let num_pinned = if split_realtime {
@@ -3200,8 +3205,15 @@ fn handle_websocket_event(
 
     let event_value = Value::Hash(Rc::new(RefCell::new(event_map)));
 
-    // Call the handler function
-    match interpreter.call_value(handler, vec![event_value], Span::default()) {
+    // `ws_join` / `ws_leave` act on the connection whose event this is. The
+    // guard clears it again on every exit path, errors included.
+    let call_result = {
+        let _connection_guard =
+            crate::serve::websocket::CurrentConnectionGuard::enter(connection_id);
+        interpreter.call_value(handler, vec![event_value], Span::default())
+    };
+
+    match call_result {
         Ok(result) => {
             // Parse the handler result into actions
             let action = WebSocketHandlerAction::from_value(&result);
@@ -3229,13 +3241,10 @@ fn handle_websocket_event(
                 });
             }
 
-            // Process broadcast action
+            // Process broadcast action: every socket, here and — with a
+            // realtime bus — on the other processes.
             if let Some(ref msg) = action.broadcast {
-                let registry_clone = registry.clone();
-                let msg_clone = msg.clone();
-                runtime_handle.spawn(async move {
-                    registry_clone.broadcast_all(&msg_clone).await;
-                });
+                crate::serve::realtime::fanout(crate::serve::realtime::Target::WsAll, msg, false);
             }
 
             // Process send action. The reply goes straight into this socket's
@@ -3270,10 +3279,14 @@ fn handle_websocket_event(
             // this only fired when `join` was present in the same return, so a
             // bare `{ "broadcast_room": ... }` (e.g. a move frame after the
             // initial join) was silently dropped.
+            //
+            // The room is resolved here, from this connection's own rooms;
+            // the other processes receive it as a named channel.
             if let Some(ref msg) = action.broadcast_room {
                 let registry_clone = registry.clone();
                 let msg_clone = msg.clone();
                 let join_channel = action.join.clone();
+                let tenant = crate::serve::tenant::current_id();
                 runtime_handle.spawn(async move {
                     let target = match join_channel {
                         Some(channel) => Some(channel),
@@ -3283,6 +3296,11 @@ fn handle_websocket_event(
                         registry_clone
                             .broadcast_to_channel(&channel, &msg_clone)
                             .await;
+                        crate::serve::realtime::publish_for(
+                            tenant,
+                            crate::serve::realtime::Target::WsChannel { channel },
+                            &msg_clone,
+                        );
                     }
                 });
             }
@@ -3292,14 +3310,13 @@ fn handle_websocket_event(
             // one socket path can address a room joined on another (e.g. a
             // per-user channel on the shared app socket).
             if let Some((ref channel, ref msg)) = action.broadcast_channel {
-                let registry_clone = registry.clone();
-                let channel_clone = channel.clone();
-                let msg_clone = msg.clone();
-                runtime_handle.spawn(async move {
-                    registry_clone
-                        .broadcast_to_channel(&channel_clone, &msg_clone)
-                        .await;
-                });
+                crate::serve::realtime::fanout(
+                    crate::serve::realtime::Target::WsChannel {
+                        channel: channel.clone(),
+                    },
+                    msg,
+                    false,
+                );
             }
 
             // Process close action

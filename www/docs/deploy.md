@@ -488,6 +488,27 @@ soli build tool.sl --thin
 - Native kernels compile when it starts, as usual. It starts slightly faster than `soli tool.sl`,
   which parses and type-checks first.
 
+## More than one instance
+
+Several `soli serve` processes can share one database behind a load balancer. What each process
+keeps in memory decides what else to set:
+
+- **Realtime.** WebSocket rooms and SSE subscribers live in the process that accepted the
+  connection. Set `SOLI_REALTIME_BUS=solidb` on every instance (and on `soli worker`) so
+  `broadcast`, `Model.broadcast`, `ws_broadcast*`, `sse_broadcast` and the handler broadcast
+  actions reach every instance — see
+  [Running more than one instance](websockets.md#running-more-than-one-instance). Presence
+  (`track`, `ws_list_presence`) and connection counts stay per instance. A socket stays on the
+  instance it connected to for its whole life, so WebSockets need no sticky sessions.
+- **Sessions.** The default `in_memory` session driver is per process: pick `cookie`, `solidb`
+  or `solikv` (`SOLI_SESSION_DRIVER`), or make the balancer sticky.
+- **LiveView.** `live_update` already crosses processes through the `_live_bus` collection on
+  SoliDB. A LiveView file upload is stashed by the process that received `POST /live/upload`,
+  so that request must reach the instance holding the view's socket: keep LiveView pages on a
+  sticky balancer.
+- **Jobs.** Every instance claims from the same `_jobs` queue; set `SOLI_JOB_WORKERS=0` on the
+  web instances to run jobs only in `soli worker`.
+
 ## See also
 
 - [Cloudflare Workers](edge.md) — `soli edge build`: the app inside a Worker, no server.

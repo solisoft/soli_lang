@@ -4,6 +4,35 @@
 
 ### Added
 
+- **Broadcasts reach every instance through an opt-in realtime bus (card
+  #695, phase 1).** `SOLI_REALTIME_BUS=solidb` makes `broadcast`,
+  `Model.broadcast`, `ws_broadcast`, `ws_broadcast_room`, `sse_broadcast` and
+  the WebSocket handler `broadcast` / `broadcast_room` / `broadcast_channel`
+  actions reach the sockets and SSE streams of every `soli serve` process, and
+  lets a job in the standalone `soli worker` reach them too. Each call
+  delivers locally first, then queues an envelope (`{v, origin, kind,
+  channel, event?, message, at}`) for a publisher thread that writes it to
+  the engine-owned `_rt_bus` collection — the caller never waits on the
+  database, and envelopes from one process keep their order. Every server
+  subscribes to the collection's changefeed, drops its own envelopes and
+  delivers the others locally only, never re-publishing. The default,
+  `local`, publishes nothing (deliberately opt-in, unlike `_live_bus`: a bus
+  makes every broadcast a database write); `solikv` and unknown values are
+  reported once and treated as `local`, as is `solidb` on a SQL app.
+  `broadcast(channel, payload, {"local": true})` (also `Model.broadcast`,
+  `ws_broadcast`, `ws_broadcast_room`) keeps one message home; an unknown
+  option raises. Fire and forget, like `_live_bus`; return values and
+  `ws_count` / `ws_clients*` / `sse_subscribers` stay local; presence is
+  still per process; messages over 256 KB are not published;
+  `HTTP.stream_to` topics stay local. New `realtime_bus()` builtin:
+  `{backend, connected, published, received, dropped, last_rx_at}`. The
+  changefeed subscription loop moved out of `live/bus.rs` into
+  `live/changefeed.rs`, shared by both buses. New: `src/serve/realtime/`.
+  Tests: `serve::realtime` and `live::changefeed` unit tests,
+  `tests/server_e2e_test.rs`
+  (`a_realtime_bus_carries_broadcasts_between_two_servers`, run when
+  `SOLIDB_DRIVER_TEST_HOST` names a SoliDB).
+
 - **Errors about an unknown name suggest the close one (card #694).** An
   undefined variable or function, an unknown method or field on an instance,
   a class or a built-in type, an unknown `super` member, a named argument no
@@ -57,6 +86,26 @@
   render, source_map}` unit tests, `tests/error_frames_test.rs`.
 
 ### Fixed
+
+- **The WebSocket helpers do what the docs said (card #695, phase 0).**
+  `ws_join` / `ws_leave` were no-ops: they now act on the connection whose
+  handler is running (set for the length of the handler call, cleared on
+  every exit path) and return once the join has landed; anywhere else they
+  raise. `ws_count` returned `0` and `ws_clients` / `ws_clients_in` an empty
+  hash: they now return this process's connection count and the documented
+  `Array<String>` of connection ids. `ws_broadcast`, `ws_broadcast_room`,
+  `ws_send`, `ws_close`, `ws_list_presence`, `ws_presence_count` and
+  `ws_get_presence` panicked outside a running server (a script, a spec,
+  `soli worker`): the senders now skip local delivery and the readers answer
+  `[]`, `0` or `nil`. Tests: `tests/builtins/websocket_spec.sl`,
+  `tests/server_e2e_test.rs`
+  (`websocket_rooms_join_count_and_receive_broadcasts`: a handler on the
+  tree-walker joins, an HTTP action on the VM counts and broadcasts).
+- **`live_update` publishes into the application's base database.** Inside a
+  request that called `switch_tenant` with a per-tenant default connection,
+  the `_live_bus` insert went to the tenant's database, which no subscriber
+  watches. Both buses now publish and subscribe under
+  `db_config::with_base_database` with db tenancy cleared.
 
 - **A misspelt String or Array method read without `()` errors on the VM
   (card #698).** `"s".upcse` and `[1].lenght` bound a method value on the VM

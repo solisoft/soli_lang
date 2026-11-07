@@ -2277,3 +2277,303 @@ end
         assert!(body.starts_with("down|abc|[ok]"), "{args:?}: {body}");
     }
 }
+
+/// The single-node WebSocket API answers for real (#695): `ws_join` /
+/// `ws_leave` act on the connection whose handler runs, `ws_count`,
+/// `ws_clients` and `ws_clients_in` count it, and a `broadcast` from an HTTP
+/// action — on the VM — reaches the sockets a handler — on the tree-walker —
+/// joined to the channel.
+#[test]
+fn websocket_rooms_join_count_and_receive_broadcasts() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let server = serve_app_in(
+        app.path(),
+        &[
+            (
+                "config/routes.sl",
+                "get(\"/ping\", \"home#ping\")
+get(\"/stats\", \"home#stats\")
+get(\"/announce\", \"home#announce\")
+router_websocket(\"/ws/room\", \"room#handle\")
+",
+            ),
+            (
+                "app/controllers/home_controller.sl",
+                "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /stats
+  def stats(req)
+    backend = realtime_bus()[\"backend\"]
+    joined = ws_clients_in(\"lobby\").length
+    refused = \"no\"
+    try
+      ws_join(\"lobby\")
+    catch error
+      refused = \"yes\"
+    end
+    {\"status\": 200, \"body\": \"#{ws_count()}|#{joined}|#{ws_clients().length}|#{backend}|#{refused}\"}
+  end
+
+  # GET /announce
+  def announce(req)
+    delivered = broadcast(\"lobby\", {\"text\": params[\"text\"]})
+    {\"status\": 200, \"body\": \"sse #{delivered}\"}
+  end
+end
+",
+            ),
+            (
+                "app/controllers/room_controller.sl",
+                "def handle(event)
+  if event[\"type\"] == \"message\"
+    if event[\"message\"] == \"join\"
+      ws_join(\"lobby\")
+      members = ws_clients_in(\"lobby\").length
+      return {\"send\": \"joined #{members}\"}
+    end
+    if event[\"message\"] == \"leave\"
+      ws_leave(\"lobby\")
+      members = ws_clients_in(\"lobby\").length
+      return {\"send\": \"left #{members}\"}
+    end
+  end
+  {}
+end
+",
+            ),
+        ],
+        &[("SOLI_FAIL_ON_VM_DEMOTION", "1")],
+    );
+
+    let connect = || {
+        let url = format!("ws://127.0.0.1:{}/ws/room", server.port);
+        let (socket, _) = tungstenite::connect(&url).expect("WebSocket handshake");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_ref() {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+        }
+        socket
+    };
+    let ask = |socket: &mut tungstenite::WebSocket<_>, text: &str| -> String {
+        socket
+            .send(tungstenite::Message::Text(text.into()))
+            .expect("send frame");
+        socket
+            .read()
+            .expect("a reply")
+            .to_text()
+            .unwrap()
+            .to_string()
+    };
+    let get = |path: &str| {
+        body_string(
+            ureq::get(&server.url(path))
+                .timeout(Duration::from_secs(10))
+                .call()
+                .expect("GET"),
+        )
+    };
+
+    let mut alice = connect();
+    let mut bob = connect();
+    assert_eq!(ask(&mut alice, "join"), "joined 1");
+    assert_eq!(ask(&mut bob, "join"), "joined 2");
+    assert_eq!(get("/stats"), "2|2|2|local|yes");
+
+    assert_eq!(get("/announce?text=hi"), "sse 0");
+    for socket in [&mut alice, &mut bob] {
+        let frame = socket.read().expect("the broadcast");
+        assert_eq!(frame.to_text().unwrap(), r#"{"text":"hi"}"#);
+    }
+
+    assert_eq!(ask(&mut alice, "leave"), "left 1");
+    assert_eq!(get("/stats"), "2|1|2|local|yes");
+}
+
+/// A SoliDB for the realtime-bus test: `SOLIDB_DRIVER_TEST_HOST=127.0.0.1:16745`
+/// (admin/admin unless `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` say otherwise).
+/// Skipped without one, and failed instead under `SOLI_REQUIRE_DB=1`, which CI
+/// sets.
+fn solidb_test_host() -> Option<String> {
+    match std::env::var("SOLIDB_DRIVER_TEST_HOST") {
+        Ok(host) if !host.is_empty() => Some(host),
+        _ => {
+            if std::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
+                panic!("SOLI_REQUIRE_DB=1 but SOLIDB_DRIVER_TEST_HOST is unset");
+            }
+            eprintln!("skip: SOLIDB_DRIVER_TEST_HOST unset (no SoliDB for the realtime bus)");
+            None
+        }
+    }
+}
+
+/// With `SOLI_REALTIME_BUS=solidb`, what one `soli serve` process broadcasts —
+/// `broadcast`, `ws_broadcast_room`, a handler's `broadcast_room` — reaches a
+/// socket held by another process, and `{"local": true}` keeps a message home.
+#[test]
+fn a_realtime_bus_carries_broadcasts_between_two_servers() {
+    use base64::Engine as _;
+    let Some(host) = solidb_test_host() else {
+        return;
+    };
+    let user = std::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into());
+    let password = std::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into());
+    let auth = format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("{user}:{password}"))
+    );
+    let database = format!("soli_rt_bus_test_{}", std::process::id());
+    let _ = ureq::post(&format!("http://{host}/_api/database"))
+        .set("Authorization", &auth)
+        .send_json(serde_json::json!({ "name": database }));
+
+    let files: &[(&str, &str)] = &[
+        (
+            "config/routes.sl",
+            "get(\"/ping\", \"home#ping\")
+get(\"/bus\", \"home#bus\")
+get(\"/announce\", \"home#announce\")
+get(\"/room\", \"home#room\")
+router_websocket(\"/ws/room\", \"room#handle\")
+",
+        ),
+        (
+            "app/controllers/home_controller.sl",
+            "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /bus
+  def bus(req)
+    bus = realtime_bus()
+    connected = bus[\"connected\"]
+    published = bus[\"published\"]
+    received = bus[\"received\"]
+    {\"status\": 200, \"body\": \"#{connected}|#{published}|#{received}\"}
+  end
+
+  # GET /announce
+  def announce(req)
+    broadcast(\"lobby\", {\"text\": params[\"text\"]}, {\"local\": params[\"local\"] == \"1\"})
+    {\"status\": 200, \"body\": \"ok\"}
+  end
+
+  # GET /room
+  def room(req)
+    ws_broadcast_room(\"lobby\", params[\"text\"])
+    {\"status\": 200, \"body\": \"ok\"}
+  end
+end
+",
+        ),
+        (
+            "app/controllers/room_controller.sl",
+            "def handle(event)
+  if event[\"type\"] == \"message\"
+    if event[\"message\"] == \"join\"
+      ws_join(\"lobby\")
+      return {\"send\": \"joined\"}
+    end
+    return {\"broadcast_room\": event[\"message\"] + \"!\"} if event[\"message\"] == \"shout\"
+  end
+  {}
+end
+",
+        ),
+    ];
+    let env = [
+        ("SOLIDB_HOST", format!("http://{host}")),
+        ("SOLIDB_DATABASE", database.clone()),
+        ("SOLIDB_USERNAME", user.clone()),
+        ("SOLIDB_PASSWORD", password.clone()),
+        ("SOLI_REALTIME_BUS", "solidb".to_string()),
+        ("SOLI_FAIL_ON_VM_DEMOTION", "1".to_string()),
+    ];
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let app_a = tempfile::tempdir().expect("temp app dir");
+    let app_b = tempfile::tempdir().expect("temp app dir");
+    let server_a = serve_app_in(app_a.path(), files, &env);
+    let server_b = serve_app_in(app_b.path(), files, &env);
+
+    let get = |server: &ServerProcess, path: &str| {
+        body_string(
+            ureq::get(&server.url(path))
+                .timeout(Duration::from_secs(10))
+                .call()
+                .expect("GET"),
+        )
+    };
+    let connect = |server: &ServerProcess| {
+        let url = format!("ws://127.0.0.1:{}/ws/room", server.port);
+        let (mut socket, _) = tungstenite::connect(&url).expect("WebSocket handshake");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_ref() {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+        }
+        socket
+            .send(tungstenite::Message::Text("join".into()))
+            .expect("send join");
+        assert_eq!(
+            socket.read().expect("join reply").to_text().unwrap(),
+            "joined"
+        );
+        socket
+    };
+
+    // Both subscribed before anything is published: the changefeed carries
+    // only what is written after a subscription.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    for server in [&server_a, &server_b] {
+        while !get(server, "/bus").starts_with("true|") {
+            assert!(
+                Instant::now() < deadline,
+                "the bus never connected; stderr: {}",
+                std::fs::read_to_string(app_b.path().join("stderr.log")).unwrap_or_default()
+            );
+            thread::sleep(Duration::from_millis(200));
+        }
+    }
+
+    let mut on_b = connect(&server_b);
+    get(&server_a, "/announce?text=hi");
+    let frame = on_b.read().expect("the broadcast from A");
+    assert_eq!(frame.to_text().unwrap(), r#"{"text":"hi"}"#);
+
+    get(&server_a, "/announce?text=quiet&local=1");
+    get(&server_a, "/room?text=two");
+    let frame = on_b.read().expect("ws_broadcast_room from A");
+    assert_eq!(
+        frame.to_text().unwrap(),
+        "two",
+        "a {{local: true}} broadcast stays on A"
+    );
+
+    let mut on_a = connect(&server_a);
+    on_a.send(tungstenite::Message::Text("shout".into()))
+        .expect("send shout");
+    assert_eq!(
+        on_a.read().expect("own room echo").to_text().unwrap(),
+        "shout!"
+    );
+    assert_eq!(
+        on_b.read().expect("A's room action").to_text().unwrap(),
+        "shout!"
+    );
+
+    let counts = get(&server_b, "/bus");
+    let received: i64 = counts.rsplit('|').next().unwrap().parse().unwrap();
+    assert!(received >= 3, "B received {counts}");
+
+    drop((on_a, on_b, server_a, server_b));
+    let _ = ureq::delete(&format!("http://{host}/_api/database/{database}"))
+        .set("Authorization", &auth)
+        .call();
+}

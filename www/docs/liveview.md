@@ -557,7 +557,12 @@ component subscribes. Without SoliDB, or when the changefeed is down, delivery i
 local only (`published` is `false`). It is **fire and forget**: SoliDB's
 changefeed can drop an event for a lagging subscriber, so send state the next
 update will restate, and keep anything that must not be missed in the database
-where the view can re-read it. Rows are pruned after two minutes.
+where the view can re-read it. Rows are pruned after two minutes. The bus lives
+in the application's base database (`SOLIDB_DATABASE`), so a `live_update` made
+inside a request that called `switch_tenant` still reaches the other processes.
+Its sibling `_rt_bus` carries `broadcast` and the WebSocket/SSE broadcasts when
+`SOLI_REALTIME_BUS=solidb` — see
+[Running more than one instance](websockets.md#running-more-than-one-instance).
 
 ## File uploads
 

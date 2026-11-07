@@ -20,6 +20,29 @@ fn override_database() -> Option<String> {
     DB_OVERRIDE.with(|o| o.borrow().clone())
 }
 
+/// Run `f` against the application's own database — this thread's override,
+/// else `SOLIDB_DATABASE` — even where the active connection holds one
+/// database per tenant and would resolve to a tenant's (or, with no tenant
+/// chosen, to the `…{tenant}…` template itself). The engine-owned buses
+/// (`_live_bus`, `_rt_bus`) live there, so a publish and every subscriber
+/// agree on one database.
+pub fn with_base_database<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<String>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            DB_OVERRIDE.with(|o| *o.borrow_mut() = previous);
+        }
+    }
+    let previous = override_database();
+    let base = previous
+        .clone()
+        .unwrap_or_else(|| with_db_config(|cfg| cfg.database.clone()));
+    let _restore = Restore(previous);
+    DB_OVERRIDE.with(|o| *o.borrow_mut() = Some(base));
+    f()
+}
+
 /// Cached database configuration to avoid repeated env::var() lookups.
 pub struct DbConfig {
     /// Scheme to use when building DB URLs. SEC-027: preserved from

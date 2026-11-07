@@ -317,6 +317,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     // Cache, pub/sub and CORS
     "cache",
     "broadcast",
+    "realtime_bus",
     "cors",
     // Request context and CSRF
     "csrf_token",

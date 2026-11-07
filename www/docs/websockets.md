@@ -223,26 +223,107 @@ the WebSocket runtime without being a handler itself.
 
 | Call | Answers | What it does |
 |---|---|---|
-| `ws_send(connection_id, message)` | `null` | one specific connection |
-| `ws_broadcast(message)` | `null` | every connected client |
-| `ws_broadcast_room(channel, message)` | `null` | everyone subscribed to `channel` |
-| `broadcast(channel, payload)` | SSE subscriber count | **both** the WS channel and the SSE topic of that name |
-| `ws_close(connection_id, reason)` | `null` | closes with a reason |
-| `ws_join(channel)` / `ws_leave(channel)` | `null` | subscribe / unsubscribe the current connection |
-| `ws_clients()` | `Array<String>` | every connected client id |
-| `ws_clients_in(channel)` | `Array<String>` | ids subscribed to `channel` |
-| `ws_count()` | `Int` | total active connections |
+| `ws_send(connection_id, message)` | `nil` | one specific connection on this process |
+| `ws_broadcast(message, opts?)` | `nil` | every connected client |
+| `ws_broadcast_room(channel, message, opts?)` | `nil` | everyone subscribed to `channel` |
+| `broadcast(channel, payload, opts?)` | SSE subscriber count | **both** the WS channel and the SSE topic of that name |
+| `ws_close(connection_id, reason)` | `nil` | closes a connection on this process, with a reason |
+| `ws_join(channel)` / `ws_leave(channel)` | `nil` | subscribe / unsubscribe the connection whose handler is running |
+| `ws_clients()` | `Array<String>` | the id of every connection on this process |
+| `ws_clients_in(channel)` | `Array<String>` | ids on this process subscribed to `channel` |
+| `ws_count()` | `Int` | active connections on this process |
 | `ws_list_presence(channel)` | `Array<Hash>` | every user in the channel, with metadata |
 | `ws_presence_count(channel)` | `Int` | unique **users**, not connections |
-| `ws_get_presence(channel, user_id)` | `Hash \| null` | one user's presence |
+| `ws_get_presence(channel, user_id)` | `Hash \| nil` | one user's presence |
+| `realtime_bus()` | `Hash` | which bus carries broadcasts to other processes, and how it is doing |
+
+`ws_join` and `ws_leave` act on the connection whose event the handler is
+handling, and return once the join has landed — a `ws_clients_in` or a
+broadcast on the next line already sees it. Called anywhere else (an HTTP
+action, a job) they raise; return `{"join": channel}` from the handler instead.
+
+```soli
+def handle(event)
+  if event["message"] == "join"
+    ws_join("room:lobby")
+    return {"send": "#{ws_clients_in("room:lobby").length} here"}
+  end
+  {}
+end
+```
+
+Every helper works outside `soli serve` too — in a script, a spec, the
+standalone `soli worker`. There are no local sockets there: the senders skip
+the local delivery (and still publish to a [realtime bus](#running-more-than-one-instance)
+when one is configured), the readers answer `[]`, `0` or `nil`.
 
 `broadcast` is the one to reach for when a page might be on either transport:
-non-string payloads serialize to JSON, and `Model.broadcast(payload)` is the
-shortcut that publishes to a model's own collection channel.
+non-string payloads serialize to JSON, and `Model.broadcast(payload, opts?)` is
+the shortcut that publishes to a model's own collection channel.
 
 ```soli
 broadcast("room:lobby", { "event": "joined", "user": name })
 ```
+
+## Running more than one instance
+
+By default every room lives in one process: a `broadcast` reaches the sockets
+and SSE streams of the process that made the call, and nothing else. Run two
+`soli serve` instances behind a load balancer — or broadcast from a job in the
+standalone `soli worker` — and the other process's clients hear nothing.
+
+`SOLI_REALTIME_BUS` connects them:
+
+| Value | What it does |
+|---|---|
+| `local` (default) | no bus; everything stays in the process |
+| `solidb` | each broadcast is also written to the engine-owned `_rt_bus` collection, and every `soli serve` process delivers what the others wrote, read off its changefeed |
+
+```bash
+# .env, on every instance and on the job worker
+SOLI_REALTIME_BUS=solidb
+```
+
+With a bus, `broadcast`, `Model.broadcast`, `ws_broadcast`,
+`ws_broadcast_room`, `sse_broadcast` and the handler `broadcast`,
+`broadcast_room` and `broadcast_channel` actions reach every instance. Each call
+delivers to its own process first, then hands the message to a background
+publisher and returns — the caller never waits on the database. A process
+ignores its own messages, and never re-publishes what it received.
+
+- **Opt in per call to stay home:** `broadcast(channel, payload, {"local": true})`
+  (also on `Model.broadcast`, `ws_broadcast`, `ws_broadcast_room`).
+- **Fire and forget.** The changefeed drops events for a lagging subscriber and
+  does not cross SoliDB cluster nodes, so a message can be lost — the contract
+  of a Phoenix PubSub broadcast. Keep anything that must not be missed in the
+  database, and let the client re-read it.
+- **Return values and counts are local.** `broadcast` returns the SSE
+  subscribers *of this process*; `ws_count`, `ws_clients`, `ws_clients_in`,
+  `ws_send` and `ws_close` see only this process's connections.
+- **Presence is still per process**: `track` / `ws_list_presence` see the
+  connections of the instance they run on.
+- **Every broadcast is a database write.** For a very chatty room, keep the
+  traffic local with `{"local": true}` or pin its clients to one instance.
+- The bus lives in the application's **base database** (`SOLIDB_DATABASE`),
+  even inside a request that called `switch_tenant`.
+- Messages over 256 KB are delivered locally but not published.
+- `soli worker` publishes but does not subscribe. A script (`soli app.sl`)
+  publishes from a background thread: one that exits right after its
+  `broadcast` can exit before the message is written.
+
+`realtime_bus()` reports the state of the bus:
+
+```soli
+realtime_bus()
+# {"backend": "solidb", "connected": true, "published": 42, "received": 17,
+#  "dropped": 0, "last_rx_at": 1793366400}
+```
+
+`connected` is `true` while this process's subscription is established;
+`dropped` counts messages that could not be published (database down, queue
+full, too large). Any other `SOLI_REALTIME_BUS` value is reported once at boot
+and treated as `local`; a `solidb` bus on an app whose database is SQL does the
+same.
 
 ## Performance
 
@@ -267,5 +348,6 @@ on the hot path.
 ## See also
 
 - [`streaming.md`](streaming.md) — SSE, chunked bodies, and `broadcast` across both transports
+- [`deploy.md`](deploy.md) — running several instances
 - [`liveview.md`](liveview.md) — reactive UI over the same machinery
 - Rendered page: `/docs/core-concepts/websockets`

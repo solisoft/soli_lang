@@ -140,6 +140,17 @@ channel (`"posts"`), which suits an `after_save` callback so that every write pu
 event to subscribed clients. This is a general pub/sub primitive; for a LiveView that
 re-renders itself on writes, prefer [reactive live queries](liveview.md).
 
+### Across instances
+
+Subscribers live in the process that accepted them. With more than one `soli serve` instance,
+set `SOLI_REALTIME_BUS=solidb` and `broadcast`, `Model.broadcast` and `sse_broadcast` reach the
+subscribers of every instance (and a job in `soli worker` reaches them too) — see
+[Running more than one instance](websockets.md#running-more-than-one-instance). The count they
+return stays this process's, and so does `sse_subscribers`. `broadcast(channel, payload,
+{"local": true})` keeps one message home. `HTTP.stream_to` topics are not carried by the bus:
+a stream belongs to the request that started it, and its token rate would make every delta a
+database write.
+
 ## When to use what
 
 | | Use it for |

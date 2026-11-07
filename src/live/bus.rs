@@ -20,13 +20,11 @@
 //! missed belongs in the database, with the view re-reading it.
 
 use std::sync::OnceLock;
-use std::time::Duration;
 
-use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value as Json};
 
-use crate::interpreter::builtins::model::db_config;
-use crate::serve::tenant::{self, TenantValue};
+use super::changefeed;
+use crate::serve::tenant::TenantValue;
 
 /// The bus collection. Underscore-prefixed like `_jobs`: engine-owned.
 pub const BUS_COLLECTION: &str = "_live_bus";
@@ -38,20 +36,12 @@ pub const UPDATE_EVENT: &str = "live_update";
 /// the changefeed event itself, so the row only matters to a debugger.
 const PRUNE_AFTER_SECS: i64 = 120;
 
-const BACKOFF_START: Duration = Duration::from_millis(200);
-const BACKOFF_MAX: Duration = Duration::from_secs(30);
-const TOKEN_REFRESH_MARGIN_SECS: u64 = 300;
-
 /// Per application: each one subscribes to its own database's bus.
 static CONNECTED: TenantValue<bool> = TenantValue::new(|| false);
 
 /// True while this application's changefeed subscription is established.
 pub fn is_connected() -> bool {
     CONNECTED.read(|connected| *connected)
-}
-
-fn set_connected(value: bool) -> bool {
-    CONNECTED.write(|connected| std::mem::replace(connected, value))
 }
 
 /// Secret carried by every server-originated `live_update` event. A client can
@@ -147,7 +137,6 @@ fn publish(target: &Target, assigns: &Json) -> Result<bool, String> {
     }
     use crate::interpreter::builtins::model::crud;
 
-    ensure_collection_once()?;
     let document = json!({
         "origin": crate::jobs::worker_identity(),
         "component": target.component,
@@ -157,8 +146,12 @@ fn publish(target: &Target, assigns: &Json) -> Result<bool, String> {
         "assigns": assigns,
         "at": crate::jobs::unix_now(),
     });
-    crud::exec_insert(BUS_COLLECTION, None, document)?;
-    Ok(true)
+    // Into the base database, where every subscriber listens, even from a
+    // request that switched to a tenant's own database.
+    changefeed::base_database(|| {
+        ensure_collection_once()?;
+        crud::exec_insert(BUS_COLLECTION, None, document).map(|_| true)
+    })
 }
 
 /// Create the bus collection in the current application's database, once per
@@ -173,24 +166,11 @@ fn ensure_collection_once() -> Result<(), String> {
     Ok(())
 }
 
-/// `spawn_blocking` for this task's application. The blocking pool does not
-/// carry the task's tenant binding, and the database calls resolve their
-/// configuration through it.
-async fn blocking_for_tenant<R: Send + 'static>(
-    f: impl FnOnce() -> R + Send + 'static,
-) -> Result<R, tokio::task::JoinError> {
-    let id = tenant::current_id();
-    tokio::task::spawn_blocking(move || tenant::scoped(id, f)).await
-}
-
 /// Decode one changefeed frame into a `(Target, assigns)` to deliver, or `None`
 /// for control frames, our own echoes, deletes and malformed rows.
 pub fn parse_frame(text: &str) -> Option<(Target, Json)> {
-    let frame: Json = serde_json::from_str(text).ok()?;
-    if frame.get("operation")?.as_str()? != "insert" {
-        return None;
-    }
-    let data = frame.get("data")?;
+    let document = changefeed::inserted_document(text)?;
+    let data = &document;
     if data.get("origin")?.as_str()? == crate::jobs::worker_identity() {
         return None;
     }
@@ -222,135 +202,21 @@ pub fn start(runtime_handle: &tokio::runtime::Handle) {
     }
     let _guard = runtime_handle.enter();
     crate::serve::tenant::spawn(async move {
-        run().await;
-    });
-}
-
-async fn run() {
-    let mut backoff = BACKOFF_START;
-    let mut announced = false;
-    // Give the database a moment and make sure the collection exists: the
-    // changefeed refuses a subscription to one that does not.
-    loop {
-        let ready = blocking_for_tenant(ensure_collection_once).await;
-        if matches!(ready, Ok(Ok(()))) {
-            break;
-        }
-        tokio::time::sleep(backoff).await;
-        backoff = (backoff * 2).min(BACKOFF_MAX);
-    }
-    backoff = BACKOFF_START;
-
-    loop {
-        match subscribe_and_pump().await {
-            Ok(()) => {
-                set_connected(false);
-                backoff = BACKOFF_START;
-                announced = false;
-            }
-            Err(e) => {
-                let had_socket = set_connected(false);
-                if had_socket || !announced {
-                    eprintln!("[live] bus unavailable: {e} (cross-process live_update paused)");
-                    announced = true;
+        changefeed::run(changefeed::Feed {
+            collection: BUS_COLLECTION,
+            log_prefix: "[live]",
+            paused: "cross-process live_update paused",
+            connected: &CONNECTED,
+            ensure: ensure_collection_once,
+            on_frame: |text| {
+                if let Some((target, assigns)) = parse_frame(text) {
+                    deliver_local(&target, &assigns);
                 }
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(BACKOFF_MAX);
-            }
-        }
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-async fn subscribe_and_pump() -> Result<(), String> {
-    // The subscriber only runs beside the native server; the edge build has
-    // no long-lived socket to hold.
-    Err(crate::platform::unsupported_on_edge(
-        "the SoliDB live subscription",
-    ))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-async fn subscribe_and_pump() -> Result<(), String> {
-    let Some(token) = db_config::get_jwt_token() else {
-        return Err("no JWT available for the changefeed".to_string());
-    };
-    let url = format!("{}?token={}", db_config::get_changefeed_url(), token);
-    let (mut socket, _response) = tokio_tungstenite::connect_async(&url)
-        .await
-        .map_err(|e| format!("connect failed: {e}"))?;
-
-    let subscribe = json!({
-        "type": "subscribe",
-        "database": db_config::get_database_name(),
-        "collection": BUS_COLLECTION,
+            },
+            prune_after_secs: PRUNE_AFTER_SECS,
+        })
+        .await;
     });
-    socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(
-            subscribe.to_string(),
-        ))
-        .await
-        .map_err(|e| format!("subscribe failed: {e}"))?;
-
-    let deadline = token_deadline(&token);
-    tokio::pin!(deadline);
-    let mut prune = tokio::time::interval(Duration::from_secs(60));
-    prune.tick().await;
-
-    loop {
-        tokio::select! {
-            _ = &mut deadline => {
-                let _ = socket.close(None).await;
-                return Ok(());
-            }
-            _ = prune.tick() => {
-                let _ = blocking_for_tenant(prune_old_rows).await;
-            }
-            frame = socket.next() => {
-                let Some(frame) = frame else {
-                    return Err("changefeed closed by server".to_string());
-                };
-                match frame {
-                    Ok(tokio_tungstenite::tungstenite::Message::Text(text)) => {
-                        if let Ok(value) = serde_json::from_str::<Json>(&text) {
-                            if value.get("type").and_then(Json::as_str) == Some("subscribed") {
-                                set_connected(true);
-                            }
-                            if let Some(error) = value.get("error").and_then(Json::as_str) {
-                                return Err(format!("subscription refused: {error}"));
-                            }
-                        }
-                        if let Some((target, assigns)) = parse_frame(&text) {
-                            deliver_local(&target, &assigns);
-                        }
-                    }
-                    Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => {
-                        return Err("changefeed closed by server".to_string());
-                    }
-                    Ok(_) => {}
-                    Err(e) => return Err(format!("changefeed read failed: {e}")),
-                }
-            }
-        }
-    }
-}
-
-async fn token_deadline(token: &str) {
-    let expires_at = db_config::token_expires_at(token);
-    let now = crate::jobs::unix_now().max(0) as u64;
-    let remaining = expires_at
-        .saturating_sub(now)
-        .saturating_sub(TOKEN_REFRESH_MARGIN_SECS);
-    let secs = if expires_at == 0 { 3_600 } else { remaining };
-    tokio::time::sleep(Duration::from_secs(secs.max(60))).await;
-}
-
-/// Drop rows older than [`PRUNE_AFTER_SECS`]. Best effort.
-fn prune_old_rows() {
-    let cutoff = crate::jobs::unix_now() - PRUNE_AFTER_SECS;
-    let query =
-        format!("FOR d IN {BUS_COLLECTION} FILTER d.at < {cutoff} REMOVE d IN {BUS_COLLECTION}");
-    let _ = crate::interpreter::builtins::model::crud::exec_query(BUS_COLLECTION, query);
 }
 
 #[cfg(test)]

@@ -179,12 +179,14 @@ impl TypeEnvironment {
             },
         );
 
-        // broadcast(channel, payload) -> Int — pub/sub fan-out to the WS channel
-        // and SSE topic of the same name; returns the SSE subscriber count.
+        // broadcast(channel, payload, opts?) -> Int — pub/sub fan-out to the WS
+        // channel and SSE topic of the same name (and to the other processes
+        // through a configured realtime bus, unless `{"local": true}`); returns
+        // this process's SSE subscriber count.
         self.functions.insert(
             "broadcast".to_string(),
             Type::Function {
-                params: vec![Type::String, Type::Any],
+                params: vec![Type::String, Type::Any, Type::Any],
                 return_type: Box::new(Type::Int),
             },
         );

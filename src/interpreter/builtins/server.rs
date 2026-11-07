@@ -1731,23 +1731,19 @@ pub fn get_ws_registry() -> std::sync::Arc<crate::serve::websocket::WebSocketReg
 }
 
 /// Fan an already-serialized `message` out to both the WebSocket channel and
-/// the SSE topic named `channel`. Shared by the `broadcast(...)` builtin and
-/// `Model.broadcast`. WS delivery is async/fire-and-forget; SSE is synchronous.
-/// Returns the number of SSE subscribers the message was delivered to.
-pub fn broadcast_message(channel: &str, message: &str) -> usize {
-    // WS fan-out only when a server is running; skip gracefully otherwise so a
-    // script/test calling broadcast() doesn't panic on the missing handle.
-    if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
-        let registry = get_ws_registry();
-        let ws_channel = channel.to_string();
-        let ws_message = message.to_string();
-        handle.spawn(async move {
-            registry
-                .broadcast_to_channel(&ws_channel, &ws_message)
-                .await;
-        });
-    }
-    crate::interpreter::builtins::streaming::broadcast_sse(channel, message, None)
+/// the SSE topic named `channel`, here and — when a realtime bus is configured
+/// and `local_only` is false — on every other process. Shared by the
+/// `broadcast(...)` builtin and `Model.broadcast`. WS delivery is async; SSE is
+/// synchronous. Returns the number of SSE subscribers *in this process* the
+/// message was delivered to.
+pub fn broadcast_message(channel: &str, message: &str, local_only: bool) -> usize {
+    crate::serve::realtime::fanout(
+        crate::serve::realtime::Target::Broadcast {
+            channel: channel.to_string(),
+        },
+        message,
+        local_only,
+    )
 }
 
 /// Serialize a broadcast payload to a wire string (strings pass through; other
@@ -1756,219 +1752,324 @@ pub fn broadcast_payload_to_string(value: &Value, fn_name: &str) -> Result<Strin
     ws_message_to_string(value, fn_name)
 }
 
+/// The options hash the broadcast builtins take last: `{"local": true}` keeps
+/// the message in this process even when a realtime bus is configured.
+/// Returns whether to stay local.
+pub fn broadcast_local_only(options: Option<&Value>, fn_name: &str) -> Result<bool, String> {
+    let hash = match options {
+        None | Some(Value::Null) => return Ok(false),
+        Some(Value::Hash(hash)) => hash,
+        Some(other) => {
+            return Err(format!(
+                "{}() options must be a hash, got {}",
+                fn_name,
+                other.type_name()
+            ))
+        }
+    };
+    let mut local = false;
+    for (key, value) in hash.borrow().iter() {
+        match key {
+            HashKey::String(name) if name.as_ref() == "local" => local = value.is_truthy(),
+            other => {
+                return Err(format!(
+                    "{}() unknown option \"{}\" (local)",
+                    fn_name, other
+                ))
+            }
+        }
+    }
+    Ok(local)
+}
+
+fn string_arg(args: &[Value], index: usize, fn_name: &str, what: &str) -> Result<String, String> {
+    match args.get(index) {
+        Some(Value::String(s)) => Ok(s.to_string()),
+        Some(other) => Err(format!(
+            "{}() expects string {}, got {}",
+            fn_name,
+            what,
+            other.type_name()
+        )),
+        None => Err(format!(
+            "{}() expects string {}, got nothing",
+            fn_name, what
+        )),
+    }
+}
+
+fn arity_between(args: &[Value], min: usize, max: usize, usage: &str) -> Result<(), String> {
+    if args.len() < min || args.len() > max {
+        return Err(format!(
+            "{} takes {} to {} arguments, got {}",
+            usage,
+            min,
+            max,
+            args.len()
+        ));
+    }
+    Ok(())
+}
+
+/// The connection whose WebSocket handler is running, for `ws_join` /
+/// `ws_leave`.
+fn current_ws_connection(fn_name: &str) -> Result<uuid::Uuid, String> {
+    crate::serve::websocket::current_connection().ok_or_else(|| {
+        format!(
+            "{}() only works inside a WebSocket handler (it acts on the connection whose \
+             event is being handled); return {{\"join\": channel}} from the handler instead",
+            fn_name
+        )
+    })
+}
+
+fn strings_to_array(items: impl IntoIterator<Item = String>) -> Value {
+    let values: Vec<Value> = items
+        .into_iter()
+        .map(|item| Value::String(item.into()))
+        .collect();
+    Value::Array(Rc::new(RefCell::new(values)))
+}
+
+/// `{user_id, metas: [{connection_id, phx_ref, state, online_at, ...extra}]}`.
+fn presence_to_value(presence: &crate::serve::websocket::UserPresence) -> Value {
+    let metas: Vec<Value> = presence
+        .metas
+        .iter()
+        .map(|m| {
+            let mut meta_map: HashPairs = HashPairs::default();
+            meta_map.insert(
+                HashKey::String("connection_id".into()),
+                Value::String(m.connection_id.to_string().into()),
+            );
+            meta_map.insert(
+                HashKey::String("phx_ref".into()),
+                Value::String(m.phx_ref.clone().into()),
+            );
+            meta_map.insert(
+                HashKey::String("state".into()),
+                Value::String(m.state.clone().into()),
+            );
+            meta_map.insert(
+                HashKey::String("online_at".into()),
+                Value::Int(m.online_at as i64),
+            );
+            for (k, v) in &m.extra {
+                meta_map.insert(
+                    HashKey::String(k.clone().into()),
+                    Value::String(v.clone().into()),
+                );
+            }
+            Value::Hash(Rc::new(RefCell::new(meta_map)))
+        })
+        .collect();
+
+    let mut user_map: HashPairs = HashPairs::default();
+    user_map.insert(
+        HashKey::String("user_id".into()),
+        Value::String(presence.user_id.clone().into()),
+    );
+    user_map.insert(
+        HashKey::String("metas".into()),
+        Value::Array(Rc::new(RefCell::new(metas))),
+    );
+    Value::Hash(Rc::new(RefCell::new(user_map)))
+}
+
+/// `realtime_bus()`: which bus carries broadcasts to other processes, and how
+/// it is doing.
+fn realtime_bus_value() -> Value {
+    let (backend, connected, status) = crate::serve::realtime::status();
+    let mut map: HashPairs = HashPairs::default();
+    let mut put = |key: &str, value: Value| {
+        map.insert(HashKey::String(key.into()), value);
+    };
+    put("backend", Value::String(backend.name().into()));
+    put("connected", Value::Bool(connected));
+    put("published", Value::Int(status.published as i64));
+    put("received", Value::Int(status.received as i64));
+    put("dropped", Value::Int(status.dropped as i64));
+    put(
+        "last_rx_at",
+        status.last_rx_at.map(Value::Int).unwrap_or(Value::Null),
+    );
+    Value::Hash(Rc::new(RefCell::new(map)))
+}
+
 /// Register WebSocket server functions in the given environment.
+///
+/// Every helper works outside a running server too — a script, a spec, the
+/// standalone `soli worker` — where there are no local sockets: the senders
+/// skip the local delivery (and still publish to a configured realtime bus),
+/// and the readers answer empty.
 pub fn register_websocket_builtins(env: &mut Environment) {
     // Note: The websocket() DSL function is defined in routes.sl via router_websocket()
     // WebSocket routes are registered using the DSL: websocket("/path", "controller#handler")
 
-    // ws_send(connection_id, message) - Send message to a specific client.
-    // Non-string payloads are auto-serialized to JSON.
+    // ws_send(connection_id, message) - Send message to a specific client on
+    // this process. Non-string payloads are auto-serialized to JSON.
     env.define(
         "ws_send".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_send", Some(2), |args| {
-            let connection_id = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_send() expects string connection_id, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
+            let connection_id = string_arg(args, 0, "ws_send", "connection_id")?;
             let message = ws_message_to_string(&args[1], "ws_send")?;
-
-            let registry = get_ws_registry();
             let uuid: uuid::Uuid = connection_id.parse().map_err(|_| "Invalid UUID format")?;
 
-            // Spawn async task to send message
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                let _ = registry_clone.send_to(&uuid, &message).await;
-            });
-
+            if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
+                let registry = get_ws_registry();
+                handle.spawn(async move {
+                    let _ = registry.send_to(&uuid, &message).await;
+                });
+            }
             Ok(Value::Null)
         })),
     );
 
-    // ws_broadcast(message) - Broadcast message to all clients.
+    // ws_broadcast(message, opts?) - Broadcast message to every client.
     // Non-string payloads are auto-serialized to JSON.
     env.define(
         "ws_broadcast".to_string(),
-        Value::NativeFunction(NativeFunction::new("ws_broadcast", Some(1), |args| {
+        Value::NativeFunction(NativeFunction::new("ws_broadcast", None, |args| {
+            arity_between(args, 1, 2, "ws_broadcast(message, opts?)")?;
             let message = ws_message_to_string(&args[0], "ws_broadcast")?;
-
-            let registry = get_ws_registry();
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                registry_clone.broadcast_all(&message).await;
-            });
-
+            let local_only = broadcast_local_only(args.get(1), "ws_broadcast")?;
+            crate::serve::realtime::fanout(
+                crate::serve::realtime::Target::WsAll,
+                &message,
+                local_only,
+            );
             Ok(Value::Null)
         })),
     );
 
-    // ws_broadcast_room(channel, message) - Broadcast message to a channel.
+    // ws_broadcast_room(channel, message, opts?) - Broadcast message to a channel.
     // Non-string payloads are auto-serialized to JSON.
     env.define(
         "ws_broadcast_room".to_string(),
-        Value::NativeFunction(NativeFunction::new("ws_broadcast_room", Some(2), |args| {
-            let channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_broadcast_room() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
+        Value::NativeFunction(NativeFunction::new("ws_broadcast_room", None, |args| {
+            arity_between(args, 2, 3, "ws_broadcast_room(channel, message, opts?)")?;
+            let channel = string_arg(args, 0, "ws_broadcast_room", "channel")?;
             let message = ws_message_to_string(&args[1], "ws_broadcast_room")?;
-
-            let registry = get_ws_registry();
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                registry_clone
-                    .broadcast_to_channel(&channel, &message)
-                    .await;
-            });
-
+            let local_only = broadcast_local_only(args.get(2), "ws_broadcast_room")?;
+            crate::serve::realtime::fanout(
+                crate::serve::realtime::Target::WsChannel { channel },
+                &message,
+                local_only,
+            );
             Ok(Value::Null)
         })),
     );
 
-    // broadcast(channel, payload) - Unified pub/sub: fan `payload` out to every
-    // WebSocket connection in the channel AND every SSE subscriber of the topic
-    // of the same name. One call reaches both transports, so a page can listen
-    // over whichever it uses. Non-string payloads auto-serialize to JSON.
-    // Returns the SSE subscriber count delivered to (WS fan-out is async).
+    // broadcast(channel, payload, opts?) - Unified pub/sub: fan `payload` out
+    // to every WebSocket connection in the channel AND every SSE subscriber of
+    // the topic of the same name — on every process when a realtime bus is
+    // configured, unless `{"local": true}`. Non-string payloads auto-serialize
+    // to JSON. Returns the SSE subscriber count delivered to in this process
+    // (WS fan-out is async).
     env.define(
         "broadcast".to_string(),
-        Value::NativeFunction(NativeFunction::new("broadcast", Some(2), |args| {
-            let channel = match &args[0] {
-                Value::String(s) => s.to_string(),
-                other => {
-                    return Err(format!(
-                        "broadcast() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
+        Value::NativeFunction(NativeFunction::new("broadcast", None, |args| {
+            arity_between(args, 2, 3, "broadcast(channel, payload, opts?)")?;
+            let channel = string_arg(args, 0, "broadcast", "channel")?;
             let message = ws_message_to_string(&args[1], "broadcast")?;
-            Ok(Value::Int(broadcast_message(&channel, &message) as i64))
+            let local_only = broadcast_local_only(args.get(2), "broadcast")?;
+            Ok(Value::Int(
+                broadcast_message(&channel, &message, local_only) as i64,
+            ))
         })),
     );
 
-    // ws_join(channel) - Join the current connection to a channel
-    // Note: This needs to be called from within a WebSocket handler context
+    // realtime_bus() - {backend, connected, published, received, dropped,
+    // last_rx_at}: which bus carries broadcasts to the other processes.
+    env.define(
+        "realtime_bus".to_string(),
+        Value::NativeFunction(NativeFunction::new("realtime_bus", Some(0), |_args| {
+            Ok(realtime_bus_value())
+        })),
+    );
+
+    // ws_join(channel) - Join the connection whose handler is running to a
+    // channel. Returns once the join has landed, so a `ws_clients_in` or a
+    // broadcast right after it sees the connection.
     env.define(
         "ws_join".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_join", Some(1), |args| {
-            let _channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_join() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            // This would need the current connection ID
-            // For now, return null - actual implementation needs context
+            let channel = string_arg(args, 0, "ws_join", "channel")?;
+            let connection = current_ws_connection("ws_join")?;
+            crate::serve::websocket::block_on_registry(move |registry| async move {
+                registry.join_channel(&connection, &channel).await
+            });
             Ok(Value::Null)
         })),
     );
 
-    // ws_leave(channel) - Leave a channel
+    // ws_leave(channel) - Remove the connection whose handler is running from
+    // a channel.
     env.define(
         "ws_leave".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_leave", Some(1), |args| {
-            let _channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_leave() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
+            let channel = string_arg(args, 0, "ws_leave", "channel")?;
+            let connection = current_ws_connection("ws_leave")?;
+            crate::serve::websocket::block_on_registry(move |registry| async move {
+                registry.leave_channel(&connection, &channel).await
+            });
             Ok(Value::Null)
         })),
     );
 
-    // ws_clients() - Get all connected client IDs
+    // ws_clients() - Ids of every connection on this process.
     env.define(
         "ws_clients".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_clients", Some(0), |_args| {
-            // Return an empty hash for now
-            let pairs: HashPairs = HashPairs::default();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+            let ids = crate::serve::websocket::block_on_registry(|registry| async move {
+                registry.connection_ids().await
+            })
+            .unwrap_or_default();
+            Ok(strings_to_array(ids.into_iter().map(|id| id.to_string())))
         })),
     );
 
-    // ws_clients_in(channel) - Get clients in a specific channel
+    // ws_clients_in(channel) - Ids of the connections on this process that
+    // joined `channel`.
     env.define(
         "ws_clients_in".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_clients_in", Some(1), |args| {
-            let _channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_clients_in() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            // Return empty for now since this requires async
-            let pairs: HashPairs = HashPairs::default();
-            Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+            let channel = string_arg(args, 0, "ws_clients_in", "channel")?;
+            let ids = crate::serve::websocket::block_on_registry(move |registry| async move {
+                registry.get_channel_ids(&channel).await
+            })
+            .unwrap_or_default();
+            Ok(strings_to_array(ids.into_iter().map(|id| id.to_string())))
         })),
     );
 
-    // ws_close(connection_id, reason) - Close a specific connection
+    // ws_close(connection_id, reason) - Close a specific connection on this
+    // process.
     env.define(
         "ws_close".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_close", Some(2), |args| {
-            let connection_id = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_close() expects string connection_id, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let reason = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_close() expects string reason, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let registry = get_ws_registry();
+            let connection_id = string_arg(args, 0, "ws_close", "connection_id")?;
+            let reason = string_arg(args, 1, "ws_close", "reason")?;
             let uuid: uuid::Uuid = connection_id.parse().map_err(|_| "Invalid UUID format")?;
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                registry_clone.close(&uuid, &reason).await;
-            });
-
+            if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
+                let registry = get_ws_registry();
+                handle.spawn(async move {
+                    registry.close(&uuid, &reason).await;
+                });
+            }
             Ok(Value::Null)
         })),
     );
 
-    // ws_count() - Get the number of active connections
+    // ws_count() - Number of connections on this process.
     env.define(
         "ws_count".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_count", Some(0), |_args| {
-            // Return 0 for now since this requires async
-            Ok(Value::Int(0))
+            let count = crate::serve::websocket::block_on_registry(|registry| async move {
+                registry.connection_count().await
+            })
+            .unwrap_or(0);
+            Ok(Value::Int(count as i64))
         })),
     );
 
@@ -1977,198 +2078,45 @@ pub fn register_websocket_builtins(env: &mut Environment) {
     env.define(
         "ws_list_presence".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_list_presence", Some(1), |args| {
-            let channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_list_presence() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let registry = get_ws_registry();
-
-            // We need to block on the async operation to get the result
-            // Use a channel to get the result back synchronously
-            let (tx, rx) = std::sync::mpsc::channel();
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                let presences = registry_clone.list_presence(&channel).await;
-                let _ = tx.send(presences);
-            });
-
-            // Wait for result with timeout
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(presences) => {
-                    // Convert to Soli array of hashes
-                    let result: Vec<Value> = presences
-                        .iter()
-                        .map(|p| {
-                            let metas: Vec<Value> = p
-                                .metas
-                                .iter()
-                                .map(|m| {
-                                    let mut meta_map: HashPairs = HashPairs::default();
-                                    meta_map.insert(
-                                        HashKey::String("connection_id".into()),
-                                        Value::String(m.connection_id.to_string().into()),
-                                    );
-                                    meta_map.insert(
-                                        HashKey::String("phx_ref".into()),
-                                        Value::String(m.phx_ref.clone().into()),
-                                    );
-                                    meta_map.insert(
-                                        HashKey::String("state".into()),
-                                        Value::String(m.state.clone().into()),
-                                    );
-                                    meta_map.insert(
-                                        HashKey::String("online_at".into()),
-                                        Value::Int(m.online_at as i64),
-                                    );
-                                    // Add extra fields
-                                    for (k, v) in &m.extra {
-                                        meta_map.insert(
-                                            HashKey::String(k.clone().into()),
-                                            Value::String(v.clone().into()),
-                                        );
-                                    }
-                                    Value::Hash(Rc::new(RefCell::new(meta_map)))
-                                })
-                                .collect();
-
-                            let mut user_map: HashPairs = HashPairs::default();
-                            user_map.insert(
-                                HashKey::String("user_id".into()),
-                                Value::String(p.user_id.clone().into()),
-                            );
-                            user_map.insert(
-                                HashKey::String("metas".into()),
-                                Value::Array(Rc::new(RefCell::new(metas))),
-                            );
-                            Value::Hash(Rc::new(RefCell::new(user_map)))
-                        })
-                        .collect();
-
-                    Ok(Value::Array(Rc::new(RefCell::new(result))))
-                }
-                Err(_) => Ok(Value::Array(Rc::new(RefCell::new(Vec::new())))),
-            }
+            let channel = string_arg(args, 0, "ws_list_presence", "channel")?;
+            let presences =
+                crate::serve::websocket::block_on_registry(move |registry| async move {
+                    registry.list_presence(&channel).await
+                })
+                .unwrap_or_default();
+            let result: Vec<Value> = presences.iter().map(presence_to_value).collect();
+            Ok(Value::Array(Rc::new(RefCell::new(result))))
         })),
     );
 
     // ws_presence_count(channel) - Get user count in a room (unique users, not connections)
-    // Returns: number
     env.define(
         "ws_presence_count".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_presence_count", Some(1), |args| {
-            let channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_presence_count() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let registry = get_ws_registry();
-
-            let (tx, rx) = std::sync::mpsc::channel();
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                let count = registry_clone.presence_count(&channel).await;
-                let _ = tx.send(count);
-            });
-
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(count) => Ok(Value::Int(count as i64)),
-                Err(_) => Ok(Value::Int(0)),
-            }
+            let channel = string_arg(args, 0, "ws_presence_count", "channel")?;
+            let count = crate::serve::websocket::block_on_registry(move |registry| async move {
+                registry.presence_count(&channel).await
+            })
+            .unwrap_or(0);
+            Ok(Value::Int(count as i64))
         })),
     );
 
     // ws_get_presence(channel, user_id) - Get specific user's presence in a room
-    // Returns: { user_id, metas: [...] } or null
+    // Returns: { user_id, metas: [...] } or nil
     env.define(
         "ws_get_presence".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_get_presence", Some(2), |args| {
-            let channel = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_get_presence() expects string channel, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let user_id = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "ws_get_presence() expects string user_id, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let registry = get_ws_registry();
-
-            let (tx, rx) = std::sync::mpsc::channel();
-            let registry_clone = registry.clone();
-            crate::serve::websocket::get_runtime_handle().spawn(async move {
-                let presence = registry_clone.get_user_presence(&channel, &user_id).await;
-                let _ = tx.send(presence);
-            });
-
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(Some(presence)) => {
-                    let metas: Vec<Value> = presence
-                        .metas
-                        .iter()
-                        .map(|m| {
-                            let mut meta_map: HashPairs = HashPairs::default();
-                            meta_map.insert(
-                                HashKey::String("connection_id".into()),
-                                Value::String(m.connection_id.to_string().into()),
-                            );
-                            meta_map.insert(
-                                HashKey::String("phx_ref".into()),
-                                Value::String(m.phx_ref.clone().into()),
-                            );
-                            meta_map.insert(
-                                HashKey::String("state".into()),
-                                Value::String(m.state.clone().into()),
-                            );
-                            meta_map.insert(
-                                HashKey::String("online_at".into()),
-                                Value::Int(m.online_at as i64),
-                            );
-                            for (k, v) in &m.extra {
-                                meta_map.insert(
-                                    HashKey::String(k.clone().into()),
-                                    Value::String(v.clone().into()),
-                                );
-                            }
-                            Value::Hash(Rc::new(RefCell::new(meta_map)))
-                        })
-                        .collect();
-
-                    let mut user_map: HashPairs = HashPairs::default();
-                    user_map.insert(
-                        HashKey::String("user_id".into()),
-                        Value::String(presence.user_id.into()),
-                    );
-                    user_map.insert(
-                        HashKey::String("metas".into()),
-                        Value::Array(Rc::new(RefCell::new(metas))),
-                    );
-
-                    Ok(Value::Hash(Rc::new(RefCell::new(user_map))))
-                }
-                _ => Ok(Value::Null),
-            }
+            let channel = string_arg(args, 0, "ws_get_presence", "channel")?;
+            let user_id = string_arg(args, 1, "ws_get_presence", "user_id")?;
+            let presence = crate::serve::websocket::block_on_registry(move |registry| async move {
+                registry.get_user_presence(&channel, &user_id).await
+            })
+            .flatten();
+            Ok(presence
+                .as_ref()
+                .map(presence_to_value)
+                .unwrap_or(Value::Null))
         })),
     );
 }

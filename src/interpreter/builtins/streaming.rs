@@ -385,8 +385,9 @@ fn sse_subscribe_builtin(args: &[Value]) -> Result<Value, String> {
 }
 
 /// `sse_broadcast(topic, data, event?)` — push an SSE event to every live
-/// subscriber of `topic` (from a controller, job, or callback). Returns the
-/// number of clients reached. Safe to call from any thread.
+/// subscriber of `topic` (from a controller, job, or callback), and to the
+/// other processes' subscribers when a realtime bus is configured. Returns the
+/// number of clients reached in this process. Safe to call from any thread.
 fn sse_broadcast_builtin(args: &[Value]) -> Result<Value, String> {
     let topic = match args.first() {
         Some(Value::String(s)) => s.to_string(),
@@ -397,10 +398,15 @@ fn sse_broadcast_builtin(args: &[Value]) -> Result<Value, String> {
         Some(Value::String(s)) => Some(s.to_string()),
         _ => None,
     };
-    let frame = format_sse(&data, event.as_deref());
-    Ok(Value::Int(
-        broadcast_bytes(&topic, frame.into_bytes()) as i64
-    ))
+    let delivered = crate::serve::realtime::fanout(
+        crate::serve::realtime::Target::Sse {
+            channel: topic,
+            event,
+        },
+        &data,
+        false,
+    );
+    Ok(Value::Int(delivered as i64))
 }
 
 /// `sse_subscribers(topic)` — count live subscribers on `topic`.

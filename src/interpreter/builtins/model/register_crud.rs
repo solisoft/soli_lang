@@ -493,14 +493,22 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             })),
         );
 
-    // Model.broadcast(payload) — publish `payload` to the model's collection
-    // channel over WebSocket AND SSE, so any subscribed client (raw WS, SSE,
-    // htmx) gets model-change events. A convenience over the top-level
-    // `broadcast(channel, payload)` with channel = the collection name.
-    // Returns the SSE subscriber count. Non-string payloads JSON-encode.
+    // Model.broadcast(payload, opts?) — publish `payload` to the model's
+    // collection channel over WebSocket AND SSE, so any subscribed client (raw
+    // WS, SSE, htmx) gets model-change events. A convenience over the
+    // top-level `broadcast(channel, payload, opts?)` with channel = the
+    // collection name, including its realtime-bus fan-out and `{"local": true}`.
+    // Returns this process's SSE subscriber count. Non-string payloads
+    // JSON-encode.
     native_static_methods.insert(
         "broadcast".to_string(),
-        Rc::new(NativeFunction::new("Model.broadcast", Some(2), |args| {
+        Rc::new(NativeFunction::new("Model.broadcast", None, |args| {
+            if args.len() > 3 {
+                return Err(format!(
+                    "Model.broadcast(payload, opts?) takes 1 to 2 arguments, got {}",
+                    args.len().saturating_sub(1)
+                ));
+            }
             let class = get_class_rc_from_args(args)?;
             let channel = class_name_to_collection(&class.name);
             let payload = args
@@ -510,8 +518,13 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 payload,
                 "Model.broadcast",
             )?;
-            let delivered =
-                crate::interpreter::builtins::server::broadcast_message(&channel, &message);
+            let local_only = crate::interpreter::builtins::server::broadcast_local_only(
+                args.get(2),
+                "Model.broadcast",
+            )?;
+            let delivered = crate::interpreter::builtins::server::broadcast_message(
+                &channel, &message, local_only,
+            );
             Ok(Value::Int(delivered as i64))
         })),
     );

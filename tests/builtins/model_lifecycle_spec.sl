@@ -450,6 +450,16 @@ describe("broadcast") do
     assert_eq(MockWidget.broadcast("plain message"), 0)
   end
 
+  test("takes {local: true} to stay in this process") do
+    assert_eq(MockWidget.broadcast({"id": "w1"}, {"local": true}), 0)
+  end
+
+  test("refuses an unknown option") do
+    assert_raises("Model.broadcast() unknown option") do
+      MockWidget.broadcast({"id": "w1"}, {"everywhere": true})
+    end
+  end
+
   test("requires a payload argument") do
     assert_raises("Model.broadcast() requires a payload argument") do
       MockWidget.broadcast()

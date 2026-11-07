@@ -329,6 +329,16 @@ impl WebSocketRegistry {
         connections.get(id).cloned()
     }
 
+    /// Number of connections registered on this process.
+    pub async fn connection_count(&self) -> usize {
+        self.connections.lock().await.len()
+    }
+
+    /// Ids of every connection registered on this process.
+    pub async fn connection_ids(&self) -> Vec<Uuid> {
+        self.connections.lock().await.keys().cloned().collect()
+    }
+
     /// Get all connections in a channel.
     pub async fn get_channel_ids(&self, channel: &str) -> Vec<Uuid> {
         let channels = self.channels.lock().await;
@@ -1034,6 +1044,62 @@ pub fn try_runtime_handle() -> Option<&'static tokio::runtime::Handle> {
     WS_RUNTIME_HANDLE.get()
 }
 
+crate::request_local! {
+    /// The connection whose WebSocket handler is running on this thread.
+    /// Request state: a handler that yields must not leave it to whatever the
+    /// worker runs next.
+    static CURRENT_CONNECTION: std::cell::Cell<Option<Uuid>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// The connection whose handler is running on this thread, if any. This is
+/// what `ws_join` / `ws_leave` act on.
+pub fn current_connection() -> Option<Uuid> {
+    CURRENT_CONNECTION.with(|cell| cell.get())
+}
+
+/// Marks a connection as the current one for as long as it lives. Dropping it
+/// puts back what was there before, on every exit path, so a handler that
+/// raised cannot leave the next request on this worker thinking it runs
+/// inside a socket handler.
+pub struct CurrentConnectionGuard(Option<Uuid>);
+
+impl CurrentConnectionGuard {
+    pub fn enter(id: Uuid) -> Self {
+        Self(CURRENT_CONNECTION.with(|cell| cell.replace(Some(id))))
+    }
+}
+
+impl Drop for CurrentConnectionGuard {
+    fn drop(&mut self) {
+        CURRENT_CONNECTION.with(|cell| cell.set(self.0));
+    }
+}
+
+/// Run `make(registry)` on the server runtime and wait for its answer, for
+/// the synchronous builtins (`ws_count`, `ws_list_presence`…) that read the
+/// async registry. `None` when no server runs in this process — a script, a
+/// spec, the standalone job worker — or when the answer takes more than five
+/// seconds.
+///
+/// Must not be called from a thread of the runtime itself: it blocks until a
+/// runtime thread has run the task. The builtins run on interpreter worker
+/// threads, which is why this is safe for them.
+pub fn block_on_registry<T, F, Fut>(make: F) -> Option<T>
+where
+    F: FnOnce(Arc<WebSocketRegistry>) -> Fut,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let handle = try_runtime_handle()?;
+    let future = make(get_ws_registry());
+    let (tx, rx) = std::sync::mpsc::channel();
+    handle.spawn(async move {
+        let _ = tx.send(future.await);
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(5)).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1296,6 +1362,60 @@ mod tests {
         let id = conn.id;
         registry.register(conn).await;
         id
+    }
+
+    #[tokio::test]
+    async fn connection_count_and_ids_follow_register_and_unregister() {
+        let registry = WebSocketRegistry::new();
+        assert_eq!(registry.connection_count().await, 0);
+        let first = registered(&registry).await;
+        let second = registered(&registry).await;
+        assert_eq!(registry.connection_count().await, 2);
+        let mut ids = registry.connection_ids().await;
+        ids.sort();
+        let mut expected = vec![first, second];
+        expected.sort();
+        assert_eq!(ids, expected);
+        registry.unregister(&first).await;
+        assert_eq!(registry.connection_ids().await, vec![second]);
+    }
+
+    #[test]
+    fn the_current_connection_is_scoped_to_the_guard() {
+        assert_eq!(current_connection(), None);
+        let outer = Uuid::new_v4();
+        let inner = Uuid::new_v4();
+        {
+            let _outer = CurrentConnectionGuard::enter(outer);
+            assert_eq!(current_connection(), Some(outer));
+            {
+                let _inner = CurrentConnectionGuard::enter(inner);
+                assert_eq!(current_connection(), Some(inner));
+            }
+            assert_eq!(current_connection(), Some(outer));
+        }
+        assert_eq!(current_connection(), None);
+    }
+
+    #[test]
+    fn the_guard_clears_the_connection_when_the_handler_panics() {
+        let result = std::panic::catch_unwind(|| {
+            let _guard = CurrentConnectionGuard::enter(Uuid::new_v4());
+            panic!("handler blew up");
+        });
+        assert!(result.is_err());
+        assert_eq!(current_connection(), None);
+    }
+
+    #[test]
+    fn registry_reads_answer_none_without_a_server_runtime() {
+        // Unit tests never install the server's runtime handle.
+        if try_runtime_handle().is_none() {
+            assert_eq!(
+                block_on_registry(|registry| async move { registry.connection_count().await }),
+                None
+            );
+        }
     }
 
     /// A join that arrives after its connection is gone must not leave the
