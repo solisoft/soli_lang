@@ -116,6 +116,32 @@ fn bare_natives(
     names
 }
 
+/// Whether `name` is a global the runtime installs in a served application
+/// (a builtin function, class or prelude declaration — not a request-scope
+/// name). For the diagnostics that tell a reader a local of theirs is
+/// shadowing one: `smell/shadowed-builtin` and the checker's message.
+pub fn is_runtime_global(name: &str) -> bool {
+    runtime_global_names().contains(name)
+}
+
+/// [`is_runtime_global`], or a name of the test DSL (`describe`,
+/// `page_url`…), which the checker knows everywhere.
+pub fn is_builtin_name(name: &str) -> bool {
+    is_runtime_global(name) || test_dsl_globals().iter().any(|global| global == name)
+}
+
+/// [`is_runtime_global`], restricted to the builtin *classes*.
+pub fn is_runtime_class(name: &str) -> bool {
+    runtime_globals()
+        .iter()
+        .any(|global| global.name == name && global.class_verbs.is_some())
+}
+
+fn runtime_global_names() -> &'static std::collections::HashSet<String> {
+    static NAMES: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    NAMES.get_or_init(|| runtime_globals().iter().map(|g| g.name.clone()).collect())
+}
+
 /// Does the runtime run `class.name` when it is read bare (`doc.to_xml`,
 /// `Xml.document`)? `is_static` picks the static or the instance table.
 ///

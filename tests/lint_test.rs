@@ -531,3 +531,106 @@ fn slv_redundant_escape_skips_raw_output_and_partial_wrapping() {
         diags
     );
 }
+
+// ---------------------------------------------------------------------------
+// smell/shadowed-builtin (#678)
+// ---------------------------------------------------------------------------
+
+fn shadowed(diagnostics: &[LintDiagnostic]) -> Vec<(u32, String)> {
+    diagnostics
+        .iter()
+        .filter(|d| d.rule == "smell/shadowed-builtin")
+        .map(|d| (d.span.line, d.message.clone()))
+        .collect()
+}
+
+#[test]
+fn a_local_shadowing_a_builtin_the_scope_calls_is_flagged() {
+    let src = "def routes_for(path)\n  options = \"x\"\n  options(path, \"a#b\")\nend\n";
+    let found = shadowed(&lint(src));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].0, 2);
+    assert!(
+        found[0]
+            .1
+            .contains("local 'options' shadows the builtin options()"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_parameter_shadowing_a_builtin_the_scope_calls_is_flagged() {
+    let src = "def relay(stream: String)\n  stream(stream, 1)\nend\n";
+    let found = shadowed(&lint(src));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].1.starts_with("parameter 'stream'"), "{found:?}");
+}
+
+#[test]
+fn an_unannotated_parameter_the_scope_calls_is_a_callback() {
+    // `check` is a builtin too; here it is the block under test.
+    let src = "def failure_of(check)\n  check()\nend\n\ndef relay(stream: Function)\n  stream(1, 2)\nend\n";
+    assert!(
+        shadowed(&lint(src)).is_empty(),
+        "{:?}",
+        shadowed(&lint(src))
+    );
+}
+
+#[test]
+fn a_call_inside_a_block_counts_for_the_enclosing_scope() {
+    let src = "def all(paths)\n  options = \"x\"\n  paths.each do |path|\n    options(path, \"a#b\")\n  end\nend\n";
+    assert_eq!(shadowed(&lint(src)).len(), 1);
+}
+
+#[test]
+fn the_top_level_is_a_scope_too() {
+    let src = "stream = [1, 2]\nstream(1, 2)\n";
+    assert_eq!(shadowed(&lint(src)).len(), 1);
+}
+
+#[test]
+fn shadowing_a_builtin_the_scope_never_calls_is_not_flagged() {
+    // `post`, `options`, `stream` are builtins, and everyday local names.
+    let src = "def show(id)\n  post = find_post(id)\n  options = {\"a\": 1}\n  stream = [post, options]\n  stream.length\nend\n";
+    assert!(shadowed(&lint(src)).is_empty());
+}
+
+#[test]
+fn deliberate_shadows_are_not_flagged() {
+    // `let` is the documented way to shadow a function on purpose; a lambda
+    // stored under the name is meant to be called.
+    let src = "def a\n  let options = \"x\"\n  options(1, 2)\nend\n\ndef b\n  stream = fn(x, y) { x + y }\n  stream(1, 2)\nend\n";
+    assert!(
+        shadowed(&lint(src)).is_empty(),
+        "{:?}",
+        shadowed(&lint(src))
+    );
+}
+
+#[test]
+fn a_name_the_program_declares_is_no_builtin_here() {
+    let src = "def options(a, b)\n  a\nend\n\ndef c\n  options = \"x\"\n  options(1, 2)\nend\n";
+    assert!(shadowed(&lint(src)).is_empty());
+}
+
+#[test]
+fn a_call_in_another_function_does_not_count() {
+    let src =
+        "def a\n  options = \"x\"\n  options\nend\n\ndef b\n  options(\"/x\", \"a#b\")\nend\n";
+    assert!(shadowed(&lint(src)).is_empty());
+}
+
+#[test]
+fn the_test_dsl_counts_only_in_a_spec() {
+    let src = "context = {\"a\": 1}\ncontext(\"when empty\") do\n  print(context)\nend\n";
+    assert!(shadowed(&lint_with_path(src, Path::new("app/models/x.sl"))).is_empty());
+    let found = shadowed(&lint_with_path(src, Path::new("tests/x_spec.sl")));
+    assert_eq!(found.len(), 1, "{found:?}");
+}
+
+#[test]
+fn shadowed_builtin_can_be_suppressed() {
+    let src = "def a\n  # soli-lint-disable-next-line smell/shadowed-builtin\n  options = \"x\"\n  options(1, 2)\nend\n";
+    assert!(shadowed(&lint(src)).is_empty());
+}

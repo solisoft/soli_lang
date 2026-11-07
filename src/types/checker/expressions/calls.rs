@@ -167,7 +167,22 @@ impl TypeChecker {
             {
                 Ok(callee_type)
             }
-            _ => Err(TypeError::NotCallable(format!("{}", callee_type), span)),
+            _ => match &callee.kind {
+                // `options = "…"` then `options("/x", …)`: a local named after
+                // a builtin, called as the builtin.
+                ExprKind::Variable(name)
+                    if crate::types::runtime_globals::is_builtin_name(name) =>
+                {
+                    Err(TypeError::General {
+                        message: format!(
+                            "`{name}` is a local {callee_type} here, shadowing the builtin \
+                             {name}(); rename it"
+                        ),
+                        span,
+                    })
+                }
+                _ => Err(TypeError::NotCallable(format!("{}", callee_type), span)),
+            },
         }
     }
 

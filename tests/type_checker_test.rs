@@ -1088,3 +1088,43 @@ fn match_rest_bindings_are_defined_in_the_arm() {
          print(head_tail([1, 2, 3]))\nprint(others({\"name\": \"a\", \"age\": 1}))",
     );
 }
+
+// #678: a local named after a builtin. The assignment used to fail as
+// "expected (Any, Any) -> String, found String", naming neither the builtin
+// nor the fix; the call of a deliberately shadowed name as "Cannot call
+// non-function type 'String'".
+#[test]
+fn assigning_over_a_builtin_names_the_builtin() {
+    let errors = check_err("def probe\n  page_url = \"x\"\n  page_url.length\nend\n");
+    assert_any(
+        &errors,
+        |e| {
+            matches!(e, TypeError::General { message, .. }
+                if message.contains("builtin page_url()") && message.contains("rename"))
+        },
+        "a message naming the builtin page_url()",
+    );
+}
+
+#[test]
+fn calling_a_local_that_shadows_a_builtin_names_the_builtin() {
+    let errors = check_err("def probe\n  let stream = \"x\"\n  stream(1, 2)\nend\n");
+    assert_any(
+        &errors,
+        |e| {
+            matches!(e, TypeError::General { message, .. }
+                if message.contains("`stream` is a local String here, shadowing the builtin stream(); rename it"))
+        },
+        "a message naming the shadowed builtin stream()",
+    );
+}
+
+#[test]
+fn calling_an_ordinary_non_function_is_still_not_callable() {
+    let errors = check_err("def probe\n  let total = \"x\"\n  total(1)\nend\n");
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::NotCallable(_, _)),
+        "NotCallable",
+    );
+}

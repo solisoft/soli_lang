@@ -45,6 +45,9 @@ pub struct Linter {
     /// `smell/closure-cycle` does not apply. A lambda body resets it: its
     /// `this` is whatever the lambda is later called with.
     pub(crate) class_level_this: bool,
+    /// The file is a spec (`tests/`, `*_spec.sl`…): the test DSL's globals
+    /// count as builtins for `smell/shadowed-builtin`. Set by `lint()`.
+    pub(crate) test_file: bool,
 }
 
 impl Linter {
@@ -56,6 +59,7 @@ impl Linter {
             depth: 0,
             program_names: std::collections::HashSet::new(),
             class_level_this: false,
+            test_file: false,
         }
     }
 
@@ -65,6 +69,7 @@ impl Linter {
     }
 
     pub fn lint(mut self, program: &Program) -> Vec<LintDiagnostic> {
+        self.test_file = self.is_test_file();
         rules::style::check_line_lengths(&self.source, &mut self.diagnostics);
         rules::docs::check_openapi_docs(
             &self.source,
@@ -74,6 +79,12 @@ impl Linter {
         rules::props::check_component_props(&program.statements, &mut self.diagnostics);
         rules::scope::collect_program_names(&program.statements, &mut self.program_names);
         self.collect_sibling_definitions();
+        rules::shadow::check_top_level(
+            &program.statements,
+            &self.program_names,
+            self.test_file,
+            &mut self.diagnostics,
+        );
 
         for stmt in &program.statements {
             self.lint_stmt(stmt);
@@ -158,6 +169,29 @@ impl Linter {
         }
     }
 
+    /// Whether the file is one `soli test` runs, where the test DSL
+    /// (`describe`, `context`, `expect`…) is in scope too.
+    fn is_test_file(&self) -> bool {
+        self.file_path
+            .as_deref()
+            .is_some_and(|path| crate::is_test_path(std::path::Path::new(path)))
+    }
+}
+
+/// The per-scope checks of a function, method or constructor body:
+/// `smell/undefined-local` and `smell/shadowed-builtin`.
+pub(crate) fn check_scope(
+    params: &[crate::ast::stmt::Parameter],
+    body: &[crate::ast::Stmt],
+    visible_names: &std::collections::HashSet<String>,
+    test_file: bool,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    rules::scope::check_undefined_locals(params, body, visible_names, diagnostics);
+    rules::shadow::check_shadowed_builtins(params, body, visible_names, test_file, diagnostics);
+}
+
+impl Linter {
     fn lint_body(&mut self, stmts: &[crate::ast::Stmt]) {
         rules::smell::check_unreachable_code(stmts, &mut self.diagnostics);
         rules::idiom::check_manual_find_guard(stmts, &mut self.diagnostics);
