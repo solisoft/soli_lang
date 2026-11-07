@@ -1417,69 +1417,6 @@ fn locale_skip_note(count: usize) -> String {
     }
 }
 
-/// Top-level names declared anywhere in the auto-loaded directories under any
-/// of `targets`, for [`solilang::type_check_source_with_ambient`].
-///
-/// A target inside an application — `soli check app`, `soli check
-/// app/controllers/posts_controller.sl` — is widened to that application's
-/// root (see [`solilang::app_layout::app_root`]): its auto-loaded set is what the running
-/// server puts in scope, whichever subset of files is being checked.
-///
-/// Returns nothing for a loose file or a directory that is not a project: the
-/// narrower per-file view is right when there is no project to widen it to.
-fn collect_ambient_names(targets: &[std::path::PathBuf]) -> Vec<String> {
-    use std::collections::HashSet;
-
-    let mut roots: Vec<std::path::PathBuf> = Vec::new();
-    let mut seen_roots: HashSet<std::path::PathBuf> = HashSet::new();
-    for target in targets {
-        let candidates = [
-            target.is_dir().then(|| target.clone()),
-            solilang::app_layout::app_root(target),
-        ];
-        for root in candidates.into_iter().flatten() {
-            let key = root.canonicalize().unwrap_or_else(|_| root.clone());
-            if seen_roots.insert(key) {
-                roots.push(root);
-            }
-        }
-    }
-
-    let mut names: HashSet<String> = HashSet::new();
-    for target in &roots {
-        for dir in solilang::AUTOLOADED_DIRS {
-            let dir = target.join(dir);
-            if !dir.is_dir() {
-                continue;
-            }
-            for path in test_runner::collect_lint_files(&dir)
-                .into_iter()
-                .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("sl"))
-            {
-                let Ok(source) = fs::read_to_string(&path) else {
-                    continue;
-                };
-                // Parse only. A neighbour that does not parse is its own error,
-                // reported when its turn comes; it must not stop this file from
-                // being checked.
-                let Ok(tokens) = solilang::lexer::Scanner::new(&source).scan_tokens() else {
-                    continue;
-                };
-                let Ok(program) = solilang::parser::Parser::new(tokens).parse() else {
-                    continue;
-                };
-                solilang::lint::rules::scope::collect_program_names(
-                    &program.statements,
-                    &mut names,
-                );
-            }
-        }
-    }
-    let mut names: Vec<String> = names.into_iter().collect();
-    names.sort();
-    names
-}
-
 /// How `soli check` and `soli lint` print what they found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OutputFormat {
@@ -1518,16 +1455,8 @@ pub fn run_check(paths: &[String], format: OutputFormat) {
             eprintln!("Error: Path '{}' does not exist", t.display());
             process::exit(1);
         }
-        if t.is_file() {
-            files.push(t.clone());
-        } else {
-            // Type-check Soli programs only (skip .slv templates).
-            files.extend(
-                test_runner::collect_lint_files(t)
-                    .into_iter()
-                    .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("sl")),
-            );
-        }
+        // Type-check Soli programs only (skip .slv templates).
+        files.extend(solilang::check::source_files(t));
     }
 
     if files.is_empty() {
@@ -1558,7 +1487,7 @@ pub fn run_check(paths: &[String], format: OutputFormat) {
     // of an application is widened to that application's root (`soli check
     // app` sees the models `soli check .` sees). `soli check one.sl` on a
     // loose script has no project around it and keeps the narrower view.
-    let ambient = collect_ambient_names(&targets);
+    let ambient = solilang::check::ambient_names(&targets);
 
     let checked = files.len();
     let mut total_errors = 0;
@@ -1570,14 +1499,13 @@ pub fn run_check(paths: &[String], format: OutputFormat) {
     };
 
     for file in &files {
-        let source = match fs::read_to_string(file) {
-            Ok(s) => s,
+        let report = match solilang::check::check_file(file, &ambient) {
+            Ok(report) => report,
             Err(e) => {
                 eprintln!("{}: error reading file: {}", file.display(), e);
                 continue;
             }
         };
-        let report = solilang::type_check_report(&source, Some(file.as_path()), &ambient);
         let diagnostics = report.diagnostics();
         if report.errors.is_empty() {
             total_warnings += report.warnings.len();

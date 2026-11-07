@@ -48,7 +48,7 @@ impl TypeChecker {
             .iter()
             .map(|param| {
                 let t = self.resolve_type(&param.type_annotation);
-                self.env.define(param.name.clone(), t.clone());
+                self.env.define_annotated(param.name.clone(), t.clone());
                 t
             })
             .collect();
@@ -58,18 +58,17 @@ impl TypeChecker {
             .map(|t| self.resolve_type(t))
             .unwrap_or(Type::Any);
 
+        // A block inside a `def` must hand the def's return type back when
+        // it ends: resetting it to none left every `return` after the first
+        // `xs.each do … end` of a method unchecked.
+        let outer_return = self.env.return_type().cloned();
         self.env.set_return_type(Some(ret_type.clone()));
 
-        // Check body statements
         // Note: Implicit return logic is handled in parsing (last expr wrapped in Return)
         // or we rely on Return statements in body.
-        for stmt in body {
-            if let Err(e) = self.check_stmt(stmt) {
-                self.errors.push(e);
-            }
-        }
+        self.check_body(body);
 
-        self.env.set_return_type(None);
+        self.env.set_return_type(outer_return);
         self.env.pop_scope();
 
         // Infer return type from body if not explicit?

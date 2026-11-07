@@ -16,7 +16,16 @@ use super::{TypeChecker, TypeResult};
 
 impl TypeChecker {
     /// Main expression type checker - dispatches to specialized checkers.
+    ///
+    /// A value read from a `T?` slot is typed `T` (see [`Type::Nullable`]);
+    /// [`check_expr_slot`](Self::check_expr_slot) keeps the `?` for the
+    /// target of an assignment.
     pub(crate) fn check_expr(&mut self, expr: &Expr) -> TypeResult<Type> {
+        Ok(self.check_expr_slot(expr)?.strip_nullable())
+    }
+
+    /// [`check_expr`](Self::check_expr), a nullable type left as declared.
+    pub(crate) fn check_expr_slot(&mut self, expr: &Expr) -> TypeResult<Type> {
         match &expr.kind {
             // Literals
             ExprKind::IntLiteral(_)

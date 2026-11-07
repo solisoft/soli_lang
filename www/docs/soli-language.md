@@ -207,6 +207,33 @@ id = 123;  # Int - inferred
 let user_id: Int = 123;  # Explicit annotation, still Int
 ```
 
+An inferred type is not a promise: reassigning an unannotated variable with
+another type widens it (`total = 0` then `total = total * 1.5` makes it a
+`Float`). Only a type you wrote down — `let x: Int`, a typed parameter — makes
+`soli check` refuse a value of another type.
+
+### Nullable Types
+
+`T?` is a `T` or `nil`. A parameter, a `let`, a field or a return type marked
+`?` accepts `nil` as well as a `T`:
+
+```soli
+def label(count: Int?) -> String
+  return "none" if count.nil?
+
+  "#{count} item(s)"
+end
+
+label(nil)   # "none"
+label(3)     # "3 item(s)"
+```
+
+### Conditions
+
+Any value can be a condition: `false`, `nil`, `0`, `""`, `[]` and `{}` are
+falsy, everything else (including `0.0`) is truthy. `if xs.length`, `if hash`
+and `while node` are all valid, and `soli check` accepts them.
+
 ### Constants
 
 Use `const` for values that should never change:

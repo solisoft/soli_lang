@@ -130,6 +130,17 @@ The tree-walker **matches on `ExprKind`**. The VM **compiles** each variant to `
 | `environment.rs` | Type scopes |
 | `checker/mod.rs` | `TypeChecker` |
 | `checker/expressions/` | Per-expression checking |
+| `src/check.rs` | The project view: which files `soli check` takes, the names of the app's auto-loaded files (as `Any`), the EUI catalogue for modules a window script imports |
+
+Per-path scopes (request scope, test DSL, the migration prelude) are declared in
+`lib.rs::type_check_program`. Every statement of a body is checked even after an
+error (`TypeChecker::check_body`), so one file reports all its errors.
+
+**The corpus gate.** `tests/check_corpus_test.rs` checks `www/`, `examples/` and
+the generated apps (`soli new`, `--eui`, `generate auth`, `generate scaffold`)
+against `tests/check_corpus_baseline.txt`, which is empty: a new error there is
+either a real bug in that code (fix the code) or a false positive (fix the
+checker) — never a reason to add a line.
 
 ---
 

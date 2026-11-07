@@ -152,7 +152,23 @@ impl TypeChecker {
                 }
                 Ok(Type::Class(class))
             }
-            Type::Any | Type::Unknown => Ok(Type::Any),
+            // Nothing is known of the callee, but its arguments are still
+            // expressions of this file: a block passed to a method of an
+            // untyped value (`xs.each do |x| … end` with `xs` a parameter) was
+            // never checked at all.
+            Type::Any | Type::Unknown => {
+                for arg in arguments {
+                    match arg {
+                        Argument::Positional(expr) | Argument::Block(expr) => {
+                            self.check_expr(expr)?;
+                        }
+                        Argument::Named(named) => {
+                            self.check_expr(&named.value)?;
+                        }
+                    }
+                }
+                Ok(Type::Any)
+            }
             // `s.length()` — empty parens on a member whose type already
             // collapsed to the method's return type (bare zero-arg methods
             // auto-invoke at runtime, see collapse_zero_arg_method). The

@@ -304,10 +304,9 @@ mod tests {
              print(doc.root.parent ? \"child\" : \"root\")\n\
              print(\"orphan\") unless doc.root.parent\n"
         ));
-        refuses(
-            &format!("{FEED}if doc.root.text\n  print(1)\nend\n"),
-            "Bool",
-        );
+        // Any value is a condition (#693): a String one is a truthiness
+        // test, `""` being falsy.
+        accepts(&format!("{FEED}if doc.root.text\n  print(1)\nend\n"));
     }
 
     #[test]

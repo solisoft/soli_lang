@@ -474,7 +474,13 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Array(Box::new(Type::Array(Box::new(Type::Any))))),
             }),
-            "has_key" | "delete" => Ok(Type::Function {
+            // `has_key` answers whether the key is there; typing it as the
+            // value made `if CONSTS.has_key(k)` a "condition of type Hash".
+            "has_key" => Ok(Type::Function {
+                params: vec![key_type.clone()],
+                return_type: Box::new(Type::Bool),
+            }),
+            "delete" => Ok(Type::Function {
                 params: vec![key_type.clone()],
                 return_type: Box::new(value_type.clone()),
             }),

@@ -117,3 +117,52 @@ fn jobs_and_subscribers_are_auto_loaded_too() {
     assert!(ok, "{text}");
     assert!(!text.contains("Undefined"), "{text}");
 }
+
+#[test]
+fn a_loose_script_still_cannot_render() {
+    // `render` is request-scope only: the project view must not swallow it.
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "run.sl", "render(\"x\")\n");
+    let (ok, text) = check(dir.path(), "run.sl");
+    assert!(!ok, "{text}");
+    assert!(text.contains("Undefined variable 'render'"), "{text}");
+}
+
+#[test]
+fn checking_the_app_directory_or_the_root_agrees() {
+    let dir = app();
+    let (ok_app, text_app) = check(dir.path(), "app");
+    let (ok_root, text_root) = check(dir.path(), ".");
+    assert!(ok_app && ok_root, "{text_app}\n{text_root}");
+    assert!(!text_app.contains("Undefined") && !text_root.contains("Undefined"));
+}
+
+#[test]
+fn a_module_imported_by_a_window_script_sees_the_widget_catalogue() {
+    // `examples/pocket-garden/`: the screens never mention `eui_window`, but
+    // they run in the window's workers, which load the catalogue (#693).
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "game/garden.sl",
+        "import \"./screen.sl\"\n\ndef handler(event_data)\n  {}\nend\n\neui_window(\"g\", \"handler\", \"screen_view\", {\"title\": \"g\"})\n",
+    );
+    write(
+        dir.path(),
+        "game/screen.sl",
+        "export def screen_view(state)\n  button(\"x\", \"go\")\nend\n",
+    );
+    write(
+        dir.path(),
+        "alone/screen.sl",
+        "export def screen_view(state)\n  button(\"x\", \"go\")\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "game");
+    assert!(ok, "{text}");
+    let (ok, text) = check(dir.path(), "alone");
+    assert!(
+        !ok,
+        "a module nobody opens a window with has no catalogue: {text}"
+    );
+    assert!(text.contains("button"), "{text}");
+}

@@ -1,0 +1,27 @@
+# `soli check` errors on the in-repo corpus, per file. Read by
+# `tests/check_corpus_test.rs`.
+#
+# The corpus is everything this repository ships as Soli an agent or a user
+# will copy: the documentation site (`www/`), `examples/`, and the
+# applications the generators write (`soli new`, `soli new --eui`,
+# `soli generate auth` with and without passkeys, `soli generate scaffold`).
+# Every error the checker reports there is either a real bug in that code —
+# fix the code — or a false positive — fix the checker. Neither belongs here
+# for long.
+#
+# This is a ratchet. The test fails when a file reports more errors than its
+# line below allows (no line means 0), and fails again when a file reports
+# fewer, so the file can only shrink. Format: `<corpus>/<path> <count>`.
+#
+# The first measurement (#693, HEAD after v2.33.0) was 17 errors in 6 www
+# files, 32 in 5 examples files and 10 in the `--eui` scaffold. Phase 1 took
+# it to 0: three real bugs fixed in the code (`set_key` called and never
+# defined in the EUI navigator, nonexistent globals (`map`, `split`,
+# `upcase`) and view-only `datetime_format` in www helpers, an
+# `examples/model_example.sl` written against an ORM that no longer exists),
+# the rest checker false positives (truthy conditions, reassignment widening,
+# a scope leaked by a failing `def`, `Hash#has_key` typed as the value, the
+# migration prelude's `_db`, the EUI catalogue for modules a window script
+# imports, a stale `push` global). Checking arguments of untyped calls then
+# found three more real bugs (`code_spans`, `assert_not_match`,
+# `contains(array, x)`).

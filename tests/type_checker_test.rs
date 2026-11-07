@@ -355,13 +355,10 @@ fn if_statement_with_bool_typechecks() {
 }
 
 #[test]
-fn if_statement_with_int_condition_errors() {
-    let errors = check_err("if 5 { let x = 1; }");
-    assert_any(
-        &errors,
-        |e| matches!(e, TypeError::Mismatch { .. }),
-        "Mismatch on if cond",
-    );
+fn if_statement_with_int_condition_typechecks() {
+    // Every value has a truthiness (`0`, `""`, `[]`, `{}`, `nil` and `false`
+    // are falsy), so any type may stand as a condition.
+    check_ok("if 5 { let x = 1; }");
 }
 
 #[test]
@@ -376,13 +373,8 @@ fn if_statement_with_any_typechecks() {
 }
 
 #[test]
-fn while_with_int_condition_errors() {
-    let errors = check_err("while 5 { let x = 1; }");
-    assert_any(
-        &errors,
-        |e| matches!(e, TypeError::Mismatch { .. }),
-        "Mismatch while cond",
-    );
+fn while_with_int_condition_typechecks() {
+    check_ok("let n = 3\nwhile n { n = n - 1 }");
 }
 
 #[test]
@@ -1127,4 +1119,221 @@ fn calling_an_ordinary_non_function_is_still_not_callable() {
         |e| matches!(e, TypeError::NotCallable(_, _)),
         "NotCallable",
     );
+}
+
+// =====================================================================
+// #693 phase 1: the false positives the in-repo corpus surfaced
+// =====================================================================
+
+#[test]
+fn conditions_take_any_value() {
+    check_ok(
+        r#"
+xs = [1, 2]
+h = {"a": 1}
+f = fn(x) { x }
+if xs.length
+  print("some")
+end
+if h
+  print("hash")
+end
+print("fn") if f
+t = h ? 1 : 2
+"#,
+    );
+}
+
+#[test]
+fn hash_has_key_answers_a_bool() {
+    check_ok(
+        r#"
+const SCRIPTS = {"a": {"x": 1}}
+let found: Bool = SCRIPTS.has_key("a")
+"#,
+    );
+}
+
+#[test]
+fn reassigning_an_unannotated_local_widens_it() {
+    check_ok(
+        r#"
+def score(n)
+  total = 0
+  total = total * 1.5
+  label = "x"
+  label = {"k": 1}
+  label["k"]
+end
+"#,
+    );
+}
+
+#[test]
+fn reassigning_an_annotated_local_is_still_refused() {
+    let errors = check_err("let x: Int = 1\nx = \"s\"\n");
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch on annotated reassignment",
+    );
+}
+
+#[test]
+fn reassigning_a_typed_parameter_is_still_refused() {
+    let errors = check_err("def f(x: Int)\n  x = \"s\"\n  x\nend\n");
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch on typed parameter reassignment",
+    );
+}
+
+#[test]
+fn a_local_named_like_a_modelled_non_builtin_is_a_fresh_local() {
+    // `push` is no global at run time; `push = 0.0` is a plain local.
+    check_ok("def f()\n  push = 0.0\n  push += 1.0\n  push\nend\n");
+}
+
+#[test]
+fn a_nullable_parameter_accepts_nil() {
+    check_ok(
+        r#"
+def f(x: Int?) -> Int
+  return 0 if x.nil?
+
+  x + 1
+end
+f(nil)
+f(2)
+"#,
+    );
+}
+
+#[test]
+fn a_nullable_slot_takes_nil_on_reassignment_and_return() {
+    check_ok(
+        r#"
+def g(x: String?) -> String?
+  x = nil
+  return nil
+end
+let y: Int? = nil
+y = 3
+"#,
+    );
+}
+
+#[test]
+fn a_nullable_parameter_still_refuses_another_type() {
+    let errors = check_err("def f(x: Int?)\n  x\nend\nf(\"s\")\n");
+    assert!(!errors.is_empty());
+}
+
+#[test]
+fn two_errors_in_one_def_body_are_both_reported() {
+    let errors = check_err(
+        r#"
+def f()
+  let a: Int = "one"
+  let b: String = 2
+  a
+end
+"#,
+    );
+    assert_eq!(errors.len(), 2, "{errors:?}");
+}
+
+#[test]
+fn an_error_in_a_block_does_not_hide_the_rest_of_the_def() {
+    let errors = check_err(
+        r#"
+def f(xs)
+  xs.each do |x|
+    let a: Int = "one"
+  end
+  let b: String = 2
+end
+"#,
+    );
+    assert_eq!(errors.len(), 2, "{errors:?}");
+}
+
+#[test]
+fn a_name_bound_by_a_failing_statement_does_not_cascade() {
+    let errors = check_err(
+        r#"
+def f()
+  let a: Int = "one"
+  a + 1
+end
+"#,
+    );
+    assert_eq!(errors.len(), 1, "{errors:?}");
+}
+
+#[test]
+fn a_locals_of_one_failing_def_do_not_leak_into_the_next() {
+    // A failing def used to leave its scope pushed, so the next def saw its
+    // locals: `reach = 0.0` there made `reach[0]` "cannot index Float" here.
+    let errors = check_err(
+        r#"
+def first()
+  reach = 0.0
+  let broken: Int = "x"
+  reach
+end
+
+def second(sys)
+  reach = [1.0, 2.0]
+  reach[0]
+end
+"#,
+    );
+    assert_eq!(errors.len(), 1, "{errors:?}");
+}
+
+#[test]
+fn a_block_inside_a_def_keeps_the_defs_return_type() {
+    let errors = check_err(
+        r#"
+def f(xs) -> Int
+  xs.each do |x|
+    print(x)
+  end
+  return "not an int"
+end
+"#,
+    );
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "return mismatch after a block",
+    );
+}
+
+#[test]
+fn a_bare_assignment_to_a_def_of_the_file_is_still_refused() {
+    // Both engines rebind the global function: after `helper = 5` in `f`,
+    // `helper()` is "Cannot call non-function value". Widening must not hide
+    // it, wherever the def sits in the file relative to the assignment.
+    for src in [
+        "def helper\n  1\nend\ndef f\n  helper = 5\n  helper\nend\n",
+        "class K\n  def go\n    helper = 5\n    helper\n  end\nend\ndef helper\n  1\nend\n",
+    ] {
+        let errors = check_err(src);
+        assert_any(
+            &errors,
+            |e| e.to_string().contains("rebinds rather than shadows"),
+            "rebinding a def of the file",
+        );
+    }
+    // `let` shadows instead, at run time and here.
+    check_ok("def helper\n  1\nend\ndef f\n  let helper = 5\n  helper\nend\n");
+}
+
+#[test]
+fn a_top_level_failing_statement_does_not_cascade() {
+    let errors = check_err("let a: Int = \"one\"\nprint(a + 1)\nb = a\n");
+    assert_eq!(errors.len(), 1, "{errors:?}");
 }

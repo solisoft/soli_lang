@@ -631,7 +631,6 @@ def md_blocks(source, width = 640, em_font = "")
       code = body.join("\n")
       out = out.concat([code_viewer(code, {
         "line_numbers": false,
-        "spans": code_spans(code, lang),
         "language": lang
       })])
       next

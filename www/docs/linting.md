@@ -379,6 +379,52 @@ unconstrained rather than wrongly constrained.
 `render` and `redirect` stay unknown to the checker on purpose: they only mean
 anything inside a request, and `serve` does not type-check.
 
+### What else a file sees, by where it lives
+
+The checker gives a file the names the runtime gives it:
+
+| File | Also in scope |
+|---|---|
+| `app/`, `config/`, `stdlib/`, a spec | the request scope (`req`, `params`, `session`, `render`, `redirect`…) |
+| `db/migrations/` | the runner's prelude: `_db` (with `_db_host`, `_db_name`) and `MigrationDb` |
+| a module a sibling script imports and opens an `eui_window` with | the EUI widget catalogue (`button`, `row`, `canvas`…) |
+| a spec (`tests/`, `*_spec.sl`) | the test DSL (`describe`, `test`, `expect`…) |
+
+A file of `app/helpers/` does **not** get the view-only helpers
+(`datetime_format`, `substring`, `t`, `paginate`…): a helper runs in the
+application's environment, and calling one of them there is a 500 ("Cannot
+call non-function value"), so `soli check` reports it. Use the methods
+(`DateTime.from_unix(ts).format("%Y")`, `text.substring(0, 3)`).
+
+### What it does not report
+
+`soli check` is a gate you can trust only if it does not cry wolf, so code that
+runs is not refused for being Soli:
+
+- **Any value is a condition.** `if xs.length`, `if hash`, `while node`,
+  `flag ? a : b` are truthiness tests (`false`, `nil`, `0`, `""`, `[]` and `{}`
+  are falsy), whatever the type.
+- **A local holds whatever was last put in it.** Reassigning an unannotated
+  local with another type widens it — `total = 0` then `total = total * 1.5`
+  makes it a `Float`, a String later given a Hash becomes `Any` — instead of an
+  error. A binding whose type you wrote down still refuses: `let x: Int = 1`
+  then `x = "s"`, or a typed parameter, is a mismatch. So is a bare
+  `helper = 5` where `helper` is a builtin or a `def` of the same file: both
+  engines rebind the function rather than make a local, so the next
+  `helper()` fails. Rename the local, or write `let helper = 5` to shadow it.
+- **`T?` takes `nil`.** `def f(x: Int?)` accepts `f(nil)` and `f(2)`, and
+  `x = nil` or `return nil` into an `Int?` slot is fine. A value read from it
+  is used as the `T` (there is no narrowing after `x.nil?` yet).
+- **One mistake does not hide the rest.** Each statement of a `def`, a method,
+  a block or a `describe` body is checked even after an earlier one failed, so
+  every error of a file is reported — and a name the failing line would have
+  bound (`x = broken(…)`) does not then read as undefined on every later line.
+
+The in-repo corpus — the docs site, `examples/`, and what `soli new`,
+`soli new --eui`, `soli generate auth` (with and without `--passkeys`) and
+`soli generate scaffold` write — checks with **zero** errors, and a test keeps
+it there (`tests/check_corpus_test.rs`, a ratchet that may only go down).
+
 ## Editor integration
 
 The VS Code / Cursor extension starts `soli lsp`: real-time linting (the

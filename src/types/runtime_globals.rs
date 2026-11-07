@@ -201,6 +201,14 @@ pub fn request_scope_globals() -> &'static [&'static str] {
     REQUEST_ONLY
 }
 
+/// What a migration runs with besides the served namespace: the runner
+/// appends a prelude that opens `_db` (with `_db_host` and `_db_name`) and
+/// wraps it in a `MigrationDb` handed to `up(db)` / `down(db)` — see
+/// `migration::execute_migration`.
+pub fn migration_globals() -> &'static [&'static str] {
+    &["_db", "_db_host", "_db_name", "db", "MigrationDb"]
+}
+
 /// Every global `register_builtins` installs, with its value.
 fn registered(include_test_builtins: bool) -> Vec<(String, crate::interpreter::value::Value)> {
     use crate::interpreter::environment::Environment;

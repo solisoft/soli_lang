@@ -41,7 +41,7 @@ describe("Validation System", fn()
         test("pattern rejects invalid characters", fn()
             let value = "user@example.com";
             let is_valid = true;
-            assert_not_match(value, "^[a-zA-Z0-9_]+$");
+            assert_not(Regex.matches("^[a-zA-Z0-9_]+$", value));
         end);
     end);
 
@@ -65,12 +65,12 @@ describe("Validation System", fn()
 
         test("invalid email without @", fn()
             let email = "userexample.com";
-            assert_not_match(email, "@");
+            assert_not(Regex.matches("@", email));
         end);
 
         test("invalid email without domain", fn()
             let email = "user@";
-            assert_not_match(email, "\\.");
+            assert_not(Regex.matches("\\.", email));
         end);
 
         test("invalid email without local part", fn()
@@ -136,7 +136,7 @@ describe("Validation System", fn()
 
         test("invalid URL without protocol", fn()
             let url = "example.com";
-            assert_not_match(url, "^https?://");
+            assert_not(Regex.matches("^https?://", url));
         end);
     end);
 
@@ -150,13 +150,13 @@ describe("Validation System", fn()
         test("rejects value not in allowed list", fn()
             let allowed = ["admin", "user", "guest"];
             let value = "superuser";
-            assert_not(contains(allowed, value));
+            assert_not(allowed.includes?(value));
         end);
 
         test("case-sensitive enum matching", fn()
             let allowed = ["admin", "user", "guest"];
             let value = "Admin";
-            assert_not(contains(allowed, value));
+            assert_not(allowed.includes?(value));
         end);
     end);
 end);

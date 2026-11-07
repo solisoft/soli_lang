@@ -63,6 +63,29 @@ let scores: Int[] = [95, 87, 92]
 let user: Hash = {"name": "Alice", "age": 30};</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-4">
+            An inferred type is not a promise: reassigning an unannotated variable with another type widens it (<code class="text-cyan-400">total = 0</code> then <code class="text-cyan-400">total = total * 1.5</code> makes it a <code class="text-cyan-400">Float</code>). Only a type you wrote down &mdash; <code class="text-cyan-400">let x: Int</code>, a typed parameter &mdash; makes <code class="text-cyan-400">soli check</code> refuse a value of another type.
+        </p>
+        <h3 class="text-lg font-semibold text-white mt-6 mb-3">Nullable types</h3>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">T?</code> is a <code class="text-cyan-400">T</code> or <code class="text-cyan-400">nil</code>. A parameter, a <code class="text-cyan-400">let</code>, a field or a return type marked <code class="text-cyan-400">?</code> accepts <code class="text-cyan-400">nil</code> as well as a <code class="text-cyan-400">T</code>:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def label(count: Int?) -> String
+  return "none" if count.nil?
+
+  "#{count} item(s)"
+end
+
+label(nil)   # "none"
+label(3)     # "3 item(s)"</code></pre>
+            </div>
+        </div>
+        <h3 class="text-lg font-semibold text-white mt-6 mb-3">Conditions</h3>
+        <p class="text-gray-400 mb-4">
+            Any value can be a condition: <code class="text-cyan-400">false</code>, <code class="text-cyan-400">nil</code>, <code class="text-cyan-400">0</code>, <code class="text-cyan-400">""</code>, <code class="text-cyan-400">[]</code> and <code class="text-cyan-400">{}</code> are falsy, everything else (including <code class="text-cyan-400">0.0</code>) is truthy. <code class="text-cyan-400">if xs.length</code>, <code class="text-cyan-400">if hash</code> and <code class="text-cyan-400">while node</code> are all valid, and <code class="text-cyan-400">soli check</code> accepts them.
+        </p>
     </section>
 
     <!-- Primitive Types -->

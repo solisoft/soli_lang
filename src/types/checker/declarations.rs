@@ -213,6 +213,7 @@ impl TypeChecker {
             .map(|t| self.resolve_type(t))
             .unwrap_or(Type::Any);
 
+        self.declared_functions.insert(decl.name.clone());
         self.env.define_function(
             decl.name.clone(),
             Type::Function {

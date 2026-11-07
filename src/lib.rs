@@ -18,6 +18,7 @@ pub mod app_layout;
 pub mod ast;
 pub mod bundle;
 pub mod cdp;
+pub mod check;
 pub mod cleanup;
 pub mod compiled_cache;
 pub mod coverage;
@@ -871,6 +872,9 @@ fn type_check_program(
     if source_path.is_some_and(|p| is_application_path(p) || is_test_path(p)) {
         checker.declare_request_scope();
     }
+    if source_path.is_some_and(is_migration_path) {
+        checker.declare_migration_scope();
+    }
     let (result, warnings) = checker.check_collecting_warnings(&program);
     let errors = match result {
         Ok(()) => Vec::new(),
@@ -892,6 +896,14 @@ fn is_application_path(path: &std::path::Path) -> bool {
             Some("app") | Some("config") | Some("stdlib")
         )
     })
+}
+
+/// Whether a path is under `db/migrations/`, whose files the migration
+/// runner wraps in a prelude that opens `_db`.
+fn is_migration_path(path: &std::path::Path) -> bool {
+    path.components()
+        .zip(path.components().skip(1))
+        .any(|(a, b)| a.as_os_str() == "db" && b.as_os_str() == "migrations")
 }
 
 /// Whether a path is one `soli test` would run, and so may call the test DSL.

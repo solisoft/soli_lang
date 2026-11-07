@@ -134,13 +134,13 @@ end
 # what the stack is, and which way it last moved.
 def nav_push(state, key)
   st = (state["nav_stack"] ?? ["home"]).concat([key])
-  set_key(set_key(state, "nav_stack", st), "nav_dir", "push")
+  state.merge({"nav_stack": st, "nav_dir": "push"})
 end
 
 def nav_pop(state)
   st = state["nav_stack"] ?? ["home"]
   return state if st.length() <= 1
-  set_key(set_key(state, "nav_stack", st.slice(0, st.length() - 1)), "nav_dir", "pop")
+  state.merge({"nav_stack": st.slice(0, st.length() - 1), "nav_dir": "pop"})
 end
 
 # Where the stack is, for a view that wants to mark its own nav.

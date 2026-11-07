@@ -146,3 +146,34 @@ fn a_project_declaration_overrides_a_builtin_of_the_same_name() {
     type_check_source_with_ambient(src, None, &["input".to_string()])
         .expect("a project-declared `input` must override the builtin");
 }
+
+/// Write `source` at `rel` under a fresh directory and check it there.
+fn check_at(rel: &str, source: &str) -> Result<Vec<String>, Vec<String>> {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, source).unwrap();
+    type_check_source(source, Some(&path))
+        .map_err(|errors| errors.iter().map(|e| e.to_string()).collect())
+}
+
+/// A helper runs in the application's environment, not a view's: calling the
+/// view-only `datetime_format` from `app/helpers/` is "Cannot call non-function
+/// value" (a 500) when served, so the checker must keep reporting it.
+#[test]
+fn a_helper_file_does_not_see_the_view_only_helpers() {
+    let src = "def short_date(ts)\n  datetime_format(ts, \"%Y-%m-%d\")\nend\n";
+    let errors = check_at("app/helpers/date.sl", src).expect_err("a view-only helper");
+    assert!(
+        errors.iter().any(|e| e.contains("datetime_format")),
+        "{errors:?}"
+    );
+}
+
+/// The migration runner opens `_db` around `up` / `down`.
+#[test]
+fn a_migration_sees_the_runner_prelude() {
+    let src = "def up(db: Any) -> Any {\n  solidb_query(_db, \"RETURN 1\")\n}\n";
+    assert!(check_at("db/migrations/20260101000000_x.sl", src).is_ok());
+    assert!(check_at("scripts/x.sl", src).is_err());
+}

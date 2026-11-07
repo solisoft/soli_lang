@@ -18,6 +18,10 @@ pub struct TypeChecker {
     /// Non-blocking diagnostics (e.g. enum match non-exhaustiveness). Surfaced
     /// by `soli check` but never fail the check or block execution.
     pub(crate) warnings: Vec<TypeError>,
+    /// The top-level `def`s of the file being checked. The runtime installs
+    /// them as globals, so a bare `name = value` anywhere in the file rebinds
+    /// the function rather than creating a local (`let name = …` shadows).
+    pub(crate) declared_functions: std::collections::HashSet<String>,
 }
 
 impl TypeChecker {
@@ -30,6 +34,7 @@ impl TypeChecker {
             env,
             errors: Vec::new(),
             warnings: Vec::new(),
+            declared_functions: std::collections::HashSet::new(),
         }
     }
 
@@ -87,6 +92,16 @@ impl TypeChecker {
     /// script is not, and still gets `Undefined variable 'render'`.
     pub fn declare_request_scope(&mut self) {
         for name in crate::types::runtime_globals::request_scope_globals() {
+            if self.env.get(name).is_none() {
+                self.env.define((*name).to_string(), Type::Any);
+            }
+        }
+    }
+
+    /// Declare what the migration runner puts around a migration's `up` and
+    /// `down`: the `_db` connection, its host and name, and `MigrationDb`.
+    pub fn declare_migration_scope(&mut self) {
+        for name in crate::types::runtime_globals::migration_globals() {
             if self.env.get(name).is_none() {
                 self.env.define((*name).to_string(), Type::Any);
             }
@@ -154,12 +169,10 @@ impl TypeChecker {
             .collect();
         self.apply_mixin_members(&class_decls);
 
-        // Second pass: check all declarations
-        for stmt in &program.statements {
-            if let Err(e) = self.check_stmt(stmt) {
-                self.errors.push(e);
-            }
-        }
+        // Second pass: check all declarations. Same recovery as a body: a
+        // top-level `x = broken(…)` still binds `x`, so the script's later
+        // lines do not each report "Undefined variable 'x'".
+        self.check_body(&program.statements);
 
         if self.errors.is_empty() {
             Ok(())
@@ -195,10 +208,12 @@ impl TypeChecker {
                 params: params.iter().map(|p| self.resolve_type(p)).collect(),
                 return_type: Box::new(self.resolve_type(return_type)),
             },
-            TypeKind::Nullable(inner) => {
-                // For now, treat nullable as the inner type (simplification)
-                self.resolve_type(inner)
-            }
+            // `Int?` takes `nil` as well as an `Int` wherever it is stored;
+            // dropping the `?` refused `f(nil)` for `def f(x: Int?)`.
+            TypeKind::Nullable(inner) => match self.resolve_type(inner) {
+                inner @ (Type::Nullable(_) | Type::Any | Type::Unknown) => inner,
+                inner => Type::Nullable(Box::new(inner)),
+            },
             TypeKind::Hash {
                 key_type,
                 value_type,
@@ -208,15 +223,6 @@ impl TypeChecker {
             },
         }
     }
-}
-
-/// Whether a value of type `ty` may stand as an `if` / `unless` / `while` /
-/// ternary condition: a Bool, an unknown type, or a class instance. A class
-/// value is nil-able in this checker (`Null` is assignable to every class), so
-/// testing it is the nil check — `if node.parent`, `while (item =
-/// reader.next)`, `if user` — and refusing it refused the idiom itself.
-pub(crate) fn is_condition_type(ty: &Type) -> bool {
-    matches!(ty, Type::Bool | Type::Any | Type::Unknown | Type::Class(_))
 }
 
 impl Default for TypeChecker {

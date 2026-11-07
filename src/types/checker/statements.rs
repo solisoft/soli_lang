@@ -50,7 +50,11 @@ impl TypeChecker {
                     (None, None) => Type::Unknown,
                 };
 
-                self.env.define(name.clone(), var_type);
+                if type_annotation.is_some() {
+                    self.env.define_annotated(name.clone(), var_type);
+                } else {
+                    self.env.define(name.clone(), var_type);
+                }
                 if type_annotation.is_none() {
                     self.note_constructed_class(name, initializer.as_ref());
                 }
@@ -85,9 +89,7 @@ impl TypeChecker {
 
             StmtKind::Block(statements) => {
                 self.env.push_scope();
-                for s in statements {
-                    self.check_stmt(s)?;
-                }
+                self.check_body(statements);
                 self.env.pop_scope();
                 Ok(())
             }
@@ -102,14 +104,10 @@ impl TypeChecker {
                 then_branch,
                 else_branch,
             } => {
-                let cond_type = self.check_expr(condition)?;
-                if !crate::types::checker::is_condition_type(&cond_type) {
-                    return Err(TypeError::mismatch(
-                        "Bool",
-                        format!("{}", cond_type),
-                        condition.span,
-                    ));
-                }
+                // Any value is a condition: Soli tests truthiness (`false`,
+                // `nil`, `0`, `""`, `[]` and `{}` are falsy), so `if xs.length`
+                // and `if hash` run, and refusing them refused working code.
+                self.check_expr(condition)?;
                 self.check_stmt(then_branch)?;
                 if let Some(else_br) = else_branch {
                     self.check_stmt(else_br)?;
@@ -118,14 +116,8 @@ impl TypeChecker {
             }
 
             StmtKind::While { condition, body } => {
-                let cond_type = self.check_expr(condition)?;
-                if !crate::types::checker::is_condition_type(&cond_type) {
-                    return Err(TypeError::mismatch(
-                        "Bool",
-                        format!("{}", cond_type),
-                        condition.span,
-                    ));
-                }
+                // A truthiness test, like `if`'s.
+                self.check_expr(condition)?;
                 self.check_stmt(body)?;
                 Ok(())
             }
@@ -161,9 +153,9 @@ impl TypeChecker {
                 if let Some(idx_var) = index_variable {
                     self.env.define(idx_var.clone(), Type::Int);
                 }
-                self.check_stmt(body)?;
+                let result = self.check_stmt(body);
                 self.env.pop_scope();
-                Ok(())
+                result
             }
 
             StmtKind::Return(value) => {
@@ -210,17 +202,13 @@ impl TypeChecker {
 
                 // Define parameters
                 for (param, ty) in decl.params.iter().zip(param_types.iter()) {
-                    self.env.define(param.name.clone(), ty.clone());
+                    self.env.define_annotated(param.name.clone(), ty.clone());
                 }
 
+                let outer_return = self.env.return_type().cloned();
                 self.env.set_return_type(Some(return_type));
-
-                // Check body
-                for s in &decl.body {
-                    self.check_stmt(s)?;
-                }
-
-                self.env.set_return_type(None);
+                self.check_body(&decl.body);
+                self.env.set_return_type(outer_return);
                 self.env.pop_scope();
                 Ok(())
             }
@@ -261,8 +249,9 @@ impl TypeChecker {
                     if let Some(ref var_name) = clause.var_name {
                         self.env.push_scope();
                         self.env.define(var_name.clone(), Type::Any);
-                        self.check_stmt(&clause.body)?;
+                        let result = self.check_stmt(&clause.body);
                         self.env.pop_scope();
+                        result?;
                     } else {
                         self.check_stmt(&clause.body)?;
                     }
@@ -274,6 +263,40 @@ impl TypeChecker {
 
                 Ok(())
             }
+        }
+    }
+
+    /// Check a block body, one statement at a time: an error is recorded and
+    /// the next statement is still checked, so one mistake early in a `def`
+    /// or a `describe` no longer hides every other one in it.
+    ///
+    /// A statement that fails while binding a new name (`x = broken(…)`)
+    /// still binds it, as `Unknown`, so the lines that read it are checked
+    /// without a cascade of "Undefined variable 'x'".
+    pub(crate) fn check_body(&mut self, statements: &[Stmt]) {
+        for stmt in statements {
+            if let Err(error) = self.check_stmt(stmt) {
+                self.errors.push(error);
+                self.bind_after_error(stmt);
+            }
+        }
+    }
+
+    fn bind_after_error(&mut self, stmt: &Stmt) {
+        match &stmt.kind {
+            StmtKind::Let { name, .. } | StmtKind::Const { name, .. } => {
+                self.env.define(name.clone(), Type::Unknown);
+            }
+            StmtKind::Expression(expr) => {
+                if let ExprKind::Assign { target, .. } = &expr.kind {
+                    if let ExprKind::Variable(name) = &target.kind {
+                        if self.env.get(name).is_none() {
+                            self.env.define(name.clone(), Type::Unknown);
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -301,7 +324,7 @@ impl TypeChecker {
             // Define parameters
             for param in &method.params {
                 let ty = self.resolve_type(&param.type_annotation);
-                self.env.define(param.name.clone(), ty);
+                self.env.define_annotated(param.name.clone(), ty);
             }
 
             // Set return type (Any if not annotated)
@@ -312,9 +335,7 @@ impl TypeChecker {
                 .unwrap_or(Type::Any);
             self.env.set_return_type(Some(return_type));
 
-            for s in &method.body {
-                self.check_stmt(s)?;
-            }
+            self.check_body(&method.body);
 
             self.env.set_return_type(None);
             self.env.pop_scope();
@@ -331,14 +352,12 @@ impl TypeChecker {
 
             for param in &ctor.params {
                 let ty = self.resolve_type(&param.type_annotation);
-                self.env.define(param.name.clone(), ty);
+                self.env.define_annotated(param.name.clone(), ty);
             }
 
             self.env.set_return_type(Some(Type::Void));
 
-            for s in &ctor.body {
-                self.check_stmt(s)?;
-            }
+            self.check_body(&ctor.body);
 
             self.env.set_return_type(None);
             self.env.pop_scope();

@@ -1,6 +1,6 @@
 //! Type environment for the type checker.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::types::type_repr::{ClassType, EnumType, FieldInfo, InterfaceType, MethodInfo, Type};
 
@@ -8,6 +8,9 @@ use crate::types::type_repr::{ClassType, EnumType, FieldInfo, InterfaceType, Met
 #[derive(Debug, Clone)]
 pub struct TypeEnvironment {
     scopes: Vec<HashMap<String, Type>>,
+    /// Per scope, the bindings whose type was written down (`let x: Int`, a
+    /// parameter): a reassignment may widen any other binding, not these.
+    annotated: Vec<HashSet<String>>,
     classes: HashMap<String, ClassType>,
     enums: HashMap<String, EnumType>,
     interfaces: HashMap<String, InterfaceType>,
@@ -20,6 +23,7 @@ impl TypeEnvironment {
     pub fn new() -> Self {
         let mut env = Self {
             scopes: vec![HashMap::new()],
+            annotated: vec![HashSet::new()],
             classes: HashMap::new(),
             enums: HashMap::new(),
             interfaces: HashMap::new(),
@@ -3212,17 +3216,62 @@ impl TypeEnvironment {
     /// Enter a new scope.
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.annotated.push(HashSet::new());
     }
 
     /// Exit the current scope.
     pub fn pop_scope(&mut self) {
         self.scopes.pop();
+        self.annotated.pop();
     }
 
     /// Define a variable in the current scope.
     pub fn define(&mut self, name: String, ty: Type) {
+        if let Some(annotated) = self.annotated.last_mut() {
+            annotated.remove(&name);
+        }
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name, ty);
+        }
+    }
+
+    /// Define a variable whose type was declared (`let x: Int`, a parameter),
+    /// which a reassignment must then respect rather than widen.
+    pub fn define_annotated(&mut self, name: String, ty: Type) {
+        if let Some(annotated) = self.annotated.last_mut() {
+            annotated.insert(name.clone());
+        }
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, ty);
+        }
+    }
+
+    /// Whether `name` is a variable of some scope that nobody annotated, so
+    /// a reassignment of another type may widen it.
+    pub fn is_widenable(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .zip(&self.annotated)
+            .rev()
+            .find(|(scope, _)| scope.contains_key(name))
+            .is_some_and(|(_, annotated)| !annotated.contains(name))
+    }
+
+    /// Whether `name` is a variable of some scope (rather than only a
+    /// function, a class, or nothing).
+    pub fn is_variable(&self, name: &str) -> bool {
+        self.scopes.iter().any(|scope| scope.contains_key(name))
+    }
+
+    /// Replace the type of the variable `name` in the scope that holds it.
+    pub fn widen(&mut self, name: &str, ty: Type) {
+        if let Some(scope) = self
+            .scopes
+            .iter_mut()
+            .rev()
+            .find(|scope| scope.contains_key(name))
+        {
+            scope.insert(name.to_string(), ty);
         }
     }
 

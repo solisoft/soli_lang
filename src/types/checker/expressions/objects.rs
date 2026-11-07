@@ -129,7 +129,17 @@ impl TypeChecker {
 
         // Auto-define: if target is an undefined variable, define it with the RHS type
         if let ExprKind::Variable(name) = &target.kind {
-            if self.env.get(name).is_none() {
+            // A name the checker knows only as a function the runtime does not
+            // install — a stale model of an old global (`push`), or a sibling
+            // file's `def` — is a fresh local here, not a rebinding the value
+            // must fit: `push = 0.0` in a method was refused as
+            // "expected (Any, Any) -> Void, found Float". A `def` of this
+            // file is installed, though, and a bare assignment rebinds it.
+            let shadows_a_non_builtin = !self.declared_functions.contains(name)
+                && !self.env.is_variable(name)
+                && self.env.get_class(name).is_none()
+                && !crate::types::runtime_globals::is_builtin_name(name);
+            if self.env.get(name).is_none() || shadows_a_non_builtin {
                 // Same reading as `let x = nil` (see `statements.rs`): a bare
                 // `x = nil` says nothing is known yet. Defining it as `Null`
                 // refused the next `x = records` as "expected Null, found …"
@@ -175,14 +185,51 @@ impl TypeChecker {
             }
         }
 
-        let target_type = self.check_expr(target)?;
+        // The slot as declared, `?` included: `x = nil` into an `x: Int?`
+        // parameter is allowed, and reading the target as a value would have
+        // stripped the `?`.
+        let target_type = match &target.kind {
+            ExprKind::Variable(name) => match self.env.get(name) {
+                Some(ty) => ty,
+                None => self.check_expr(target)?,
+            },
+            _ => self.check_expr_slot(target)?,
+        };
 
         if !value_type.is_assignable_to(&target_type) {
+            // A local nobody annotated holds whatever was last put in it, so a
+            // reassignment that changes its type widens it instead of being
+            // refused: `total = 0` then `total = total * 1.5` is ordinary
+            // Soli. An annotated binding (`let x: Int`, a typed parameter)
+            // still refuses, and so does a builtin (the message below).
+            if let ExprKind::Variable(name) = &target.kind {
+                if !self.rebinds_a_function(name, &target_type) && self.env.is_widenable(name) {
+                    let widened = match (&target_type, &value_type) {
+                        (Type::Int, Type::Float) | (Type::Float, Type::Int) => Type::Float,
+                        _ => Type::Any,
+                    };
+                    self.env.widen(name, widened);
+                    return Ok(value_type);
+                }
+            }
             // `page_url = "x"` inside a method: the name is a builtin, so the
             // assignment reads as rebinding it, and the bare mismatch
             // ("expected (Any, Any) -> String, found String") named neither
             // the builtin nor the way out.
             if let ExprKind::Variable(name) = &target.kind {
+                if matches!(target_type, Type::Function { .. })
+                    && !crate::types::runtime_globals::is_builtin_name(name)
+                    && self.declared_functions.contains(name)
+                {
+                    return Err(TypeError::General {
+                        message: format!(
+                            "`{name} = …` assigns a {value_type} to the function {name}() this \
+                             file defines, which a bare assignment rebinds rather than shadows; \
+                             rename the local (or declare it with `let {name} = …`)"
+                        ),
+                        span,
+                    });
+                }
                 if matches!(target_type, Type::Function { .. })
                     && crate::types::runtime_globals::is_builtin_name(name)
                 {
@@ -206,6 +253,15 @@ impl TypeChecker {
         Ok(target_type)
     }
 
+    /// Whether `name = …` would rebind a function the runtime installs — a
+    /// builtin or a `def` of this file — rather than set a local: such a
+    /// reassignment is reported, never widened.
+    fn rebinds_a_function(&self, name: &str, target_type: &Type) -> bool {
+        matches!(target_type, Type::Function { .. })
+            && (crate::types::runtime_globals::is_builtin_name(name)
+                || self.declared_functions.contains(name))
+    }
+
     /// Check if expression.
     pub(crate) fn check_if_expr(
         &mut self,
@@ -213,21 +269,10 @@ impl TypeChecker {
         then_branch: &Expr,
         else_branch: Option<&Expr>,
     ) -> TypeResult<Type> {
-        // Same admission as an `if` *statement* (see `statements.rs`): `Any`
-        // and `Unknown` pass. They disagreed, and the ternary was the stricter
-        // one — so `flag ? "a" : "b"` failed wherever `if flag { … }` was
-        // accepted, for no reason a reader could act on. Soli's truthiness
-        // takes any value, so demanding `Bool` here refuses working code; that
-        // was 31 of the 52 remaining errors on a freshly scaffolded
-        // application.
-        let cond_type = self.check_expr(condition)?;
-        if !crate::types::checker::is_condition_type(&cond_type) {
-            return Err(TypeError::mismatch(
-                "Bool".to_string(),
-                format!("{}", cond_type),
-                condition.span,
-            ));
-        }
+        // Any value is a condition, as for an `if` *statement* (see
+        // `statements.rs`): Soli's truthiness takes any value, so demanding
+        // `Bool` refused working code.
+        self.check_expr(condition)?;
 
         let then_type = self.check_expr(then_branch)?;
 

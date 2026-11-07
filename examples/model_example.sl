@@ -1,48 +1,32 @@
-// Model/ORM Example
-// This example demonstrates how to use the Model/ORM system
+# Model/ORM Example
+# How a Soli model reads and writes documents. Run it inside an application
+# (`soli serve` or `soli test`), where the database connection is configured;
+# a model class is all it takes — `create`, `find`, `where` and the rest are
+# inherited from Model.
 
-// Define field types
-let nameField = Field.string("name").required();
-let ageField = Field.int("age").min(0).max(150);
-let emailField = Field.string("email").unique().index();
+class User < Model
+  validates("name", { "presence": true })
+  validates("email", { "presence": true, "uniqueness": true })
+end
 
-// Create a new user
-let user = model_create("User", "users", {
-    "name": "Alice",
-    "email": "alice@example.com",
-    "age": 30
-});
+# Create a user
+user = User.create({ "name": "Alice", "email": "alice@example.com", "age": 30 })
 
-// Query users with filters
-let adults = model_where("User", "users", "database", "age", ">=", 18);
-adults.order_by("name", "asc");
-adults.limit(10);
-let results = adults.find();
+# Query users with a filter, ordered and limited
+adults = User.where("doc.age >= @age", { "age": 18 }).order("name", "asc").limit(10).all
 
-// Get a specific user by key
-let user = model_get("User", "users", "user001");
+# Get a specific user by key (raises RecordNotFound on a miss; find_by returns nil)
+same_user = User.find(user._key)
+by_email = User.find_by("email", "alice@example.com")
 
-// Update a user
-model_update("User", "users", "user001", {
-    "age": 31
-});
+# Update a user
+same_user.update({ "age": 31 })
 
-// Delete a user
-model_delete("User", "users", "user001");
+# Count users
+count = User.count
 
-// Count users
-let count = model_count("User", "users");
+# Delete a user
+User.delete(user._key)
 
-// Define a migration
-let migration = Migration("CreateUsersTable", "001", "Create users table");
-
-// Run migrations
-model_migrate();
-
-// Rollback last migration
-model_rollback();
-
-// Check migration status
-model_status();
-
-println("Model example completed!");
+# Migrations live in db/migrations/ and run with `soli db:migrate`.
+print("Model example completed! #{adults.length} adult(s), #{count} user(s)")

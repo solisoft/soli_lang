@@ -40,6 +40,14 @@ pub enum Type {
     Class(ClassType),
     /// Interface type
     Interface(InterfaceType),
+    /// `T?`: a `T` or `nil`.
+    ///
+    /// Until unions exist this is the one way to say "or nil". It only
+    /// matters where a value is *stored* — a parameter, a `let`, a field, a
+    /// return — which accepts `nil` as well as a `T`; a value *read* from it is
+    /// the `T` (`check_expr` strips it), since the checker does not narrow
+    /// after a nil test yet.
+    Nullable(Box<Type>),
     /// Type variable (for inference)
     Var(u32),
     /// Unknown type (error recovery)
@@ -60,6 +68,15 @@ impl Type {
         )
     }
 
+    /// `T` for a `T?`, anything else as it is: what reading a nullable slot
+    /// gives (see [`Type::Nullable`]).
+    pub fn strip_nullable(self) -> Type {
+        match self {
+            Type::Nullable(inner) => *inner,
+            other => other,
+        }
+    }
+
     /// Check if this type is assignable to another type.
     pub fn is_assignable_to(&self, target: &Type) -> bool {
         if self == target {
@@ -67,6 +84,13 @@ impl Type {
         }
 
         match (self, target) {
+            // A `T?` slot takes `nil` and anything a `T` slot takes.
+            (_, Type::Nullable(inner)) => {
+                matches!(self, Type::Null) || self.is_assignable_to(inner)
+            }
+            // A `T?` value goes where its `T` goes: there is no narrowing yet,
+            // so demanding a nil test first would refuse every read of one.
+            (Type::Nullable(inner), _) => inner.is_assignable_to(target),
             // Any is assignable to/from anything
             (Type::Any, _) | (_, Type::Any) => true,
             // Unknown is assignable to/from anything (for error recovery)
@@ -160,6 +184,7 @@ impl fmt::Display for Type {
             Type::Future(inner) => write!(f, "Future<{}>", inner),
             Type::Class(class) => write!(f, "{}", class.name),
             Type::Interface(iface) => write!(f, "{}", iface.name),
+            Type::Nullable(inner) => write!(f, "{}?", inner),
             Type::Var(id) => write!(f, "?T{}", id),
             Type::Unknown => write!(f, "unknown"),
             Type::Any => write!(f, "Any"),

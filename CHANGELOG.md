@@ -4,6 +4,37 @@
 
 ### Added
 
+- **`soli check` reports zero false positives on the in-repo corpus, and a
+  test keeps it there (card #693, phases 0 and 1).** `tests/check_corpus_test.rs`
+  checks `www/`, `examples/` and what `soli new`, `soli new --eui`,
+  `soli generate auth` (with and without `--passkeys`) and
+  `soli generate scaffold` write, file by file, against
+  `tests/check_corpus_baseline.txt`, a ratchet that may only shrink (it starts
+  empty). The project view moved from the CLI into `solilang::check`
+  (`source_files`, `ambient_names`, `file_ambient`, `check_file`). Checker
+  changes: any value is a condition (`if`, `unless`, `while`, ternary); an
+  unannotated local reassigned with another type widens (Int/Float to Float,
+  anything else to Any) while `let x: T`, typed parameters and a bare
+  assignment that would rebind a builtin or a `def` of the file still refuse;
+  `T?` is a new `Nullable` type that takes `nil` wherever it is stored (it used
+  to be erased, refusing `f(nil)`); `db/migrations/` files get the runner's
+  `_db`/`MigrationDb` prelude, and a module
+  imported by a sibling `eui_window` script the widget catalogue; each statement
+  of a body is checked after an earlier error (one error per top-level
+  statement before; top-level statements too), and a name the failing line
+  binds is `Unknown` rather than undefined; a failing `def` no longer leaks its scope (and `current_class`)
+  into the rest of the file; a block restores its enclosing `def`'s return
+  type; the arguments of a call on an untyped callee are checked;
+  `Hash#has_key` is a `Bool`; a local named like a function the runtime does
+  not install (a stale `push` model, a sibling `def`) is a fresh local. Real
+  bugs the corpus found and fixed: the `--eui` scaffold's `nav_push`/`nav_pop`
+  called an undefined `set_key`, its Markdown builder an undefined
+  `code_spans`; `www/app/helpers/string.sl` called globals that do not exist
+  (`map`, `split`, `upcase`…) and `www/app/helpers/date.sl` the view-only
+  `datetime_format` / `datetime_add_days` (a 500 when served — a helper does
+  not run with the view helpers, so `soli check` keeps reporting them); `www/tests/validation_spec.sl` called
+  `assert_not_match` and `contains` on an array; `examples/model_example.sl`
+  used an ORM API removed long ago.
 - **The VS Code / Cursor extension starts `soli lsp` (card #692, phase 1).**
   `editors/vscode/` is now TypeScript bundled with esbuild
   (`vscode-languageclient` 9, VS Code ^1.82), version 0.3.0, same id
