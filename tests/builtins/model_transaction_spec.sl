@@ -2,8 +2,11 @@
 # back (re-raising) when it throws; a string runs one SDBQL statement in a
 # transaction; Model.transaction() hands back a handle for manual control.
 #
-# Query-builder reads (`where`, `all`, `count`) are not transactional: they
-# observe committed state, which is what these specs use to check the outcome.
+# Query-builder reads (`where`, `all`, `count`) run inside the transaction but
+# on committed data: they do not see the block's own writes, which is what
+# these specs use to check the outcome. Query writes (`update_all`,
+# `delete_all`, an `@sdbql{}` INSERT/UPDATE/REMOVE) are staged on it and
+# commit or roll back with the block.
 
 class TxAccount < Model
 end
@@ -33,6 +36,27 @@ end
 def delete_then_throw(account)
   TxAccount.transaction do
     account.delete
+    throw "boom"
+  end
+end
+
+def update_all_then_throw(balance)
+  TxAccount.transaction do
+    TxAccount.where({"name": "existing"}).update_all({"balance": balance})
+    throw "boom"
+  end
+end
+
+def delete_all_then_throw
+  TxAccount.transaction do
+    TxAccount.where({"name": "existing"}).delete_all
+    throw "boom"
+  end
+end
+
+def sdbql_insert_then_throw(name)
+  TxAccount.transaction do
+    @sdbql{ INSERT {name: #{name}, balance: 1} INTO tx_accounts }
     throw "boom"
   end
 end
@@ -101,6 +125,28 @@ describe("Model.transaction") do
       assert_eq(TxAccount.find(record._key).name, "dave")
     end
 
+    test("commits query writes with the block's other writes") do
+      TxAccount.transaction do
+        TxAccount.create({"name": "grace", "balance": 1})
+        TxAccount.where({"name": "existing"}).update_all({"balance": 20})
+        @sdbql{ INSERT {name: "raw", balance: 2} INTO tx_accounts }
+      end
+
+      assert_eq(account_names(), ["existing", "grace", "raw"])
+      assert_eq(TxAccount.find_by("name", "existing").balance, 20)
+    end
+
+    test("a query write is not visible outside the block before it commits") do
+      outside = TxAccount.transaction do
+        TxAccount.where({"name": "existing"}).update_all({"balance": 30})
+        # A read in the block runs on committed data, like one outside it.
+        TxAccount.find_by("name", "existing").balance
+      end
+
+      assert_eq(outside, 10)
+      assert_eq(TxAccount.find_by("name", "existing").balance, 30)
+    end
+
     test("a query-builder read inside the block sees the pre-transaction state") do
       inside_count = TxAccount.transaction do
         TxAccount.create({"name": "erin", "balance": 3})
@@ -157,6 +203,30 @@ describe("Model.transaction") do
       end
 
       assert_eq(TxAccount.find(account._key).name, "existing")
+    end
+
+    test("discards an update_all") do
+      assert_raises("boom") do
+        update_all_then_throw(99)
+      end
+
+      assert_eq(TxAccount.find_by("name", "existing").balance, 10)
+    end
+
+    test("discards a delete_all") do
+      assert_raises("boom") do
+        delete_all_then_throw()
+      end
+
+      assert_eq(account_names(), ["existing"])
+    end
+
+    test("discards an @sdbql write") do
+      assert_raises("boom") do
+        sdbql_insert_then_throw("raw")
+      end
+
+      assert_eq(account_names(), ["existing"])
     end
 
     test("a runtime error rolls back like a throw") do

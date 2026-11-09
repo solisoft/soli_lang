@@ -827,6 +827,20 @@ pub fn exec_async_query_with_binds(
         );
     }
     mark_if_sdbql_writes(&sdbql);
+    // Inside a SoliDB transaction every statement goes through it, so that
+    // its writes roll back with the block: neither the native driver nor the
+    // cursor endpoint knows about the transaction.
+    if let Some(tx_id) = get_current_tx_id() {
+        let log = super::query_log::is_enabled().then(|| (sdbql.clone(), bind_vars.clone()));
+        let started = web_time::Instant::now();
+        let result = exec_query_in_transaction(&tx_id, &sdbql, bind_vars);
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        crate::serve::query_stats::record(&sdbql, crate::serve::slow_queries::Dialect::Sdbql, ms);
+        if let Some((query, binds)) = log {
+            super::query_log::record(query, binds, ms);
+        }
+        return result;
+    }
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
 
@@ -963,6 +977,63 @@ pub fn exec_async_query_with_binds(
     result
 }
 
+/// Run one SDBQL statement inside the open SoliDB transaction `tx_id`.
+///
+/// The server stages the statement's writes on the transaction, so an
+/// `update_all`, a `delete_all` or an `@sdbql{}` write made inside a
+/// `transaction` block commits and rolls back with the block's other writes.
+/// Every query used to go to the cursor endpoint or the native driver, outside
+/// the transaction: such a write applied at once and survived the rollback.
+/// A read runs on committed data, as on the cursor endpoint, so it does not
+/// see the transaction's own writes. The endpoint answers with every row at
+/// once: there is no cursor to drain.
+fn exec_query_in_transaction(
+    tx_id: &str,
+    sdbql: &str,
+    bind_vars: Option<HashMap<String, serde_json::Value>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let url = db_url(&format!(
+        "/_api/database/{}/transaction/{}/query",
+        get_database_name(),
+        tx_id
+    ));
+    let mut payload = serde_json::json!({ "query": sdbql });
+    if let Some(bv) = bind_vars {
+        // `bind_vars`, not the cursor's `bindVars`: SoliDB up to 2.9.0 reads
+        // only this spelling here and drops the other without a word, and a
+        // bind variable it does not have evaluates to null — `update_all`
+        // updated nothing and `find_by` found nothing, silently.
+        payload["bind_vars"] = serde_json::Value::Object(bv.into_iter().collect());
+    }
+    let body = bytes::Bytes::from(payload.to_string());
+    let client = crate::interpreter::builtins::http_class::db_http_client();
+    run_db_future(async move {
+        let resp = send_with_db_auth_retry(|| {
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body.clone())
+        })
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
+            return Err(format_query_http_failure(status, &body));
+        }
+        let mut json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("JSON error: {}", e))?;
+        match json.get_mut("result").map(serde_json::Value::take) {
+            Some(serde_json::Value::Array(rows)) => Ok(rows),
+            _ => Err("transactional query: the response has no result rows".to_string()),
+        }
+    })
+}
+
 /// What every SDBQL round-trip feeds after it returns: per-shape query stats,
 /// the slow-query log, and — when the dev query log is on (`log_query` is
 /// `Some`) — a flamegraph span and a query-log row; always the Prometheus
@@ -1048,6 +1119,14 @@ fn observe_sent_query(body: &[u8], ms: f64) {
 /// Uses same HTTP client as HTTP.request for consistency.
 pub fn exec_async_query_raw(sdbql: String) -> Value {
     mark_if_sdbql_writes(&sdbql);
+    // In a transaction, through it (see `exec_query_in_transaction`), answered
+    // in the cursor's shape.
+    if let Some(tx_id) = get_current_tx_id() {
+        return match exec_query_in_transaction(&tx_id, &sdbql, None) {
+            Ok(rows) => Value::String(serde_json::json!({ "result": rows }).to_string().into()),
+            Err(e) => Value::String(format!("Error: {}", e).into()),
+        };
+    }
     // Get cached values (initialized on first use after .env is loaded)
     let url = get_cursor_url();
     // SEC-036: build the JSON body with serde_json so the SDBQL value is
@@ -1576,7 +1655,13 @@ fn exec_values_with_auto_collection(
     bind_vars: Option<HashMap<String, serde_json::Value>>,
     collection_name: &str,
 ) -> Result<Vec<Value>, String> {
-    if driver::query_may_handle() && !crate::db::is_sql() && get_mock_for_query(&sdbql).is_none() {
+    // Not in a transaction: the driver does not know about it, and the JSON
+    // path below routes the statement through it.
+    if get_current_tx_id().is_none()
+        && driver::query_may_handle()
+        && !crate::db::is_sql()
+        && get_mock_for_query(&sdbql).is_none()
+    {
         let log_enabled = super::query_log::is_enabled();
         let log_binds = if log_enabled { bind_vars.clone() } else { None };
         let started = web_time::Instant::now();

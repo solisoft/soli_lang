@@ -28,6 +28,19 @@
   HTML `/__solidev/request/:id` is unchanged. `.soli/dev-server.json` added to
   the scaffold `.gitignore`.
 
+### Fixed
+
+- **A query write inside a SoliDB `transaction` block now commits and rolls
+  back with it.** `.where(...).update_all(...)`, `.where(...).delete_all` and an
+  `@sdbql{}` `INSERT` / `UPDATE` / `REMOVE` / `UPSERT` went to the cursor
+  endpoint or the native driver, outside the transaction: they applied at once
+  and survived the rollback a `throw` triggers (found with SoliDB 2.9.0:
+  `update_all` and an `@sdbql` insert both still there after the block threw).
+  While a SoliDB transaction is open, every SDBQL statement now goes to
+  `POST /_api/database/{db}/transaction/{tx}/query`, which stages its writes;
+  reads there see committed data, as before. The comments that said SoliDB had
+  no transactional query endpoint were wrong: it has served one since 2.1.
+
 ## [2.34.0] - 2026-11-07
 
 ### Added

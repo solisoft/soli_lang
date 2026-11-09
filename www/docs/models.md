@@ -3258,19 +3258,25 @@ Nested `transaction` calls **join** the outer transaction — only the outermost
 begins and commits/rolls back (SolidB has no savepoints), so a `throw` anywhere
 inside undoes every write in the whole nest.
 
-> **Query-builder reads inside a transaction are not transactional.** Document
-> operations — `create`, `save`, `update`, `delete`, and key lookups via `find`
-> — run through the transaction and see its uncommitted writes. Query-builder
-> reads (`where`, `all`, `first`, `count`, `find_by`, `first_by`) do not: they
-> go to the ordinary query endpoint and read the state as it was before the
-> block began.
+> **Query writes go through the transaction too.** Besides document
+> operations — `create`, `save`, `update`, `delete` — a write made by a query
+> inside the block is staged on the transaction and commits or rolls back with
+> it: `.where(...).update_all(...)`, `.where(...).delete_all`, and an
+> `@sdbql{}` `INSERT`, `UPDATE`, `REMOVE` or `UPSERT`. In 2.34 and earlier these
+> ran outside the transaction: they applied at once and survived a rollback.
+
+> **Reads inside a transaction see committed data.** Query-builder reads
+> (`where`, `all`, `first`, `count`, `find_by`, `first_by`), aggregations and
+> `@sdbql{}` reads run inside the transaction but on the state committed before
+> it: they do not observe the block's own writes. To read a row you wrote
+> earlier in the same transaction, use `find` (a key lookup).
 >
 > That matters for read-modify-write:
 >
 > ```soli
 > Account.transaction do
 >   Account.create({ "owner": owner_id, "balance": 0 })
->   # Reads the pre-transaction state — the row above is not counted yet.
+>   # Reads the committed state — the row above is not counted yet.
 >   existing = Account.where({ "owner": owner_id }).count
 > end
 > ```
@@ -3279,12 +3285,6 @@ inside undoes every write in the whole nest.
 > uniqueness rule can both pass validation inside one block and both commit.
 > Where it matters, do the check with `find` / `find_by` on the key, or enforce
 > it with a unique index rather than a validation.
-
-
-> **Cursor reads see committed state.** Queries inside the block
-> (`.where(...).all()`, `find_by`, aggregations) read *committed* data — they do
-> not observe the transaction's own uncommitted writes. To read a row you wrote
-> earlier in the same transaction, use `find` (a key lookup).
 
 > **`find` inside a SoliDB transaction** reads through the transaction, so it
 > sees the transaction's own inserts, updates and deletes, on SoliDB servers

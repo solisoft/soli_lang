@@ -595,18 +595,11 @@ pub fn get_database_name() -> String {
 
 /// Cursor endpoint for the current query.
 ///
-/// **Reads are not transactional.** Inside a `transaction { ... }` block, writes
-/// go to `/transaction/{tx}/document/...` but query-builder reads (`where`,
-/// `all`, `first`, `count`, `find_by`) come here, to the plain cursor endpoint —
-/// so a read does not see the block's own uncommitted writes. A
-/// read-modify-write, and the uniqueness pre-check a validation runs, therefore
-/// evaluate against the pre-transaction state.
-///
-/// Routing reads through the transaction would need a transactional cursor
-/// endpoint on the SoliDB side; the server exposes `begin`, `commit`, `rollback`
-/// and the document verbs, and nothing here can assume more. Until it does, the
-/// limitation is documented rather than papered over — see
-/// `www/docs/models.md`, "Transactions".
+/// Not used inside a SoliDB `transaction { ... }` block: there every statement
+/// goes to the transaction's query endpoint (`crud::exec_query_in_transaction`)
+/// so that its writes roll back with the block. Reads there, as here, see
+/// committed data, not the block's own uncommitted writes; `find` (a key
+/// lookup) does.
 pub fn get_cursor_url() -> String {
     if let Some(name) = override_database().or_else(crate::db::tenancy::active_solidb_database) {
         // SEC-027: per-thread DB-name override still uses the same
@@ -1323,11 +1316,9 @@ mod cursor_url_tests {
         assert!(!url.contains("/transaction/"), "{url}");
     }
 
-    /// Reads are deliberately *not* routed through an open transaction: the
-    /// SoliDB API has no transactional cursor endpoint, so inventing one would
-    /// 404 every read inside a `transaction { ... }` block. The consequence —
-    /// reads do not see the block's own uncommitted writes — is documented in
-    /// `www/docs/models.md` instead.
+    /// An open transaction does not change the cursor URL: statements in a
+    /// transaction go to the transaction's own query endpoint instead, and
+    /// this URL stays the one for everything else.
     #[test]
     fn an_open_transaction_does_not_change_the_cursor_url() {
         let plain = get_cursor_url();
