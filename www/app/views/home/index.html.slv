@@ -9,8 +9,9 @@
                 <h1 class="lp-hero-h1"><span>The Rails doctrine,</span><br><span>in one binary.</span></h1>
                 <p class="lp-lead">
                     Convention over configuration, batteries included, one developer shipping the whole app: the ideas
-                    that brought you to Rails, in a language and framework written in Rust. One binary, one server,
-                    no Redis or Sidekiq beside it, and it keeps answering long after the usual stacks top out.
+                    that brought you to Rails, in a language and framework written in Rust. One binary beside your
+                    database, and nothing else: no Redis, no Sidekiq, no Puma fleet. And it keeps answering long after
+                    the usual stacks top out.
                 </p>
                 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
                     <a href="/docs/getting-started/introduction" class="lp-btn lp-btn-solid">Get started</a>
@@ -697,7 +698,7 @@
     <div class="lp-wrap">
         <div class="lp-cta">
             <h2 class="lp-h2">Build something this afternoon.</h2>
-            <p style="margin: 0; font-size: 18px;">One binary to install, one line to a running app. The doctrine comes with it.</p>
+            <p style="margin: 0; font-size: 18px;">One binary to install, one line to a new app. The doctrine comes with it.</p>
             <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;">
                 <a href="/docs/getting-started/installation" class="lp-btn lp-btn-solid">Install Soli</a>
                 <a href="/docs" class="lp-btn lp-btn-line">Read the docs</a>
