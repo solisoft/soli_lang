@@ -1,4 +1,4 @@
-<!-- Hero: the slogan, the code behind the numbers, and a load ramp in which
+<!-- Hero: the doctrine, the code behind the numbers, and a load ramp in which
      every stack stops at the throughput it was measured at (the "Database read
      + HTML render" row of /docs/getting-started/benchmarks). The page renders
      the finished state; the script at the bottom plays the ramp. -->
@@ -6,10 +6,11 @@
     <div class="lp-wrap">
         <div class="lp-hero-top">
             <div class="lp-hero-copy">
-                <h1 class="lp-hero-h1"><span>Write it like Ruby.</span><br><span>Serve it like Rust.</span></h1>
+                <h1 class="lp-hero-h1"><span>The Rails doctrine,</span><br><span>in one binary.</span></h1>
                 <p class="lp-lead">
-                    Soli is a programming language with a web framework built in, written in Rust. Same machine,
-                    same 16 threads: it keeps answering long after the usual stacks top out.
+                    Convention over configuration, batteries included, one developer shipping the whole app: the ideas
+                    that brought you to Rails, in a language and framework written in Rust. One binary, one server,
+                    no Redis or Sidekiq beside it, and it keeps answering long after the usual stacks top out.
                 </p>
                 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
                     <a href="/docs/getting-started/introduction" class="lp-btn lp-btn-solid">Get started</a>
@@ -38,7 +39,7 @@
         <figure class="lp-ramp" id="load-ramp">
             <div class="lp-ramp-head">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span class="lp-ramp-label" data-ramp-label>Soli&rsquo;s ceiling: 11.2&times; Rails &plus; Puma, p99 1.14 ms</span>
+                    <span class="lp-ramp-label" data-ramp-label>Soli&rsquo;s ceiling on one machine, p99 1.14 ms</span>
                     <span class="lp-ramp-load"><span data-ramp-load>281,190</span><span class="lp-ramp-unit"> req/s</span></span>
                 </div>
             </div>
@@ -92,6 +93,150 @@
                 <a href="/docs/getting-started/benchmarks" class="lp-link" style="display: inline;">Method and every row</a>
             </figcaption>
         </figure>
+    </div>
+</section>
+
+<!-- Agents: the doctrine is what keeps an agent's code right; the project tells it when it is wrong -->
+<section id="agents" class="lp-section">
+    <style>
+        #agents .ag-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; margin-top: 56px; }
+        #agents .ag-src { font-variant-ligatures: none; }
+        #agents .ag-src pre { font-size: 14px; line-height: 1.75; }
+        #agents .ag-no { display: inline-block; width: 2.4em; margin-right: 1.2em; text-align: right; color: #6B6153; user-select: none; }
+        #agents .ag-sq { text-decoration: underline wavy var(--sun); text-decoration-thickness: 1.5px; text-underline-offset: 4px; text-decoration-skip-ink: none; }
+        #agents .ag-run { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 24px; border-top: 1px solid var(--night-line); border-bottom: 1px solid var(--night-line); font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: #E9E2D6; }
+        #agents .ag-run .ok { color: #7EC99A; }
+        #agents .ag-findings { list-style: none; margin: 0; padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; color: #C9BFAE; }
+        #agents .ag-at { color: #F2A365; }
+        #agents .ag-rule { color: #E9E2D6; }
+        #agents .ag-msg { display: block; color: #A69C8C; }
+        #agents .ag-total { color: #E9E2D6; }
+        #agents .ag-armed .ag-findings li { opacity: 0; transition: opacity .35s ease; transition-delay: calc(var(--i) * 160ms); }
+        #agents .ag-armed.ag-done .ag-findings li { opacity: 1; }
+        #agents .ag-armed .ag-sq { text-decoration-color: transparent; transition: text-decoration-color .35s ease .2s; }
+        #agents .ag-armed.ag-done .ag-sq { text-decoration-color: var(--sun); }
+        #agents .ag-kit { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--line); }
+        #agents .ag-kit li { padding: 18px 0; border-top: 1px solid var(--line); font-size: 16px; line-height: 1.55; color: var(--ink-soft); }
+        #agents .ag-kit strong { display: block; margin-bottom: 4px; font-weight: 600; color: var(--ink); }
+        #agents .ag-kit code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
+        #agents .ag-side h3 { margin: 0 0 14px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; letter-spacing: -0.015em; }
+        #agents .ag-side p { margin: 20px 0 0; font-size: 15px; line-height: 1.6; color: var(--ink-faint); }
+        #agents .ag-side p code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; color: var(--ink-soft); }
+        @media (max-width: 900px) { #agents .ag-layout { grid-template-columns: minmax(0, 1fr); } }
+        @media (max-width: 560px) { #agents .ag-src .lp-code-bar { flex-wrap: wrap; row-gap: 6px; padding-top: 10px; padding-bottom: 10px; } }
+        @media (prefers-reduced-motion: reduce) { #agents .ag-findings li, #agents .ag-sq { transition: none; } }
+    </style>
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
+            <h2 class="lp-h2">Conventions your agent can&rsquo;t get wrong</h2>
+            <p class="lp-lead">Writing the code is the cheap part now. What still matters is the doctrine: one way to do things, everything included, checked before it ships. <code style="font-size: 0.9em;">soli new</code> gives your agent the project&rsquo;s rules and a way to check its own work, so its Rails habits are caught before you read the diff.</p>
+        </div>
+
+        <div class="ag-layout">
+            <div class="lp-code ag-src">
+                <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span><span class="lp-tag">written by an agent</span></div>
+<pre><code><span class="ag-no">1</span><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
+<span class="ag-no">2</span>  <span class="c"># POST /posts</span>
+<span class="ag-no">3</span>  <span class="k">def</span> <span class="n">create</span>
+<span class="ag-no">4</span>    <span class="v">@post</span> <span class="n">= Post.create(</span><span class="ag-sq"><span class="n">params</span></span><span class="n">)</span>
+<span class="ag-no">5</span>    <span class="n">redirect(</span><span class="s">"/posts/"</span><span class="n"> + </span><span class="v">@post</span><span class="n">._key)</span>
+<span class="ag-no">6</span>  <span class="k">end</span>
+<span class="ag-no">7</span>
+<span class="ag-no">8</span>  <span class="c"># GET /posts/:id</span>
+<span class="ag-no">9</span>  <span class="k">def</span> <span class="n">show</span>
+<span class="ag-no">10</span>    <span class="v">@post</span> <span class="n">= Post.find(params[</span><span class="s">"id"</span><span class="n">])</span>
+<span class="ag-no">11</span>    <span class="ag-sq"><span class="k">return</span> <span class="n">halt(404, </span><span class="s">"Not found"</span><span class="n">)</span></span> <span class="k">if</span> <span class="v">@post</span> <span class="ag-sq"><span class="n">== nil</span></span>
+<span class="ag-no">12</span>
+<span class="ag-no">13</span>    <span class="v">@title</span> <span class="n">=</span> <span class="ag-sq"><span class="n">titel</span></span>
+<span class="ag-no">14</span>  <span class="k">end</span>
+<span class="ag-no">15</span><span class="k">end</span></code></pre>
+                <div class="ag-run"><span class="ok">$</span><span class="type-animation invisible">soli lint app/controllers/posts_controller.sl</span></div>
+                <ol class="ag-findings">
+<li style="--i: 0"><span class="ag-at">4:25</span> <span class="ag-rule">security/unfiltered-mass-assignment</span><span class="ag-msg">`create(...)` is given the raw request params — unlisted keys persist. Whitelist with `permit(params, { "field": true })` or `this._permit_params(params)` first</span></li>
+<li style="--i: 1"><span class="ag-at">11:5</span> <span class="ag-rule">idiom/manual-find-guard</span><span class="ag-msg">`this.post` comes from `.find(...)`, which raises when the record is missing — this nil-check never runs. Drop it, or use `find_by`/`first_by` if you want a nil result</span></li>
+<li style="--i: 2"><span class="ag-at">11:38</span> <span class="ag-rule">idiom/nil-comparison</span><span class="ag-msg">prefer `x.nil?` over `== nil` — it reads better and handles the nil case directly</span></li>
+<li style="--i: 3"><span class="ag-at">13:14</span> <span class="ag-rule">smell/undefined-local</span><span class="ag-msg">variable 'titel' is read but never assigned in this scope</span></li>
+                    <li style="--i: 4"><span class="ag-total">4 issue(s) found in 1 file(s)</span></li>
+                </ol>
+            </div>
+
+            <div class="ag-side">
+                <h3>What the agent finds on day one</h3>
+                <ul class="ag-kit" role="list">
+                <li><strong><code>CLAUDE.md</code></strong> in the project root, and in each folder that has rules of its own: controllers, models, views, middleware, tests, migrations.</li>
+                <li><strong><code>AGENTS.md</code></strong> points every other agent at the same guide.</li>
+                <li><strong><code>/soli-verify</code></strong> runs the linter, the tests and the coverage gate. The agent runs it before it says it is done.</li>
+                <li><strong><code>/soli-test</code> and <code>/soli-resource</code></strong> run one spec, or scaffold a full RESTful resource.</li>
+                <li><strong><code>soli graph query</code></strong> answers &ldquo;where is this handled?&rdquo; from a graph of the code.</li>
+                </ul>
+                <p>The generators are still there (<code>scaffold</code>, <code>auth</code>, <code>oauth</code>, <code>oidc_provider</code>) and write code in the shape these rules expect.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 40px;">
+            <a href="/ai" class="lp-link">How Soli works with agents &rarr;</a>
+            <a href="/docs/development-tools/linting" class="lp-link">Every lint rule &rarr;</a>
+            <a href="/docs/development-tools/scaffold" class="lp-link">Generators &rarr;</a>
+        </div>
+    </div>
+</section>
+
+<!-- In production: Bonfire, and what every commit has to pass before a release -->
+<section class="lp-section">
+    <div class="lp-wrap">
+        <div class="lp-split">
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="lp-eyebrow">In production</div>
+                <h2 class="lp-h2">Built with Soli, used every day.</h2>
+                <p class="lp-lead">
+                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="lp-link" style="display: inline;">Bonfire</a>
+                    is a full project-management SaaS: real-time chat over WebSockets, file uploads with inline previews,
+                    browser push, iCal feeds, public share links, and an interface translated into nine languages, running on
+                    Soli and SolidB in production. It is a product with users, not a demo.
+                </p>
+                <div class="lp-chips">
+                    <span>Real-time chat</span><span>9 languages</span><span>Push notifications</span><span>File uploads</span><span>iCal feeds</span><span>Public share links</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 8px;">
+                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="lp-btn lp-btn-solid">Visit bonfire-app.pro</a>
+                    <span style="font-size: 15px; color: var(--ink-faint);">Free forever for personal use.</span>
+                </div>
+            </div>
+
+            <div class="lp-code" aria-hidden="true">
+                <div class="lp-code-bar" style="justify-content: center;"><span>bonfire-app.pro</span></div>
+                <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px;">
+                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>Message Board</span><span style="font-weight: 400;">pinned</span></div>
+                        <div style="margin-top: 8px; font-size: 15px; font-weight: 600;">Kickoff: what we are NOT building</div>
+                        <div style="margin-top: 4px; font-size: 13px; color: #A69C8C;">Mara &middot; 12 comments</div>
+                    </div>
+                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>To-dos</span><span style="font-weight: 400;">Launch list &middot; 4/6</span></div>
+                        <ul style="margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px;">
+                            <li style="display: flex; align-items: center; gap: 10px; color: #A69C8C;"><span style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; background: rgba(232,89,12,.25); color: #F2A365; font-size: 10px;">&#10003;</span><s>Migrate the importer</s></li>
+                            <li style="display: flex; align-items: center; gap: 10px;"><span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid #4A4238;"></span>Copy review with Mara</li>
+                            <li style="display: flex; align-items: center; gap: 10px;"><span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid #4A4238;"></span>Ship it<span style="margin-left: auto; font-size: 11px; font-weight: 600; color: #F2A365;">THU</span></li>
+                        </ul>
+                    </div>
+                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>Hill Chart</span><span style="font-weight: 400;">Week 4 of 6</span></div>
+                        <svg viewBox="0 0 280 80" style="width: 100%; margin-top: 12px;" fill="none" aria-hidden="true">
+                            <path d="M8 72 Q 140 -40 272 72" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+                            <line x1="140" y1="16" x2="140" y2="72" stroke="rgba(255,255,255,0.1)" stroke-dasharray="3 3"/>
+                            <circle cx="176" cy="20" r="5" fill="#E8590C"/>
+                        </svg>
+                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: #A69C8C;"><span>Figuring it out</span><span>Making it happen</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <ul class="lp-proof" role="list">
+            <li><strong>10,000+ tests</strong><span>Rust and Soli specs on every commit, against real PostgreSQL, MySQL and SQLite servers.</span></li>
+            <li><strong>Real browsers</strong><span>End-to-end specs drive Chrome through live views, navigation, uploads and the dev bar on every commit.</span></li>
+            <li><strong>Nightly fuzzing</strong><span>The lexer, parser, templates and JSON reader take hostile input every night.</span></li>
+            <li><strong>Audited dependencies</strong><span>A build with a known security advisory in its dependency tree does not ship.</span></li>
+        </ul>
     </div>
 </section>
 
@@ -171,7 +316,7 @@
     </div>
 </section>
 
-<!-- Batteries: a Rails Gemfile, struck through by what ships in the binary -->
+<!-- Batteries: Rails' omakase carried through — the Gemfile a Rails app still grows, struck through by what ships in the binary -->
 <section id="batteries" class="lp-section" style="background: var(--paper-sunk);">
     <style>
         #batteries .bt-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; margin-top: 56px; }
@@ -207,9 +352,9 @@
     </style>
     <div class="lp-wrap">
         <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
-            <div class="lp-eyebrow">Soli MVC</div>
-            <h2 class="lp-h2">Batteries actually included</h2>
-            <p class="lp-lead">This is the Gemfile a production Rails app grows to do what Soli does out of the box. Point at a feature, or tap it, to see the gems it replaces.</p>
+            <div class="lp-eyebrow">Omakase</div>
+            <h2 class="lp-h2">Omakase, all the way down</h2>
+            <p class="lp-lead">Rails taught us to let the framework choose the stack. A production Rails app still grows this Gemfile, with Redis and Elasticsearch running beside it. Soli carries the idea through: every line struck out ships in the binary. Point at a feature, or tap it, to see the gems it stands in for.</p>
         </div>
 
         <div class="bt-layout">
@@ -403,109 +548,25 @@
     </script>
 </section>
 
-<!-- Agents: the project tells the agent when it is wrong -->
-<section id="agents" class="lp-section">
-    <style>
-        #agents .ag-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; margin-top: 56px; }
-        #agents .ag-src { font-variant-ligatures: none; }
-        #agents .ag-src pre { font-size: 14px; line-height: 1.75; }
-        #agents .ag-no { display: inline-block; width: 2.4em; margin-right: 1.2em; text-align: right; color: #6B6153; user-select: none; }
-        #agents .ag-sq { text-decoration: underline wavy var(--sun); text-decoration-thickness: 1.5px; text-underline-offset: 4px; text-decoration-skip-ink: none; }
-        #agents .ag-run { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 24px; border-top: 1px solid var(--night-line); border-bottom: 1px solid var(--night-line); font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: #E9E2D6; }
-        #agents .ag-run .ok { color: #7EC99A; }
-        #agents .ag-findings { list-style: none; margin: 0; padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; color: #C9BFAE; }
-        #agents .ag-at { color: #F2A365; }
-        #agents .ag-rule { color: #E9E2D6; }
-        #agents .ag-msg { display: block; color: #A69C8C; }
-        #agents .ag-total { color: #E9E2D6; }
-        #agents .ag-armed .ag-findings li { opacity: 0; transition: opacity .35s ease; transition-delay: calc(var(--i) * 160ms); }
-        #agents .ag-armed.ag-done .ag-findings li { opacity: 1; }
-        #agents .ag-armed .ag-sq { text-decoration-color: transparent; transition: text-decoration-color .35s ease .2s; }
-        #agents .ag-armed.ag-done .ag-sq { text-decoration-color: var(--sun); }
-        #agents .ag-kit { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--line); }
-        #agents .ag-kit li { padding: 18px 0; border-top: 1px solid var(--line); font-size: 16px; line-height: 1.55; color: var(--ink-soft); }
-        #agents .ag-kit strong { display: block; margin-bottom: 4px; font-weight: 600; color: var(--ink); }
-        #agents .ag-kit code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
-        #agents .ag-side h3 { margin: 0 0 14px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; letter-spacing: -0.015em; }
-        #agents .ag-side p { margin: 20px 0 0; font-size: 15px; line-height: 1.6; color: var(--ink-faint); }
-        #agents .ag-side p code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; color: var(--ink-soft); }
-        @media (max-width: 900px) { #agents .ag-layout { grid-template-columns: minmax(0, 1fr); } }
-        @media (max-width: 560px) { #agents .ag-src .lp-code-bar { flex-wrap: wrap; row-gap: 6px; padding-top: 10px; padding-bottom: 10px; } }
-        @media (prefers-reduced-motion: reduce) { #agents .ag-findings li, #agents .ag-sq { transition: none; } }
-    </style>
-    <div class="lp-wrap">
-        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
-            <h2 class="lp-h2">Built for the agent that writes your code</h2>
-            <p class="lp-lead">Writing the code is the cheap part now. <code style="font-size: 0.9em;">soli new</code> gives your agent the project&rsquo;s rules and a way to check its own work, so its Rails habits are caught before you read the diff.</p>
-        </div>
-
-        <div class="ag-layout">
-            <div class="lp-code ag-src">
-                <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span><span class="lp-tag">written by an agent</span></div>
-<pre><code><span class="ag-no">1</span><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
-<span class="ag-no">2</span>  <span class="c"># POST /posts</span>
-<span class="ag-no">3</span>  <span class="k">def</span> <span class="n">create</span>
-<span class="ag-no">4</span>    <span class="v">@post</span> <span class="n">= Post.create(</span><span class="ag-sq"><span class="n">params</span></span><span class="n">)</span>
-<span class="ag-no">5</span>    <span class="n">redirect(</span><span class="s">"/posts/"</span><span class="n"> + </span><span class="v">@post</span><span class="n">._key)</span>
-<span class="ag-no">6</span>  <span class="k">end</span>
-<span class="ag-no">7</span>
-<span class="ag-no">8</span>  <span class="c"># GET /posts/:id</span>
-<span class="ag-no">9</span>  <span class="k">def</span> <span class="n">show</span>
-<span class="ag-no">10</span>    <span class="v">@post</span> <span class="n">= Post.find(params[</span><span class="s">"id"</span><span class="n">])</span>
-<span class="ag-no">11</span>    <span class="ag-sq"><span class="k">return</span> <span class="n">halt(404, </span><span class="s">"Not found"</span><span class="n">)</span></span> <span class="k">if</span> <span class="v">@post</span> <span class="ag-sq"><span class="n">== nil</span></span>
-<span class="ag-no">12</span>
-<span class="ag-no">13</span>    <span class="v">@title</span> <span class="n">=</span> <span class="ag-sq"><span class="n">titel</span></span>
-<span class="ag-no">14</span>  <span class="k">end</span>
-<span class="ag-no">15</span><span class="k">end</span></code></pre>
-                <div class="ag-run"><span class="ok">$</span><span class="type-animation invisible">soli lint app/controllers/posts_controller.sl</span></div>
-                <ol class="ag-findings">
-<li style="--i: 0"><span class="ag-at">4:25</span> <span class="ag-rule">security/unfiltered-mass-assignment</span><span class="ag-msg">`create(...)` is given the raw request params — unlisted keys persist. Whitelist with `permit(params, { "field": true })` or `this._permit_params(params)` first</span></li>
-<li style="--i: 1"><span class="ag-at">11:5</span> <span class="ag-rule">idiom/manual-find-guard</span><span class="ag-msg">`this.post` comes from `.find(...)`, which raises when the record is missing — this nil-check never runs. Drop it, or use `find_by`/`first_by` if you want a nil result</span></li>
-<li style="--i: 2"><span class="ag-at">11:38</span> <span class="ag-rule">idiom/nil-comparison</span><span class="ag-msg">prefer `x.nil?` over `== nil` — it reads better and handles the nil case directly</span></li>
-<li style="--i: 3"><span class="ag-at">13:14</span> <span class="ag-rule">smell/undefined-local</span><span class="ag-msg">variable 'titel' is read but never assigned in this scope</span></li>
-                    <li style="--i: 4"><span class="ag-total">4 issue(s) found in 1 file(s)</span></li>
-                </ol>
-            </div>
-
-            <div class="ag-side">
-                <h3>What the agent finds on day one</h3>
-                <ul class="ag-kit" role="list">
-                <li><strong><code>CLAUDE.md</code></strong> in the project root, and in each folder that has rules of its own: controllers, models, views, middleware, tests, migrations.</li>
-                <li><strong><code>AGENTS.md</code></strong> points every other agent at the same guide.</li>
-                <li><strong><code>/soli-verify</code></strong> runs the linter, the tests and the coverage gate. The agent runs it before it says it is done.</li>
-                <li><strong><code>/soli-test</code> and <code>/soli-resource</code></strong> run one spec, or scaffold a full RESTful resource.</li>
-                <li><strong><code>soli graph query</code></strong> answers &ldquo;where is this handled?&rdquo; from a graph of the code.</li>
-                </ul>
-                <p>The generators are still there (<code>scaffold</code>, <code>auth</code>, <code>oauth</code>, <code>oidc_provider</code>) and write code in the shape these rules expect.</p>
-            </div>
-        </div>
-
-        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 40px;">
-            <a href="/ai" class="lp-link">How Soli works with agents &rarr;</a>
-            <a href="/docs/development-tools/linting" class="lp-link">Every lint rule &rarr;</a>
-            <a href="/docs/development-tools/scaffold" class="lp-link">Generators &rarr;</a>
-        </div>
-    </div>
-</section>
-
 <!-- Performance -->
 <section style="padding: clamp(48px, 7vw, 80px) 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);">
     <div class="lp-wrap" style="display: flex; flex-wrap: wrap; align-items: center; gap: 40px 80px;">
         <div style="max-width: 400px;">
             <h2 class="lp-h2" style="font-size: clamp(28px, 3.4vw, 40px);">Fast enough to be your whole stack</h2>
             <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.55; color: var(--ink-soft);">
-                Measured against Rails, Laravel, Django, Express, Phoenix and others on one machine, with the
+                One server carries the load other stacks spread over a fleet of processes. Measured against Rails,
+                Laravel, Django, Express, Phoenix and others on one machine, with the
                 <a href="/docs/getting-started/benchmarks" class="lp-link" style="display: inline;">method and every row</a> published.
             </p>
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 40px 80px;">
             <a href="/docs/getting-started/benchmarks">
                 <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">549,131</div>
-                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">JSON req/s, 12.7&times; Rails</div>
+                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">JSON responses a second, one server</div>
             </a>
             <a href="/docs/getting-started/benchmarks">
                 <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">218,618</div>
-                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">Database writes/s, 6.9&times; Rails</div>
+                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">Database writes a second, one server</div>
             </a>
         </div>
     </div>
@@ -631,66 +692,12 @@
     </div>
 </section>
 
-<!-- Bonfire -->
-<section class="lp-section">
-    <div class="lp-wrap">
-        <div class="lp-split">
-            <div style="display: flex; flex-direction: column; gap: 20px;">
-                <div class="lp-eyebrow">In production</div>
-                <h2 class="lp-h2">Built with Soli, used every day.</h2>
-                <p class="lp-lead">
-                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="lp-link" style="display: inline;">Bonfire</a>
-                    is a full project-management SaaS: real-time chat over WebSockets, file uploads with inline previews,
-                    browser push, iCal feeds, public share links, and an interface translated into nine languages, running on
-                    Soli and SolidB in production. It is a product with users, not a demo.
-                </p>
-                <div class="lp-chips">
-                    <span>Real-time chat</span><span>9 languages</span><span>Push notifications</span><span>File uploads</span><span>iCal feeds</span><span>Public share links</span>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 8px;">
-                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="lp-btn lp-btn-solid">Visit bonfire-app.pro</a>
-                    <span style="font-size: 15px; color: var(--ink-faint);">Free forever for personal use.</span>
-                </div>
-            </div>
-
-            <div class="lp-code" aria-hidden="true">
-                <div class="lp-code-bar" style="justify-content: center;"><span>bonfire-app.pro</span></div>
-                <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px;">
-                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>Message Board</span><span style="font-weight: 400;">pinned</span></div>
-                        <div style="margin-top: 8px; font-size: 15px; font-weight: 600;">Kickoff: what we are NOT building</div>
-                        <div style="margin-top: 4px; font-size: 13px; color: #A69C8C;">Mara &middot; 12 comments</div>
-                    </div>
-                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>To-dos</span><span style="font-weight: 400;">Launch list &middot; 4/6</span></div>
-                        <ul style="margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px;">
-                            <li style="display: flex; align-items: center; gap: 10px; color: #A69C8C;"><span style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; background: rgba(232,89,12,.25); color: #F2A365; font-size: 10px;">&#10003;</span><s>Migrate the importer</s></li>
-                            <li style="display: flex; align-items: center; gap: 10px;"><span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid #4A4238;"></span>Copy review with Mara</li>
-                            <li style="display: flex; align-items: center; gap: 10px;"><span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid #4A4238;"></span>Ship it<span style="margin-left: auto; font-size: 11px; font-weight: 600; color: #F2A365;">THU</span></li>
-                        </ul>
-                    </div>
-                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>Hill Chart</span><span style="font-weight: 400;">Week 4 of 6</span></div>
-                        <svg viewBox="0 0 280 80" style="width: 100%; margin-top: 12px;" fill="none" aria-hidden="true">
-                            <path d="M8 72 Q 140 -40 272 72" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
-                            <line x1="140" y1="16" x2="140" y2="72" stroke="rgba(255,255,255,0.1)" stroke-dasharray="3 3"/>
-                            <circle cx="176" cy="20" r="5" fill="#E8590C"/>
-                        </svg>
-                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: #A69C8C;"><span>Figuring it out</span><span>Making it happen</span></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
 <!-- CTA -->
 <section style="padding-bottom: clamp(64px, 9vw, 120px);">
     <div class="lp-wrap">
         <div class="lp-cta">
             <h2 class="lp-h2">Build something this afternoon.</h2>
-            <p style="margin: 0; font-size: 18px;">Join the developer<span style="opacity: .6;">*</span> who is already shipping with Soli.</p>
-            <p style="margin: -14px 0 0; font-size: 13px;">* It's just me. But I'm having a great time!</p>
+            <p style="margin: 0; font-size: 18px;">One binary to install, one line to a running app. The doctrine comes with it.</p>
             <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;">
                 <a href="/docs/getting-started/installation" class="lp-btn lp-btn-solid">Install Soli</a>
                 <a href="/docs" class="lp-btn lp-btn-line">Read the docs</a>

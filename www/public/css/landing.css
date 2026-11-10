@@ -80,6 +80,10 @@
 .lp-card p code { padding: 1px 6px; border-radius: 6px; background: var(--paper-sunk); font-size: 0.9em; color: var(--ink); }
 .lp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .lp-chips span { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; font-weight: 500; color: var(--ink-soft); }
+.lp-proof { list-style: none; margin: clamp(40px, 6vw, 64px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 28px 40px; border-top: 1px solid var(--line); padding-top: 32px; }
+.lp-proof li { display: flex; flex-direction: column; gap: 6px; }
+.lp-proof strong { font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; letter-spacing: -0.015em; color: var(--ink); }
+.lp-proof span { font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
 .lp-mini { padding: 14px 16px; border-radius: 14px; background: var(--paper-raised); border: 1px solid var(--line-soft); text-align: center; }
 .lp-mini strong { display: block; font-size: 16px; }
 .lp-mini span { font-size: 14px; color: var(--ink-faint); }
