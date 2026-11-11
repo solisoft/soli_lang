@@ -15,8 +15,20 @@ workloads over the same data, and every one runs **16 workers**.
 | [Django](django/) | 5099 | gunicorn, 16 workers | Django ORM / Django templates |
 | [FastAPI](fastapi/) | 5103 | uvicorn, 16 workers (uvloop) | SQLAlchemy 2.0 async + asyncpg / Jinja2 |
 | [Phoenix](phoenix/) | 5104 | Bandit, **1 OS process / 16 BEAM schedulers** | Ecto / HEEx |
+| Rails + Shuttlebay *(reference)* | 5106 | Mothership + Shuttlebay, 16 workers × 5 threads | the [Rails](rails/) app, unchanged |
 
 **5101 is taken** — it is Octane's `--admin-port`, so a new stack starts at 5103.
+
+**Rails + Shuttlebay** is a reference row like Octane: the same Rails app served by
+[Shuttlebay](https://github.com/seuros/shuttlebay) 0.2.0 behind Mothership (guardship
+0.3.3) instead of Puma — Mothership parses HTTP in Rust and hands each request to a
+forked Ruby worker over a Unix socket. `rails/ship-manifest.toml` holds its config
+(compression off, as Puma has none); `start.sh` starts it on 5106 when the bundle
+provides `mothership`, and `STACKS="rails shuttlebay" ./sweep.sh` measures the two
+Rails servers side by side. Shuttlebay's Railtie removes middleware Mothership
+handles (`ActionDispatch::Static`, `Rack::ETag`/`ConditionalGet`, `Rack::Sendfile`), so
+the gems sit in a `require: false` group and load only under Mothership — the Puma
+row keeps its stack.
 
 Phoenix is the only stack besides Soli that is **not** 16 OS processes. The BEAM runs
 one process with one scheduler thread per core (`+S 16:16` pins it) and a lightweight

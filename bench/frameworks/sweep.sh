@@ -24,6 +24,12 @@ cpu_pat() {  # sum over every process matching a pattern (Laravel: fpm + nginx)
   for p in $(pgrep -f "$1" 2>/dev/null); do read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$p/stat 2>/dev/null && t=$((t+u+s)); done
   echo "$t"
 }
+cpu_sid() {  # sum over every process in the listener's session (shuttlebay)
+  local sid t=0 u s
+  sid=$(ps -o sid= -p "$1" 2>/dev/null | tr -d ' ')
+  for p in $(pgrep -s "$sid" 2>/dev/null); do read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$p/stat 2>/dev/null && t=$((t+u+s)); done
+  echo "$t"
+}
 cpu_one() { local u s; read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$1/stat 2>/dev/null || { echo 0; return; }; echo $((u+s)); }
 DBPID=$(listener "$SDB_PORT")
 
@@ -46,7 +52,7 @@ DBPID=$(listener "$SDB_PORT")
 # smaps_rollup, which is why memory.sh has to use cgroups here instead), so a
 # pattern works. Both processes count: the octane:start supervisor and the
 # frankenphp worker host.
-srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gunicorn.*benchproj';; adonis) cpu_pat 'bin/cluster.js';; octane) cpu_pat 'octane:start|frankenphp run';; *) cpu_grp "$(listener "$2")";; esac; }
+srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gunicorn.*benchproj';; adonis) cpu_pat 'bin/cluster.js';; octane) cpu_pat 'octane:start|frankenphp run';; shuttlebay) cpu_sid "$(listener "$2")";; *) cpu_grp "$(listener "$2")";; esac; }
 
 pg_count()  { psql "$PGURL" -tAc "SELECT count(*) FROM wposts;"; }
 sdb_count() { curl -s -u admin:admin -X POST $SDB/cursor -H 'Content-Type: application/json' \
@@ -94,9 +100,15 @@ print(f\"  {os.environ['S']:<8} {d['summary']['requestsPerSec']:>9,.0f} req/s  p
 
 # Octane is a reference configuration, not a stack in its own right, so it is
 # off by default: STACKS="soli rails express laravel django adonis octane" adds it.
+# shuttlebay (Rails on Mothership + Shuttlebay instead of Puma) is the same kind
+# of reference row: STACKS="rails shuttlebay" measures the two Rails servers side
+# by side. Its CPU/req cannot take the default branch: Mothership is alone in its
+# process group and starts the Shuttlebay master in a group of its own (with the
+# 16 workers under it), so cpu_grp counted Mothership and nothing else. All of
+# them share Mothership's session, which start.sh opened with setsid — sum that.
 STACKS="${STACKS:-soli rails express laravel django adonis fastapi phoenix}"
 
-declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100 [fastapi]=5103 [phoenix]=5104 [kemal]=5105)
+declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100 [fastapi]=5103 [phoenix]=5104 [kemal]=5105 [shuttlebay]=5106)
 # Express serves the ORM form of the DB routes; the others use their only form.
 url_for() { case "$1:$2" in express:/db) echo /db-orm;; express:/db-template) echo /db-template-orm;; *) echo "$2";; esac; }
 

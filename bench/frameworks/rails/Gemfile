@@ -9,6 +9,17 @@ gem "sqlite3", ">= 2.1"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
 
+# The "Rails + Shuttlebay" reference row: Mothership (Rust, from guardship)
+# parses HTTP and hands requests to Shuttlebay's forked Ruby workers over a Unix
+# socket — a replacement for Puma, on its own port (5106, ship-manifest.toml).
+# require: false because Shuttlebay's Railtie strips middleware Mothership does
+# (Static, ETag/ConditionalGet, Sendfile): loaded under Puma it would change the
+# Puma row. config/application.rb requires it only when Mothership started us.
+group :shuttlebay do
+  gem "shuttlebay", "0.2.0", require: false
+  gem "guardship", "0.3.3", require: false
+end
+
 # ActionCable's production adapter. The async adapter is single-process, so with
 # 16 Puma workers a broadcast would only reach the worker that received it.
 gem "redis", ">= 4.0"

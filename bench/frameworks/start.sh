@@ -15,6 +15,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/lib.sh"
 export PATH="$HOME/.local/share/gem/ruby/3.4.0/bin:$PATH"
 
+# STACKS narrows the launch to some stacks, as it does for sweep.sh — a pass that
+# re-measures two rows need not bring up nine runtimes. Unset, everything starts
+# as before (shuttlebay only where the bundle provides `mothership`).
+want() { [ -z "${STACKS:-}" ] || [[ " $STACKS " == *" $1 "* ]]; }
+declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [octane]=5100
+                 [django]=5099 [fastapi]=5103 [phoenix]=5104 [shuttlebay]=5106)
+
 # Only ever kill the benchmark stacks — never a dev fleet sharing this box.
 for p in $(pgrep -x soli 2>/dev/null); do
   c=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
@@ -26,12 +33,12 @@ done
 # Soli is killed by port as well: the pgrep above matches a binary named exactly
 # `soli`, so a SOLI_BIN called anything else survived every restart, the new
 # server lost the bind, and "freshly restarted" readings came from the old one.
-for port in 5080 5081 5096 5097 5103 5104; do
+for port in 5080 5081 5096 5097 5103 5104 5106; do
   lp=$(ss -ltnp 2>/dev/null | grep ":$port " | grep -oP 'pid=\K[0-9]+' | head -1)
   [ -n "$lp" ] && kill -9 -- -"$(ps -o pgid= -p "$lp" | tr -d ' ')" 2>/dev/null
 done
 for p in $(pgrep -f 'benchproj.wsgi' 2>/dev/null); do kill -9 "$p" 2>/dev/null; done
-( cd "$HERE/laravel" && compose docker-compose.yml up -d >/dev/null 2>&1 & )
+{ want laravel || want octane; } && ( cd "$HERE/laravel" && compose docker-compose.yml up -d >/dev/null 2>&1 & )
 sleep 3
 
 # --strict-port: without it `soli serve` quietly takes the next free port when
@@ -42,32 +49,47 @@ sleep 3
 # SOLI_DB_DRIVER=1 routes the model layer over SoliDB's native MessagePack
 # driver (needs a soli built with --features solidb-driver).
 SOLI_BIN="${SOLI_BIN:-soli}"
-( cd "$HERE/soli"    && SOLI_WS_WORKERS=0 SOLI_DB_DRIVER=1 SOLIDB_HOST="http://localhost:$SDB_PORT" \
+want soli && ( cd "$HERE/soli"    && SOLI_WS_WORKERS=0 SOLI_DB_DRIVER=1 SOLIDB_HOST="http://localhost:$SDB_PORT" \
                         on_server_cpus setsid nohup "$SOLI_BIN" serve . --port 5080 --strict-port --workers 16 \
                           > /tmp/bench-soli.log 2>&1 </dev/null & )
 # The reference instance for refs.sh: the same app with SoliDB's query-result
 # cache on, whatever SOLI_DB_NO_QUERY_CACHE says for the published one.
-if [ "${SOLI_CACHED_REF:-0}" = 1 ]; then
+if want soli && [ "${SOLI_CACHED_REF:-0}" = 1 ]; then
   ( cd "$HERE/soli" && SOLI_WS_WORKERS=0 SOLI_DB_DRIVER=1 SOLIDB_HOST="http://localhost:$SDB_PORT" \
                        SOLI_DB_NO_QUERY_CACHE=0 \
                        on_server_cpus setsid nohup "$SOLI_BIN" serve . --port 5081 --strict-port --workers 16 \
                          > /tmp/bench-soli-cached.log 2>&1 </dev/null & )
 fi
-( cd "$HERE/rails"   && RAILS_ENV=production WEB_CONCURRENCY=16 \
+want rails && ( cd "$HERE/rails"   && RAILS_ENV=production WEB_CONCURRENCY=16 \
                         SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(head -c 64 /dev/urandom | base64 | tr -d '\n')}" \
                         on_server_cpus setsid nohup bundle exec puma -C config/puma.rb \
                           > /tmp/bench-rails.log 2>&1 </dev/null & )
-( cd "$HERE/express" && on_server_cpus setsid nohup node server.js > /tmp/bench-express.log 2>&1 </dev/null & )
-( cd "$HERE/django"  && on_server_cpus setsid nohup python3 -m gunicorn --workers 16 --bind 127.0.0.1:5099 \
+# Rails + Shuttlebay, the reference row beside Puma (port 5106): Mothership
+# reads rails/ship-manifest.toml and forks the same 16 workers x 5 threads.
+# Started only where the bundle provides `mothership`, and left out of the
+# health wait below, so a box without it still brings up the matched stacks.
+if want shuttlebay && ( cd "$HERE/rails" && bundle exec mothership --help >/dev/null 2>&1 ); then
+  ( cd "$HERE/rails" && SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(head -c 64 /dev/urandom | base64 | tr -d '\n')}" \
+                        on_server_cpus setsid nohup bundle exec mothership \
+                          > /tmp/bench-shuttlebay.log 2>&1 </dev/null & )
+fi
+want express && ( cd "$HERE/express" && on_server_cpus setsid nohup node server.js > /tmp/bench-express.log 2>&1 </dev/null & )
+want django && ( cd "$HERE/django"  && on_server_cpus setsid nohup python3 -m gunicorn --workers 16 --bind 127.0.0.1:5099 \
                           --access-logfile /dev/null benchproj.wsgi:application \
                           > /tmp/bench-django.log 2>&1 </dev/null & )
 # The flags live in each stack's start-bench.sh so there is one copy of them.
-( on_server_cpus setsid nohup "$HERE/fastapi/start-bench.sh" > /tmp/bench-fastapi.log 2>&1 </dev/null & )
-( on_server_cpus setsid nohup "$HERE/phoenix/start-bench.sh" > /tmp/bench-phoenix.log 2>&1 </dev/null & )
+want fastapi && ( on_server_cpus setsid nohup "$HERE/fastapi/start-bench.sh" > /tmp/bench-fastapi.log 2>&1 </dev/null & )
+want phoenix && ( on_server_cpus setsid nohup "$HERE/phoenix/start-bench.sh" > /tmp/bench-phoenix.log 2>&1 </dev/null & )
 
+# Health: the seven matched stacks by default; with STACKS, exactly those named.
+if [ -n "${STACKS:-}" ]; then
+  WAIT=""; for n in $STACKS; do [ -n "${PORT[$n]:-}" ] && WAIT="$WAIT ${PORT[$n]}"; done
+else
+  WAIT="5080 5096 5097 5098 5099 5103 5104"
+fi
 for _ in $(seq 1 120); do
   ok=1
-  for p in 5080 5096 5097 5098 5099 5103 5104; do
+  for p in $WAIT; do
     curl -sf -o /dev/null "http://localhost:$p/db-template" 2>/dev/null || ok=0
   done
   [ "$ok" = 1 ] && break
@@ -78,5 +100,5 @@ done
 pin_pattern 'php-fpm'
 pin_pattern 'nginx'
 pin_pattern 'frankenphp'
-echo "all seven up: ${ok:-0}"
+echo "up (${STACKS:-all seven}): ${ok:-0}"
 [ "${ok:-0}" = 1 ] || echo "check /tmp/bench-*.log"

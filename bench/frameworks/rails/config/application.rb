@@ -17,6 +17,9 @@ require "action_cable/engine"
 # Require the gems listed in Gemfile, including any gems
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
+# Under Mothership (the Shuttlebay reference row) load Shuttlebay's Railtie
+# before the app initialises; under Puma it stays out. See the Gemfile.
+require "shuttlebay" if ENV["MS_SOCKET_PATH"]
 
 module Railsbench
   class Application < Rails::Application

@@ -1,0 +1,22 @@
+# Rails + Shuttlebay, the labelled reference row beside Rails + Puma.
+# Same app, same 16 workers x 5 threads as config/puma.rb; only the server
+# changes. Started by ../start.sh on 5106 (`bundle exec mothership` reads this
+# file from the directory it starts in).
+#
+# compression = false: Puma does not gzip, and a server that does would answer
+# a different, smaller body. No static_dirs: no benchmark route serves a file.
+
+[mothership]
+compression = false
+
+[mothership.bind]
+http = "127.0.0.1:5106"
+
+[[bays.http]]
+name = "web"
+command = "bundle"
+args = ["exec", "shuttlebay", "config.ru"]
+env = { RAILS_ENV = "production" }
+workers = 16
+threads = 5
+routes = [{ bind = "http", pattern = "/.*" }]

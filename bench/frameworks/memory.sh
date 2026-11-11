@@ -36,6 +36,18 @@ pss_port() {
   echo $((t / 1024))
 }
 
+# Every process in the listener's session: Mothership puts the Shuttlebay master
+# and its workers in a process group of their own, so pss_port saw Mothership only.
+pss_sid() {
+  local lp sid t=0 s
+  lp=$(ss -ltnp 2>/dev/null | grep ":$1 " | grep -oP 'pid=\K[0-9]+' | head -1)
+  sid=$(ps -o sid= -p "$lp" 2>/dev/null | tr -d ' ')
+  for p in $(pgrep -s "$sid" 2>/dev/null); do
+    [ -r "/proc/$p/smaps_rollup" ] && s=$(awk '/^Pss:/{print $2}' "/proc/$p/smaps_rollup" 2>/dev/null) && t=$((t + ${s:-0}))
+  done
+  echo $((t / 1024))
+}
+
 # Complain rather than undercount: any unreadable process makes a PSS sum wrong.
 pss_guard() {
   local unread=0
@@ -65,6 +77,7 @@ mem() {
     octane)  cmem laravel-octane-1 ;;
     django)  pss_guard 'gunicorn.*benchproj'; pss_pat 'gunicorn.*benchproj' ;;
     adonis)  pss_guard 'bin/cluster.js';      pss_pat 'bin/cluster.js' ;;
+    shuttlebay) pss_sid "$2" ;;
     *)       pss_port "$2" ;;
   esac
 }
@@ -75,7 +88,7 @@ printf '%-10s %10s %12s   %s\n' stack idle 'under load' method
 # supervisor's pgid.
 # STACKS narrows the table to some stacks, as it does for sweep.sh. Kemal is in
 # the list but, like its HTTP rows, needs kemal/start-bench.sh started by hand.
-for e in soli:5080 rails:5096 express:5097 laravel:5098 octane:5100 django:5099 adonis:5102 fastapi:5103 phoenix:5104 kemal:5105; do
+for e in soli:5080 rails:5096 express:5097 laravel:5098 octane:5100 django:5099 adonis:5102 fastapi:5103 phoenix:5104 kemal:5105 shuttlebay:5106; do
   n=${e%%:*}; p=${e##*:}
   [ -n "${STACKS:-}" ] && [[ " $STACKS " != *" $n "* ]] && continue
   case "$n" in laravel | octane) method="cgroup" ;; *) method="PSS" ;; esac
