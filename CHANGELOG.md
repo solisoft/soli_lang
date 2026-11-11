@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- **LSP: references and rename across the application, doc comments in hover
+  (#691).** A name the project declares — a class, a top-level `def`, a
+  helper, a constant, a method or a field — is searched in every `.sl` file
+  under `app/`, `config/` and `tests/` and in the `<% %>` code of the `.slv`
+  views (`references::template_code_regions`; markup, `<%# %>` and `<%%` are
+  skipped), open buffers as the editor holds them; a local or a parameter
+  stays in its document (`references::word_and_scope`). Renaming a member that
+  several classes declare is refused with an `invalid_params` error naming the
+  count. References and rename now also answer inside a template's tags.
+  Hover appends the `#` comment block right above a `def`, class or constant
+  (`util::doc_comment_above`; a blank line ends it, lint pragmas are dropped),
+  for local declarations and for indexed ones (`IndexedSymbol::doc`).
+
 ## [2.35.0] - 2026-11-11
 
 ### Added

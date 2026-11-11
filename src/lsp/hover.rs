@@ -1,7 +1,7 @@
 //! Hover provider for LSP.
 use super::goto::{local_declaration, project_targets, ProjectScope};
-use super::util::{position_to_offset, word_bounds};
-use crate::lsp::symbols::SymbolTable;
+use super::util::{doc_comment_above, offset_to_position, position_to_offset, word_bounds};
+use crate::lsp::symbols::{SymbolKind, SymbolTable};
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkedString, Position};
 
 /// What the identifier under the cursor is: its declaration's kind or type when
@@ -28,18 +28,29 @@ pub fn get_hover(
             Some(t) => format!("**{}** : {}", symbol.symbol.name, t),
             None => {
                 let kind_str = match symbol.symbol.kind {
-                    crate::lsp::symbols::SymbolKind::Variable => "variable",
-                    crate::lsp::symbols::SymbolKind::Function => "function",
-                    crate::lsp::symbols::SymbolKind::Class => "class",
-                    crate::lsp::symbols::SymbolKind::Parameter => "parameter",
-                    crate::lsp::symbols::SymbolKind::Property => "property",
-                    crate::lsp::symbols::SymbolKind::Method => "method",
-                    crate::lsp::symbols::SymbolKind::Constant => "constant",
+                    SymbolKind::Variable => "variable",
+                    SymbolKind::Function => "function",
+                    SymbolKind::Class => "class",
+                    SymbolKind::Parameter => "parameter",
+                    SymbolKind::Property => "property",
+                    SymbolKind::Method => "method",
+                    SymbolKind::Constant => "constant",
                 };
                 format!("**{}** : {}", symbol.symbol.name, kind_str)
             }
         };
-        contents.push(MarkedString::String(type_info));
+        let mut text = type_info;
+        let documented = matches!(
+            symbol.symbol.kind,
+            SymbolKind::Function | SymbolKind::Method | SymbolKind::Class | SymbolKind::Constant
+        );
+        if documented {
+            let line = offset_to_position(source, symbol.symbol.span.start_usize()).line;
+            if let Some(doc) = doc_comment_above(source, line) {
+                text.push_str(&format!("\n\n{doc}"));
+            }
+        }
+        contents.push(MarkedString::String(text));
     } else if let Some((index, namespace)) = project {
         for symbol in project_targets(source, word_start, word_end, index, namespace) {
             let place = symbol
@@ -56,6 +67,9 @@ pub fn get_hover(
             let mut text = format!("**{}** : {}{owner}", symbol.name, symbol.kind.label());
             if let Some(signature) = &symbol.signature {
                 text.push_str(&format!("\n\n```soli\n{signature}\n```"));
+            }
+            if let Some(doc) = &symbol.doc {
+                text.push_str(&format!("\n\n{doc}"));
             }
             text.push_str(&format!("\n\n{place}:{}", symbol.range.start.line + 1));
             contents.push(MarkedString::String(text));
@@ -134,5 +148,20 @@ mod tests {
             .unwrap()
             .contains("Prints values to stdout"));
         assert!(hover_text(source, 1, 3).unwrap().contains("**name**"));
+    }
+
+    #[test]
+    fn a_def_shows_the_comment_written_above_it() {
+        let source = "x = 1\n\n# Greets someone.\n#\n# Returns the greeting.\ndef greet(name)\n  name\nend\n\nprint(greet(\"x\"))\n";
+        assert_eq!(
+            hover_text(source, 9, 7).as_deref(),
+            Some("**greet** : function\n\nGreets someone.\n\nReturns the greeting.")
+        );
+        // A blank line ends the block: the comment is not about the `def`.
+        let source = "# not about greet\n\ndef greet\n  1\nend\n\nprint(greet)\n";
+        assert_eq!(
+            hover_text(source, 6, 7).as_deref(),
+            Some("**greet** : function")
+        );
     }
 }

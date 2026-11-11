@@ -18,7 +18,7 @@ use crate::ast::expr::{Argument, ExprKind};
 use crate::ast::stmt::{ClassDecl, Stmt, StmtKind};
 use crate::lexer::TokenKind;
 
-use super::util::range_of;
+use super::util::{doc_comment_above, range_of};
 
 /// More files than this and the rest of the tree is left out: the index is
 /// built on the server's single thread, and a monorepo under `app/` would
@@ -87,6 +87,8 @@ pub struct IndexedSymbol {
     pub range: Range,
     /// `def title(width: Int) -> String`, for functions and methods.
     pub signature: Option<String>,
+    /// The `#` comment lines right above the declaration, markers stripped.
+    pub doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +139,31 @@ impl ProjectIndex {
             files: HashMap::new(),
             loose: true,
         }
+    }
+
+    /// Every file a project-wide reference or rename reads: the `.sl` code and
+    /// `.slv` views under `app/`, plus `config/` and `tests/`. A directory of
+    /// loose scripts has no project: only its indexed (open) scripts.
+    pub fn source_files(&self) -> Vec<PathBuf> {
+        if self.loose {
+            let mut files: Vec<PathBuf> = self.files.keys().cloned().collect();
+            files.sort();
+            return files;
+        }
+        let mut files = Vec::new();
+        for (dir, ext) in [
+            ("app", "sl"),
+            ("app", "slv"),
+            ("config", "sl"),
+            ("tests", "sl"),
+        ] {
+            files.extend(crate::app_layout::files_with_extension(
+                &self.root.join(dir),
+                ext,
+            ));
+        }
+        files.truncate(MAX_FILES);
+        files
     }
 
     /// The namespace `path` belongs to, or `None` when it is not an
@@ -431,6 +458,7 @@ impl Indexer<'_> {
             owner: owner.map(str::to_string),
             superclass: None,
             path: self.path.to_path_buf(),
+            doc: doc_comment_above(self.source, range.start.line),
             range,
             signature,
         });
@@ -481,6 +509,7 @@ impl Indexer<'_> {
             owner: owner.map(str::to_string),
             superclass: decl.superclass.clone(),
             path: self.path.to_path_buf(),
+            doc: doc_comment_above(self.source, range.start.line),
             range,
             signature: Some(match &decl.superclass {
                 Some(parent) => format!("{} {} < {}", kind.label(), decl.name, parent),
@@ -576,6 +605,7 @@ impl Indexer<'_> {
             owner: Some(class.to_string()),
             superclass: None,
             path: self.path.to_path_buf(),
+            doc: doc_comment_above(self.source, range.start.line),
             range,
         });
     }

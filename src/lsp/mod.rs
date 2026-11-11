@@ -151,6 +151,32 @@ impl Backend {
         })
     }
 
+    /// The document's text when the cursor is on Soli code: anywhere in a
+    /// `.sl` file, inside a `<% %>` tag of a `.slv` view (whose markup is
+    /// not code). Also whether it is a view.
+    fn code_at(&self, uri: &Uri, position: lsp_types::Position) -> Option<(String, bool)> {
+        if !is_soli_document(uri) {
+            return None;
+        }
+        let text = self.get_document(uri)?;
+        let template = is_template(uri);
+        if template && !completions::in_template_code(&text, position) {
+            return None;
+        }
+        Some((text, template))
+    }
+
+    /// The open buffers by file path: a project-wide search reads them
+    /// instead of the (possibly older) file on disk.
+    fn open_buffers(&self) -> HashMap<PathBuf, String> {
+        self.documents
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(uri, text)| Some((document_path(uri)?, text.clone())))
+            .collect()
+    }
+
     /// The names the document's auto-loaded neighbours declare, from the
     /// index, for a file under `app/` — the files `soli lint` gives those
     /// names to. `None` elsewhere: the linter decides on its own.
@@ -205,7 +231,7 @@ fn is_soli_document(uri: &Uri) -> bool {
 }
 
 /// Whether whole-document Soli features (symbols, formatting, folding, code
-/// actions, references, rename) apply: a Soli document that is not a template,
+/// actions) apply: a Soli document that is not a template,
 /// whose HTML they would read as code.
 fn is_soli_code(uri: &Uri) -> bool {
     is_soli_document(uri) && !is_template(uri)
@@ -453,15 +479,26 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<lsp_types::Location>>, tower_lsp_server::jsonrpc::Error> {
         let uri = params.text_document_position.text_document.uri;
         let pos = params.text_document_position.position;
-        // Templates wait for offset mapping: a text scan would count markup.
-        if !is_soli_code(&uri) {
+        let Some((text, template)) = self.code_at(&uri, pos) else {
             return Ok(None);
-        }
-
-        if let Some(text) = self.get_document(&uri) {
-            return Ok(references::find_references(&text, pos, &uri));
-        }
-        Ok(None)
+        };
+        let table = self.get_symbol_table(&uri);
+        let request = references::Request {
+            uri: &uri,
+            source: &text,
+            position: pos,
+            template,
+            table: table.as_ref(),
+        };
+        let open = self.open_buffers();
+        Ok(self.with_project(&uri, |project| {
+            let files = project
+                .map(|(index, _)| index.source_files())
+                .unwrap_or_default();
+            references::find_references(&request, project, || {
+                references::project_texts(files, &open)
+            })
+        }))
     }
 
     async fn rename(
@@ -471,15 +508,27 @@ impl LanguageServer for Backend {
         let uri = params.text_document_position.text_document.uri;
         let pos = params.text_document_position.position;
         let new_name = params.new_name;
-        // In a template the text scan would rename words in the markup too.
-        if !is_soli_code(&uri) {
+        let Some((text, template)) = self.code_at(&uri, pos) else {
             return Ok(None);
-        }
-
-        if let Some(text) = self.get_document(&uri) {
-            return Ok(rename::rename_symbol(&text, pos, &new_name, &uri));
-        }
-        Ok(None)
+        };
+        let table = self.get_symbol_table(&uri);
+        let request = references::Request {
+            uri: &uri,
+            source: &text,
+            position: pos,
+            template,
+            table: table.as_ref(),
+        };
+        let open = self.open_buffers();
+        self.with_project(&uri, |project| {
+            let files = project
+                .map(|(index, _)| index.source_files())
+                .unwrap_or_default();
+            rename::rename_symbol(&request, &new_name, project, || {
+                references::project_texts(files, &open)
+            })
+        })
+        .map_err(|refusal| tower_lsp_server::jsonrpc::Error::invalid_params(refusal.to_string()))
     }
 
     async fn document_symbol(

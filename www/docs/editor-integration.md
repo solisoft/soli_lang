@@ -10,20 +10,19 @@ server reports its version in `initialize` (`serverInfo`).
 | Feature | What you get |
 |---|---|
 | Diagnostics | The lint rules as warnings while you type, and a syntax error as an error at its position. A file under `app/` gets the path-aware rules too (`security/unfiltered-mass-assignment`, `style/redundant-model-import`…), with the names its auto-loaded neighbours declare in scope, as `soli lint` does. A `.slv` template has its `<% %>` code linted, not its HTML: an unclosed tag or an `<% if %>` without its `end` is an error on its line, and a finding covers its whole line. |
-| Hover | On a name declared in the file — at its declaration or at any use — its kind or declared type (`greet : function`). On a name declared elsewhere in the application — `Post` in a controller, a helper in a view, `post.summary` — its signature and the file and line it is in. On a common builtin (`print`, `len`, `json_parse`, `HTTP`, `DateTime`…), its signature. |
+| Hover | On a name declared in the file — at its declaration or at any use — its kind or declared type (`greet : function`). On a name declared elsewhere in the application — `Post` in a controller, a helper in a view, `post.summary` — its signature and the file and line it is in. Either way, the `#` comment lines right above a `def`, a class or a constant come with it — a blank line ends the block. On a common builtin (`print`, `len`, `json_parse`, `HTTP`, `DateTime`…), its signature. |
 | Completion | Keywords, types, the names declared in the file, and the application's classes and functions. After `.` or `@`, the receiver's members — see below. |
 | Go to definition | The declaration of the name under the cursor: in the file first, then anywhere in the application's auto-loaded files (`app/models`, `app/controllers`, `app/services`, `app/policies`, `app/mailers`, `app/middleware`, `app/jobs`, `app/subscribers`, and `app/helpers` from a helper or a view). `Post` in a controller lands on `class Post` in `app/models/post.sl`; `post.summary` on the `def summary` of the class `post` holds. A name declared twice answers with both. |
-| References | Every use of the name in the file, `#{…}` interpolations included — not words in plain strings or comments. |
-| Rename | The same occurrences, in one edit. A new name that is not an identifier is refused. |
+| References | A local or a parameter: every use in the file. A name the application declares — a class, a top-level `def`, a helper, a constant, a method or a field — every use across the application: the `.sl` files under `app/`, `config/` and `tests/`, and the `<% %>` code of the `.slv` views. Open buffers are read as the editor has them, unsaved changes included. `#{…}` interpolations count; words in plain strings, comments and template markup do not. |
+| Rename | The same occurrences, in one edit across every file they are in. A new name that is not an identifier is refused, and so is renaming a member two classes declare (`summary` in `Post` and in `Page`): `x.summary` cannot be told apart, so the edit would rewrite the other class's calls too. |
 | Document symbols | An outline of the file's classes, functions and variables. |
 | Folding | Classes and functions, and multi-line `{ }`, `( )` and `[ ]` (hashes, arrays, long calls). |
 | Formatting | The whole document, with the same formatter as `soli fmt`. A file that does not parse is left alone. |
 | Code actions | On a lint finding: rename to the expected case for the naming rules (every occurrence), or insert `# soli-lint-disable-next-line <rule>` above the line. |
 
-Formatting, document symbols, folding, code actions, references and rename
-are for `.sl` files; on a `.slv` template they answer nothing (rename would
-otherwise reach words in the markup). In a template, completion works inside
-`<% %>` tags only, and nowhere does a `.` or `@` in a comment or a string open
+Formatting, document symbols, folding and code actions are for `.sl` files;
+on a `.slv` template they answer nothing. In a template, completion,
+references and rename work inside `<% %>` tags only, and nowhere does a `.` or `@` in a comment or a string open
 the member list. A file that is neither `.sl` nor `.slv` — an HTML buffer an
 editor sends along — gets nothing from the server.
 
@@ -47,9 +46,11 @@ kept current file by file: an open buffer on every change (a buffer that does
 not parse keeps its last good version), a file on save, and — when the editor
 supports watching files — a file changed, added or deleted outside the editor.
 
-**Limits.** References and rename still work within one file, and names are
-matched by spelling there, so two variables called `count` in two functions
-count as one name. Member completion follows one step: `post.` is resolved,
+**Limits.** Occurrences are matched by spelling, not by type: within a file,
+two variables called `count` in two functions count as one name, and across
+the application `post.title` counts for a `title` field even when `post` is a
+hash. A name in a string — `permit(params, {"title": true})`,
+`has_many("comments")` — is not renamed. Member completion follows one step: `post.` is resolved,
 `post.author.` is not. Instance variables a controller sets are not offered in
 its views.
 

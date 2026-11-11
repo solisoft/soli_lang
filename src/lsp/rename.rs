@@ -1,36 +1,78 @@
 //! Rename symbol provider for LSP.
-use super::util::{extract_word_at_offset, identifier_occurrences, position_to_offset, range_of};
-use tower_lsp_server::ls_types::{Position, TextEdit, Uri, WorkspaceEdit};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
-/// Rename every use of the identifier under the cursor in this document —
-/// the declaration and its call sites, `#{…}` interpolations included. It used
-/// to rename the declaration only, which left every call broken.
-pub fn rename_symbol(
-    source: &str,
-    position: Position,
-    new_name: &str,
-    uri: &Uri,
-) -> Option<WorkspaceEdit> {
-    if !is_identifier(new_name) {
-        return None;
+use super::goto::ProjectScope;
+use super::references::{ranges_by_document, word_and_scope, Request, Scope};
+use tower_lsp_server::ls_types::{TextEdit, WorkspaceEdit};
+
+/// Why a rename was refused, for the editor to show.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Refusal {
+    NotAnIdentifier,
+    /// Several classes declare a member with this name: `x.name` cannot be
+    /// told apart, so renaming every one would rewrite the other classes'.
+    AmbiguousMember(usize),
+}
+
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refusal::NotAnIdentifier => write!(f, "not a valid Soli name"),
+            Refusal::AmbiguousMember(count) => write!(
+                f,
+                "{count} classes declare a member with this name; rename them one at a time by hand"
+            ),
+        }
     }
-    let offset = position_to_offset(source, position)?;
-    let word = extract_word_at_offset(source, offset)?;
-    let edits: Vec<TextEdit> = identifier_occurrences(source, &word)
+}
+
+/// Rename every use of the identifier under the cursor — the declaration and
+/// its call sites, `#{…}` interpolations included: in its document for a
+/// local, across the application (views' `<% %>` code too) for a name the
+/// project declares.
+pub fn rename_symbol(
+    request: &Request<'_>,
+    new_name: &str,
+    project: ProjectScope<'_>,
+    texts: impl FnOnce() -> Vec<(PathBuf, String)>,
+) -> Result<Option<WorkspaceEdit>, Refusal> {
+    if !is_identifier(new_name) {
+        return Err(Refusal::NotAnIdentifier);
+    }
+    let Some((word, scope)) = word_and_scope(request, project) else {
+        return Ok(None);
+    };
+    if let Scope::Project {
+        member: true,
+        declarations,
+    } = scope
+    {
+        if declarations > 1 {
+            return Err(Refusal::AmbiguousMember(declarations));
+        }
+    }
+    let changes: HashMap<_, Vec<TextEdit>> = ranges_by_document(request, &word, scope, texts)
         .into_iter()
-        .map(|(start, end)| TextEdit {
-            range: range_of(source, start, end),
-            new_text: new_name.to_string(),
+        .map(|(uri, ranges)| {
+            let edits = ranges
+                .into_iter()
+                .map(|range| TextEdit {
+                    range,
+                    new_text: new_name.to_string(),
+                })
+                .collect();
+            (uri, edits)
         })
         .collect();
-    if edits.is_empty() {
-        return None;
+    if changes.is_empty() {
+        return Ok(None);
     }
-    Some(WorkspaceEdit {
-        changes: Some(std::collections::HashMap::from([(uri.clone(), edits)])),
+    Ok(Some(WorkspaceEdit {
+        changes: Some(changes),
         change_annotations: None,
         document_changes: None,
-    })
+    }))
 }
 
 /// A name the rename may write: letters, digits and `_`, not starting with a
@@ -45,13 +87,32 @@ fn is_identifier(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower_lsp_server::ls_types::{Position, Uri};
+
+    fn rename(
+        source: &str,
+        position: Position,
+        new_name: &str,
+    ) -> Result<Option<WorkspaceEdit>, Refusal> {
+        let uri: Uri = "file:///app/greet.sl".parse().unwrap();
+        let request = Request {
+            uri: &uri,
+            source,
+            position,
+            template: false,
+            table: None,
+        };
+        rename_symbol(&request, new_name, None, Vec::new)
+    }
 
     #[test]
     fn renames_the_declaration_and_every_call() {
-        let uri = "file:///app/greet.sl".parse().unwrap();
+        let uri: Uri = "file:///app/greet.sl".parse().unwrap();
         let source =
             "def greet(name)\n  name\nend\n\nprint(greet(\"x\"))\ns = \"#{greet(\"y\")}\"\n";
-        let edit = rename_symbol(source, Position::new(0, 5), "welcome", &uri).unwrap();
+        let edit = rename(source, Position::new(0, 5), "welcome")
+            .unwrap()
+            .unwrap();
         let edits = &edit.changes.unwrap()[&uri];
         assert_eq!(edits.len(), 3);
         assert!(edits.iter().all(|e| e.new_text == "welcome"));
@@ -59,10 +120,17 @@ mod tests {
 
     #[test]
     fn refuses_a_name_that_is_not_an_identifier() {
-        let uri = "file:///app/greet.sl".parse().unwrap();
         let source = "def greet\n  1\nend\n";
-        assert!(rename_symbol(source, Position::new(0, 5), "not a name", &uri).is_none());
-        assert!(rename_symbol(source, Position::new(0, 5), "1st", &uri).is_none());
-        assert!(rename_symbol(source, Position::new(0, 5), "ready?", &uri).is_some());
+        assert_eq!(
+            rename(source, Position::new(0, 5), "not a name"),
+            Err(Refusal::NotAnIdentifier)
+        );
+        assert_eq!(
+            rename(source, Position::new(0, 5), "1st"),
+            Err(Refusal::NotAnIdentifier)
+        );
+        assert!(rename(source, Position::new(0, 5), "ready?")
+            .unwrap()
+            .is_some());
     }
 }

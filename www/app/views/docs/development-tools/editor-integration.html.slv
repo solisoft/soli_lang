@@ -24,7 +24,7 @@
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Hover</td>
-                    <td class="px-4 py-3">On a name declared in the file &mdash; at its declaration or at any use &mdash; its kind or declared type (<code class="text-amber-400">greet : function</code>). On a name declared elsewhere in the application &mdash; <code class="text-amber-400">Post</code> in a controller, a helper in a view, <code class="text-amber-400">post.summary</code> &mdash; its signature and the file and line it is in. On a common builtin (<code class="text-amber-400">print</code>, <code class="text-amber-400">len</code>, <code class="text-amber-400">json_parse</code>, <code class="text-amber-400">HTTP</code>, <code class="text-amber-400">DateTime</code>&hellip;), its signature.</td>
+                    <td class="px-4 py-3">On a name declared in the file &mdash; at its declaration or at any use &mdash; its kind or declared type (<code class="text-amber-400">greet : function</code>). On a name declared elsewhere in the application &mdash; <code class="text-amber-400">Post</code> in a controller, a helper in a view, <code class="text-amber-400">post.summary</code> &mdash; its signature and the file and line it is in. Either way, the <code class="text-amber-400">#</code> comment lines right above a <code class="text-amber-400">def</code>, a class or a constant come with it &mdash; a blank line ends the block. On a common builtin (<code class="text-amber-400">print</code>, <code class="text-amber-400">len</code>, <code class="text-amber-400">json_parse</code>, <code class="text-amber-400">HTTP</code>, <code class="text-amber-400">DateTime</code>&hellip;), its signature.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Completion</td>
@@ -36,11 +36,11 @@
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">References</td>
-                    <td class="px-4 py-3">Every use of the name in the file, <code class="text-amber-400">#{&hellip;}</code> interpolations included &mdash; not words in plain strings or comments.</td>
+                    <td class="px-4 py-3">A local or a parameter: every use in the file. A name the application declares &mdash; a class, a top-level <code class="text-amber-400">def</code>, a helper, a constant, a method or a field &mdash; every use across the application: the <code class="text-amber-400">.sl</code> files under <code class="text-amber-400">app/</code>, <code class="text-amber-400">config/</code> and <code class="text-amber-400">tests/</code>, and the <code class="text-amber-400">&lt;% %&gt;</code> code of the <code class="text-amber-400">.slv</code> views. Open buffers are read as the editor has them, unsaved changes included. <code class="text-amber-400">#{&hellip;}</code> interpolations count; words in plain strings, comments and template markup do not.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Rename</td>
-                    <td class="px-4 py-3">The same occurrences, in one edit. A new name that is not an identifier is refused.</td>
+                    <td class="px-4 py-3">The same occurrences, in one edit across every file they are in. A new name that is not an identifier is refused, and so is renaming a member two classes declare (<code class="text-amber-400">summary</code> in <code class="text-amber-400">Post</code> and in <code class="text-amber-400">Page</code>): <code class="text-amber-400">x.summary</code> cannot be told apart, so the edit would rewrite the other class&rsquo;s calls too.</td>
                 </tr>
                 <tr>
                     <td class="px-4 py-3 text-white font-medium align-top">Document symbols</td>
@@ -63,7 +63,7 @@
     </div>
 
     <p class="text-gray-400 mb-12">
-        Formatting, document symbols, folding, code actions, references and rename are for <code class="text-amber-400">.sl</code> files; on a <code class="text-amber-400">.slv</code> template they answer nothing (rename would otherwise reach words in the markup). In a template, completion works inside <code class="text-amber-400">&lt;% %&gt;</code> tags only, and nowhere does a <code class="text-amber-400">.</code> or <code class="text-amber-400">@</code> in a comment or a string open the member list. A file that is neither <code class="text-amber-400">.sl</code> nor <code class="text-amber-400">.slv</code> &mdash; an HTML buffer an editor sends along &mdash; gets nothing from the server.
+        Formatting, document symbols, folding and code actions are for <code class="text-amber-400">.sl</code> files; on a <code class="text-amber-400">.slv</code> template they answer nothing. In a template, completion, references and rename work inside <code class="text-amber-400">&lt;% %&gt;</code> tags only, and nowhere does a <code class="text-amber-400">.</code> or <code class="text-amber-400">@</code> in a comment or a string open the member list. A file that is neither <code class="text-amber-400">.sl</code> nor <code class="text-amber-400">.slv</code> &mdash; an HTML buffer an editor sends along &mdash; gets nothing from the server.
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-4">Member completion</h3>
@@ -108,7 +108,7 @@
 
     <div class="my-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-200/90 text-sm">
-            <strong class="text-amber-300">Limits:</strong> references and rename still work within one file, and names are matched by spelling there, so two variables called <code class="text-amber-300">count</code> in two functions count as one name. Member completion follows one step: <code class="text-amber-300">post.</code> is resolved, <code class="text-amber-300">post.author.</code> is not. Instance variables a controller sets are not offered in its views.
+            <strong class="text-amber-300">Limits:</strong> occurrences are matched by spelling, not by type: within a file, two variables called <code class="text-amber-300">count</code> in two functions count as one name, and across the application <code class="text-amber-300">post.title</code> counts for a <code class="text-amber-300">title</code> field even when <code class="text-amber-300">post</code> is a hash. A name in a string &mdash; <code class="text-amber-300">permit(params, {"title": true})</code>, <code class="text-amber-300">has_many("comments")</code> &mdash; is not renamed. Member completion follows one step: <code class="text-amber-300">post.</code> is resolved, <code class="text-amber-300">post.author.</code> is not. Instance variables a controller sets are not offered in its views.
         </p>
     </div>
 

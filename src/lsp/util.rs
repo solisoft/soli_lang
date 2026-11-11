@@ -4,12 +4,28 @@ use crate::lexer::TokenKind;
 use crate::span::Span;
 use tower_lsp_server::ls_types::{Position, Range};
 
-/// The identifier around byte `offset` — the unit of `Span::start` and of
-/// `position_to_offset`. It used to index a `Vec<char>` with that byte offset,
-/// which picked the wrong word after any non-ASCII text.
-pub(super) fn extract_word_at_offset(source: &str, offset: usize) -> Option<String> {
-    let (start, end) = word_bounds(source, offset)?;
-    Some(source[start..end].to_string())
+/// The `#` comment block that ends on the line right above `line` (0-based),
+/// markers stripped, in source order: what a `def`'s author wrote about it.
+/// A blank line ends the block; a lint pragma (`# soli-lint: …`) is not prose.
+pub(super) fn doc_comment_above(source: &str, line: u32) -> Option<String> {
+    let lines: Vec<&str> = source.lines().take(line as usize).collect();
+    let mut doc: Vec<&str> = lines
+        .iter()
+        .rev()
+        .map(|text| text.trim())
+        .take_while(|text| text.starts_with('#') && !text.starts_with("#{"))
+        .map(|text| text.trim_start_matches('#'))
+        .map(|text| text.strip_prefix(' ').unwrap_or(text).trim_end())
+        .filter(|text| !text.starts_with("soli-lint") && !text.starts_with("soli:"))
+        .collect();
+    doc.reverse();
+    while doc.first().is_some_and(|text| text.is_empty()) {
+        doc.remove(0);
+    }
+    while doc.last().is_some_and(|text| text.is_empty()) {
+        doc.pop();
+    }
+    (!doc.is_empty()).then(|| doc.join("\n"))
 }
 
 /// The byte range of the identifier around byte `offset`.
@@ -179,9 +195,10 @@ mod tests {
         // `x` is byte 7 but char 4: indexing chars by the byte offset landed
         // on the space after `=` and found no word.
         let source = "ééé x = yy";
-        assert_eq!(extract_word_at_offset(source, 7).as_deref(), Some("x"));
-        assert_eq!(extract_word_at_offset(source, 12).as_deref(), Some("yy"));
-        assert_eq!(extract_word_at_offset(source, 9), None);
+        let word = |offset| word_bounds(source, offset).map(|(start, end)| &source[start..end]);
+        assert_eq!(word(7), Some("x"));
+        assert_eq!(word(12), Some("yy"));
+        assert_eq!(word(9), None);
     }
 
     #[test]

@@ -329,7 +329,7 @@ fn project() -> (tempfile::TempDir, std::path::PathBuf) {
     write(
         &root,
         "app/helpers/format.sl",
-        "def format_price(cents)\n  \"#{cents / 100}\"\nend\n",
+        "# Cents to a price.\ndef format_price(cents)\n  \"#{cents / 100}\"\nend\n",
     );
     write(
         &root,
@@ -565,6 +565,186 @@ fn definition_and_hover_cross_files() {
         matches!(&items[0], lsp_types::MarkedString::String(t) if t.contains("def summary(width: Int) -> String")),
         "{items:?}"
     );
+}
+
+fn request<'a>(
+    uri: &'a Uri,
+    source: &'a str,
+    position: lsp_types::Position,
+    template: bool,
+    table: Option<&'a SymbolTable>,
+) -> references::Request<'a> {
+    references::Request {
+        uri,
+        source,
+        position,
+        template,
+        table,
+    }
+}
+
+fn files_of(locations: &[lsp_types::Location], root: &Path) -> Vec<String> {
+    let mut files: Vec<String> = locations
+        .iter()
+        .map(|location| {
+            let path = location.uri.to_file_path().unwrap().into_owned();
+            path.strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn references_rename_and_doc_hover_cross_files() {
+    let (_dir, root) = project();
+    write(
+        &root,
+        "app/views/posts/show.html.slv",
+        "<h1>Post format_price</h1>\n<%= format_price(@post.cents) %>\n<%# format_price %>\n",
+    );
+    write(&root, "tests/post_spec.sl", "recent = Post.recent\n");
+    let index = ProjectIndex::scan(&root);
+    let texts =
+        |open: &HashMap<PathBuf, String>| references::project_texts(index.source_files(), open);
+
+    // `Post` at its declaration: every file that names the class, the view's
+    // markup excluded.
+    let model = root.join("app/models/post.sl");
+    let model_uri = Uri::from_file_path(&model).unwrap();
+    let model_text = std::fs::read_to_string(&model).unwrap();
+    let model_table = symbols::build_symbol_table(&model_text);
+    let namespace = index.namespace_of(&model);
+    let at_post = request(
+        &model_uri,
+        &model_text,
+        lsp_types::Position::new(0, 7),
+        false,
+        model_table.as_ref(),
+    );
+    let found = references::find_references(&at_post, Some((&index, namespace)), || {
+        texts(&HashMap::new())
+    })
+    .unwrap();
+    assert_eq!(
+        files_of(&found, &root),
+        [
+            "app/controllers/posts_controller.sl",
+            "app/models/featured_post.sl",
+            "app/models/post.sl",
+            "app/models/post.sl",
+            "tests/post_spec.sl",
+        ]
+    );
+
+    // An open buffer is searched as the editor has it, not as the disk does.
+    let spec = root.join("tests/post_spec.sl");
+    let open = HashMap::from([(spec.clone(), "a = Post.recent\nb = Post.all\n".to_string())]);
+    let found =
+        references::find_references(&at_post, Some((&index, namespace)), || texts(&open)).unwrap();
+    assert_eq!(
+        files_of(&found, &root)
+            .iter()
+            .filter(|f| *f == "tests/post_spec.sl")
+            .count(),
+        2
+    );
+
+    // A helper renamed from its `def` reaches the view's code, not its markup
+    // or its comment tag.
+    let helper = root.join("app/helpers/format.sl");
+    let helper_uri = Uri::from_file_path(&helper).unwrap();
+    let helper_text = std::fs::read_to_string(&helper).unwrap();
+    let table = symbols::build_symbol_table(&helper_text);
+    let at_def = request(
+        &helper_uri,
+        &helper_text,
+        lsp_types::Position::new(1, 6),
+        false,
+        table.as_ref(),
+    );
+    let edit = rename::rename_symbol(
+        &at_def,
+        "money",
+        Some((&index, index.namespace_of(&helper))),
+        || texts(&HashMap::new()),
+    )
+    .unwrap()
+    .unwrap();
+    let changes = edit.changes.unwrap();
+    let view_uri = Uri::from_file_path(root.join("app/views/posts/show.html.slv")).unwrap();
+    assert_eq!(changes[&helper_uri].len(), 1);
+    assert_eq!(changes[&view_uri].len(), 1);
+    assert_eq!(
+        changes[&view_uri][0].range.start,
+        lsp_types::Position::new(1, 4)
+    );
+
+    // From the view, the hover shows the comment above the helper's `def`.
+    let view_text = std::fs::read_to_string(root.join("app/views/posts/show.html.slv")).unwrap();
+    let hovered = hover::get_hover(
+        &view_text,
+        lsp_types::Position::new(1, 6),
+        None,
+        Some((&index, None)),
+    )
+    .unwrap();
+    let lsp_types::HoverContents::Array(items) = hovered.contents else {
+        panic!();
+    };
+    assert!(
+        matches!(&items[0], lsp_types::MarkedString::String(t) if t.contains("Cents to a price.")),
+        "{items:?}"
+    );
+
+    // A member only one class declares renames everywhere; once two classes
+    // declare it, `x.summary` cannot be told apart and the rename is refused.
+    let at_summary = request(
+        &model_uri,
+        &model_text,
+        lsp_types::Position::new(5, 7),
+        false,
+        model_table.as_ref(),
+    );
+    assert!(
+        rename::rename_symbol(&at_summary, "abstract", Some((&index, namespace)), || {
+            texts(&HashMap::new())
+        })
+        .unwrap()
+        .is_some()
+    );
+    write(
+        &root,
+        "app/models/page.sl",
+        "class Page\n  def summary\n    1\n  end\nend\n",
+    );
+    let index = ProjectIndex::scan(&root);
+    let refused = rename::rename_symbol(&at_summary, "abstract", Some((&index, namespace)), || {
+        references::project_texts(index.source_files(), &HashMap::new())
+    });
+    assert_eq!(refused, Err(rename::Refusal::AmbiguousMember(2)));
+
+    // A local stays in its document.
+    let source = "def show(id)\n  post = Post.find(id)\n  post\nend\n";
+    let table = symbols::build_symbol_table(source);
+    let controller_uri =
+        Uri::from_file_path(root.join("app/controllers/posts_controller.sl")).unwrap();
+    let at_local = request(
+        &controller_uri,
+        source,
+        lsp_types::Position::new(2, 3),
+        false,
+        table.as_ref(),
+    );
+    let found =
+        references::find_references(&at_local, Some((&index, Some(Namespace::Global))), || {
+            panic!("a local must not read the project")
+        })
+        .unwrap();
+    assert_eq!(found.len(), 2);
 }
 
 /// The whole loop over the wire: the workspace root from `initialize`, the
