@@ -29,7 +29,7 @@ use crate::scaffold::app_generator::write_file;
 use crate::scaffold::controller_generator::{create_controller, create_tests};
 use crate::scaffold::migration_generator::create_migration;
 use crate::scaffold::model_generator::create_model;
-use crate::scaffold::utils::{to_snake_case, to_snake_case_plural};
+use crate::scaffold::utils::{to_pascal_case, to_snake_case, to_snake_case_plural};
 use crate::scaffold::view_generator::{create_form_partial, create_views};
 
 /// A field definition parsed from scaffold arguments
@@ -105,7 +105,7 @@ pub fn create_scaffold_with_fields(
     create_migration(app_path, name, &parsed_fields)?;
 
     // Create tests
-    create_tests(app_path, name)?;
+    create_tests(app_path, name, &parsed_fields)?;
 
     // Add routes
     add_routes(app_path, name)?;
@@ -175,54 +175,49 @@ delete("/{resource}/:id", "{resource}#delete")
     Ok(())
 }
 
-/// Print success message after creating a scaffold
+/// Print success message after creating a scaffold.
+///
+/// The paths are derived exactly as the generators derive them: the model
+/// file takes the singular (`post_model.sl`), the controller and its spec the
+/// plural the routes name (`posts_controller.sl`), whichever way the name was
+/// typed. Printing the raw name listed files that were never written.
 pub fn print_scaffold_success_message(name: &str) {
+    let singular = crate::inflect::singularize(&to_snake_case(name));
+    let model_file = to_snake_case(&singular);
+    let resource = to_snake_case_plural(&singular);
+
     println!();
     println!(
         "  \x1b[32m\x1b[1mSuccess!\x1b[0m Created scaffold for \x1b[1m{}\x1b[0m",
-        name
+        to_pascal_case(&singular)
     );
     println!();
     println!("  \x1b[2mGenerated files:\x1b[0m");
     println!();
-    println!(
-        "    \x1b[36mapp/models/{}_model.sl\x1b[0m",
-        to_snake_case(name)
-    );
-    println!(
-        "    \x1b[36mapp/controllers/{}_controller.sl\x1b[0m",
-        to_snake_case(name)
-    );
-    println!(
-        "    \x1b[36mapp/views/{}/index.html.slv\x1b[0m",
-        to_snake_case_plural(name)
-    );
-    println!(
-        "    \x1b[36mapp/views/{}/show.html.slv\x1b[0m",
-        to_snake_case_plural(name)
-    );
-    println!(
-        "    \x1b[36mapp/views/{}/new.html.slv\x1b[0m",
-        to_snake_case_plural(name)
-    );
-    println!(
-        "    \x1b[36mapp/views/{}/edit.html.slv\x1b[0m",
-        to_snake_case_plural(name)
-    );
-    println!(
-        "    \x1b[36mapp/views/{}/_form.html.slv\x1b[0m",
-        to_snake_case_plural(name)
-    );
+    for path in scaffold_generated_paths(&model_file, &resource) {
+        println!("    \x1b[36m{}\x1b[0m", path);
+    }
     println!();
     println!("  \x1b[2mTest files:\x1b[0m");
     println!();
     println!(
         "    \x1b[36mtests/controllers/{}_controller_spec.sl\x1b[0m",
-        to_snake_case(name)
+        resource
     );
     println!();
     println!("  \x1b[2mRoutes added to:\x1b[0m \x1b[36mconfig/routes.sl\x1b[0m");
     println!();
+}
+
+fn scaffold_generated_paths(model_file: &str, resource: &str) -> Vec<String> {
+    let mut paths = vec![
+        format!("app/models/{}_model.sl", model_file),
+        format!("app/controllers/{}_controller.sl", resource),
+    ];
+    for view in ["index", "show", "new", "edit", "_form"] {
+        paths.push(format!("app/views/{}/{}.html.slv", resource, view));
+    }
+    paths
 }
 
 // Re-export public functions for backward compatibility
@@ -240,3 +235,32 @@ pub use oauth_generator::create_oauth;
 pub use offline_generator::{create_offline, print_offline_success_message};
 pub use oidc_generator::{create_oidc_provider, print_oidc_success_message};
 pub use passkeys_generator::{create_passkeys, print_passkeys_success_message};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every path the summary prints must be a file the scaffold wrote,
+    /// whichever way the name is typed.
+    #[test]
+    fn summary_paths_are_the_files_written() {
+        for typed in ["Article", "articles", "blog_post"] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path();
+            std::fs::write(root.join("soli.toml"), "").unwrap();
+            create_scaffold_with_fields(root.to_str().unwrap(), typed, &["title:string".into()])
+                .unwrap();
+
+            let singular = crate::inflect::singularize(&to_snake_case(typed));
+            let resource = to_snake_case_plural(&singular);
+            let mut paths = scaffold_generated_paths(&to_snake_case(&singular), &resource);
+            paths.push(format!("tests/controllers/{}_controller_spec.sl", resource));
+            for path in paths {
+                assert!(
+                    root.join(&path).exists(),
+                    "{typed}: summary lists missing {path}"
+                );
+            }
+        }
+    }
+}

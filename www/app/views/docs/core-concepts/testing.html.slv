@@ -1344,6 +1344,22 @@ src/controllers/posts.sl     ▓▓▓▓▓▓▓▓▓░░░░░░░░
             </div>
         </div>
 
+        <h3 class="text-xl font-semibold text-white mb-3" id="section-coverage-new-app">What a new app starts with</h3>
+        <p class="text-gray-400 mb-6"><code>soli new</code> writes specs for the code it generates &mdash; the home controller, the application helper and the sample <code>authenticate</code> middleware (and, with <code>--eui</code>, the counter component) &mdash; and <code>soli generate scaffold</code> a controller spec that creates its own records. A fresh app&rsquo;s first <code>soli test</code> covers 100% of its lines, scaffolds included. Without <code class="text-emerald-300">--coverage-min</code>, a report under 80% is marked &#10060; but the run still exits 0.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-3" id="section-coverage-off">Leaving a file out: <code>#&nbsp;coverage:&nbsp;off</code></h3>
+        <p class="text-gray-400 mb-4">A line <code># coverage: off</code> in a file&rsquo;s leading comment block (where a middleware&rsquo;s <code># order: N</code> sits) keeps the file out of the report &mdash; for code the app carries but does not own. <code>soli new --eui</code> writes it above the widget catalogue, which the framework tests. Text may follow after a space or a dash; the directive counts only before the first line of code.</p>
+        <pre data-filename="app/controllers/eui_builders.sl"><code class="language-soli text-sm"># coverage: off — the EUI widget catalogue, tested by the framework.</code></pre>
+
+        <h3 class="text-xl font-semibold text-white mb-3 mt-8" id="section-direct-calls">Calling functions directly</h3>
+        <p class="text-gray-400 mb-4"><code>soli test</code> loads the app&rsquo;s helpers, middleware, models, services, jobs, mailers, policies and controllers before each spec, so a helper, a middleware, a function-style action or an EUI handler and view are callable as they are. A controller file with a top-level <code>def</code> named like a request function of the spec client (<code>get</code>, <code>post</code>, <code>delete</code>&hellip;) or another test-DSL function is not loaded &mdash; it would replace that function in every spec; test it through HTTP.</p>
+        <pre data-filename="tests/middleware/auth_spec.sl"><code class="language-soli text-sm">describe("authenticate middleware") do
+  test("passes a request with an API key on") do
+    req = {"headers": {"x-api-key": "secret"}}
+    assert_eq(authenticate(req), req)
+  end
+end</code></pre>
+
         <div class="mt-16 pt-8 border-t border-white/5">
             <a href="/docs/testing-quick-reference" class="inline-flex items-center gap-2 text-teal-400 hover:text-teal-300 transition-colors">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

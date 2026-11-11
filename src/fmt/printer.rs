@@ -237,6 +237,16 @@ impl<'a> Printer<'a> {
         self.write(slice);
     }
 
+    /// Mark the comments up to and including `line` as written: a span copied
+    /// from the source with `write_source_span` already carries them.
+    pub(super) fn skip_comments_through(&mut self, line: usize) {
+        while self.comment_cursor < self.comments.len()
+            && self.comments[self.comment_cursor].line <= line
+        {
+            self.comment_cursor += 1;
+        }
+    }
+
     // ---------- comment interleaving ----------
 
     /// Emit any comments whose source line is strictly before `line`. Inserts

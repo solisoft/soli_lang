@@ -81,7 +81,7 @@ impl SqliteAsD1 {
         }
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(sql).map_err(|e| format!("D1_ERROR: {e}"))?;
-        let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+        let columns: Vec<String> = stmt.column_names().map(|c| c.to_string()).collect();
         // D1's bind() takes strings, numbers and null — nothing else arrives.
         let bound: Vec<SqlValue> = params
             .iter()

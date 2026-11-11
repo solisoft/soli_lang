@@ -75,7 +75,7 @@ pub fn create_mailer(folder: &str, name: &str, actions: &[String]) -> Result<(),
         let humanized = humanize(action);
         let view = format!(
             "<h1>{humanized}</h1>\n\
-             <p>Hi <%= h(user[\"name\"]) %>,</p>\n\n\
+             <p>Hi <%= user[\"name\"] %>,</p>\n\n\
              <p>Edit <code>app/views/{mailer_snake}/{action}.html.slv</code> to write this email.</p>\n"
         );
         write_if_absent(&views_dir.join(format!("{action}.html.slv")), &view)?;

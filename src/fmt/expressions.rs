@@ -419,7 +419,8 @@ impl Printer<'_> {
                 // A `"…"` literal cannot span lines, but an expression inside
                 // `#{…}` can print as several — a block call does — and the
                 // result no longer lexed. Such a string keeps its source text.
-                let printed = self.try_single_line(|p| p.print_interpolated_string(parts));
+                let span = expr.span;
+                let printed = self.try_single_line(|p| p.print_interpolated_string(span, parts));
                 if !printed {
                     self.write_string_literal_source(expr.span);
                 }
@@ -515,6 +516,16 @@ impl Printer<'_> {
                 // source that was written as an assignment silently
                 // deregisters the hook. Recover the original spelling from the
                 // source and print it back.
+                // `x = try … end` reaches us as a lambda called on the spot
+                // (parser `try_expression`); print the `try` as it was written.
+                if is_try_expression(self.source, expr.span, callee, arguments) {
+                    self.write_source_span(expr.span.start_usize(), expr.span.end_usize());
+                    // Its comments were copied with it; a trailing one on the
+                    // `end` line is not part of the span and stays pending.
+                    let end_line = super::printer::source_end_line(self.source, expr.span);
+                    self.skip_comments_through(end_line.saturating_sub(1));
+                    return;
+                }
                 if let Some(rest) = self.call_written_as_assignment(callee, arguments) {
                     self.print_expr(callee);
                     self.print_arg_list_inner(rest);
@@ -1194,7 +1205,20 @@ impl Printer<'_> {
         self.newline();
     }
 
-    fn print_interpolated_string(&mut self, parts: &[InterpolatedPart]) {
+    fn print_interpolated_string(&mut self, span: crate::span::Span, parts: &[InterpolatedPart]) {
+        // Each `#{…}` was parsed on its own, so its spans count from the start
+        // of its text, not of the file. Printing it against the file read the
+        // wrong byte for `@x` (whose node is `this.x`) and wrote `this.x`.
+        // Print each one against its own text, recovered from the source.
+        let expr_count = parts
+            .iter()
+            .filter(|p| matches!(p, InterpolatedPart::Expression(_)))
+            .count();
+        let sources = interpolation_sources(self.source, span)
+            .filter(|found| found.len() == expr_count)
+            .unwrap_or_default();
+        let mut sources = sources.into_iter();
+
         self.write("\"");
         for part in parts {
             match part {
@@ -1211,7 +1235,14 @@ impl Printer<'_> {
                 }
                 InterpolatedPart::Expression(e) => {
                     self.write("#{");
-                    self.print_expr(e);
+                    match sources.next() {
+                        Some(own) => {
+                            let file = std::mem::replace(&mut self.source, own);
+                            self.print_expr(e);
+                            self.source = file;
+                        }
+                        None => self.print_expr(e),
+                    }
                     self.write("}");
                 }
             }
@@ -1369,6 +1400,93 @@ fn gap_is_assignment(gap: &str) -> bool {
         return false;
     };
     !before_eq.ends_with(['=', '!', '<', '>'])
+}
+
+/// The node `try_expression` builds for a `try` used as a value: a call, with
+/// no argument, of a parameterless lambda whose only statement is the `try`,
+/// at a span the source spells `try`.
+fn is_try_expression(
+    source: &str,
+    span: crate::span::Span,
+    callee: &Expr,
+    arguments: &[crate::ast::expr::Argument],
+) -> bool {
+    let ExprKind::Lambda { params, body, .. } = &callee.kind else {
+        return false;
+    };
+    arguments.is_empty()
+        && params.is_empty()
+        && body.len() == 1
+        && matches!(body[0].kind, crate::ast::stmt::StmtKind::Try { .. })
+        && source
+            .get(span.start_usize()..)
+            .is_some_and(|rest| rest.starts_with("try"))
+}
+
+/// The text inside each `#{…}` of the string literal at `span`, in order, as
+/// slices of `source`. `None` when the bytes there are not a string literal.
+fn interpolation_sources(source: &str, span: crate::span::Span) -> Option<Vec<&str>> {
+    let bytes = source.as_bytes();
+    let mut start = span.start_usize().min(bytes.len());
+    // A string's span may start after its opening quote.
+    if !matches!(bytes.get(start), Some(b'"' | b'\'')) && start > 0 {
+        start -= 1;
+    }
+    let quote = *bytes.get(start)?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+    let mut found = Vec::new();
+    skip_string(bytes, start + 1, quote, &mut Some(&mut found))?;
+    Some(found.into_iter().map(|(a, b)| &source[a..b]).collect())
+}
+
+/// Walk a string body from `i` (just past its opening `quote`) to the byte
+/// after its closing quote, recording the `(start, end)` of each top-level
+/// `#{…}` body in `found`. Nested strings and braces inside `#{…}` are skipped.
+fn skip_string(
+    bytes: &[u8],
+    mut i: usize,
+    quote: u8,
+    found: &mut Option<&mut Vec<(usize, usize)>>,
+) -> Option<usize> {
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            c if c == quote => return Some(i + 1),
+            b'#' if bytes.get(i + 1) == Some(&b'{') => {
+                let body = i + 2;
+                let end = skip_interpolation(bytes, body)?;
+                if let Some(found) = found.as_deref_mut() {
+                    found.push((body, end));
+                }
+                i = end + 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// From the first byte of a `#{…}` body, the index of its closing `}`.
+fn skip_interpolation(bytes: &[u8], mut i: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' | b'\'' => i = skip_string(bytes, i + 1, bytes[i], &mut None)?,
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' if depth == 0 => return Some(i),
+            b'}' => {
+                depth -= 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 /// True when the source byte at `at` is `@` — used to distinguish the

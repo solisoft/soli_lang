@@ -509,6 +509,18 @@ soli test --coverage=json,xml             # multiple report formats
 - Don't lower `--coverage-min` to ship — write the missing test.
 - `soli test --coverage --show-uncovered` lists the exact lines. Read it before
   writing tests: it is faster than guessing which branch is missing.
+- A fresh app starts at 100%: `soli new` wrote specs for what it generated
+  (`tests/controllers/home_controller_spec.sl`,
+  `tests/helpers/application_helper_spec.sl`, `tests/middleware/auth_spec.sl`)
+  and every scaffold brings its controller spec. Change the code they test,
+  change them with it.
+- Helpers, middleware and controllers' top-level `def`s (an EUI handler and
+  view, a function-style action) are loaded into every spec: call them
+  directly. A controller file defining a top-level `get`/`post`/`delete`…
+  is not, since it would replace the spec client's function.
+- `# coverage: off` in a file's leading comment block keeps it out of the
+  report — for vendored code only (the EUI catalogue carries it). Never put it
+  on code of the app to reach the threshold.
 
 ### The last few percent, and why 100% is not a goal
 

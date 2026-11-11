@@ -423,7 +423,7 @@ impl Parser {
         Ok(throw_stmt)
     }
 
-    fn try_statement(&mut self) -> ParseResult<Stmt> {
+    pub(crate) fn try_statement(&mut self) -> ParseResult<Stmt> {
         use crate::ast::stmt::CatchClause;
 
         let start_span = self.current_span();

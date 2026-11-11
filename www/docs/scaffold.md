@@ -95,8 +95,11 @@ class Post < Model
   validates("title", { "presence": true })
   validates("body", { "presence": true })
 
-  # Callbacks
-  before_save("normalize_fields")
+  # Callbacks — name a method defined below, e.g.
+  #   before_save("normalize")
+  #   def normalize
+  #     @title = @title.trim unless @title.blank?
+  #   end
 end
 ```
 
@@ -167,7 +170,9 @@ Located in `app/views/<resource>/`:
 
 Scaffold writes **one** controller E2E spec at
 `tests/controllers/<name>_controller_spec.sl`. It covers index / new / show /
-edit status codes and a couple of create/update paths. There is no separate
+edit status codes, create, update and delete, and passes on a fresh app: it
+creates the records it reads from a sample value for each scaffolded field, and
+checks the 422 on a blank form when a field is validated. There is no separate
 model test file — add `tests/<name>_model_spec.sl` (or similar) yourself if you
 want model-level coverage.
 

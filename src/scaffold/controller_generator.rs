@@ -50,8 +50,28 @@ pub fn create_controller(
     Ok(())
 }
 
+/// A hash literal with a valid sample value for each field, for the spec.
+fn sample_attrs(fields: &[FieldDefinition]) -> String {
+    let pairs: Vec<String> = fields
+        .iter()
+        .map(|f| {
+            let name = f.to_snake_case();
+            let value = match f.field_type.as_str() {
+                "integer" | "int" | "number" => "1".to_string(),
+                "float" | "decimal" => "1.5".to_string(),
+                "boolean" | "bool" => "true".to_string(),
+                "email" => r#""user@example.com""#.to_string(),
+                "url" => r#""https://example.com""#.to_string(),
+                _ => format!(r#""Sample {name}""#),
+            };
+            format!(r#""{name}": {value}"#)
+        })
+        .collect();
+    format!("{{{}}}", pairs.join(", "))
+}
+
 /// Create controller tests for a scaffold
-pub fn create_tests(app_path: &Path, name: &str) -> Result<(), String> {
+pub fn create_tests(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> Result<(), String> {
     let resource_path = to_snake_case_plural(name);
 
     let tests_dir = app_path.join("tests");
@@ -70,8 +90,27 @@ pub fn create_tests(app_path: &Path, name: &str) -> Result<(), String> {
     // The template appends "Controller" itself (`describe("{0}Controller")`), so
     // pass the bare resource name — appending here produced
     // `describe("UsersControllerController")`.
-    let controller_test_content =
-        controller::controller_test_template(&to_pascal_case(&resource_path), &resource_path);
+    // The fields the model validates for presence (see `create_model`), blank:
+    // what the 422 cases post.
+    let validated: Vec<String> = fields
+        .iter()
+        .filter(|f| {
+            matches!(
+                f.field_type.as_str(),
+                "string" | "text" | "email" | "password" | "url"
+            )
+        })
+        .map(|f| format!(r#""{}": """#, f.to_snake_case()))
+        .collect();
+    let blank_attrs = (!validated.is_empty()).then(|| format!("{{{}}}", validated.join(", ")));
+    let controller_test_content = controller::controller_test_template(
+        &to_pascal_case(&resource_path),
+        &resource_path,
+        &to_pascal_case(name),
+        &to_snake_case(name),
+        &sample_attrs(fields),
+        blank_attrs.as_deref(),
+    );
 
     let controller_test_path =
         controllers_dir.join(format!("{}_controller_spec.sl", resource_path));

@@ -1,5 +1,6 @@
 //! Parser module for Solilang.
 
+mod class_constants;
 mod core;
 mod declarations;
 pub(crate) mod expressions;

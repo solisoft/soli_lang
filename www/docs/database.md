@@ -61,6 +61,9 @@ SOLIDB_DATABASE=myapp_development
 
 ### Test
 
+`soli new` writes this one, naming `<app>_test`; `soli test` refuses to start
+without it.
+
 ```bash
 # .env.test
 SOLIDB_HOST=http://localhost:6745

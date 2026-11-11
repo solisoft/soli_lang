@@ -134,6 +134,7 @@ mod tests {
     use super::*;
 
     /// A pid that cannot belong to a live process: spawn one and wait for it.
+    #[cfg(unix)]
     fn dead_pid() -> u32 {
         let mut child = std::process::Command::new("true")
             .spawn()

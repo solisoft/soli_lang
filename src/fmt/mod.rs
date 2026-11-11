@@ -51,7 +51,7 @@ pub fn format_source(source: &str) -> Result<String, FmtError> {
     let tokens = Scanner::new(source)
         .scan_tokens()
         .map_err(|e| FmtError::Lex(format!("{:?}", e)))?;
-    let program = Parser::new(tokens)
+    let program = Parser::as_written(tokens)
         .parse()
         .map_err(|e| FmtError::Parse(format!("{:?}", e)))?;
     let comments = comments::extract_comments(source);

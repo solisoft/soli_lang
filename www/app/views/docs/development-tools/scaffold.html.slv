@@ -206,7 +206,11 @@
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-orange-400">true</span> })
   <span class="text-orange-400">end</span>
 
-  <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)  <span class="text-gray-600"># symbols also work: before_save(:normalize_fields)</span>
+  <span class="text-gray-500"># Callbacks — name a method defined below, e.g.</span>
+  <span class="text-gray-500">#   before_save("normalize")</span>
+  <span class="text-gray-500">#   def normalize</span>
+  <span class="text-gray-500">#     @email = @email.trim.downcase unless @email.blank?</span>
+  <span class="text-gray-500">#   end</span>
 <span class="text-orange-400">end</span></code></pre>
         </div>
     </div>
@@ -417,7 +421,11 @@
             <span class="text-sm font-mono text-gray-400">tests/controllers/users_controller_spec.sl (generated)</span>
         </div>
         <div>
-            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-orange-400">describe</span>(<span class="text-green-400">"UsersController"</span>) <span class="text-orange-400">do</span>
+            <pre class="text-sm leading-7"><code class="language-soli"><span class="text-orange-400">def</span> <span class="text-blue-400">_create_user</span>
+  <span class="text-yellow-200">User</span>.<span class="text-blue-400">create</span>({<span class="text-green-400">"name"</span>: <span class="text-green-400">"Sample name"</span>, <span class="text-green-400">"email"</span>: <span class="text-green-400">"user@example.com"</span>})
+<span class="text-orange-400">end</span>
+
+<span class="text-orange-400">describe</span>(<span class="text-green-400">"UsersController"</span>) <span class="text-orange-400">do</span>
   <span class="text-blue-400">before_each</span>() <span class="text-orange-400">do</span>
     <span class="text-blue-400">as_guest</span>()
   <span class="text-orange-400">end</span>
@@ -438,6 +446,13 @@
   <span class="text-orange-400">end</span>
 
   <span class="text-orange-400">describe</span>(<span class="text-green-400">"GET /users/:id"</span>) <span class="text-orange-400">do</span>
+    <span class="text-blue-400">test</span>(<span class="text-green-400">"shows a single user"</span>) <span class="text-orange-400">do</span>
+      record = <span class="text-blue-400">_create_user</span>()
+      response = <span class="text-blue-400">get</span>(<span class="text-green-400">"/users/#{record._key}"</span>)
+      <span class="text-blue-400">assert_eq</span>(<span class="text-blue-400">res_status</span>(response), <span class="text-orange-300">200</span>)
+      <span class="text-blue-400">assert_hash_has_key</span>(<span class="text-blue-400">assigns</span>(), <span class="text-green-400">"user"</span>)
+    <span class="text-orange-400">end</span>
+
     <span class="text-blue-400">test</span>(<span class="text-green-400">"returns 404 for missing record"</span>) <span class="text-orange-400">do</span>
       response = <span class="text-blue-400">get</span>(<span class="text-green-400">"/users/99999"</span>)
       <span class="text-blue-400">assert_eq</span>(<span class="text-blue-400">res_status</span>(response), <span class="text-orange-300">404</span>)
@@ -446,7 +461,7 @@
 
   <span class="text-orange-400">describe</span>(<span class="text-green-400">"POST /users"</span>) <span class="text-orange-400">do</span>
     <span class="text-blue-400">test</span>(<span class="text-green-400">"creates new record with valid data"</span>) <span class="text-orange-400">do</span>
-      response = <span class="text-blue-400">post</span>(<span class="text-green-400">"/users"</span>, {<span class="text-green-400">"name"</span>: <span class="text-green-400">"Test user"</span>})
+      response = <span class="text-blue-400">post</span>(<span class="text-green-400">"/users"</span>, {<span class="text-green-400">"name"</span>: <span class="text-green-400">"Sample name"</span>, <span class="text-green-400">"email"</span>: <span class="text-green-400">"user@example.com"</span>})
       <span class="text-blue-400">assert_eq</span>(<span class="text-blue-400">res_status</span>(response), <span class="text-orange-300">302</span>)
     <span class="text-orange-400">end</span>
 
@@ -478,7 +493,11 @@
     <span class="text-blue-400">validates</span>(<span class="text-green-400">"email"</span>, { <span class="text-green-400">"presence"</span>: <span class="text-orange-400">true</span> })
   <span class="text-orange-400">end</span>
 
-  <span class="text-blue-400">before_save</span>(<span class="text-green-400">"normalize_fields"</span>)  <span class="text-gray-600"># symbols also work: before_save(:normalize_fields)</span>
+  <span class="text-gray-500"># Callbacks — name a method defined below, e.g.</span>
+  <span class="text-gray-500">#   before_save("normalize")</span>
+  <span class="text-gray-500">#   def normalize</span>
+  <span class="text-gray-500">#     @email = @email.trim.downcase unless @email.blank?</span>
+  <span class="text-gray-500">#   end</span>
 <span class="text-orange-400">end</span></code></pre>
         </div>
     </div>

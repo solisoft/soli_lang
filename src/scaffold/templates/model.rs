@@ -18,8 +18,11 @@ class {model_name} < Model
   # Validations
   {validations}
 
-  # Callbacks
-  before_save("normalize_fields")
+  # Callbacks — name a method defined below, e.g.
+  #   before_save("normalize")
+  #   def normalize
+  #     @title = @title.trim unless @title.blank?
+  #   end
 end
 "#,
         model_name = model_name,

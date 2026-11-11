@@ -57,7 +57,7 @@ impl SymbolTable {
 
 pub fn build_symbol_table(source: &str) -> Option<SymbolTable> {
     let tokens = crate::lexer::Scanner::new(source).scan_tokens().ok()?;
-    let program = crate::parser::Parser::new(tokens).parse().ok()?;
+    let program = crate::parser::Parser::as_written(tokens).parse().ok()?;
 
     let mut table = SymbolTable::default();
     let mut scope_level = 0;

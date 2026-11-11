@@ -80,6 +80,9 @@ impl Parser {
     }
 
     fn parse_prefix_inner(&mut self) -> ParseResult<Expr> {
+        if self.check(&TokenKind::Try) {
+            return self.try_expression();
+        }
         let token = self.advance();
         let start_span = token.span;
 
@@ -505,6 +508,30 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    /// `try … catch … end` where a value is expected (`x = try … end`): the
+    /// statement, run as the body of a lambda called on the spot, which
+    /// returns the value of the branch that ran. A `return` inside it leaves
+    /// that lambda, not the enclosing method.
+    fn try_expression(&mut self) -> ParseResult<Expr> {
+        let stmt = self.try_statement()?;
+        let span = stmt.span;
+        let lambda = Expr::new(
+            ExprKind::Lambda {
+                params: Vec::new(),
+                return_type: None,
+                body: vec![stmt].into(),
+            },
+            span,
+        );
+        Ok(Expr::new(
+            ExprKind::Call {
+                callee: Box::new(lambda),
+                arguments: Vec::new(),
+            },
+            span,
+        ))
     }
 
     fn parse_array(&mut self, start_span: crate::span::Span) -> ParseResult<Expr> {

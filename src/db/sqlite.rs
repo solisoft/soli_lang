@@ -191,7 +191,7 @@ fn init_conn(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
     // A memory database has no journal to switch; ignore the answer either way.
     let _: Result<String, _> = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0));
     // Replaces the auto-checkpoint, which is itself a WAL hook.
-    conn.wal_hook(Some(wal_grew));
+    conn.wal_hook(Some(wal_grew))?;
     conn.execute_batch(
         "PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=67108864;",
     )
@@ -272,7 +272,7 @@ static CHECKPOINT: CheckpointSignal = CheckpointSignal {
 /// each time the WAL has grown by [`CHECKPOINT_PAGES`], and ask for a restart
 /// past [`RESTART_PAGES`]. With nobody waiting and the WAL short, a commit costs
 /// three atomic reads.
-fn wal_grew(_wal: &rusqlite::hooks::Wal, pages: std::ffi::c_int) -> rusqlite::Result<()> {
+fn wal_grew(_wal: &mut rusqlite::hooks::Wal, pages: std::ffi::c_int) -> rusqlite::Result<()> {
     use std::sync::atomic::Ordering::Relaxed;
     if COMMITS.waiting.load(Relaxed) > 0 {
         *COMMITS.count.lock().unwrap_or_else(|e| e.into_inner()) += 1;
@@ -318,7 +318,7 @@ fn spawn_checkpointer(path: PathBuf) {
     let spawned = std::thread::Builder::new()
         .name("sqlite-checkpoint".into())
         .spawn(move || {
-            let conn = match rusqlite::Connection::open(&path) {
+            let mut conn = match rusqlite::Connection::open(&path) {
                 Ok(conn) => conn,
                 Err(e) => {
                     eprintln!(
@@ -1720,11 +1720,7 @@ pub fn query_raw(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>
         let mut stmt = conn
             .prepare_cached(sql)
             .map_err(|e| lite_error("sqlite raw query prepare", &e))?;
-        let names: Vec<String> = stmt
-            .column_names()
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let names: Vec<String> = stmt.column_names().map(str::to_string).collect();
         let mut rows = stmt
             .query(params_from_iter(bound.iter()))
             .map_err(|e| lite_error("sqlite raw query", &e))?;

@@ -78,6 +78,9 @@ pub fn catalogue_def_names() -> &'static [String] {
 /// A first component: a counter, its handler and its view.
 pub const EUI_CONTROLLER: &str = include_str!("eui/eui_controller.sl");
 
+/// Its spec: the handler and the view, called directly.
+pub const EUI_CONTROLLER_SPEC: &str = include_str!("eui/eui_controller_spec.sl");
+
 /// Appended to `config/routes.sl`: the `router_eui` line for that
 /// component, and how to point a client at it.
 pub const EUI_ROUTES: &str = include_str!("eui/routes_eui.sl");

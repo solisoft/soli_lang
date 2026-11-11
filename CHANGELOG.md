@@ -4,6 +4,35 @@
 
 ### Added
 
+- **Class constants read by their bare name.** A `const` in a class body is
+  also a `static const` (unless one is declared), and a bare read of it in the
+  class's methods, constructor and invariants is rewritten to `Klass.NAME`
+  (`Outer::Inner.NAME` when nested) at parse time — `parser/class_constants.rs`,
+  so both engines, `soli check` and the linter see the same tree. Names the
+  method binds (parameters, locals, loop/catch variables) and calls `NAME(...)`
+  are left alone. `@NAME` and `instance.NAME` still read it.
+- **`try` is a value.** `x = try … catch e … end` parses (a lambda called on
+  the spot, which `soli fmt` prints back as written), and a `try` in tail
+  position returns the value of the branch that ran on both engines: the
+  tree-walker's `Try` yields its branch value, and the VM's
+  `compile_tail_stmt` turns each branch's tail into a `return`, which already
+  leaves through the handlers and runs `finally`.
+- **`soli fmt --help`.**
+- **A fresh app's first `soli test` covers 100%.** `soli new` writes specs for
+  what it generates (`tests/controllers/home_controller_spec.sl`,
+  `tests/helpers/application_helper_spec.sl`, `tests/middleware/auth_spec.sl`,
+  and with `--eui` `tests/controllers/eui_controller_spec.sl`); the scaffold
+  spec adds the invalid-update 422 case. Measured: 100% for `soli new`, with
+  and without a scaffold, plain, `--eui` and `--edge` (was 63% with a scaffold,
+  8.9% with `--eui`).
+- **`# coverage: off`.** A file whose leading comment block holds it is left
+  out of the coverage report (`coverage::opts_out_of_coverage`); `soli new
+  --eui` writes it above the 17 000-line widget catalogue.
+- **Specs can call controllers' top-level `def`s.** `soli test` preloads
+  `app/controllers` with the other app directories, except a file whose
+  top-level `def` is named like a spec-client function (`get`, `post`,
+  `delete`…) or another test-DSL global, which would replace it.
+
 - **`soli agent`: a local MCP server that attaches a coding agent to the
   running `soli serve --dev`.** New `src/dev_agent/`: newline-delimited
   JSON-RPC on stdin/stdout (`initialize`, `notifications/initialized`, `ping`,
@@ -53,6 +82,42 @@
   Mothership sits alone in its process group.
 
 ### Fixed
+
+- **`soli new` writes `.env.test`** (`<app>_test`), without which `soli test`
+  refused to start.
+- **Scaffold.** The model no longer calls an undefined
+  `before_save("normalize_fields")`; the summary prints the paths written
+  (plural controller and spec); the controller spec creates its own records from
+  a sample value per field and passes on a fresh app (it assumed id 1, posted
+  `name`, and expected `@posts` on show); the controller calls
+  `@_permit_params`.
+- **No more `<%= h(…) %>` double escaping** in the mailer generator, the OIDC
+  views and the scaffold's `CLAUDE*.md` guides.
+- **`soli fmt` wrote a comment that ends a class, `def` or method after its
+  `end`**, where the next pass attached it to the code below; it stays inside
+  now. A scaffolded model's callback example was the visible case.
+- **`soli fmt` and the editor's symbols read the source as written**
+  (`Parser::as_written`): they no longer see the class-constant rewriting, which
+  `fmt` printed back as a duplicate `static const` and `Klass.NAME` reads.
+- **Scaffold index title** is the resource (`"Posts"`), not `"PostsController"`.
+- **Security: `rusqlite` 0.41** (bundled SQLite via `libsqlite3-sys` 0.39.1,
+  RUSTSEC-2026-0459) and `rustix` 1.1.6 (RUSTSEC-2026-0486); `solidb-client`
+  follows to the commit that moved it to `rusqlite` 0.41. Adapted to the 0.41
+  API (`wal_hook` takes `&mut Wal` and returns a result, `busy_handler` needs
+  `&mut Connection`, `column_names` is an iterator).
+- **`dev_agent::tests::dead_pid_fails_before_any_connection` runs on Unix
+  only**: on Windows `pid_alive` cannot tell a dead pid by design.
+- **`soli fmt` kept `@x` inside `#{…}`.** Interpolations are parsed on their
+  own, so the `@` check read the file at the wrong offset and printed
+  `this.x`; each is now printed against its own text.
+- **Docs that described APIs that do not exist**: `testing.md`'s
+  `ControllerTest.helpers…` and `coverage_threshold` / `coverage_exclude`
+  sections are replaced by what exists. The generated `CLAUDE.md` no longer
+  says to wrap content in `h()`, calls `[[` a raw string, or names the scaffold
+  spec `post_controller_spec.sl`.
+- **Blog posts** (Stripe, SendGrid, background jobs): `raise` → `throw`,
+  `HTTP.post` status reads → `HTTP.request`, `redirect` off-site →
+  `redirect_external`, and other names that do not exist.
 
 - **A query write inside a SoliDB `transaction` block now commits and rolls
   back with it.** `.where(...).update_all(...)`, `.where(...).delete_all` and an
