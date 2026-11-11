@@ -7,7 +7,7 @@ URL is a thank-you page, not a source of truth.
 
 This post builds that path with Checkout (hosted payment page), a webhook that
 verifies `Stripe-Signature`, and an idempotent fulfill. No Stripe SDK, no extra
-process — `HTTP.post`, `Crypto.hmac`, `secure_compare`, and `skip_csrf`.
+process — `HTTP.request`, `Crypto.hmac`, `secure_compare`, and `skip_csrf`.
 
 <figure style="margin:1.5rem auto;max-width:1024px;">
   <img src="/images/blog/stripe-checkout.svg" width="1024" height="576" alt="Stripe Checkout in Soli: the app creates a Checkout Session, the buyer pays on Stripe, Stripe POSTs a signed webhook, and only then is the order marked paid." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
@@ -76,6 +76,7 @@ token. The scaffold already comments this case:
 # config/routes.sl
 skip_csrf("/webhooks/stripe")
 
+get("/checkout", "checkouts#new")
 post("/checkout", "checkouts#create")
 get("/checkout/success", "checkouts#success")
 get("/checkout/cancel", "checkouts#cancel")
@@ -106,30 +107,38 @@ returns.
 
 ## Step 4: A thin Stripe wrapper
 
-Stripe's REST API is form-urlencoded. `HTTP.post` + `url_encode` is enough.
+Stripe's REST API is form-urlencoded. `HTTP.request` + `url_encode` is enough.
+Use `HTTP.request` rather than `HTTP.post` here: `HTTP.post` returns only the
+body as a String and raises on a 4xx/5xx, while `HTTP.request` returns
+`{ "status", "status_text", "headers", "body" }` and never raises on a
+status, so the caller can read Stripe's error instead of crashing.
 
 ```soli
 # app/services/stripe.sl
 class Stripe
-  CHECKOUT_URL = "https://api.stripe.com/v1/checkout/sessions"
-  TOLERANCE_SECS = 300
+  static CHECKOUT_URL: String = "https://api.stripe.com/v1/checkout/sessions"
+  static TOLERANCE_SECS: Int = 300
 
   static def secret
     key = getenv("STRIPE_SECRET_KEY")
-    raise("STRIPE_SECRET_KEY is not set") if key.blank?
+    throw "STRIPE_SECRET_KEY is not set" if key.blank?
+
     key
   end
 
   static def webhook_secret
     key = getenv("STRIPE_WEBHOOK_SECRET")
-    raise("STRIPE_WEBHOOK_SECRET is not set") if key.blank?
+    throw "STRIPE_WEBHOOK_SECRET is not set" if key.blank?
+
     key
   end
 
+  # Returns HTTP.request's hash: { "status", "status_text", "headers", "body" }.
+  # A 4xx/5xx from Stripe comes back here too — only a network failure raises.
   static def create_checkout_session(order)
     base = getenv("APP_BASE_URL") || "http://localhost:3000"
     price = getenv("STRIPE_PRICE_ID")
-    raise("STRIPE_PRICE_ID is not set") if price.blank?
+    throw "STRIPE_PRICE_ID is not set" if price.blank?
 
     body = [
       "mode=payment",
@@ -142,12 +151,10 @@ class Stripe
       "customer_email=#{url_encode(order.email)}"
     ].join("&")
 
-    HTTP.post(CHECKOUT_URL, body, {
-      "headers": {
-        "Authorization": "Bearer #{Stripe.secret()}",
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
-    })
+    HTTP.request("POST", Stripe.CHECKOUT_URL, {
+      "Authorization": "Bearer #{Stripe.secret}",
+      "Content-Type": "application/x-www-form-urlencoded"
+    }, body)
   end
 
   # Stripe-Signature: t=<unix>,v1=<hex>[,v1=…,v0=…]
@@ -156,22 +163,24 @@ class Stripe
   static def verify_signature(raw_body, header)
     return false if raw_body.blank? || header.blank?
 
-    parts = {}
-    for piece in header.split(",")
+    timestamp = nil
+    signatures = []
+    header.split(",").each do |piece|
       eq = piece.index_of("=")
       next if eq < 0
-      parts[piece.substring(0, eq).trim()] = piece.substring(eq + 1).trim()
+
+      key = piece.substring(0, eq).trim
+      value = piece.substring(eq + 1, piece.length).trim
+      timestamp = value if key == "t"
+      signatures.push(value) if key == "v1"
     end
+    return false if timestamp.blank? || signatures.length == 0
 
-    timestamp = parts["t"]
-    given = parts["v1"]
-    return false if timestamp.blank? || given.blank?
+    age = DateTime.utc.to_unix - timestamp.to_i
+    return false if age.abs > Stripe.TOLERANCE_SECS
 
-    age = DateTime.utc().to_unix() - timestamp.to_i()
-    return false if age.abs() > TOLERANCE_SECS
-
-    expected = Crypto.hmac("#{timestamp}.#{raw_body}", Stripe.webhook_secret())
-    secure_compare(expected, given)
+    expected = Crypto.hmac("#{timestamp}.#{raw_body}", Stripe.webhook_secret)
+    signatures.any? { |given| secure_compare(expected, given) }
   end
 end
 ```
@@ -184,9 +193,11 @@ A few details that are easy to get wrong:
 - **`secure_compare`**, never `==`, for the digest.
 - **Reject stale `t`.** Five minutes is Stripe's default tolerance. Without it,
   a captured signed body stays valid forever.
-- **Several `v1` values can appear** (rolling secrets). The snippet above takes
-  the first `v1`. If you rotate secrets, loop every `v1=` and succeed if any
-  matches.
+- **Several `v1` values can appear** (rolling secrets). The snippet above
+  collects every `v1=` and succeeds if any of them matches.
+- **Class constants are `static` fields.** A bare `CHECKOUT_URL = …` in a class
+  body is a parse error; declare `static CHECKOUT_URL: String = …` and read it
+  as `Stripe.CHECKOUT_URL`.
 
 Stripe's official libraries also try `v0` (test helper). You can ignore `v0`
 in production.
@@ -196,22 +207,25 @@ in production.
 ```soli
 # app/controllers/checkouts_controller.sl
 class CheckoutsController < Controller
+  # GET /checkout
   def new
     render("checkouts/new")
   end
 
+  # POST /checkout — create the order, then send the buyer to Stripe
   def create
-    email = params["email"].to_s.trim()
+    email = params["email"].to_s.trim
     order = Order.create({
       "email": email,
       "status": "pending",
       "amount_cents": 2000
     })
-    unless order.valid?
+    if order._errors
       @order = order
-      return render("checkouts/new")
+      return render("checkouts/new", {}, { "status": 422 })
     end
 
+    # { "status", "status_text", "headers", "body" } — a Stripe 4xx does not raise
     response = Stripe.create_checkout_session(order)
     payload = json_parse(response["body"]) rescue {}
 
@@ -219,13 +233,14 @@ class CheckoutsController < Controller
       order.update({ "status": "failed", "error": str(payload["error"]) })
       @error = "Could not start checkout"
       @order = order
-      return render("checkouts/new")
+      return render("checkouts/new", {}, { "status": 502 })
     end
 
     order.update({ "stripe_session_id": payload["id"] })
-    redirect(payload["url"])
+    redirect_external(payload["url"])   # redirect() only takes local paths
   end
 
+  # GET /checkout/success
   def success
     # Display only. Payment is confirmed in the webhook.
     @session_id = params["session_id"]
@@ -233,6 +248,7 @@ class CheckoutsController < Controller
     render("checkouts/success")
   end
 
+  # GET /checkout/cancel
   def cancel
     render("checkouts/cancel")
   end
@@ -244,14 +260,15 @@ The new-checkout form is an ordinary `form_with` POST so CSRF applies:
 ```erb
 <%# app/views/checkouts/new.html.slv %>
 <h1>Checkout</h1>
-<%- form_with({ "url": "/checkout" }) do |f| -%>
+<% if @error %><p class="error"><%= @error %></p><% end %>
+<%- form_with(nil, { "url": "/checkout" }) do |f| -%>
   <%- f.email_field("email", {"placeholder": "you@example.com", "required": true}) %>
   <%- f.submit("Pay with Stripe") %>
 <%- end -%>
 ```
 
-If your `form_with` helper needs a record, a hand-written form plus
-`csrf_field()` is the same contract:
+With no record, `form_with` takes the action from `"url"` (and POSTs by
+default). A hand-written form plus `csrf_field()` is the same contract:
 
 ```erb
 <form method="post" action="/checkout">
@@ -270,6 +287,7 @@ slow one must not look like a failed charge.
 ```soli
 # app/controllers/webhooks_controller.sl
 class WebhooksController < Controller
+  # POST /webhooks/stripe — verify the signature, fulfill once, answer 200
   def stripe
     raw = req["body"].to_s
     header = req["headers"]["stripe-signature"].to_s
@@ -277,39 +295,36 @@ class WebhooksController < Controller
       return { "status": 400, "body": "invalid signature" }
     end
 
-    event = json_parse(raw) rescue null
+    event = json_parse(raw) rescue nil
     return { "status": 400, "body": "invalid json" } if event.nil?
 
-    type = event["type"].to_s
-    data = event["data"]["object"] || {}
+    event_type = event["type"].to_s
+    session = (event["data"] || {})["object"] || {}
 
-    if type == "checkout.session.completed"
-      fulfill_checkout(event["id"], data)
-    end
+    @_fulfill_checkout(event["id"], session) if event_type == "checkout.session.completed"
 
     { "status": 200, "body": "ok" }
   end
 
-  def fulfill_checkout(event_id, session)
+  private
+
+  def _fulfill_checkout(event_id, session)
     order_id = session["client_reference_id"] || (session["metadata"] || {})["order_id"]
     return if order_id.blank?
 
-    order = Order.find(order_id) rescue null
+    order = Order.find(order_id) rescue nil
     return if order.nil?
 
     # Stripe retries webhooks. A second delivery must be a no-op.
     return if order.status == "paid"
     return if order.stripe_event_id == event_id
-
-    unless session["payment_status"] == "paid"
-      return
-    end
+    return unless session["payment_status"] == "paid"
 
     order.update({
       "status": "paid",
       "stripe_event_id": event_id,
       "stripe_session_id": session["id"],
-      "paid_at": DateTime.utc()
+      "paid_at": DateTime.utc
     })
 
     ReceiptJob.perform_later({ "order_id": str(order.id) })
@@ -317,7 +332,7 @@ class WebhooksController < Controller
 end
 ```
 
-`Order.find` raises if the id is unknown — rescue and return 200 so Stripe
+`Order.find` raises if the id is unknown — `rescue nil` and return 200 so Stripe
 does not retry a payload you will never apply. Return **400 only** for a bad
 signature or unreadable body; a 2xx tells Stripe to stop.
 
@@ -361,7 +376,7 @@ expiry, any CVC.
   `customer.subscription.updated` / `invoice.paid` the same way.
 - **Customer portal:** create a
   [Billing Portal session](https://docs.stripe.com/api/customer_portal/sessions)
-  with the same `HTTP.post` form pattern.
+  with the same `HTTP.request` form pattern.
 - **Idempotency keys** on session create (`Idempotency-Key` header) if a
   double-click on Pay could open two sessions for one order.
 - **Connect / multiple prices:** still one webhook; branch on `event["type"]`

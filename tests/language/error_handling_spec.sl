@@ -756,3 +756,60 @@ describe("throw inside a native callback") do
     assert_eq(message, "in-map")
   end
 end
+
+def _try_tail(n)
+  try
+    10 / n
+  catch e
+    "caught"
+  end
+end
+
+def _try_finally_tail(log)
+  try
+    1
+  finally
+    log.push("finally")
+  end
+end
+
+describe("try as a value") do
+  test("a try ending a method returns the branch that ran") do
+    assert_eq(_try_tail(2), 5)
+    assert_eq(_try_tail(0), "caught")
+  end
+
+  test("finally runs and adds no value") do
+    log = []
+    assert_eq(_try_finally_tail(log), 1)
+    assert_eq(log, ["finally"])
+  end
+
+  test("try … end is an expression") do
+    message = try
+      throw "boom"
+    catch e
+      "got #{e}"
+    end
+    assert_eq(message, "got boom")
+
+    answer = try
+      42
+    catch e
+      0
+    end
+    assert_eq(answer, 42)
+  end
+
+  test("a try expression reads and writes the enclosing locals") do
+    count = 1
+    total = try
+      count = count + 1
+      count * 10
+    catch e
+      0
+    end
+    assert_eq(total, 20)
+    assert_eq(count, 2)
+  end
+end

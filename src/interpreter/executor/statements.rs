@@ -266,10 +266,19 @@ impl Interpreter {
                 finally_block,
             } => {
                 let try_result = self.execute(try_block);
+                // A `try` is worth the value of the branch that ran: the try
+                // body's last statement, or the catch clause's that took the
+                // error (`finally` adds none, as in Ruby). It was always null,
+                // so a method ending in `try … catch … end` returned null.
+                let mut value = Value::Null;
 
                 let throw_value = match try_result {
                     Ok(control_flow) => match control_flow {
-                        ControlFlow::Normal(_) | ControlFlow::Continue => None,
+                        ControlFlow::Normal(v) => {
+                            value = v;
+                            None
+                        }
+                        ControlFlow::Continue => None,
                         ControlFlow::Break => {
                             if let Some(over) = self.run_finally(finally_block.as_deref())? {
                                 return Ok(over);
@@ -323,7 +332,8 @@ impl Interpreter {
                         self.environment = previous;
 
                         match catch_result {
-                            Ok(ControlFlow::Normal(_) | ControlFlow::Continue) => {}
+                            Ok(ControlFlow::Normal(v)) => value = v,
+                            Ok(ControlFlow::Continue) => {}
                             Ok(ControlFlow::Break) => {
                                 if let Some(over) = self.run_finally(finally_block.as_deref())? {
                                     return Ok(over);
@@ -369,7 +379,7 @@ impl Interpreter {
                     return Ok(over);
                 }
 
-                Ok(ControlFlow::Normal(Value::Null))
+                Ok(ControlFlow::Normal(value))
             }
         }
     }

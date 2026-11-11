@@ -796,6 +796,23 @@ impl Compiler {
             } => {
                 self.compile_tail_if(condition, then_branch, else_branch.as_deref(), true, line)?;
             }
+            // The try body and each catch clause end in an explicit `return`,
+            // which already leaves through the handlers and runs `finally`.
+            StmtKind::Try {
+                try_block,
+                catch_clauses,
+                finally_block,
+            } => {
+                let try_block = tail_as_return(try_block);
+                let catch_clauses: Vec<CatchClause> = catch_clauses
+                    .iter()
+                    .map(|clause| CatchClause {
+                        body: Box::new(tail_as_return(&clause.body)),
+                        ..clause.clone()
+                    })
+                    .collect();
+                self.compile_try(&try_block, &catch_clauses, finally_block.as_deref(), line)?;
+            }
             _ => self.compile_stmt(stmt)?,
         }
         Ok(())
@@ -827,6 +844,55 @@ impl Compiler {
         let idx = self.add_string_constant(&decl.path);
         self.emit(Op::Import(idx), line);
         Ok(())
+    }
+}
+
+/// `stmt` with the statement whose value it yields turned into a `return` of
+/// that value: an expression in tail position, through blocks, `if`/`unless`
+/// branches and nested `try`s — the shape `compile_tail_stmt` gives them.
+fn tail_as_return(stmt: &Stmt) -> Stmt {
+    let mut stmt = stmt.clone();
+    set_tail_return(&mut stmt);
+    stmt
+}
+
+fn set_tail_return(stmt: &mut Stmt) {
+    match &mut stmt.kind {
+        StmtKind::Expression(expr) => {
+            let expr = expr.clone();
+            stmt.kind = StmtKind::Return(Some(expr));
+        }
+        StmtKind::Block(stmts) => {
+            if let Some(last) = stmts.last_mut() {
+                set_tail_return(last);
+            }
+        }
+        StmtKind::If {
+            then_branch,
+            else_branch,
+            ..
+        }
+        | StmtKind::Unless {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            set_tail_return(then_branch);
+            if let Some(other) = else_branch {
+                set_tail_return(other);
+            }
+        }
+        StmtKind::Try {
+            try_block,
+            catch_clauses,
+            ..
+        } => {
+            set_tail_return(try_block);
+            for clause in catch_clauses {
+                set_tail_return(&mut clause.body);
+            }
+        }
+        _ => {}
     }
 }
 

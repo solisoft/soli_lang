@@ -10097,6 +10097,32 @@ let x = Mailer.welcome()
         assert_eq!(result, Value::Int(7));
     }
 
+    /// A `try` ending a function is worth the value of the branch that ran;
+    /// it was null on both engines.
+    #[test]
+    fn test_vm_try_in_tail_position_returns_branch_value() {
+        let src = "def f(n)\n  try\n    10 / n\n  catch e\n    \"caught\"\n  end\nend\n";
+        let ok = compile_and_get_global(&format!("{src}val = f(2)\n"), "val");
+        assert_eq!(ok, Value::Int(5));
+        let caught = compile_and_get_global(&format!("{src}val = f(0)\n"), "val");
+        assert_eq!(caught.to_string(), "caught");
+    }
+
+    #[test]
+    fn test_vm_try_finally_in_tail_position_runs_finally_and_keeps_value() {
+        let src = "log = []\ndef f\n  try\n    1\n  finally\n    log.push(\"f\")\n  end\nend\nval = [f(), log.length]\n";
+        let val = compile_and_get_global(src, "val");
+        assert_eq!(val.to_string(), "[1, 1]");
+    }
+
+    /// `x = try … end`: `try` used as a value.
+    #[test]
+    fn test_vm_try_as_expression() {
+        let src = "x = try\n  throw \"boom\"\ncatch e\n  \"got #{e}\"\nend\ny = try\n  42\ncatch e\n  0\nend\nval = [x, y]\n";
+        let val = compile_and_get_global(src, "val");
+        assert_eq!(val.to_string(), "[got boom, 42]");
+    }
+
     // ========================================================================
     // VM expression compilation coverage (compiler_exprs.rs)
     // ========================================================================

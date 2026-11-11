@@ -41,6 +41,9 @@ pub struct Parser {
     /// enclosing `try`/`begin` body can treat it as a block-form catch clause rather
     /// than a postfix `rescue` modifier. Set only while parsing an end-form try body.
     pub(crate) in_try_body: bool,
+    /// How many `class`/`module` declarations enclose the token being parsed;
+    /// the outermost one resolves its constants (`class_constants`).
+    pub(crate) class_nesting: usize,
 }
 
 impl Parser {
@@ -53,6 +56,7 @@ impl Parser {
             condition_context: false,
             no_trailing_do: false,
             in_try_body: false,
+            class_nesting: 0,
         }
     }
 

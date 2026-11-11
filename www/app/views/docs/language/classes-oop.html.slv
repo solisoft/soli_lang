@@ -367,6 +367,39 @@ print(MathUtils.max(2.0, 7.0)) # 7.0</code></pre>
                 </p>
             </div>
         </section>
+
+        <section id="kw-class-const" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#kw-class-const" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">const</code>
+                    <span class="text-gray-400">in a class body</span>
+                </a>
+                <p class="text-gray-400 mb-3">A <code class="text-orange-400">const</code> in a class body is a constant of the class. Its methods read it by its bare name; outside, it reads as <code class="text-orange-400">Klass.NAME</code> or <code class="text-orange-400">Klass::NAME</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">class Upload
+  const MAX_BYTES = 5_000_000
+  const KINDS = ["image", "pdf"]
+
+  def too_big?(size)
+    size > MAX_BYTES
+  end
+
+  def self.accepts?(kind)
+    KINDS.includes?(kind)
+  end
+end
+
+Upload.new().too_big?(6_000_000)   # true
+Upload.accepts?("pdf")             # true
+Upload::MAX_BYTES                  # 5000000
+Upload.MAX_BYTES                   # 5000000</code></pre>
+                <ul class="list-disc list-inside text-gray-400 mt-3 space-y-1">
+                    <li>A bare name resolves to the class that declares it, in instance and static methods, the constructor, and the blocks and lambdas inside them. A nested class reads its own (<code class="text-orange-400">Outer::Inner::DEPTH</code> from outside).</li>
+                    <li>A parameter or local of the same name wins inside its method.</li>
+                    <li>The instance still reads it as <code class="text-orange-400">@MAX_BYTES</code>.</li>
+                    <li>A constant cannot be reassigned. <code class="text-orange-400">static const NAME = …</code> declares a class constant only.</li>
+                </ul>
+            </div>
+        </section>
     </section>
 
     <!-- this and super -->

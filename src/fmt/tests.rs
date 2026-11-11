@@ -1376,3 +1376,34 @@ fn fmt_and_lint_share_the_line_limit() {
         crate::lint::rules::style::MAX_LINE_LENGTH
     );
 }
+
+// ---- `@x` inside `#{…}` keeps its sigil ----
+// `@x` and `this.x` share an AST node; the formatter tells them apart by the
+// source byte, which inside an interpolation it used to read at the wrong
+// offset — `"#{@x}"` came out as `"#{this.x}"`.
+
+#[test]
+fn instance_var_in_interpolation_keeps_at_sigil() {
+    assert_unchanged_and_idempotent("class A\n  def hi\n    \"#{@x}\"\n  end\nend\n");
+    assert_unchanged_and_idempotent("s = \"#{@user.name} has #{@count + 1} (#{@greet})\"\n");
+}
+
+#[test]
+fn this_in_interpolation_stays_this() {
+    assert_unchanged_and_idempotent("class A\n  def hi\n    \"#{this.x}\"\n  end\nend\n");
+}
+
+#[test]
+fn instance_var_in_nested_interpolation_keeps_at_sigil() {
+    assert_unchanged_and_idempotent("s = \"#{@a ? \"yes\" : @b} and #{@c}\"\n");
+    assert_unchanged_and_idempotent("s = \"#{@h[\"k\"].map { |x| x * 2 }.join(\",\")}\"\n");
+}
+
+// ---- `try` used as a value prints as written, not as the lambda it desugars to ----
+
+#[test]
+fn try_expression_round_trips() {
+    assert_unchanged_and_idempotent(
+        "x = try\n  # risky\n  risky()\ncatch e\n  \"fallback\"\nend\nprint(x)\n",
+    );
+}

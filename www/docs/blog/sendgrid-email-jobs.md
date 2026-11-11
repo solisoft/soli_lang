@@ -38,18 +38,13 @@ Wrap the SendGrid v3 Messages API once, in a place you can reuse from any job, c
 ```soli
 # app/services/sendgrid.sl
 class SendGrid
-  SEND_URL = "https://api.sendgrid.com/v3/mail/send"
+  static SEND_URL: String = "https://api.sendgrid.com/v3/mail/send"
 
-  static def send_mail(to, subject, body, from = nil)
+  static def send_mail(to, subject, body, sender = nil)
     api_key = getenv("SENDGRID_API_KEY")
-    if api_key == nil or api_key == ""
-      raise("SENDGRID_API_KEY is not set")
-    end
+    throw "SENDGRID_API_KEY is not set" if api_key.blank?
 
-    sender = from
-    if sender == nil or sender == ""
-      sender = getenv("SENDGRID_FROM") || "no-reply@example.com"
-    end
+    sender = getenv("SENDGRID_FROM") || "no-reply@example.com" if sender.blank?
 
     payload = {
       "personalizations": [{"to": [{"email": to}]}],
@@ -58,19 +53,18 @@ class SendGrid
       "content": [{"type": "text/plain", "value": body}]
     }
 
-    response = HTTP.post_json(SEND_URL, payload, {
-      "headers": {
-        "Authorization": "Bearer #{api_key}",
-        "Content-Type": "application/json"
-      }
-    })
+    # HTTP.request returns { "status", "status_text", "headers", "body" } and
+    # does not raise on a 4xx/5xx. A Hash body is sent as JSON.
+    response = HTTP.request("POST", SendGrid.SEND_URL, {
+      "Authorization": "Bearer #{api_key}",
+      "Content-Type": "application/json"
+    }, payload)
 
     # SendGrid returns 202 Accepted on success, with an empty body.
-    if response["status"] >= 200 and response["status"] < 300
-      return {"ok": true, "status": response["status"]}
-    end
+    status = response["status"]
+    return {"ok": true, "status": status} if status >= 200 && status < 300
 
-    {"ok": false, "status": response["status"], "body": response["body"]}
+    {"ok": false, "status": status, "body": response["body"]}
   end
 end
 ```
@@ -78,9 +72,9 @@ end
 A few things to notice:
 
 - **`getenv("SENDGRID_API_KEY")` is read inside `send_mail`, not at module load.** That means changing the key in `.env` and hot-reloading does the right thing in dev. It also means each call pays for one cheap env lookup — trivial compared to the HTTP round trip.
-- **`HTTP.post_json` does the JSON serialization and `Content-Type` for us.** We still set `Authorization` explicitly because that's the API contract.
+- **`HTTP.request`, not `HTTP.post_json`.** `post_json` returns only the parsed response body and raises on any non-2xx — and SendGrid's 202 has an empty body, which is not JSON. `HTTP.request` returns `{ "status", "status_text", "headers", "body" }`, never raises on a status, and serializes a Hash body as JSON. It implies no `Content-Type`, so we set it, along with `Authorization`.
 - **A 202 with an empty body is the success case.** Treating any 2xx as `ok: true` keeps the wrapper boring; the caller decides what to do with non-2xx.
-- **No retry logic in the library.** Retries belong to the queue, not to the library. SolidB will re-fire the job if the handler raises or returns a 5xx — letting the wrapper stay thin.
+- **No retry logic in the library.** Retries belong to the queue, not to the library. The queue re-runs the job when the handler throws — letting the wrapper stay thin. (`throw`, not `raise`: Soli has no `raise` function.)
 
 Because `app/services/` is autoloaded, you call `SendGrid.send_mail(...)` from any controller, job, or script without an `import` line.
 
@@ -92,17 +86,11 @@ Now the asynchronous half. Soli's background-job system loads every class under 
 # app/jobs/email_job.sl
 class EmailJob
   static def perform(args)
-    to      = args["to"]
-    subject = args["subject"]
-    body    = args["body"]
-    from    = args["from"]
+    to = args["to"]
+    result = SendGrid.send_mail(to, args["subject"], args["body"], args["from"])
 
-    result = SendGrid.send_mail(to, subject, body, from)
-
-    if !result["ok"]
-      # Raising re-surfaces a 5xx back to SolidB, which schedules a retry.
-      raise("SendGrid rejected #{to}: #{result["status"]} #{result["body"]}")
-    end
+    # Throwing marks the attempt failed; the job engine retries it with backoff.
+    throw "SendGrid rejected #{to}: #{result["status"]} #{result["body"]}" unless result["ok"]
 
     result
   end
@@ -112,7 +100,7 @@ end
 Two design choices worth flagging:
 
 1. **`args` is a plain hash.** Job arguments round-trip through JSON via SolidB's queue, so primitive types only — no model instances, no closures, no dates as `Time` objects. Pass IDs and strings; rehydrate inside `perform` if you need the record.
-2. **Failure is communicated by raising.** Soli's `/_jobs/run/:name` route turns an uncaught exception into a `500`. SolidB sees the 500, increments `attempt`, and re-enqueues per its retry policy. There's no separate "tell the queue I failed" call — the absence of a normal return is the signal.
+2. **Failure is communicated by throwing.** Soli's `/_jobs/run/:name` route turns an uncaught exception into a `500`. SolidB sees the 500, increments `attempt`, and re-enqueues per its retry policy. There's no separate "tell the queue I failed" call — the absence of a normal return is the signal.
 
 ## Step 3: Enqueue from a Controller
 
@@ -120,12 +108,11 @@ This is the line the user actually waits for:
 
 ```soli
 # app/controllers/users_controller.sl
-class UsersController
+class UsersController < Controller
+  # POST /users — create the user, queue the welcome email, redirect
   def create
-    user = User.create(params["user"])
-    if user._errors
-      return {"status": 422, "json": {"errors": user._errors}}
-    end
+    user = User.create(permit(params, {"email": true, "name": true}))
+    return render_json({"errors": user._errors}, 422) if user._errors
 
     EmailJob.perform_later({
       "to":      user.email,
@@ -173,7 +160,7 @@ That separation is what lets the request return in 10 ms while the email still g
 A few directions to extend this:
 
 - **Templates.** Replace the plain-text body with SendGrid dynamic templates — pass `"template_id"` and `"dynamic_template_data"` instead of `"content"` in the payload. The wrapper grows by ~10 lines and your controllers stop building HTML strings.
-- **Per-queue routing.** `EmailJob.set(queue: "mailers").perform_later(...)` puts welcome emails and transactional alerts on different SolidB queues so a backlog in one doesn't starve the other.
-- **Idempotency.** SolidB hands you `args["job_id"]` and `args["attempt"]` on retries. Stamp the user record with `welcome_email_sent_at` after a successful send and short-circuit on attempt > 1 if the field is already set.
+- **Per-queue routing.** `EmailJob.perform_later(args, "mailers")` (or `{ "queue": "mailers" }` as the last argument) puts welcome emails and transactional alerts on different SolidB queues so a backlog in one doesn't starve the other.
+- **Idempotency.** A retried job gets the same `args` again. Pass a `user_id` in them, stamp the user record with `welcome_email_sent_at` after a successful send, and return early when the field is already set.
 
 The wrapper, the job, and the queue are intentionally small. Adding any of the above is changing one of the three files — not rewiring the architecture.

@@ -1322,10 +1322,12 @@ class User < Model
   before_update("log_changes")
   after_delete("cleanup_related")
 
-  def normalize_email()        this.email = this.email.downcase;
+  def normalize_email
+    @email = @email.downcase
   end
 
-  def send_welcome_email()        # Send email logic
+  def send_welcome_email
+    # send the email
   end
 end
 ```

@@ -16,7 +16,7 @@ The right answer is not "make the external service faster." The right answer is 
 
 Soli ships a complete background job and cron system backed by SolidB. You define a plain class with a `static def perform(args)`, call `MyJob.perform_later(...)` (or `perform_in`, `perform_at`), and SolidB handles durable queuing, scheduling, retries, and delivery via signed HTTP callbacks back into your application. No Redis, no Sidekiq, no separate worker daemon to package, deploy, and babysit — just the database you were already running for your primary data.
 
-This post walks through the architecture, the practical APIs (both the beautiful facade and the low-level escape hatches), the security model that makes the callback route safe, real production patterns (idempotency, deduplication using `job_id` + `attempt`, graceful degradation with the new postfix `rescue` operator), cron and recurring work, hot reload during development, how the dev bar makes the entire async flow visible, and a concrete starter you can copy-paste tonight.
+This post walks through the architecture, the practical APIs (both the beautiful facade and the low-level escape hatches), the security model that makes the callback route safe, real production patterns (idempotency and deduplication, graceful degradation with the new postfix `rescue` operator), cron and recurring work, hot reload during development, how the dev bar makes the entire async flow visible, and a concrete starter you can copy-paste tonight.
 
 <figure style="margin:1.5rem auto;max-width:1024px;">
   <img src="/images/blog/background-jobs-cron.jpg" width="1024" height="576" alt="Soli background jobs architecture diagram: a controller enqueues work via perform_later into SolidB, which later delivers a signed HTTP callback (X-Job-Signature) to the Soli server that invokes your Job.perform handler. No extra daemons required." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
@@ -28,7 +28,7 @@ This post walks through the architecture, the practical APIs (both the beautiful
 Three pieces work together. None of them is exotic.
 
 1. **SolidB** is the durable queue and scheduler. It stores jobs and cron entries as ordinary documents, handles delay, cron evaluation, retry/backoff, and the "call this URL when ready" contract.
-2. **Your Soli application** owns the business logic. You drop handler classes in `app/jobs/`. At boot Soli discovers every `*_job.sl` file, loads the class, and automatically injects the ergonomic `perform_later` / `perform_in` / `set(queue: ...)` methods. It also registers one special route (`POST /_jobs/run/:name`) that SolidB will call later.
+2. **Your Soli application** owns the business logic. You drop handler classes in `app/jobs/`. At boot Soli discovers every `*_job.sl` file, loads the class, and automatically injects the ergonomic `perform_now` / `perform_later` / `perform_in` / `perform_at` methods. It also registers one special route (`POST /_jobs/run/:name`) that SolidB will call later.
 3. **A signed webhook callback** is the bridge. When SolidB decides a job should run, it POSTs a JSON payload (containing `args`, plus `job_id` and `attempt` on retries) to the callback URL you configured. Soli verifies an HMAC-SHA256 signature using a shared secret, looks up the class by name, and invokes `perform`. Success (200) or failure (5xx) tells SolidB what to do next.
 
 The controller that enqueues the job returns in a few milliseconds. The actual work — and any number of retries — happens later, on whatever schedule and retry policy SolidB applies.
@@ -92,14 +92,13 @@ Job files live in `app/jobs/` and follow the same naming convention as everythin
 
 ```soli
 # app/jobs/welcome_email_job.sl
-class WelcomeEmailJob {
-    static def perform(args: Hash) {
-        user_id = args["user_id"]
-        user = User.find(user_id)
+class WelcomeEmailJob
+  static def perform(args: Hash)
+    user = User.find(args["user_id"])
 
-        Mailer.send_welcome(user)
-    }
-}
+    Mailer.send_welcome(user)
+  end
+end
 ```
 
 `perform` must be `static`. Arguments are plain data that survived a JSON round-trip through SolidB. Never pass model instances, closures, or `Time` objects — pass IDs and primitive values, then rehydrate inside the handler.
@@ -110,7 +109,7 @@ At load time Soli injects a set of ergonomic static methods onto every job class
 - `perform_later(args, queue?)` — the 90% case. Enqueue for async execution on the default (or named) queue.
 - `perform_in(duration, args, queue?)` — schedule relative to now (`"5 minutes"`, `900`, `"2 hours"`).
 - `perform_at(iso8601_string, args, queue?)` — schedule for an absolute UTC time.
-- `set(queue: "mailers")` — returns a tiny builder so you can write `WelcomeEmailJob.set(queue: "mailers").perform_later(...)`.
+- The trailing `queue?` is a queue name or an options hash: `WelcomeEmailJob.perform_later(args, "mailers")`, or `perform_later(args, { "queue": "mailers", "priority": 10 })`.
 
 You can also stay at the lower level with the global `Job` and `Cron` classes:
 
@@ -120,7 +119,7 @@ Job.enqueue_in("WelcomeEmailJob", "30 minutes", { "user_id": 42 })
 Job.enqueue_at("WelcomeEmailJob", "2026-06-01T08:00:00Z", { "user_id": 42 })
 Job.cancel(id)
 queued = Job.list("default")
-queues = Job.queues()
+queues = Job.queues
 ```
 
 ## A Real Service Wrapper + Job (SendGrid Example)
@@ -131,59 +130,54 @@ First, the reusable mailer (lives in `app/services/` so it is autoloaded everywh
 
 ```soli
 # app/services/mailer.sl
-class Mailer {
-    static SEND_URL = "https://api.sendgrid.com/v3/mail/send"
+class Mailer
+  static SEND_URL: String = "https://api.sendgrid.com/v3/mail/send"
 
-    static def send_welcome(user) {
-        api_key = getenv("SENDGRID_API_KEY")
-        if api_key == null or api_key == "" {
-            raise("SENDGRID_API_KEY is not set")
-        }
+  static def send_welcome(user)
+    api_key = getenv("SENDGRID_API_KEY")
+    throw "SENDGRID_API_KEY is not set" if api_key.blank?
 
-        from = getenv("SENDGRID_FROM") || "no-reply@example.com"
+    sender = getenv("SENDGRID_FROM") || "no-reply@example.com"
 
-        payload = {
-            "personalizations": [{"to": [{"email": user.email}]}],
-            "from": {"email": from},
-            "subject": "Welcome to Acme",
-            "content": [{"type": "text/plain", "value": "Hi " + user.name + ", your account is ready."}]
-        }
-
-        response = HTTP.post_json(Mailer.SEND_URL, payload, {
-            "headers": {
-                "Authorization": "Bearer " + api_key,
-                "Content-Type": "application/json"
-            }
-        })
-
-        if response["status"] >= 200 and response["status"] < 300 {
-            return {"ok": true, "status": response["status"]}
-        }
-
-        {"ok": false, "status": response["status"], "body": response["body"]}
+    payload = {
+      "personalizations": [{"to": [{"email": user.email}]}],
+      "from": {"email": sender},
+      "subject": "Welcome to Acme",
+      "content": [{"type": "text/plain", "value": "Hi #{user.name}, your account is ready."}]
     }
-}
+
+    # HTTP.request returns { "status", "status_text", "headers", "body" } and does
+    # not raise on a 4xx/5xx (HTTP.post_json returns only the parsed body, and
+    # SendGrid's 202 has none). A Hash body is sent as JSON.
+    response = HTTP.request("POST", Mailer.SEND_URL, {
+      "Authorization": "Bearer #{api_key}",
+      "Content-Type": "application/json"
+    }, payload)
+
+    status = response["status"]
+    return {"ok": true, "status": status} if status >= 200 && status < 300
+
+    {"ok": false, "status": status, "body": response["body"]}
+  end
+end
 ```
 
 Now the job that actually calls it:
 
 ```soli
 # app/jobs/welcome_email_job.sl
-class WelcomeEmailJob {
-    static def perform(args: Hash) {
-        user_id = args["user_id"]
-        user = User.find(user_id)
+class WelcomeEmailJob
+  static def perform(args: Hash)
+    user = User.find(args["user_id"])
 
-        result = Mailer.send_welcome(user)
+    result = Mailer.send_welcome(user)
 
-        if !result["ok"] {
-            # Raising (or returning 5xx from the callback) tells SolidB to retry.
-            raise("SendGrid rejected " + user.email + ": " + str(result["status"]))
-        }
+    # Throwing marks the attempt failed, and the queue retries it.
+    throw "SendGrid rejected #{user.email}: #{result["status"]}" unless result["ok"]
 
-        result
-    }
-}
+    result
+  end
+end
 ```
 
 Note the deliberate thinness: no retry logic inside the job. Retries are the queue's job. The handler's only responsibility is "do the work or tell the queue you failed."
@@ -194,20 +188,17 @@ The user-visible moment stays fast:
 
 ```soli
 # app/controllers/users_controller.sl
-class UsersController {
-    def create(req) {
-        params = req["json"]
-        user = User.create(params["user"])
+class UsersController < Controller
+  # POST /users
+  def create
+    user = User.create(permit(params, {"email": true, "name": true}))
+    return render_json({"errors": user._errors}, 422) if user._errors
 
-        if user._errors {
-            return {"status": 422, "body": json_stringify({"errors": user._errors})}
-        }
+    WelcomeEmailJob.perform_later({ "user_id": user.id })
 
-        WelcomeEmailJob.perform_later({ "user_id": user.id })
-
-        redirect("/welcome")
-    }
-}
+    redirect("/welcome")
+  end
+end
 ```
 
 You can call the same methods from models (after-save callbacks), from other jobs, from the REPL, or from a CLI script. The facade methods are just ordinary static methods on the class.
@@ -297,9 +288,9 @@ The mental model: `Job.*` is for code you wrote that lives inside this Soli app.
 The duration language used by both `perform_in` and several `Cron.*` helpers is intentionally small and obvious:
 
 ```soli
-ReportJob.perform_in("5 minutes", { "kind": "daily" });
-CleanupJob.perform_in(3600, { "scope": "sessions" });     # raw seconds also work
-BillingJob.perform_at("2026-06-01T02:00:00Z", { "month": "2026-05" });
+ReportJob.perform_in("5 minutes", { "kind": "daily" })
+CleanupJob.perform_in(3600, { "scope": "sessions" })     # raw seconds also work
+BillingJob.perform_at("2026-06-01T02:00:00Z", { "month": "2026-05" })
 ```
 
 Supported units (singular, plural, and abbreviations all work):
@@ -319,8 +310,8 @@ You have two equivalent styles.
 ### Imperative registration (anywhere)
 
 ```soli
-Cron.schedule("nightly_report", Cron.daily_at("03:00"), "NightlyReportJob", {});
-Cron.schedule("warm_cache", Cron.every("5 minutes"), "WarmCacheJob", { "scope": "all" });
+Cron.schedule("nightly_report", Cron.daily_at("03:00"), "NightlyReportJob", {})
+Cron.schedule("warm_cache", Cron.every("5 minutes"), "WarmCacheJob", { "scope": "all" })
 ```
 
 `Cron.schedule` is idempotent keyed by the human name you choose. Calling it twice with the same name updates the schedule rather than creating a duplicate. Perfect for boot-time or migration scripts.
@@ -329,68 +320,73 @@ Cron.schedule("warm_cache", Cron.every("5 minutes"), "WarmCacheJob", { "scope": 
 
 ```soli
 # app/jobs/nightly_report_job.sl
-class NightlyReportJob {
-    static cron = Cron.daily_at("03:30")
+class NightlyReportJob
+  static cron: String = Cron.daily_at("03:30")
 
-    static def perform(args: Hash) {
-        date = args["date"] ?? datetime_now().format("%Y-%m-%d")
-        # ... build and store the report ...
-    }
-}
+  static def perform(args: Hash)
+    date = args["date"] ?? DateTime.utc.format("%Y-%m-%d")
+    # ... build and store the report ...
+  end
+end
 ```
 
 On boot, *only worker 0* walks the loaded job classes, reads any `static cron` field, and upserts the corresponding SolidB cron entry using the snake-cased class name as the schedule name (`nightly_report_job`). This guarantees a single source of truth without race conditions between workers.
 
-The expression helpers produce standard five-field cron strings:
+The expression helpers produce **six-field** cron strings — a leading seconds field, then the usual five:
 
 | Expression                              | Resulting cron     |
 |-----------------------------------------|--------------------|
-| `Cron.every("5 minutes")`               | `*/5 * * * *`      |
-| `Cron.every("2 hours")`                 | `0 */2 * * *`      |
-| `Cron.hourly()`                         | `0 * * * *`        |
-| `Cron.daily_at("03:00")`                | `0 3 * * *`        |
-| `Cron.weekly_at("monday", "09:00")`     | `0 9 * * 1`        |
-| `Cron.weekly_at("fri", "17:30")`        | `30 17 * * 5`      |
+| `Cron.every("5 minutes")`               | `0 */5 * * * *`    |
+| `Cron.every("2 hours")`                 | `0 0 */2 * * *`    |
+| `Cron.hourly`                           | `0 0 * * * *`      |
+| `Cron.daily_at("03:00")`                | `0 0 3 * * *`      |
+| `Cron.weekly_at("monday", "09:00")`     | `0 0 9 * * Mon`    |
+| `Cron.weekly_at("fri", "17:30")`        | `0 30 17 * * Fri`  |
 
-You can always pass a raw cron string if the helpers don't cover your case.
+You can always pass a raw six-field cron string if the helpers don't cover your case (a five-field crontab line is refused).
 
 ## Production Patterns
 
-### Idempotency Using job_id + attempt
+### Idempotency
 
-When SolidB retries a job it includes `job_id` and `attempt` in the callback payload (visible as `req["json"]["job_id"]` and `req["json"]["attempt"]` inside your `perform` if you look at the full payload instead of just `args`).
-
-A common pattern:
+A retried job runs `perform` again with the same `args` — `perform` receives only `args`, not a job id or attempt counter. So make the work itself idempotent: record that it happened on the row it touches, and return early when the record says it already did.
 
 ```soli
-static def perform(args) {
-    full = ...   # the top-level JSON from the callback
-    job_id = full["job_id"]
-    attempt = full["attempt"] ?? 1
+# app/jobs/welcome_email_job.sl
+class WelcomeEmailJob
+  static def perform(args: Hash)
+    user = User.find(args["user_id"])
+    return if user.welcome_email_sent_at.present?   # safe re-delivery
 
-    if already_handled(job_id) {
-        return   # safe re-delivery
-    }
-
-    # do the work
-    mark_handled(job_id)
-}
+    Mailer.send_welcome(user)
+    user.update({ "welcome_email_sent_at": DateTime.utc.to_iso })
+  end
+end
 ```
 
-External services that support idempotency keys should receive the `job_id`.
+External services that support idempotency keys should receive a key derived from your own data (`"welcome-#{user.id}"`), so a retry sends the same key.
 
 ### Using the Postfix `rescue` Operator
 
-The new `expr rescue fallback` syntax is delightful inside jobs:
+The `expr rescue fallback` syntax is delightful inside jobs — a failed request becomes a value you can branch on:
 
 ```soli
-api_key = getenv("STRIPE_SECRET") rescue null
-if api_key == null {
-    print("Stripe disabled in this environment — job is a no-op")
-    return
-}
+# app/jobs/refund_job.sl
+class RefundJob
+  static def perform(args: Hash)
+    api_key = getenv("STRIPE_SECRET_KEY")
+    if api_key.blank?
+      print("Stripe disabled in this environment — job is a no-op")
+      return
+    end
 
-result = risky_call() rescue {"success": false, "error": "network"}
+    result = HTTP.request("POST", "https://api.stripe.com/v1/refunds", {
+      "Authorization": "Bearer #{api_key}"
+    }, "payment_intent=#{url_encode(args["payment_intent"])}") rescue {"status": 0, "body": "network"}
+
+    throw "Stripe refund failed: #{result["status"]}" unless result["status"] == 200
+  end
+end
 ```
 
 It keeps the main line readable while making the fallback explicit and local.
@@ -438,11 +434,11 @@ The conscious trade-off is that SolidB is now on the critical path for both sync
 `perform_now` makes unit-testing the handler trivial:
 
 ```soli
-test("welcome email job sends the right thing", fn() {
-    user = Factory.create("user")
-    WelcomeEmailJob.perform_now({ "user_id": user.id })
-    # assert on whatever your mailer records or on the HTTP mock
-})
+test("welcome email job sends the right thing") do
+  user = Factory.create("user")
+  WelcomeEmailJob.perform_now({ "user_id": user.id })
+  # assert on whatever your mailer records or on the HTTP mock
+end
 ```
 
 For full integration tests that go through the queue you can still use the normal test server + `with_session`, but most teams find that exercising `perform_now` (plus a few manual end-to-end enqueues against a test SolidB) is sufficient and dramatically faster.
@@ -453,21 +449,16 @@ A recurring report job declared entirely on the class, plus an ad-hoc entry poin
 
 ```soli
 # app/jobs/nightly_report_job.sl
-class NightlyReportJob {
-    static cron = Cron.daily_at("03:30")
+class NightlyReportJob
+  static cron: String = Cron.daily_at("03:30")
 
-    static def perform(args: Hash) {
-        date = args["date"] ?? datetime_now().format("%Y-%m-%d")
+  static def perform(args: Hash)
+    date = args["date"] ?? DateTime.utc.format("%Y-%m-%d")
 
-        # In a real handler you would look at the full callback payload
-        # for job_id / attempt and implement a cheap dedup check here.
-
-        rows = DB.query("SELECT ... FROM orders WHERE date = @d", { "d": date })
-        csv = to_csv(rows)
-
-        Storage.put("reports/" + date + ".csv", csv)
-    }
-}
+    rows = Order.where({ "date": date }).all.map { |order| order.to_h }
+    File.write("storage/reports/#{date}.csv", Spreadsheet.to_csv(rows))
+  end
+end
 ```
 
 Manual trigger from anywhere:

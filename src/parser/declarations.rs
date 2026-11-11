@@ -182,6 +182,19 @@ impl Parser {
     }
 
     pub(crate) fn class_declaration(&mut self) -> ParseResult<Stmt> {
+        self.class_nesting += 1;
+        let parsed = self.class_declaration_body();
+        self.class_nesting -= 1;
+        let mut stmt = parsed?;
+        if self.class_nesting == 0 {
+            if let StmtKind::Class(decl) = &mut stmt.kind {
+                super::class_constants::resolve(decl);
+            }
+        }
+        Ok(stmt)
+    }
+
+    fn class_declaration_body(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
         let is_module = if self.match_token(&TokenKind::Module) {
             true

@@ -575,7 +575,7 @@ search, analytics, and migrations — see `docs/solidb-reference.md`.
 
 <% for post in posts %>
     <article>
-        <h2><%= h(post.title) %></h2>
+        <h2><%= post.title %></h2>
         <%= post.body %>
     </article>
 <% end %>

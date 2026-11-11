@@ -4,6 +4,21 @@
 
 ### Added
 
+- **Class constants read by their bare name.** A `const` in a class body is
+  also a `static const` (unless one is declared), and a bare read of it in the
+  class's methods, constructor and invariants is rewritten to `Klass.NAME`
+  (`Outer::Inner.NAME` when nested) at parse time — `parser/class_constants.rs`,
+  so both engines, `soli check` and the linter see the same tree. Names the
+  method binds (parameters, locals, loop/catch variables) and calls `NAME(...)`
+  are left alone. `@NAME` and `instance.NAME` still read it.
+- **`try` is a value.** `x = try … catch e … end` parses (a lambda called on
+  the spot, which `soli fmt` prints back as written), and a `try` in tail
+  position returns the value of the branch that ran on both engines: the
+  tree-walker's `Try` yields its branch value, and the VM's
+  `compile_tail_stmt` turns each branch's tail into a `return`, which already
+  leaves through the handlers and runs `finally`.
+- **`soli fmt --help`.**
+
 - **`soli agent`: a local MCP server that attaches a coding agent to the
   running `soli serve --dev`.** New `src/dev_agent/`: newline-delimited
   JSON-RPC on stdin/stdout (`initialize`, `notifications/initialized`, `ping`,
@@ -53,6 +68,23 @@
   Mothership sits alone in its process group.
 
 ### Fixed
+
+- **`soli new` writes `.env.test`** (`<app>_test`), without which `soli test`
+  refused to start.
+- **Scaffold.** The model no longer calls an undefined
+  `before_save("normalize_fields")`; the summary prints the paths written
+  (plural controller and spec); the controller spec creates its own records from
+  a sample value per field and passes on a fresh app (it assumed id 1, posted
+  `name`, and expected `@posts` on show); the controller calls
+  `@_permit_params`.
+- **No more `<%= h(…) %>` double escaping** in the mailer generator, the OIDC
+  views and the scaffold's `CLAUDE*.md` guides.
+- **`soli fmt` kept `@x` inside `#{…}`.** Interpolations are parsed on their
+  own, so the `@` check read the file at the wrong offset and printed
+  `this.x`; each is now printed against its own text.
+- **Blog posts** (Stripe, SendGrid, background jobs): `raise` → `throw`,
+  `HTTP.post` status reads → `HTTP.request`, `redirect` off-site →
+  `redirect_external`, and other names that do not exist.
 
 - **A query write inside a SoliDB `transaction` block now commits and rolls
   back with it.** `.where(...).update_all(...)`, `.where(...).delete_all` and an

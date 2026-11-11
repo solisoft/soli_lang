@@ -2419,6 +2419,17 @@ pub fn parse_args() -> Options {
                         "--check" => check = true,
                         "--stdin" => stdin = true,
                         "--migrate-raw-strings" => migrate_raw_strings = true,
+                        "--help" | "-h" => {
+                            println!(
+                                "Usage: soli fmt [paths...] [--check] [--stdin] [--migrate-raw-strings]\n\n\
+                                 Format .sl files in place (the current directory when no path is given).\n\n\
+                                 Options:\n  \
+                                   --check                exit 1 if a file would change; write nothing\n  \
+                                   --stdin                read source on stdin, print it formatted\n  \
+                                   --migrate-raw-strings  rewrite the removed [[ … ]] raw strings"
+                            );
+                            process::exit(0);
+                        }
                         s if !s.starts_with('-') => paths.push(args[i].clone()),
                         other => {
                             eprintln!("Unknown option for fmt: {}", other);

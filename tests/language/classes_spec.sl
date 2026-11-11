@@ -1159,3 +1159,61 @@ describe("Klass.new") do
     assert_raises(fn() { NewSpecGreetable.new() })
   end
 end
+
+class ConstHolder
+  const MAX = 10
+  static const LABEL = "holder"
+
+  def limit
+    MAX
+  end
+
+  def label
+    LABEL
+  end
+
+  def scaled(factor)
+    [1, 2].map { |x| x * MAX * factor }
+  end
+
+  def shadowed(MAX)
+    MAX
+  end
+
+  static def static_limit
+    MAX
+  end
+
+  class Inner
+    const DEPTH = 2
+
+    def depth
+      DEPTH
+    end
+  end
+end
+
+describe("Class constants by name") do
+  test("a bare constant reads in instance and static methods") do
+    holder = ConstHolder.new()
+    assert_eq(holder.limit, 10)
+    assert_eq(holder.label, "holder")
+    assert_eq(holder.scaled(2), [20, 40])
+    assert_eq(ConstHolder.static_limit, 10)
+  end
+
+  test("Klass.NAME and Klass::NAME read an instance const") do
+    assert_eq(ConstHolder.MAX, 10)
+    assert_eq(ConstHolder::MAX, 10)
+    assert_eq(ConstHolder.new().MAX, 10)
+  end
+
+  test("a parameter of the same name wins") do
+    assert_eq(ConstHolder.new().shadowed(3), 3)
+  end
+
+  test("a nested class reads its own constants") do
+    assert_eq(ConstHolder::Inner.new().depth, 2)
+    assert_eq(ConstHolder::Inner::DEPTH, 2)
+  end
+end

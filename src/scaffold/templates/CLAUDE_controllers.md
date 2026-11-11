@@ -233,7 +233,7 @@ In `app/views/posts/index.html.slv`:
 <h1><%= @title %></h1>
 <p>Showing: <%= @filter %></p>
 <% for post in @posts %>
-  <li><%= h(post.title) %></li>
+  <li><%= post.title %></li>
 <% end %>
 ```
 

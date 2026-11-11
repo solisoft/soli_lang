@@ -69,13 +69,13 @@ content; reach for `<%- %>` only when you can prove the value is trusted.
 ```erb
 <% for post in @posts %>
   <article>
-    <h2><%= h(post.title) %></h2>
+    <h2><%= post.title %></h2>
     <%= post.body %>
   </article>
 <% end %>
 
 <% for post, i in @posts %>
-  <p>#<%= i %>: <%= h(post.title) %></p>
+  <p>#<%= i %>: <%= post.title %></p>
 <% end %>
 
 <% if @posts.length == 0 %>
@@ -113,7 +113,7 @@ attributes / JS / URLs.
 | `html_unescape(value)`   | Decode `&amp;` / `&lt;` etc. back to characters.                     |
 
 ```erb
-<a href="<%= attr(post.url) %>" title="<%= attr(post.title) %>">read</a>
+<a href="<%= post.url %>" title="<%= post.title %>">read</a>
 
 <script>
   window.post = { id: <%= post.id %>, title: <%= j(post.title) %> };
@@ -162,8 +162,8 @@ HTML-escape the partial's own markup and show tags as text.
 
 ```erb
 <article>
-  <h2><%= h(post.title) %></h2>
-  <%= h(post.body) %>
+  <h2><%= post.title %></h2>
+  <%= post.body %>
 </article>
 ```
 
@@ -199,7 +199,8 @@ Always available inside templates:
 ```
 
 There is **no `link_to` helper** in Soli — write the `<a>` tag yourself with
-`<%= attr(...) %>` around URLs that contain user data.
+`<%= url %>` around URLs that contain user data: `<%=` already escapes for
+attributes, so wrapping it in `attr()` escapes twice.
 
 ## Rendering uploads and image transforms
 
@@ -211,7 +212,7 @@ The URL hits SoliDB, decodes the blob, and streams it back.
 
 ```erb
 <% if !@contact.photo_url.nil? %>
-  <img src="<%= attr(@contact.photo_url) %>" alt="<%= attr(@contact.name) %>">
+  <img src="<%= @contact.photo_url %>" alt="<%= @contact.name %>">
 <% end %>
 ```
 
@@ -221,7 +222,7 @@ the stored blob ids and ask for each URL:
 ```erb
 <% for blob_id in (@document.attachments_blob_ids ?? []) %>
   <li>
-    <a href="<%= attr(@document.attachments_url(blob_id)) %>">Download</a>
+    <a href="<%= @document.attachments_url(blob_id) %>">Download</a>
   </li>
 <% end %>
 ```
@@ -238,11 +239,11 @@ bytes.
 Pass options as a hash to `upload_url` / `<field>_url`:
 
 ```erb
-<img src="<%= attr(@contact.photo_url({ "thumb": 120 })) %>">
+<img src="<%= @contact.photo_url({ "thumb": 120 }) %>">
 
-<img src="<%= attr(@contact.photo_url({ "w": 400, "h": 300, "fit": "cover" })) %>">
+<img src="<%= @contact.photo_url({ "w": 400, "h": 300, "fit": "cover" }) %>">
 
-<img src="<%= attr(@contact.photo_url({ "square": 64, "fmt": "webp", "q": 80 })) %>">
+<img src="<%= @contact.photo_url({ "square": 64, "fmt": "webp", "q": 80 }) %>">
 ```
 
 | Key                  | Effect                                                                  |

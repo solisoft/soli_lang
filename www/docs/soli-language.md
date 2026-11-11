@@ -933,6 +933,34 @@ ensure
 end
 ```
 
+### `try` as a value
+
+A `try` is worth the value of the branch that ran: the try body's last
+expression, or the last expression of the `catch` clause that took the error.
+`finally` runs but adds no value, as Ruby's `ensure`. So a `try` can end a
+method, or stand on the right of an assignment:
+
+```soli
+def parse_port(text)
+  try
+    text.to_i
+  catch e
+    8080
+  end
+end
+
+port = try
+  config_value("port").to_i
+catch e
+  8080
+end
+```
+
+The assigned form runs the `try` as a block called on the spot: it reads and
+assigns the enclosing locals, and a `return` inside it leaves that block, not
+the enclosing method. For a single expression, the postfix form is shorter:
+`port = config_value("port").to_i rescue 8080`.
+
 ### What `finally` guarantees
 
 `finally` runs on **every** way out of the `try`, not just the one where the block reaches
@@ -2994,6 +3022,39 @@ print(result);  # 100
 
 print(MathUtils.calculation_count);  # 3
 ```
+
+#### Class constants
+
+A `const` in a class body is a constant of the class. Its methods read it by its
+bare name, and outside the class it reads as `Klass.NAME` or `Klass::NAME`:
+
+```soli
+class Upload
+  const MAX_BYTES = 5_000_000
+  const KINDS = ["image", "pdf"]
+
+  def too_big?(size)
+    size > MAX_BYTES
+  end
+
+  def self.accepts?(kind)
+    KINDS.includes?(kind)
+  end
+end
+
+Upload.new().too_big?(6_000_000)   # true
+Upload.accepts?("pdf")             # true
+Upload::MAX_BYTES                  # 5000000
+Upload.MAX_BYTES                   # 5000000
+```
+
+- A bare name resolves to the class that declares it, in instance methods,
+  static methods, the constructor and the blocks and lambdas inside them. A
+  nested class reads its own (`Outer::Inner::DEPTH` from outside).
+- A parameter or local of the same name wins inside its method.
+- The instance still reads it as `@MAX_BYTES`, as before.
+- A constant cannot be reassigned. `static const NAME = …` declares a class
+  constant only.
 
 #### Ruby-style `def self.method_name`
 

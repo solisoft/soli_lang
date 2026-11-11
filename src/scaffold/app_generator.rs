@@ -303,6 +303,23 @@ pub fn create_env_file(app_path: &Path, name: &str) -> Result<(), String> {
     write_file(&app_path.join(".env"), &content)
 }
 
+/// Create `.env.test`, which `soli test` refuses to start without. It names
+/// its own `<app>_test` database so a spec run never truncates the dev data,
+/// and it is committed (the `.gitignore` only drops `.env` and `*.local`).
+pub fn create_env_test_file(app_path: &Path, name: &str) -> Result<(), String> {
+    let content = format!(
+        "# Loaded by `soli test`, which refuses to start without it.\n\
+         # A database of its own: the runner creates, truncates and drops it.\n\
+         \n\
+         SOLIDB_HOST=http://localhost:6745\n\
+         SOLIDB_DATABASE={}_test\n\
+         SOLIDB_USERNAME=admin\n\
+         SOLIDB_PASSWORD=admin\n",
+        slugify_db_name(name)
+    );
+    write_file(&app_path.join(".env.test"), &content)
+}
+
 /// Create the .gitignore file
 pub fn create_gitignore(app_path: &Path) -> Result<(), String> {
     write_file(&app_path.join(".gitignore"), app::GITIGNORE_TEMPLATE)
@@ -913,6 +930,7 @@ pub fn create_app(name: &str, template: Option<&str>, eui: bool, edge: bool) -> 
     create_seeds_file(app_path)?;
     create_application_config(app_path)?;
     create_env_file(app_path, name)?;
+    create_env_test_file(app_path, name)?;
     create_gitignore(app_path)?;
     create_claude_md(app_path)?;
     create_agents_md(app_path)?;
@@ -1295,6 +1313,18 @@ mod tests {
     fn slugify_db_name_falls_back_to_default() {
         assert_eq!(slugify_db_name(""), "default");
         assert_eq!(slugify_db_name("---"), "default");
+    }
+
+    #[test]
+    fn env_test_file_names_a_test_database() {
+        let dir = tempfile::tempdir().unwrap();
+        create_env_test_file(dir.path(), "My Cool App").unwrap();
+        let content = std::fs::read_to_string(dir.path().join(".env.test")).unwrap();
+        assert!(
+            content.contains("SOLIDB_DATABASE=my_cool_app_test"),
+            "{content}"
+        );
+        assert!(content.contains("SOLIDB_HOST="), "{content}");
     }
 
     #[test]

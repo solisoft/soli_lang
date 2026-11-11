@@ -42,7 +42,7 @@ class {controller_name} < Controller
 
   # POST /{resource}
   def create
-    @{model_var} = {model_name}.create(this._permit_params(params))
+    @{model_var} = {model_name}.create(@_permit_params(params))
     if @{model_var}._errors
       @title = "New {model_name}"
       return render("{resource}/new", {{}}, {{ "status": 422 }})
@@ -54,7 +54,7 @@ class {controller_name} < Controller
   # PATCH/PUT /{resource}/:id — an invalid change re-renders the form, 422.
   def update
     @{model_var} = {model_name}.find(params["id"])
-    @{model_var}.update(this._permit_params(params))
+    @{model_var}.update(@_permit_params(params))
     if @{model_var}._errors
       @title = "Edit {model_name}"
       return render("{resource}/edit", {{}}, {{ "status": 422 }})
@@ -90,108 +90,120 @@ end
     )
 }
 
-/// Controller test template
-pub fn controller_test_template(controller_name: &str, resource_path: &str) -> String {
+/// Controller spec template. It makes the records it reads (`_create_<model>`)
+/// from `sample_attrs`, a hash literal holding a valid value for every
+/// scaffolded field, so it passes on a fresh app with an empty test database.
+/// `rejects_blank` adds the 422 case, which only exists when a field is
+/// validated for presence.
+pub fn controller_test_template(
+    controller_name: &str,
+    resource_path: &str,
+    model_name: &str,
+    model_var: &str,
+    sample_attrs: &str,
+    rejects_blank: bool,
+) -> String {
+    let invalid_test = if rejects_blank {
+        format!(
+            r#"
+
+    test("rejects invalid data") do
+      response = post("/{resource_path}", {{}})
+      assert_eq(res_status(response), 422)
+    end"#
+        )
+    } else {
+        String::new()
+    };
     format!(
-        r#"# {0}Controller E2E tests - auto-generated scaffold
+        r#"# {controller_name}Controller E2E tests - auto-generated scaffold
 #
 # This file uses the E2E testing framework with real HTTP requests
 # to test controller actions. See www/docs/testing-e2e.md for details.
 
-describe("{0}Controller") do
+def _create_{model_var}
+  {model_name}.create({sample_attrs})
+end
+
+describe("{controller_name}Controller") do
   before_each() do
     as_guest()
   end
 
-  describe("GET /{1}") do
-    test("returns list of {2}") do
-      response = get("/{1}")
+  describe("GET /{resource_path}") do
+    test("returns list of {resource_path}") do
+      response = get("/{resource_path}")
       assert_eq(res_status(response), 200)
     end
 
     test("renders with correct view assigns") do
-      response = get("/{1}")
+      get("/{resource_path}")
       assert(render_template())
-      assert_eq(view_path(), "{1}/index.html")
-      data = assigns()
-      assert_hash_has_key(data, "{1}")
+      assert_eq(view_path(), "{resource_path}/index.html")
+      assert_hash_has_key(assigns(), "{resource_path}")
     end
   end
 
-  describe("GET /{1}/new") do
+  describe("GET /{resource_path}/new") do
     test("renders new form") do
-      response = get("/{1}/new")
+      response = get("/{resource_path}/new")
       assert_eq(res_status(response), 200)
       assert(render_template())
     end
   end
 
-  describe("GET /{1}/:id") do
-    test("shows single {2}") do
-      response = get("/{1}/1")
+  describe("GET /{resource_path}/:id") do
+    test("shows a single {model_var}") do
+      record = _create_{model_var}()
+      response = get("/{resource_path}/#{{record._key}}")
       assert_eq(res_status(response), 200)
-      data = assigns()
-      assert_hash_has_key(data, "{2}")
+      assert_hash_has_key(assigns(), "{model_var}")
     end
 
     test("returns 404 for missing record") do
-      response = get("/{1}/99999")
+      response = get("/{resource_path}/99999")
       assert_eq(res_status(response), 404)
     end
   end
 
-  describe("GET /{1}/:id/edit") do
+  describe("GET /{resource_path}/:id/edit") do
     test("renders edit form") do
-      response = get("/{1}/1/edit")
+      record = _create_{model_var}()
+      response = get("/{resource_path}/#{{record._key}}/edit")
       assert_eq(res_status(response), 200)
       assert(render_template())
     end
 
     test("returns 404 for missing record") do
-      response = get("/{1}/99999/edit")
+      response = get("/{resource_path}/99999/edit")
       assert_eq(res_status(response), 404)
     end
   end
 
-  describe("POST /{1}") do
+  describe("POST /{resource_path}") do
     test("creates new record with valid data") do
-      response = post("/{1}", {{"name": "Test {2}"}})
+      response = post("/{resource_path}", {sample_attrs})
       assert_eq(res_status(response), 302)
-    end
-
-    test("rejects invalid data") do
-      response = post("/{1}", {{}})
-      assert_eq(res_status(response), 422)
-    end
+    end{invalid_test}
   end
 
-  describe("PUT /{1}/:id") do
+  describe("PUT /{resource_path}/:id") do
     test("updates record") do
-      response = put("/{1}/1", {{"name": "Updated"}})
+      record = _create_{model_var}()
+      response = put("/{resource_path}/#{{record._key}}", {sample_attrs})
       assert_eq(res_status(response), 302)
     end
   end
 
-  describe("DELETE /{1}/:id") do
+  describe("DELETE /{resource_path}/:id") do
     test("deletes record") do
-      response = delete("/{1}/1")
+      record = _create_{model_var}()
+      response = delete("/{resource_path}/#{{record._key}}")
       assert_eq(res_status(response), 302)
-    end
-  end
-
-  describe("Authentication") do
-    before_each() do
-      as_guest()
-    end
-
-    test("redirects unauthenticated requests to index") do
-      response = get("/{1}")
-      assert_eq(res_status(response), 200)
     end
   end
 end
-"#,
-        controller_name, resource_path, resource_path
+"#
     )
 }
 
@@ -203,7 +215,14 @@ mod tests {
     /// also appends produces `describe("UsersControllerController")`.
     #[test]
     fn controller_spec_names_the_controller_once() {
-        let spec = controller_test_template("Users", "users");
+        let spec = controller_test_template(
+            "Users",
+            "users",
+            "User",
+            "user",
+            r#"{"name": "Sample name"}"#,
+            true,
+        );
         assert!(
             spec.contains(r#"describe("UsersController")"#),
             "unexpected describe name:\n{spec}"
