@@ -518,6 +518,8 @@ text = "hello";
 upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
 items = ["Alice", "Bob"];
 first_item = "First: #{items[0]}";       # "First: Alice"
+# A string inside #{} may interpolate too
+version = "v#{"#{a}.#{b}"}";             # "v2.3"
 person = {"name": "Charlie"};
 person_name = "Name: #{person["name"]}"; # "Name: Charlie"
 ```

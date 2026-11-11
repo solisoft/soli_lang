@@ -1433,3 +1433,15 @@ fn trailing_comment_stays_inside_def_and_method() {
         "class A\n  def f\n    1\n    # trailing method comment\n  end\nend\n",
     );
 }
+
+// ---- nested interpolated strings: the lexer reads them, fmt keeps them ----
+
+#[test]
+fn nested_interpolated_strings_round_trip() {
+    assert_unchanged_and_idempotent(
+        "a = 1\nb = 2\nprint(\"outer #{\"#{a}.#{b}\"} and #{\"}\"} end\")\n",
+    );
+    assert_unchanged_and_idempotent(
+        "s = \"#{xs.map { |y| \"#{y}!\" }.join(\",\")}\"  # trailing\n",
+    );
+}

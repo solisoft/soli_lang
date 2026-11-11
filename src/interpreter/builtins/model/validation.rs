@@ -290,6 +290,11 @@ impl ValidationError {
 /// uniqueness checks issue N+1 identical SDBQL queries per save —
 /// dominant cost in `soli test` for app-style controller suites.
 pub fn register_validation(class_name: &str, rule: ValidationRule) {
+    // While the class body runs, the rule joins the list it is building,
+    // which replaces the class's when the body ends (`callbacks::Declaration`).
+    if super::callbacks::declare_validation(class_name, &rule) {
+        return;
+    }
     MODEL_REGISTRY.write(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if metadata.validations.iter().any(|r| r == &rule) {

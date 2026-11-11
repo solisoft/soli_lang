@@ -223,7 +223,7 @@ pub fn extract_comments(source: &str) -> Vec<Comment> {
 /// closes it. Unterminated: the end of the source.
 pub(crate) fn quoted_string_end(bytes: &[u8], open: usize) -> usize {
     let quote = bytes[open];
-    let mut interpolated = false;
+    // Braces open in the code of the current `#{…}`; 0 in the string's text.
     let mut depth = 0u32;
     let mut i = open + 1;
     while i < bytes.len() {
@@ -232,14 +232,21 @@ pub(crate) fn quoted_string_end(bytes: &[u8], open: usize) -> usize {
                 i += 2;
                 continue;
             }
-            b'#' if bytes.get(i + 1) == Some(&b'{') => {
-                interpolated = true;
+            // A string in the code of an interpolation is a string of its own,
+            // with its own `#{…}` — skipped whole, as the lexer reads it.
+            // Counting its characters here ended the outer literal at the
+            // inner one's quote (`"#{"}"} tail"` read ` tail` as code).
+            b'"' | b'\'' if depth > 0 => {
+                i = quoted_string_end(bytes, i);
+                continue;
+            }
+            b'#' if depth == 0 && bytes.get(i + 1) == Some(&b'{') => {
                 depth = 1;
                 i += 2;
                 continue;
             }
-            b'{' if interpolated => depth += 1,
-            b'}' if interpolated && depth > 0 => depth -= 1,
+            b'{' if depth > 0 => depth += 1,
+            b'}' if depth > 0 => depth -= 1,
             c if c == quote && depth == 0 => return i + 1,
             _ => {}
         }

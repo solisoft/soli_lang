@@ -120,9 +120,17 @@ impl Interpreter {
     /// Inside an instance method, is `name` — which resolved to no variable or
     /// function — a method of `this`? Then the bare `name` means `@name`.
     /// Only consulted after a lookup failed, so resolved names cost nothing.
+    ///
+    /// Native methods count too: `save` in a `< Model` method is `Model#save`,
+    /// inherited as a native, and raised "Undefined variable 'save'" while a
+    /// method written in Soli resolved.
     pub(crate) fn implicit_self_method(&self, name: &str) -> bool {
         match self.environment.borrow().get("this") {
-            Some(Value::Instance(inst)) => inst.borrow().class.find_method(name).is_some(),
+            Some(Value::Instance(inst)) => {
+                let inst = inst.borrow();
+                inst.class.find_method(name).is_some()
+                    || inst.class.find_native_method(name).is_some()
+            }
             _ => false,
         }
     }

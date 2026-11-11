@@ -2881,6 +2881,11 @@ impl Vm {
                                     )) => Some(Value::Class(defining)),
                                     // `true`: a tree-walker method, dispatched by name.
                                     Some(_) => Some(Value::Bool(true)),
+                                    // An inherited native (`save` in a
+                                    // `< Model` method): dispatched by name too.
+                                    None if class.find_native_method(name).is_some() => {
+                                        Some(Value::Bool(true))
+                                    }
                                     None => None,
                                 }
                             }

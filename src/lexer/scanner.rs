@@ -412,13 +412,16 @@ impl<'a> Scanner<'a> {
                 None | Some('\n') => {
                     return Err(LexerError::unterminated_string(self.current_span()));
                 }
+                // A string inside the code of an interpolation is a string of
+                // its own, nested `#{…}` and escapes included: copy it as
+                // written, for the parser to lex again. It used to be read a
+                // character at a time, so `"#{"#{a}.#{b}"}"` ended at the
+                // inner string's closing quote ("Unterminated string").
+                Some(q @ ('"' | '\'')) if has_interpolation && paren_depth > 0 => {
+                    self.copy_nested_string(q, &mut value)?;
+                }
                 Some('"') => {
-                    // Only treat " as terminator if we're not inside parentheses in interpolation
-                    if has_interpolation && paren_depth > 0 {
-                        // Inside interpolation expression - " is just a character
-                        self.advance();
-                        value.push('"');
-                    } else if quote_char == '"' {
+                    if quote_char == '"' {
                         // Not inside interpolation or paren_depth is 0 - this is the closing "
                         self.advance();
                         break;
@@ -429,12 +432,7 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 Some('\'') => {
-                    // Only treat ' as terminator if we're not inside parentheses in interpolation
-                    if has_interpolation && paren_depth > 0 {
-                        // Inside interpolation expression - ' is just a character
-                        self.advance();
-                        value.push('\'');
-                    } else if quote_char == '\'' {
+                    if quote_char == '\'' {
                         // Not inside interpolation or paren_depth is 0 - this is the closing '
                         self.advance();
                         break;
@@ -445,8 +443,9 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 Some('#') => {
-                    // Check for #{ interpolation start
-                    if self.peek_next() == Some('{') {
+                    // Check for #{ interpolation start (in the string's own
+                    // text: inside the code of one, `{` only counts a brace)
+                    if self.peek_next() == Some('{') && paren_depth == 0 {
                         // Start of interpolation
                         has_interpolation = true;
                         paren_depth = 1; // Start counting braces
@@ -539,6 +538,78 @@ impl<'a> Scanner<'a> {
             Ok(Token::new(TokenKind::InterpolatedString(parts), span))
         } else {
             Ok(Token::new(TokenKind::StringLiteral(value), span))
+        }
+    }
+
+    /// Copy a string literal met inside the code of an interpolation, from its
+    /// opening `quote` (at the cursor) to its closing one, into `out` exactly
+    /// as written: escapes stay escapes and its own `#{…}` are copied whole, so
+    /// the expression's parser lexes it as the author wrote it.
+    fn copy_nested_string(&mut self, quote: char, out: &mut String) -> Result<(), LexerError> {
+        self.advance();
+        out.push(quote);
+        loop {
+            match self.peek() {
+                None | Some('\n') => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some('\\') => {
+                    self.advance();
+                    out.push('\\');
+                    if let Some(c) = self.peek() {
+                        if c != '\n' {
+                            self.advance();
+                            out.push(c);
+                        }
+                    }
+                }
+                Some(c) if c == quote => {
+                    self.advance();
+                    out.push(c);
+                    return Ok(());
+                }
+                Some('#') if self.peek_next() == Some('{') => {
+                    self.advance();
+                    self.advance();
+                    out.push_str("#{");
+                    self.copy_interpolation_body(out)?;
+                }
+                Some(c) => {
+                    self.advance();
+                    out.push(c);
+                }
+            }
+        }
+    }
+
+    /// The code of a `#{…}` inside a nested string, after its `#{`, through
+    /// the matching `}`: braces counted, strings in it copied whole.
+    fn copy_interpolation_body(&mut self, out: &mut String) -> Result<(), LexerError> {
+        let mut depth = 1usize;
+        loop {
+            match self.peek() {
+                None | Some('\n') => {
+                    return Err(LexerError::unterminated_string(self.current_span()));
+                }
+                Some(q @ ('"' | '\'')) => self.copy_nested_string(q, out)?,
+                Some('{') => {
+                    depth += 1;
+                    self.advance();
+                    out.push('{');
+                }
+                Some('}') => {
+                    depth -= 1;
+                    self.advance();
+                    out.push('}');
+                    if depth == 0 {
+                        return Ok(());
+                    }
+                }
+                Some(c) => {
+                    self.advance();
+                    out.push(c);
+                }
+            }
         }
     }
 
@@ -959,9 +1030,27 @@ impl<'a> Scanner<'a> {
                     current = String::new();
                     chars.next(); // consume {
                     let mut brace_depth = 1;
+                    // A string inside the expression (copied as written by
+                    // `copy_nested_string`) may hold braces of its own.
+                    let mut in_string: Option<char> = None;
+                    let mut escaped = false;
                     // Read until matching }
                     for c2 in chars.by_ref() {
-                        if c2 == '{' {
+                        if let Some(q) = in_string {
+                            current.push(c2);
+                            if escaped {
+                                escaped = false;
+                            } else if c2 == '\\' {
+                                escaped = true;
+                            } else if c2 == q {
+                                in_string = None;
+                            }
+                            continue;
+                        }
+                        if c2 == '"' || c2 == '\'' {
+                            in_string = Some(c2);
+                            current.push(c2);
+                        } else if c2 == '{' {
                             brace_depth += 1;
                             current.push(c2);
                         } else if c2 == '}' {
@@ -1695,5 +1784,27 @@ mod tests {
         let a = scan("@sdql{ FOR x IN y RETURN x }");
         let b = scan("@sdbql{ FOR x IN y RETURN x }");
         assert_eq!(a, b);
+    }
+
+    /// A string with its own `#{…}`, inside an interpolation, is one token:
+    /// `"outer #{"#{a}.#{b}"}"` ended at the inner closing quote.
+    #[test]
+    fn a_string_nested_in_an_interpolation_is_part_of_the_literal() {
+        for src in [
+            r##""outer #{"#{a}.#{b}"}""##,
+            r##""#{"}"} tail""##,
+            r##""#{xs.map { |y| "#{y}!" }.join(",")}""##,
+            r##""#{"say \"hi\""}""##,
+            r##"'single #{"#{a}"}'"##,
+        ] {
+            let tokens = Scanner::new(src)
+                .scan_tokens()
+                .unwrap_or_else(|e| panic!("{src}: {e:?}"));
+            let strings = tokens
+                .iter()
+                .filter(|t| matches!(t.kind, TokenKind::InterpolatedString(_)))
+                .count();
+            assert_eq!(strings, 1, "{src}: {tokens:?}");
+        }
     }
 }
