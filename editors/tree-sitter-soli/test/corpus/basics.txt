@@ -1,0 +1,627 @@
+==================
+Class with fields, DSL and methods
+==================
+
+class Post < Model
+  title: String
+  has_many :comments
+
+  def summary(width: Int = 10) -> String
+    return "" if @title.blank?
+
+    "#{@title} (#{width})"
+  end
+
+  static def recent
+    Post.where({ published: true }).all
+  end
+end
+
+---
+
+(source_file
+  (class_declaration
+    (constant)
+    (constant)
+    (class_body
+      (class_field
+        (identifier)
+        (type_identifier
+          (constant)))
+      (command_call
+        (identifier)
+        (arguments
+          (simple_symbol)))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier
+              (constant))
+            (integer)))
+        (type_identifier
+          (constant))
+        (body
+          (if_modifier
+            (return_statement
+              (string))
+            (member_expression
+              (instance_variable)
+              (property_identifier)))
+          (expression_statement
+            (string
+              (interpolation
+                (expression_statement
+                  (instance_variable)))
+              (string_content)
+              (interpolation
+                (expression_statement
+                  (identifier)))
+              (string_content)))))
+      (function_declaration
+        (identifier)
+        (body
+          (expression_statement
+            (member_expression
+              (call
+                (member_expression
+                  (constant)
+                  (property_identifier))
+                (arguments
+                  (hash
+                    (pair
+                      (hash_key_symbol
+                        (identifier))
+                      (true)))))
+              (property_identifier))))))))
+
+==================
+Controller action with guard and redirect
+==================
+
+class PostsController < Controller
+  # POST /posts
+  def create(req)
+    @post = Post.create(permit(params, {"title": true}))
+    return render("new", {}, {"status": 422}) if @post._errors
+
+    redirect(post_path(@post))
+  end
+end
+
+---
+
+(source_file
+  (class_declaration
+    (constant)
+    (constant)
+    (class_body
+      (comment)
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (body
+          (expression_statement
+            (assignment
+              (instance_variable)
+              (call
+                (member_expression
+                  (constant)
+                  (property_identifier))
+                (arguments
+                  (call
+                    (identifier)
+                    (arguments
+                      (identifier)
+                      (hash
+                        (pair
+                          (string
+                            (string_content))
+                          (true)))))))))
+          (if_modifier
+            (return_statement
+              (call
+                (identifier)
+                (arguments
+                  (string
+                    (string_content))
+                  (hash)
+                  (hash
+                    (pair
+                      (string
+                        (string_content))
+                      (integer))))))
+            (member_expression
+              (instance_variable)
+              (property_identifier)))
+          (expression_statement
+            (call
+              (identifier)
+              (arguments
+                (call
+                  (identifier)
+                  (arguments
+                    (instance_variable)))))))))))
+
+==================
+Brace forms
+==================
+
+if (x > 1) {
+  y = 1
+} elsif (x == 0) {
+  y = 0
+} else {
+  y = -1
+}
+for (i in 0..5) {
+  print(i)
+}
+
+---
+
+(source_file
+  (expression_statement
+    (if_expression
+      (parenthesized_expression
+        (expression_statement
+          (binary_expression
+            (identifier)
+            (integer))))
+      (brace_body
+        (expression_statement
+          (assignment
+            (identifier)
+            (integer))))
+      (else_clause
+        (parenthesized_expression
+          (expression_statement
+            (binary_expression
+              (identifier)
+              (integer))))
+        (brace_body
+          (expression_statement
+            (assignment
+              (identifier)
+              (integer))))
+        (brace_body
+          (expression_statement
+            (assignment
+              (identifier)
+              (unary_expression
+                (integer))))))))
+  (for_statement
+    (identifier)
+    (binary_expression
+      (integer)
+      (integer))
+    (brace_body
+      (expression_statement
+        (call
+          (identifier)
+          (arguments
+            (identifier)))))))
+
+==================
+Blocks, lambdas and pipelines
+==================
+
+xs.map { |x| x * 2 }
+xs.each do |x|
+  print(x)
+end
+double = fn(x) { x * 2 }
+inc = |x| { x + 1 }
+stab = ->(x) { x * 3 }
+result = 5 |> double() |> inc()
+total = xs.reduce(fn(acc, x) acc + x, 0)
+
+---
+
+(source_file
+  (expression_statement
+    (call
+      (member_expression
+        (identifier)
+        (property_identifier))
+      (block
+        (block_parameters
+          (parameter
+            (identifier)))
+        (expression_statement
+          (binary_expression
+            (identifier)
+            (integer))))))
+  (expression_statement
+    (call
+      (member_expression
+        (identifier)
+        (property_identifier))
+      (do_block
+        (block_parameters
+          (parameter
+            (identifier)))
+        (body
+          (expression_statement
+            (call
+              (identifier)
+              (arguments
+                (identifier))))))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (lambda
+        (parameters
+          (parameter
+            (identifier)))
+        (brace_body
+          (expression_statement
+            (binary_expression
+              (identifier)
+              (integer)))))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (lambda
+        (lambda_parameters
+          (parameter
+            (identifier)))
+        (brace_body
+          (expression_statement
+            (binary_expression
+              (identifier)
+              (integer)))))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (lambda
+        (parameters
+          (parameter
+            (identifier)))
+        (brace_body
+          (expression_statement
+            (binary_expression
+              (identifier)
+              (integer)))))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (binary_expression
+        (binary_expression
+          (integer)
+          (call
+            (identifier)
+            (arguments)))
+        (call
+          (identifier)
+          (arguments)))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (call
+        (member_expression
+          (identifier)
+          (property_identifier))
+        (arguments
+          (lambda
+            (parameters
+              (parameter
+                (identifier))
+              (parameter
+                (identifier)))
+            (binary_expression
+              (identifier)
+              (identifier)))
+          (integer))))))
+
+==================
+A block after a condition is the body
+==================
+
+match kind {
+  "a" => 1,
+  Int: n if n > 1 => n,
+  _ => 0
+}
+if xs.any? { |x| x.done }
+  print("some")
+end
+while (i < 5) {
+  i += 1
+}
+
+---
+
+(source_file
+  (expression_statement
+    (match_expression
+      (identifier)
+      (match_arm
+        (string
+          (string_content))
+        (integer))
+      (match_arm
+        (typed_pattern
+          (constant)
+          (identifier))
+        (binary_expression
+          (identifier)
+          (integer))
+        (identifier))
+      (match_arm
+        (identifier)
+        (integer))))
+  (expression_statement
+    (if_expression
+      (call
+        (member_expression
+          (identifier)
+          (property_identifier))
+        (block
+          (block_parameters
+            (parameter
+              (identifier)))
+          (expression_statement
+            (member_expression
+              (identifier)
+              (property_identifier)))))
+      (body
+        (expression_statement
+          (call
+            (identifier)
+            (arguments
+              (string
+                (string_content))))))))
+  (while_statement
+    (parenthesized_expression
+      (expression_statement
+        (binary_expression
+          (identifier)
+          (integer))))
+    (brace_body
+      (expression_statement
+        (operator_assignment
+          (identifier)
+          (integer))))))
+
+==================
+Modifiers bind looser than break and return
+==================
+
+while true
+  break if i % 3 == 0
+  next unless ok
+  i += 1
+end
+
+---
+
+(source_file
+  (while_statement
+    (true)
+    (body
+      (if_modifier
+        (break_statement)
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (integer))
+          (integer)))
+      (unless_modifier
+        (next_statement)
+        (identifier))
+      (expression_statement
+        (operator_assignment
+          (identifier)
+          (integer))))))
+
+==================
+Multi-line chains and ternaries
+==================
+
+names = users
+  .filter { |u| u.active }
+  .map { |u| u.name }
+label = ok
+  ? "yes"
+  : "no"
+
+---
+
+(source_file
+  (expression_statement
+    (assignment
+      (identifier)
+      (call
+        (member_expression
+          (call
+            (member_expression
+              (identifier)
+              (property_identifier))
+            (block
+              (block_parameters
+                (parameter
+                  (identifier)))
+              (expression_statement
+                (member_expression
+                  (identifier)
+                  (property_identifier)))))
+          (property_identifier))
+        (block
+          (block_parameters
+            (parameter
+              (identifier)))
+          (expression_statement
+            (member_expression
+              (identifier)
+              (property_identifier)))))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (ternary_expression
+        (identifier)
+        (string
+          (string_content))
+        (string
+          (string_content))))))
+
+==================
+Strings
+==================
+
+s = "a #{b} \"c\" # not a comment"
+r = r"C:\path"
+t = """
+raw #{x}
+"""
+q = @sdbql{ FOR p IN posts RETURN p }
+w = %w[a b c]
+
+---
+
+(source_file
+  (expression_statement
+    (assignment
+      (identifier)
+      (string
+        (string_content)
+        (interpolation
+          (expression_statement
+            (identifier)))
+        (string_content))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (raw_string)))
+  (expression_statement
+    (assignment
+      (identifier)
+      (raw_string_triple)))
+  (expression_statement
+    (assignment
+      (identifier)
+      (sdbql_block)))
+  (expression_statement
+    (assignment
+      (identifier)
+      (word_array))))
+
+==================
+Try, catch and rescue
+==================
+
+try
+  risky()
+catch ValueError e
+  print(e)
+finally
+  done()
+end
+begin
+  boom()
+rescue error
+  log(error)
+ensure
+  close()
+end
+x = fetch() rescue nil
+
+---
+
+(source_file
+  (expression_statement
+    (try_expression
+      (body
+        (expression_statement
+          (call
+            (identifier)
+            (arguments))))
+      (catch_clause
+        (constant)
+        (identifier)
+        (body
+          (expression_statement
+            (call
+              (identifier)
+              (arguments
+                (identifier))))))
+      (finally_clause
+        (body
+          (expression_statement
+            (call
+              (identifier)
+              (arguments)))))))
+  (expression_statement
+    (try_expression
+      (body
+        (expression_statement
+          (call
+            (identifier)
+            (arguments))))
+      (rescue_clause
+        (identifier)
+        (body
+          (expression_statement
+            (call
+              (identifier)
+              (arguments
+                (identifier))))))
+      (ensure_clause
+        (body
+          (expression_statement
+            (call
+              (identifier)
+              (arguments)))))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (rescue_modifier
+        (call
+          (identifier)
+          (arguments))
+        (nil)))))
+
+==================
+Enums, interfaces and modules
+==================
+
+enum Status
+  Active,
+  Pending(reason: String)
+end
+interface Greetable {
+  fn greet()
+}
+module Units
+  const CM = 1
+end
+
+---
+
+(source_file
+  (enum_declaration
+    (constant)
+    (enum_variant
+      (constant))
+    (enum_variant
+      (constant)
+      (parameters
+        (parameter
+          (identifier)
+          (type_identifier
+            (constant))))))
+  (interface_declaration
+    (constant)
+    (interface_body
+      (method_signature
+        (identifier)
+        (parameters))))
+  (module_declaration
+    (constant)
+    (class_body
+      (constant_declaration
+        (constant)
+        (integer)))))

@@ -16,6 +16,22 @@
   Hover appends the `#` comment block right above a `def`, class or constant
   (`util::doc_comment_above`; a blank line ends it, lint pragmas are dropped),
   for local declarations and for indexed ones (`IndexedSymbol::doc`).
+- **A tree-sitter grammar for Soli (#692).** `editors/tree-sitter-soli/`:
+  `grammar.js`, a C external scanner (statement-ending line breaks only where
+  the grammar can end a statement and not before a `.`/`&.`/`|>`/`&&`/`||`/
+  `??`/ternary continuation; string contents and `#{`; `"""` strings;
+  `@sdbql{}`; nested `/* */`; an empty line break at each included range so a
+  template's tags read as statements), queries (highlights, locals, folds,
+  indents, injections) and `template-queries/` for `.slv` views on the
+  `embedded_template` grammar (HTML markup, Soli code combined). Ambiguous
+  braces are left to GLR with dynamic precedence: a block with `|params|` >
+  a condition's brace body > a block without params; a postfix `if`/`unless`
+  beats an `if` expression as `break`/`return`'s value. 359 of 373 `.sl`
+  files of the repository and all 230 views parse without an error.
+  `.github/workflows/tree-sitter.yml` regenerates the parser (fails on a
+  stale `src/`), runs `tree-sitter test`, compiles the queries and runs
+  `script/corpus.sh` (95% minimum). Editor setups (Neovim, Helix, Zed) in the
+  grammar's README; not yet submitted to their registries.
 
 ## [2.35.0] - 2026-11-11
 

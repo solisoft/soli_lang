@@ -205,6 +205,11 @@ cursor --install-extension soli-language.vsix</code></pre>
         The TextMate grammars live in <code class="text-amber-400">editors/grammars/</code> (<code class="text-amber-400">soli.tmLanguage.json</code>, scope <code class="text-amber-400">source.soli</code>; <code class="text-amber-400">soli-template.tmLanguage.json</code>, scope <code class="text-amber-400">text.html.soli</code>). <code class="text-amber-400">scripts/sync-grammars.sh</code> copies them into the VS Code and Nova bundles, and CI fails when a copy is stale (<code class="text-amber-400">--check</code>). A Rust test fails when the grammar&rsquo;s keywords and the lexer&rsquo;s disagree. Any editor that reads TextMate grammars (Sublime Text, TextMate, JetBrains through its TextMate bundle support) can load these files.
     </p>
 
+    <h3 class="text-lg font-semibold text-white mb-4">Tree-sitter grammar</h3>
+    <p class="text-gray-400 mb-12">
+        <code class="text-amber-400">editors/tree-sitter-soli/</code> is a tree-sitter grammar for <code class="text-amber-400">.sl</code> files, for the editors that highlight, fold and indent with tree-sitter (Neovim, Helix, Zed, Emacs 29+): highlights, locals, folds, indents and injections queries ship with it. A <code class="text-amber-400">.slv</code> view uses the <code class="text-amber-400">embedded_template</code> grammar ERB uses, with the queries in <code class="text-amber-400">template-queries/</code>: the markup is HTML, and the code of every tag is Soli, read as one program &mdash; <code class="text-amber-400">&lt;% if x %&gt; &hellip; &lt;% end %&gt;</code> is one <code class="text-amber-400">if</code>. In this repository 96% of the <code class="text-amber-400">.sl</code> files and every <code class="text-amber-400">.slv</code> view parse without an error; CI keeps the <code class="text-amber-400">.sl</code> share at 95% or more and fails when the committed parser is not the one <code class="text-amber-400">grammar.js</code> generates. The grammar is built from the Soli repository (subdirectory <code class="text-amber-400">editors/tree-sitter-soli</code>); it is not yet in nvim-treesitter, Helix or Zed&rsquo;s own registries. Setup for each editor: <a href="https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli" class="text-amber-400 hover:underline">the grammar&rsquo;s README</a>.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Nova <span class="text-base font-medium text-gray-400">(macOS)</span></h2>
     <p class="text-gray-400 mb-6">
         The Nova extension lives under <code class="text-amber-400">editors/nova/soli.novaextension/</code> and uses Nova's <code class="text-amber-400">LanguageClient</code> API to spawn <code class="text-amber-400">soli lsp</code> on stdio.
@@ -287,6 +292,10 @@ vim.lsp.config("soli", {
 vim.lsp.enable("soli")</code></pre>
     </div>
 
+    <p class="text-gray-400 mb-6">
+        For highlighting with tree-sitter instead of Vim&rsquo;s syntax files, build the <a href="https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli" class="text-amber-400 hover:underline">Soli grammar</a> and copy its queries; its README has the lines, and the ones that read <code class="text-amber-400">.slv</code> tags as Soli rather than ERB&rsquo;s Ruby.
+    </p>
+
     <p class="text-gray-400 mb-12">
         Open a <code class="text-amber-400">.sl</code> file and <code class="text-amber-400">:checkhealth vim.lsp</code> lists the <code class="text-amber-400">soli</code> client. With Neovim&rsquo;s default mappings, <code class="text-amber-400">K</code> hovers, <code class="text-amber-400">CTRL-]</code> jumps to the definition, <code class="text-amber-400">grr</code> lists references, <code class="text-amber-400">grn</code> renames and <code class="text-amber-400">gra</code> offers the code actions; format with <code class="text-amber-400">:lua vim.lsp.buf.format()</code>.
     </p>
@@ -294,7 +303,7 @@ vim.lsp.enable("soli")</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Helix</h2>
     <p class="text-gray-400 mb-6">In <code class="text-amber-400">~/.config/helix/languages.toml</code>:</p>
 
-    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="languages.toml"><code class="language-toml text-sm">[language-server.soli]
 command = "soli"
 args = ["lsp"]
@@ -315,6 +324,7 @@ roots = ["soli.toml", "config/routes.sl"]
 grammar = "embedded-template"
 language-servers = ["soli"]</code></pre>
     </div>
+    <p class="text-gray-400 mb-12">For highlighting, add the <code class="text-amber-400">[[grammar]]</code> entry and the queries from the <a href="https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli#helix" class="text-amber-400 hover:underline">grammar&rsquo;s README</a>.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Other Editors</h2>
     <p class="text-gray-400 mb-6">

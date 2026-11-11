@@ -150,6 +150,21 @@ fails when the grammar's keywords and the lexer's disagree. Any editor that
 reads TextMate grammars (Sublime Text, TextMate, JetBrains via its TextMate
 bundle support) can load these files.
 
+### Tree-sitter grammar
+
+`editors/tree-sitter-soli/` is a tree-sitter grammar for `.sl` files, for the
+editors that highlight, fold and indent with tree-sitter (Neovim, Helix, Zed,
+Emacs 29+): highlights, locals, folds, indents and injections queries ship
+with it. A `.slv` view uses the `embedded_template` grammar ERB uses, with the
+queries in `template-queries/`: the markup is HTML, and the code of every tag
+is Soli, read as one program — `<% if x %> … <% end %>` is one `if`. In this
+repository 96% of the `.sl` files and every `.slv` view parse without an
+error; CI keeps the `.sl` share at 95% or more and fails when the committed
+parser is not the one `grammar.js` generates. The grammar is built from the
+Soli repository (subdirectory `editors/tree-sitter-soli`); it is not yet in
+nvim-treesitter, Helix or Zed's own registries. Setup for each editor:
+[the grammar's README](https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli).
+
 ## Nova (macOS)
 
 The Nova extension lives under `editors/nova/soli.novaextension/` and uses
@@ -218,6 +233,10 @@ vim.lsp.config("soli", {
 vim.lsp.enable("soli")
 ```
 
+For highlighting with tree-sitter instead of Vim's syntax files, build the
+[Soli grammar](https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli) and copy its queries; its README has the lines, and the
+ones that read `.slv` tags as Soli rather than ERB's Ruby.
+
 Open a `.sl` file and `:checkhealth vim.lsp` lists the `soli` client. With
 Neovim's default mappings, `K` hovers, `CTRL-]` jumps to the definition, `grr`
 lists references, `grn` renames and `gra` offers the code actions; format with
@@ -248,6 +267,9 @@ roots = ["soli.toml", "config/routes.sl"]
 grammar = "embedded-template"
 language-servers = ["soli"]
 ```
+
+For highlighting, add the `[[grammar]]` entry and the queries from the
+[grammar's README](https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli#helix).
 
 ## Other editors
 

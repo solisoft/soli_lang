@@ -1,0 +1,56 @@
+# The tree-sitter grammar in editors/tree-sitter-soli/.
+#
+# The generated parser is committed (editors build it from the repository),
+# so CI regenerates it and fails when src/ is stale, runs the grammar's own
+# tests, and parses the repository's .sl files, failing when fewer than 95%
+# parse without an error.
+name: tree-sitter grammar
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'editors/tree-sitter-soli/**'
+      - '.github/workflows/tree-sitter.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'editors/tree-sitter-soli/**'
+      - '.github/workflows/tree-sitter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  grammar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/tree-sitter-soli
+    env:
+      # The version that generated the committed src/parser.c.
+      TREE_SITTER: npx --yes tree-sitter-cli@0.26.9
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: The committed parser matches grammar.js
+        run: |
+          $TREE_SITTER generate
+          git diff --exit-code -- src/
+
+      - name: Corpus tests
+        run: $TREE_SITTER test
+
+      - name: The queries compile
+        run: |
+          for query in queries/*.scm; do
+            $TREE_SITTER query "$query" test/corpus/basics.txt > /dev/null
+          done
+
+      - name: The repository's Soli code parses
+        run: script/corpus.sh --list
