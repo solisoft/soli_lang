@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.35.0] - 2026-11-11
+
 ### Added
 
 - **Class constants read by their bare name.** A `const` in a class body is
