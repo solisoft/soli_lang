@@ -2,22 +2,24 @@
 
 Seven HTTP workloads — a JSON API response, a rendered HTML page, a database read, a
 database-backed HTML page, and one create, update and delete per request — through nine
-full stacks and one reference configuration, on one machine, with one load generator and one
+full stacks and two reference configurations, on one machine, with one load generator and one
 protocol. Every server returns a **byte-identical payload** for the JSON and DB rows, and every
 stack gets the same **16-thread budget**: 16 workers for the six stacks that fork them, 16
 single-threaded processes for Kemal, 16 threads for Soli, 16 BEAM schedulers for Phoenix.
 
 > **Read this first.** Every HTTP and memory figure on this page was measured on
 > 2026-09-28 — Kemal's on 2026-09-29 — on one quiet 32-thread machine where each stack, the
-> load generator and the databases ran on **cores of their own**. **Soli's HTTP rows were
-> re-measured on 2026-11-03**, on Soli 2.29.3 and SoliDB 2.4.0, on the same machine with the
-> same pinning and protocol — but alone, so they are a cross-session comparison with every
-> other row (see *How these numbers were produced*). Every sweep opens and closes with a control run
-> that refuses to publish if the box drifted by more than 8%, the HTTP status of every
-> response was checked, and every write cell counted its table before and after. Where a
-> stack beats Soli, the number is printed exactly as measured — **Kemal edges Soli on the JSON
-> row by 3%**, **Express edges Soli on the WebSocket echo by 2% and holds half its p99**, and
-> one Laravel cell carries 50 HTTP 500s that are counted, not hidden.
+> load generator and the databases ran on **cores of their own**. **Soli's rows were
+> re-measured on 2026-11-10**, on Soli 2.34.0 and SoliDB 2.9.3, together with Rails on Puma
+> and Rails on Shuttlebay, on the same machine with the same pinning and protocol, inside
+> control runs that put the box within 2.3% of September (see *How these numbers were
+> produced*). Every sweep opens and closes with a control run that refuses to publish if the
+> box drifted by more than 8%, the HTTP status of every response was checked, and every write
+> cell counted its table before and after. Where a stack beats Soli or comes within the
+> margin, the number is printed exactly as measured — **Soli and Kemal are level on the JSON
+> row** (1.2% apart, across sessions), **Express edges Soli on the WebSocket echo by 2% and
+> holds half its p99**, and one Laravel cell carries 50 HTTP 500s that are counted, not
+> hidden.
 >
 > This session **replaces** every earlier table. The machine, every runtime and every
 > framework version changed, so no figure below is comparable to one quoted from a previous
@@ -47,7 +49,7 @@ queries would see; the CPU/req column is the figure that travels best to other h
 |---|---|---|
 | The stack under test (16 workers / threads / schedulers) | 0–7, 16–23 | cores 0–7 — the whole first CCD, SMT siblings included |
 | `oha`, the load generator | 8–11, 24–27 | 4 cores of the second CCD |
-| PostgreSQL 18.6 and SoliDB (2.0.5, then 2.4.0 for Soli's 2026-11 rows) | 12–15, 28–31 | the other 4 cores of the second CCD |
+| PostgreSQL 18.6 and SoliDB (2.0.5, then 2.9.3 for Soli's 2026-11 rows) | 12–15, 28–31 | the other 4 cores of the second CCD |
 
 Pinning was set with `taskset` and verified on every process, including the ones that rootless
 Podman starts outside the launching shell (php-fpm, nginx, FrankenPHP, PostgreSQL). It means a
@@ -76,7 +78,7 @@ itself is not the bottleneck anywhere on this page.
 
 ### Soli's settings
 
-The HTTP rows use the **Soli 2.29.3** release (commit `0aeb88dc`), built with the shipped
+The HTTP rows use the **Soli 2.34.0** release (commit `d7c3f046`), built with the shipped
 `dist` profile
 (fat LTO, one codegen unit), run as
 `SOLI_WS_WORKERS=0 SOLI_DB_DRIVER=1 soli serve . --port 5080 --workers 16`:
@@ -88,8 +90,8 @@ The HTTP rows use the **Soli 2.29.3** release (commit `0aeb88dc`), built with th
 * SoliDB's **query-result cache is on**, which is its default; the uncached rows set
   `SOLI_DB_NO_QUERY_CACHE=1`. Soli's **response cache is on**, which is its default and cannot
   be switched off (see the Template row).
-* SoliDB **2.4.0** (2.0.5 for the September rows quoted in prose) ran as a separate process
-  with default settings on its own data directory.
+* SoliDB **2.9.3** (2.0.5 for the September rows quoted in prose) ran as a separate process
+  with default settings on its own data directory, pinned to the database cores.
 * For the WebSocket section only, the per-address and per-socket abuse limits are off (see
   there).
 
@@ -103,15 +105,25 @@ Every published sweep opened and closed with `control.sh`, which re-measures two
 (Express `/json`, Soli `/template`) and refuses the run on more than 8% drift. The main sweep
 closed at −5.2% and +0.3%; every follow-up pass was bracketed the same way.
 
-**Soli's HTTP rows come from a pass of their own on 2026-11-03**: the Soli 2.29.3 release on
-SoliDB 2.4.0, on this machine and the same cores, with `sweep.sh` and the same 8 s warm-up and
-30 s measurement. Each figure is the mean of two runs, which agreed within 2%; the two uncached
-reference rows come from two further runs. Only Soli was running, so the pass has **no control
-cell against the other stacks** — Express's control needs Express — and nothing ties it to the
-September sweep except the machine, the pinning and the protocol. Read Soli against every other
-row as a cross-session comparison, and the leads below accordingly; the JSON row, where Kemal is
-3% ahead, is the only one close enough for that to decide the order. The memory table and the
-WebSocket rows were not re-measured and still describe the September build.
+**Soli's rows come from a session of their own on 2026-11-10**: the Soli 2.34.0 release on
+SoliDB 2.9.3, on this machine and the same cores, with `sweep.sh` and the same 8 s warm-up and
+30 s measurement. Rails on Puma and Rails on Shuttlebay were swept in the same session, cell by
+cell beside Soli. Each figure is the mean of two runs, which agreed within 2% for Soli. Express
+ran alongside so that the session could open and close with both controls: Express `/json` read
++2.3% and +1.5% against its September anchor, Soli `/template` −1.1% and −1.0% against the
+546,779 req/s of the previous Soli pass. **The box was within 2.3% of the September sweep**, so
+Soli's rows compare to every other row within the protocol's tolerance; they are still from a
+different session, and the JSON row, where Soli and Kemal are 1.2% apart, is the only one close
+enough for that to decide the order. The WebSocket rows were not re-measured and still describe
+the September build.
+
+The two **uncached** reference rows come from a later pass, on 2026-11-11, and the reason is a
+finding of its own (see *Database read*). Measured in the session, after the write cells, they
+read 184,568 and 184,659 req/s: SoliDB was then holding the 20-million-document write table
+next to the 50 rows being read, fresh from millions of deletes. The rows printed are from a
+fresh SoliDB data directory holding the 50 rows only, which is what the PostgreSQL stacks' reads
+are comparable to — PostgreSQL's `posts` lives in files of its own. That pass ran the same
+build, cores and protocol, two runs per row, without control cells.
 
 The September pass below measured Soli and Kemal cell by cell in the same sweeps, on the build
 of that day and SoliDB 2.0.5 — so Kemal's rows are from a same-session comparison with a Soli
@@ -123,9 +135,10 @@ and only guards against drift *within* it. The check that ties the pass to the o
 main sweep is Express's control, which read between −4.7% and +4.3% across the pass's eight
 controls, centred on zero, while the rebased Soli control stayed within ±0.7%. The box did not
 drift in one direction, so Kemal's rows are comparable to the stacks measured on 2026-09-28
-within about ±5% — the protocol's tolerance. The November Soli pass read that same control cell
-(`/template`) at 546,779 req/s on 2.29.3, 4.5% below the September anchor: a different build, so
-on its own it says nothing about the box.
+within about ±5% — the protocol's tolerance. The November Soli passes read that same control cell
+(`/template`) at 546,779 req/s on 2.29.3 and 538,751 on 2.34.0, 4.5–5.9% below the September
+anchor: different builds, so on its own that says nothing about the box — Express's control
+does.
 
 The day before, Soli's control cell read +6.0% to +7.6% on an older build in every follow-up
 pass, while Express's stayed within ±5.6%. The cause was never established (the main sweep ran
@@ -136,8 +149,9 @@ and nothing more), and a rebased control cannot settle it now.
 
 | | |
 |---|---|
-| Soli | **2.29.3** (built with fat LTO, one codegen unit — the shipped `dist` profile), `soli serve .`, 16 HTTP workers, `SOLI_WS_WORKERS=0`; SoliDB **2.4.0** over the **native MessagePack driver** (`SOLI_DB_DRIVER=1`, pooled TCP, not HTTP) for the DB and write rows |
+| Soli | **2.34.0** (built with fat LTO, one codegen unit — the shipped `dist` profile), `soli serve .`, 16 HTTP workers, `SOLI_WS_WORKERS=0`; SoliDB **2.9.3** over the **native MessagePack driver** (`SOLI_DB_DRIVER=1`, pooled TCP, not HTTP) for the DB and write rows |
 | Rails | 8.1.4 + Puma 8.0.2 on **Ruby 4.0.7** — production, eager-loaded, 16 workers × 5 threads, PostgreSQL via ActiveRecord |
+| Rails + Shuttlebay | The same application served by **Shuttlebay 0.2.0** behind **Mothership** (guardship 0.3.3): a Rust process accepts and parses HTTP and hands each request to 16 forked Ruby workers × 5 threads over a Unix socket. A **labelled reference row**, measured on 2026-11-10 beside a re-measured Puma; its *vs Rails* figure is against that same-session Puma, not the September row (see *Rails on Shuttlebay*) |
 | Laravel | 13.33 on **PHP 8.5.11** (php-fpm, `pm = static`, 16 workers) + nginx (16 workers), in a container with host networking — Eloquent + Blade, OPcache, config/route/view cached, persistent PDO connections, `composer install --no-dev -o` |
 | Laravel + Octane | The same application on Octane 2.20 / FrankenPHP 1.12.7, 16 workers, app resident between requests. A **labelled reference row**, not "Laravel": it is a deployment choice that roughly doubles every result |
 | Django | 6.1.1 on **Python 3.14.7**, gunicorn 26.2 with 16 workers — Django ORM + Django templates, `DEBUG=False`, persistent connections (`CONN_MAX_AGE`) |
@@ -146,14 +160,16 @@ and nothing more), and a rebased control cannot settle it now.
 | AdonisJS | **7.5.2** on **Node 26.10**, 16 cluster workers — Lucid 22.4 + Edge 6.5, built to JavaScript and run from `build/`, `NODE_ENV=production`, the same web-kit middleware and providers as its 6.x predecessor (session, shield, static, vite) |
 | Kemal | **1.14.0** on **Crystal 1.21.1** (LLVM 20), `shards build --release --production` — **16 single-threaded processes** on one port with `SO_REUSEPORT` (Crystal's multi-threading is still behind `-Dpreview_mt`), each with a pool of 5 PostgreSQL connections — **+ Jennifer 0.13.0** (ORM, on crystal-db 0.14 and crystal-pg 0.30) **+ ECR**: Kemal ships neither an ORM nor a view layer beyond Crystal's compile-time ECR, so Jennifer was added, as Sequelize is for Express. Reads project with `pluck`, Jennifer's query log is set to `error`, and the view calls `HTML.escape` itself because ECR does not escape. **Not comparable feature for feature**: a micro-framework with no sessions, CSRF protection or security headers in the request path |
 | Express | 5.2.1 on Node 26.10, 16 cluster workers — **+ EJS 6.0 + Sequelize 6.37.8** (on node-postgres 8.23): Express ships no view layer and no DB layer, so both were added. The DB rows go through the **ORM**, not the raw driver; the driver figures are reference rows |
-| Database | PostgreSQL **18.6** (`max_connections=500`, `synchronous_commit=off` — see Writes) for the eight PostgreSQL stacks, same table, same 50 rows; SoliDB 2.4.0 for Soli. Both client-server over loopback, no in-process storage anywhere |
+| Database | PostgreSQL **18.6** (`max_connections=500`, `synchronous_commit=off` — see Writes) for the eight PostgreSQL stacks, same table, same 50 rows; SoliDB 2.9.3 for Soli. Both client-server over loopback, no in-process storage anywhere |
 | Load | `oha` 1.16 — 30 s at concurrency 200 per cell, after an 8 s warm-up of that cell at concurrency 100 |
 | Machine | See *How these numbers were produced* above |
 
 **CPU/req** is server CPU time per request, summed across every process of the stack (all 17
 for Rails, Express, AdonisJS and Django, and for Kemal's 16 processes and their launcher; 18 for FastAPI, whose uvicorn supervisor also spawns a
 `multiprocessing` resource tracker; php-fpm plus nginx for Laravel; a single process for Soli
-and for Phoenix, whose threads `/proc` already aggregates). For Soli the figure in parentheses
+and for Phoenix, whose threads `/proc` already aggregates; every process in Mothership's
+**session** for Shuttlebay — Mothership sits alone in its process group, its Ruby workers in
+another). For Soli the figure in parentheses
 adds SoliDB's own CPU for the same requests; PostgreSQL's CPU is **not** added to the other
 stacks, so the parenthesised figure is the stricter of the two. CPU/req is the most portable
 column here — unlike req/s it barely moves with core count or client speed.
@@ -170,25 +186,28 @@ column here — unlike req/s it barely moves with core count or client speed.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
+| **Soli** | 573,411 | 0.87 ms | 22 µs | 13.2x |
 | Kemal + Jennifer + ECR | 566,686 | 1.20 ms | 24 µs | 13.1x |
-| **Soli** | 549,131 | 0.89 ms | 23 µs | 12.7x |
 | Express + EJS + Sequelize | 306,503 | 1.25 ms | 47 µs | 7.1x |
 | FastAPI + SQLAlchemy + Jinja2 | 176,502 | 2.16 ms | 85 µs | 4.1x |
 | Phoenix + Ecto + HEEx | 106,584 | 4.82 ms | 140 µs | 2.5x |
 | AdonisJS + Lucid + Edge | 67,484 | 5.87 ms | 228 µs | 1.6x |
 | Rails + Puma | 43,369 | 24.28 ms | 326 µs | 1.0x |
+| Rails + Shuttlebay *(reference)* | 39,978 | 10.43 ms | 363 µs | 0.98x |
 | Django + gunicorn | 21,555 | 22.26 ms | 327 µs | 0.5x |
 | Laravel + Octane *(reference)* | 15,322 | 19.00 ms | 1,010 µs | 0.4x |
 | Laravel + php-fpm | 8,140 | 25.48 ms | 1,883 µs | 0.2x |
 
-Framework overhead only — no database, no template. **Kemal leads this row, narrowly**: its
-566,686 req/s is 3% ahead of Soli's 549,131 — measured five weeks apart, inside the ±5% the two
-sessions can be compared to — on 24 µs of CPU per request against Soli's 23; Soli's p99 is the
-lower, 0.89 ms against 1.20. Kemal is compiled
-Crystal and does less per request — no session, no CSRF check, no security headers — so a near-tie
-on the bare request path is the honest reading. Behind them Soli serves the response at
-**12.7x Rails' throughput on 14x less CPU**, and at 1.8x Express. The CPU column orders the
-field the way the throughput does: Soli 23 µs, Kemal 24, Express 47, FastAPI 85, Phoenix 140.
+Framework overhead only — no database, no template. **Soli and Kemal are level on this row**:
+Soli's 573,411 req/s is 1.2% ahead of Kemal's 566,686 — measured six weeks apart, well inside
+the margin two sessions can be compared to — on 22 µs of CPU per request against Kemal's 24;
+Soli's p99 is the lower, 0.87 ms against 1.20. The previous Soli pass, on 2.29.3, read 549,131
+and put Kemal 3% ahead, so the order on this row is the noise between sessions, not a result.
+Kemal is compiled Crystal and does less per request — no session, no CSRF check, no security
+headers — so a tie on the bare request path is the honest reading. Behind them Soli serves the
+response at **13.2x Rails' throughput on 15x less CPU**, and at 1.9x Express. The CPU column
+orders the field the way the throughput does: Soli 22 µs, Kemal 24, Express 47, FastAPI 85,
+Phoenix 140.
 On a handler this small the differences are the cost of the request path itself — routing, the
 response object, the header set, the write — and that is exactly what this row isolates.
 
@@ -196,24 +215,25 @@ response object, the header set, the write — and that is exactly what this row
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 546,779 | 0.91 ms | 23 µs | 16.6x |
+| **Soli** | 538,751 | 0.92 ms | 24 µs | 16.4x |
 | Kemal + Jennifer + ECR | 513,106 | 1.33 ms | 27 µs | 15.6x |
 | Express + EJS + Sequelize | 149,354 | 1.76 ms | 101 µs | 4.5x |
 | Phoenix + Ecto + HEEx | 93,973 | 2.59 ms | 162 µs | 2.9x |
 | FastAPI + SQLAlchemy + Jinja2 | 71,775 | 5.37 ms | 218 µs | 2.2x |
 | AdonisJS + Lucid + Edge | 65,695 | 5.42 ms | 234 µs | 2.0x |
 | Rails + Puma | 32,909 | 27.29 ms | 433 µs | 1.0x |
+| Rails + Shuttlebay *(reference)* | 30,889 | 13.82 ms | 471 µs | 0.97x |
 | Laravel + Octane *(reference)* | 13,618 | 19.84 ms | 1,143 µs | 0.4x |
 | Django + gunicorn | 13,134 | 16.15 ms | 1,183 µs | 0.4x |
 | Laravel + php-fpm | 7,613 | 27.20 ms | 2,017 µs | 0.2x |
 
-Soli serves the page at **16.6x Rails**, **3.7x Express** and 1.07x Kemal — but this row does
+Soli serves the page at **16.4x Rails**, **3.6x Express** and 1.05x Kemal — but this row does
 not measure Soli's template engine, and it would be misleading to read it that way. Soli keeps a
 **response cache** that no other stack here has: a page whose output depends only on the data
 passed to `render()` — this one, and the default `soli new` home page — is kept per worker as
 the *finished* response (body, injected scripts, ETag), and a request that renders the same
 template with the same data gets it back without rendering at all. That is why the row costs
-the same CPU as the JSON row (23 µs against 23). It was checked directly: adding a
+about the same CPU as the JSON row (24 µs against 22). It was checked directly: adding a
 2,000-iteration loop to this view left the throughput unchanged.
 
 **Kemal's row is the fastest real render on this page.** ECR compiles the view into the binary
@@ -235,13 +255,14 @@ there, noted rather than normalised away.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 289,884 | 1.12 ms | 37 µs (46 incl. SoliDB) | 9.4x |
-| Soli, SoliDB query cache off *(reference)* | 240,424 | 1.18 ms | 39 µs (64 incl. SoliDB) | 7.8x |
+| **Soli** | 298,609 | 1.14 ms | 36 µs (45 incl. SoliDB) | 9.7x |
+| Soli, SoliDB query cache off *(reference)* | 241,081 | 1.16 ms | 37 µs (64 incl. SoliDB) | 7.8x |
 | Kemal + Jennifer + ECR | 193,750 | 1.21 ms | 57 µs | 6.3x |
 | Express + EJS + Sequelize | 94,755 | 3.35 ms | 156 µs | 3.1x |
 | Phoenix + Ecto + HEEx | 67,843 | 4.86 ms | 220 µs | 2.2x |
 | AdonisJS + Lucid + Edge | 44,781 | 7.91 ms | 341 µs | 1.5x |
 | Rails + Puma | 30,841 | 13.36 ms | 494 µs | 1.0x |
+| Rails + Shuttlebay *(reference)* | 28,007 | 13.31 ms | 517 µs | 0.93x |
 | FastAPI + SQLAlchemy + Jinja2 | 23,958 | 21.87 ms | 640 µs | 0.8x |
 | Django + gunicorn | 19,060 | 21.73 ms | 525 µs | 0.6x |
 | Laravel + Octane *(reference)* | 13,055 | 17.35 ms | 1,126 µs | 0.4x |
@@ -255,11 +276,11 @@ executes and serialises every request. The main Soli row is what an app gets by 
 reference row turns the memoization off with `SOLI_DB_NO_QUERY_CACHE=1` and is the
 like-for-like database comparison.
 
-**Without the cache, Soli still leads the row**: 240,424 req/s against Kemal's 193,750 — the
+**Without the cache, Soli still leads the row**: 241,081 req/s against Kemal's 193,750 — the
 nearest, on PostgreSQL through Jennifer, 1.24x behind — Express's 94,755 and Phoenix's 67,843,
 and **7.8x Rails**. It also out-reads Express on the raw `pg` driver with no ORM in the path
 (160,230, reference cells below), which led this comparison until SoliDB 2.0.5. Soli spends
-39 µs per request in its own process and 25 µs in SoliDB's; Kemal spends 57 µs in its
+37 µs per request in its own process and 26–27 µs in SoliDB's; Kemal spends 57 µs in its
 processes, with PostgreSQL's CPU not counted.
 
 **SoliDB 2.0.2 is what made that true.** On 2.0.1, measured earlier the same day on the same
@@ -270,9 +291,23 @@ versions since: 2.0.3 left this row at 113,030; 2.0.4 read 140,259, +24%, in a s
 A/B that alternated the two versions twice each (SoliDB's CPU per request 64 → 50 µs). 2.0.5 read
 222,993 — +59% over 2.0.4 — on 30 µs of SoliDB CPU per request. Its read path is the change:
 another session's A/B, alternating 2.0.4 and a 2.0.5 pre-release twice each on the previous
-Soli build, read 137,767 against 237,319. **SoliDB 2.4.0, published here, reads 240,424 on
-25 µs of SoliDB CPU per request** — 8% above 2.0.5's figure, across two sessions and two Soli
-builds, so not an A/B of the databases.
+Soli build, read 137,767 against 237,319. SoliDB 2.4.0 read 240,424 on 25 µs
+of SoliDB CPU per request. **SoliDB 2.9.3, published here, reads 241,081 on 26–27 µs**, and a
+same-pass A/B on one Soli build put 2.4.0 about 2% ahead of it (245,907 against 239,985 and
+242,177) — within a hair of the noise between two runs of the same version.
+
+**What moved this row by 18% was not a version.** In the 2026-11-10 session the uncached read
+came out at 184,568 req/s. The same build and the same SoliDB on that session's data directory,
+left idle until compaction stopped, read 197,444; on a fresh data directory, 241,081. The
+difference is the write table: the session had seeded 20 million documents into `wposts`,
+beside the 50 `posts` this row reads, and the write cells had just deleted millions of them.
+With that collection in the same SoliDB, an uncached read of 50 documents cost SoliDB 35 µs
+instead of 26 — **a large, unrelated collection makes a small collection's uncached reads
+about a third more expensive**, and a write burst just before costs a further 7%. PostgreSQL
+keeps every table in files of its own, and its stacks' reads were taken with the 20-million-row
+table beside them. The printed row is the like-for-like one; an app whose database holds large
+collections should expect the 197k figure. The cached row is untouched by any of this: a
+replayed result never reaches storage.
 
 > **The two rows are not the same query path, and the cached one is not a like-for-like
 > result.** A cached read is a key lookup and a copy; the nearest equivalent for the other
@@ -306,13 +341,14 @@ the only added variable.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 281,190 | 1.14 ms | 39 µs (48 incl. SoliDB) | 11.2x |
-| Soli, SoliDB query cache off *(reference)* | 234,311 | 1.26 ms | 41 µs (65 incl. SoliDB) | 9.4x |
+| **Soli** | 278,887 | 1.18 ms | 39 µs (48 incl. SoliDB) | 11.1x |
+| Soli, SoliDB query cache off *(reference)* | 228,622 | 1.24 ms | 41 µs (67 incl. SoliDB) | 9.1x |
 | Kemal + Jennifer + ECR | 192,564 | 1.28 ms | 59 µs | 7.7x |
 | Phoenix + Ecto + HEEx | 72,263 | 4.40 ms | 208 µs | 2.9x |
 | Express + EJS + Sequelize | 70,143 | 4.04 ms | 214 µs | 2.8x |
 | AdonisJS + Lucid + Edge | 42,707 | 8.22 ms | 358 µs | 1.7x |
 | Rails + Puma | 25,024 | 15.92 ms | 616 µs | 1.0x |
+| Rails + Shuttlebay *(reference)* | 23,443 | 16.35 ms | 624 µs | 0.95x |
 | FastAPI + SQLAlchemy + Jinja2 | 19,497 | 27.48 ms | 791 µs | 0.8x |
 | Laravel + Octane *(reference)* | 11,759 | 19.04 ms | 1,259 µs | 0.5x |
 | Django + gunicorn | 10,896 | 19.72 ms | 1,390 µs | 0.4x |
@@ -325,10 +361,10 @@ path in full and the render path at its best. That holds because `pluck` returns
 a page rendered from model records (`Post.all`) is rendered on every request, since its view
 can call the records' methods and a relation reads the database behind the cache's back.
 
-Soli takes the row with or without its query cache — **9.4x Rails' throughput uncached**, and
-1.22x Kemal (192,564), ahead of Phoenix (72,263) and Express (70,143). What the render costs
-once a query is in the request differs sharply by stack: **almost nothing for Soli** — its
-uncached page reads 3% below its uncached JSON read, 234k against 240k req/s — nothing for Kemal (0.6%), whose ECR
+Soli takes the row with or without its query cache — **9.1x Rails' throughput uncached**, and
+1.19x Kemal (192,564), ahead of Phoenix (72,263) and Express (70,143). What the render costs
+once a query is in the request differs sharply by stack: **little for Soli** — its
+uncached page reads 5% below its uncached JSON read, 229k against 241k req/s — nothing for Kemal (0.6%), whose ECR
 page is compiled code, and nothing for Phoenix, whose page is slightly *faster* than its JSON
 read, but **26% for Express** (94,755 → 70,143) and 45% for Django.
 
@@ -349,13 +385,14 @@ promises: survive a process crash, not a power cut. Neither column is "durable w
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 218,618 | 2.60 ms | 28 µs (55 incl. SoliDB) | 6.9x |
+| **Soli** | 265,965 | 2.36 ms | 27 µs (41 incl. SoliDB) | 8.4x |
 | Phoenix + Ecto + HEEx | 124,305 | 3.65 ms | 114 µs | 3.9x |
 | Kemal + Jennifer + ECR | 97,679 | 5.15 ms | 27 µs | 3.1x |
 | Express + EJS + Sequelize | 91,537 | 3.45 ms | 162 µs | 2.9x |
 | AdonisJS + Lucid + Edge | 53,772 | 6.83 ms | 282 µs | 1.7x |
 | Rails + Puma | 31,778 | 12.92 ms | 473 µs | 1.0x |
 | FastAPI + SQLAlchemy + Jinja2 | 29,035 | 20.69 ms | 526 µs | 0.9x |
+| Rails + Shuttlebay *(reference)* | 26,495 | 14.34 ms | 528 µs | 0.85x |
 | Django + gunicorn | 19,957 | 22.19 ms | 459 µs | 0.6x |
 | Laravel + Octane *(reference)* | 13,175 | 16.88 ms | 1,105 µs | 0.4x |
 | Laravel + php-fpm | 6,372 | 33.06 ms | 2,260 µs | 0.2x |
@@ -368,12 +405,13 @@ rather than re-run until clean. The delete run on the same stack, later, returne
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 146,114 | 3.28 ms | 27 µs (72 incl. SoliDB) | 3.9x |
+| **Soli** | 191,551 | 3.00 ms | 27 µs (56 incl. SoliDB) | 5.1x |
 | Phoenix + Ecto + HEEx | 123,792 | 3.57 ms | 114 µs | 3.3x |
 | Kemal + Jennifer + ECR | 107,399 | 11.19 ms | 15 µs | 2.9x |
 | Express + EJS + Sequelize | 85,882 | 3.83 ms | 173 µs | 2.3x |
 | AdonisJS + Lucid + Edge | 58,444 | 6.36 ms | 259 µs | 1.6x |
 | Rails + Puma | 37,502 | 12.29 ms | 394 µs | 1.0x |
+| Rails + Shuttlebay *(reference)* | 30,633 | 25.01 ms | 429 µs | 0.99x |
 | FastAPI + SQLAlchemy + Jinja2 | 27,576 | 20.27 ms | 555 µs | 0.7x |
 | Django + gunicorn | 19,475 | 22.47 ms | 481 µs | 0.5x |
 | Laravel + Octane *(reference)* | 13,616 | 16.54 ms | 1,049 µs | 0.4x |
@@ -383,12 +421,13 @@ rather than re-run until clean. The delete run on the same stack, later, returne
 
 | Stack | req/s | p99 | CPU/req | vs Rails | rows removed |
 |---|---:|---:|---:|---:|---:|
-| **Soli** | 164,110 | 3.18 ms | 30 µs (68 incl. SoliDB) | 4.3x | 89% of requests |
+| **Soli** | 187,715 | 3.02 ms | 30 µs (62 incl. SoliDB) | 4.9x | 87% of requests |
 | Phoenix + Ecto + HEEx | 82,431 | 28.99 ms | 117 µs | 2.1x | 94% of requests |
 | Express + EJS + Sequelize | 74,373 | 26.21 ms | 104 µs | 1.9x | 95% of requests |
 | Kemal + Jennifer + ECR | 67,995 | 10.23 ms | 14 µs | 1.8x | 95% of requests |
 | AdonisJS + Lucid + Edge | 51,683 | 16.50 ms | 274 µs | 1.3x | 96% of requests |
 | Rails + Puma | 38,586 | 12.68 ms | 356 µs | 1.0x | 97% of requests |
+| Rails + Shuttlebay *(reference)* | 32,999 | 14.81 ms | 412 µs | 0.95x | 98% of requests |
 | FastAPI + SQLAlchemy + Jinja2 | 30,031 | 18.84 ms | 501 µs | 0.8x | 98% of requests |
 | Django + gunicorn | 18,523 | 22.44 ms | 543 µs | 0.5x | 99% of requests |
 | Laravel + Octane *(reference)* | 13,641 | 16.57 ms | 1,034 µs | 0.4x | 99% of requests |
@@ -414,21 +453,21 @@ real work at any table size, were not. The "rows removed" column is still measur
 assumed, so the remaining few percent of misses stay visible.
 
 **Soli leads all three write rows**, with Phoenix the nearest stack on every one: create
-218,618 against 124,305 (6.9x Rails, 1.8x Phoenix), update 146,114 against 123,792 (3.9x Rails,
-**1.18x Phoenix — the narrowest lead on the page**), and delete 164,110 against Phoenix's
-82,431 (4.3x Rails). Soli's rows-removed figure is the lowest in the table (89%) precisely because it made the most requests, so compare real deletes per second instead — about **146,000 for Soli, 77,000 for Phoenix, 71,000 for Express and 65,000 for Kemal** — and the lead holds at 1.9x Phoenix.
+265,965 against 124,305 (8.4x Rails, 2.1x Phoenix), update 191,551 against 123,792 (5.1x Rails,
+**1.55x Phoenix — the narrowest of its write leads**), and delete 187,715 against Phoenix's
+82,431 (4.9x Rails). Soli's rows-removed figure is the lowest in the table (87%) precisely because it made the most requests, so compare real deletes per second instead — about **163,000 for Soli, 77,000 for Phoenix, 71,000 for Express and 65,000 for Kemal** — and the lead holds at 2.1x Phoenix.
 
-**These three rows fell between the two sessions**, and the database is where the cost went. In
-September, on SoliDB 2.0.5, Soli wrote 258,295 creates, 223,931 updates and 182,445 deletes per
-second. In November, on SoliDB 2.4.0, Soli's own CPU per write barely moved (27–30 µs against
-25–27) while SoliDB's rose — 27 µs per create against 23, **45 µs per update against 28**, 38 per
-delete against 36 — and update, where SoliDB's cost grew most, fell most (−35%). The two SoliDB
-versions were not A/B'd on this machine, so that is a strong lead rather than an established
-cause; the November figures are the ones printed. The uncached read moved the other way
-(+8%, above). SoliDB has moved these rows before: 2.0.3 stopped
+**SoliDB 2.9.3 is where these rows gained.** On 2026-11-03, on SoliDB 2.4.0, Soli wrote
+218,618 creates, 146,114 updates and 164,110 deletes per second; on 2.9.3 it writes 22%, 31%
+and 14% more. Soli's own CPU per write did not move (26–30 µs in both passes); SoliDB's fell —
+**14 µs per create against 27**, 30 per update against 45, 32 per delete against 38. The two
+versions were not A/B'd on the write rows, and the Soli builds differ, so read that as where
+the time went rather than as a controlled result. Against September's SoliDB 2.0.5 (258,295,
+223,931 and 182,445), create and delete are now ahead and update is still 14% behind.
+SoliDB has moved these rows before: 2.0.3 stopped
 writing the replication sync log until something reads it, and on the same Soli build it
 lifted create from 136,132 to 235,967 and update from 131,804 to 218,333. Per write, Soli's
-own process spends 27–30 µs and SoliDB 27–45 µs more, against Phoenix's 114–117 µs in its
+own process spends 26–30 µs and SoliDB 14–32 µs more, against Phoenix's 114–117 µs in its
 process alone; PostgreSQL's CPU is not counted for any of the eight PostgreSQL stacks, so
 the comparison is, if anything, kind to them.
 
@@ -438,7 +477,49 @@ least on the page. Kemal is not busy; it waits on PostgreSQL, through the same 8
 every PostgreSQL stack gets, with a p99 of 5–11 ms. Which part of the round trip it waits on —
 the driver, Jennifer's statement handling or the server — was not profiled.
 
-Every stack writes more slowly than it reads — Soli's create row is two fifths of its template row — because a write has to reach another process and a log, whichever framework issued it.
+Every stack writes more slowly than it reads — Soli's create row is half its template row — because a write has to reach another process and a log, whichever framework issued it.
+
+## Rails on Shuttlebay — the same app, a Rust front end
+
+[Shuttlebay](https://github.com/seuros/shuttlebay) replaces Puma: **Mothership**, a Rust
+process, accepts and parses HTTP and hands each request over a Unix socket to forked Ruby
+workers that run the Rails app. It is printed as a reference row, like Octane for Laravel —
+a deployment choice for the same application, not a different framework. The application,
+the 16 workers × 5 threads and the PostgreSQL pool are the ones Puma runs; before the sweep,
+the four read routes were checked to return byte-identical bodies from both servers.
+
+Puma was re-measured in the same session, cell by cell beside Shuttlebay, and this table
+compares the two from that session only:
+
+| Row | Puma req/s | p99 | CPU/req | Shuttlebay req/s | p99 | CPU/req | Shuttlebay vs Puma |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| JSON | 40,901 | 25.24 ms | 346 µs | 39,978 | **10.43 ms** | 363 µs | 0.98x |
+| Template | 31,988 | 28.34 ms | 449 µs | 30,889 | **13.82 ms** | 471 µs | 0.97x |
+| Database read | 30,160 | 14.22 ms | 506 µs | 28,007 | 13.31 ms | 517 µs | 0.93x |
+| Database read + HTML | 24,601 | 17.39 ms | 627 µs | 23,443 | 16.35 ms | 624 µs | 0.95x |
+| Create | 31,137 | 13.37 ms | 484 µs | 26,495 | 14.34 ms | 528 µs | 0.85x |
+| Update | 30,936 | 31.20 ms | 410 µs | 30,633 | 25.01 ms | 429 µs | 0.99x |
+| Delete | 34,581 | 16.43 ms | 398 µs | 32,999 | 14.81 ms | 412 µs | 0.95x |
+| Memory, idle → under load | 197 → 1,335 MB | | | 172 → 1,120 MB | | | |
+
+**Shuttlebay does not make Rails faster on this page; it makes it steadier.** Throughput is
+1–15% below Puma's on every row, and CPU per request 0–9% higher — Mothership's hop is work
+added to the request, not taken away. What it buys is the tail: on the two rows with no
+database, the p99 is **less than half Puma's** (10.4 ms against 25.2 on JSON, 13.8 against 28.3
+on the template), and it holds 215 MB less memory under load. Why the tail shortens was not
+profiled.
+
+What does not move is the cost of running the request in Ruby: 363–624 µs of CPU per request
+on Shuttlebay, 346–627 on Puma. The server in front was never where Rails' time went. Against
+this session's Puma, Soli's rows read 14.0x on JSON, 16.8x on the template, 9.9x on the cached
+read, 11.3x on the cached page, and 8.5x, 6.2x and 5.4x on create, update and delete.
+
+Puma's own rows were 2–6% below its September figures on the reads and create, and 18% and 10%
+below on update and delete. Express's control put the box 2.3% *above* September, and Puma's
+update cell spread by 10% between this session's two runs, so that is Puma's variance on
+writes rather than a slower machine. The tables above keep Puma's September rows, which every
+other stack was measured against; Shuttlebay's *vs Rails* figures are against this session's
+Puma.
 
 ## Reference cells
 
@@ -559,7 +640,8 @@ the first socket opens.
 | Kemal + Jennifer + ECR | 17 (16 processes + launcher) | **44 MB** | 247 MB |
 | Phoenix + Ecto + HEEx | **1** (16 BEAM schedulers) | 101 MB | 170 MB |
 | Laravel + php-fpm | 17 (fpm + nginx) | 104 MB | 146 MB |
-| **Soli** | 1 × 16 threads | 112 MB | **142 MB** |
+| **Soli** | 1 × 16 threads | 105 MB | **135 MB** |
+| Rails + Shuttlebay *(reference)* | 18 (Mothership + fork + CoW) | 172 MB | 1,120 MB |
 | Rails + Puma | 17 (fork + CoW) | 221 MB | 1,157 MB |
 | Laravel + Octane *(reference)* | 16 resident workers | 331 MB | 335 MB |
 | Django + gunicorn | 17 (fork + CoW) | 624 MB | 704 MB |
@@ -567,17 +649,18 @@ the first socket opens.
 | AdonisJS + Lucid + Edge | 17 (fork + CoW) | 898 MB | 2,467 MB |
 | FastAPI + SQLAlchemy + Jinja2 | 18 (**spawn**, no CoW) | 1,013 MB | 1,044 MB |
 
-Soli's and Kemal's rows come from a cold restart of each right after the 2026-09-29 pass, on
-that day's build and SoliDB 2.0.5; Soli's were not re-measured with its November HTTP rows. Soli's idle figure is 15 MB above the 97 MB (126 MB
-under load) measured for the previous build on 2026-09-28, and another session read 111 MB idle
-on the intermediate build: the growth is real, and its cause has not been established. Figures are **PSS** (proportional set size) summed over the whole process group — the honest
+Soli's row comes from a cold restart in the 2026-11-10 session, on 2.34.0 and SoliDB 2.9.3,
+and Shuttlebay's from the same restart, which put Puma at 197 MB idle and 1,335 MB under load;
+Kemal's from a cold restart right after the 2026-09-29 pass. Soli's idle figure was 112 MB on
+the September build and 97 MB on the one before; what moves it between builds has not been
+established. Figures are **PSS** (proportional set size) summed over the whole process group — the honest
 measure for multi-process servers, because summing RSS counts every fork-shared page 17
 times. Every stack was **restarted immediately before this table**, and the restart was
 verified by process id; "under load" is read at the end of a 30 s run on the DB + HTML route.
 
 **Kemal is the smallest stack at rest** — 16 compiled Crystal processes and their shell
 launcher in 44 MB, no runtime or interpreter loaded — and grows the most in proportion under
-load, 5.6x to 247 MB. **Soli is the smallest under load**, 112 → 142 MB: its 16 workers are
+load, 5.6x to 247 MB. **Soli is the smallest under load**, 105 → 135 MB: its 16 workers are
 threads in one process, and it grows by 30 MB. Phoenix, one BEAM, grows by 69 MB; php-fpm
 keeps almost nothing resident between requests because it rebuilds the framework for each
 one. Rails more than quintuples under load (221 → 1,157 MB), Express more than doubles, and
@@ -587,7 +670,7 @@ SQLAlchemy and Jinja2 into a fresh interpreter with nothing shared — Django ca
 comparable pile of Python and sits 389 MB lower because gunicorn forks and copy-on-write
 shares the parent's modules.
 
-> **Two measurement methods.** The eight native stacks are measured as PSS. The two Laravel
+> **Two measurement methods.** The native stacks are measured as PSS (Shuttlebay summed over Mothership's session). The two Laravel
 > stacks run in containers whose processes belong to another user namespace, so
 > `smaps_rollup` is unreadable and a PSS sum would silently skip them — they are measured from
 > their **cgroup** (`podman stats`) instead. cgroup usage and PSS are not the same metric;
@@ -605,14 +688,16 @@ shares the parent's modules.
 ## What these multiples do and don't mean
 
 Trivial handlers measure fixed framework overhead, which is where the gaps are widest: 13x
-Rails on JSON, and 17x on the template, where Soli's response cache is also at work. On routes
-dominated by real database work the multiple compresses — 7.8x on the uncached read, 3.9–6.9x
+Rails on JSON, and 16x on the template, where Soli's response cache is also at work. On routes
+dominated by real database work the multiple compresses — 7.8x on the uncached read, 4.9–8.4x
 on the writes — because the database, the transport to it and the ORM take over the request,
 whatever framework issued it. The claim this page supports is: **Soli's framework overhead is
 a small fraction of every other full-stack framework's here, it is matched only by Kemal — a
 compiled micro-framework doing less per request — it leads every database row even with its
 query cache off, Kemal included, and it leads every write row over Phoenix, the nearest
-stack — by 1.8x on create and 1.9x on real deletes, but only 1.18x on update.**
+stack — by 2.1x on create and on real deletes, and 1.55x on update.** Changing Rails' server
+does not change the picture: Shuttlebay trades a few percent of throughput for half the tail,
+and the request still costs what Ruby costs.
 Quote it that way — and quote the uncached database row, not the cached one, when the
 question is databases.
 
@@ -625,7 +710,9 @@ the database, and the tail under a bounded pool — FastAPI's p99 on every datab
 ## Reproducing
 
 Everything above comes from the harness in `bench/frameworks/` — ten apps, one launcher, one
-sweep (Kemal's is started by hand: `kemal/start-bench.sh`, then `STACKS=kemal`):
+sweep (Kemal's is started by hand: `kemal/start-bench.sh`, then `STACKS=kemal`). The Rails app
+is served twice: by Puma on 5096, and by Shuttlebay on 5106 (`STACKS=shuttlebay`, configured in
+`rails/ship-manifest.toml`):
 
 ```bash
 ./seed.sh          # posts (50 rows) + wposts in PostgreSQL and SoliDB

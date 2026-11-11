@@ -28,6 +28,30 @@
   HTML `/__solidev/request/:id` is unchanged. `.soli/dev-server.json` added to
   the scaffold `.gitignore`.
 
+### Changed
+
+- **The Benchmarks page and the home page carry Soli 2.34.0 on SoliDB 2.9.3,
+  and a Rails + Shuttlebay reference row.** Session of 2026-11-10 on the same
+  Ryzen 9 9950X, pinning and protocol, opened and closed by both controls
+  (Express `/json` +2.3% / +1.5%, Soli `/template` −1.1% / −1.0%), two runs per
+  cell. Soli: JSON 573,411 req/s (now 1.2% ahead of Kemal: a tie across
+  sessions), template 538,751, cached read 298,609, cached page 278,887 (the
+  home ramp, was 281,190), create 265,965 (+22% over the 2.4.0 pass), update
+  191,551 (+31%), delete 187,715 (+14%) — SoliDB's CPU per write fell (create
+  27 → 14 µs) while Soli's did not move; memory 105 → 135 MB. Uncached reads:
+  241,081 / 228,622 on a fresh data directory (2026-11-11 pass); measured in
+  the session they read 184.6k, and an A/B traced that to the 20-million
+  document write table sharing the SoliDB instance (SoliDB 35 µs per uncached
+  read instead of 26) plus post-delete compaction, not to the version (2.4.0
+  is ~2% ahead of 2.9.3, at the noise). Rails + Shuttlebay 0.2.0 (Mothership,
+  guardship 0.3.3), same app and 16 × 5, swept beside a re-measured Puma:
+  1–15% fewer req/s, 0–9% more CPU per request, under half Puma's p99 on the
+  two rows with no database, 1,120 MB under load against 1,335. Harness:
+  `STACKS=shuttlebay` (port 5106, `rails/ship-manifest.toml`, a `shuttlebay`
+  Gemfile group), `start.sh` starts only the named stacks, and `sweep.sh` /
+  `memory.sh` sum Shuttlebay's CPU and PSS over Mothership's session, since
+  Mothership sits alone in its process group.
+
 ### Fixed
 
 - **A query write inside a SoliDB `transaction` block now commits and rolls

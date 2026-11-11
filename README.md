@@ -52,8 +52,8 @@ end
 
 ### Performance
 - **Bytecode VM in production** for controllers, middleware, models and views
-- **549k req/s** on a JSON response and **547k req/s** on a rendered 50-row page, with 16
-  hardware threads — **12.7x Rails** on the JSON row, 3% behind Kemal (compiled Crystal). Full
+- **573k req/s** on a JSON response and **539k req/s** on a rendered 50-row page, with 16
+  hardware threads — **13.2x Rails** on the JSON row, level with Kemal (compiled Crystal). Full
   methodology, every stack and every caveat: [`www/docs/benchmarks.md`](www/docs/benchmarks.md)
 - **Response cache** for pages that depend only on what they render, and **`grouped`** to ship
   several database reads in one round trip

@@ -40,57 +40,57 @@
         <figure class="lp-ramp" id="load-ramp">
             <div class="lp-ramp-head">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <span class="lp-ramp-label" data-ramp-label>Soli&rsquo;s ceiling on one machine, p99 1.14 ms</span>
-                    <span class="lp-ramp-load"><span data-ramp-load>281,190</span><span class="lp-ramp-unit"> req/s</span></span>
+                    <span class="lp-ramp-label" data-ramp-label>Soli&rsquo;s ceiling on one machine, p99 1.18 ms</span>
+                    <span class="lp-ramp-load"><span data-ramp-load>278,887</span><span class="lp-ramp-unit"> req/s</span></span>
                 </div>
             </div>
 
-            <div class="lp-lane is-soli" data-max="281190" data-p99="1.14 ms">
+            <div class="lp-lane is-soli" data-max="278887" data-p99="1.18 ms">
                 <span class="lp-lane-name">Soli</span>
                 <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 100.00%;"></div></div>
-                <span class="lp-lane-value" data-served>281,190</span>
-                <span class="lp-lane-note">max &middot; p99 1.14 ms</span>
+                <span class="lp-lane-value" data-served>278,887</span>
+                <span class="lp-lane-note">max &middot; p99 1.18 ms</span>
             </div>
             <div class="lp-lane" data-max="192564" data-p99="1.28 ms">
                 <span class="lp-lane-name">Kemal</span>
-                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 68.48%;"></div></div>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 69.05%;"></div></div>
                 <span class="lp-lane-value" data-served>192,564</span>
                 <span class="lp-lane-note">max &middot; p99 1.28 ms</span>
             </div>
             <div class="lp-lane" data-max="72263" data-p99="4.40 ms">
                 <span class="lp-lane-name">Phoenix</span>
-                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 25.70%;"></div></div>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 25.91%;"></div></div>
                 <span class="lp-lane-value" data-served>72,263</span>
                 <span class="lp-lane-note">max &middot; p99 4.40 ms</span>
             </div>
             <div class="lp-lane" data-max="70143" data-p99="4.04 ms">
                 <span class="lp-lane-name">Express</span>
-                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 24.95%;"></div></div>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 25.15%;"></div></div>
                 <span class="lp-lane-value" data-served>70,143</span>
                 <span class="lp-lane-note">max &middot; p99 4.04 ms</span>
             </div>
             <div class="lp-lane" data-max="25024" data-p99="15.92 ms">
                 <span class="lp-lane-name">Rails + Puma</span>
-                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 8.90%;"></div></div>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 8.97%;"></div></div>
                 <span class="lp-lane-value" data-served>25,024</span>
                 <span class="lp-lane-note">max &middot; p99 15.92 ms</span>
             </div>
             <div class="lp-lane" data-max="11759" data-p99="19.04 ms">
                 <span class="lp-lane-name">Laravel Octane</span>
-                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 4.18%;"></div></div>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 4.22%;"></div></div>
                 <span class="lp-lane-value" data-served>11,759</span>
                 <span class="lp-lane-note">max &middot; p99 19.04 ms</span>
             </div>
             <div class="lp-lane" data-max="10896" data-p99="19.72 ms">
                 <span class="lp-lane-name">Django</span>
-                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 3.87%;"></div></div>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 3.91%;"></div></div>
                 <span class="lp-lane-value" data-served>10,896</span>
                 <span class="lp-lane-note">max &middot; p99 19.72 ms</span>
             </div>
 
             <figcaption class="lp-ramp-caption">
                 50 rows from the database rendered into a ~3&nbsp;KB HTML page. One 32-thread machine, 16 threads per
-                stack, measured 2026-09-28/29. Each bar stops at the throughput measured for that stack.
+                stack, measured 2026-09-28/29 (Soli: 2026-11-10, on SoliDB 2.9.3). Each bar stops at the throughput measured for that stack.
                 <a href="/docs/getting-started/benchmarks" class="lp-link" style="display: inline;">Method and every row</a>
             </figcaption>
         </figure>
@@ -562,11 +562,11 @@
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 40px 80px;">
             <a href="/docs/getting-started/benchmarks">
-                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">549,131</div>
+                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">573,411</div>
                 <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">JSON responses a second, one server</div>
             </a>
             <a href="/docs/getting-started/benchmarks">
-                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">218,618</div>
+                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">265,965</div>
                 <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">Database writes a second, one server</div>
             </a>
         </div>
