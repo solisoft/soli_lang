@@ -173,6 +173,9 @@ upper = "Upper: #{text.upper()}";        # "Upper: HELLO"
 items = ["Alice", "Bob"]
 first_item = "First: #{items[0]}";       # "First: Alice"
 
+# A string inside #{} may interpolate too
+version = "v#{"#{a}.#{b}"}"              # "v2.3"
+
 # Hash access
 person = {"name": "Charlie"}
 person_name = "Name: #{person["name"]}"; # "Name: Charlie"</code></pre>

@@ -895,13 +895,17 @@ impl Interpreter {
         // A model inheriting from another starts from its parent's.
         let callbacks_declaration = extends_model.then(|| {
             use crate::interpreter::builtins::model::callbacks;
-            let inherited = class_rc
+            let parent = class_rc
                 .superclass
                 .as_ref()
-                .filter(|sc| sc.name != "Model" && sc.is_model_subclass())
+                .filter(|sc| sc.name != "Model" && sc.is_model_subclass());
+            let inherited = parent
                 .map(|parent| callbacks::registered(&parent.name))
                 .unwrap_or_default();
-            callbacks::Declaration::begin(&class_rc.name, inherited)
+            let inherited_validations = parent
+                .map(|parent| callbacks::registered_validations(&parent.name))
+                .unwrap_or_default();
+            callbacks::Declaration::begin(&class_rc.name, inherited, inherited_validations)
         });
 
         // Initialize static fields

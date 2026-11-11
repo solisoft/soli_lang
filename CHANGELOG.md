@@ -83,6 +83,22 @@
 
 ### Fixed
 
+- **`--dev` hot reload stacked validation rules.** An edited `validates(...)`
+  (`on: "create"` added) joined the old rule instead of replacing it, which
+  kept refusing saves until a restart. A model class body now builds its
+  validations aside, like its callbacks, and installs them whole
+  (`callbacks::Declaration`).
+- **A string with its own `#{…}` inside an interpolation lexes**:
+  `"outer #{"#{a}.#{b}"}"` was "Unterminated string". The scanner copies a
+  string met in interpolation code whole, escapes and nested `#{…}`
+  included; `soli fmt`'s string scanner (`quoted_string_end`) follows it, so a
+  `"}"` in there no longer reads the rest of the line as a comment.
+- **Bare `save` in a model method** resolved to nothing ("Undefined variable
+  'save'"): the implicit self now includes inherited native methods, on both
+  engines.
+- **`soli new`'s "Get started" box** lines up: rows are padded on their
+  visible width, and the box widens for a long app name.
+
 - **`soli new` writes `.env.test`** (`<app>_test`), without which `soli test`
   refused to start.
 - **Scaffold.** The model no longer calls an undefined

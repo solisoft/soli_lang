@@ -835,25 +835,51 @@ pub fn print_success_message(name: &str) {
         name
     );
     println!();
-    println!("  \x1b[2m┌─────────────────────────────────────────┐\x1b[0m");
-    println!(
-        "  \x1b[2m│\x1b[0m  \x1b[1mGet started:\x1b[0m                        \x1b[2m│\x1b[0m"
-    );
-    println!("  \x1b[2m│\x1b[0m                                       \x1b[2m│\x1b[0m");
-    println!(
-        "  \x1b[2m│\x1b[0m    \x1b[36mcd {}\x1b[0m{}  \x1b[2m│\x1b[0m",
-        name,
-        " ".repeat(30_usize.saturating_sub(name.len()))
-    );
-    println!(
-        "  \x1b[2m│\x1b[0m    \x1b[36msoli serve . --dev\x1b[0m                 \x1b[2m│\x1b[0m"
-    );
-    println!("  \x1b[2m│\x1b[0m                                       \x1b[2m│\x1b[0m");
-    println!(
-        "  \x1b[2m│\x1b[0m  Then open \x1b[4mhttp://localhost:5011\x1b[0m      \x1b[2m│\x1b[0m"
-    );
-    println!("  \x1b[2m└─────────────────────────────────────────┘\x1b[0m");
+    for line in get_started_box(name) {
+        println!("{line}");
+    }
     println!();
+}
+
+/// The "Get started" box, one string per line. Each row is padded on its
+/// visible text (colour codes take no column), and the box widens for a long
+/// app name. The rows were padded by hand and the right border wandered.
+pub(crate) fn get_started_box(name: &str) -> Vec<String> {
+    // (visible text, rendered text) for each row inside the borders.
+    let cd = format!("    cd {name}");
+    let rows: Vec<(String, String)> = vec![
+        (
+            "  Get started:".into(),
+            "  \x1b[1mGet started:\x1b[0m".into(),
+        ),
+        (String::new(), String::new()),
+        (cd.clone(), format!("    \x1b[36mcd {name}\x1b[0m")),
+        (
+            "    soli serve . --dev".into(),
+            "    \x1b[36msoli serve . --dev\x1b[0m".into(),
+        ),
+        (String::new(), String::new()),
+        (
+            "  Then open http://localhost:5011".into(),
+            "  Then open \x1b[4mhttp://localhost:5011\x1b[0m".into(),
+        ),
+    ];
+    let inner = rows
+        .iter()
+        .map(|(visible, _)| visible.chars().count() + 2)
+        .max()
+        .unwrap_or(0)
+        .max(41);
+    let mut lines = vec![format!("  \x1b[2m┌{}┐\x1b[0m", "─".repeat(inner))];
+    for (visible, rendered) in &rows {
+        let pad = inner - visible.chars().count();
+        lines.push(format!(
+            "  \x1b[2m│\x1b[0m{rendered}{}\x1b[2m│\x1b[0m",
+            " ".repeat(pad)
+        ));
+    }
+    lines.push(format!("  \x1b[2m└{}┘\x1b[0m", "─".repeat(inner)));
+    lines
 }
 
 /// What `--eui` added, and how to see it. Printed after the box rather
@@ -1370,6 +1396,33 @@ mod tests {
         ] {
             let content = std::fs::read_to_string(dir.path().join(spec)).unwrap();
             assert!(content.contains(calls), "{spec} should call {calls}");
+        }
+    }
+
+    #[test]
+    fn get_started_box_lines_up() {
+        let strip = |line: &str| {
+            let mut out = String::new();
+            let mut chars = line.chars();
+            while let Some(c) = chars.next() {
+                if c == '\x1b' {
+                    for e in chars.by_ref() {
+                        if e == 'm' {
+                            break;
+                        }
+                    }
+                } else {
+                    out.push(c);
+                }
+            }
+            out
+        };
+        for name in ["demo", "a-much-longer-application-name-than-usual"] {
+            let widths: Vec<usize> = get_started_box(name)
+                .iter()
+                .map(|line| strip(line).chars().count())
+                .collect();
+            assert!(widths.iter().all(|w| *w == widths[0]), "{name}: {widths:?}");
         }
     }
 

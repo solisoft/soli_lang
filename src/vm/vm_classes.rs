@@ -741,7 +741,10 @@ impl Vm {
         match this {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();
-                class.find_vm_method_with_class(name).is_some() || class.find_method(name).is_some()
+                // Natives too: `save` in a `< Model` method is `Model#save`.
+                class.find_vm_method_with_class(name).is_some()
+                    || class.find_method(name).is_some()
+                    || class.find_native_method(name).is_some()
             }
             _ => false,
         }
