@@ -1407,3 +1407,29 @@ fn try_expression_round_trips() {
         "x = try\n  # risky\n  risky()\ncatch e\n  \"fallback\"\nend\nprint(x)\n",
     );
 }
+
+// ---- class constants print as written (the parser's rewriting is for the engines) ----
+
+#[test]
+fn class_constants_are_not_rewritten() {
+    assert_unchanged_and_idempotent(
+        "class Box\n  const SIZE = 3\n\n  static def size\n    SIZE\n  end\n\n  def double\n    SIZE * 2\n  end\nend\nprint(Box.size)\n",
+    );
+}
+
+// ---- a comment after a block's last statement stays inside the block ----
+// It was written after `end`, so a scaffolded model's trailing callback
+// example came out below the class.
+
+#[test]
+fn trailing_comment_stays_inside_class() {
+    assert_unchanged_and_idempotent("class A\n  x: Int\n\n  # trailing class comment\nend\n");
+}
+
+#[test]
+fn trailing_comment_stays_inside_def_and_method() {
+    assert_unchanged_and_idempotent("def g\n  1\n  # trailing def comment\nend\n");
+    assert_unchanged_and_idempotent(
+        "class A\n  def f\n    1\n    # trailing method comment\n  end\nend\n",
+    );
+}

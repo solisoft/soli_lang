@@ -44,6 +44,10 @@ pub struct Parser {
     /// How many `class`/`module` declarations enclose the token being parsed;
     /// the outermost one resolves its constants (`class_constants`).
     pub(crate) class_nesting: usize,
+    /// Whether the outermost class resolves its constants (`class_constants`).
+    /// Off in [`Parser::as_written`]: `soli fmt` and the editor's symbols
+    /// want the source as written, not the tree the engines run.
+    pub(crate) resolve_class_constants: bool,
 }
 
 impl Parser {
@@ -57,6 +61,19 @@ impl Parser {
             no_trailing_do: false,
             in_try_body: false,
             class_nesting: 0,
+            resolve_class_constants: true,
+        }
+    }
+
+    /// A parser that keeps the tree as written: no class-constant rewriting.
+    /// For `soli fmt`, which prints the tree back, and the editor's symbol
+    /// table, which points at what the file says — with the rewriting, a
+    /// `const SIZE` came out followed by a `static const SIZE` and every bare
+    /// `SIZE` as `Box.SIZE`.
+    pub fn as_written(tokens: Vec<Token>) -> Self {
+        Self {
+            resolve_class_constants: false,
+            ..Self::new(tokens)
         }
     }
 

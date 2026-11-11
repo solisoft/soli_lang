@@ -93,6 +93,20 @@
   `@_permit_params`.
 - **No more `<%= h(…) %>` double escaping** in the mailer generator, the OIDC
   views and the scaffold's `CLAUDE*.md` guides.
+- **`soli fmt` wrote a comment that ends a class, `def` or method after its
+  `end`**, where the next pass attached it to the code below; it stays inside
+  now. A scaffolded model's callback example was the visible case.
+- **`soli fmt` and the editor's symbols read the source as written**
+  (`Parser::as_written`): they no longer see the class-constant rewriting, which
+  `fmt` printed back as a duplicate `static const` and `Klass.NAME` reads.
+- **Scaffold index title** is the resource (`"Posts"`), not `"PostsController"`.
+- **Security: `rusqlite` 0.41** (bundled SQLite via `libsqlite3-sys` 0.39.1,
+  RUSTSEC-2026-0459) and `rustix` 1.1.6 (RUSTSEC-2026-0486); `solidb-client`
+  follows to the commit that moved it to `rusqlite` 0.41. Adapted to the 0.41
+  API (`wal_hook` takes `&mut Wal` and returns a result, `busy_handler` needs
+  `&mut Connection`, `column_names` is an iterator).
+- **`dev_agent::tests::dead_pid_fails_before_any_connection` runs on Unix
+  only**: on Windows `pid_alive` cannot tell a dead pid by design.
 - **`soli fmt` kept `@x` inside `#{…}`.** Interpolations are parsed on their
   own, so the `@` check read the file at the wrong offset and printed
   `this.x`; each is now printed against its own text.

@@ -667,7 +667,8 @@ impl Printer<'_> {
             self.write(&format_type(ret));
         }
         self.newline();
-        self.print_block_body(&decl.body);
+        let close_line = super::printer::source_end_line(self.source, decl.span);
+        self.print_block_body_through(&decl.body, Some(close_line));
         self.write("end");
         self.newline();
     }
@@ -691,7 +692,8 @@ impl Printer<'_> {
             self.write(&format_type(ret));
         }
         self.newline();
-        self.print_block_body(&decl.body);
+        let close_line = super::printer::source_end_line(self.source, decl.span);
+        self.print_block_body_through(&decl.body, Some(close_line));
         self.write("end");
         self.newline();
     }
@@ -700,7 +702,8 @@ impl Printer<'_> {
         self.write("new");
         self.print_param_list(&decl.params);
         self.newline();
-        self.print_block_body(&decl.body);
+        let close_line = super::printer::source_end_line(self.source, decl.span);
+        self.print_block_body_through(&decl.body, Some(close_line));
         self.write("end");
         self.newline();
     }
@@ -918,6 +921,10 @@ impl Printer<'_> {
                     p.print_class_decl(n);
                 }
             }
+            // A comment after the last member is still inside the class: flush
+            // it here, indented, or it is written after `end` and belongs to
+            // the code below on the next pass.
+            p.flush_comments_before(super::printer::source_end_line(p.source, decl.span));
         });
         self.write("end");
         self.newline();

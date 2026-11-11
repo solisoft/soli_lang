@@ -186,7 +186,7 @@ impl Parser {
         let parsed = self.class_declaration_body();
         self.class_nesting -= 1;
         let mut stmt = parsed?;
-        if self.class_nesting == 0 {
+        if self.class_nesting == 0 && self.resolve_class_constants {
             if let StmtKind::Class(decl) = &mut stmt.kind {
                 super::class_constants::resolve(decl);
             }

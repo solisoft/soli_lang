@@ -361,6 +361,9 @@ fn unreachable_server_is_a_tool_error() {
         .contains("not reachable"));
 }
 
+/// Unix only: elsewhere `pid_alive` cannot tell a dead pid (there is no
+/// cheap check), so the connection attempt decides, as `discovery` documents.
+#[cfg(unix)]
 #[test]
 fn dead_pid_fails_before_any_connection() {
     let (port, seen) = fake_backend(vec![]);

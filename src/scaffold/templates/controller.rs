@@ -20,7 +20,7 @@ class {controller_name} < Controller
   # matching {resource}/<action> view renders by itself: no render() needed.
   def index
     @{resource} = {model_name}.all
-    @title = "{controller_name}"
+    @title = "{index_title}"
   end
 
   # GET /{resource}/:id — Model.find raises on miss, framework maps to 404.
@@ -83,11 +83,24 @@ class {controller_name} < Controller
 end
 "#,
         controller_name = controller_name,
+        index_title = index_title(resource_name),
         resource = resource_name,
         model_name = model_name,
         model_var = model_var,
         permitted_params = permitted_params
     )
+}
+
+/// The index page's title: the resource, as a reader would write it
+/// (`posts` → "Posts", `blog_posts` → "Blog posts"), not the controller's
+/// class name.
+fn index_title(resource_name: &str) -> String {
+    let words = resource_name.replace('_', " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 /// Controller spec template. It makes the records it reads (`_create_<model>`)
@@ -223,6 +236,15 @@ mod tests {
 
     /// The template appends "Controller" to the name it is given; a caller that
     /// also appends produces `describe("UsersControllerController")`.
+    #[test]
+    fn index_title_is_the_resource_not_the_class() {
+        assert_eq!(index_title("posts"), "Posts");
+        assert_eq!(index_title("blog_posts"), "Blog posts");
+        let controller = controller_template("PostsController", "posts", "Post", "post", "");
+        assert!(controller.contains(r#"@title = "Posts""#), "{controller}");
+        assert!(!controller.contains(r#"@title = "PostsController""#));
+    }
+
     #[test]
     fn controller_spec_names_the_controller_once() {
         let spec = controller_test_template(
