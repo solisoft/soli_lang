@@ -123,6 +123,13 @@
         #agents .ag-side h3 { margin: 0 0 14px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; letter-spacing: -0.015em; }
         #agents .ag-side p { margin: 20px 0 0; font-size: 15px; line-height: 1.6; color: var(--ink-faint); }
         #agents .ag-side p code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; color: var(--ink-soft); }
+        #agents .hp-prompts { border-top: 1px solid var(--night-line); }
+        #agents .hp-prompts summary { cursor: pointer; padding: 16px 24px; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: #F2A365; }
+        #agents .hp-prompts ol { list-style: none; margin: 0; padding: 0 24px; display: flex; flex-direction: column; gap: 18px; }
+        #agents .hp-prompt-n { display: block; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #A69C8C; }
+        #agents .hp-prompt-text { margin: 0 0 8px; padding-left: 14px; border-left: 2px solid rgba(232, 89, 12, 0.45); font-family: 'JetBrains Mono', monospace; font-size: 13.5px; line-height: 1.7; color: #E9E2D6; }
+        #agents .hp-prompts-note { margin: 18px 24px 0; padding-bottom: 22px; font-size: 13.5px; line-height: 1.6; color: #A69C8C; }
+        #agents .hp-prompts-note code { font-family: 'JetBrains Mono', monospace; font-size: 0.92em; color: #E9E2D6; }
         @media (max-width: 900px) { #agents .ag-layout { grid-template-columns: minmax(0, 1fr); } }
         @media (max-width: 560px) { #agents .ag-src .lp-code-bar { flex-wrap: wrap; row-gap: 6px; padding-top: 10px; padding-bottom: 10px; } }
         @media (prefers-reduced-motion: reduce) { #agents .ag-findings li, #agents .ag-sq { transition: none; } }
@@ -173,6 +180,27 @@
                 <p>The generators are still there (<code>scaffold</code>, <code>auth</code>, <code>oauth</code>, <code>oidc_provider</code>) and write code in the shape these rules expect.</p>
             </div>
         </div>
+
+        <figure class="lp-code" style="margin: 56px 0 0;">
+            <div class="lp-code-bar"><span>A yoga studio booking site, from <code>soli new</code> to a real Stripe payment</span><span class="lp-tag">3:48 &middot; no sound</span></div>
+            <video controls preload="none" playsinline
+                   poster="/videos/agent-builds-a-booking-site.jpg"
+                   style="display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--night);">
+                <source src="/videos/agent-builds-a-booking-site.mp4" type="video/mp4">
+            </video>
+            <figcaption style="padding: 16px 24px 20px; border-top: 1px solid var(--night-line); font-size: 14px; line-height: 1.6; color: #A69C8C;">One Claude Code session, four prompts, 28 minutes, replayed faster. It ends with 151 passing specs, a Stripe test payment confirmed by a signed webhook, and the seat count updating live on another visitor&rsquo;s page.</figcaption>
+            <details class="hp-prompts">
+                <summary>The prompts, word for word</summary>
+                <ol>
+                <li><span class="hp-prompt-n">1 &middot; Schedule and back office</span><p class="hp-prompt-text">Build a booking site for a yoga studio. A class has a title, an instructor, a start time, a capacity and a price. The home page lists the classes with the seats left. Give the studio a back office at /lessons to manage the schedule, and seed three demo classes.</p><p class="hp-prompt-text">The dev server is already running on http://localhost:5011 (soli serve . --dev, hot reload): don't start another one, curl it to check your work. SoliDB is running.</p></li>
+                <li><span class="hp-prompt-n">2 &middot; Stripe payments</span><p class="hp-prompt-text">Let visitors book a seat and pay with Stripe Checkout in test mode. No SDK. A booking is only "paid" once Stripe's signed webhook says so: verify the signature on the raw body and make retries harmless. Release the seat if the checkout is cancelled or expires. The Stripe test keys are already in .env (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET) and `stripe listen` forwards webhooks to /webhooks/stripe.</p></li>
+                <li><span class="hp-prompt-n">3 &middot; Live seats and email</span><p class="hp-prompt-text">When a seat is taken or released, update the seat count live on every open schedule page, without reloading. When a booking is paid, email the customer a confirmation.</p></li>
+                <li><span class="hp-prompt-n">4 &middot; Specs</span><p class="hp-prompt-text">Write specs for the webhook and the booking form. Test the refusals, not just the happy path: forged signature, missing signature, retried delivery, expired checkout, full class, invalid email, unknown class. Then run them, and run soli lint.</p></li>
+                <li><span class="hp-prompt-n">5 &middot; Copy fix, after the session</span><p class="hp-prompt-text">The home page still says "you pay at the studio", but visitors pay online with Stripe Checkout now. Fix that copy, and any other text that still describes paying at the studio for a paid class. Keep the change small, then run soli test and soli lint. The dev server is not running; don't start one.</p></li>
+                </ol>
+                <p class="hp-prompts-note">Run with <code>claude -p</code> in a fresh <code>soli new studio</code>, prompts 1&ndash;4 as one continuing session. The fifth came afterwards, in a session of its own, because the first left one line of copy saying visitors pay at the studio.</p>
+            </details>
+        </figure>
 
         <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 40px;">
             <a href="/ai" class="lp-link">How Soli works with agents &rarr;</a>
