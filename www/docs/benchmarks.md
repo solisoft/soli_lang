@@ -279,22 +279,14 @@ like-for-like database comparison.
 **Without the cache, Soli still leads the row**: 241,081 req/s against Kemal's 193,750 — the
 nearest, on PostgreSQL through Jennifer, 1.24x behind — Express's 94,755 and Phoenix's 67,843,
 and **7.8x Rails**. It also out-reads Express on the raw `pg` driver with no ORM in the path
-(160,230, reference cells below), which led this comparison until SoliDB 2.0.5. Soli spends
+(160,230, reference cells below). Soli spends
 37 µs per request in its own process and 26–27 µs in SoliDB's; Kemal spends 57 µs in its
 processes, with PostgreSQL's CPU not counted.
 
-**SoliDB 2.0.2 is what made that true.** On 2.0.1, measured earlier the same day on the same
-box, the uncached row read **38,086 req/s** — behind Phoenix, Express and AdonisJS — with
-SoliDB spending **184 µs** of CPU per request against Soli's own 35. That measurement is why
-2.0.2 exists: it cut SoliDB's CPU on this query by 65% and tripled the row (112,180). The
-versions since: 2.0.3 left this row at 113,030; 2.0.4 read 140,259, +24%, in a same-session
-A/B that alternated the two versions twice each (SoliDB's CPU per request 64 → 50 µs). 2.0.5 read
-222,993 — +59% over 2.0.4 — on 30 µs of SoliDB CPU per request. Its read path is the change:
-another session's A/B, alternating 2.0.4 and a 2.0.5 pre-release twice each on the previous
-Soli build, read 137,767 against 237,319. SoliDB 2.4.0 read 240,424 on 25 µs
-of SoliDB CPU per request. **SoliDB 2.9.3, published here, reads 241,081 on 26–27 µs**, and a
-same-pass A/B on one Soli build put 2.4.0 about 2% ahead of it (245,907 against 239,985 and
-242,177) — within a hair of the noise between two runs of the same version.
+**The SoliDB version barely moves this row.** SoliDB 2.4.0 read 240,424 on 25 µs of SoliDB CPU
+per request; **2.9.3, published here, reads 241,081 on 26–27 µs**, and a same-pass A/B on one
+Soli build put 2.4.0 about 2% ahead of it (245,907 against 239,985 and 242,177) — within a hair
+of the noise between two runs of the same version.
 
 **What moved this row by 18% was not a version.** In the 2026-11-10 session the uncached read
 came out at 184,568 req/s. The same build and the same SoliDB on that session's data directory,
@@ -464,9 +456,7 @@ and 14% more. Soli's own CPU per write did not move (26–30 µs in both passes)
 versions were not A/B'd on the write rows, and the Soli builds differ, so read that as where
 the time went rather than as a controlled result. Against September's SoliDB 2.0.5 (258,295,
 223,931 and 182,445), create and delete are now ahead and update is still 14% behind.
-SoliDB has moved these rows before: 2.0.3 stopped
-writing the replication sync log until something reads it, and on the same Soli build it
-lifted create from 136,132 to 235,967 and update from 131,804 to 218,333. Per write, Soli's
+Per write, Soli's
 own process spends 26–30 µs and SoliDB 14–32 µs more, against Phoenix's 114–117 µs in its
 process alone; PostgreSQL's CPU is not counted for any of the eight PostgreSQL stacks, so
 the comparison is, if anything, kind to them.
