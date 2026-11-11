@@ -701,6 +701,11 @@ pub fn run_test(
     // the ones a spec sees (`app/policies/application_policy.sl` defines
     // identical globals; last write wins).
     //
+    // Controllers come before helpers, whose globals must stay the ones a spec
+    // sees, and only those whose top-level `def`s shadow no test-DSL name (see
+    // `redefines_builtin`): the EUI handler and view a `--eui` app ships are
+    // top-level functions a spec calls directly.
+    //
     // Mailers and subscribers complete the list `soli serve` loads: a service
     // that sends `AlertMailer.alert(...).deliver` failed in a spec with
     // "Undefined variable 'AlertMailer'" (#676), and a service that publishes
@@ -713,6 +718,7 @@ pub fn run_test(
         "policies",
         "services",
         "mailers",
+        "controllers",
         "helpers",
         "middleware",
         "jobs",
@@ -727,6 +733,14 @@ pub fn run_test(
         // `Billing::Invoice` needs it preloaded like the server has it.
         for path in solilang::serve::sl_load_order(&dir) {
             if let Ok(content) = fs::read_to_string(&path) {
+                // A controller's top-level `def`s (function-style actions, an
+                // EUI component and its catalogue) are callable from a spec
+                // like a helper's — unless one is named after the test DSL: a
+                // function-style `def delete(req)` loaded here would replace
+                // the spec's own `delete("/posts/1")`. Such a file stays out.
+                if sub == "controllers" && redefines_builtin(&content) {
+                    continue;
+                }
                 let absolute = solilang::coverage::coverage_path_key(&path);
                 model_preamble_files.push((absolute, content));
             }
@@ -1615,6 +1629,14 @@ pub fn run_test(
                         // and any file inside the tests directory, regardless of
                         // whether the path is absolute or relative.
                         !s.starts_with('<') && !s.contains("/tests/") && !s.starts_with("tests/")
+                    })
+                    // A file that says `# coverage: off` (the EUI catalogue
+                    // `soli new --eui` writes) is code the app carries, not
+                    // code it is measured on.
+                    .filter(|(path, _)| {
+                        !fs::read_to_string(path)
+                            .or_else(|_| fs::read_to_string(app_dir.join(path)))
+                            .is_ok_and(|source| solilang::coverage::opts_out_of_coverage(&source))
                     })
                     .map(|(path, cov)| (path.clone(), cov.clone()))
                     .collect(),
@@ -2682,6 +2704,32 @@ fn register_app_source_lines(tracker: &mut CoverageTracker, app_dir: &Path) {
     }
 }
 
+/// The spec client's request functions. Served code has globals of the same
+/// names (the route DSL), so `test_dsl_globals`, which lists only what the
+/// test environment adds, does not name them.
+const SPEC_REQUEST_VERBS: [&str; 8] = [
+    "get", "post", "put", "patch", "delete", "head", "options", "request",
+];
+
+/// Whether `source` declares a top-level `def` named after a function of the
+/// test DSL (`get`, `delete`, `assigns`…), which it would replace in a spec.
+/// Shadowing a runtime builtin is left alone: the server loads the file over
+/// the same builtins, and the EUI catalogue does it on purpose. Unparseable
+/// source counts as yes: it is left for the run to report, not preloaded.
+fn redefines_builtin(source: &str) -> bool {
+    let Ok(tokens) = solilang::lexer::Scanner::new(source).scan_tokens() else {
+        return true;
+    };
+    let Ok(program) = solilang::parser::Parser::new(tokens).parse() else {
+        return true;
+    };
+    program.statements.iter().any(|stmt| {
+        matches!(&stmt.kind, solilang::ast::StmtKind::Function(decl)
+            if SPEC_REQUEST_VERBS.contains(&decl.name.as_str())
+                || solilang::types::runtime_globals::test_dsl_globals().contains(&decl.name))
+    })
+}
+
 fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -2700,6 +2748,18 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_controller_that_shadows_the_spec_dsl_is_not_preloaded() {
+        assert!(redefines_builtin("def delete(req)\n  req\nend\n"));
+        assert!(redefines_builtin("def get(req)\n  req\nend\n"));
+        assert!(!redefines_builtin(
+            "def counter(event_data)\n  event_data\nend\n"
+        ));
+        assert!(!redefines_builtin(
+            "class PostsController < Controller\n  def delete\n  end\nend\n"
+        ));
+    }
 
     #[test]
     fn seconds_keep_their_leading_zero_hundredths() {

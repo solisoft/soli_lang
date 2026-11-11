@@ -42,7 +42,9 @@ most common way an agent wastes its first five minutes in a new app.
 
 `soli generate scaffold` writes a full resource and a controller E2E spec at
 `tests/controllers/*_controller_spec.sl`. There is no model test file — add
-one under `tests/` yourself if you want model-level coverage.
+one under `tests/` yourself if you want model-level coverage. `soli new`
+already wrote specs for the home controller, the application helper and the
+`authenticate` middleware: a fresh app's `soli test` covers 100% of its lines.
 
 Two more things about generators, both learned the hard way:
 
@@ -196,7 +198,8 @@ the code you are writing — they are properties of the runtime.
 
 **Fast path:** `soli generate scaffold post title:string body:text` — model,
 controller, views, migration, routes, and
-`tests/controllers/post_controller_spec.sl`. Then `soli db:migrate up`.
+`tests/controllers/posts_controller_spec.sl` (it creates its own records and
+passes as generated). Then `soli db:migrate up`.
 Add a model unit spec by hand if you need one. Run the verification loop.
 
 **Step-by-step** (when you want each piece by hand):
@@ -337,7 +340,8 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
-- **`[[` opens a raw string**: write `[ [a, b].max(), c ]`.
+- **`[[` is a nested array**, not a raw string (that form was removed; raw
+  strings are `"""…"""` and `r"…"`).
 
 ## Syntax basics
 
@@ -583,7 +587,9 @@ search, analytics, and migrations — see `docs/solidb-reference.md`.
 <%= link_to("New post", new_post_path()) %>
 ```
 
-Always use `h()` to escape user-supplied content — XSS is the default risk.
+`<%= %>` escapes its output, so user-supplied content is safe there as it is —
+wrapping it in `h()` escapes it twice. `<%- %>` writes raw HTML: keep it for
+markup you built yourself (form builder calls, partials).
 
 ### Forms
 

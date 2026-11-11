@@ -93,27 +93,37 @@ end
 /// Controller spec template. It makes the records it reads (`_create_<model>`)
 /// from `sample_attrs`, a hash literal holding a valid value for every
 /// scaffolded field, so it passes on a fresh app with an empty test database.
-/// `rejects_blank` adds the 422 case, which only exists when a field is
-/// validated for presence.
+/// `blank_attrs` (the presence-validated fields, blank) adds the 422 cases of
+/// create and update, which only exist when a field is validated.
 pub fn controller_test_template(
     controller_name: &str,
     resource_path: &str,
     model_name: &str,
     model_var: &str,
     sample_attrs: &str,
-    rejects_blank: bool,
+    blank_attrs: Option<&str>,
 ) -> String {
-    let invalid_test = if rejects_blank {
-        format!(
-            r#"
+    let (invalid_test, invalid_update_test) = match blank_attrs {
+        Some(blank) => (
+            format!(
+                r#"
 
     test("rejects invalid data") do
       response = post("/{resource_path}", {{}})
       assert_eq(res_status(response), 422)
     end"#
-        )
-    } else {
-        String::new()
+            ),
+            format!(
+                r#"
+
+    test("rejects invalid data") do
+      record = _create_{model_var}()
+      response = put("/{resource_path}/#{{record._key}}", {blank})
+      assert_eq(res_status(response), 422)
+    end"#
+            ),
+        ),
+        None => (String::new(), String::new()),
     };
     format!(
         r#"# {controller_name}Controller E2E tests - auto-generated scaffold
@@ -192,7 +202,7 @@ describe("{controller_name}Controller") do
       record = _create_{model_var}()
       response = put("/{resource_path}/#{{record._key}}", {sample_attrs})
       assert_eq(res_status(response), 302)
-    end
+    end{invalid_update_test}
   end
 
   describe("DELETE /{resource_path}/:id") do
@@ -221,7 +231,7 @@ mod tests {
             "User",
             "user",
             r#"{"name": "Sample name"}"#,
-            true,
+            Some(r#"{"name": ""}"#),
         );
         assert!(
             spec.contains(r#"describe("UsersController")"#),

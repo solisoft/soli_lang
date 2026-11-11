@@ -18,6 +18,20 @@
   `compile_tail_stmt` turns each branch's tail into a `return`, which already
   leaves through the handlers and runs `finally`.
 - **`soli fmt --help`.**
+- **A fresh app's first `soli test` covers 100%.** `soli new` writes specs for
+  what it generates (`tests/controllers/home_controller_spec.sl`,
+  `tests/helpers/application_helper_spec.sl`, `tests/middleware/auth_spec.sl`,
+  and with `--eui` `tests/controllers/eui_controller_spec.sl`); the scaffold
+  spec adds the invalid-update 422 case. Measured: 100% for `soli new`, with
+  and without a scaffold, plain, `--eui` and `--edge` (was 63% with a scaffold,
+  8.9% with `--eui`).
+- **`# coverage: off`.** A file whose leading comment block holds it is left
+  out of the coverage report (`coverage::opts_out_of_coverage`); `soli new
+  --eui` writes it above the 17 000-line widget catalogue.
+- **Specs can call controllers' top-level `def`s.** `soli test` preloads
+  `app/controllers` with the other app directories, except a file whose
+  top-level `def` is named like a spec-client function (`get`, `post`,
+  `delete`…) or another test-DSL global, which would replace it.
 
 - **`soli agent`: a local MCP server that attaches a coding agent to the
   running `soli serve --dev`.** New `src/dev_agent/`: newline-delimited
@@ -82,6 +96,11 @@
 - **`soli fmt` kept `@x` inside `#{…}`.** Interpolations are parsed on their
   own, so the `@` check read the file at the wrong offset and printed
   `this.x`; each is now printed against its own text.
+- **Docs that described APIs that do not exist**: `testing.md`'s
+  `ControllerTest.helpers…` and `coverage_threshold` / `coverage_exclude`
+  sections are replaced by what exists. The generated `CLAUDE.md` no longer
+  says to wrap content in `h()`, calls `[[` a raw string, or names the scaffold
+  spec `post_controller_spec.sl`.
 - **Blog posts** (Stripe, SendGrid, background jobs): `raise` → `throw`,
   `HTTP.post` status reads → `HTTP.request`, `redirect` off-site →
   `redirect_external`, and other names that do not exist.

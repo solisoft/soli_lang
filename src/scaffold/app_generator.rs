@@ -190,13 +190,25 @@ pub fn create_routes_file(app_path: &Path, eui: bool) -> Result<(), String> {
 pub fn create_eui(app_path: &Path) -> Result<(), String> {
     for (name, source) in templates::eui::EUI_BUILDERS {
         let catalogue = app_path.join("app/controllers").join(name);
+        // The catalogue is tested in the framework, not by the app: keep its
+        // 17 000 lines out of the app's coverage report.
+        let source = format!(
+            "{} — the EUI widget catalogue, tested by the framework.\n{source}",
+            crate::coverage::COVERAGE_OFF_DIRECTIVE
+        );
         fs::write(&catalogue, source)
             .map_err(|e| format!("Failed to write to '{}': {}", catalogue.display(), e))?;
     }
     write_file(
         &app_path.join("app/controllers/eui_controller.sl"),
         templates::eui::EUI_CONTROLLER,
-    )
+    )?;
+    let spec = app_path.join("tests/controllers/eui_controller_spec.sl");
+    if let Some(dir) = spec.parent() {
+        fs::create_dir_all(dir)
+            .map_err(|e| format!("Failed to create '{}': {}", dir.display(), e))?;
+    }
+    write_file(&spec, templates::eui::EUI_CONTROLLER_SPEC)
 }
 
 /// Create the `db/seeds.sl` starter file. Run with `soli db:seed`; additional
@@ -520,6 +532,34 @@ pub fn create_sample_middleware(app_path: &Path) -> Result<(), String> {
         &app_path.join("app/middleware/auth.sl"),
         app::AUTH_MIDDLEWARE_TEMPLATE,
     )
+}
+
+/// Specs for the home controller, the application helper and the sample
+/// auth middleware: a fresh app's first `soli test` has something to run, and
+/// its coverage starts above the runner's threshold rather than at zero.
+pub fn create_starter_specs(app_path: &Path) -> Result<(), String> {
+    for (path, content) in [
+        (
+            "tests/controllers/home_controller_spec.sl",
+            app::HOME_CONTROLLER_SPEC_TEMPLATE,
+        ),
+        (
+            "tests/helpers/application_helper_spec.sl",
+            app::APPLICATION_HELPER_SPEC_TEMPLATE,
+        ),
+        (
+            "tests/middleware/auth_spec.sl",
+            app::AUTH_MIDDLEWARE_SPEC_TEMPLATE,
+        ),
+    ] {
+        let path = app_path.join(path);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("Failed to create '{}': {}", dir.display(), e))?;
+        }
+        write_file(&path, content)?;
+    }
+    Ok(())
 }
 
 /// Create the bundled stdlib modules (FeatureFlags, …)
@@ -948,6 +988,7 @@ pub fn create_app(name: &str, template: Option<&str>, eui: bool, edge: bool) -> 
     create_index_view(app_path)?;
     create_application_helper(app_path)?;
     create_sample_middleware(app_path)?;
+    create_starter_specs(app_path)?;
     create_stdlib(app_path)?;
     #[cfg(feature = "eui")]
     if eui {
@@ -1313,6 +1354,23 @@ mod tests {
     fn slugify_db_name_falls_back_to_default() {
         assert_eq!(slugify_db_name(""), "default");
         assert_eq!(slugify_db_name("---"), "default");
+    }
+
+    #[test]
+    fn starter_specs_cover_what_new_ships() {
+        let dir = tempfile::tempdir().unwrap();
+        create_starter_specs(dir.path()).unwrap();
+        for (spec, calls) in [
+            (
+                "tests/controllers/home_controller_spec.sl",
+                "get(\"/health\")",
+            ),
+            ("tests/helpers/application_helper_spec.sl", "truncate_text("),
+            ("tests/middleware/auth_spec.sl", "authenticate("),
+        ] {
+            let content = std::fs::read_to_string(dir.path().join(spec)).unwrap();
+            assert!(content.contains(calls), "{spec} should call {calls}");
+        }
     }
 
     #[test]

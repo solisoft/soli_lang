@@ -9,6 +9,54 @@ pub use tracker::{
     set_global_coverage_tracker, CoverageTracker,
 };
 
+/// The directive that keeps a file out of the coverage report: `# coverage: off`
+/// on a line of its leading comment block, the place `# order: N` and
+/// `# scope_only: true` sit in a middleware. For code an app carries but does
+/// not own — `soli new --eui` writes it above the 17 000-line widget
+/// catalogue, which the framework tests — so the report measures the app.
+pub const COVERAGE_OFF_DIRECTIVE: &str = "# coverage: off";
+
+/// Whether `source` opts out of coverage with [`COVERAGE_OFF_DIRECTIVE`] in
+/// its leading comment block (blank lines allowed; the first code line ends
+/// the block).
+pub fn opts_out_of_coverage(source: &str) -> bool {
+    for line in source.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if !line.starts_with('#') {
+            return false;
+        }
+        if line == COVERAGE_OFF_DIRECTIVE
+            || line
+                .strip_prefix(COVERAGE_OFF_DIRECTIVE)
+                .is_some_and(|rest| rest.starts_with([' ', '\t', '—', '-']))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod directive_tests {
+    use super::opts_out_of_coverage;
+
+    #[test]
+    fn the_directive_counts_only_in_the_leading_comment_block() {
+        assert!(opts_out_of_coverage("# coverage: off\ndef f\nend\n"));
+        assert!(opts_out_of_coverage(
+            "# Vendored.\n\n# coverage: off — tested upstream\ndef f\nend\n"
+        ));
+        assert!(!opts_out_of_coverage("def f\nend\n# coverage: off\n"));
+        assert!(!opts_out_of_coverage(
+            "# coverage: offline docs\ndef f\nend\n"
+        ));
+        assert!(!opts_out_of_coverage("# coverage is fine\n"));
+    }
+}
+
 /// The key a file is recorded under in coverage, for both the registration
 /// walk (which supplies the denominator) and the line hits (the numerator).
 ///

@@ -90,19 +90,26 @@ pub fn create_tests(app_path: &Path, name: &str, fields: &[FieldDefinition]) -> 
     // The template appends "Controller" itself (`describe("{0}Controller")`), so
     // pass the bare resource name — appending here produced
     // `describe("UsersControllerController")`.
-    let rejects_blank = fields.iter().any(|f| {
-        matches!(
-            f.field_type.as_str(),
-            "string" | "text" | "email" | "password" | "url"
-        )
-    });
+    // The fields the model validates for presence (see `create_model`), blank:
+    // what the 422 cases post.
+    let validated: Vec<String> = fields
+        .iter()
+        .filter(|f| {
+            matches!(
+                f.field_type.as_str(),
+                "string" | "text" | "email" | "password" | "url"
+            )
+        })
+        .map(|f| format!(r#""{}": """#, f.to_snake_case()))
+        .collect();
+    let blank_attrs = (!validated.is_empty()).then(|| format!("{{{}}}", validated.join(", ")));
     let controller_test_content = controller::controller_test_template(
         &to_pascal_case(&resource_path),
         &resource_path,
         &to_pascal_case(name),
         &to_snake_case(name),
         &sample_attrs(fields),
-        rejects_blank,
+        blank_attrs.as_deref(),
     );
 
     let controller_test_path =

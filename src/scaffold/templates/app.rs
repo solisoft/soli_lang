@@ -12,6 +12,12 @@ pub const APPLICATION_CONFIG_TEMPLATE: &str = include_str!("application.sl");
 /// Home controller template
 pub const HOME_CONTROLLER_TEMPLATE: &str = include_str!("home_controller.sl");
 
+/// Specs `soli new` writes for the code it generates, so a fresh app's first
+/// `soli test` runs something and covers what it ships.
+pub const HOME_CONTROLLER_SPEC_TEMPLATE: &str = include_str!("home_controller_spec.sl");
+pub const APPLICATION_HELPER_SPEC_TEMPLATE: &str = include_str!("application_helper_spec.sl");
+pub const AUTH_MIDDLEWARE_SPEC_TEMPLATE: &str = include_str!("auth_middleware_spec.sl");
+
 /// Application layout template
 pub const LAYOUT_TEMPLATE: &str = include_str!("application.html.slv");
 /// The default share image (`public/images/og.png`, 1200×630) the layout's

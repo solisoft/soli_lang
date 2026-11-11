@@ -285,34 +285,34 @@ TestHTTP.delete("/users/1");
 
 ## Controller Testing
 
-### Direct Action Calls
+### Direct Calls
+
+A class-based action is tested through the spec client (`get`, `post`…,
+above): it runs in the test server, with routing, filters and the view. What
+is a plain function can be called directly. `soli test` loads the app's
+helpers, middleware, models, services, jobs, mailers, policies and controllers
+before each spec, so a helper, a middleware, a function-style action or an EUI
+handler and view are callable as they are:
 
 ```soli
-describe("UsersController", fn()
-  before_each(fn()
-    Factory.clear
-  end)
-  
-  test("create action", fn()
-    result = ControllerTest.helpers.users_controller.create(
-      params: hash("email": "test@example.com"),
-      session: Session.new(),
-      headers: Headers.new()
-    )
-    expect(result.status).to_equal(201)
-  end)
-  
-  test("show action", fn()
-    user = Factory.create("user")
-    result = ControllerTest.helpers.users_controller.show(
-      params: hash("id": user.id),
-      session: Session.new(),
-      headers: Headers.new()
-    )
-    expect(result.status).to_equal(200)
-  end)
-end)
+describe("authenticate middleware") do
+  test("passes a request with an API key on") do
+    req = {"headers": {"x-api-key": "secret"}}
+    assert_eq(authenticate(req), req)
+  end
+end
+
+describe("counter component") do
+  test("the handler steps the count") do
+    assert_eq(counter({"event": "increment", "state": {"count": 1}}), {"count": 2})
+  end
+end
 ```
+
+A controller file with a top-level `def` named like a request function of the
+spec client (`get`, `post`, `put`, `patch`, `delete`, `head`, `options`,
+`request`) or another test-DSL function is not loaded: it would replace that
+function in every spec. Test it through HTTP.
 
 ## Database Testing
 
@@ -487,7 +487,8 @@ soli test --coverage                 # Generate coverage
 soli test --coverage=html            # HTML report
 soli test --coverage=json            # JSON for CI
 soli test --coverage=xml              # Cobertura XML
-soli test --coverage-min=80          # Fail if < 80%
+soli test --coverage-min=90          # Exit 1 below 90% (without it the report
+                                     # marks < 80% with ❌ but exits 0)
 ```
 
 ### Coverage Features
@@ -506,12 +507,27 @@ src/models/user.sl           ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░
 src/controllers/posts.sl     ▓▓▓▓▓▓░░░░░░░░░░░░░░░  78.5%
 ```
 
-### Coverage Configuration
+### What a new app starts with
+
+`soli new` writes specs for the code it generates — the home controller, the
+application helper and the sample `authenticate` middleware (and, with
+`--eui`, the counter component) — and `soli generate scaffold` a controller
+spec that creates its own records. A fresh app's first `soli test` covers 100%
+of its lines, scaffolds included.
+
+### Leaving a file out: `# coverage: off`
+
+A line `# coverage: off` in a file's leading comment block (where a
+middleware's `# order: N` sits) keeps the file out of the report — for code the
+app carries but does not own. `soli new --eui` writes it above the widget
+catalogue, which the framework tests:
 
 ```soli
-coverage_threshold(80)           # Fail if < 80%
-coverage_exclude("**/migrations/**")
+# coverage: off — the EUI widget catalogue, tested by the framework.
 ```
+
+Text may follow after a space or a dash; the directive counts only before the
+first line of code.
 
 ## Complete Example
 

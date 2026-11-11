@@ -111,8 +111,9 @@ fn create_routes_file_with_eui_adds_the_component_route() {
     );
 }
 
-/// The catalogue is a vendored copy, and stays one: written verbatim, so
-/// a new application can take fixes from the file it came from.
+/// The catalogue is a vendored copy, and stays one: written verbatim under a
+/// one-line `# coverage: off` header, so a new application can take fixes
+/// from the file it came from and its coverage report measures its own code.
 #[test]
 #[cfg(feature = "eui")]
 fn create_eui_writes_the_catalogue_verbatim_and_a_component() {
@@ -124,7 +125,17 @@ fn create_eui_writes_the_catalogue_verbatim_and_a_component() {
 
     for (name, source) in solilang::scaffold::templates::eui::EUI_BUILDERS {
         let catalogue = fs::read_to_string(tmp.path().join("app/controllers").join(name)).unwrap();
-        assert_eq!(catalogue, source, "{name} is copied, not regenerated");
+        let (header, body) = catalogue.split_once('\n').unwrap();
+        assert!(
+            header.starts_with(solilang::coverage::COVERAGE_OFF_DIRECTIVE),
+            "{name} opts out of coverage: {header}"
+        );
+        assert!(solilang::coverage::opts_out_of_coverage(&catalogue));
+        assert_eq!(
+            body,
+            source.to_string(),
+            "{name} is copied, not regenerated"
+        );
     }
 
     let controller =
