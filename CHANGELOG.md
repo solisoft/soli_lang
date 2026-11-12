@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.36.0] - 2026-11-12
+
 ### Added
 
 - **LSP: instance variables in views (#820).** In a `.slv` view, a read of
