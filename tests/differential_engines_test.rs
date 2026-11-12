@@ -17,6 +17,17 @@ use std::process::Command;
 /// (name, source). Each source must run cleanly on the tree-walker and print
 /// deterministic output.
 const CASES: &[(&str, &str)] = &[
+    // --- #632: get / has_key / set with a string literal on a non-hash ---
+    // The VM fuses these into hash super-instructions; a receiver that is a
+    // class or an object with its own method must still get the call.
+    (
+        "fused_get_set_on_an_object_with_its_own_methods",
+        "class Store\n  new()\n    @data = {}\n  end\n  def get(key)\n    \"got #{key}=#{@data[key]}\"\n  end\n  def has_key(key)\n    key == \"yes\"\n  end\n  def set(key, value)\n    @data[key] = value\n    \"stored #{key}\"\n  end\nend\ndef f\n  store = Store.new\n  print(store.set(\"x\", 1))\n  print(store.get(\"x\"))\n  print(store.has_key(\"yes\"), store.has_key(\"no\"))\nend\nf()\ntop = Store.new\nprint(top.set(\"y\", 2), top.get(\"y\"), top.has_key(\"yes\"))",
+    ),
+    (
+        "fused_get_set_on_a_class_static",
+        "class Api\n  static def get(url)\n    \"GET #{url}\"\n  end\n  static def set(k, v)\n    \"set #{k} #{v}\"\n  end\n  static def has_key(k)\n    k == \"a\"\n  end\nend\ndef f\n  print(Api.get(\"/x\"), Api.set(\"k\", 2), Api.has_key(\"a\"))\nend\nf()\nprint(Api.get(\"/top\"))\nh = {\"a\": 1}\nprint(h.get(\"a\"), h.has_key(\"a\"), h.set(\"b\", 2), h)",
+    ),
     // --- if / elsif / else with local assignment ---
     (
         "if_assign_outer_true",

@@ -3311,6 +3311,10 @@ impl Vm {
                             // what is actually wrong.
                             let receiver = other.clone();
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            if Self::fused_call_is_method(&receiver, "get") {
+                                self.call_fused_as_method(receiver, "get", vec![arg])?;
+                                continue;
+                            }
                             let span = self.current_span();
                             let value = match &receiver {
                                 Value::Array(arr) => {
@@ -3352,12 +3356,11 @@ impl Vm {
                         Value::Hash(hash) => {
                             self.push(Value::Bool(hash.borrow().contains_key(&StrKey(key))));
                         }
+                        // Anything else answers `has_key` as a method (#632).
                         other => {
-                            return Err(RuntimeError::no_such_property(
-                                other.type_name(),
-                                "has_key".to_string(),
-                                self.current_span(),
-                            ));
+                            let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            self.call_fused_as_method(other, "has_key", vec![arg])?;
+                            continue;
                         }
                     }
                 }
@@ -3404,6 +3407,11 @@ impl Vm {
                             self.push(value);
                         }
                         other => {
+                            if Self::fused_call_is_method(&other, "set") {
+                                let key = Value::String(key_str.clone());
+                                self.call_fused_as_method(other, "set", vec![key, value])?;
+                                continue;
+                            }
                             self.set_const_key_fallback(&other, key, value.clone())?;
                             self.push(value);
                         }
@@ -3440,6 +3448,12 @@ impl Vm {
                         None => {
                             let receiver = self.stack[base + slot as usize].clone();
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            // A class (`HTTP.get`) or an object with its own
+                            // `get` (#632): the method, as the tree-walker calls it.
+                            if Self::fused_call_is_method(&receiver, "get") {
+                                self.call_fused_as_method(receiver, "get", vec![arg])?;
+                                continue;
+                            }
                             let span = self.current_span();
                             match &receiver {
                                 Value::Array(arr) => {
@@ -3511,12 +3525,12 @@ impl Vm {
                     let key: &str = unsafe { &*key };
                     let result = match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => Value::Bool(hash.borrow().contains_key(&StrKey(key))),
+                        // Anything else answers `has_key` as a method (#632).
                         other => {
-                            return Err(RuntimeError::no_such_property(
-                                other.type_name(),
-                                "has_key".to_string(),
-                                self.current_span(),
-                            ));
+                            let receiver = other.clone();
+                            let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            self.call_fused_as_method(receiver, "has_key", vec![arg])?;
+                            continue;
                         }
                     };
                     self.push(result);
@@ -3560,6 +3574,11 @@ impl Vm {
                         }
                         other => {
                             let other = other.clone();
+                            if Self::fused_call_is_method(&other, "set") {
+                                let key = Value::String(key_str.clone());
+                                self.call_fused_as_method(other, "set", vec![key, value])?;
+                                continue;
+                            }
                             self.set_const_key_fallback(&other, key, value.clone())?;
                         }
                     }
@@ -3604,6 +3623,12 @@ impl Vm {
                             // the reader hunting for the wrong bug.
                             let receiver = other.clone();
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            // A class (`HTTP.get`) or an object with its own
+                            // `get` (#632): the method, as the tree-walker calls it.
+                            if Self::fused_call_is_method(&receiver, "get") {
+                                self.call_fused_as_method(receiver, "get", vec![arg])?;
+                                continue;
+                            }
                             let span = self.current_span();
                             let value = match &receiver {
                                 Value::Array(arr) => {
@@ -3656,11 +3681,10 @@ impl Vm {
                             Value::Bool(hash.borrow().contains_key(&StrKey(key)))
                         }
                         Some(other) => {
-                            return Err(RuntimeError::no_such_property(
-                                other.type_name(),
-                                "has_key".to_string(),
-                                self.current_span(),
-                            ));
+                            let receiver = other.clone();
+                            let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
+                            self.call_fused_as_method(receiver, "has_key", vec![arg])?;
+                            continue;
                         }
                         None => {
                             return Err(self.undefined_global(global_name.to_string()));
@@ -3726,6 +3750,11 @@ impl Vm {
                         }
                         Some(other) => {
                             let other = other.clone();
+                            if Self::fused_call_is_method(&other, "set") {
+                                let key = Value::String(key_str.clone());
+                                self.call_fused_as_method(other, "set", vec![key, value])?;
+                                continue;
+                            }
                             self.set_const_key_fallback(&other, key, value.clone())?;
                         }
                         None => {
@@ -6481,6 +6510,41 @@ impl Vm {
     /// general index write, as a computed key does — `record["title"] = v`
     /// used to fail on the VM only. An instance whose class defines its own
     /// `set`, and anything else, keep the refusal.
+    /// The fused `get` / `has_key` / `set` ops (`HashGetLocalConst`…) guess
+    /// a hash from the string-literal key. Whether a receiver that is not one
+    /// must take the call as a method instead: a class (`HTTP.get(url)`,
+    /// `Cache.set(k, v)`) or an instance whose class defines `name` itself
+    /// (#632). A model without its own `get`/`set` keeps its key access.
+    fn fused_call_is_method(receiver: &Value, name: &str) -> bool {
+        match receiver {
+            Value::Class(_) => true,
+            Value::Instance(inst) => {
+                let class = &inst.borrow().class;
+                class.find_method(name).is_some()
+                    || class.find_vm_method(name).is_some()
+                    || class.find_native_method(name).is_some()
+            }
+            _ => false,
+        }
+    }
+
+    /// Run `receiver.name(args)` as an ordinary method call from a fused op:
+    /// the stack takes the call's shape and the generic path dispatches it (a
+    /// compiled method opens its frame; the result lands where the op's
+    /// would).
+    fn call_fused_as_method(
+        &mut self,
+        receiver: Value,
+        name: &str,
+        args: Vec<Value>,
+    ) -> Result<(), RuntimeError> {
+        let receiver_idx = self.stack.len();
+        let argc = args.len();
+        self.stack.push(receiver);
+        self.stack.extend(args);
+        self.call_method_slow_path(receiver_idx, argc, name)
+    }
+
     fn set_const_key_fallback(
         &self,
         receiver: &Value,

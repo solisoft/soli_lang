@@ -326,6 +326,22 @@
 
 ### Fixed
 
+- **On the VM, `x.get("k")` / `has_key` / `set` reach the receiver's own
+  method (#632).** The compiler fuses a call with a string-literal key into
+  hash super-instructions (`HashGetLocalConst`, `HashGetGlobalConst`,
+  `HashGetConst`, the `HasKey` and `Set` families); their fallbacks for a
+  receiver that is not a hash never called its method. An object with its
+  own `get` answered nil (or its fields, for `set`), and a class's static —
+  `HTTP.get(url)`, `Cache.set(k, v)`, a user `static def get` — raised
+  "Cannot access property", which under `soli serve` demoted the action to
+  the tree-walker (running a side effect twice) or answered 500. A class,
+  or an instance whose class defines the method, now takes the call
+  through the ordinary method path (`Vm::fused_call_is_method`,
+  `call_fused_as_method`); a model without its own `get`/`set` keeps its
+  key access, and arrays and strings their methods. Tests: two cases in
+  `differential_engines_test` (they diverge without the fix).
+
+
 - **`x ||= v` on a name a template does not define no longer panics
   (#633).** In the tree-walker's `assign_to_target`, the environment's
   `borrow_mut()` sat in the `match` scrutinee and lived into the `NotFound`
