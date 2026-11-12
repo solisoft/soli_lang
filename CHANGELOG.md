@@ -4,6 +4,29 @@
 
 ### Added
 
+- **Presence across instances, cross-instance `ws_send` / `ws_close`,
+  `ws_count({"cluster": true})` (#695, phases 3 and 4).** With a realtime
+  bus, `track` / `untrack` / `set_presence` and a disconnect publish a
+  `presence` envelope (`serve::realtime::presence::PresenceOp`: `join`,
+  `update`, `leave`, `sync`, `hello`; metas as `WireMeta`, extras kept apart
+  from the fields). The registry keeps other nodes' metas
+  (`remote_presence`, locked after `room_presence`); `list_presence`,
+  `presence_count` and `get_user_presence` merge them; `track` / `untrack` /
+  `untrack_all` decide join and leave cluster-wide. Every 10 s a node with
+  presence or connections publishes a `sync` (full state + connection
+  count) that replaces what the others knew of it, with diffs both ways; a
+  node silent for 30 s is evicted with leaves (`evict_silent_nodes`); a
+  node whose subscription comes up sends `hello` and is answered with
+  `sync`s. `phx_ref` is `<random per-process tag>.<n>` (`node_tag`).
+  `ws_send` / `ws_close` for an id this process does not hold publish
+  `ws_send` / `ws_close` envelopes delivered by the holder;
+  `ws_count({"cluster": true})` (`cluster_connection_count`) adds the
+  counts from the last heartbeats. Verified: unit tests in
+  `serve::realtime::presence`; the two-server e2e tests run on both buses
+  against a real SoliDB and SoliKV; by hand: merged state, diffs, typing
+  update, a late node synced in under 2 s, a `kill -9`ed node's user left
+  after 36 s.
+
 - **A SoliKV / Redis realtime bus (#695, phase 2).**
   `SOLI_REALTIME_BUS=solikv` (aliases `redis`, `valkey`) carries every
   broadcast the `solidb` bus carries over RESP `PUBLISH` / `SUBSCRIBE`, on the

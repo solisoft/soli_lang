@@ -223,16 +223,16 @@ the WebSocket runtime without being a handler itself.
 
 | Call | Answers | What it does |
 |---|---|---|
-| `ws_send(connection_id, message)` | `nil` | one specific connection on this process |
+| `ws_send(connection_id, message)` | `nil` | one specific connection — on another instance too, through the realtime bus |
 | `ws_broadcast(message, opts?)` | `nil` | every connected client |
 | `ws_broadcast_room(channel, message, opts?)` | `nil` | everyone subscribed to `channel` |
 | `broadcast(channel, payload, opts?)` | SSE subscriber count | **both** the WS channel and the SSE topic of that name |
-| `ws_close(connection_id, reason)` | `nil` | closes a connection on this process, with a reason |
+| `ws_close(connection_id, reason)` | `nil` | closes a connection, with a reason — on another instance too |
 | `ws_join(channel)` / `ws_leave(channel)` | `nil` | subscribe / unsubscribe the connection whose handler is running |
 | `ws_clients()` | `Array<String>` | the id of every connection on this process |
 | `ws_clients_in(channel)` | `Array<String>` | ids on this process subscribed to `channel` |
-| `ws_count()` | `Int` | active connections on this process |
-| `ws_list_presence(channel)` | `Array<Hash>` | every user in the channel, with metadata |
+| `ws_count(opts?)` | `Int` | active connections on this process; `{"cluster": true}` adds the other instances' |
+| `ws_list_presence(channel)` | `Array<Hash>` | every user in the channel, with metadata, across instances |
 | `ws_presence_count(channel)` | `Int` | unique **users**, not connections |
 | `ws_get_presence(channel, user_id)` | `Hash \| nil` | one user's presence |
 | `realtime_bus()` | `Hash` | which bus carries broadcasts to other processes, and how it is doing |
@@ -305,11 +305,25 @@ ignores its own messages, and never re-publishes what it received.
   reconnecting misses what was published meanwhile. A message can be lost — the
   contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the
   database, and let the client re-read it.
-- **Return values and counts are local.** `broadcast` returns the SSE
-  subscribers *of this process*; `ws_count`, `ws_clients`, `ws_clients_in`,
-  `ws_send` and `ws_close` see only this process's connections.
-- **Presence is still per process**: `track` / `ws_list_presence` see the
-  connections of the instance they run on.
+- **Targeted sends cross too.** `ws_send(id, …)` and `ws_close(id, …)` for a
+  connection another instance holds go over the bus, and that instance
+  delivers them — from an action, a job in `soli worker`, anywhere.
+- **Presence spans instances.** `track` on one instance shows up in
+  `ws_list_presence`, `ws_presence_count` and `ws_get_presence` on all of
+  them, and in their clients' `presence_diff`s. A join goes out for a user's
+  first connection anywhere, a leave for the last. Each instance owns its own
+  connections' metas, announces every change, and restates its whole presence
+  every 10 s while it has any, so a lost message heals at the next beat; a new
+  instance asks the others and has their state within a second or two. An
+  instance that dies without a word is forgotten after 30 s, and its users'
+  leaves go out then (expect 30–40 s). Eventually consistent, like
+  Phoenix.Presence. `phx_ref`s carry a random per-process tag
+  (`"9f2c41ab.12"`), never a host name.
+- **Counts are local unless asked.** `broadcast` returns the SSE subscribers
+  *of this process*; `ws_clients` and `ws_clients_in` list this process's
+  connections. `ws_count({"cluster": true})` adds what the other instances
+  reported at their last heartbeat (up to 10 s old); `ws_count()` stays
+  this process's.
 - **On `solidb`, every broadcast is a database write.** For a very chatty
   room, prefer `solikv`, keep the traffic local with `{"local": true}`, or pin
   its clients to one instance.

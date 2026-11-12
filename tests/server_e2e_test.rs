@@ -2490,6 +2490,9 @@ fn two_servers_share_a_realtime_bus(bus_env: &[(&str, String)]) {
 get(\"/bus\", \"home#bus\")
 get(\"/announce\", \"home#announce\")
 get(\"/room\", \"home#room\")
+get(\"/who\", \"home#who\")
+get(\"/dm\", \"home#dm\")
+get(\"/count\", \"home#count\")
 router_websocket(\"/ws/room\", \"room#handle\")
 ",
         ),
@@ -2521,6 +2524,23 @@ router_websocket(\"/ws/room\", \"room#handle\")
     ws_broadcast_room(\"lobby\", params[\"text\"])
     {\"status\": 200, \"body\": \"ok\"}
   end
+
+  # GET /who
+  def who(req)
+    users = ws_list_presence(\"lobby\").map { |p| p[\"user_id\"] }.sort.join(\",\")
+    {\"status\": 200, \"body\": \"#{ws_presence_count(\"lobby\")}|#{users}\"}
+  end
+
+  # GET /dm
+  def dm(req)
+    ws_send(params[\"to\"], params[\"text\"])
+    {\"status\": 200, \"body\": \"ok\"}
+  end
+
+  # GET /count
+  def count(req)
+    {\"status\": 200, \"body\": \"#{ws_count()}|#{ws_count({\"cluster\": true})}\"}
+  end
 end
 ",
         ),
@@ -2533,6 +2553,10 @@ end
       return {\"send\": \"joined\"}
     end
     return {\"broadcast_room\": event[\"message\"] + \"!\"} if event[\"message\"] == \"shout\"
+    return {\"send\": event[\"connection_id\"]} if event[\"message\"] == \"whoami\"
+    if event[\"message\"].starts_with?(\"track:\")
+      return {\"track\": {\"channel\": \"lobby\", \"user_id\": event[\"message\"].replace(\"track:\", \"\")}}
+    end
   end
   {}
 end
@@ -2616,5 +2640,72 @@ end
     let received: i64 = counts.rsplit('|').next().unwrap().parse().unwrap();
     assert!(received >= 3, "B received {counts}");
 
-    drop((on_a, on_b, server_a, server_b));
+    // ws_send from A reaches a connection held by B.
+    on_b.send(tungstenite::Message::Text("whoami".into()))
+        .expect("send whoami");
+    let b_id = on_b.read().expect("B's id").to_text().unwrap().to_string();
+    get(&server_a, &format!("/dm?to={b_id}&text=psst"));
+    assert_eq!(on_b.read().expect("A's ws_send").to_text().unwrap(), "psst");
+
+    // Presence spans both: bob tracked on B, alice on A.
+    on_b.send(tungstenite::Message::Text("track:bob".into()))
+        .expect("track bob");
+    let state = on_b.read().expect("presence_state on B");
+    assert!(
+        state.to_text().unwrap().contains("presence_state"),
+        "{state}"
+    );
+    on_a.send(tungstenite::Message::Text("track:alice".into()))
+        .expect("track alice");
+    // A may hear bob's join before its own presence_state, or after it: on
+    // the changefeed bus it can still be in flight.
+    let _state = (0..3)
+        .map(|_| {
+            on_a.read()
+                .expect("a frame on A")
+                .to_text()
+                .unwrap()
+                .to_string()
+        })
+        .find(|frame| frame.contains("presence_state"))
+        .expect("presence_state on A");
+    let join = on_b.read().expect("alice's join, on B");
+    let join = join.to_text().unwrap();
+    assert!(
+        join.contains("presence_diff") && join.contains("alice"),
+        "{join}"
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    for server in [&server_a, &server_b] {
+        loop {
+            let who = get(server, "/who");
+            if who == "2|alice,bob" {
+                break;
+            }
+            assert!(Instant::now() < deadline, "presence never merged: {who}");
+            thread::sleep(Duration::from_millis(200));
+        }
+    }
+    // Each server holds one socket; the cluster count adds the other's
+    // (reported at its next heartbeat).
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let count = get(&server_a, "/count");
+        if count == "1|2" {
+            break;
+        }
+        assert!(Instant::now() < deadline, "cluster count: {count}");
+        thread::sleep(Duration::from_millis(500));
+    }
+
+    // A closes: bob's side sees alice leave.
+    drop(on_a);
+    let leave = on_b.read().expect("alice's leave, on B");
+    let leave = leave.to_text().unwrap();
+    assert!(
+        leave.contains("leaves") && leave.contains("alice"),
+        "{leave}"
+    );
+
+    drop((on_b, server_a, server_b));
 }

@@ -1756,6 +1756,11 @@ pub fn broadcast_payload_to_string(value: &Value, fn_name: &str) -> Result<Strin
 /// the message in this process even when a realtime bus is configured.
 /// Returns whether to stay local.
 pub fn broadcast_local_only(options: Option<&Value>, fn_name: &str) -> Result<bool, String> {
+    bool_option(options, fn_name, "local")
+}
+
+/// The one boolean option `key` of an options hash; any other key raises.
+fn bool_option(options: Option<&Value>, fn_name: &str, key: &str) -> Result<bool, String> {
     let hash = match options {
         None | Some(Value::Null) => return Ok(false),
         Some(Value::Hash(hash)) => hash,
@@ -1767,19 +1772,27 @@ pub fn broadcast_local_only(options: Option<&Value>, fn_name: &str) -> Result<bo
             ))
         }
     };
-    let mut local = false;
-    for (key, value) in hash.borrow().iter() {
-        match key {
-            HashKey::String(name) if name.as_ref() == "local" => local = value.is_truthy(),
+    let mut set = false;
+    for (name, value) in hash.borrow().iter() {
+        match name {
+            HashKey::String(name) if name.as_ref() == key => set = value.is_truthy(),
             other => {
                 return Err(format!(
-                    "{}() unknown option \"{}\" (local)",
-                    fn_name, other
+                    "{}() unknown option \"{}\" ({})",
+                    fn_name, other, key
                 ))
             }
         }
     }
-    Ok(local)
+    Ok(set)
+}
+
+/// Whether `id` is a connection of this process. `false` outside a server.
+fn connection_is_here(id: uuid::Uuid) -> bool {
+    crate::serve::websocket::block_on_registry(move |registry| async move {
+        registry.get(&id).await.is_some()
+    })
+    .unwrap_or(false)
 }
 
 fn string_arg(args: &[Value], index: usize, fn_name: &str, what: &str) -> Result<String, String> {
@@ -1906,8 +1919,10 @@ pub fn register_websocket_builtins(env: &mut Environment) {
     // Note: The websocket() DSL function is defined in routes.sl via router_websocket()
     // WebSocket routes are registered using the DSL: websocket("/path", "controller#handler")
 
-    // ws_send(connection_id, message) - Send message to a specific client on
-    // this process. Non-string payloads are auto-serialized to JSON.
+    // ws_send(connection_id, message) - Send message to a specific client.
+    // A connection held by another process is reached through the realtime
+    // bus, when one is configured. Non-string payloads are auto-serialized to
+    // JSON.
     env.define(
         "ws_send".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_send", Some(2), |args| {
@@ -1915,11 +1930,20 @@ pub fn register_websocket_builtins(env: &mut Environment) {
             let message = ws_message_to_string(&args[1], "ws_send")?;
             let uuid: uuid::Uuid = connection_id.parse().map_err(|_| "Invalid UUID format")?;
 
-            if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
-                let registry = get_ws_registry();
-                handle.spawn(async move {
-                    let _ = registry.send_to(&uuid, &message).await;
-                });
+            if connection_is_here(uuid) {
+                crate::serve::realtime::deliver_local(
+                    &crate::serve::realtime::Target::WsSend {
+                        conn: connection_id,
+                    },
+                    &message,
+                );
+            } else {
+                crate::serve::realtime::publish(
+                    crate::serve::realtime::Target::WsSend {
+                        conn: connection_id,
+                    },
+                    &message,
+                );
             }
             Ok(Value::Null)
         })),
@@ -2043,34 +2067,49 @@ pub fn register_websocket_builtins(env: &mut Environment) {
         })),
     );
 
-    // ws_close(connection_id, reason) - Close a specific connection on this
-    // process.
+    // ws_close(connection_id, reason) - Close a specific connection, on this
+    // process or (through the realtime bus) on the one that holds it.
     env.define(
         "ws_close".to_string(),
         Value::NativeFunction(NativeFunction::new("ws_close", Some(2), |args| {
             let connection_id = string_arg(args, 0, "ws_close", "connection_id")?;
             let reason = string_arg(args, 1, "ws_close", "reason")?;
             let uuid: uuid::Uuid = connection_id.parse().map_err(|_| "Invalid UUID format")?;
-            if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
-                let registry = get_ws_registry();
-                handle.spawn(async move {
-                    registry.close(&uuid, &reason).await;
-                });
+            let target = crate::serve::realtime::Target::WsClose {
+                conn: connection_id,
+            };
+            if connection_is_here(uuid) {
+                crate::serve::realtime::deliver_local(&target, &reason);
+            } else {
+                crate::serve::realtime::publish(target, &reason);
             }
             Ok(Value::Null)
         })),
     );
 
-    // ws_count() - Number of connections on this process.
+    // ws_count(opts?) - Number of connections on this process; with
+    // {"cluster": true}, plus those the other instances reported at their
+    // last heartbeat.
     env.define(
         "ws_count".to_string(),
-        Value::NativeFunction(NativeFunction::new("ws_count", Some(0), |_args| {
-            let count = crate::serve::websocket::block_on_registry(|registry| async move {
-                registry.connection_count().await
-            })
-            .unwrap_or(0);
-            Ok(Value::Int(count as i64))
-        })),
+        Value::NativeFunction(NativeFunction::new_auto_invocable(
+            "ws_count",
+            None,
+            |args| {
+                arity_between(args, 0, 1, "ws_count(opts?)")?;
+                let cluster = bool_option(args.first(), "ws_count", "cluster")?;
+                let count =
+                    crate::serve::websocket::block_on_registry(move |registry| async move {
+                        if cluster {
+                            registry.cluster_connection_count().await
+                        } else {
+                            registry.connection_count().await
+                        }
+                    })
+                    .unwrap_or(0);
+                Ok(Value::Int(count as i64))
+            },
+        )),
     );
 
     // ws_list_presence(channel) - Get all users in a room

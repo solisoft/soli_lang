@@ -498,7 +498,8 @@ keeps in memory decides what else to set:
   `broadcast`, `Model.broadcast`, `ws_broadcast*`, `sse_broadcast` and the handler broadcast
   actions reach every instance — see
   [Running more than one instance](websockets.md#running-more-than-one-instance). Presence
-  (`track`, `ws_list_presence`) and connection counts stay per instance. A socket stays on the
+  (`track`, `ws_list_presence`), `ws_send` and `ws_close` span instances too; connection
+  counts stay per instance unless you ask `ws_count({"cluster": true})`. A socket stays on the
   instance it connected to for its whole life, so WebSockets need no sticky sessions.
 - **Sessions.** The default `in_memory` session driver is per process: pick `cookie`, `solidb`
   or `solikv` (`SOLI_SESSION_DRIVER`), or make the balancer sticky.

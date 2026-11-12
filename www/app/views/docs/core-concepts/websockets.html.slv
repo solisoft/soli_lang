@@ -438,7 +438,7 @@ function renderUserList() {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-mono text-white mb-2" id="ws_send">ws_send(connection_id, message)</h4>
-                <p class="text-sm text-gray-400 mb-3">Send a message to one specific connection on this process. Returns <code>nil</code>.</p>
+                <p class="text-sm text-gray-400 mb-3">Send a message to one specific connection — held by another instance too, through the realtime bus. Returns <code>nil</code>.</p>
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_send(conn_id, "Hello, client!")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -458,7 +458,7 @@ function renderUserList() {
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-mono text-white mb-2" id="ws_close">ws_close(connection_id, reason)</h4>
-                <p class="text-sm text-gray-400 mb-3">Close a connection on this process with a reason string. Returns <code>nil</code>.</p>
+                <p class="text-sm text-gray-400 mb-3">Close a connection with a reason string — on another instance too. Returns <code>nil</code>.</p>
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_close(conn_id, "Session expired")</code></pre>
             </div>
         </div>
@@ -499,9 +499,10 @@ print("Connected: #{connected.length}")</code></pre>
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_clients_in("room:lobby")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_count">ws_count()</h4>
-                <p class="text-sm text-gray-400 mb-3">Active connections on this process. Returns <code>Int</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>total = ws_count()</code></pre>
+                <h4 class="font-mono text-white mb-2" id="ws_count">ws_count(opts?)</h4>
+                <p class="text-sm text-gray-400 mb-3">Active connections on this process. <code>{"cluster": true}</code> adds the other instances&rsquo;, as of their last heartbeat. Returns <code>Int</code>.</p>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>total = ws_count()
+everywhere = ws_count({"cluster": true})</code></pre>
             </div>
         </div>
 
@@ -510,7 +511,7 @@ print("Connected: #{connected.length}")</code></pre>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-mono text-white mb-2" id="ws_list_presence">ws_list_presence(channel)</h4>
-                <p class="text-sm text-gray-400 mb-3">All users in a channel with their metadata. Returns <code>Array&lt;Hash&gt;</code>.</p>
+                <p class="text-sm text-gray-400 mb-3">All users in a channel with their metadata, across instances when a realtime bus is set. Returns <code>Array&lt;Hash&gt;</code>.</p>
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>users = ws_list_presence("room:lobby")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -564,8 +565,9 @@ SOLIKV_TOKEN=…</code></pre>
         <ul class="text-gray-400 text-sm list-disc list-inside space-y-2 mb-6">
             <li><strong class="text-white">Stay home per call:</strong> <code>broadcast(channel, payload, {"local": true})</code> (also on <code>Model.broadcast</code>, <code>ws_broadcast</code>, <code>ws_broadcast_room</code>).</li>
             <li><strong class="text-white">Fire and forget.</strong> The changefeed drops events for a lagging subscriber and does not cross SoliDB cluster nodes; a <code>solikv</code> subscriber that is reconnecting misses what was published meanwhile. A message can be lost — the contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the database.</li>
-            <li><strong class="text-white">Return values and counts are local.</strong> <code>broadcast</code> returns the SSE subscribers of this process; <code>ws_count</code>, <code>ws_clients</code>, <code>ws_clients_in</code>, <code>ws_send</code> and <code>ws_close</code> see only this process's connections.</li>
-            <li><strong class="text-white">Presence is still per process:</strong> <code>track</code> / <code>ws_list_presence</code> see the connections of the instance they run on.</li>
+            <li><strong class="text-white">Targeted sends cross too.</strong> <code>ws_send(id, …)</code> and <code>ws_close(id, …)</code> for a connection another instance holds go over the bus, and that instance delivers them &mdash; from an action, a job in <code>soli worker</code>, anywhere.</li>
+            <li><strong class="text-white">Presence spans instances.</strong> <code>track</code> on one instance shows up in <code>ws_list_presence</code>, <code>ws_presence_count</code> and <code>ws_get_presence</code> on all of them, and in their clients&rsquo; <code>presence_diff</code>s; a join goes out for a user&rsquo;s first connection anywhere, a leave for the last. Each instance owns its connections&rsquo; metas, announces every change and restates its whole presence every 10&nbsp;s while it has any, so a lost message heals at the next beat; a new instance has the others&rsquo; state within a second or two. An instance that dies without a word is forgotten after 30&nbsp;s and its users&rsquo; leaves go out then (expect 30&ndash;40&nbsp;s). Eventually consistent, like Phoenix.Presence. <code>phx_ref</code>s carry a random per-process tag (<code>"9f2c41ab.12"</code>), never a host name.</li>
+            <li><strong class="text-white">Counts are local unless asked.</strong> <code>broadcast</code> returns the SSE subscribers of this process; <code>ws_clients</code> / <code>ws_clients_in</code> list this process&rsquo;s connections. <code>ws_count({"cluster": true})</code> adds what the other instances reported at their last heartbeat (up to 10&nbsp;s old).</li>
             <li><strong class="text-white">On <code>solidb</code>, every broadcast is a database write.</strong> For a very chatty room, prefer <code>solikv</code>, use <code>{"local": true}</code>, or pin its clients to one instance.</li>
             <li>The <code>solidb</code> bus lives in the application's <strong class="text-white">base database</strong> (<code>SOLIDB_DATABASE</code>), even inside a request that called <code>switch_tenant</code>.</li>
             <li>The <code>solikv</code> bus publishes on the channel <code>soli:rt</code>, or on <code>SOLI_REALTIME_CHANNEL</code> when set: two apps sharing one SoliKV must set distinct channels. In a multi-app (vhost) server, every app but the first appends its directory name. Its <code>PUBLISH</code> stays out of the dev bar's KV panel. Each subscriber pings every 15&nbsp;s and reconnects, with backoff, after 45&nbsp;s of silence.</li>

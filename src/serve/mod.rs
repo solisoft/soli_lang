@@ -3103,12 +3103,19 @@ fn handle_websocket_event(
     if data.event_type == "disconnect" {
         let registry = crate::serve::websocket::get_ws_registry();
         let registry_clone = registry.clone();
+        let tenant_id = crate::serve::tenant::current_id();
         runtime_handle.spawn(async move {
             // Untrack all presences for this connection
             let untracked = registry_clone.untrack_all(&connection_id).await;
 
             // Broadcast leave diffs for users whose last connection just left
             for (channel, user_id, was_last, meta) in untracked {
+                crate::serve::realtime::presence::announce_leave(
+                    tenant_id,
+                    &channel,
+                    &user_id,
+                    &meta.phx_ref,
+                );
                 if was_last && !user_id.is_empty() {
                     let mut leaves = std::collections::HashMap::new();
                     leaves.insert(user_id, UserPresencePayload { metas: vec![meta] });
@@ -3345,10 +3352,17 @@ fn handle_websocket_event(
                 if let (Some(channel), Some(user_id)) = (channel, user_id) {
                     let registry_clone = registry.clone();
                     let meta = track_meta.clone();
+                    let tenant_id = crate::serve::tenant::current_id();
                     runtime_handle.spawn(async move {
                         let (is_new_user, presence_meta) = registry_clone
                             .track(&connection_id, &channel, &user_id, meta)
                             .await;
+                        crate::serve::realtime::presence::announce_join(
+                            tenant_id,
+                            &channel,
+                            &user_id,
+                            &presence_meta,
+                        );
 
                         // Get full presence state for the joining connection
                         let presences = registry_clone.list_presence(&channel).await;
@@ -3385,10 +3399,17 @@ fn handle_websocket_event(
             if let Some(ref channel) = action.untrack {
                 let registry_clone = registry.clone();
                 let channel_clone = channel.clone();
+                let tenant_id = crate::serve::tenant::current_id();
                 runtime_handle.spawn(async move {
                     if let Some((was_last, meta)) =
                         registry_clone.untrack(&connection_id, &channel_clone).await
                     {
+                        crate::serve::realtime::presence::announce_leave(
+                            tenant_id,
+                            &channel_clone,
+                            meta.extra.get("user_id").map(String::as_str).unwrap_or(""),
+                            &meta.phx_ref,
+                        );
                         // If this was the last connection for this user, broadcast leave diff
                         if was_last {
                             // Find user_id from the meta's extra field
@@ -3417,6 +3438,7 @@ fn handle_websocket_event(
 
                 if let (Some(channel), Some(state)) = (channel, state) {
                     let registry_clone = registry.clone();
+                    let tenant_id = crate::serve::tenant::current_id();
                     runtime_handle.spawn(async move {
                         if let Some(updated_meta) = registry_clone
                             .set_presence(&connection_id, &channel, &state)
@@ -3428,6 +3450,12 @@ fn handle_websocket_event(
                                 .get("user_id")
                                 .cloned()
                                 .unwrap_or_default();
+                            crate::serve::realtime::presence::announce_update(
+                                tenant_id,
+                                &channel,
+                                &user_id,
+                                &updated_meta,
+                            );
                             if !user_id.is_empty() {
                                 // Broadcast presence_diff with the updated meta
                                 let mut joins = std::collections::HashMap::new();

@@ -30,6 +30,22 @@ fn action_payload_to_string(value: &Value) -> Option<String> {
 
 type ConnectionPresenceMap = HashMap<Uuid, Vec<(String, String)>>;
 
+/// Presence by channel, then user: what one node holds.
+pub type PresenceSnapshot = HashMap<String, HashMap<String, Vec<PresenceMeta>>>;
+
+/// What this process knows of another node's presence, from the realtime
+/// bus (see `serve::realtime::presence`).
+struct RemoteNode {
+    /// When the node was last heard from; a silent node is evicted.
+    seen: web_time::Instant,
+    channels: PresenceSnapshot,
+    /// Its WebSocket connections at its last heartbeat.
+    connections: usize,
+}
+
+/// A presence change to send to one channel's local sockets.
+pub type ChannelDiff = (String, PresenceDiff);
+
 /// Metadata for a single presence connection.
 /// Each user can have multiple connections (tabs/devices), each with its own meta.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -274,6 +290,9 @@ pub struct WebSocketRegistry {
     connection_presence: Arc<AsyncMutex<ConnectionPresenceMap>>,
     /// Counter for generating unique phx_ref values
     ref_counter: Arc<AtomicU64>,
+    /// Other nodes' presence, by node, when a realtime bus is configured.
+    /// Locked after `room_presence` whenever both are held.
+    remote_presence: Arc<AsyncMutex<HashMap<String, RemoteNode>>>,
 }
 
 impl Default for WebSocketRegistry {
@@ -291,13 +310,20 @@ impl WebSocketRegistry {
             room_presence: Arc::new(AsyncMutex::new(HashMap::new())),
             connection_presence: Arc::new(AsyncMutex::new(HashMap::new())),
             ref_counter: Arc::new(AtomicU64::new(1)),
+            remote_presence: Arc::new(AsyncMutex::new(HashMap::new())),
         }
     }
 
     /// Generate a unique phx_ref for presence tracking. Relaxed is enough:
-    /// the counter only needs uniqueness, it doesn't order anything.
+    /// the counter only needs uniqueness, it doesn't order anything. The
+    /// prefix is a random tag per process, so refs stay unique once presence
+    /// spans instances, without sending the host name to browsers.
     fn next_ref(&self) -> String {
-        self.ref_counter.fetch_add(1, Ordering::Relaxed).to_string()
+        format!(
+            "{}.{}",
+            node_tag(),
+            self.ref_counter.fetch_add(1, Ordering::Relaxed)
+        )
     }
 
     /// Register a new connection.
@@ -495,9 +521,13 @@ impl WebSocketRegistry {
         };
 
         let mut room_presence = self.room_presence.lock().await;
+        let remote_has_user = {
+            let remote = self.remote_presence.lock().await;
+            remote_has(&remote, channel, user_id)
+        };
         let channel_presence = room_presence.entry(channel.to_string()).or_default();
 
-        let is_new_user = !channel_presence.contains_key(user_id);
+        let is_new_user = !channel_presence.contains_key(user_id) && !remote_has_user;
 
         let user_presence = channel_presence
             .entry(user_id.to_string())
@@ -545,15 +575,20 @@ impl WebSocketRegistry {
             }
 
             if let (Some(user_id), Some(meta)) = (found_user_id, found_meta) {
-                let was_last = channel_presence
+                let local_empty = channel_presence
                     .get(&user_id)
                     .map(|up| up.metas.is_empty())
                     .unwrap_or(true);
 
                 // Remove user entry if no more connections
-                if was_last {
+                if local_empty {
                     channel_presence.remove(&user_id);
                 }
+                // The last connection of the user anywhere, not only here.
+                let was_last = local_empty && {
+                    let remote = self.remote_presence.lock().await;
+                    !remote_has(&remote, channel, &user_id)
+                };
 
                 // Clean up empty channel
                 if channel_presence.is_empty() {
@@ -605,11 +640,15 @@ impl WebSocketRegistry {
                         .position(|m| m.connection_id == *connection_id)
                     {
                         let meta = user_presence.metas.remove(pos);
-                        let was_last = user_presence.metas.is_empty();
+                        let local_empty = user_presence.metas.is_empty();
 
-                        if was_last {
+                        if local_empty {
                             channel_presence.remove(&user_id);
                         }
+                        let was_last = local_empty && {
+                            let remote = self.remote_presence.lock().await;
+                            !remote_has(&remote, &channel, &user_id)
+                        };
 
                         if channel_presence.is_empty() {
                             room_presence.remove(&channel);
@@ -654,27 +693,250 @@ impl WebSocketRegistry {
         None
     }
 
-    /// Get all presences in a channel (grouped by user).
+    /// Every user in a channel with their metas, this process's and (with a
+    /// realtime bus) the other nodes', sorted by user id.
+    fn merged_channel(
+        room_presence: &HashMap<String, HashMap<String, UserPresence>>,
+        remote: &HashMap<String, RemoteNode>,
+        channel: &str,
+    ) -> Vec<UserPresence> {
+        let mut users: std::collections::BTreeMap<String, Vec<PresenceMeta>> =
+            std::collections::BTreeMap::new();
+        if let Some(local) = room_presence.get(channel) {
+            for (user_id, presence) in local {
+                users
+                    .entry(user_id.clone())
+                    .or_default()
+                    .extend(presence.metas.iter().cloned());
+            }
+        }
+        for node in remote.values() {
+            if let Some(users_there) = node.channels.get(channel) {
+                for (user_id, metas) in users_there {
+                    users
+                        .entry(user_id.clone())
+                        .or_default()
+                        .extend(metas.iter().cloned());
+                }
+            }
+        }
+        users
+            .into_iter()
+            .filter(|(_, metas)| !metas.is_empty())
+            .map(|(user_id, metas)| UserPresence { user_id, metas })
+            .collect()
+    }
+
+    /// Get all presences in a channel (grouped by user), across every node
+    /// the realtime bus has heard from.
     pub async fn list_presence(&self, channel: &str) -> Vec<UserPresence> {
         let room_presence = self.room_presence.lock().await;
-        room_presence
-            .get(channel)
-            .map(|cp| cp.values().cloned().collect())
-            .unwrap_or_default()
+        let remote = self.remote_presence.lock().await;
+        Self::merged_channel(&room_presence, &remote, channel)
     }
 
-    /// Get presence for a specific user in a channel.
+    /// Get presence for a specific user in a channel, across nodes.
     pub async fn get_user_presence(&self, channel: &str, user_id: &str) -> Option<UserPresence> {
-        let room_presence = self.room_presence.lock().await;
-        room_presence
-            .get(channel)
-            .and_then(|cp| cp.get(user_id).cloned())
+        self.list_presence(channel)
+            .await
+            .into_iter()
+            .find(|presence| presence.user_id == user_id)
     }
 
-    /// Get unique user count in a channel (not connection count).
+    /// Get unique user count in a channel (not connection count), across
+    /// nodes.
     pub async fn presence_count(&self, channel: &str) -> usize {
+        self.list_presence(channel).await.len()
+    }
+
+    /// This process's own presence: what it tells the other nodes.
+    pub async fn local_presence_snapshot(&self) -> PresenceSnapshot {
         let room_presence = self.room_presence.lock().await;
-        room_presence.get(channel).map(|cp| cp.len()).unwrap_or(0)
+        room_presence
+            .iter()
+            .map(|(channel, users)| {
+                let users = users
+                    .iter()
+                    .filter(|(_, presence)| !presence.metas.is_empty())
+                    .map(|(user_id, presence)| (user_id.clone(), presence.metas.clone()))
+                    .collect::<HashMap<_, _>>();
+                (channel.clone(), users)
+            })
+            .filter(|(_, users)| !users.is_empty())
+            .collect()
+    }
+
+    /// Another node tracked `meta` for `user_id` in `channel`. Returns the
+    /// join diff for the local sockets when the user was nowhere before.
+    pub async fn remote_join(
+        &self,
+        node: &str,
+        channel: &str,
+        user_id: &str,
+        meta: PresenceMeta,
+    ) -> Option<ChannelDiff> {
+        let room_presence = self.room_presence.lock().await;
+        let mut remote = self.remote_presence.lock().await;
+        let was_present =
+            local_has(&room_presence, channel, user_id) || remote_has(&remote, channel, user_id);
+        let metas = touch(&mut remote, node)
+            .channels
+            .entry(channel.to_string())
+            .or_default()
+            .entry(user_id.to_string())
+            .or_default();
+        metas.retain(|m| m.phx_ref != meta.phx_ref);
+        metas.push(meta.clone());
+        (!was_present).then(|| (channel.to_string(), single_diff(user_id, meta, true)))
+    }
+
+    /// Another node changed a meta (`set_presence`). Returns the diff the
+    /// local `set_presence` sends: the updated meta as a join.
+    pub async fn remote_update(
+        &self,
+        node: &str,
+        channel: &str,
+        user_id: &str,
+        meta: PresenceMeta,
+    ) -> Option<ChannelDiff> {
+        let mut remote = self.remote_presence.lock().await;
+        let metas = touch(&mut remote, node)
+            .channels
+            .entry(channel.to_string())
+            .or_default()
+            .entry(user_id.to_string())
+            .or_default();
+        metas.retain(|m| m.phx_ref != meta.phx_ref);
+        metas.push(meta.clone());
+        Some((channel.to_string(), single_diff(user_id, meta, true)))
+    }
+
+    /// Another node untracked the meta `phx_ref`. Returns the leave diff when
+    /// that was the user's last meta anywhere.
+    pub async fn remote_leave(
+        &self,
+        node: &str,
+        channel: &str,
+        user_id: &str,
+        phx_ref: &str,
+    ) -> Option<ChannelDiff> {
+        let room_presence = self.room_presence.lock().await;
+        let mut remote = self.remote_presence.lock().await;
+        let entry = touch(&mut remote, node);
+        let users = entry.channels.get_mut(channel)?;
+        let metas = users.get_mut(user_id)?;
+        let position = metas.iter().position(|m| m.phx_ref == phx_ref)?;
+        let meta = metas.remove(position);
+        if metas.is_empty() {
+            users.remove(user_id);
+        }
+        if users.is_empty() {
+            entry.channels.remove(channel);
+        }
+        let gone =
+            !local_has(&room_presence, channel, user_id) && !remote_has(&remote, channel, user_id);
+        gone.then(|| (channel.to_string(), single_diff(user_id, meta, false)))
+    }
+
+    /// Replace what is known of `node` with its full state (`Some`), or
+    /// forget it (`None`), and return the diffs: a join for each user who was
+    /// nowhere before, a leave for each user who is now nowhere.
+    pub async fn replace_remote_node(
+        &self,
+        node: &str,
+        state: Option<PresenceSnapshot>,
+    ) -> Vec<ChannelDiff> {
+        let room_presence = self.room_presence.lock().await;
+        let mut remote = self.remote_presence.lock().await;
+        let before: Vec<(String, String, Vec<PresenceMeta>)> = remote
+            .get(node)
+            .map(|n| flatten(&n.channels))
+            .unwrap_or_default();
+        let after: Vec<(String, String, Vec<PresenceMeta>)> =
+            state.as_ref().map(flatten).unwrap_or_default();
+        // Users this node brings that were nowhere before.
+        let mut joins: Vec<(String, String, Vec<PresenceMeta>)> = after
+            .iter()
+            .filter(|(channel, user_id, _)| {
+                !local_has(&room_presence, channel, user_id)
+                    && !remote_has(&remote, channel, user_id)
+            })
+            .cloned()
+            .collect();
+        match state {
+            Some(channels) => {
+                touch(&mut remote, node).channels = channels;
+            }
+            None => {
+                remote.remove(node);
+            }
+        }
+        let mut leaves: Vec<(String, String, Vec<PresenceMeta>)> = before
+            .into_iter()
+            .filter(|(channel, user_id, _)| {
+                !local_has(&room_presence, channel, user_id)
+                    && !remote_has(&remote, channel, user_id)
+            })
+            .collect();
+        let mut diffs: HashMap<String, PresenceDiff> = HashMap::new();
+        for (channel, user_id, metas) in joins.drain(..) {
+            diffs
+                .entry(channel)
+                .or_insert_with(empty_diff)
+                .joins
+                .insert(user_id, UserPresencePayload { metas });
+        }
+        for (channel, user_id, metas) in leaves.drain(..) {
+            diffs
+                .entry(channel)
+                .or_insert_with(empty_diff)
+                .leaves
+                .insert(user_id, UserPresencePayload { metas });
+        }
+        let mut diffs: Vec<ChannelDiff> = diffs.into_iter().collect();
+        diffs.sort_by(|a, b| a.0.cmp(&b.0));
+        diffs
+    }
+
+    /// Forget every node not heard from for `ttl` before `now`, and return
+    /// the leave diffs for their users who are now nowhere.
+    pub async fn evict_silent_nodes(
+        &self,
+        now: web_time::Instant,
+        ttl: std::time::Duration,
+    ) -> Vec<ChannelDiff> {
+        let silent: Vec<String> = {
+            let remote = self.remote_presence.lock().await;
+            remote
+                .iter()
+                .filter(|(_, n)| now.saturating_duration_since(n.seen) >= ttl)
+                .map(|(name, _)| name.clone())
+                .collect()
+        };
+        let mut diffs = Vec::new();
+        for node in silent {
+            diffs.extend(self.replace_remote_node(&node, None).await);
+        }
+        diffs
+    }
+
+    /// Record `node`'s connection count from its heartbeat.
+    pub async fn note_remote_connections(&self, node: &str, connections: usize) {
+        let mut remote = self.remote_presence.lock().await;
+        touch(&mut remote, node).connections = connections;
+    }
+
+    /// Connections on this process plus those the other nodes reported at
+    /// their last heartbeat.
+    pub async fn cluster_connection_count(&self) -> usize {
+        let local = self.connection_count().await;
+        let remote = self.remote_presence.lock().await;
+        local + remote.values().map(|node| node.connections).sum::<usize>()
+    }
+
+    /// How many other nodes this process holds presence for.
+    pub async fn remote_nodes(&self) -> usize {
+        self.remote_presence.lock().await.len()
     }
 
     /// Broadcast a message to all connections in a channel except one.
@@ -721,6 +983,78 @@ impl WebSocketRegistry {
         })
         .to_string()
     }
+}
+
+/// This process's tag in `phx_ref`s: random, so two nodes never mint the
+/// same ref and no host name reaches a browser.
+pub fn node_tag() -> &'static str {
+    static TAG: OnceLock<String> = OnceLock::new();
+    TAG.get_or_init(|| Uuid::new_v4().simple().to_string()[..8].to_string())
+}
+
+fn local_has(
+    room_presence: &HashMap<String, HashMap<String, UserPresence>>,
+    channel: &str,
+    user_id: &str,
+) -> bool {
+    room_presence
+        .get(channel)
+        .and_then(|users| users.get(user_id))
+        .is_some_and(|presence| !presence.metas.is_empty())
+}
+
+fn remote_has(remote: &HashMap<String, RemoteNode>, channel: &str, user_id: &str) -> bool {
+    remote.values().any(|node| {
+        node.channels
+            .get(channel)
+            .and_then(|users| users.get(user_id))
+            .is_some_and(|metas| !metas.is_empty())
+    })
+}
+
+fn touch<'a>(remote: &'a mut HashMap<String, RemoteNode>, node: &str) -> &'a mut RemoteNode {
+    let entry = remote
+        .entry(node.to_string())
+        .or_insert_with(|| RemoteNode {
+            seen: web_time::Instant::now(),
+            channels: HashMap::new(),
+            connections: 0,
+        });
+    entry.seen = web_time::Instant::now();
+    entry
+}
+
+fn flatten(channels: &PresenceSnapshot) -> Vec<(String, String, Vec<PresenceMeta>)> {
+    channels
+        .iter()
+        .flat_map(|(channel, users)| {
+            users
+                .iter()
+                .filter(|(_, metas)| !metas.is_empty())
+                .map(move |(user_id, metas)| (channel.clone(), user_id.clone(), metas.clone()))
+        })
+        .collect()
+}
+
+fn empty_diff() -> PresenceDiff {
+    PresenceDiff {
+        joins: HashMap::new(),
+        leaves: HashMap::new(),
+    }
+}
+
+fn single_diff(user_id: &str, meta: PresenceMeta, join: bool) -> PresenceDiff {
+    let mut diff = empty_diff();
+    let side = if join {
+        &mut diff.joins
+    } else {
+        &mut diff.leaves
+    };
+    side.insert(
+        user_id.to_string(),
+        UserPresencePayload { metas: vec![meta] },
+    );
+    diff
 }
 
 /// A WebSocket event passed to the handler.

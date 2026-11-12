@@ -24,6 +24,7 @@
 //! same contract as a Phoenix PubSub broadcast. Return values stay local: the
 //! count `broadcast` returns is this process's SSE subscribers.
 
+pub mod presence;
 pub mod solidb;
 pub mod solikv;
 
@@ -108,6 +109,13 @@ pub enum Target {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         event: Option<String>,
     },
+    /// WebSocket presence: the message is a [`presence::PresenceOp`].
+    Presence,
+    /// `ws_send` to a connection held by another process; the message is
+    /// the payload. Only the process holding `conn` delivers it.
+    WsSend { conn: String },
+    /// `ws_close` likewise; the message is the reason.
+    WsClose { conn: String },
 }
 
 /// This process on the bus: `HOSTNAME:pid` plus a random suffix. The suffix
@@ -185,6 +193,28 @@ pub fn deliver_local(target: &Target, message: &str) -> usize {
             0
         }
         Target::Sse { channel, event } => broadcast_sse(channel, message, event.as_deref()),
+        // Presence is applied where the registry is, by `receive`; locally
+        // the track that produced it already happened.
+        Target::Presence => 0,
+        Target::WsSend { conn } | Target::WsClose { conn } => {
+            let Ok(id) = conn.parse::<uuid::Uuid>() else {
+                return 0;
+            };
+            if let Some(handle) = crate::serve::websocket::try_runtime_handle() {
+                let registry = crate::serve::websocket::get_ws_registry();
+                let message = message.to_string();
+                let close = matches!(target, Target::WsClose { .. });
+                // An id this process does not hold is somebody else's.
+                handle.spawn(async move {
+                    if close {
+                        registry.close(&id, &message).await;
+                    } else {
+                        let _ = registry.send_to(&id, &message).await;
+                    }
+                });
+            }
+            0
+        }
     }
 }
 
@@ -302,7 +332,14 @@ pub fn receive(document: serde_json::Value) -> bool {
     let Some(envelope) = Envelope::decode(document) else {
         return false;
     };
-    deliver_local(&envelope.target, &envelope.message);
+    if envelope.target == Target::Presence {
+        // A malformed op, or no server to hold presence: not received.
+        if !presence::receive(&envelope.origin, &envelope.message) {
+            return false;
+        }
+    } else {
+        deliver_local(&envelope.target, &envelope.message);
+    }
     STATUS.write(|status| {
         status.received += 1;
         status.last_rx_at = Some(crate::jobs::unix_now());
@@ -348,8 +385,12 @@ pub fn start(runtime_handle: &tokio::runtime::Handle) {
                 return;
             }
             solidb::start(runtime_handle);
+            presence::start(runtime_handle);
         }
-        Backend::Solikv => solikv::start(runtime_handle),
+        Backend::Solikv => {
+            solikv::start(runtime_handle);
+            presence::start(runtime_handle);
+        }
     }
 }
 
@@ -479,6 +520,40 @@ mod tests {
         ));
         let frame = String::from_utf8(rx.try_recv().unwrap()).unwrap();
         assert!(frame.contains("data: {\"id\":1}"), "{frame}");
+    }
+
+    #[test]
+    fn targeted_and_presence_envelopes_round_trip() {
+        for target in [
+            Target::WsSend {
+                conn: uuid::Uuid::nil().to_string(),
+            },
+            Target::WsClose {
+                conn: uuid::Uuid::nil().to_string(),
+            },
+            Target::Presence,
+        ] {
+            let stored = serde_json::to_value(Envelope::new(target.clone(), "m".into())).unwrap();
+            let back: Envelope = serde_json::from_value(stored).unwrap();
+            assert_eq!(back.target, target);
+        }
+        let stored = serde_json::to_value(Envelope::new(
+            Target::WsSend { conn: "x".into() },
+            "m".into(),
+        ))
+        .unwrap();
+        assert_eq!(stored["kind"], "ws_send");
+        // No server here: a send to an unknown or malformed id is nothing.
+        assert_eq!(
+            deliver_local(
+                &Target::WsSend {
+                    conn: "nope".into()
+                },
+                "m"
+            ),
+            0
+        );
+        assert!(!receive(foreign(Target::Presence, "not an op")));
     }
 
     #[test]
