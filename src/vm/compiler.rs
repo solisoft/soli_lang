@@ -1535,7 +1535,7 @@ fn stack_effect(op: Op) -> i32 {
         // The array pushed; the argument replaced by the answer.
         LiteralArray(_) => 1,
         LiteralListIncludes(_, _) => 0,
-        ArrayPush | Spread => -1,
+        ArrayPush | PushMethod | Spread => -1,
         Range | GetIndex => -1,
         SetIndex => -2,
         // Objects.

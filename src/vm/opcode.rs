@@ -114,6 +114,11 @@ pub enum Op {
     /// Push value onto array at top of stack. Stack: [..., array], value on top.
     /// Pops value, leaves array on stack.
     ArrayPush,
+    /// `recv.push(x)`: [`Op::ArrayPush`] when `recv` is an array, and the
+    /// ordinary method call `push` otherwise — a user class with a `push`
+    /// method got "can only push to arrays" (#638). Stack: [..., recv, x] →
+    /// [..., result]. `<<` keeps `ArrayPush`.
+    PushMethod,
     /// Build a hash from N key-value pairs on the stack (2*N values).
     Hash(u16),
     /// Build a hash from a precomputed HashKey list (constant pool index `keys_idx`)

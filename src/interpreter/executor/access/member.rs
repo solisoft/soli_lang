@@ -3259,6 +3259,31 @@ pub(crate) fn model_attribute_new(class: &crate::interpreter::value::Class) -> b
 /// What `class_member_access` answers for a universal member (`class`,
 /// `nil?`, `blank?`, `present?`) of `class`, when nothing declared on the
 /// class claims the name; `None` otherwise.
+/// The members every instance answers before its fields: what
+/// `instance_member_access` matches first. A field of the same name (a
+/// model's `class` column) does not shadow them, on either engine — the VM
+/// read the field first, so `widget.class` was "btn" there and `Widget` here.
+pub(crate) fn is_universal_instance_member(name: &str) -> bool {
+    matches!(
+        name,
+        "inspect"
+            | "class"
+            | "is_a?"
+            | "nil?"
+            | "blank?"
+            | "present?"
+            | "respond_to?"
+            | "send"
+            | "instance_variables"
+            | "instance_variable_get"
+            | "instance_variable_set"
+            | "define_method"
+            | "alias_method"
+            | "instance_eval"
+            | "methods"
+    )
+}
+
 pub(crate) fn class_universal_member(
     class: &crate::interpreter::value::Class,
     name: &str,

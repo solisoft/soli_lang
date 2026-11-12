@@ -825,13 +825,14 @@ impl Compiler {
                 {
                     return Ok(op);
                 }
-                // Special optimization: arr.push(x) -> ArrayPush opcode
-                // This avoids method dispatch overhead for the common push operation
+                // Special optimization: arr.push(x) -> PushMethod opcode, an
+                // in-place push on an array (no method dispatch) and the
+                // method call on anything else.
                 if name == "push" && arguments.len() == 1 {
                     if let Argument::Positional(expr) = &arguments[0] {
                         self.compile_expr(object)?;
                         self.compile_expr(expr)?;
-                        self.emit(Op::ArrayPush, line);
+                        self.emit(Op::PushMethod, line);
                         return Ok(());
                     }
                 }

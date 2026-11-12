@@ -342,6 +342,22 @@
 
 ### Fixed
 
+- **Three calls the VM resolved differently (#638, items 1, 3 and 4).** A
+  labelled constructor call on a class an app loads (`Point.new(x: 1)`,
+  whose constructor is the tree-walker's) fell back to the interpreter under
+  `soli serve`, re-running the action — a 500 once it had written;
+  `call_value_named` now binds against the constructor `resolve_constructor`
+  picks, as a positional `new` does. `recv.push(x)` compiled to an array push
+  whatever `recv` was, so a class with its own `push` got "can only push to
+  arrays": the new `Op::PushMethod` pushes in place on an array and calls the
+  method otherwise (`<<` keeps `ArrayPush`). A field named like a universal
+  member (`class`, `inspect`, `methods`, `send`, `nil?`, `respond_to?`…)
+  shadowed it on the VM — a model with a `class` column read "btn" there and
+  `Widget` on the interpreter; `is_universal_instance_member` now keeps the
+  field reads off those names on every VM path. Tests:
+  `push_on_a_class_and_universal_members_over_fields`,
+  `app_labelled_constructor_on_a_loaded_class`.
+
 - **A closure made in a `match` arm keeps the arm's binding on the VM
   (#637).** `match kind { k => fn(x) { "#{k}: #{x}" } }` returned a closure
   over `k`, but `compile_match` dropped the arm's bindings with a plain

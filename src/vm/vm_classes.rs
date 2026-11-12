@@ -360,8 +360,15 @@ impl Vm {
                 // Raising here instead was harmless while a VM error re-ran
                 // the action on the interpreter — but not once the action has
                 // written, when it answered 500 (`rec._errors` after `create`).
+                // `class`, `inspect`, `methods`… answer before any field of
+                // that name, as on the tree-walker (#638).
+                let universal =
+                    crate::interpreter::executor::access::member::is_universal_instance_member(
+                        name,
+                    );
                 if inst_ref.class.is_model_subclass()
-                    && (!inst_ref.fields.contains_key(name)
+                    && (universal
+                        || !inst_ref.fields.contains_key(name)
                         || crate::interpreter::builtins::model::member_needs_model_resolution(
                             &inst_ref.class.name,
                             name,
@@ -372,7 +379,7 @@ impl Vm {
                     return Self::model_instance_member(inst, name, span);
                 }
                 // Check instance fields first
-                if let Some(val) = inst_ref.fields.get(name) {
+                if let Some(val) = inst_ref.fields.get(name).filter(|_| !universal) {
                     // A field holding a `grouped {}` deferred query result is
                     // forced on read, so `@posts` / `this.posts` hands back
                     // materialised data. The tree-walker does the same (see

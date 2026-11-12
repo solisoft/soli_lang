@@ -773,14 +773,24 @@ impl Vm {
                 Some((closure, None))
             }
             // `Config(port: 3000)` — bind against the compiled constructor and
-            // let it run with `this` in the callee slot.
+            // let it run with `this` in the callee slot. The constructor is
+            // the one a positional `new` runs (`resolve_constructor`): the
+            // VM's own, or the tree-walker's compiled in constructor mode —
+            // every class an app loads under `soli serve` has the latter, and
+            // `Point.new(x: 1)` there fell back to the interpreter, re-running
+            // the action (a 500 once it had written) (#638).
             Value::Class(class)
                 if !(crate::interpreter::domain::value_objects_declared()
-                    && class.is_value_object()) =>
+                    && class.is_value_object())
+                    && !class.is_module =>
             {
-                class
-                    .find_vm_init_with_class()
-                    .map(|(ctor, defining_class)| (ctor, Some((class.clone(), defining_class))))
+                let class = class.clone();
+                match self.resolve_constructor(&class, span)? {
+                    Constructor::Compiled(ctor, defining_class) => {
+                        Some((ctor, Some((class, defining_class))))
+                    }
+                    Constructor::Native(_) | Constructor::Absent => None,
+                }
             }
             _ => None,
         };

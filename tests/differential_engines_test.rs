@@ -642,6 +642,46 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #638: `recv.push(x)` on a user class calls its `push` (the VM
+        // compiled it to an array push: "can only push to arrays"); a field
+        // named like a universal member (`class`, `methods`, `inspect`) does
+        // not shadow it (the VM read the field).
+        "push_on_a_class_and_universal_members_over_fields",
+        r##"class Stack
+  items: Array
+  new()
+    @items = []
+  end
+  def push(x)
+    @items = @items + [x]
+    "pushed #{x}"
+  end
+  def size
+    @items.length
+  end
+end
+s = Stack.new
+print(s.push(3), s.push(4), s.size)
+xs = []
+xs.push(1)
+print(xs.push(2), xs)
+class Widget
+  def read_own
+    @class
+  end
+end
+def build()
+  w = Widget.new
+  w.instance_variable_set("class", "btn")
+  w.instance_variable_set("methods", "m")
+  w.instance_variable_set("inspect", "i")
+  w
+end
+w = build()
+print(w.class, w.methods.length > 0, w.inspect != "i", w.read_own)
+print(w.nil?, w.respond_to?("read_own"), w.instance_variable_get("class"))"##,
+    ),
+    (
         // A closure made in a match arm captures the arm's binding: the VM
         // popped it plainly, leaving an open upvalue to a slot that was gone
         // (a panic in `close_upvalues`) or reused (#637).
@@ -6836,6 +6876,40 @@ fn a_bound_that_is_not_an_integer_is_reported_at_the_range() {
 /// (name, source). Each source declares `class Probe` with a zero-argument
 /// `run` that returns a string, and runs cleanly on the tree-walker.
 const APP_CASES: &[(&str, &str)] = &[
+    (
+        // A labelled constructor call on a class the app loaded (its
+        // constructor is the tree-walker's): the served VM fell back to the
+        // interpreter, re-running the action (#638).
+        "app_labelled_constructor_on_a_loaded_class",
+        r##"class Point
+  x: Int
+  y: Int
+
+  new(x, y = 0)
+    @x = x
+    @y = y
+  end
+end
+
+class Pixel < Point
+  color: String
+
+  new(x, y, color = "black")
+    super(x, y)
+    @color = color
+  end
+end
+
+class Probe
+  def run
+    a = Point.new(x: 1, y: 2)
+    b = Point.new(y: 5, x: 3)
+    c = Point.new(x: 7)
+    d = Pixel.new(color: "red", y: 4, x: 2)
+    "#{a.x},#{a.y} #{b.x},#{b.y} #{c.x},#{c.y} #{d.x},#{d.y},#{d.color}"
+  end
+end"##,
+    ),
     (
         // A bare assignment to a builtin's name inside an action defines a
         // local: it used to replace the worker's global, so the next request

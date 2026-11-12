@@ -598,11 +598,12 @@ impl Vm {
     /// pays one memoized flag read.
     #[inline]
     fn field_hit_is_raw(inst: &crate::interpreter::value::Instance, name: &str) -> bool {
-        !inst.class.is_model_subclass()
+        (!inst.class.is_model_subclass()
             || !crate::interpreter::builtins::model::member_needs_model_resolution(
                 &inst.class.name,
                 name,
-            )
+            ))
+            && !crate::interpreter::executor::access::member::is_universal_instance_member(name)
     }
 
     /// Whether a field write on an instance of `class` needs
@@ -3882,6 +3883,19 @@ impl Vm {
                         ));
                     }
                 }
+                Op::PushMethod => {
+                    let receiver = &self.stack[self.stack.len() - 2];
+                    if let Value::Array(arr) = receiver {
+                        let arr = Rc::clone(arr);
+                        let value = self.stack.pop().unwrap();
+                        arr.borrow_mut().push(value);
+                    } else {
+                        let value = self.pop();
+                        let receiver = self.pop();
+                        self.call_fused_as_method(receiver, "push", vec![value])?;
+                        continue;
+                    }
+                }
                 Op::Hash(n) => {
                     let n = n as usize;
                     let base = self.stack.len() - n * 2;
@@ -6895,6 +6909,9 @@ fn field_needs_model_resolution(
     inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
     name: &str,
 ) -> bool {
+    if crate::interpreter::executor::access::member::is_universal_instance_member(name) {
+        return true;
+    }
     let inst = inst.borrow();
     inst.class.is_model_subclass()
         && crate::interpreter::builtins::model::member_needs_model_resolution(

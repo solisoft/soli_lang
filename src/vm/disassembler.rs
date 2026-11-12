@@ -126,6 +126,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Return => out.push_str("RETURN"),
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
+        Op::PushMethod => out.push_str("PUSH_METHOD"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
         Op::HashWithKeys(idx, n) => out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n)),
         Op::LiteralArray(idx) => out.push_str(&format!(
