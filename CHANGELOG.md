@@ -4,6 +4,14 @@
 
 ### Added
 
+- **The VM suggests locals too (#694, phase 6).** A misspelt local,
+  parameter, top-level variable or enclosing function's local had no "did you
+  mean" under `--vm` (bytecode slots have no names) while `--tree` gave one.
+  The compiler now keeps `FunctionProto::debug_names` — the function's own
+  locals, and every enclosing function's (captured or not) — read only when
+  `Vm::undefined_global` formats the error, scope by scope before the
+  globals; the two engines print the same first line.
+
 - **`soli test` draws a code frame under a failing test (#694, phase 5).**
   A failing test's error is rendered against the spec's source
   (`note_test_failure_frame`, the `soli run` renderer, so only when the error

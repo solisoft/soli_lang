@@ -664,13 +664,28 @@ impl Vm {
     }
 
     /// An undefined-variable error for a global, with a "did you mean"
-    /// suggestion drawn from the globals. Bytecode locals are slots with no
-    /// names, so a misspelt local is matched against globals only — the
-    /// static checker, which sees the scopes, suggests locals.
+    /// suggestion drawn from the running function's locals, then the
+    /// variables it captures, then the globals — the order the tree-walker's
+    /// scopes give (bytecode slots have no names; the compiler keeps them in
+    /// `FunctionProto::debug_names` for this).
     #[cold]
     pub(crate) fn undefined_global(&self, name: impl Into<String>) -> RuntimeError {
         let name = name.into();
-        let suggestion = crate::error::suggest::best_match(&name, self.globals.keys());
+        let globals: Vec<&str> = self.globals.keys().map(|k| &**k).collect();
+        let suggestion = match self.frames.last() {
+            Some(frame) => {
+                let names = &frame.closure.proto.debug_names;
+                crate::error::suggest::best_match_scoped(
+                    &name,
+                    [
+                        names.locals.iter().map(|n| &**n).collect::<Vec<_>>(),
+                        names.upvalues.iter().map(|n| &**n).collect(),
+                        globals,
+                    ],
+                )
+            }
+            None => crate::error::suggest::best_match(&name, globals),
+        };
         RuntimeError::undefined_variable_hinted(
             name,
             self.current_span(),

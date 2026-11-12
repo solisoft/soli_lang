@@ -239,9 +239,9 @@ greet(greting: "Hi")   # Undefined variable 'greting' (did you mean 'greeting'?)
             <code class="text-amber-400">assert_raises</code> fragment, keeps matching.
         </p>
         <p class="text-gray-400 mb-4">
-            On the VM, a misspelt local is compared with globals only &mdash; compiled locals have no names at run time.
-            <code class="text-amber-400">soli check</code>, which runs first on a script, and the tree-walker see the
-            scopes and suggest the local.
+            Names in the nearest scope come first: a misspelt local suggests a local, or a variable of an enclosing
+            function, before a global just as close &mdash; on both engines (the VM keeps the names its compiled
+            locals lack for this).
         </p>
         <p class="text-gray-400 mb-4">
             On the command line, an uncaught error also prints a code frame under its message &mdash; the source line, a

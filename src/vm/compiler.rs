@@ -778,6 +778,7 @@ impl Compiler {
     // --- Local variables ---
 
     pub fn add_local(&mut self, name: String, is_const: bool) {
+        note_debug_name(&mut self.proto.debug_names.locals, &name);
         self.locals.push(Local {
             name,
             depth: self.scope_depth,
@@ -963,10 +964,12 @@ impl Compiler {
         if let Some(ref mut enclosing) = self.enclosing {
             if let Some(local_idx) = enclosing.resolve_local(name) {
                 enclosing.locals[local_idx as usize].is_captured = true;
+                note_debug_name(&mut self.proto.debug_names.upvalues, name);
                 return Some(self.add_upvalue(local_idx, true));
             }
             // Check upvalue in enclosing compiler (recursive)
             if let Some(upvalue_idx) = enclosing.resolve_upvalue(name) {
+                note_debug_name(&mut self.proto.debug_names.upvalues, name);
                 return Some(self.add_upvalue(upvalue_idx, false));
             }
         }
@@ -1101,6 +1104,15 @@ impl Compiler {
 
         let mut proto = std::mem::replace(&mut self.proto, FunctionProto::new(String::new()));
         proto.upvalue_descriptors = std::mem::take(&mut self.upvalues);
+        // The enclosing functions' locals are in scope too, captured or not:
+        // the tree-walker suggests them, so the VM keeps their names.
+        let mut outer = self.enclosing.as_deref();
+        while let Some(compiler) = outer {
+            for local in &compiler.locals {
+                note_debug_name(&mut proto.debug_names.upvalues, &local.name);
+            }
+            outer = compiler.enclosing.as_deref();
+        }
 
         // Restore enclosing compiler
         if let Some(enclosing) = self.enclosing.take() {
@@ -4386,5 +4398,17 @@ mod jump_offset_tests {
         let short = "    x = x + 1\n".repeat(10);
         let fits = format!("def f(flag)\n  x = 0\n  if flag\n{short}  end\n  x\nend\n");
         assert!(compile(&fits).is_ok());
+    }
+}
+
+/// Remember `name` among a function's debug names once (see
+/// [`super::chunk::DebugNames`]). The compiler's own slots (`this`, empty
+/// and `__`-prefixed temporaries) are not names a user could mean.
+fn note_debug_name(names: &mut Vec<std::sync::Arc<str>>, name: &str) {
+    if name.is_empty() || name == "this" || name.starts_with("__") {
+        return;
+    }
+    if !names.iter().any(|known| &**known == name) {
+        names.push(name.into());
     }
 }

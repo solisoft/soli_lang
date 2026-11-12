@@ -88,6 +88,21 @@ pub struct FunctionProto {
     /// labelled method call binds its block there and no argument to it,
     /// as the tree-walker's `call_value_with_named` does.
     pub block_param: Option<u16>,
+    /// The names of the function's locals (parameters included) and of the
+    /// enclosing functions' (captured or not), for a "did you mean" on an undefined name
+    /// (#694): bytecode slots have no names. Read only when that error is
+    /// formatted.
+    pub debug_names: Box<DebugNames>,
+}
+
+/// [`FunctionProto::debug_names`]: what the compiler knew a function's names
+/// to be. Every local the function declares, wherever in its body — a
+/// suggestion may name one declared further down, which is the rare cost of
+/// keeping no instruction ranges.
+#[derive(Debug, Clone, Default)]
+pub struct DebugNames {
+    pub locals: Vec<std::sync::Arc<str>>,
+    pub upvalues: Vec<std::sync::Arc<str>>,
 }
 
 impl FunctionProto {
@@ -108,6 +123,7 @@ impl FunctionProto {
             decl_span: crate::span::Span::default(),
             namespace: None,
             block_param: None,
+            debug_names: Box::default(),
         }
     }
 

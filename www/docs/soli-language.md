@@ -1319,9 +1319,9 @@ the message has no suffix. The suggestion sits before ` at L:C` and the text
 before it is unchanged, so a `catch` that tests `e.includes?("Undefined
 variable 'x'")` or an `assert_raises` fragment keeps matching.
 
-On the VM, a misspelt local is compared with globals only — compiled locals
-have no names at run time. `soli check`, which runs first on a script, and the
-tree-walker see the scopes and suggest the local.
+Names in the nearest scope come first: a misspelt local suggests a local, or a
+variable of an enclosing function, before a global just as close — on both
+engines (the VM keeps the names its compiled locals lack for this).
 
 On the command line, an uncaught error also prints a code frame under its
 message — the source line, a caret, the suggestion as `= help:` and a stable

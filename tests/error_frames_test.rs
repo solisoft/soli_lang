@@ -318,3 +318,43 @@ fn soli_test_frames_a_failing_assertion() {
     assert!(text.contains("did you mean 'x'?"), "{text}");
     assert!(text.contains("error[E0301]"), "{text}");
 }
+
+/// #694, phase 6: a misspelt local, parameter, top-level variable or an
+/// enclosing function's local gets the same "did you mean" on the VM as on
+/// the tree-walker — the compiler keeps the names bytecode slots lack.
+#[test]
+fn the_vm_suggests_locals_like_the_tree_walker() {
+    let cases = [
+        ("def f\n  total = 2\n  print(totl)\nend\nf()\n", "'total'"),
+        ("def k(price)\n  print(prise)\nend\nk(1)\n", "'price'"),
+        ("items = [1]\nprint(itmes)\n", "'items'"),
+        (
+            "def g\n  count = 1\n  h = fn() { print(cuont) }\n  h()\nend\ng()\n",
+            "'count'",
+        ),
+    ];
+    let dir = tempfile::tempdir().unwrap();
+    for (source, expected) in cases {
+        let file = dir.path().join("typo.sl");
+        std::fs::write(&file, source).unwrap();
+        let first_line = |engine: &str| {
+            let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+                .args([engine, "--no-type-check"])
+                .arg(&file)
+                .env("NO_COLOR", "1")
+                .output()
+                .expect("run soli");
+            String::from_utf8_lossy(&output.stderr)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        };
+        let vm = first_line("--vm");
+        assert!(
+            vm.contains(&format!("did you mean {expected}?")),
+            "{source}: {vm}"
+        );
+        assert_eq!(vm, first_line("--tree"), "{source}");
+    }
+}
