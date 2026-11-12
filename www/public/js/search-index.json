@@ -18916,6 +18916,50 @@
         "tutorials",
         "deep dive"
       ]
+    },
+    {
+      "title": "Metrics",
+      "type": "page",
+      "category": "Builtins",
+      "path": "/docs/builtins/metrics",
+      "signature": "Metrics.increment(name, value = 1, tags: {}) \u00b7 Metrics.gauge \u00b7 Metrics.histogram \u00b7 Metrics.time(name, tags: {}) do \u2026 end",
+      "description": "App-defined counters, gauges and histograms shared by every worker: Prometheus at GET /_metrics, DogStatsD (Datadog), OTLP; readable back in specs with Metrics.value.",
+      "keywords": [
+        "metrics",
+        "counter",
+        "gauge",
+        "histogram",
+        "distribution",
+        "timer",
+        "prometheus",
+        "dogstatsd",
+        "datadog",
+        "statsd",
+        "otlp",
+        "opentelemetry",
+        "_metrics",
+        "observability"
+      ]
+    },
+    {
+      "title": "WebAuthn (Passkeys)",
+      "type": "page",
+      "category": "Builtins",
+      "path": "/docs/builtins/webauthn",
+      "signature": "WebAuthn.registration_options \u00b7 WebAuthn.verify_registration \u00b7 WebAuthn.authentication_options \u00b7 WebAuthn.verify_authentication",
+      "description": "The server half of passkeys: the options a browser needs to register or sign in with a passkey, and the verification of what it sends back.",
+      "keywords": [
+        "webauthn",
+        "passkey",
+        "passkeys",
+        "fido2",
+        "authenticator",
+        "biometric",
+        "login",
+        "sign in",
+        "credentials",
+        "security key"
+      ]
     }
   ]
 }

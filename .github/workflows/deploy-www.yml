@@ -118,10 +118,9 @@ jobs:
         continue-on-error: true
         run: soli lint
 
-      # `soli test` is not run: the site's specs need a .env.test that does not
-      # exist in this repository, so the step could only ever fail. Add the file
-      # and a SoliDB service here — see ../pdfx/.github/workflows/deploy.yml for
-      # the shape — if the specs are meant to gate deployment.
+      # `soli test` is not run here: the site's specs (www/tests, with
+      # www/.env.test) run in ci.yml's "Run the docs site's specs" step on
+      # every push.
 
   deploy:
     name: deploy the site

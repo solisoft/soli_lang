@@ -15,6 +15,7 @@ node_modules
 # on a clean checkout with "".env.test file not found". These hold no secrets.
 !tests-e2e/*/.env.test
 !bench/load/.env.test
+!www/.env.test
 .claude/settings.local.json
 # Nested per-developer overrides too (e.g. www/.claude/): a pattern with a
 # slash is anchored to the repo root, so the line above never matched them.

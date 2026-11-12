@@ -200,6 +200,14 @@ jobs:
         # fails. Every spec in tests/ asserts; keep it that way.
         run: cargo run --locked -- test --require-assertions
 
+      # The docs site's specs (www/tests): its controller, middleware, routes,
+      # validation helpers and the search index (every routed docs page must
+      # be indexed). They need no database — www/.env.test names one only
+      # because the runner requires the file.
+      - name: Run the docs site's specs
+        working-directory: www
+        run: cargo run --locked --manifest-path ../Cargo.toml -- test --require-assertions --no-coverage
+
   # Keeps the Windows port from silently re-breaking. The crate has no
   # structural pressure to stay portable, so without a gate the next
   # unconditional `nix` import or `/`-joined path lands unnoticed and is far

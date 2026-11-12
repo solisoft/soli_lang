@@ -16,12 +16,10 @@ rbuild soli lang/www test                                 # whole suite
 rbuild soli lang/www test tests/<the-relevant-spec>.sl    # one spec, fast feedback
 ```
 
-**Prerequisite, currently missing:** this app has no `.env.test`. `soli test`
-exits 1 without one, so `rbuild` refuses the target up front rather than syncing
-and taking the server lock for nothing. Create `lang/www/.env.test` with at
-least `SOLIDB_DATABASE`; add `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` only if the
-specs actually need a database — declaring none tells `rbuild` not to start a
-throwaway SoliDB, which is what keeps `lang`'s own DB-less specs honest.
+`www/.env.test` names a database only because the runner requires the file:
+the specs touch none, and with no `SOLIDB_USERNAME` / `SOLIDB_PASSWORD`
+`rbuild` starts no throwaway SoliDB. CI runs them ("Run the docs site's
+specs" in `.github/workflows/ci.yml`).
 
 `soli fmt`, `soli lint` and `soli serve . --dev` stay local: they are short and
 interactive. `test` is the one that saturates the machine.
