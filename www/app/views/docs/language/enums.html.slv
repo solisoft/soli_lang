@@ -197,6 +197,7 @@ end</code></pre>
 
 # payload variant   → a tagged object
 { "variant": "Pending", "reason": "awaiting payment" }</code></pre>
+            <p class="text-gray-400 text-sm mt-3">The payload fields come in the variant&rsquo;s declared order, every time &mdash; so the stored bytes, an ETag or a cache key built from them do not change between runs.</p>
             <p class="text-gray-400 text-sm mt-3">Need to rebuild an enum from a stored value by hand (e.g. from a webhook payload)? Use <code class="text-orange-400">Status.parse(value)</code> &mdash; it accepts either form. (The factory is <code>parse</code>, not <code>from</code>, because <code>from</code> is a reserved word.)</p>
         </div>
     </section>

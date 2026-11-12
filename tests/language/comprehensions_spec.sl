@@ -69,10 +69,12 @@ describe("Array comprehensions") do
     assert_eq(x, 100)
   end
 
-  test("refuse a value that is not an array") do
-    assert_raises("expected array") do
-      [key for key in {"a": 1}]
-    end
+  test("walk a hash's keys and a string's characters") do
+    assert_eq([key for key in {"a": 1, "b": 2}], ["a", "b"])
+    assert_eq([c for c in "hé"], ["h", "é"])
+  end
+
+  test("refuse a value that is not iterable") do
     assert_raises("expected array") do
       [n for n in 5]
     end

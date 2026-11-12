@@ -249,6 +249,12 @@ for i in range(0, 10, 2)
   print(i);  # 0, 2, 4, 6, 8
 end
 
+# A hash: its keys, in insertion order (comprehensions too)
+prices = {"tea": 3, "cake": 5}
+for name in prices
+  print("#{name}: #{prices[name]}")
+end
+
 # Nested loops
 for i in range(1, 4)
   for j in range(1, 4)

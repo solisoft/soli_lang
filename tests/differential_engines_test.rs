@@ -642,6 +642,99 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #639: literal arms compare strictly (`1` is not `1.0`); an enum
+        // pattern naming more fields than the variant has fails; strings and
+        // hashes iterate in comprehensions and `for` (chars, keys); a raising
+        // comprehension restores the scope; enum payloads print and serialize
+        // in declared order; `obj.x ||= v` evaluates `obj` once; Decimals
+        // compare exactly.
+        "minor_divergences_from_the_vm_audit_review",
+        r##"def lit(v)
+  match v {
+    1 => "one",
+    true => "t",
+    nil => "nil",
+    _ => "other"
+  }
+end
+print(lit(1.0), lit(1), lit(1.5), lit(true), lit(nil), lit("1"))
+print([1.0, 1].map { |v| match v { 1 => "i", _ => "o" } })
+print([c for c in "héllo"])
+h = {"a": 1, "b": 2}
+print([k for k in h])
+for k in h
+  print(k)
+end
+for c in "ab"
+  print(c)
+end
+print([x for x in (1..4)])
+n = 5
+r = [n * 2 for n in [1, 2] if n.nope == 1] rescue "x"
+print(n, r)
+m = 7
+h = {k: k.nope for k in [1]} rescue "y"
+print(m, h)
+enum Shape
+  Rect(width: Float, height: Float, label: String, depth: Int)
+end
+s = Shape.Rect(1.5, 2.5, "a", 3)
+print(s)
+print(json_stringify({"s": s}))
+class Box
+  x: Any = nil
+  def init_items
+    @items ||= []
+    @items.push(1)
+    @items ||= ["no"]
+    @items
+  end
+end
+b = Box.new
+print(b.x ||= 3, b.x ||= 9, b.x &&= 4, b.x, b.x ??= 7)
+b.x = nil
+print(b.x &&= 5, b.x ??= 6, b.x)
+print(b.init_items)
+h = {"k": nil}
+print(h.k ||= "v", h.k ||= "w", h)
+class Cfg
+  static limit = nil
+end
+print(Cfg.limit ||= 10, Cfg.limit)
+r = (b.x ||= 1) + 1
+print(r)
+enum Shape2
+  Circle(r: Float)
+end
+def area(s)
+  match s {
+    Shape2.Circle(r, extra) => "two #{r} #{extra}",
+    Shape2.Circle(r) => "one #{r}",
+    _ => "none"
+  }
+end
+print(area(Shape2.Circle(1.5)))
+log = []
+class H
+  x: Any = nil
+end
+def recv(h, log)
+  log.push("recv")
+  h
+end
+def rhs(log)
+  log.push("rhs")
+  5
+end
+hh = H.new
+recv(hh, log).x ||= rhs(log)
+recv(hh, log).x ||= rhs(log)
+print(log)
+a = 1234567890.1234567891D
+b2 = 1234567890.1234567892D
+print(a < b2, a > b2, a == b2, b2 >= a)"##,
+    ),
+    (
         // #813: `x = if … end` / `unless` as values, an untyped class field
         // given a value (`NAME = "k"` a constant, `static LIMIT = 3`),
         // `substring(start)` to the end, `from` as a parameter name.

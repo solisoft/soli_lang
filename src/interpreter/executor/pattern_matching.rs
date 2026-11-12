@@ -48,7 +48,7 @@ impl Interpreter {
 
             MatchPattern::Literal(literal) => {
                 let literal_value = self.evaluate_literal(literal)?;
-                if self.values_equal(&literal_value, value) {
+                if literal_pattern_equal(&literal_value, value) {
                     Ok(Some(Vec::new()))
                 } else {
                     Ok(None)
@@ -222,4 +222,20 @@ pub(crate) fn enum_variant_payload(inst: &Instance, variant: &str, index: usize)
         })
         .nth(index)?;
     inst.fields.get(name.as_str()).cloned()
+}
+
+/// Whether a literal arm (`1 =>`, `"x" =>`, `1.5D =>`) matches `value`, on
+/// both engines: the same kind and the same value. `1` does not match `1.0`
+/// (the VM compared loosely, so it did there, #639), and a Decimal arm
+/// matches an equal Decimal (the tree-walker never matched one).
+pub(crate) fn literal_pattern_equal(literal: &Value, value: &Value) -> bool {
+    match (literal, value) {
+        (Value::Int(a), Value::Int(b)) => a == b,
+        (Value::Float(a), Value::Float(b)) => a == b,
+        (Value::String(a), Value::String(b)) => a == b,
+        (Value::Bool(a), Value::Bool(b)) => a == b,
+        (Value::Null, Value::Null) => true,
+        (Value::Decimal(a), Value::Decimal(b)) => a.0 == b.0,
+        _ => false,
+    }
 }

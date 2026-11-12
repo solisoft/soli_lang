@@ -586,6 +586,52 @@ pub(crate) fn enum_variant_tag(inst: &Instance) -> Option<&str> {
     }
 }
 
+/// An enum value's payload fields (all but `__variant`), in the variant's
+/// declared order (`__enum_variants`), any other field after them in name
+/// order. The serializers, the `to_json` paths and `print` read this: they
+/// walked the instance's field map, whose order changes from run to run, so
+/// the JSON bytes — and the ETags and cache keys made from them — did (#639).
+pub(crate) fn enum_payload_fields(inst: &Instance) -> Vec<(&SoliStr, &Value)> {
+    let declared: Vec<String> = enum_variant_tag(inst)
+        .and_then(|tag| {
+            let statics = inst.class.static_fields.borrow();
+            let Some(Value::Hash(meta)) = statics.get("__enum_variants") else {
+                return None;
+            };
+            let meta = meta.borrow();
+            let Some(Value::Array(fields)) = meta.get(&StrKey(tag)) else {
+                return None;
+            };
+            let names = fields
+                .borrow()
+                .iter()
+                .filter_map(|field| match field {
+                    Value::String(name) => Some(name.to_string()),
+                    _ => None,
+                })
+                .collect();
+            Some(names)
+        })
+        .unwrap_or_default();
+    let mut payload: Vec<(&SoliStr, &Value)> = inst
+        .fields
+        .iter()
+        .filter(|(name, _)| name.as_str() != "__variant")
+        .collect();
+    payload.sort_by(|(a, _), (b, _)| {
+        let rank = |name: &str| {
+            declared
+                .iter()
+                .position(|d| d == name)
+                .unwrap_or(usize::MAX)
+        };
+        rank(a.as_str())
+            .cmp(&rank(b.as_str()))
+            .then_with(|| a.as_str().cmp(b.as_str()))
+    });
+    payload
+}
+
 /// Rebuild an enum value from its stored representation: a bare tag string
 /// (`"Active"` → a unit variant) or a tagged object (`{"variant": "Pending",
 /// "reason": "x"}` → a payload variant). Used by `Enum.from(value)` and by the
@@ -1451,6 +1497,16 @@ impl Value {
                     write!(f, ")")
                 } else if inst_ref.fields.is_empty() {
                     write!(f, "<{} instance>", inst_ref.class.name)
+                } else if let Some(tag) = enum_variant_tag(&inst_ref) {
+                    // The tag, then the payload in declared order.
+                    write!(f, "<{} __variant: \"{}\"", inst_ref.class.name, tag)?;
+                    for (k, v) in enum_payload_fields(&inst_ref) {
+                        match v {
+                            Value::String(s) => write!(f, ",\n {}: \"{}\"", k, s)?,
+                            _ => write!(f, ",\n {}: {}", k, v)?,
+                        }
+                    }
+                    write!(f, ">")
                 } else {
                     write!(f, "<{}", inst_ref.class.name)?;
                     let mut first = true;
@@ -3414,10 +3470,7 @@ impl Value {
                 // via the model `enum_field` DSL and `Enum.from(value)`.
                 if let Some(tag) = enum_variant_tag(&borrow) {
                     use serde::ser::SerializeMap;
-                    let payload = borrow
-                        .fields
-                        .iter()
-                        .filter(|(k, _)| k.as_str() != "__variant");
+                    let payload = enum_payload_fields(&borrow);
                     if borrow.fields.len() == 1 {
                         return serializer.serialize_str(tag);
                     }

@@ -801,12 +801,12 @@ describe("for") do
     assert_eq(letters, ["A", "B", "C"])
   end
 
-  test("refuses a hash") do
-    assert_raises("cannot iterate over hash") do
-      for key in {"a": 1}
-        key
-      end
+  test("walks a hash's keys, in insertion order") do
+    keys = []
+    for key in {"b": 1, "a": 2}
+      keys.push(key)
     end
+    assert_eq(keys, ["b", "a"])
   end
 end
 

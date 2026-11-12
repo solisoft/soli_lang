@@ -497,6 +497,56 @@ impl Interpreter {
             }
         }
 
+        // `obj.x ||= v` / `&&=` / `??=`: the receiver is evaluated once, as
+        // in Ruby — read the member off it, and only when the value is not
+        // decided evaluate `v` and write it back to the same receiver. Both
+        // engines evaluated `obj` twice, in different orders (#639). A view's
+        // `@x` (no `this`, a local) keeps the general path below.
+        if matches!(op, CompoundOp::Or | CompoundOp::And | CompoundOp::Coalesce) {
+            if let ExprKind::Member { object, name } = &target.kind {
+                let view_local = matches!(object.kind, ExprKind::This)
+                    && crate::interpreter::executor::template_lenient_vars_enabled()
+                    && self.environment.borrow().get("this").is_none();
+                if !view_local {
+                    let obj_val = self.evaluate(object)?;
+                    self.check_private_access(object, &obj_val, name, target.span)?;
+                    let current =
+                        match self.evaluate_member_on_value(obj_val.clone(), name, target.span) {
+                            Err(RuntimeError::NoSuchProperty(ref info))
+                                if info.property == *name
+                                    && matches!(obj_val, Value::Instance(_)) =>
+                            {
+                                Value::Null
+                            }
+                            other => other?,
+                        };
+                    // A field holding a `grouped {}` read, as `evaluate_member`.
+                    let current = match current {
+                        Value::Deferred(cell) if matches!(obj_val, Value::Instance(_)) => {
+                            crate::interpreter::builtins::model::batch::force(&cell).map_err(
+                                |e| RuntimeError::General {
+                                    message: e,
+                                    span: target.span,
+                                },
+                            )?
+                        }
+                        other => other,
+                    };
+                    let decided = match op {
+                        CompoundOp::Or => current.is_truthy(),
+                        CompoundOp::And => !current.is_truthy(),
+                        _ => !matches!(current, Value::Null),
+                    };
+                    if decided {
+                        return Ok(current);
+                    }
+                    let rhs = self.evaluate(value)?;
+                    self.assign_member_value(object, obj_val, name, rhs.clone(), target.span)?;
+                    return Ok(rhs);
+                }
+            }
+        }
+
         let current = match self.evaluate(target) {
             // `obj.x ||= v` on a property nothing has set yet reads as Null,
             // or `@items ||= []` could never initialise an instance variable.
@@ -619,36 +669,51 @@ impl Interpreter {
             }
             ExprKind::Member { object, name } => {
                 let obj_val = self.evaluate(object)?;
-                self.check_private_access(object, &obj_val, name, target.span)?;
-                match obj_val {
-                    Value::Instance(inst) => set_instance_field(&inst, name, value)
-                        .map_err(|message| RuntimeError::type_error(message, target.span)),
-                    Value::Hash(hash) => {
-                        let key = crate::interpreter::value::HashKey::String(name.clone().into());
-                        hash.borrow_mut().insert(key, value);
-                        Ok(())
-                    }
-                    Value::Class(class) => {
-                        if class.static_const_fields.borrow().contains(name.as_str()) {
-                            return Err(RuntimeError::type_error(
-                                format!("cannot reassign static const field '{}'", name),
-                                target.span,
-                            ));
-                        }
-                        class.static_fields.borrow_mut().insert(name.clone(), value);
-                        Ok(())
-                    }
-                    _ => Err(RuntimeError::type_error(
-                        format!("cannot set property on {}", obj_val.type_name()),
-                        target.span,
-                    )),
-                }
+                self.assign_member_value(object, obj_val, name, value, target.span)
             }
             ExprKind::Index { object, index } => {
                 self.evaluate_index_assign(object, index, value, span)?;
                 Ok(())
             }
             _ => Err(RuntimeError::type_error("invalid assignment target", span)),
+        }
+    }
+
+    /// `object.name = value` with `object` already evaluated to `obj_val`.
+    fn assign_member_value(
+        &mut self,
+        object: &Expr,
+        obj_val: Value,
+        name: &str,
+        value: Value,
+        span: Span,
+    ) -> RuntimeResult<()> {
+        self.check_private_access(object, &obj_val, name, span)?;
+        match obj_val {
+            Value::Instance(inst) => set_instance_field(&inst, name, value)
+                .map_err(|message| RuntimeError::type_error(message, span)),
+            Value::Hash(hash) => {
+                let key = crate::interpreter::value::HashKey::String(name.into());
+                hash.borrow_mut().insert(key, value);
+                Ok(())
+            }
+            Value::Class(class) => {
+                if class.static_const_fields.borrow().contains(name) {
+                    return Err(RuntimeError::type_error(
+                        format!("cannot reassign static const field '{}'", name),
+                        span,
+                    ));
+                }
+                class
+                    .static_fields
+                    .borrow_mut()
+                    .insert(name.to_string(), value);
+                Ok(())
+            }
+            _ => Err(RuntimeError::type_error(
+                format!("cannot set property on {}", obj_val.type_name()),
+                span,
+            )),
         }
     }
 
@@ -711,6 +776,19 @@ impl Interpreter {
                 let items: Vec<Value> = arr.borrow().iter().cloned().collect();
                 Ok((Box::new(items.into_iter()), None))
             }
+            // A string's characters and a hash's keys, as `for` and the VM
+            // iterate them (#639).
+            Value::String(s) => {
+                let chars: Vec<Value> = s
+                    .chars()
+                    .map(crate::interpreter::executor::calls::string_methods::char_to_value)
+                    .collect();
+                Ok((Box::new(chars.into_iter()), None))
+            }
+            Value::Hash(hash) => {
+                let keys: Vec<Value> = hash.borrow().keys().map(|key| key.to_value()).collect();
+                Ok((Box::new(keys.into_iter()), None))
+            }
             _ => Err(RuntimeError::type_error("expected array", iterable.span)),
         }
     }
@@ -732,26 +810,16 @@ impl Interpreter {
             if crate::interpreter::deadline::expired() {
                 return Err(crate::interpreter::deadline::timeout_error(iterable.span));
             }
-            let mut loop_env = Environment::with_enclosing(self.environment.clone());
-            loop_env.define(variable.to_string(), item);
-            let prev_env =
-                std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
-
-            let pass_condition = if let Some(cond) = condition {
-                let cond_value = self.evaluate(cond)?;
-                if !cond_value.is_truthy() {
-                    self.environment = prev_env;
-                    continue;
+            let step = self.in_comprehension_scope(variable, item, |this| {
+                if let Some(cond) = condition {
+                    if !this.evaluate(cond)?.is_truthy() {
+                        return Ok(None);
+                    }
                 }
-                true
-            } else {
-                true
-            };
+                Ok(Some(this.evaluate(element)?))
+            })?;
 
-            let elem_value = self.evaluate(element)?;
-            self.environment = prev_env;
-
-            if pass_condition {
+            if let Some(elem_value) = step {
                 result.push(elem_value);
                 if let Some(span) = capped_at {
                     crate::interpreter::limits::check_comprehension_len(result.len())
@@ -764,6 +832,25 @@ impl Interpreter {
     }
 
     /// Evaluate hash comprehension.
+    /// Run `step` with `variable` bound to `item` in a scope of its own, and
+    /// put the previous scope back whatever `step` returns. Restored only on
+    /// success, an error in the filter or the element left the interpreter
+    /// in the loop's scope: after `[…] rescue x`, the enclosing code read the
+    /// comprehension's variable instead of its own (#639).
+    fn in_comprehension_scope<T>(
+        &mut self,
+        variable: &str,
+        item: Value,
+        step: impl FnOnce(&mut Self) -> RuntimeResult<T>,
+    ) -> RuntimeResult<T> {
+        let mut loop_env = Environment::with_enclosing(self.environment.clone());
+        loop_env.define(variable.to_string(), item);
+        let prev_env = std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
+        let result = step(self);
+        self.environment = prev_env;
+        result
+    }
+
     fn evaluate_hash_comprehension(
         &mut self,
         key: &Expr,
@@ -780,27 +867,16 @@ impl Interpreter {
             if crate::interpreter::deadline::expired() {
                 return Err(crate::interpreter::deadline::timeout_error(iterable.span));
             }
-            let mut loop_env = Environment::with_enclosing(self.environment.clone());
-            loop_env.define(variable.to_string(), item);
-            let prev_env =
-                std::mem::replace(&mut self.environment, Rc::new(RefCell::new(loop_env)));
-
-            let should_include = if let Some(cond) = condition {
-                let cond_value = self.evaluate(cond)?;
-                if !cond_value.is_truthy() {
-                    self.environment = prev_env;
-                    continue;
+            let step = self.in_comprehension_scope(variable, item, |this| {
+                if let Some(cond) = condition {
+                    if !this.evaluate(cond)?.is_truthy() {
+                        return Ok(None);
+                    }
                 }
-                true
-            } else {
-                true
-            };
+                Ok(Some((this.evaluate(key)?, this.evaluate(value)?)))
+            })?;
 
-            let key_value = self.evaluate(key)?;
-            let val_value = self.evaluate(value)?;
-            self.environment = prev_env;
-
-            if should_include {
+            if let Some((key_value, val_value)) = step {
                 if let Some(hash_key) = key_value.to_hash_key() {
                     result.insert(hash_key, val_value);
                     if let Some(span) = capped_at {

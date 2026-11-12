@@ -2351,6 +2351,10 @@ impl Vm {
                 Op::Pop => {
                     self.stack.pop();
                 }
+                Op::Nip => {
+                    let top = self.stack.pop().unwrap();
+                    discard(std::mem::replace(self.stack.last_mut().unwrap(), top));
+                }
                 Op::Dup => {
                     let val = self.stack.last().unwrap().clone();
                     self.stack.push(val);
@@ -3957,6 +3961,14 @@ impl Vm {
                         ));
                     }
                 }
+                Op::MatchLiteral => {
+                    let (subject, literal) = self.pop2();
+                    let matched =
+                        crate::interpreter::executor::pattern_matching::literal_pattern_equal(
+                            &literal, &subject,
+                        );
+                    self.stack.push(Value::Bool(matched));
+                }
                 Op::PushMethod => {
                     let receiver = &self.stack[self.stack.len() - 2];
                     if let Value::Array(arr) = receiver {
@@ -4629,6 +4641,28 @@ impl Vm {
                         }
                     };
                     self.push(value);
+                }
+                Op::EnumHasPayload(slot, variant_idx, index) => {
+                    let present = {
+                        let frame = self.frames.last().unwrap();
+                        let variant: &str =
+                            match &frame.closure.proto.chunk.constants[variant_idx as usize] {
+                                Constant::String(s) => s.as_str(),
+                                _ => "",
+                            };
+                        match &self.stack[frame.stack_base + slot as usize] {
+                            Value::Instance(inst) => {
+                                crate::interpreter::executor::pattern_matching::enum_variant_payload(
+                                    &inst.borrow(),
+                                    variant,
+                                    index as usize,
+                                )
+                                .is_some()
+                            }
+                            _ => false,
+                        }
+                    };
+                    self.push(Value::Bool(present));
                 }
                 Op::MatchArrayLen(slot, len, at_least) => {
                     let base = self.frames.last().unwrap().stack_base;

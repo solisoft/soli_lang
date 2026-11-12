@@ -88,19 +88,6 @@ impl Interpreter {
             )),
         }
     }
-
-    /// Compare two values for equality.
-    /// Used for pattern matching.
-    pub(crate) fn values_equal(&self, a: &Value, b: &Value) -> bool {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => a == b,
-            (Value::String(a), Value::String(b)) => a == b,
-            (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::Null, Value::Null) => true,
-            _ => false,
-        }
-    }
 }
 
 /// Execute an `@sdbql{ ... }` block. Shared by the tree-walking interpreter

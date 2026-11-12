@@ -522,6 +522,17 @@ impl Interpreter {
             // stack. `s` is the loop's own handle, so reassigning the variable
             // inside the body does not change what is iterated (same on both
             // engines).
+            // `for k in hash` yields each key, in insertion order, as the VM's
+            // `IterState::Hash` does (#639): indexed live, like an array.
+            Value::Hash(hash) => {
+                let mut i = 0usize;
+                self.run_for_loop(variable, index_variable, body, || {
+                    let map = hash.borrow();
+                    let (key, _) = map.get_index(i)?;
+                    i += 1;
+                    Some(key.to_value())
+                })
+            }
             Value::String(s) => {
                 let mut byte_offset = 0usize;
                 self.run_for_loop(variable, index_variable, body, || {

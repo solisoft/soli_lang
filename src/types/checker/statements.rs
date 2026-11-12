@@ -138,6 +138,8 @@ impl TypeChecker {
                     // Both engines iterate a string by character, each one a
                     // one-character String.
                     Type::String => Type::String,
+                    // A hash yields its keys (#639).
+                    Type::Hash { key_type, .. } => *key_type,
                     // Unknown is the checker not knowing — a bare `xs: Array`
                     // annotation, a class it cannot see — not a value known not
                     // to iterate. `if` and `while` already let it through;

@@ -372,6 +372,22 @@
 
 ### Fixed
 
+- **Minor engine divergences (#639).** A literal match arm compares
+  strictly on both engines (`1 =>` no longer matches `1.0` on the VM:
+  `Op::MatchLiteral`, `pattern_matching::literal_pattern_equal`); an enum arm
+  naming more payload fields than the variant has fails on the VM too
+  (`Op::EnumHasPayload`). `obj.x ||= v` (and `&&=`, `??=`) evaluates `obj`
+  once, then `v` only when needed — both engines evaluated `obj` twice, in
+  different orders (`Op::Nip`, `assign_member_value`). Two Decimals compare
+  exactly with `<` / `>` (through f64, distinct ones past ~15 digits were
+  neither). An enum payload prints and serializes in declared order
+  (`enum_payload_fields`), so its JSON bytes, ETags and cache keys are stable
+  across runs. A comprehension whose filter or element raises restores the
+  enclosing scope on the tree-walker. `for k in hash` and comprehensions over
+  a hash or a string iterate the keys / characters on the tree-walker and in
+  `soli check`, as on the VM (the specs that asserted a refusal now assert
+  the walk). Test: `minor_divergences_from_the_vm_audit_review`.
+
 - **Smaller language gaps (#813).** `x = if … elsif … else … end` (and
   `unless`) is a value, as `try` became one (parser `statement_as_value`;
   `soli fmt` keeps it as written). In a class body a field given a value needs

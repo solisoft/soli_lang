@@ -24,6 +24,8 @@ pub enum Op {
     Pop,
     /// Duplicate the top of the stack.
     Dup,
+    /// Drop the value under the top: [.., a, b] → [.., b].
+    Nip,
 
     // --- Variables ---
     /// Get a local variable by stack slot index.
@@ -121,6 +123,10 @@ pub enum Op {
     /// Push value onto array at top of stack. Stack: [..., array], value on top.
     /// Pops value, leaves array on stack.
     ArrayPush,
+    /// A literal match arm: pop the literal and the subject, push whether
+    /// they match (`pattern_matching::literal_pattern_equal`: same kind,
+    /// same value — `1` is not `1.0`).
+    MatchLiteral,
     /// `recv.push(x)`: [`Op::ArrayPush`] when `recv` is an array, and the
     /// ordinary method call `push` otherwise — a user class with a `push`
     /// method got "can only push to arrays" (#638). Stack: [..., recv, x] →
@@ -616,6 +622,11 @@ pub enum Op {
     /// is only known once the instance is in hand — hence an opcode rather
     /// than a compile-time `GetProperty`.
     EnumPayload(u16, u16, u8),
+    /// Whether the enum instance in local `slot` has a payload field at
+    /// position `index` of variant `variant_idx`: a pattern binding more
+    /// fields than the variant has does not match (#639), as on the
+    /// tree-walker — `EnumPayload` reads a missing one as nil.
+    EnumHasPayload(u16, u16, u8),
     /// Match-pattern type test: peek the top value, jump by the operand when it
     /// is NOT of the named type. Peeks rather than pops so the value is still
     /// there to be bound by a `Typed` pattern.

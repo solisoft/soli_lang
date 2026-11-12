@@ -115,13 +115,11 @@ fn write_value(out: &mut Vec<u8>, value: &Value, depth: usize) -> Result<(), Str
                 }
                 out.extend_from_slice(b"{\"variant\":");
                 write_str(out, tag);
-                for (key, item) in instance.fields.iter() {
-                    if key.as_str() != "__variant" {
-                        out.push(b',');
-                        write_str(out, key);
-                        out.push(b':');
-                        write_value(out, item, depth)?;
-                    }
+                for (key, item) in crate::interpreter::value::enum_payload_fields(&instance) {
+                    out.push(b',');
+                    write_str(out, key);
+                    out.push(b':');
+                    write_value(out, item, depth)?;
                 }
                 out.push(b'}');
                 return Ok(());

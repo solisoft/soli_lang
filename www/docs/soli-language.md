@@ -852,6 +852,13 @@ for ch, i in "héllo"
   print("#{i}: #{ch}")  # 0: h, 1: é, 2: l, 3: l, 4: o
 end
 
+# Iterate over a hash: its keys, in insertion order (comprehensions too:
+# [k for k in prices], [c for c in "abc"])
+prices = {"tea": 3, "cake": 5}
+for name in prices
+  print("#{name}: #{prices[name]}")
+end
+
 # Iterate with range
 for i in range(0, 5)
   print(i);  # 0, 1, 2, 3, 4
@@ -3674,6 +3681,10 @@ match data {
 }
 ```
 
+A literal arm matches a value of the same kind and value only: `1 =>` does
+not match `1.0`, nor `"1"`. An enum arm that names more payload fields than
+the variant has does not match.
+
 ### Type-Based Matching
 
 A type pattern puts the type first and the binding after it: `Int: n`.
@@ -3957,6 +3968,10 @@ What lands in the database column:
 # payload variant → a tagged object
 { "variant": "Pending", "reason": "awaiting payment" }
 ```
+
+The payload fields come in the variant's declared order, every time — so the
+stored bytes, an ETag or a cache key built from them do not change between
+runs.
 
 To rebuild an enum from a stored value by hand (e.g. a webhook payload), use
 `Status.parse(value)` — it accepts either form. (The factory is `parse`, not

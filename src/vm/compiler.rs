@@ -1493,6 +1493,7 @@ fn stack_effect(op: Op) -> i32 {
         Constant(_) | Null | True | False | Symbol(_) => 1,
         PushNulls(n) => n as i32,
         Dup => 1,
+        Nip => -1,
         Pop => -1,
         // Reads push; stores leave the value in place (net 0).
         GetLocal(_) | GetGlobal(_) | GetUpvalue(_) | GetThis => 1,
@@ -1540,7 +1541,7 @@ fn stack_effect(op: Op) -> i32 {
         // The array pushed; the argument replaced by the answer.
         LiteralArray(_) => 1,
         LiteralListIncludes(_, _) => 0,
-        ArrayPush | PushMethod | Spread => -1,
+        ArrayPush | PushMethod | Spread | MatchLiteral => -1,
         Range | GetIndex => -1,
         SetIndex => -2,
         // Objects.
@@ -1653,7 +1654,7 @@ fn stack_effect(op: Op) -> i32 {
         // Peeks the subject and branches; leaves the stack alone.
         MatchType(_, _) => 0,
         // Reads a payload field out of a slot and pushes it.
-        EnumPayload(_, _, _) => 1,
+        EnumPayload(_, _, _) | EnumHasPayload(_, _, _) => 1,
         // Read a slot, push a Bool / the rest Array.
         MatchArrayLen(_, _, _) | ArrayRestLocal(_, _) => 1,
     }
@@ -2928,10 +2929,10 @@ mod inplace_peephole_tests {
         panic!("no function proto found");
     }
 
-    /// `o.x ||= v`, `&&=` and `??=`: the jump taken when the read decides
-    /// the result lands after the `SetProperty`, so a short-circuit writes
-    /// nothing (the tree-walker's order), and the receiver is loaded once
-    /// before the read — the second load belongs to the assigning path.
+    /// `o.x ||= v`, `&&=` and `??=`: the receiver is loaded once (#639) and
+    /// kept under the read value; the jump taken when the read decides the
+    /// result lands on the `Nip` that drops it, past the `SetProperty`, so a
+    /// short-circuit writes nothing.
     #[test]
     fn member_short_circuit_assign_jumps_over_the_write() {
         for op in ["||=", "&&=", "??="] {
@@ -2940,23 +2941,22 @@ mod inplace_peephole_tests {
                 .iter()
                 .position(|o| matches!(o, Op::GetPropertyOrNull(_)))
                 .unwrap_or_else(|| panic!("{op}: no GetPropertyOrNull in {ops:?}"));
+            assert!(matches!(ops[read - 1], Op::Dup), "{op}: {ops:?}");
             let target = match ops[read + 1] {
                 Op::JumpIfTrueNoPop(d) | Op::JumpIfFalseNoPop(d) | Op::JumpIfNotNull(d) => {
                     read + 2 + d as usize
                 }
                 ref other => panic!("{op}: expected a no-pop jump, got {other:?}"),
             };
+            assert!(matches!(ops[target], Op::Nip), "{op}: {ops:?}");
             assert!(
-                matches!(ops[target - 1], Op::SetProperty(_)),
+                matches!(ops[target - 2], Op::SetProperty(_)),
                 "{op}: the short-circuit must jump over SetProperty: {ops:?}"
             );
             assert_eq!(
-                ops[..read]
-                    .iter()
-                    .filter(|o| matches!(o, Op::GetLocal(_)))
-                    .count(),
+                ops.iter().filter(|o| matches!(o, Op::GetLocal(_))).count(),
                 1,
-                "{op}: one receiver load before the read: {ops:?}"
+                "{op}: one receiver load in all: {ops:?}"
             );
         }
     }
@@ -3718,9 +3718,10 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
         let arms = fn_ops(
             "s = \"c\"\nmatch s {\n  \"a\" => 1,\n  \"b\" => 2,\n  nil => 3,\n  true => 4,\n  _ => 0\n}\ns",
         );
+        // Literal arms compare strictly (#639), through `MatchLiteral`.
         assert_eq!(
             arms.iter()
-                .filter(|op| matches!(op, Op::EqualLocalConst(..) | Op::TestEqualJump(_)))
+                .filter(|op| matches!(op, Op::MatchLiteral))
                 .count(),
             4,
             "{arms:?}"

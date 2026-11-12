@@ -260,8 +260,9 @@ impl Compiler {
             // arm's failure jump.
             MatchPattern::Literal(expr_kind) => match literal_pattern_constant(expr_kind) {
                 Some(constant) => {
-                    let idx = self.add_constant(constant);
-                    self.emit(Op::EqualLocalConst(slot, idx), line);
+                    self.emit(Op::GetLocal(slot), line);
+                    self.emit_constant(constant, line);
+                    self.emit(Op::MatchLiteral, line);
                     let fail = self.emit_jump(Op::JumpIfFalse(0), line);
                     fails.push((fail, live));
                 }
@@ -394,6 +395,18 @@ impl Compiler {
                 fails.push((f, live));
 
                 let variant_idx = self.add_string_constant(variant_name);
+                // As many payload fields as the pattern names, or no match.
+                if let Some(last) = payload.len().checked_sub(1) {
+                    let last = u8::try_from(last).map_err(|_| {
+                        CompileError::new(
+                            "too many fields in an enum pattern",
+                            crate::span::Span::new(0, 0, line, 0),
+                        )
+                    })?;
+                    self.emit(Op::EnumHasPayload(slot, variant_idx, last), line);
+                    let f = self.emit_jump(Op::JumpIfFalse(0), line);
+                    fails.push((f, live));
+                }
                 for (i, b) in payload.iter().enumerate() {
                     if matches!(b, MatchPattern::Wildcard) {
                         continue;
@@ -465,7 +478,7 @@ impl Compiler {
                 self.emit(Op::Null, line);
             }
         }
-        self.emit(Op::Equal, line);
+        self.emit(Op::MatchLiteral, line);
         let fail = self.emit_jump(Op::JumpIfFalse(0), line);
         Ok(vec![fail])
     }

@@ -114,6 +114,7 @@ end
 # "First two: 1, 2; remaining: [3, 4, 5]"</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-6">A literal arm matches a value of the same kind and value only: <code class="text-amber-400">1 =&gt;</code> does not match <code class="text-amber-400">1.0</code>, nor <code class="text-amber-400">"1"</code>. An enum arm that names more payload fields than the variant has does not match.</p>
         <p class="text-gray-400 mb-6">An arm is a single expression: <code class="text-amber-400">=&gt; { … }</code> is read as a hash literal, so several statements belong in a method the arm calls. In a type-checked script (<code class="text-amber-400">soli file.sl</code>) an arm that uses the <code class="text-amber-400">...rest</code> binding is currently refused with <em>Undefined variable 'rest'</em>; it runs in a served app, in <code class="text-amber-400">soli test</code>, and with <code class="text-amber-400">--no-type-check</code>.</p>
     </section>
 

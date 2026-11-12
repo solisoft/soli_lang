@@ -737,7 +737,9 @@ create the record first, or use {}.create({{...}})",
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
             (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)),
-            (Value::Decimal(a), Value::Decimal(b)) => a.to_f64().partial_cmp(&b.to_f64()),
+            // Exactly: through f64, two decimals past ~15 digits were neither
+            // < nor > each other (#639).
+            (Value::Decimal(a), Value::Decimal(b)) => Some(a.0.cmp(&b.0)),
             (Value::Decimal(a), Value::Int(b)) => a.to_f64().partial_cmp(&(*b as f64)),
             (Value::Int(a), Value::Decimal(b)) => (*a as f64).partial_cmp(&b.to_f64()),
             (Value::Decimal(a), Value::Float(b)) => a.to_f64().partial_cmp(b),

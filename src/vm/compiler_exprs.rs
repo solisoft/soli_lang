@@ -348,15 +348,28 @@ impl Compiler {
                         _ => None,
                     };
                     if let Some(jump_op) = jump_op {
+                        // The receiver is evaluated once (#639), kept under
+                        // the read value:
+                        //
+                        //   obj; Dup; GetPropertyOrNull; jump-if-decided KEEP;
+                        //   Pop; value; SetProperty; Jump END;
+                        //   KEEP: Nip; END:
                         let idx = self.add_string_constant(name);
                         self.compile_expr(object)?;
+                        self.emit(Op::Dup, line);
                         self.emit(Op::GetPropertyOrNull(idx), line);
-                        let jump = self.emit_jump(jump_op, line);
+                        let decided = self.emit_jump(jump_op, line);
                         self.emit(Op::Pop, line);
-                        self.compile_expr(object)?;
                         self.compile_expr(value)?;
                         self.emit(Op::SetProperty(idx), line);
-                        self.patch_jump(jump);
+                        let height = self.stack_height;
+                        let end = self.emit_jump(Op::Jump(0), line);
+                        self.patch_jump(decided);
+                        self.emit(Op::Nip, line);
+                        self.patch_jump(end);
+                        // Both paths leave one value: the assigned one, or
+                        // the one read.
+                        self.stack_height = height;
                         return Ok(());
                     }
                 }

@@ -250,11 +250,7 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
                 // (payload). This is what gets stored in the DB; the model
                 // `enum_field` DSL reconstructs it on read.
                 if let Some(tag) = crate::interpreter::value::enum_variant_tag(&borrow) {
-                    let payload: Vec<(&crate::interpreter::value::SoliStr, &Value)> = borrow
-                        .fields
-                        .iter()
-                        .filter(|(k, _)| k.as_str() != "__variant")
-                        .collect();
+                    let payload = crate::interpreter::value::enum_payload_fields(&borrow);
                     if payload.is_empty() {
                         return Ok(serde_json::Value::String(tag.to_string()));
                     }

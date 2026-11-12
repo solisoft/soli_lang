@@ -59,6 +59,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::False => out.push_str("FALSE"),
         Op::Pop => out.push_str("POP"),
         Op::Dup => out.push_str("DUP"),
+        Op::Nip => out.push_str("NIP"),
         Op::GetLocal(slot) => out.push_str(&format!("GET_LOCAL    {:>5}", slot)),
         Op::SetLocal(slot) => out.push_str(&format!("SET_LOCAL    {:>5}", slot)),
         Op::GetGlobal(idx) => {
@@ -127,6 +128,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::BlockBreak => out.push_str("BLOCK_BREAK"),
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
+        Op::MatchLiteral => out.push_str("MATCH_LITERAL"),
         Op::PushMethod => out.push_str("PUSH_METHOD"),
         Op::Hash(n) => out.push_str(&format!("HASH         {:>5}", n)),
         Op::HashWithKeys(idx, n) => out.push_str(&format!("HASH_W_KEYS  k={:>3} n={:>3}", idx, n)),
@@ -323,6 +325,9 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::EnumPayload(sl, v, i) => {
             out.push_str(&format!("ENUM_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))
+        }
+        Op::EnumHasPayload(sl, v, i) => {
+            out.push_str(&format!("ENUM_HAS_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))
         }
         Op::MatchType(n, off) => out.push_str(&format!("MATCH_TYPE {:>5} {:>5}", n, off)),
         Op::MatchArrayLen(sl, n, at_least) => out.push_str(&format!(
