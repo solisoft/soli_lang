@@ -4,6 +4,20 @@
 
 ### Added
 
+- **Union types: `Int | String | nil` (#693, phase 4).** `TypeKind::Union`
+  in the AST, parsed by `parse_union_type` for members joined by `|` on the
+  type's line (a `|` on the next line is code); `nil`/`null` is a type;
+  `(T)` groups (`(Int | String)[]`). Inside `|x: T|` block and lambda
+  parameters the closing `|` is not a union (`Parser::no_union_type`); write
+  `|x: (Int | String)|`. The checker's `Type::union` normalises (flattened,
+  deduplicated, `| nil` → `Nullable`); a value stored in a union slot fits if
+  it fits a member, a union value fits where every member does
+  (`check_stored` keeps the union for arguments, annotated `let`s and
+  `return`s), and a union read elsewhere is `Any` — no narrowing yet. At run
+  time `value_matches_type` and `TypeCheck::Union` check union return types on
+  both engines; `soli fmt` prints them back, and the tree-sitter grammar gains
+  `parenthesized_type` and typed `|x: T|` parameters.
+
 - **`soli check` strictness levels (#693, phase 3).** `off`, `loose`,
   `standard` (the default) and `strict`, set by a `# soli: <level>` line at the
   top of a file (`check::directive`; it wins), `soli check --level`, or

@@ -3929,6 +3929,7 @@ pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
         TypeKind::Nullable(inner) => {
             matches!(value, Value::Null) || value_matches_type(value, inner)
         }
+        TypeKind::Union(members) => members.iter().any(|m| value_matches_type(value, m)),
         TypeKind::Array(_) => matches!(value, Value::Array(_)),
         TypeKind::Hash { .. } => matches!(value, Value::Hash(_)),
         TypeKind::Function { .. } => is_function_value(value),
@@ -3978,6 +3979,8 @@ pub enum TypeCheck {
     Class(Box<str>),
     /// `T?`: null, or what the inner check admits.
     Nullable(Box<TypeCheck>),
+    /// `A | B`: what any one of the member checks admits.
+    Union(Box<[TypeCheck]>),
 }
 
 impl TypeCheck {
@@ -3989,6 +3992,7 @@ impl TypeCheck {
             }
             TypeKind::Void => Self::Null,
             TypeKind::Nullable(inner) => Self::Nullable(Box::new(Self::lower(inner))),
+            TypeKind::Union(members) => Self::Union(members.iter().map(Self::lower).collect()),
             TypeKind::Array(_) => Self::Array,
             TypeKind::Hash { .. } => Self::Hash,
             TypeKind::Function { .. } => Self::Function,
@@ -4032,6 +4036,7 @@ impl TypeCheck {
             Self::Null => matches!(value, Value::Null),
             Self::Class(name) => instance_answers_to(value, name),
             Self::Nullable(inner) => matches!(value, Value::Null) || inner.admits(value),
+            Self::Union(members) => members.iter().any(|m| m.admits(value)),
         }
     }
 }

@@ -126,7 +126,7 @@ impl TypeChecker {
                 for (i, arg) in arguments.iter().enumerate() {
                     match arg {
                         Argument::Positional(expr) => {
-                            let arg_type = self.check_expr(expr)?;
+                            let arg_type = self.check_stored(expr)?;
                             if let Some(param_type) = params.get(i) {
                                 // Allow Any param type to accept any argument (for map/filter/each)
                                 if matches!(param_type, Type::Any) {

@@ -1601,9 +1601,14 @@ impl Parser {
                 let param_start = self.current_span();
                 let name = self.expect_identifier()?;
 
-                // Type annotation
+                // Type annotation. Between `|`s the closing `|` is not a
+                // union: `|x: (Int | String)|` writes one.
                 let type_annotation = if self.match_token(&TokenKind::Colon) {
-                    Some(self.parse_type()?)
+                    let no_union_type =
+                        std::mem::replace(&mut self.no_union_type, *end_token == TokenKind::Pipe);
+                    let parsed = self.parse_type();
+                    self.no_union_type = no_union_type;
+                    Some(parsed?)
                 } else {
                     None
                 };

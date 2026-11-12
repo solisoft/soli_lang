@@ -263,6 +263,7 @@ impl TypeChecker {
                 "Bool" => Type::Bool,
                 "String" => Type::String,
                 "Any" => Type::Any,
+                "Null" | "nil" | "null" => Type::Null,
                 _ => {
                     if let Some(class) = self.env.get_class(name) {
                         Type::Class(class.clone())
@@ -284,6 +285,7 @@ impl TypeChecker {
             },
             // `Int?` takes `nil` as well as an `Int` wherever it is stored;
             // dropping the `?` refused `f(nil)` for `def f(x: Int?)`.
+            TypeKind::Union(members) => Type::union(members.iter().map(|m| self.resolve_type(m))),
             TypeKind::Nullable(inner) => match self.resolve_type(inner) {
                 inner @ (Type::Nullable(_) | Type::Any | Type::Unknown) => inner,
                 inner => Type::Nullable(Box::new(inner)),

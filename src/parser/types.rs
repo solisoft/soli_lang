@@ -10,9 +10,32 @@ use super::core::{ParseResult, Parser};
 impl Parser {
     pub(crate) fn parse_type(&mut self) -> ParseResult<TypeAnnotation> {
         self.enter_depth("type")?;
-        let result = self.parse_type_inner();
+        let result = self.parse_union_type();
         self.exit_depth();
         result
+    }
+
+    /// `A | B | nil`: members joined by `|` on the line of the type. A `|`
+    /// on the next line is code (a block's parameters), and inside `|x: T|`
+    /// parameters the `|` closes them (see `no_union_type`).
+    fn parse_union_type(&mut self) -> ParseResult<TypeAnnotation> {
+        let first = self.parse_type_inner()?;
+        if self.no_union_type {
+            return Ok(first);
+        }
+        let mut members = vec![first];
+        while self.check(&TokenKind::Pipe)
+            && self.peek().span.line == self.previous_span().line
+            && starts_a_type(&self.peek_nth(1).kind)
+        {
+            self.advance();
+            members.push(self.parse_type_inner()?);
+        }
+        if members.len() == 1 {
+            return Ok(members.pop().unwrap_or_else(|| unreachable!()));
+        }
+        let span = members[0].span.merge(&members[members.len() - 1].span);
+        Ok(TypeAnnotation::new(TypeKind::Union(members), span))
     }
 
     fn parse_type_inner(&mut self) -> ParseResult<TypeAnnotation> {
@@ -39,6 +62,11 @@ impl Parser {
                 self.advance();
                 TypeAnnotation::new(TypeKind::Void, start_span)
             }
+            // `nil` / `null` as a type: the member of a union that admits nil.
+            TokenKind::Null => {
+                self.advance();
+                TypeAnnotation::new(TypeKind::Named("Null".to_string()), start_span)
+            }
             TokenKind::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
@@ -59,14 +87,26 @@ impl Parser {
             }
             TokenKind::LeftParen => {
                 self.advance();
+                // Inside parentheses `|` is a union again, even in `|x: …|`.
+                let no_union_type = std::mem::replace(&mut self.no_union_type, false);
                 let mut params = Vec::new();
-                if !self.check(&TokenKind::RightParen) {
-                    params.push(self.parse_type()?);
-                    while self.match_token(&TokenKind::Comma) {
+                let parsed = (|| {
+                    if !self.check(&TokenKind::RightParen) {
                         params.push(self.parse_type()?);
+                        while self.match_token(&TokenKind::Comma) {
+                            params.push(self.parse_type()?);
+                        }
                     }
+                    self.expect(&TokenKind::RightParen)
+                })();
+                self.no_union_type = no_union_type;
+                parsed?;
+                // `(Int | String)`: a type in parentheses, not a function type.
+                if params.len() == 1 && !self.check(&TokenKind::Arrow) {
+                    let mut grouped = params.pop().unwrap_or_else(|| unreachable!());
+                    grouped.span = start_span.merge(&self.previous_span());
+                    return self.type_suffixes(start_span, grouped);
                 }
-                self.expect(&TokenKind::RightParen)?;
                 self.expect(&TokenKind::Arrow)?;
                 let return_type = Box::new(self.parse_type()?);
                 let span = start_span.merge(&return_type.span);
@@ -87,6 +127,15 @@ impl Parser {
             }
         };
 
+        self.type_suffixes(start_span, base_type)
+    }
+
+    /// `[]` and `?` after a type.
+    fn type_suffixes(
+        &mut self,
+        start_span: Span,
+        base_type: TypeAnnotation,
+    ) -> ParseResult<TypeAnnotation> {
         // Check for array suffix [] and nullable suffix ?
         //
         // `[]` is a suffix only when written against the type (`Int[]`). After
@@ -193,4 +242,20 @@ impl Parser {
             is_block_param,
         })
     }
+}
+
+/// Whether `kind` can begin a type: what may follow a union's `|`.
+fn starts_a_type(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Int
+            | TokenKind::Float
+            | TokenKind::Bool
+            | TokenKind::String
+            | TokenKind::Void
+            | TokenKind::Null
+            | TokenKind::Identifier(_)
+            | TokenKind::Fn
+            | TokenKind::LeftParen
+    )
 }

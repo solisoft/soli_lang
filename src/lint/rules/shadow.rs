@@ -186,6 +186,7 @@ fn holds_a_value(annotation: &TypeAnnotation) -> bool {
         ),
         TypeKind::Array(_) | TypeKind::Hash { .. } => true,
         TypeKind::Nullable(inner) => holds_a_value(inner),
+        TypeKind::Union(members) => members.iter().all(holds_a_value),
         TypeKind::Function { .. } | TypeKind::Void => false,
     }
 }

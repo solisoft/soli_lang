@@ -36,6 +36,8 @@ pub enum TypeKind {
     },
     /// Nullable type: Type?
     Nullable(Box<TypeAnnotation>),
+    /// Union type: `Int | String | nil` — a value of any one of the members.
+    Union(Vec<TypeAnnotation>),
 }
 
 impl std::fmt::Display for TypeAnnotation {
@@ -43,6 +45,9 @@ impl std::fmt::Display for TypeAnnotation {
         match &self.kind {
             TypeKind::Named(name) => write!(f, "{}", name),
             TypeKind::Void => write!(f, "Void"),
+            TypeKind::Array(inner) if matches!(inner.kind, TypeKind::Union(_)) => {
+                write!(f, "({})[]", inner)
+            }
             TypeKind::Array(inner) => write!(f, "{}[]", inner),
             TypeKind::Hash {
                 key_type,
@@ -61,7 +66,23 @@ impl std::fmt::Display for TypeAnnotation {
                 }
                 write!(f, ") -> {}", return_type)
             }
+            TypeKind::Nullable(inner) if matches!(inner.kind, TypeKind::Union(_)) => {
+                write!(f, "({})?", inner)
+            }
             TypeKind::Nullable(inner) => write!(f, "{}?", inner),
+            TypeKind::Union(members) => {
+                for (i, member) in members.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    // `nil` as it is written; the type is `Null`.
+                    match &member.kind {
+                        TypeKind::Named(name) if name == "Null" => write!(f, "nil")?,
+                        _ => write!(f, "{}", member)?,
+                    }
+                }
+                Ok(())
+            }
         }
     }
 }

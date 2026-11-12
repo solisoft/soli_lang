@@ -48,6 +48,12 @@ pub enum Type {
     /// the `T` (`check_expr` strips it), since the checker does not narrow
     /// after a nil test yet.
     Nullable(Box<Type>),
+    /// `A | B`: a value of one of the members — two or more, none of them a
+    /// union, `Null`, `Any` or `Unknown` (build it with [`Type::union`]; a
+    /// union with `nil` is a `Nullable` of the rest). Like `T?`, it matters
+    /// where a value is stored; a value read from one is `Any` until the
+    /// checker narrows.
+    Union(Vec<Type>),
     /// Type variable (for inference)
     Var(u32),
     /// Unknown type (error recovery)
@@ -68,12 +74,54 @@ impl Type {
         )
     }
 
-    /// `T` for a `T?`, anything else as it is: what reading a nullable slot
-    /// gives (see [`Type::Nullable`]).
+    /// `T` for a `T?`, `Any` for a union, anything else as it is: what
+    /// reading a nullable or union slot gives (see [`Type::Nullable`],
+    /// [`Type::Union`]).
     pub fn strip_nullable(self) -> Type {
         match self {
-            Type::Nullable(inner) => *inner,
+            Type::Nullable(inner) => inner.strip_nullable(),
+            Type::Union(_) => Type::Any,
             other => other,
+        }
+    }
+
+    /// The union of `members`, normalised: nested unions flattened, `T?`
+    /// split into `T` and `Null`, duplicates dropped; `Any` or `Unknown`
+    /// absorbs the rest; one member left is itself; `Null` among others
+    /// makes the rest nullable.
+    pub fn union(members: impl IntoIterator<Item = Type>) -> Type {
+        fn add(ty: Type, out: &mut Vec<Type>, nullable: &mut bool) {
+            match ty {
+                Type::Union(inner) => inner.into_iter().for_each(|t| add(t, out, nullable)),
+                Type::Nullable(inner) => {
+                    *nullable = true;
+                    add(*inner, out, nullable);
+                }
+                Type::Null | Type::Void => *nullable = true,
+                other => {
+                    if !out.contains(&other) {
+                        out.push(other);
+                    }
+                }
+            }
+        }
+        let mut out = Vec::new();
+        let mut nullable = false;
+        for member in members {
+            add(member, &mut out, &mut nullable);
+        }
+        if out.iter().any(|t| matches!(t, Type::Any | Type::Unknown)) {
+            return Type::Any;
+        }
+        let core = match out.len() {
+            0 => return Type::Null,
+            1 => out.pop().unwrap_or(Type::Any),
+            _ => Type::Union(out),
+        };
+        if nullable {
+            Type::Nullable(Box::new(core))
+        } else {
+            core
         }
     }
 
@@ -84,6 +132,13 @@ impl Type {
         }
 
         match (self, target) {
+            // A union goes where each of its members goes.
+            (Type::Union(members), _) => members.iter().all(|m| m.is_assignable_to(target)),
+            // A union slot takes what any one of its members takes.
+            (_, Type::Union(members)) => {
+                matches!(self, Type::Any | Type::Unknown)
+                    || members.iter().any(|m| self.is_assignable_to(m))
+            }
             // A `T?` slot takes `nil` and anything a `T` slot takes.
             (_, Type::Nullable(inner)) => {
                 matches!(self, Type::Null) || self.is_assignable_to(inner)
@@ -163,6 +218,7 @@ impl fmt::Display for Type {
             Type::Symbol => write!(f, "Symbol"),
             Type::Void => write!(f, "Void"),
             Type::Null => write!(f, "Null"),
+            Type::Array(inner) if matches!(**inner, Type::Union(_)) => write!(f, "({})[]", inner),
             Type::Array(inner) => write!(f, "{}[]", inner),
             Type::Hash {
                 key_type,
@@ -184,7 +240,19 @@ impl fmt::Display for Type {
             Type::Future(inner) => write!(f, "Future<{}>", inner),
             Type::Class(class) => write!(f, "{}", class.name),
             Type::Interface(iface) => write!(f, "{}", iface.name),
+            Type::Nullable(inner) if matches!(**inner, Type::Union(_)) => {
+                write!(f, "{} | nil", inner)
+            }
             Type::Nullable(inner) => write!(f, "{}?", inner),
+            Type::Union(members) => {
+                for (i, member) in members.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{}", member)?;
+                }
+                Ok(())
+            }
             Type::Var(id) => write!(f, "?T{}", id),
             Type::Unknown => write!(f, "unknown"),
             Type::Any => write!(f, "Any"),

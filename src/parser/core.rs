@@ -44,6 +44,10 @@ pub struct Parser {
     /// How many `class`/`module` declarations enclose the token being parsed;
     /// the outermost one resolves its constants (`class_constants`).
     pub(crate) class_nesting: usize,
+    /// Set while parsing the types of `|x: Int|` block and lambda
+    /// parameters, whose closing `|` would otherwise read as a union:
+    /// there a union is written in parentheses (`|x: (Int | String)|`).
+    pub(crate) no_union_type: bool,
     /// Whether the outermost class resolves its constants (`class_constants`).
     /// Off in [`Parser::as_written`]: `soli fmt` and the editor's symbols
     /// want the source as written, not the tree the engines run.
@@ -61,6 +65,7 @@ impl Parser {
             no_trailing_do: false,
             in_try_body: false,
             class_nesting: 0,
+            no_union_type: false,
             resolve_class_constants: true,
         }
     }

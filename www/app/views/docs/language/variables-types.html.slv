@@ -82,6 +82,33 @@ label(nil)   # "none"
 label(3)     # "3 item(s)"</code></pre>
             </div>
         </div>
+        <h3 class="text-lg font-semibold text-white mt-6 mb-3">Union types</h3>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">A | B</code> is a value of either type, and <code class="text-cyan-400">| nil</code> admits <code class="text-cyan-400">nil</code> (<code class="text-cyan-400">Int | nil</code> is <code class="text-cyan-400">Int?</code>). Unions go wherever a type does &mdash; a parameter, a <code class="text-cyan-400">let</code>, a field, a return type:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def show(id: Int | String) -> String
+  "##{id}"
+end
+
+def find_label(key: String) -> String | nil
+  return nil if key.blank?
+
+  key.upcase
+end
+
+show(42)         # "#42"
+show("a-1")      # "#a-1"
+find_label("")   # nil</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">soli check</code> refuses <code class="text-cyan-400">show(1.5)</code>, and a union where one member would not fit: <code class="text-cyan-400">let n: Int = pick()</code> for a <code class="text-cyan-400">pick</code> returning <code class="text-cyan-400">Int | String</code>. Both engines check a union return type at run time, like any return type. A value read from a union is not narrowed yet, so its members' methods are not checked.
+        </p>
+        <p class="text-gray-400 mb-4">
+            Between the pipes of a block or lambda's parameters, <code class="text-cyan-400">|</code> closes them; write a union there in parentheses: <code class="text-cyan-400">|x: (Int | String)| { x.to_s }</code>. Parentheses also group a union inside another type: <code class="text-cyan-400">(Int | String)[]</code>.
+        </p>
         <h3 class="text-lg font-semibold text-white mt-6 mb-3">Conditions</h3>
         <p class="text-gray-400 mb-4">
             Any value can be a condition: <code class="text-cyan-400">false</code>, <code class="text-cyan-400">nil</code>, <code class="text-cyan-400">0</code>, <code class="text-cyan-400">""</code>, <code class="text-cyan-400">[]</code> and <code class="text-cyan-400">{}</code> are falsy, everything else (including <code class="text-cyan-400">0.0</code>) is truthy. <code class="text-cyan-400">if xs.length</code>, <code class="text-cyan-400">if hash</code> and <code class="text-cyan-400">while node</code> are all valid, and <code class="text-cyan-400">soli check</code> accepts them.

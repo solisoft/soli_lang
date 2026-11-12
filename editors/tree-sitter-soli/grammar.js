@@ -59,6 +59,7 @@ module.exports = grammar({
   supertypes: ($) => [$._statement, $._expression, $._primary],
 
   conflicts: ($) => [
+    [$.parenthesized_type, $.function_type],
     [$.if_expression, $._primary],
     [$.next_statement],
     [$.break_statement],
@@ -333,6 +334,7 @@ module.exports = grammar({
         $.union_type,
         $.function_type,
         $.array_type,
+        $.parenthesized_type,
         alias('nil', $.type_identifier),
         alias('null', $.type_identifier),
       ),
@@ -344,6 +346,7 @@ module.exports = grammar({
     optional_type: ($) => prec(2, seq($._type, token.immediate('?'))),
     union_type: ($) => prec.left(seq($._type, '|', $._type)),
     array_type: ($) => prec(2, seq($._type, token.immediate('['), ']')),
+    parenthesized_type: ($) => seq('(', $._type, ')'),
     function_type: ($) => prec.right(seq('(', commaSep($._type), ')', '->', $._type)),
 
     // ------------------------------------------------------------- control flow
@@ -592,8 +595,26 @@ module.exports = grammar({
 
     lambda_parameters: ($) => seq('|', commaSep(alias($._bar_parameter, $.parameter)), '|'),
 
-    // Between `|…|` a parameter takes no type: a `|` there would close it.
-    _bar_parameter: ($) => seq(optional(choice('...', '*', '&')), field('name', $.identifier)),
+    // Between `|…|` a parameter's type is no union: the `|` closes the
+    // parameters, so a union there is written in parentheses.
+    _bar_parameter: ($) =>
+      seq(
+        optional(choice('...', '*', '&')),
+        field('name', $.identifier),
+        optional(seq(':', field('type', $._bar_type))),
+      ),
+
+    _bar_type: ($) =>
+      choice(
+        $.type_identifier,
+        $.generic_type,
+        alias($._bar_optional_type, $.optional_type),
+        alias($._bar_array_type, $.array_type),
+        $.parenthesized_type,
+        $.function_type,
+      ),
+    _bar_optional_type: ($) => prec(2, seq($._bar_type, token.immediate('?'))),
+    _bar_array_type: ($) => prec(2, seq($._bar_type, token.immediate('['), ']')),
 
     _primary: ($) =>
       choice(

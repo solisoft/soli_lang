@@ -625,3 +625,69 @@ end
       (constant_declaration
         (constant)
         (integer)))))
+
+================================================================================
+Union types and typed block parameters
+================================================================================
+
+def f(x: Int | String | nil) -> (Int | String)[]
+  [x]
+end
+g = |x: (Int | String)| { x }
+xs.map { |x: Int| x }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (union_type
+          (union_type
+            (type_identifier
+              (constant))
+            (type_identifier
+              (constant)))
+          (type_identifier))))
+    (array_type
+      (parenthesized_type
+        (union_type
+          (type_identifier
+            (constant))
+          (type_identifier
+            (constant)))))
+    (body
+      (expression_statement
+        (array
+          (identifier)))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (lambda
+        (lambda_parameters
+          (parameter
+            (identifier)
+            (parenthesized_type
+              (union_type
+                (type_identifier
+                  (constant))
+                (type_identifier
+                  (constant))))))
+        (brace_body
+          (expression_statement
+            (identifier))))))
+  (expression_statement
+    (call
+      (member_expression
+        (identifier)
+        (property_identifier))
+      (block
+        (block_parameters
+          (parameter
+            (identifier)
+            (type_identifier
+              (constant))))
+        (expression_statement
+          (identifier))))))

@@ -23,7 +23,11 @@ impl TypeChecker {
             } => {
                 let declared_type = type_annotation.as_ref().map(|t| self.resolve_type(t));
                 let init_type = if let Some(init) = initializer {
-                    Some(self.check_expr(init)?)
+                    Some(if declared_type.is_some() {
+                        self.check_stored(init)?
+                    } else {
+                        self.check_expr(init)?
+                    })
                 } else {
                     None
                 };
@@ -160,7 +164,7 @@ impl TypeChecker {
 
             StmtKind::Return(value) => {
                 let return_type = if let Some(expr) = value {
-                    self.check_expr(expr)?
+                    self.check_stored(expr)?
                 } else {
                     Type::Void
                 };

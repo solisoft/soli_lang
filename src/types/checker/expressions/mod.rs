@@ -24,6 +24,17 @@ impl TypeChecker {
         Ok(self.check_expr_slot(expr)?.strip_nullable())
     }
 
+    /// The type of a value about to be stored in a typed slot — an argument,
+    /// an annotated `let`, a `return`: a `T?` read as `T`, as everywhere, but
+    /// a union kept, so `let n: Int = int_or_string` is refused while reading
+    /// it elsewhere is not.
+    pub(crate) fn check_stored(&mut self, expr: &Expr) -> TypeResult<Type> {
+        Ok(match self.check_expr_slot(expr)? {
+            Type::Nullable(inner) => *inner,
+            other => other,
+        })
+    }
+
     /// [`check_expr`](Self::check_expr), a nullable type left as declared.
     pub(crate) fn check_expr_slot(&mut self, expr: &Expr) -> TypeResult<Type> {
         match &expr.kind {

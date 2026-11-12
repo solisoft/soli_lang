@@ -471,6 +471,10 @@ runs is not refused for being Soli:
 - **`T?` takes `nil`.** `def f(x: Int?)` accepts `f(nil)` and `f(2)`, and
   `x = nil` or `return nil` into an `Int?` slot is fine. A value read from it
   is used as the `T` (there is no narrowing after `x.nil?` yet).
+- **A union takes any of its members.** `def f(x: Int | String)` accepts
+  `f(1)` and `f("a")`, refuses `f(1.5)`; a union *value* goes only where every
+  member fits (`let n: Int = int_or_string` is refused). A value read from a
+  union is `Any` until the checker narrows, so its methods are not checked.
 - **One mistake does not hide the rest.** Each statement of a `def`, a method,
   a block or a `describe` body is checked even after an earlier one failed, so
   every error of a file is reported — and a name the failing line would have

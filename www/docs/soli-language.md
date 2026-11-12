@@ -228,6 +228,38 @@ label(nil)   # "none"
 label(3)     # "3 item(s)"
 ```
 
+### Union Types
+
+`A | B` is a value of either type, and `| nil` admits `nil` (`Int | nil` is
+`Int?`). Unions go wherever a type does — a parameter, a `let`, a field, a
+return type:
+
+```soli
+def show(id: Int | String) -> String
+  "##{id}"
+end
+
+def find_label(key: String) -> String | nil
+  return nil if key.blank?
+
+  key.upcase
+end
+
+show(42)         # "#42"
+show("a-1")      # "#a-1"
+find_label("")   # nil
+```
+
+`soli check` refuses `show(1.5)`, and a union where one member would not
+fit: `let n: Int = pick()` for a `pick` returning `Int | String`. Both engines
+check a union return type at run time, like any return type. A value read
+from a union is not narrowed yet (`if id.is_a?("Int")` does not make it an
+`Int`), so its members' methods are not checked.
+
+Between the pipes of a block or lambda's parameters, `|` closes them; write a
+union there in parentheses: `|x: (Int | String)| { x.to_s }`. Parentheses
+also group a union inside another type: `(Int | String)[]`.
+
 ### Conditions
 
 Any value can be a condition: `false`, `nil`, `0`, `""`, `[]` and `{}` are
