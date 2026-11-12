@@ -14,7 +14,7 @@
 //! pause directly here (both are thread-safe), and sends commands only while
 //! the engine is stopped.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -47,6 +47,41 @@ pub enum Event {
     },
     /// The program finished; `error` is the message of an uncaught error.
     Finished { error: Option<String> },
+    /// A logpoint's message, for the editor's debug console.
+    Output { text: String },
+}
+
+/// One breakpoint, with what DAP lets an editor attach to it.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct Breakpoint {
+    pub line: u32,
+    /// Stop only when this Soli expression is truthy in the frame.
+    pub condition: Option<String>,
+    /// Stop only on some hits: `N` or `>= N` (from the Nth on), `== N`,
+    /// `> N`, `% N` (every Nth). Counts the hits whose condition held.
+    pub hit_condition: Option<String>,
+    /// A logpoint: print this (with `{expr}` parts evaluated) and go on.
+    pub log_message: Option<String>,
+}
+
+/// Why the engine should stop, as [`should_stop`] decides it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Stop {
+    /// A pause request or a finished step (`pause`, `step`).
+    Reason(&'static str),
+    /// A breakpoint's line was reached; whether it really stops depends on
+    /// its condition, hit count and log message, which only the engine can
+    /// evaluate.
+    Breakpoint(Breakpoint),
+}
+
+impl Stop {
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Stop::Reason(reason) => reason,
+            Stop::Breakpoint(_) => "breakpoint",
+        }
+    }
 }
 
 /// How the engine should behave between two stops.
@@ -66,7 +101,10 @@ pub enum StepMode {
 pub struct Session {
     /// Breakpoint lines by file, the file as the engine reports it
     /// (absolute, see [`normalize_path`]).
-    breakpoints: Mutex<HashMap<String, BTreeSet<u32>>>,
+    breakpoints: Mutex<HashMap<String, Vec<Breakpoint>>>,
+    /// Hits per breakpoint (file, line) whose condition held, for
+    /// `hit_condition`. Reset when the file's breakpoints are set again.
+    hits: Mutex<HashMap<(String, u32), u64>>,
     pause: AtomicBool,
     commands: Mutex<Receiver<Command>>,
     events: Sender<Event>,
@@ -116,6 +154,7 @@ pub fn open() -> Result<(Sender<Command>, Receiver<Event>), String> {
     let (event_tx, event_rx) = std::sync::mpsc::channel();
     let session = Arc::new(Session {
         breakpoints: Mutex::new(HashMap::new()),
+        hits: Mutex::new(HashMap::new()),
         pause: AtomicBool::new(false),
         commands: Mutex::new(command_rx),
         events: event_tx,
@@ -163,18 +202,65 @@ pub fn normalize_path(path: &str) -> String {
 
 /// Replace the breakpoints of `file` (the DAP `setBreakpoints` semantics).
 pub fn set_breakpoints(file: &str, lines: impl IntoIterator<Item = u32>) {
+    set_breakpoint_specs(
+        file,
+        lines.into_iter().map(|line| Breakpoint {
+            line,
+            ..Breakpoint::default()
+        }),
+    );
+}
+
+/// [`set_breakpoints`] with conditions, hit counts and log messages.
+pub fn set_breakpoint_specs(file: &str, breakpoints: impl IntoIterator<Item = Breakpoint>) {
     if let Some(session) = session() {
+        let file = normalize_path(file);
+        let breakpoints: Vec<Breakpoint> = breakpoints.into_iter().collect();
+        session
+            .hits
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|(f, _), _| *f != file);
         let mut all = session
             .breakpoints
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let lines: BTreeSet<u32> = lines.into_iter().collect();
-        let file = normalize_path(file);
-        if lines.is_empty() {
+        if breakpoints.is_empty() {
             all.remove(&file);
         } else {
-            all.insert(file, lines);
+            all.insert(file, breakpoints);
         }
+    }
+}
+
+/// Count one hit of the breakpoint at `file:line`; the count so far.
+pub fn count_hit(file: &str, line: u32) -> u64 {
+    let Some(session) = session() else {
+        return 0;
+    };
+    let mut hits = session.hits.lock().unwrap_or_else(|e| e.into_inner());
+    let count = hits.entry((file.to_string(), line)).or_insert(0);
+    *count += 1;
+    *count
+}
+
+/// Does hit number `hits` satisfy `condition` (see
+/// [`Breakpoint::hit_condition`])? A condition that does not parse never
+/// holds back the stop.
+pub fn hit_condition_holds(condition: &str, hits: u64) -> bool {
+    let condition = condition.trim();
+    let (op, number) = ["==", ">=", ">", "%"]
+        .iter()
+        .find_map(|op| condition.strip_prefix(op).map(|rest| (*op, rest)))
+        .unwrap_or((">=", condition));
+    let Ok(n) = number.trim().parse::<u64>() else {
+        return true;
+    };
+    match op {
+        "==" => hits == n,
+        ">" => hits > n,
+        "%" => n > 0 && hits.is_multiple_of(n),
+        _ => hits >= n,
     }
 }
 
@@ -197,17 +283,13 @@ pub struct Location {
 ///
 /// `last` is where the previous statement was: a line holding several
 /// statements (or a statement the engine reports twice) stops once.
-pub fn should_stop(
-    here: &Location,
-    last: Option<&Location>,
-    mode: StepMode,
-) -> Option<&'static str> {
+pub fn should_stop(here: &Location, last: Option<&Location>, mode: StepMode) -> Option<Stop> {
     let session = session()?;
     if !client_connected() {
         return None;
     }
     if session.pause.swap(false, Ordering::AcqRel) {
-        return Some("pause");
+        return Some(Stop::Reason("pause"));
     }
     let moved = last != Some(here);
     if !moved {
@@ -220,20 +302,20 @@ pub fn should_stop(
         StepMode::Out(depth) => here.depth < depth,
     };
     if stepped {
-        return Some("step");
+        return Some(Stop::Reason("step"));
     }
-    let on_breakpoint = session
+    let breakpoint = session
         .breakpoints
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get(&here.file)
-        .is_some_and(|lines| lines.contains(&here.line));
-    if on_breakpoint {
+        .and_then(|all| all.iter().find(|b| b.line == here.line).cloned());
+    if let Some(breakpoint) = breakpoint {
         // A breakpoint fires when the line is reached, not again for each
         // statement on it.
         let same_line = last.is_some_and(|l| l.file == here.file && l.line == here.line);
         if !same_line {
-            return Some("breakpoint");
+            return Some(Stop::Breakpoint(breakpoint));
         }
     }
     None
@@ -291,6 +373,19 @@ mod tests {
     }
 
     #[test]
+    fn hit_conditions() {
+        assert!(hit_condition_holds("3", 3) && hit_condition_holds("3", 4));
+        assert!(!hit_condition_holds("3", 2));
+        assert!(hit_condition_holds("== 2", 2) && !hit_condition_holds("== 2", 3));
+        assert!(hit_condition_holds("> 2", 3) && !hit_condition_holds("> 2", 2));
+        assert!(hit_condition_holds("% 3", 6) && !hit_condition_holds("% 3", 4));
+        assert!(
+            hit_condition_holds("soon", 1),
+            "unparsable never holds back"
+        );
+    }
+
+    #[test]
     fn paths_are_compared_absolute_and_lexically_resolved() {
         assert_eq!(normalize_path("/a/./b/../c.sl"), "/a/c.sl");
         assert!(normalize_path("x.sl").ends_with("/x.sl"));
@@ -307,28 +402,28 @@ mod tests {
         assert_eq!(should_stop(&at(4, 2), Some(&last), StepMode::Run), None);
         assert_eq!(
             should_stop(&at(9, 3), Some(&last), StepMode::In),
-            Some("step")
+            Some(Stop::Reason("step"))
         );
         assert_eq!(should_stop(&at(9, 3), Some(&last), StepMode::Over(2)), None);
         assert_eq!(
             should_stop(&at(4, 2), Some(&last), StepMode::Over(2)),
-            Some("step")
+            Some(Stop::Reason("step"))
         );
         assert_eq!(
             should_stop(&at(7, 1), Some(&last), StepMode::Over(2)),
-            Some("step")
+            Some(Stop::Reason("step"))
         );
         assert_eq!(should_stop(&at(4, 2), Some(&last), StepMode::Out(2)), None);
         assert_eq!(
             should_stop(&at(7, 1), Some(&last), StepMode::Out(2)),
-            Some("step")
+            Some(Stop::Reason("step"))
         );
         // The same place twice never stops on a step.
         assert_eq!(should_stop(&last, Some(&last), StepMode::In), None);
 
         set_breakpoints("/app/main.sl", [12]);
         assert_eq!(
-            should_stop(&at(12, 1), Some(&at(11, 1)), StepMode::Run),
+            should_stop(&at(12, 1), Some(&at(11, 1)), StepMode::Run).map(|s| s.reason()),
             Some("breakpoint")
         );
         // A second statement on the breakpoint's line does not stop again.
@@ -345,7 +440,7 @@ mod tests {
         request_pause();
         assert_eq!(
             should_stop(&last, Some(&last), StepMode::Run),
-            Some("pause")
+            Some(Stop::Reason("pause"))
         );
         assert_eq!(should_stop(&last, Some(&last), StepMode::Run), None);
     }

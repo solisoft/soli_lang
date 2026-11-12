@@ -273,8 +273,11 @@ For highlighting, add the `[[grammar]]` entry and the queries from the
 
 ## Debugging
 
-`soli dap` is the debug adapter: breakpoints, stepping and variables for a
-script, in Neovim (nvim-dap), Helix or any DAP client. Setup and limits:
+`soli dap` is the debug adapter: breakpoints (conditions, hit counts,
+logpoints), stepping and variables for a script or the specs, and
+`soli serve --dev --inspect` to attach to a running server. The VS Code
+extension declares the `soli` debug type; Neovim (nvim-dap), Helix and any
+DAP client work too. Setup and limits:
 [Debugging → Step debugger](debugging.md#step-debugger-soli-dap).
 
 ## Other editors

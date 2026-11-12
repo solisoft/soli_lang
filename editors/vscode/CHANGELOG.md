@@ -2,6 +2,13 @@
 
 ## 0.3.0 (unreleased)
 
+- **Debugger.** The `soli` debug type runs `soli dap`: launch a script
+  (`program`, `cwd`, `stopOnEntry`, `engine`) or the specs (`"mode": "test"`,
+  `filter`), or attach to `soli serve --dev --inspect` (`host`, `port`,
+  `token`). Breakpoints, conditions, hit counts, logpoints, stepping,
+  variables and the debug console. Run and Debug offers "Debug this file" and
+  snippets for the specs and for attaching.
+
 - **Language server.** The extension starts `soli lsp` and gets hover,
   completion (members after `.` and `@`), project-wide go-to-definition,
   references, rename, formatting, document symbols, folding, code actions and

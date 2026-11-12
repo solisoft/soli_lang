@@ -17,6 +17,7 @@ import {
 import { fallbackLintActive, lacksLanguageServer } from "./lint";
 import { LintFallback } from "./lintFallback";
 import { defaultIsExecutable, Resolution, resolveSoli } from "./resolveBinary";
+import { adapterFor } from "./debugAdapter";
 
 const INSTALL_DOCS = "https://soli.solisoft.net/docs/getting-started/installation";
 /** More crashes than this within the window and the server stays down. */
@@ -63,6 +64,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else if (event.affectsConfiguration("soli.lint")) {
         refreshFallback();
       }
+    }),
+  );
+
+  // The "soli" debug type: `soli dap` for a launch, the `--inspect` port of
+  // a running `soli serve --dev` for an attach.
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory("soli", {
+      createDebugAdapterDescriptor(session) {
+        const choice = adapterFor(session.configuration, soliPath ?? resolve().path);
+        switch (choice.kind) {
+          case "server":
+            return new vscode.DebugAdapterServer(choice.port, choice.host);
+          case "executable":
+            return new vscode.DebugAdapterExecutable(choice.command, choice.args);
+          case "error":
+            vscode.window.showErrorMessage(choice.message);
+            return undefined;
+        }
+      },
     }),
   );
 

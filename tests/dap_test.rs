@@ -379,3 +379,78 @@ end
         client.output
     );
 }
+
+const LOOP: &str = r#"total = 0
+i = 0
+while i < 10
+  total = total + i
+  i = i + 1
+end
+print("total #{total}")
+"#;
+
+/// Conditions, hit counts and logpoints, on both engines: `i == 7` stops
+/// once, at i = 7; `== 3` stops on the third pass; a logpoint prints each
+/// pass with its `{i}` and never stops.
+#[test]
+fn conditional_breakpoints_hit_counts_and_logpoints() {
+    for engine in ["tree", "vm"] {
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("loop.sl");
+        std::fs::write(&program, LOOP).unwrap();
+        let program = program.to_string_lossy().to_string();
+
+        let mut client = Client::start();
+        let capabilities = client.request("initialize", json!({}));
+        assert_eq!(capabilities["supportsConditionalBreakpoints"], true);
+        assert_eq!(capabilities["supportsLogPoints"], true);
+        client.request("launch", json!({"program": program, "engine": engine}));
+        client.request(
+            "setBreakpoints",
+            json!({"source": {"path": program}, "breakpoints": [
+                {"line": 4, "condition": "i == 7"},
+                {"line": 5, "logMessage": "i was {i}, total {total}"},
+            ]}),
+        );
+        client.request("configurationDone", json!({}));
+
+        client.wait_event("stopped");
+        let i = client.request("evaluate", json!({"expression": "i"}));
+        assert_eq!(i["result"], "7", "{engine}: the condition held at i = 7");
+
+        // Now stop on the second pass of line 4 from here on (hits are
+        // counted again from when the breakpoints are set).
+        client.request(
+            "setBreakpoints",
+            json!({"source": {"path": program}, "breakpoints": [
+                {"line": 4, "hitCondition": "== 2"},
+            ]}),
+        );
+        client.request("continue", json!({"threadId": 1}));
+        client.wait_event("stopped");
+        let i = client.request("evaluate", json!({"expression": "i"}));
+        // Counted from the reset: the first pass is i = 8, the second i = 9.
+        assert_eq!(i["result"], "9", "{engine}: second pass after the reset");
+
+        client.request(
+            "setBreakpoints",
+            json!({"source": {"path": program}, "breakpoints": []}),
+        );
+        client.request("continue", json!({"threadId": 1}));
+        client.wait_event("terminated");
+        for pass in 0..7 {
+            assert!(
+                client
+                    .output
+                    .contains(&format!("i was {pass}, total {}", (0..=pass).sum::<i32>())),
+                "{engine}: logpoint pass {pass}: {}",
+                client.output
+            );
+        }
+        assert!(
+            client.output.contains("total 45"),
+            "{engine}: {}",
+            client.output
+        );
+    }
+}

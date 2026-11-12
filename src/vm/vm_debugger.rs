@@ -26,9 +26,23 @@ impl Vm {
             depth: self.frames.len().saturating_sub(1),
         };
         let builtins = || self.globals.keys().cloned().collect::<HashSet<String>>();
-        if let Some((reason, description)) = debugger::vm_statement(here, builtins) {
-            self.debugger_stop(line, reason, description);
+        let Some(stop) = debugger::vm_statement(here.clone(), builtins) else {
+            return;
+        };
+        let description = format!("{}:{}", here.file, here.line);
+        if let crate::debug::session::Stop::Breakpoint(breakpoint) = &stop {
+            // Conditions and logpoints read the frame as a stop would.
+            let frames = self.debugger_frames(line);
+            let globals = self.debugger_globals();
+            let mut evaluate =
+                |source: &str| debugger::evaluate_in_snapshot(&frames, &globals, source);
+            if !debugger::breakpoint_stops(breakpoint, &here, &mut evaluate) {
+                return;
+            }
+            debugger::vm_pause(frames, globals, stop.reason(), description);
+            return;
         }
+        self.debugger_stop(line, stop.reason(), description);
     }
 
     /// `debug()` reached under a debugger.

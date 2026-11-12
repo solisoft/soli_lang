@@ -4,6 +4,21 @@
 
 ### Added
 
+- **Conditional breakpoints, hit counts, logpoints, and the debugger in VS
+  Code (#697, phase 5).** `setBreakpoints` takes `condition` (a Soli
+  expression evaluated in the reached frame — on the VM through the same
+  read-only snapshot as `evaluate`; one that raises stops and reports it),
+  `hitCondition` (`N`/`>= N`, `== N`, `> N`, `% N`, counting passes whose
+  condition held, reset when the file's breakpoints are set) and
+  `logMessage` (`{expr}` interpolated, sent as a console `output` event, no
+  stop); `initialize` advertises the three. `session::Stop` carries the
+  breakpoint to the engine, which decides (`debugger::breakpoint_stops`).
+  The VS Code extension declares the `soli` debug type (launch runs `soli
+  dap`, attach connects to the `--inspect` port; `src/debugAdapter.ts`,
+  tested), with launch.json snippets. Tests: `dap_test`
+  `conditional_breakpoints_hit_counts_and_logpoints` on both engines,
+  `session::tests::hit_conditions`, the extension's `debugAdapter.test.ts`.
+
 - **`--profile=alloc`: an allocation profiler (#697, phase 4).** The
   binary's global allocator wraps mimalloc (`CountingAlloc`) and reports
   each allocation's size (and each growing reallocation's increase) to

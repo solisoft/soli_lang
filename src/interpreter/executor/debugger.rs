@@ -184,9 +184,17 @@ impl Interpreter {
             let last = state.last.replace(here.clone());
             (last, state.mode)
         });
-        if let Some(reason) = session::should_stop(&here, last.as_ref(), mode) {
-            self.debugger_pause(reason, format!("{}:{}", here.file, here.line));
+        let Some(stop) = session::should_stop(&here, last.as_ref(), mode) else {
+            return;
+        };
+        if let session::Stop::Breakpoint(breakpoint) = &stop {
+            let env = self.environment.clone();
+            let mut evaluate = |source: &str| run_source(self, env.clone(), source);
+            if !breakpoint_stops(breakpoint, &here, &mut evaluate) {
+                return;
+            }
         }
+        self.debugger_pause(stop.reason(), format!("{}:{}", here.file, here.line));
     }
 
     /// `debug()` reached with a debugger attached: stop here instead of
@@ -322,7 +330,7 @@ fn describe_result(value: &Value) -> Json {
 pub(crate) fn vm_statement(
     here: Location,
     builtins: impl FnOnce() -> HashSet<String>,
-) -> Option<(&'static str, String)> {
+) -> Option<session::Stop> {
     let (last, mode, evaluating) = STATE.with(|state| {
         let mut state = state.borrow_mut();
         if state.builtins.is_none() {
@@ -338,7 +346,110 @@ pub(crate) fn vm_statement(
         return None;
     }
     session::should_stop(&here, last.as_ref(), mode)
-        .map(|reason| (reason, format!("{}:{}", here.file, here.line)))
+}
+
+/// A breakpoint's line was reached: does it stop? Its condition must be
+/// truthy (an error in it stops, and says so), its hit count must match,
+/// and a logpoint prints its message instead of stopping. `evaluate` runs
+/// Soli source in the reached frame.
+pub(crate) fn breakpoint_stops(
+    breakpoint: &session::Breakpoint,
+    here: &Location,
+    evaluate: &mut dyn FnMut(&str) -> Result<Value, String>,
+) -> bool {
+    if let Some(condition) = breakpoint
+        .condition
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+    {
+        match evaluate(condition) {
+            Ok(value) if !value.is_truthy() => return false,
+            Ok(_) => {}
+            Err(e) => session::send(Event::Output {
+                text: format!(
+                    "Breakpoint condition `{condition}` at {}:{} failed: {e}\n",
+                    here.file, here.line
+                ),
+            }),
+        }
+    }
+    let hits = session::count_hit(&here.file, here.line);
+    if let Some(hit_condition) = breakpoint.hit_condition.as_deref() {
+        if !session::hit_condition_holds(hit_condition, hits) {
+            return false;
+        }
+    }
+    if let Some(message) = &breakpoint.log_message {
+        let text = interpolate_log(message, evaluate);
+        session::send(Event::Output {
+            text: format!("{text}\n"),
+        });
+        return false;
+    }
+    true
+}
+
+/// A logpoint's message with each `{expression}` replaced by its value
+/// (`{{` and `}}` for literal braces).
+fn interpolate_log(
+    message: &str,
+    evaluate: &mut dyn FnMut(&str) -> Result<Value, String>,
+) -> String {
+    let mut out = String::new();
+    let mut chars = message.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' if chars.peek() == Some(&'{') => {
+                chars.next();
+                out.push('{');
+            }
+            '}' if chars.peek() == Some(&'}') => {
+                chars.next();
+                out.push('}');
+            }
+            '{' => {
+                let mut expression = String::new();
+                for c in chars.by_ref() {
+                    if c == '}' {
+                        break;
+                    }
+                    expression.push(c);
+                }
+                match evaluate(&expression) {
+                    Ok(Value::String(s)) => out.push_str(s.as_str()),
+                    Ok(value) => out.push_str(&format!("{}", value)),
+                    Err(e) => out.push_str(&format!("<{e}>")),
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Evaluate `source` against a VM frame read off the stack (the frame at
+/// `depth` of `frames`, and `globals`), on a scratch tree-walker.
+pub(crate) fn evaluate_in_snapshot(
+    frames: &[FrameState],
+    globals: &[(String, Value)],
+    source: &str,
+) -> Result<Value, String> {
+    let locals = match frames.last().map(|f| &f.scope) {
+        Some(FrameScope::Values(values)) => values.clone(),
+        _ => Vec::new(),
+    };
+    let mut interpreter = Interpreter::new();
+    {
+        let mut global = interpreter.environment.borrow_mut();
+        for (name, value) in globals {
+            global.define(name.clone(), value.clone());
+        }
+    }
+    let mut scope = Environment::with_enclosing(interpreter.environment.clone());
+    for (name, value) in locals {
+        scope.define(name, value);
+    }
+    run_source(&mut interpreter, Rc::new(RefCell::new(scope)), source)
 }
 
 /// The names defined before the program ran (builtins), as first seen.

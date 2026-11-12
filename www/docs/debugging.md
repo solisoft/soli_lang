@@ -120,6 +120,19 @@ globals.
   process the debugger does not reach. The session's exit code is the
   runner's: `1` when a spec fails.
 
+**Conditions, hit counts and logpoints.** A breakpoint can carry a
+`condition` (a Soli expression, evaluated in the frame: it stops only when
+truthy; one that raises stops and says why in the debug console), a
+`hitCondition` (`N` or `>= N` from the Nth pass, `== N`, `> N`, `% N` every
+Nth; passes are counted from when the file's breakpoints were last set), or a
+`logMessage` (a logpoint: it prints the message, with each `{expression}`
+evaluated, and does not stop). Editors set these from the breakpoint's
+context menu.
+
+**VS Code, Cursor**: the Soli extension declares the `soli` debug type. Run
+and Debug → "create a launch.json" offers "Debug this file", and snippets for
+the specs and for attaching to `soli serve`.
+
 **Neovim** ([nvim-dap](https://github.com/mfussenegger/nvim-dap)):
 
 ```lua
@@ -192,8 +205,6 @@ dap.configurations.soli = vim.list_extend(dap.configurations.soli or {}, {
   tree-walker.
 - An outer frame's Locals are as they were at its last statement, the call
   it is waiting on.
-- No conditional breakpoints or logpoints yet, and the VS Code extension
-  does not declare the debugger yet: use an editor above, or any DAP client.
 - On Windows the program's output is not captured, and can disturb the
   protocol.
 

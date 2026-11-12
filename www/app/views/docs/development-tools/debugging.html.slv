@@ -154,6 +154,8 @@ end</code></pre>
             <li><code class="text-cyan-400">"script"</code> (the default): <code>program</code> is a <code>.sl</code> script.</li>
             <li><code class="text-cyan-400">"test"</code>: <code>program</code> is a spec file or directory, run by <code>soli test</code> with one worker and no coverage; <code class="text-cyan-400">filter</code> narrows it like <code>--filter</code>. The debugger stops in the spec and in whatever it calls in-process (models, services, helpers); a request a spec sends goes to the test server, a separate process the debugger does not reach. The session&rsquo;s exit code is the runner&rsquo;s: <code>1</code> when a spec fails.</li>
         </ul>
+        <p class="text-gray-400 mb-4"><strong class="text-white">Conditions, hit counts and logpoints.</strong> A breakpoint can carry a <code class="text-cyan-400">condition</code> (a Soli expression, evaluated in the frame: it stops only when truthy; one that raises stops and says why in the debug console), a <code class="text-cyan-400">hitCondition</code> (<code>N</code> or <code>&gt;= N</code> from the Nth pass, <code>== N</code>, <code>&gt; N</code>, <code>% N</code> every Nth; passes are counted from when the file&rsquo;s breakpoints were last set), or a <code class="text-cyan-400">logMessage</code> (a logpoint: it prints the message, with each <code>{expression}</code> evaluated, and does not stop). Editors set these from the breakpoint&rsquo;s context menu.</p>
+        <p class="text-gray-400 mb-4"><strong class="text-white">VS Code, Cursor:</strong> the Soli extension declares the <code class="text-cyan-400">soli</code> debug type. Run and Debug &rarr; &ldquo;create a launch.json&rdquo; offers &ldquo;Debug this file&rdquo;, and snippets for the specs and for attaching to <code>soli serve</code>.</p>
         <h3 class="text-xl font-semibold text-white mb-3">Neovim (nvim-dap)</h3>
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto">
 <pre><code class="language-lua text-sm">local dap = require("dap")
@@ -201,7 +203,6 @@ dap.configurations.soli = vim.list_extend(dap.configurations.soli or {}, {
             <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
                 <li>Native kernels (typed functions compiled to machine code) are off while debugging: no debugger stops inside machine code. Specs run on the tree-walker.</li>
                 <li>An outer frame&rsquo;s Locals are as they were at its last statement, the call it is waiting on.</li>
-                <li>No conditional breakpoints or logpoints yet, and the VS Code extension does not declare the debugger yet: use an editor above, or any DAP client.</li>
                 <li>On Windows the program&rsquo;s output is not captured, and can disturb the protocol.</li>
             </ul>
         </div>

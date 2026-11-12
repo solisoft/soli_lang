@@ -53,16 +53,26 @@ pub fn start_inspector(addr: &str, token: String) -> Result<SocketAddr, String> 
             .name("soli-inspect-events".into())
             .spawn(move || {
                 for event in events {
-                    if let Event::Stopped {
-                        reason,
-                        description,
-                    } = event
-                    {
-                        stopped.store(true, Ordering::Release);
-                        let wire = current.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                        if let Some(wire) = wire {
-                            send_stopped(&wire, reason, &description);
+                    let wire = current.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    match event {
+                        Event::Stopped {
+                            reason,
+                            description,
+                        } => {
+                            stopped.store(true, Ordering::Release);
+                            if let Some(wire) = wire {
+                                send_stopped(&wire, reason, &description);
+                            }
                         }
+                        Event::Output { text } => {
+                            if let Some(wire) = wire {
+                                wire.event(
+                                    "output",
+                                    serde_json::json!({"category": "console", "output": text}),
+                                );
+                            }
+                        }
+                        Event::Finished { .. } => {}
                     }
                 }
             })

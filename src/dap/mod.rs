@@ -161,6 +161,9 @@ impl Adapter {
                     "supportsConfigurationDoneRequest": true,
                     "supportsEvaluateForHovers": true,
                     "supportsTerminateRequest": true,
+                    "supportsConditionalBreakpoints": true,
+                    "supportsHitConditionalBreakpoints": true,
+                    "supportsLogPoints": true,
                 });
                 self.wire.respond(request, Ok(capabilities));
                 self.wire.event("initialized", json!({}));
@@ -349,21 +352,33 @@ impl Adapter {
 
 fn set_breakpoints(args: &Json) -> Json {
     let path = args["source"]["path"].as_str().unwrap_or_default();
-    let lines: Vec<u32> = args["breakpoints"]
+    let text = |b: &Json, key: &str| {
+        b[key]
+            .as_str()
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string)
+    };
+    let specs: Vec<session::Breakpoint> = args["breakpoints"]
         .as_array()
         .map(|items| {
             items
                 .iter()
-                .filter_map(|b| b["line"].as_u64())
-                .map(|l| l as u32)
+                .filter_map(|b| {
+                    Some(session::Breakpoint {
+                        line: b["line"].as_u64()? as u32,
+                        condition: text(b, "condition"),
+                        hit_condition: text(b, "hitCondition"),
+                        log_message: text(b, "logMessage"),
+                    })
+                })
                 .collect()
         })
         .unwrap_or_default();
-    session::set_breakpoints(path, lines.iter().copied());
-    let breakpoints: Vec<Json> = lines
+    let breakpoints: Vec<Json> = specs
         .iter()
-        .map(|line| json!({"verified": true, "line": line}))
+        .map(|b| json!({"verified": true, "line": b.line}))
         .collect();
+    session::set_breakpoint_specs(path, specs);
     json!({"breakpoints": breakpoints})
 }
 
@@ -390,6 +405,9 @@ fn pump_events(wire: Wire, events: std::sync::mpsc::Receiver<Event>, stopped: Ar
                 let code = i64::from(error.is_some());
                 wire.event("exited", json!({"exitCode": code}));
                 wire.event("terminated", json!({}));
+            }
+            Event::Output { text } => {
+                wire.event("output", json!({"category": "console", "output": text}));
             }
         }
     }

@@ -29,7 +29,9 @@
     "web framework"
   ],
   "activationEvents": [
-    "workspaceContains:soli.toml"
+    "workspaceContains:soli.toml",
+    "onDebugResolve:soli",
+    "onDebugDynamicConfigurations:soli"
   ],
   "main": "./out/extension.js",
   "capabilities": {
@@ -141,6 +143,133 @@
         "command": "soli.lint",
         "title": "Lint Current File",
         "category": "Soli"
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "soli"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "soli",
+        "label": "Soli",
+        "languages": [
+          "soli"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "The .sl script to run, or with \"mode\": \"test\" a spec file or directory.",
+                "default": "${file}"
+              },
+              "cwd": {
+                "type": "string",
+                "description": "The working directory.",
+                "default": "${workspaceFolder}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Stop at the program's first line.",
+                "default": false
+              },
+              "engine": {
+                "type": "string",
+                "enum": [
+                  "tree",
+                  "vm"
+                ],
+                "description": "The engine to run a script on. Specs run on the tree-walker.",
+                "default": "tree"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "script",
+                  "test"
+                ],
+                "description": "\"test\" runs the specs with soli test (one worker, no coverage).",
+                "default": "script"
+              },
+              "filter": {
+                "type": "string",
+                "description": "With \"mode\": \"test\": run only the tests whose name contains this."
+              }
+            }
+          },
+          "attach": {
+            "required": [
+              "token"
+            ],
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "Where soli serve --dev --inspect listens.",
+                "default": "127.0.0.1"
+              },
+              "port": {
+                "type": "number",
+                "description": "The --inspect port.",
+                "default": 9229
+              },
+              "token": {
+                "type": "string",
+                "description": "The dev token soli serve printed (SOLI_DEV_REPL_SECRET).",
+                "default": "${env:SOLI_DEV_REPL_SECRET}"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "soli",
+            "request": "launch",
+            "name": "Debug this file",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Soli: debug a script",
+            "description": "Run the current file under the debugger.",
+            "body": {
+              "type": "soli",
+              "request": "launch",
+              "name": "Debug this file",
+              "program": "^\"\\${file}\"",
+              "cwd": "^\"\\${workspaceFolder}\""
+            }
+          },
+          {
+            "label": "Soli: debug the specs",
+            "description": "Run soli test under the debugger.",
+            "body": {
+              "type": "soli",
+              "request": "launch",
+              "name": "Debug the specs",
+              "mode": "test",
+              "program": "^\"\\${workspaceFolder}/tests\"",
+              "cwd": "^\"\\${workspaceFolder}\""
+            }
+          },
+          {
+            "label": "Soli: attach to soli serve",
+            "description": "Attach to soli serve --dev --inspect.",
+            "body": {
+              "type": "soli",
+              "request": "attach",
+              "name": "Attach to soli serve",
+              "port": 9229,
+              "token": "^\"\\${env:SOLI_DEV_REPL_SECRET}\""
+            }
+          }
+        ]
       }
     ]
   },
