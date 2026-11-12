@@ -1391,6 +1391,9 @@ table keeps the features it was rendered with until `cache_ttl` runs out. Pass t
 data in the hash when it should count. Data the key cannot be derived from, such as a
 query not run yet (`Plan.where(...)`), renders the component uncached.
 
+Every key, derived or named, includes the active locale: a component that calls `t()`
+is kept once per language.
+
 ### Component catalog (dev)
 
 With `soli serve --dev`, browse every component at **`/__soli/components`** — a

@@ -2196,11 +2196,16 @@ fn build_pagination_url(base: &str, page: i64, param_name: &str) -> String {
 /// and every card showed the first card's HTML for as long as it was kept.
 /// Data it cannot hash (a query not yet run, a structure that contains
 /// itself) renders uncached.
+///
+/// The active locale is part of every key, as it is of the page cache's: a
+/// component's `t()` reads it, so its HTML in `fr` must not answer an `en`
+/// request.
 fn component_cache_key(name: &str, cache_opt: Option<&Value>, data: &Value) -> Option<String> {
+    let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
     match cache_opt? {
-        Value::String(key) => Some(format!("component:{name}:{key}")),
+        Value::String(key) => Some(format!("component:{name}:{locale}:{key}")),
         _ => crate::template::response_cache::content_signature(data)
-            .map(|signature| format!("component:{name}:{signature}")),
+            .map(|signature| format!("component:{name}:{locale}:{signature}")),
     }
 }
 
@@ -4087,10 +4092,36 @@ mod tests {
 
         // An explicit key is taken as given; no option, no cache.
         let named = Value::String("site-footer".into());
+        let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
         assert_eq!(
             component_cache_key("footer", Some(&named), &data(card("x"))),
-            Some("component:footer:site-footer".to_string())
+            Some(format!("component:footer:{locale}:site-footer"))
         );
         assert_eq!(component_cache_key("card", None, &data(card("x"))), None);
+    }
+
+    /// A component's `t()` reads the active locale, so its cached HTML is
+    /// kept per locale, a named key and a derived one alike (#635).
+    #[test]
+    fn a_component_key_names_the_locale() {
+        use crate::interpreter::builtins::i18n::helpers::{set_locale, CURRENT_LOCALE};
+        let before = CURRENT_LOCALE.with(|locale| locale.borrow().clone());
+        let named = Value::String("site-footer".into());
+        let derived = Value::Bool(true);
+        let data = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+        let keys = |_: ()| {
+            (
+                component_cache_key("footer", Some(&named), &data),
+                component_cache_key("footer", Some(&derived), &data),
+            )
+        };
+        set_locale("fr");
+        let french = keys(());
+        set_locale("en");
+        let english = keys(());
+        CURRENT_LOCALE.with(|locale| *locale.borrow_mut() = before);
+        assert_ne!(french.0, english.0);
+        assert_ne!(french.1, english.1);
+        assert!(english.0.is_some() && english.1.is_some());
     }
 }

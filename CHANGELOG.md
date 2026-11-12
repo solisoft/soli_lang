@@ -342,6 +342,19 @@
 
 ### Fixed
 
+- **Three cache keys that mixed renders up (#635).** The response cache keyed
+  the layout as `Some(name)` / `None`, so a view's default layout and its
+  `{"layout": false}` render (an htmx fragment) shared an entry: whichever
+  came first answered both. The key is now the layout the render applies
+  (`template::resolved_layout`, which the render reads too). A function in
+  the render data was hashed by its name — every lambda is `<lambda>` — so
+  two lambdas shared a page: it is now keyed by its code (AST body / VM
+  proto), and one that captured locals makes the render uncacheable. A
+  cached component's KV key (`component_cache_key`) now includes the active
+  locale, so an `fr` render no longer answers an `en` request. Tests:
+  `a_fragment_and_its_full_page_are_cached_apart` (both orders),
+  `functions_are_keyed_by_their_code`, `a_component_key_names_the_locale`.
+
 - **The VM resolves a pending call before indexing or comparing it (#634).**
   `HTTP.get_json(url)["name"]`, `HTTP.request(…)["status"]` and
   `System.run([…])["exit_code"]` raised "Cannot access property 'get' on

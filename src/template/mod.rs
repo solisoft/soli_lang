@@ -315,10 +315,11 @@ impl TemplateCache {
         // body directly. The cached body is the raw (pre-ETag) body
         // produced by the template AST walk; the FNV-1a ETag is
         // recomputed in `html_response` on every request.
-        let layout_name: Option<&str> = match layout {
-            Some(Some(name)) => Some(name),
-            _ => None,
-        };
+        // The layout the render applies, which is what keys the cache: the
+        // default (`None`) is `application`, and `{"layout": false}` is no
+        // layout at all. Both read as `None` here once, so a fragment and
+        // the full page of one view shared an entry.
+        let layout_name = resolved_layout(template_name, layout);
         let template_path = self.resolve_template_path(template_name)?;
 
         let Some(data_sig) = Self::cache_signature(&template_path, layout_name, data) else {
@@ -356,10 +357,11 @@ impl TemplateCache {
         layout: Option<Option<&str>>,
         status: i64,
     ) -> Result<Value, String> {
-        let layout_name: Option<&str> = match layout {
-            Some(Some(name)) => Some(name),
-            _ => None,
-        };
+        // The layout the render applies, which is what keys the cache: the
+        // default (`None`) is `application`, and `{"layout": false}` is no
+        // layout at all. Both read as `None` here once, so a fragment and
+        // the full page of one view shared an entry.
+        let layout_name = resolved_layout(template_name, layout);
         let template_path = self.resolve_template_path(template_name)?;
 
         let Some(data_sig) = Self::cache_signature(&template_path, layout_name, data) else {
@@ -542,33 +544,15 @@ impl TemplateCache {
         };
 
         // Apply layout if specified, reusing the same interpreter
-        let result = match layout {
-            Some(Some(layout_name)) => self.render_layout_with_shared_interpreter(
+        let result = match resolved_layout(template_name, layout) {
+            Some(layout_name) => self.render_layout_with_shared_interpreter(
                 &mut interpreter,
                 &content,
                 data,
                 layout_name,
                 &partial_renderer,
             ),
-            Some(None) => {
-                // Explicitly no layout (layout: false)
-                Ok(content)
-            }
-            None => {
-                // Default layout: application
-                // But if the template name starts with underscore (partial), skip layout
-                if template_name.contains("/_") || template_name.starts_with('_') {
-                    Ok(content)
-                } else {
-                    self.render_layout_with_shared_interpreter(
-                        &mut interpreter,
-                        &content,
-                        data,
-                        "application",
-                        &partial_renderer,
-                    )
-                }
-            }
+            None => Ok(content),
         };
         if let (Some(start), Some(id)) = (view_start, view_id) {
             crate::serve::view_log::record(id, template_name, start.elapsed().as_micros() as u64);
@@ -1873,6 +1857,18 @@ fn is_safe_markdown_url(url: &str) -> bool {
     !lower[..first_separator].contains(':')
 }
 
+/// The layout a render of `template_name` applies: the one named, none for
+/// `{"layout": false}` (`Some(None)`), and by default `application` — except
+/// for a partial (`_name`, `dir/_name`), which gets none. The render and its
+/// response-cache key both read it, so they cannot disagree.
+fn resolved_layout<'a>(template_name: &str, layout: Option<Option<&'a str>>) -> Option<&'a str> {
+    match layout {
+        Some(named) => named,
+        None if template_name.contains("/_") || template_name.starts_with('_') => None,
+        None => Some("application"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2169,6 +2165,45 @@ mod tests {
         let other = TemplateCache::new(&other_views);
         assert_eq!(other.render_partial("row", &data)?, "other");
         assert_eq!(cache.render_partial("row", &data)?, "second");
+        Ok(())
+    }
+
+    /// The default layout and `{"layout": false}` are two renders of one
+    /// view, and two cache entries: an htmx fragment and its full page used
+    /// to share one key, so whichever was rendered first answered both
+    /// (#635). Both orders.
+    #[test]
+    fn a_fragment_and_its_full_page_are_cached_apart() -> Result<(), Box<dyn std::error::Error>> {
+        for fragment_first in [true, false] {
+            let dir = tempfile::tempdir()?;
+            let views = dir.path().join("views");
+            fs::create_dir_all(views.join("home"))?;
+            fs::create_dir_all(views.join("layouts"))?;
+            fs::write(views.join("home/index.html.slv"), "<p>body</p>")?;
+            fs::write(
+                views.join("layouts/application.html.slv"),
+                "<main><%= yield %></main>",
+            )?;
+            let cache = TemplateCache::new(&views);
+            let data = Value::Hash(Rc::new(RefCell::new(Default::default())));
+            let page = |cache: &TemplateCache| cache.render("home/index", &data, None);
+            let fragment = |cache: &TemplateCache| cache.render("home/index", &data, Some(None));
+            for _ in 0..2 {
+                response_cache::reset_for_new_request();
+                let (first, second) = if fragment_first {
+                    let fragment = fragment(&cache)?;
+                    (page(&cache)?, fragment)
+                } else {
+                    let page = page(&cache)?;
+                    (page, fragment(&cache)?)
+                };
+                assert!(first.contains("<main>"), "the page has its layout: {first}");
+                assert!(
+                    !second.contains("<main>"),
+                    "the fragment has none: {second}"
+                );
+            }
+        }
         Ok(())
     }
 

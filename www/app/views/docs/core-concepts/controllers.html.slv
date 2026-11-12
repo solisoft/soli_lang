@@ -551,8 +551,10 @@ end</code></pre>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-6">
         <li>the request has a session, because the layout may show who is signed in;</li>
         <li>the action or the view sets a cookie, writes the session or the flash, puts a CSRF token on the page (<code>csrf_meta_tag()</code>, a form), or calls <code>clock</code> or <code>Math.random</code>. A page that did so once is not kept again until the next restart or hot reload;</li>
-        <li>the data holds an <strong>object</strong>: a model record (<code>Post.all</code>, <code>Post.find(id)</code>) or any class instance. A view calls an object's methods, and they can read what the data does not hold. A relation (<code>post.author</code>, <code>post.comments.count</code>) queries the database at render time. The same goes for a query not run yet (<code>Post.where(...)</code> iterated by the view) and for a pending future.</li>
+        <li>the data holds an <strong>object</strong>: a model record (<code>Post.all</code>, <code>Post.find(id)</code>) or any class instance. A view calls an object's methods, and they can read what the data does not hold. A relation (<code>post.author</code>, <code>post.comments.count</code>) queries the database at render time. The same goes for a query not run yet (<code>Post.where(...)</code> iterated by the view) and for a pending future;</li>
+        <li>the data holds a lambda that captured the action&rsquo;s locals (<code>fn() { post.title }</code>): it renders what it captured. A lambda or function that captured nothing is keyed by its code, so two different ones never share a page.</li>
     </ul>
+    <p class="text-gray-400 mb-4">The layout is the one the render applies: a full page and the same view rendered with <code>{"layout": false}</code> (an htmx fragment) are two entries.</p>
     <p class="text-gray-400 mb-4">
         Plain values are compared by what they hold: strings, numbers, <code>Decimal</code>, <code>DateTime</code>, arrays and hashes. <code>Post.pluck(:id, :title).all</code> returns hashes, so a page rendered from plucked rows is answered from the cache until the rows change.
     </p>

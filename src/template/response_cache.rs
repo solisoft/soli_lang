@@ -288,6 +288,8 @@ const MAX_DEPTH: usize = 128;
 ///   the next.
 /// * a query not yet run (`Post.where(...)`, iterated by the view), a future
 ///   or a grouped read still pending, an image.
+/// * a function that captured locals (a lambda made in the action): it
+///   renders what it captured. Any other function is keyed by its code.
 /// * data nested deeper than `MAX_DEPTH` (128) containers, or that contains
 ///   itself.
 ///
@@ -447,17 +449,29 @@ impl Walk {
                 self.value(h, cell.resolved.as_ref()?)?;
                 self.leave();
             }
+            // A function by its code, not its name: two lambdas are all
+            // called `<lambda>`, so a view given either got the other's page.
+            // The code (the AST body, the VM's compiled proto) lives as long
+            // as the application, so its address names it. A function that
+            // captured locals renders what it captured, which the key cannot
+            // see: refused.
             Value::Function(f) => {
+                if !f.closure.try_borrow().ok()?.is_global() {
+                    return None;
+                }
                 mix(h, b'f' as u64);
-                mix_str(h, f.name.as_bytes());
+                mix(h, Rc::as_ptr(&f.body) as *const () as usize as u64);
             }
             Value::NativeFunction(f) => {
                 mix(h, b'n' as u64);
                 mix_str(h, f.name.as_bytes());
             }
             Value::VmClosure(c) => {
+                if !c.upvalues.is_empty() {
+                    return None;
+                }
                 mix(h, b'v' as u64);
-                mix_str(h, c.proto.name.as_bytes());
+                mix(h, std::sync::Arc::as_ptr(&c.proto) as *const () as usize as u64);
             }
             Value::Class(c) => {
                 mix(h, b'C' as u64);
@@ -573,6 +587,42 @@ mod tests {
         );
         clear_cache();
         assert!(get(path, Some("application"), 42, false).is_none());
+    }
+
+    /// A function in the data is keyed by its code, not its name: every
+    /// lambda is `<lambda>`, so two of them shared a page (#635). One that
+    /// captured locals renders what it captured, which no key can see: the
+    /// render is not cached.
+    #[test]
+    fn functions_are_keyed_by_their_code() -> Result<(), String> {
+        let source = "loud = fn(x) { x.upcase }\nquiet = fn(x) { x.downcase }\n\
+                      def make(word)\n  return fn() { word }\nend\ncaptured = make(\"hi\")\n";
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).map_err(|e| e.to_string())?;
+        let global = |name: &str| {
+            interpreter
+                .global_env()
+                .borrow()
+                .get(name)
+                .ok_or(format!("no {name}"))
+        };
+        let (loud, quiet, captured) = (global("loud")?, global("quiet")?, global("captured")?);
+        let loud_key = data_signature(&loud);
+        assert!(loud_key.is_some(), "a lambda over the globals is keyed");
+        assert_eq!(loud_key, data_signature(&loud));
+        assert_ne!(loud_key, data_signature(&quiet), "two lambdas, two keys");
+        assert_eq!(
+            data_signature(&captured),
+            None,
+            "a capturing lambda refuses"
+        );
+        Ok(())
     }
 
     /// `t()` reads the locale from a thread-local, not from the render data,

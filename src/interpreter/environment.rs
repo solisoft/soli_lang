@@ -122,6 +122,12 @@ impl Environment {
         env
     }
 
+    /// Whether this is the root scope (the globals): a function closed over
+    /// it captured no local.
+    pub fn is_global(&self) -> bool {
+        self.enclosing.is_none()
+    }
+
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
         Self {
             values: AHashMap::with_hasher(map_hasher()),

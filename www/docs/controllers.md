@@ -568,7 +568,13 @@ A render is never kept, or answered from the cache, when:
   instance. A view calls an object's methods, and they can read what the data does not
   hold. A relation (`post.author`, `post.comments.count`) queries the database at render
   time. The same goes for a query not run yet (`Post.where(...)` iterated by the view) and
-  for a pending future.
+  for a pending future;
+- the data holds a lambda that captured the action's locals (`fn() { post.title }`): it
+  renders what it captured. A lambda or function that captured nothing is keyed by its
+  code, so two different ones never share a page.
+
+The layout is the one the render applies: a full page and the same view rendered with
+`{"layout": false}` (an htmx fragment) are two entries.
 
 Plain values are compared by what they hold: strings, numbers, `Decimal`, `DateTime`,
 arrays and hashes. `Post.pluck(:id, :title).all` returns hashes, so a page rendered from
