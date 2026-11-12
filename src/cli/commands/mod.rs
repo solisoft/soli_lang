@@ -1266,6 +1266,24 @@ pub fn run_repl() {
 
 /// `soli dap`: the Debug Adapter Protocol server, on stdio.
 pub fn run_dap() {
+    solilang::dap::set_test_runner(|path, filter| {
+        // One worker, so one thread runs every spec and the debugger stops
+        // there; no coverage, whose tracker would only slow stepping down.
+        test_runner::run_test(
+            &[path.to_string()],
+            Some(1),
+            &[],
+            None,
+            true,
+            false,
+            false,
+            false,
+            false,
+            filter,
+            false,
+            false,
+        );
+    });
     std::process::exit(solilang::dap::run());
 }
 

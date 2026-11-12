@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Specs under the step debugger (#697).** `soli dap`'s `launch` takes
+  `"mode": "test"` (and `filter`): `program` is a spec file or directory,
+  run by `soli test` with one worker and no coverage; the worker thread is
+  the debuggee, so breakpoints in a spec and in the code it calls
+  in-process stop there. The runner's exits go through the new
+  `debug::session::exit`, which, with a session attached, reports the end
+  to the adapter (`exited` with the runner's code, `terminated`) instead of
+  ending the process under it. New `tests/dap_test.rs` case.
+
 - **`soli dap`: a step debugger for scripts (#697, phase 2).** A Debug
   Adapter Protocol server on stdio (`src/dap/`, hand-written framing, no new
   dependency): `initialize`, `launch` (`program`, `cwd`, `stopOnEntry`),

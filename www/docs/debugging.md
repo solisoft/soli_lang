@@ -102,8 +102,16 @@ the `debug()` page above.
   stops there and resumes after it.
 - What the program prints arrives in the editor's debug console.
 
-The launch configuration takes `program` (the `.sl` script, required), `cwd`
-and `stopOnEntry`.
+The launch configuration takes `program` (required), `cwd`, `stopOnEntry` and
+`mode`:
+
+- `"script"` (the default): `program` is a `.sl` script.
+- `"test"`: `program` is a spec file or directory, run by `soli test` with one
+  worker and no coverage; `filter` narrows it like `--filter`. The debugger
+  stops in the spec and in whatever it calls in-process (models, services,
+  helpers); a request a spec sends goes to the test server, a separate
+  process the debugger does not reach. The session's exit code is the
+  runner's: `1` when a spec fails.
 
 **Neovim** ([nvim-dap](https://github.com/mfussenegger/nvim-dap)):
 
@@ -134,8 +142,7 @@ args = { program = "{0}" }
 
 **For now:**
 
-- It runs scripts (`soli script.sl`). Attaching to `soli serve` and debugging
-  a spec come next.
+- It runs scripts and specs. Attaching to `soli serve` comes next.
 - The program runs on the tree-walker, without native kernels, whatever
   engine `soli script.sl` would pick: that is the engine a debugger can stop.
 - An outer frame's Locals are as they were at its last statement, the call

@@ -208,6 +208,27 @@ pub fn send(event: Event) {
     }
 }
 
+/// End the program with `code`. With a debugger attached, the process is
+/// the adapter's: the program's thread reports the end (so the editor gets
+/// `exited` and `terminated`) and waits for the editor to disconnect, which
+/// ends the process. Without one, `std::process::exit`.
+///
+/// For code that would otherwise exit in the middle of a debugged run —
+/// `soli test`'s runner, launched by `soli dap`.
+pub fn exit(code: i32) -> ! {
+    if attached() && session().is_some() {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        send(Event::Finished {
+            error: (code != 0).then(|| format!("exited with status {code}")),
+        });
+        loop {
+            std::thread::park();
+        }
+    }
+    std::process::exit(code)
+}
+
 /// Wait for the adapter's next command. `None` when the adapter is gone: the
 /// program then runs to its end.
 pub fn next_command() -> Option<Command> {

@@ -1,7 +1,6 @@
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::process;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -546,7 +545,7 @@ pub fn run_test(
     for p in &test_paths {
         if !p.exists() {
             eprintln!("Error: Test path '{}' does not exist", p.display());
-            process::exit(1);
+            solilang::debug::session::exit(1);
         }
     }
 
@@ -599,7 +598,7 @@ pub fn run_test(
     if browser {
         if let Err(message) = check_browser_available() {
             eprintln!("{}", message);
-            process::exit(1);
+            solilang::debug::session::exit(1);
         }
         solilang::interpreter::builtins::browser::enable_browser_tests();
         if headed {
@@ -610,7 +609,7 @@ pub fn run_test(
 
     if let Err(msg) = solilang::module::enforce_min_soli_version(&app_dir) {
         eprintln!("{}", msg);
-        process::exit(1);
+        solilang::debug::session::exit(1);
     }
 
     let env_test_path = app_dir.join(".env.test");
@@ -619,7 +618,7 @@ pub fn run_test(
             "Error: .env.test file not found at '{}'. Create one with test database configuration.",
             env_test_path.display()
         );
-        process::exit(1);
+        solilang::debug::session::exit(1);
     }
     solilang::serve::env_loader::load_env_files(&app_dir);
     apply_test_solidb_host_override();
@@ -785,7 +784,7 @@ pub fn run_test(
                 "xml" => OutputFormat::Xml,
                 other => {
                     eprintln!("Unknown --coverage format '{}'.", other);
-                    process::exit(64);
+                    solilang::debug::session::exit(64);
                 }
             };
             if !formats.contains(&variant) {
@@ -1072,7 +1071,7 @@ pub fn run_test(
         if let Some(port) = failed_port {
             eprintln!("Error: Test server failed to start on port {}", port);
             drop(test_server_children);
-            process::exit(1);
+            solilang::debug::session::exit(1);
         }
 
         // Mark the global "test server is running" flag so that code paths
@@ -1214,6 +1213,11 @@ pub fn run_test(
             let test_dir = test_dir.clone();
 
             handles.push(s.spawn(move || {
+                // Under `soli dap` (one worker), this is the thread the
+                // debugger stops.
+                if solilang::debug::session::attached() {
+                    solilang::debug::set_thread_listener(solilang::debug::DEBUGGEE, true);
+                }
                 if let Some(handle) = rt_handle {
                     solilang::serve::set_tokio_handle(handle);
                 }
@@ -1717,7 +1721,7 @@ pub fn run_test(
                             app_coverage.total_line_coverage_percent(),
                             min
                         );
-                        process::exit(1);
+                        solilang::debug::session::exit(1);
                     }
                 }
             }
@@ -1750,7 +1754,7 @@ pub fn run_test(
     super::finish_profile();
 
     if failed > 0 {
-        process::exit(1);
+        solilang::debug::session::exit(1);
     }
 }
 

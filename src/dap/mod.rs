@@ -92,6 +92,22 @@ fn read_message(input: &mut impl BufRead) -> Option<Json> {
 struct Launch {
     program: String,
     stop_on_entry: bool,
+    /// `"test"`: run `program` (a spec file or directory) with `soli test`.
+    test: bool,
+    /// `soli test --filter`.
+    filter: Option<String>,
+}
+
+/// Runs specs for `launch` in test mode: `soli test` lives in the CLI, which
+/// hands it over before starting the adapter. Arguments: the spec path and
+/// the optional name filter.
+pub type TestRunner = fn(&str, Option<&str>);
+
+static TEST_RUNNER: std::sync::OnceLock<TestRunner> = std::sync::OnceLock::new();
+
+/// Let `launch` with `"mode": "test"` run specs (called by the CLI).
+pub fn set_test_runner(runner: TestRunner) {
+    let _ = TEST_RUNNER.set(runner);
 }
 
 struct Adapter {
@@ -168,12 +184,27 @@ impl Adapter {
             std::env::set_current_dir(cwd).map_err(|e| format!("cannot use cwd {cwd}: {e}"))?;
         }
         let program = session::normalize_path(program);
-        if !std::path::Path::new(&program).is_file() {
+        let test = match args["mode"].as_str().unwrap_or("script") {
+            "script" => false,
+            "test" => true,
+            other => return Err(format!("mode is \"script\" or \"test\", not \"{other}\"")),
+        };
+        let exists = if test {
+            std::path::Path::new(&program).exists()
+        } else {
+            std::path::Path::new(&program).is_file()
+        };
+        if !exists {
             return Err(format!("{program} is not a file"));
+        }
+        if test && TEST_RUNNER.get().is_none() {
+            return Err("this build cannot run specs under the debugger".into());
         }
         self.launch = Some(Launch {
             program,
             stop_on_entry: args["stopOnEntry"].as_bool().unwrap_or(false),
+            test,
+            filter: args["filter"].as_str().map(str::to_string),
         });
         Ok(json!({}))
     }
@@ -191,10 +222,21 @@ impl Adapter {
             .name("soli-debuggee".to_string())
             .stack_size(crate::serve::server_constants::worker_stack_bytes())
             .spawn(move || {
-                crate::debug::set_thread_listener(crate::debug::DEBUGGEE, true);
                 if launch.stop_on_entry {
                     crate::interpreter::executor::debugger::stop_on_entry();
                 }
+                if launch.test {
+                    // The runner marks its (single) worker thread as the
+                    // debuggee; its own exits come back through
+                    // `session::exit`.
+                    if let Some(runner) = TEST_RUNNER.get() {
+                        runner(&launch.program, launch.filter.as_deref());
+                    }
+                    let _ = std::io::stdout().flush();
+                    session::send(Event::Finished { error: None });
+                    return;
+                }
+                crate::debug::set_thread_listener(crate::debug::DEBUGGEE, true);
                 let result = crate::debug_script_file(std::path::Path::new(&launch.program));
                 let _ = std::io::stdout().flush();
                 session::send(Event::Finished {

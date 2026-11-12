@@ -148,7 +148,11 @@ end</code></pre>
             <li><strong class="text-white"><code>debug()</code> is a breakpoint</strong> while a debugger is attached: the program stops there and resumes after it.</li>
             <li>What the program prints arrives in the editor&rsquo;s debug console.</li>
         </ul>
-        <p class="text-gray-400 mb-4">The launch configuration takes <code class="text-cyan-400">program</code> (the <code>.sl</code> script, required), <code class="text-cyan-400">cwd</code> and <code class="text-cyan-400">stopOnEntry</code>.</p>
+        <p class="text-gray-400 mb-4">The launch configuration takes <code class="text-cyan-400">program</code> (required), <code class="text-cyan-400">cwd</code>, <code class="text-cyan-400">stopOnEntry</code> and <code class="text-cyan-400">mode</code>:</p>
+        <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
+            <li><code class="text-cyan-400">"script"</code> (the default): <code>program</code> is a <code>.sl</code> script.</li>
+            <li><code class="text-cyan-400">"test"</code>: <code>program</code> is a spec file or directory, run by <code>soli test</code> with one worker and no coverage; <code class="text-cyan-400">filter</code> narrows it like <code>--filter</code>. The debugger stops in the spec and in whatever it calls in-process (models, services, helpers); a request a spec sends goes to the test server, a separate process the debugger does not reach. The session&rsquo;s exit code is the runner&rsquo;s: <code>1</code> when a spec fails.</li>
+        </ul>
         <h3 class="text-xl font-semibold text-white mb-3">Neovim (nvim-dap)</h3>
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto">
 <pre><code class="language-lua text-sm">local dap = require("dap")
@@ -175,7 +179,7 @@ args = { program = "{0}" }</code></pre>
         <div class="rounded-xl bg-amber-500/5 border border-amber-500/20 p-5">
             <p class="text-gray-300 text-sm leading-relaxed mb-2"><strong class="text-white">For now:</strong></p>
             <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
-                <li>It runs scripts (<code>soli script.sl</code>). Attaching to <code>soli serve</code> and debugging a spec come next.</li>
+                <li>It runs scripts and specs. Attaching to <code>soli serve</code> comes next.</li>
                 <li>The program runs on the tree-walker, without native kernels, whatever engine <code>soli script.sl</code> would pick: that is the engine a debugger can stop.</li>
                 <li>An outer frame&rsquo;s Locals are as they were at its last statement, the call it is waiting on.</li>
                 <li>No conditional breakpoints or logpoints yet, and the VS Code extension does not declare the debugger yet: use an editor above, or any DAP client.</li>

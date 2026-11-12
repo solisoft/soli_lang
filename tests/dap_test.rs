@@ -296,3 +296,68 @@ fn launch_refuses_a_missing_program() {
         }
     }
 }
+
+/// `"mode": "test"`: the specs run under `soli test` (one worker), the
+/// debugger stops in a helper a test calls, and the runner's failing exit
+/// comes back as the session's exit code instead of killing the adapter.
+#[test]
+fn specs_run_under_the_debugger() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".env.test"), "SOLIDB_DATABASE=dap_spec\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("specs")).unwrap();
+    let spec = dir.path().join("specs/math_spec.sl");
+    std::fs::write(
+        &spec,
+        r#"def double(x)
+  y = x * 2
+  y
+end
+
+describe("math") do
+  test("doubles") do
+    value = double(4)
+    assert_eq(value, 8)
+  end
+
+  test("fails") do
+    assert_eq(double(1), 3)
+  end
+end
+"#,
+    )
+    .unwrap();
+    let spec = spec.to_string_lossy().to_string();
+
+    let mut client = Client::start();
+    client.request("initialize", json!({}));
+    client.request(
+        "launch",
+        json!({"program": spec, "mode": "test", "cwd": dir.path().to_string_lossy()}),
+    );
+    client.request(
+        "setBreakpoints",
+        json!({"source": {"path": spec}, "breakpoints": [{"line": 2}]}),
+    );
+    client.request("configurationDone", json!({}));
+    client.wait_event("stopped");
+    let frames = client.top_frames();
+    assert_eq!(frames[0], ("double".to_string(), 2));
+    assert_eq!(frames.last().unwrap().0, "<main>");
+    let scopes = client.request("scopes", json!({"frameId": frames.len() - 1}));
+    let locals = client.variables(&scopes["scopes"][0]["variablesReference"]);
+    assert_eq!(locals, [("x".to_string(), "4".to_string())]);
+
+    client.request(
+        "setBreakpoints",
+        json!({"source": {"path": spec}, "breakpoints": []}),
+    );
+    client.request("continue", json!({"threadId": 1}));
+    let exited = client.wait_event("exited");
+    assert_eq!(exited["exitCode"], 1, "one spec fails");
+    client.wait_event("terminated");
+    assert!(
+        client.output.contains("2 tests, 1 failed"),
+        "{}",
+        client.output
+    );
+}
