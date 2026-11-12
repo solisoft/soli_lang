@@ -87,7 +87,7 @@ end
 
 Counter.new().count   # 0 — the constructor ran</code></pre>
                 <ul class="list-disc list-inside text-gray-400 mt-3 space-y-1">
-                    <li>Keep the parentheses when there are no arguments: a bare <code>Counter.new</code> is not a call.</li>
+                    <li>With no arguments the parentheses are optional: <code>Counter.new.count</code> builds the instance too.</li>
                     <li>A class without a constructor takes its fields from a hash or from named arguments: <code>Bag.new({"a": 1})</code>, <code>Bag.new(a: 1)</code>. The fields it is not given keep their defaults.</li>
                     <li>A module is not instantiated: <code>Greetable.new()</code> raises.</li>
                     <li><code>return</code> ends a constructor early (a guard such as <code>return if amount.nil?</code>). <code>new</code> still gives the instance, never what the constructor returns.</li>

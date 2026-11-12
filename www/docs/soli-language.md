@@ -1628,9 +1628,9 @@ puts "Hello world";
 ```
 
 > **Bare static model calls are the exception (current limitation).**
-> `Model.new`, `Model.delete_all` and `Model.with_deleted` without
-> parentheses return the function and do nothing: write `Model.new()`,
-> `Model.delete_all()`. Instance writes are fine bare — `record.save` runs
+> `Model.delete_all` and `Model.with_deleted` without parentheses return the
+> function and do nothing: write `Model.delete_all()`. (`Model.new` builds
+> the record either way.) Instance writes are fine bare — `record.save` runs
 > the same lifecycle callbacks as `record.save()`.
 
 This works for:
@@ -2384,8 +2384,8 @@ end
 Counter.new().count   # 0 — the constructor ran
 ```
 
-- Keep the parentheses when there are no arguments: a bare `Counter.new` is
-  not a call.
+- With no arguments the parentheses are optional: `Counter.new.count` builds
+  the instance too.
 - A class without a constructor takes its fields from a hash or from named
   arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`. The fields it is not given
   keep their defaults.

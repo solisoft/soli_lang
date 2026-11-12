@@ -1366,7 +1366,7 @@ After-callbacks only fire when the persist call succeeds. If the native method r
 
 > `record.save`, `record.update` and `record.delete` run every callback in
 > this table with or without parentheses. Bare **static** calls are the
-> exception (current limitation): `Model.delete_all`, `Model.new`,
+> exception (current limitation): `Model.delete_all`,
 > `Model.with_deleted` and `Model.only_deleted` without parentheses return
 > the function itself and do nothing — write `Model.delete_all()`.
 >
