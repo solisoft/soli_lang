@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [2.35.1] - 2026-11-12
+
+### Fixed
+
+- **`soli test` loads an app's controllers as `soli serve` does (2.35.0
+  regression).** Preloading `app/controllers` into specs (2.35.0) took the
+  files in plain path order and without the framework's upload prelude, so
+  an app whose `account_controller.sl` extends the
+  `AccountDashboardController` of `account/dashboard_controller.sl`, or
+  whose `UploadsController` extends the built-in `AttachmentsController`,
+  failed every spec with "Undefined variable '…'". Controllers now load
+  parents first (`serve::controller_load_order`, the server's
+  `sort_controllers_by_dependency`) after the upload prelude
+  (`serve::uploads_prelude_source`, under a synthetic `<uploads-prelude>`
+  path kept out of coverage).
+
 ## [2.35.0] - 2026-11-11
 
 ### Added

@@ -879,6 +879,13 @@ end
 /// Called once per worker after model classes are registered and once on the
 /// main thread before user routes are loaded. Idempotent — re-defining `def`s
 /// and the `AttachmentsController` class is a no-op apart from the work.
+/// The prelude's source, as `soli test` preloads it ahead of the app's
+/// controllers: a controller extending the built-in `AttachmentsController`
+/// would otherwise fail to load in a spec.
+pub fn uploads_prelude_source() -> String {
+    format!("{UPLOADS_PRELUDE_SOURCE}\n{UPLOADS_HELPERS_SOURCE}")
+}
+
 pub(crate) fn define_uploads_prelude(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
     interpret_source(interpreter, UPLOADS_PRELUDE_SOURCE)?;
     interpret_source(interpreter, UPLOADS_HELPERS_SOURCE)

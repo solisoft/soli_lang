@@ -135,7 +135,8 @@ pub mod websocket;
 
 // Modularized subcomponents
 pub(crate) mod app_loader;
-pub use app_loader::sl_load_order;
+pub use app_loader::{controller_load_order, sl_load_order};
+pub use uploads_prelude::uploads_prelude_source;
 pub mod background_jobs;
 pub mod edge;
 pub mod engine_loader;

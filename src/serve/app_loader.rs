@@ -459,6 +459,16 @@ pub fn sl_load_order(dir: &Path) -> Vec<PathBuf> {
     ordered_sl_files(dir).unwrap_or_default()
 }
 
+/// The `.sl` files of `app/controllers/` in the order `soli serve` loads
+/// them: a parent controller before the ones that extend it, wherever each
+/// sits in the tree (`account_controller.sl` extending the
+/// `AccountDashboardController` of `account/dashboard_controller.sl`).
+pub fn controller_load_order(dir: &Path) -> Vec<PathBuf> {
+    let mut files = sl_load_order(dir);
+    sort_controllers_by_dependency(&mut files);
+    files
+}
+
 /// Whether a file's source declares a value object or an enum — a textual
 /// look, before anything is parsed. A protected bundle's serialized AST is
 /// never matched: it loads in plain order.
@@ -1242,5 +1252,47 @@ pub(crate) fn reload_routes_in_worker(
     {
         let mut env = interpreter.environment.borrow_mut();
         crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
+    }
+}
+
+#[cfg(test)]
+mod controller_order_tests {
+    use super::controller_load_order;
+
+    /// A controller extending one that lives deeper in the tree loads after
+    /// it, as `soli serve` loads them — `soli test` preloads controllers in
+    /// this order too (Bonfire's specs all failed on the alphabetical one).
+    #[test]
+    fn a_parent_in_a_subfolder_loads_before_its_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("account")).unwrap();
+        std::fs::write(
+            root.join("account_controller.sl"),
+            "class AccountController < AccountDashboardController\nend\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("account/dashboard_controller.sl"),
+            "class AccountDashboardController < AccountSettingsController\nend\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("account/settings_controller.sl"),
+            "class AccountSettingsController < Controller\nend\n",
+        )
+        .unwrap();
+        let order: Vec<String> = controller_load_order(root)
+            .iter()
+            .map(|p| p.strip_prefix(root).unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            order,
+            [
+                "account/settings_controller.sl",
+                "account/dashboard_controller.sl",
+                "account_controller.sl",
+            ]
+        );
     }
 }

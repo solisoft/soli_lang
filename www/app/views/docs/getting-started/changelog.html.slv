@@ -23,6 +23,15 @@
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.35.0.</p>
     </section>
 
+    <section id="v2-35-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.35.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-12</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">A fix for a <code class="text-cyan-400">soli test</code> regression in 2.35.0.</p>
+        <h3 id="v2-35-1-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli test</code> loads controllers as the server does.</strong> 2.35.0 began preloading <code class="text-cyan-400">app/controllers</code> into specs, but in path order and without the framework&rsquo;s upload prelude: a controller extending one further down the tree (<code class="text-cyan-400">account_controller.sl</code> &lt; the <code class="text-cyan-400">AccountDashboardController</code> of <code class="text-cyan-400">account/dashboard_controller.sl</code>) or the built-in <code class="text-cyan-400">AttachmentsController</code> failed every spec with &ldquo;Undefined variable&rdquo;. Parents now load first, after the prelude, as in <code class="text-cyan-400">soli serve</code>.</li>
+        </ul>
+    </section>
+
     <section id="v2-35-0" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v2.35.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-11</span></h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Class constants read by name, <code class="text-cyan-400">try</code> as a value, nested interpolated strings, <code class="text-cyan-400">soli agent</code> (a coding agent attached to the running dev server), and a fresh app whose first <code class="text-cyan-400">soli test</code> covers 100%. A <code class="text-cyan-400">--dev</code> reload now replaces an edited <code class="text-cyan-400">validates(...)</code>, and the bundled SQLite is updated for RUSTSEC-2026-0459. Behaviour changes: a <code class="text-cyan-400">try</code> ending a method returns its branch&rsquo;s value instead of <code class="text-cyan-400">nil</code>, and <code class="text-cyan-400">soli test</code> loads <code class="text-cyan-400">app/controllers</code> into specs.</p>
