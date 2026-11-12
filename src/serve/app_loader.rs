@@ -1284,7 +1284,16 @@ mod controller_order_tests {
         .unwrap();
         let order: Vec<String> = controller_load_order(root)
             .iter()
-            .map(|p| p.strip_prefix(root).unwrap().to_string_lossy().into_owned())
+            // Joined with `/` whatever the platform, so the expectation below
+            // holds on Windows too.
+            .map(|p| {
+                p.strip_prefix(root)
+                    .unwrap()
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
             .collect();
         assert_eq!(
             order,
