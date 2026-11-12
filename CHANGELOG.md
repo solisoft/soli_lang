@@ -383,6 +383,14 @@
 
 ### Fixed
 
+- **A panicking WebSocket handler drops its event, not the worker (#631).**
+  A panic in a WebSocket event escaped `worker_loop`, which rebuilt the
+  interpreter and the VM and lost the event without a trace; it is now
+  caught like a LiveView event's (`handle_websocket_event_caught`): logged,
+  counted in `handler_panics_total`, the worker kept. And after any caught
+  panic the interpreter's current source file is restored with the rest of
+  its state (`EngineMark`), so later errors name the right file.
+
 - **Follow-ups of the 2.29.4 security patch (#631).** A zero-argument def or
   helper read bare and indexed (`current_user["k"]`) is called on the VM
   too — the fused `HashGetGlobalConst` read the function itself — and

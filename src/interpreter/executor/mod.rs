@@ -83,6 +83,10 @@ pub(crate) enum ControlFlow {
 pub struct EngineMark {
     environment: Rc<RefCell<Environment>>,
     call_depth: usize,
+    /// The file being run: a call into another file sets it and puts it
+    /// back on the way out, which a panic skips — later errors then named
+    /// the dead request's file (#631).
+    source_path: Option<PathBuf>,
 }
 
 /// What a native iterator (`each`, `map`, `times`…) answers when the block
@@ -514,6 +518,7 @@ impl Interpreter {
         EngineMark {
             environment: self.environment.clone(),
             call_depth: self.call_stack.len(),
+            source_path: self.current_source_path.clone(),
         }
     }
 
@@ -528,6 +533,7 @@ impl Interpreter {
     /// worker failed with "call stack too deep".
     pub fn restore_engine_mark(&mut self, mark: EngineMark) {
         self.environment = mark.environment;
+        self.current_source_path = mark.source_path;
         // The outermost frame the unwind skipped closes the debug frames
         // opened above it (its flamegraph span, its profiler stack entry).
         if let Some(debug_mark) = self

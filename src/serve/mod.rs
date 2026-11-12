@@ -2282,7 +2282,7 @@ fn worker_loop(
             for _ in 0..server_constants::BATCH_SIZE {
                 match rx.try_recv() {
                     Ok(data) => {
-                        handle_websocket_event(interpreter, &data, &runtime_handle);
+                        handle_websocket_event_caught(interpreter, &data, &runtime_handle);
                     }
                     Err(channel::TryRecvError::Empty) => break,
                     Err(channel::TryRecvError::Disconnected) => {
@@ -2418,7 +2418,7 @@ fn worker_loop(
                 } else if Some(idx) == ws_idx {
                     if let Some(ref rx) = ws_event_rx_inner {
                         if let Ok(data) = oper.recv(rx) {
-                            handle_websocket_event(interpreter, &data, &runtime_handle);
+                            handle_websocket_event_caught(interpreter, &data, &runtime_handle);
                         }
                     }
                 } else if Some(idx) == lv_idx {
@@ -3087,6 +3087,31 @@ fn string_pairs_to_hash(pairs: &[(String, String)]) -> Value {
 }
 
 /// Handle a WebSocket event by calling the handler function.
+/// [`handle_websocket_event`], a panic caught: the event is dropped and
+/// logged, the interpreter put back where it stood, and the worker keeps
+/// running. A panic escaped `worker_loop` before (#631), which rebuilt the
+/// interpreter and VM — clean, but the event vanished without a trace.
+fn handle_websocket_event_caught(
+    interpreter: &mut Interpreter,
+    data: &WebSocketEventData,
+    runtime_handle: &tokio::runtime::Handle,
+) {
+    let engine_mark = interpreter.engine_mark();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_websocket_event(interpreter, data, runtime_handle)
+    }));
+    recover_engines(interpreter, None, engine_mark, outcome.is_err());
+    if outcome.is_err() {
+        crate::metrics::Metrics::global()
+            .handler_panics_total
+            .fetch_add(1, Ordering::Relaxed);
+        eprintln!(
+            "[WebSocket] handler panicked on {} {} — event dropped (worker survived)",
+            data.path, data.event_type
+        );
+    }
+}
+
 fn handle_websocket_event(
     interpreter: &mut Interpreter,
     data: &WebSocketEventData,
