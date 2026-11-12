@@ -24,3 +24,10 @@ get("/uploads", "pages#uploads")
 get("/relative", "pages#relative")
 get("/relative-fallback", "pages#relative_fallback")
 get("/relative-missing", "pages#relative_missing")
+
+# Passkeys with Chrome's virtual authenticator (specs/passkeys_spec.sl).
+get("/passkeys", "passkeys#index")
+post("/passkeys/register/options", "passkeys#register_options")
+post("/passkeys/register", "passkeys#register")
+post("/passkeys/login/options", "passkeys#login_options")
+post("/passkeys/login", "passkeys#login")

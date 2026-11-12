@@ -853,6 +853,27 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">The captured JavaScript errors, as an array</p>
                 </section>
+
+                <section id="def-virtual-authenticator" class="scroll-mt-20">
+                    <a href="#def-virtual-authenticator" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">virtual_authenticator(opts?)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Adds a WebAuthn authenticator that answers the page&rsquo;s passkey calls; returns its id (<a href="/docs/core-concepts/testing-browser#section-passkeys" class="text-amber-400 hover:underline">Passkeys</a>)</p>
+                </section>
+
+                <section id="def-virtual-credentials" class="scroll-mt-20">
+                    <a href="#def-virtual-credentials" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">virtual_credentials(id)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">The passkeys a virtual authenticator holds</p>
+                </section>
+
+                <section id="def-remove-virtual-authenticator" class="scroll-mt-20">
+                    <a href="#def-remove-virtual-authenticator" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">remove_virtual_authenticator(id)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Removes it before the end of the test</p>
+                </section>
             </div>
         </div>
     </section>

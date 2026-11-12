@@ -4,6 +4,18 @@
 
 ### Added
 
+- **Passkeys in browser specs: a virtual authenticator (#696, phase 4).**
+  `virtual_authenticator(opts?)`, `virtual_credentials(id)` and
+  `remove_virtual_authenticator(id)` drive Chrome's DevTools `WebAuthn`
+  domain (`transport`, `user_verification`, `resident_key`; credentials
+  reported in the `WebAuthn.*` shape, ids base64url, user handle decoded).
+  Authenticators a test adds are removed by `reset_browser_state` before the
+  next. New e2e `tests-e2e/browser/specs/passkeys_spec.sl` on a DB-less
+  fixture page: registration then sign-in through the real browser and
+  `WebAuthn.*`, a tampered assertion refused, an unverified registration,
+  per-test isolation. The type checker and `smell/undefined-local` know the
+  three helpers.
+
 - **Passkeys: EdDSA and packed self-attestation (#696, phase 2).**
   `WebAuthn` verifies Ed25519 credentials (COSE -8, OKP/crv 6) per RFC 8032
   on `curve25519-dalek` + `sha2` (no new dependency): `S` must be canonical,

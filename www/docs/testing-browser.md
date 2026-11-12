@@ -266,6 +266,41 @@ page_errors()                            # array of captured JS errors
 looks like a number, so `evaluate("el.textContent")` on `<span>0</span>` gives
 you `"0"`, not `0`.
 
+## Passkeys: a virtual authenticator
+
+A passkey flow needs an authenticator, and a headless browser has none.
+`virtual_authenticator()` adds one through Chrome's DevTools `WebAuthn` domain:
+the page's `navigator.credentials.create()` and `.get()` are answered by it,
+user presence (and by default user verification) granted without a prompt.
+
+```soli
+test("a passkey registers, then signs in", fn() {
+  # WebAuthn refuses an IP address as the relying party: use localhost.
+  visit("/passkeys")
+  visit(page_url().replace("127.0.0.1", "localhost"))
+
+  authenticator = virtual_authenticator()
+  click_button("Add a passkey")
+  wait_for_text("Passkey added")
+
+  credentials = virtual_credentials(authenticator)
+  assert_eq(credentials.length, 1)
+  assert_eq(credentials[0]["rp_id"], "localhost")
+})
+```
+
+| Call | |
+|---|---|
+| `virtual_authenticator(opts?)` | adds one, returns its id. `transport` (`"internal"` — a platform authenticator — or `"usb"`, `"nfc"`, `"ble"`, `"hybrid"`), `user_verification` (default `true`; `false` proves presence only), `resident_key` (default `true`: discoverable credentials) |
+| `virtual_credentials(id)` | the passkeys it holds: `credential_id` (base64url, as `WebAuthn.*` reports it), `rp_id`, `user_handle` (the `user_id` given at registration), `sign_count`, `resident` |
+| `remove_virtual_authenticator(id)` | removes it now |
+
+Every authenticator a test adds is removed before the next test. Chrome's
+virtual authenticator counts its registration as one use, so the first
+sign-in reports `sign_count` 2: compare with `virtual_credentials`, not a
+literal. Chrome itself refuses to create a discoverable credential on a
+`"usb"` key without user verification.
+
 ## Signing in
 
 The browser shares the request helpers' cookie jar, so the sign-in you already
@@ -292,7 +327,8 @@ later `get()` and to `signed_in()`.
 ## What resets between tests
 
 Each test starts with a clean page-error list, empty `sessionStorage` and
-`localStorage`, and the viewport its suite declared. Without that, a panel one
+`localStorage`, no virtual authenticator, and the viewport its suite
+declared. Without that, a panel one
 test collapsed — or a resize one test performed — would carry into the rest of
 the suite and results would depend on test order.
 

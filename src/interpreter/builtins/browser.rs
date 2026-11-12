@@ -140,6 +140,10 @@ thread_local! {
     /// This worker's browser. `None` until the first helper needs it.
     static BROWSER: RefCell<Option<Browser>> = const { RefCell::new(None) };
 
+    /// Virtual authenticators this worker's current test added; removed by
+    /// `reset_browser_state` so a passkey never leaks into the next test.
+    static VIRTUAL_AUTHENTICATORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+
     /// The viewport this worker's tests start in — the enclosing suite's
     /// declaration, or the default. Per-thread because a worker runs one spec
     /// file at a time and each file declares its own.
@@ -349,6 +353,12 @@ pub fn reset_browser_state() {
                 viewport.scale,
                 viewport.mobile,
             );
+            for id in VIRTUAL_AUTHENTICATORS.with(|ids| std::mem::take(&mut *ids.borrow_mut())) {
+                let _ = browser.send(
+                    "WebAuthn.removeVirtualAuthenticator",
+                    serde_json::json!({ "authenticatorId": id }),
+                );
+            }
             // Fails harmlessly before the first navigation, when there is no
             // document to have storage on.
             let _ = browser.evaluate(
@@ -1040,6 +1050,74 @@ pub fn register_browser_helpers(env: &mut Environment) {
         })),
     );
 
+    // --- passkeys: a virtual WebAuthn authenticator ------------------------
+    //
+    // Chrome's DevTools `WebAuthn` domain stands in for a security key or a
+    // platform authenticator: `navigator.credentials.create()` / `.get()`
+    // on the page are answered by it, user presence (and, by default, user
+    // verification) granted without a prompt. Removed after each test.
+
+    env.define(
+        "virtual_authenticator".to_string(),
+        Value::NativeFunction(NativeFunction::new("virtual_authenticator", None, |args| {
+            let options = virtual_authenticator_options(args.first())?;
+            with_browser(|browser| {
+                browser.send("WebAuthn.enable", serde_json::json!({ "enableUI": false }))?;
+                let added = browser.send(
+                    "WebAuthn.addVirtualAuthenticator",
+                    serde_json::json!({ "options": options }),
+                )?;
+                let id = added["authenticatorId"]
+                    .as_str()
+                    .ok_or("virtual_authenticator(): the browser returned no authenticator id")?
+                    .to_string();
+                VIRTUAL_AUTHENTICATORS.with(|ids| ids.borrow_mut().push(id.clone()));
+                Ok(Value::String(id.into()))
+            })
+        })),
+    );
+
+    env.define(
+        "virtual_credentials".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "virtual_credentials",
+            Some(1),
+            |args| {
+                let id = string_arg(args, 0, "virtual_credentials")?;
+                with_browser(|browser| {
+                    let listed = browser.send(
+                        "WebAuthn.getCredentials",
+                        serde_json::json!({ "authenticatorId": id }),
+                    )?;
+                    let credentials: Vec<serde_json::Value> = listed["credentials"]
+                        .as_array()
+                        .map(|items| items.iter().map(virtual_credential).collect())
+                        .unwrap_or_default();
+                    Ok(json_to_soli(serde_json::Value::Array(credentials)))
+                })
+            },
+        )),
+    );
+
+    env.define(
+        "remove_virtual_authenticator".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "remove_virtual_authenticator",
+            Some(1),
+            |args| {
+                let id = string_arg(args, 0, "remove_virtual_authenticator")?;
+                with_browser(|browser| {
+                    browser.send(
+                        "WebAuthn.removeVirtualAuthenticator",
+                        serde_json::json!({ "authenticatorId": id }),
+                    )?;
+                    VIRTUAL_AUTHENTICATORS.with(|ids| ids.borrow_mut().retain(|kept| *kept != id));
+                    Ok(Value::Null)
+                })
+            },
+        )),
+    );
+
     env.define(
         "close_browser".to_string(),
         Value::NativeFunction(NativeFunction::new("close_browser", Some(0), |_args| {
@@ -1047,6 +1125,93 @@ pub fn register_browser_helpers(env: &mut Environment) {
             Ok(Value::Null)
         })),
     );
+}
+
+/// `WebAuthn.addVirtualAuthenticator` options from a spec's hash:
+/// `transport` (`"internal"` by default, a platform authenticator; `"usb"`,
+/// `"nfc"`, `"ble"`, `"hybrid"`), `user_verification` (default `true`: the
+/// authenticator verifies the user, as a platform passkey does; `false` is a
+/// plain security key that only proves presence) and `resident_key`
+/// (default `true`: discoverable credentials, what username-less sign-in
+/// needs).
+fn virtual_authenticator_options(options: Option<&Value>) -> Result<serde_json::Value, String> {
+    let mut transport = "internal".to_string();
+    let mut user_verification = true;
+    let mut resident_key = true;
+    match options {
+        None | Some(Value::Null) => {}
+        Some(Value::Hash(hash)) => {
+            for (key, value) in hash.borrow().iter() {
+                let crate::interpreter::value::HashKey::String(name) = key else {
+                    return Err("virtual_authenticator(): option names are strings".to_string());
+                };
+                match name.as_ref() {
+                    "transport" => match value {
+                        Value::String(t)
+                            if ["internal", "usb", "nfc", "ble", "hybrid"]
+                                .contains(&t.as_ref()) =>
+                        {
+                            transport = t.to_string()
+                        }
+                        _ => {
+                            return Err("virtual_authenticator(): transport is one of \
+                                 internal, usb, nfc, ble, hybrid"
+                                .to_string())
+                        }
+                    },
+                    "user_verification" => user_verification = value.is_truthy(),
+                    "resident_key" => resident_key = value.is_truthy(),
+                    other => {
+                        return Err(format!(
+                            "virtual_authenticator(): unknown option \"{}\" \
+                             (transport, user_verification, resident_key)",
+                            other
+                        ))
+                    }
+                }
+            }
+        }
+        Some(other) => {
+            return Err(format!(
+                "virtual_authenticator() options must be a hash, got {}",
+                other.type_name()
+            ))
+        }
+    }
+    Ok(serde_json::json!({
+        "protocol": "ctap2",
+        "transport": transport,
+        "hasResidentKey": resident_key,
+        "hasUserVerification": user_verification,
+        "isUserVerified": user_verification,
+        "automaticPresenceSimulation": true,
+    }))
+}
+
+/// One credential of `WebAuthn.getCredentials`, in the shape the `WebAuthn`
+/// class reports: ids base64url, the user handle as the `user_id` string
+/// given at registration.
+fn virtual_credential(credential: &serde_json::Value) -> serde_json::Value {
+    use base64::Engine as _;
+    let standard = base64::engine::general_purpose::STANDARD;
+    let url = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let reencode = |field: &str| {
+        credential[field]
+            .as_str()
+            .and_then(|text| standard.decode(text).ok())
+            .map(|bytes| url.encode(bytes))
+    };
+    let user_handle = credential["userHandle"]
+        .as_str()
+        .and_then(|text| standard.decode(text).ok())
+        .and_then(|bytes| String::from_utf8(bytes).ok());
+    serde_json::json!({
+        "credential_id": reencode("credentialId"),
+        "rp_id": credential["rpId"],
+        "user_handle": user_handle,
+        "sign_count": credential["signCount"],
+        "resident": credential["isResidentCredential"],
+    })
 }
 
 /// Convert a value that came back from the page into a Soli value.

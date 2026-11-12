@@ -1,0 +1,42 @@
+<h1 id="page-title">Passkeys</h1>
+<button id="register" onclick="passkeyRegister()">Register</button>
+<button id="login" onclick="passkeyLogin(false)">Sign in</button>
+<button id="login-tampered" onclick="passkeyLogin(true)">Sign in (tampered)</button>
+<p id="out">idle</p>
+<script>
+  // The WebAuthn L3 JSON helpers: options in, toJSON() out — what
+  // WebAuthn.* takes and returns.
+  async function post(path, body) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body || {})
+    });
+    return [response.status, await response.json()];
+  }
+  function say(text) { document.getElementById("out").textContent = text; }
+  async function passkeyRegister() {
+    try {
+      const [, json] = await post("/passkeys/register/options");
+      const options = PublicKeyCredential.parseCreationOptionsFromJSON(json);
+      const credential = await navigator.credentials.create({publicKey: options});
+      const [status, result] = await post("/passkeys/register", credential.toJSON());
+      say(status === 200 ? "registered alg " + result.algorithm + " " + result.attestation_type + " uv " + result.user_verified : "refused: " + result.error);
+    } catch (e) { say("browser error: " + e.name); }
+  }
+  async function passkeyLogin(tamper) {
+    try {
+      const [, json] = await post("/passkeys/login/options");
+      const options = PublicKeyCredential.parseRequestOptionsFromJSON(json);
+      const credential = await navigator.credentials.get({publicKey: options});
+      const body = credential.toJSON();
+      if (tamper) {
+        // Flip one character of the signature.
+        const sig = body.response.signature;
+        body.response.signature = sig.slice(0, 5) + (sig[5] === "A" ? "B" : "A") + sig.slice(6);
+      }
+      const [status, result] = await post("/passkeys/login", body);
+      say(status === 200 ? "signed in as " + result.user_handle + " count " + result.sign_count : "refused: " + result.error);
+    } catch (e) { say("browser error: " + e.name); }
+  }
+</script>

@@ -247,6 +247,36 @@ page_errors()                       # array of captured JS errors</code></pre>
 
     <p class="text-gray-400 mb-12"><code class="text-cyan-400">evaluate</code> preserves JavaScript's types: a string stays a string even when it looks like a number, so <code class="text-cyan-400">evaluate("el.textContent")</code> on <code class="text-cyan-400">&lt;span&gt;0&lt;/span&gt;</code> gives you <code class="text-cyan-400">"0"</code>, not <code class="text-cyan-400">0</code>.</p>
 
+    <h2 id="section-passkeys" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Passkeys: a virtual authenticator</h2>
+
+    <p class="text-gray-400 mb-4">A passkey flow needs an authenticator, and a headless browser has none. <code class="text-cyan-400">virtual_authenticator()</code> adds one through Chrome&rsquo;s DevTools <code class="text-cyan-400">WebAuthn</code> domain: the page&rsquo;s <code class="text-cyan-400">navigator.credentials.create()</code> and <code class="text-cyan-400">.get()</code> are answered by it, user presence (and by default user verification) granted without a prompt.</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">test("a passkey registers, then signs in", fn() {
+  # WebAuthn refuses an IP address as the relying party: use localhost.
+  visit("/passkeys")
+  visit(page_url().replace("127.0.0.1", "localhost"))
+
+  authenticator = virtual_authenticator()
+  click_button("Add a passkey")
+  wait_for_text("Passkey added")
+
+  credentials = virtual_credentials(authenticator)
+  assert_eq(credentials.length, 1)
+  assert_eq(credentials[0]["rp_id"], "localhost")
+})</code></pre>
+        </div>
+    </div>
+
+    <ul class="text-gray-400 text-sm list-disc list-inside space-y-2 mb-4">
+        <li><code class="text-cyan-400">virtual_authenticator(opts?)</code> adds one and returns its id. <code class="text-cyan-400">transport</code> (<code class="text-cyan-400">"internal"</code> &mdash; a platform authenticator &mdash; or <code class="text-cyan-400">"usb"</code>, <code class="text-cyan-400">"nfc"</code>, <code class="text-cyan-400">"ble"</code>, <code class="text-cyan-400">"hybrid"</code>), <code class="text-cyan-400">user_verification</code> (default <code class="text-cyan-400">true</code>; <code class="text-cyan-400">false</code> proves presence only), <code class="text-cyan-400">resident_key</code> (default <code class="text-cyan-400">true</code>: discoverable credentials).</li>
+        <li><code class="text-cyan-400">virtual_credentials(id)</code> &mdash; the passkeys it holds: <code class="text-cyan-400">credential_id</code> (base64url, as <code class="text-cyan-400">WebAuthn.*</code> reports it), <code class="text-cyan-400">rp_id</code>, <code class="text-cyan-400">user_handle</code> (the <code class="text-cyan-400">user_id</code> given at registration), <code class="text-cyan-400">sign_count</code>, <code class="text-cyan-400">resident</code>.</li>
+        <li><code class="text-cyan-400">remove_virtual_authenticator(id)</code> removes it now.</li>
+    </ul>
+
+    <p class="text-gray-400 mb-12">Every authenticator a test adds is removed before the next test. Chrome&rsquo;s virtual authenticator counts its registration as one use, so the first sign-in reports <code class="text-cyan-400">sign_count</code> 2: compare with <code class="text-cyan-400">virtual_credentials</code>, not a literal. Chrome itself refuses to create a discoverable credential on a <code class="text-cyan-400">"usb"</code> key without user verification.</p>
+
     <h2 id="section-signing-in" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Signing in</h2>
 
     <p class="text-gray-400 mb-4">The browser shares the request helpers' cookie jar, so the sign-in you already have keeps working. Cookies flow both ways: a sign-in performed <em>in the browser</em> is visible to a later <code class="text-cyan-400">get()</code> and to <code class="text-cyan-400">signed_in()</code>.</p>
@@ -270,7 +300,7 @@ test("the dashboard greets the user", fn() {
 
     <h2 id="section-isolation" class="text-2xl font-bold text-white mb-6 scroll-mt-24">What resets between tests</h2>
 
-    <p class="text-gray-400 mb-4">Each test starts with a clean page-error list, empty <code class="text-cyan-400">sessionStorage</code> and <code class="text-cyan-400">localStorage</code>, and the viewport its suite declared. Without that, a panel one test collapsed &mdash; or a resize one test performed &mdash; would carry into the rest of the suite and results would depend on test order.</p>
+    <p class="text-gray-400 mb-4">Each test starts with a clean page-error list, empty <code class="text-cyan-400">sessionStorage</code> and <code class="text-cyan-400">localStorage</code>, no virtual authenticator, and the viewport its suite declared. Without that, a panel one test collapsed &mdash; or a resize one test performed &mdash; would carry into the rest of the suite and results would depend on test order.</p>
 
     <p class="text-gray-400 mb-4">Cookies are <strong class="text-white">not</strong> cleared automatically, matching the existing convention for request specs &mdash; sign out explicitly when a test needs a guest.</p>
 
