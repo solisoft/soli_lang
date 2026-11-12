@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **A bare `Klass.new` builds an instance (#655, #693 phase 6).** Read
+  without parentheses on a capitalised or qualified name, `Post.new` /
+  `Billing::Invoice.new` is now `Post.new()` on both engines
+  (`Expr::is_bare_class_new`: the tree-walker evaluates it as the call, the
+  VM compiles it as one), and `soli check` types it as an instance. It was
+  the native constructor, uncalled, so `Feed.new.build` failed at run time
+  while the checker let it through. No code in the repository or the sibling
+  applications read the bare function; a class's own `static def new` is
+  still what runs. The `Klass.new()` exception to the no-`()` style rule is
+  gone from CLAUDE.md, the generated app's CLAUDE.md and the docs.
+
 ### Added
 
 - **Union types: `Int | String | nil` (#693, phase 4).** `TypeKind::Union`

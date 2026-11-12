@@ -16,6 +16,22 @@ impl Expr {
         Self { kind, span }
     }
 
+    /// `Klass.new` / `Billing::Invoice.new` read without parentheses: a
+    /// construction with no arguments, on both engines (#655), like any
+    /// zero-argument method read bare. Only on a capitalised name or a
+    /// qualified one — what names a class — so `factory.new` keeps the
+    /// ordinary member read.
+    pub fn is_bare_class_new(&self) -> bool {
+        match &self.kind {
+            ExprKind::Member { object, name } if name == "new" => match &object.kind {
+                ExprKind::Variable(class) => class.starts_with(|c: char| c.is_ascii_uppercase()),
+                ExprKind::QualifiedName { .. } => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// The expression inside any parentheses around this one: `((a..b))` is
     /// `a..b`. A `Grouping` records the parentheses for the formatter, and
     /// evaluating it evaluates what it holds.

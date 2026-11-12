@@ -98,6 +98,10 @@ impl Compiler {
             ExprKind::Pipeline { left, right } => {
                 self.compile_pipeline(left, right, line)?;
             }
+            // `Klass.new` read bare constructs, as `Klass.new()` (#655).
+            ExprKind::Member { .. } if expr.is_bare_class_new() => {
+                self.compile_call(expr, &[], line)?;
+            }
             ExprKind::Member { object, name } => {
                 self.compile_expr(object)?;
                 let op = self.get_property_op(name);

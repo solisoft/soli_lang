@@ -1417,3 +1417,16 @@ fn a_job_class_has_the_job_facade() {
     assert!(ok.is_ok(), "{ok:?}");
     assert!(solilang::type_check_source_with_ambient(source, None, &[]).is_err());
 }
+
+#[test]
+fn a_bare_klass_new_is_an_instance() {
+    // #655: `Feed.new` read without parentheses constructs on both engines,
+    // so the checker types it as one and checks what follows.
+    let errors = check_err("class Feed\n  def build\n    1\n  end\nend\nFeed.new.bulid\n");
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::NoSuchMember { member, .. } if member == "bulid"),
+        "NoSuchMember(bulid)",
+    );
+    check_ok("class Feed\n  def build\n    1\n  end\nend\nprint(Feed.new.build)\n");
+}

@@ -180,7 +180,8 @@ impl TypeChecker {
                     }
                     // `Klass.new(...)`: the constructor (or, with one hash,
                     // the attribute form) — every class has it at run time.
-                    // Its arguments depend on the shape, so `Any`.
+                    // Its arguments depend on the shape, so `Any`. A bare
+                    // `Klass.new` is checked as `Klass.new()` (#655).
                     "new" => return Ok(Type::Any),
                     "methods" => return Ok(Type::Array(Box::new(Type::String))),
                     "respond_to?" => {

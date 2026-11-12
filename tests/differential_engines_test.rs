@@ -6253,6 +6253,13 @@ end"##,
         "webauthn_verify_and_reject",
         "v = JSON.parse(slurp(\"tests/fixtures/webauthn/vectors.json\"))[\"rs256\"]\nr = WebAuthn.verify_authentication(v[\"authentication\"], {\"challenge\": v[\"authentication_challenge\"], \"origins\": \"https://example.com\", \"rp_id\": \"example.com\", \"public_key\": v[\"public_key\"]})\nprint(r[\"user_handle\"], r[\"sign_count\"], r[\"counter_regressed\"])\no = WebAuthn.registration_options({\"rp_id\": \"example.com\", \"user_id\": \"u\", \"user_name\": \"n\"})\nprint(o[\"options\"][\"challenge\"] == o[\"challenge\"])\ntry\n  WebAuthn.verify_registration(v[\"registration\"], {\"challenge\": \"x\", \"origins\": \"https://example.com\", \"rp_id\": \"example.com\"})\ncatch err\n  print(err)\nend\nprint(WebAuthn.verify_registration({}, {\"challenge\": \"x\", \"origins\": \"o\", \"rp_id\": \"r\"}) rescue \"rescued\")",
     ),
+    // #655: `Klass.new` read bare constructs, as `Klass.new()` — a plain
+    // class, a constructor, a nested class, a model, and a class with its own
+    // `static def new` (called, like any zero-argument method read bare).
+    (
+        "bare_klass_new_constructs",
+        "class Feed\n  def build\n    \"built\"\n  end\nend\nclass Counter\n  new\n    @count = 1\n  end\n\n  def count\n    @count\n  end\nend\nmodule Billing\n  class Invoice\n    def total\n      42\n    end\n  end\nend\nclass Cache\n  static def new\n    \"custom\"\n  end\nend\nclass Post < Model\nend\nprint(Feed.new.build)\nprint(Counter.new.count)\nprint(Billing::Invoice.new.total)\nprint(Cache.new)\nprint(Post.new.class)\nf = Feed.new\nprint(f.build)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

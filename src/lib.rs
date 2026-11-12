@@ -2125,10 +2125,12 @@ nil_views = from_nil.views
         assert_eq!(global("plain_nil"), Some(Value::Bool(false)));
         assert_eq!(global("kind"), Some(Value::str("class")));
         assert!(matches!(global("empty"), Some(Value::Instance(_))));
-        match global("bare") {
-            Some(Value::NativeFunction(native)) => assert_eq!(native.name, "new"),
-            other => panic!("a bare `new` reads as the native, got {other:?}"),
-        }
+        // #655: a bare `new` constructs, as `new()` does.
+        assert!(
+            matches!(global("bare"), Some(Value::Instance(_))),
+            "a bare `new` builds an instance, got {:?}",
+            global("bare")
+        );
     }
 
     /// The attribute form's argument errors are the tree-walker's.

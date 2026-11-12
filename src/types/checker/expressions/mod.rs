@@ -75,7 +75,16 @@ impl TypeChecker {
             }
             ExprKind::Pipeline { left, right } => self.check_pipeline_expr(left, right),
 
-            // Access
+            // Access. A bare `Klass.new` constructs, as `Klass.new()` (#655).
+            ExprKind::Member { object, .. } if expr.is_bare_class_new() => {
+                match self.constructed_instance(object) {
+                    Some(instance) => Ok(instance),
+                    None => {
+                        self.check_expr(object)?;
+                        Ok(Type::Any)
+                    }
+                }
+            }
             ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } => {
                 self.check_member_expr(expr.span, object, name)
             }

@@ -99,6 +99,10 @@ impl Interpreter {
             {
                 self.evaluate_bare_model_mutator(object, name, expr.span)
             }
+            // `Klass.new` read bare constructs, as `Klass.new()` (#655).
+            ExprKind::Member { .. } if expr.is_bare_class_new() => {
+                self.evaluate_call(expr, &[], expr.span)
+            }
             ExprKind::Member { object, name } => {
                 let val = self.evaluate_member(object, name, expr.span)?;
                 self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
