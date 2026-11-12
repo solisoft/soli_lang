@@ -217,7 +217,7 @@ fn build_class(name: &str, superclass: Option<Rc<Class>>, mut methods: MethodTab
         superclass,
         native_methods: methods,
         native_static_methods: statics,
-        const_fields,
+        const_fields: RefCell::new(const_fields),
         ..Default::default()
     })
 }

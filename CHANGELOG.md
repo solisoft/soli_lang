@@ -326,6 +326,19 @@
 
 ### Fixed
 
+- **`instance_variable_set` keeps the field rules; the VM keeps `const` (#629).**
+  `obj.instance_variable_set("_key", v)` wrote a model's metadata, a `const`
+  field and the raw column of a translated field on both engines: the native
+  set the field directly. It now goes through `set_instance_field`, the write
+  `obj.name = v` uses. On the VM, `const` and `static const` fields were never
+  recorded on the class (`Op::ConstField` / `Op::StaticConstField` handled
+  them as plain fields), so `obj.kind = "x"` and `Box.MAX = 9` went through;
+  `Class::const_fields` / `static_const_fields` are now `RefCell`s the ops
+  fill. The type checker also accepts `instance_variable_get`,
+  `instance_variable_set` and `instance_variables` on a class instance, which
+  it rejected (E0304). Differential test:
+  `instance_variable_set_keeps_the_field_rules`.
+
 - **A panicking event handler no longer leaks a nesting level (#628).**
   `run_blocks` raised `events::DEPTH` before the handlers and lowered it
   after, by hand: a handler that panicked (caught per request) left the

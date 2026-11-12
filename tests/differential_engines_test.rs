@@ -642,6 +642,37 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // `instance_variable_set` writes as `obj.name = v` does: a model's
+        // `_key`/`_id` and a `const` field are refused. The VM never recorded
+        // `const` / `static const` fields, so it let both be reassigned.
+        "instance_variable_set_keeps_the_field_rules",
+        r##"class Post < Model
+end
+class Box
+  const kind = "box"
+  static const MAX = 3
+end
+def attempt(label, action)
+  try
+    action()
+    print(label, "set")
+  catch error
+    print(label, "refused", error)
+  end
+end
+post = Post.new
+box = Box.new
+post.instance_variable_set("title", "hi")
+print(post.title, post.instance_variable_set("_errors", []))
+attempt("_key", fn() { post.instance_variable_set("_key", "x") })
+attempt("@_id", fn() { post.instance_variable_set("@_id", "x") })
+attempt("const ivar", fn() { box.instance_variable_set("kind", "x") })
+attempt("const field", fn() { box.kind = "x" })
+attempt("static const", fn() { Box.MAX = 9 })
+box.instance_variable_set("@size", 3)
+print(box.kind, box.instance_variable_get("size"), Box.MAX)"##,
+    ),
+    (
         // `...xs` in an array literal appends xs's elements (the VM used to
         // push the array itself: `[0, ...a]` was `[0, [1, 2]]`).
         "array_literal_spread",

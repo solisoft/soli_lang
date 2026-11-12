@@ -611,7 +611,7 @@ impl Vm {
     /// fields. A plain object pays one memoized flag read and a length check.
     #[inline]
     fn has_checked_writes(class: &Class) -> bool {
-        class.is_model_subclass() || !class.const_fields.is_empty()
+        class.is_model_subclass() || !class.const_fields.borrow().is_empty()
     }
 
     pub fn new() -> Self {
@@ -4403,6 +4403,7 @@ impl Vm {
                     }
                 }
                 Op::Field(idx) | Op::ConstField(idx) => {
+                    let is_const = matches!(op, Op::ConstField(_));
                     // A declared instance field: its name, in declaration
                     // order (a value object's implicit constructor binds
                     // arguments by it), and the value every new instance
@@ -4411,6 +4412,9 @@ impl Vm {
                     let name = self.read_string_constant_owned(idx);
                     let start = self.stack.pop().unwrap_or(Value::Null);
                     if let Some(Value::Class(class)) = self.stack.last() {
+                        if is_const {
+                            class.const_fields.borrow_mut().insert(name.clone());
+                        }
                         class.declared_fields.borrow_mut().push(name.clone());
                         let mut field_init = class.field_init.borrow_mut();
                         let field_init =
@@ -4431,6 +4435,7 @@ impl Vm {
                     let value = self.stack.pop().unwrap();
                     let class = self.stack.last().unwrap().clone();
                     if let Value::Class(ref cls) = class {
+                        cls.static_const_fields.borrow_mut().insert(name.clone());
                         cls.static_fields.borrow_mut().insert(name, value);
                     }
                 }

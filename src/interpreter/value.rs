@@ -1961,9 +1961,9 @@ pub struct Class {
     /// Nested classes defined within this class - using RefCell for interior mutability
     pub nested_classes: Rc<RefCell<HashMap<String, Rc<Class>>>>,
     /// Instance field names declared as `const` (immutable after initialization).
-    pub const_fields: HashSet<String>,
+    pub const_fields: RefCell<HashSet<String>>,
     /// Static field names declared as `const` (immutable after initialization).
-    pub static_const_fields: HashSet<String>,
+    pub static_const_fields: RefCell<HashSet<String>>,
     /// Flattened method cache for O(1) lookups including inherited methods.
     /// This is computed lazily on first access and includes all methods from the inheritance chain.
     /// ahash-keyed: `find_method` probes this once per method call.
@@ -2304,8 +2304,8 @@ impl Default for Class {
             fields: HashMap::new(),
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
-            const_fields: HashSet::new(),
-            static_const_fields: HashSet::new(),
+            const_fields: RefCell::new(HashSet::new()),
+            static_const_fields: RefCell::new(HashSet::new()),
             all_methods_cache: RefCell::new(None),
             all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),
@@ -2362,8 +2362,8 @@ impl Class {
             fields,
             constructor,
             nested_classes,
-            const_fields: HashSet::new(),
-            static_const_fields: HashSet::new(),
+            const_fields: RefCell::new(HashSet::new()),
+            static_const_fields: RefCell::new(HashSet::new()),
             all_methods_cache: RefCell::new(None),
             all_methods_cache_epoch: Cell::new(0),
             all_native_methods_cache: RefCell::new(None),

@@ -346,7 +346,7 @@ fn build_reader_class() -> Rc<Class> {
         name: CLASS_NAME.to_string(),
         native_methods: methods,
         native_static_methods: statics,
-        const_fields,
+        const_fields: std::cell::RefCell::new(const_fields),
         ..Default::default()
     })
 }

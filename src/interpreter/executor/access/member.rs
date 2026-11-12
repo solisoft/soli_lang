@@ -1204,15 +1204,15 @@ impl Interpreter {
                             }
                         };
 
-                        {
-                            let class = inst_clone.borrow().class.clone();
-                            crate::interpreter::domain::check_writable(
-                                &inst_clone,
-                                &class,
-                                &var_name,
-                            )?;
-                        }
-                        inst_clone.borrow_mut().set(var_name, value.clone());
+                        // The same rules as `obj.name = value`: no const
+                        // field, no model metadata (`_key`, `_id`, …), a
+                        // translated field is staged, a value object is
+                        // checked.
+                        crate::interpreter::executor::expressions::set_instance_field(
+                            &inst_clone,
+                            &var_name,
+                            value.clone(),
+                        )?;
                         Ok(value)
                     },
                 )));

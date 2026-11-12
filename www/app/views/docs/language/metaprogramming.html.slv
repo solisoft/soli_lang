@@ -95,6 +95,9 @@ copy_fields(draft, post, ["title", "body"])</code></pre>
         <p class="text-gray-400 text-sm">
             The write follows the rules of <code class="text-amber-400">record.name = value</code>: a <code class="text-amber-400">private</code> or <code class="text-amber-400">protected</code> field is refused from outside the class (<code class="text-amber-400">this[name]</code> inside it is fine), a <code class="text-amber-400">const</code> field cannot be reassigned, a model&rsquo;s <code class="text-amber-400">_</code>-prefixed metadata (<code class="text-amber-400">_key</code>, <code class="text-amber-400">_id</code>, &hellip;) is read-only, and a translated field is staged for the next save. A missing field reads as <code class="text-amber-400">nil</code>. Both engines agree, and the type checker accepts a String index on any instance.
         </p>
+        <p class="text-gray-300 mt-4">
+            <code class="text-amber-400">obj.instance_variable_set(name, value)</code> (<code class="text-amber-400">"@title"</code> or <code class="text-amber-400">"title"</code>) writes by the same rules, visibility aside &mdash; reflection reaches a <code class="text-amber-400">private</code> field, as <code class="text-amber-400">instance_variable_get</code> reads one &mdash; so it cannot reassign a <code class="text-amber-400">const</code> field or a model&rsquo;s <code class="text-amber-400">_key</code>, and it stages a translated field.
+        </p>
     </section>
 
     <!-- method_missing -->

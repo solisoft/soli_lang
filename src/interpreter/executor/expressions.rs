@@ -294,7 +294,7 @@ impl Interpreter {
                         Ok(new_value)
                     }
                     Value::Class(class) => {
-                        if class.static_const_fields.contains(name.as_str()) {
+                        if class.static_const_fields.borrow().contains(name.as_str()) {
                             return Err(RuntimeError::type_error(
                                 format!("cannot reassign static const field '{}'", name),
                                 target.span,
@@ -629,7 +629,7 @@ impl Interpreter {
                         Ok(())
                     }
                     Value::Class(class) => {
-                        if class.static_const_fields.contains(name.as_str()) {
+                        if class.static_const_fields.borrow().contains(name.as_str()) {
                             return Err(RuntimeError::type_error(
                                 format!("cannot reassign static const field '{}'", name),
                                 target.span,
@@ -976,7 +976,7 @@ pub(crate) fn set_instance_field(
         let inst_ref = inst.borrow();
         crate::interpreter::domain::check_writable(inst, &inst_ref.class, name)?;
     }
-    if inst.borrow().class.const_fields.contains(name) {
+    if inst.borrow().class.const_fields.borrow().contains(name) {
         return Err(format!("cannot reassign const field '{}'", name));
     }
     if name.starts_with('_') && name != "_errors" && inst.borrow().class.is_model_subclass() {

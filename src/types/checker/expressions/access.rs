@@ -201,7 +201,11 @@ impl TypeChecker {
                     // Its arguments depend on the shape, so `Any`. A bare
                     // `Klass.new` is checked as `Klass.new()` (#655).
                     "new" => return Ok(Type::Any),
-                    "methods" => return Ok(Type::Array(Box::new(Type::String))),
+                    "methods" | "instance_variables" => {
+                        return Ok(Type::Array(Box::new(Type::String)))
+                    }
+                    // Field reflection on an instance: any name, any value.
+                    "instance_variable_get" | "instance_variable_set" => return Ok(Type::Any),
                     "respond_to?" => {
                         return Ok(Type::Function {
                             params: vec![Type::String],

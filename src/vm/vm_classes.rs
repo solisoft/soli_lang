@@ -1093,7 +1093,7 @@ impl Vm {
                     .map_err(|message| RuntimeError::type_error(message, span))
             }
             Value::Class(class) => {
-                if class.static_const_fields.contains(name) {
+                if class.static_const_fields.borrow().contains(name) {
                     return Err(RuntimeError::type_error(
                         format!("cannot reassign static const field '{}'", name),
                         span,
@@ -1927,8 +1927,11 @@ mod field_write_rules_tests {
             name: "VmRulesLimits".to_string(),
             ..Default::default()
         };
-        class.const_fields.insert("ident".to_string());
-        class.static_const_fields.insert("MAX".to_string());
+        class.const_fields.get_mut().insert("ident".to_string());
+        class
+            .static_const_fields
+            .get_mut()
+            .insert("MAX".to_string());
         class
             .static_fields
             .borrow_mut()

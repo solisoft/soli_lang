@@ -159,6 +159,11 @@ fine), a `const` field cannot be reassigned, a model's `_`-prefixed metadata
 save. A missing field reads as `nil`. Both engines agree, and the type checker
 accepts a String index on any instance.
 
+`obj.instance_variable_set(name, value)` (`"@title"` or `"title"`) writes by
+the same rules, visibility aside — reflection reaches a `private` field, as
+`instance_variable_get` reads one — so it cannot reassign a `const` field or a
+model's `_key`, and it stages a translated field.
+
 ## Cross-references
 
 - [Models](models.md) — the full Model DSL (`validates`, `has_many`, `before_save`, etc.).
