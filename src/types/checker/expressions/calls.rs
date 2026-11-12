@@ -82,10 +82,24 @@ impl TypeChecker {
         if let ExprKind::Variable(name) = &callee.kind {
             if let Some((min, max, declared, at)) = self.function_arities.get(name) {
                 if *declared == callee_type {
-                    let given = arguments
+                    let mut given = arguments
                         .iter()
                         .filter(|a| !matches!(a, Argument::Block(_)))
                         .count();
+                    // A block fills the last parameter when the function has
+                    // no `&block` one (its signature then lists no more
+                    // parameters than `max`) and no argument reached it — the
+                    // runtime's rule (`vm_calls::block_parameter`).
+                    let has_block_param = matches!(
+                        declared,
+                        Type::Function { params, .. } if params.len() > *max
+                    );
+                    if !has_block_param
+                        && given < *max
+                        && arguments.iter().any(|a| matches!(a, Argument::Block(_)))
+                    {
+                        given += 1;
+                    }
                     if given < *min || given > *max {
                         return Err(TypeError::WrongArity {
                             expected: if given < *min { *min } else { *max },

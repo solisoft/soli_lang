@@ -711,7 +711,9 @@ impl Vm {
                     superclass, name,
                 )))
             }
-            Value::Function(_) | Value::NativeFunction(_) => match name {
+            // A compiled closure too (a block passed as an argument): it
+            // answered no member at all, so `f.nil?` raised on the VM.
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_) => match name {
                 "nil?" => Ok(Value::Bool(false)),
                 "blank?" => Ok(Value::Bool(false)),
                 "present?" => Ok(Value::Bool(true)),

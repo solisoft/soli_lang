@@ -425,7 +425,23 @@ pub(crate) fn bind_method_arguments(
     let total_params = proto.param_names.len();
     let block_param = match proto.block_param {
         Some(index) if (index as usize) < total_params && total_params <= 64 => index as usize,
-        _ => return bind_named_arguments(proto, positional, named, span),
+        _ => {
+            // No `&block` parameter: the block fills the last parameter when
+            // no argument did, else it is dropped (`block_parameter`, the
+            // rule of a function call too).
+            let mut named = named;
+            if let Some(block) = block {
+                let target = block_parameter(total_params, None, positional.len(), |index| {
+                    named
+                        .iter()
+                        .any(|(name, _)| name.as_str() == proto.param_names[index])
+                });
+                if let Some(index) = target {
+                    named.push((proto.param_names[index].clone().into(), block));
+                }
+            }
+            return bind_named_arguments(proto, positional, named, span);
+        }
     };
     let regular = total_params - 1;
     if positional.len() > regular {
@@ -482,6 +498,24 @@ pub(crate) fn bind_method_arguments(
     slots[block_param] = block.unwrap_or(Value::Null);
     supplied |= 1u64 << block_param;
     Ok((slots, supplied))
+}
+
+/// The parameter a function's trailing block binds to, shared by both
+/// engines (#638): its `&block` parameter; else its last parameter, when no
+/// positional or labelled argument filled it (`def with_cb(cb)` called as
+/// `with_cb() do … end`, `each_page(20) do … end`); else none, and the block
+/// is dropped (`k(y: 1) do … end` on `def k(x = 0, y = 0)` is `[0, 1]`).
+pub(crate) fn block_parameter(
+    param_count: usize,
+    block_param: Option<usize>,
+    positional: usize,
+    labelled: impl Fn(usize) -> bool,
+) -> Option<usize> {
+    if block_param.is_some() {
+        return block_param;
+    }
+    let last = param_count.checked_sub(1)?;
+    (last >= positional && !labelled(last)).then_some(last)
 }
 
 /// `labels` as `CallNamed` carries them: a block's slot is positional.
@@ -794,6 +828,55 @@ impl Vm {
             }
             _ => None,
         };
+        // A block slot (the last, labelled `BLOCK_LABEL`): a plain function
+        // binds it by `block_parameter`'s rule, by relabelling it with the
+        // parameter's name or dropping it; any other callee takes it as a
+        // trailing positional slot, as before.
+        let block_label = |label: &Option<crate::interpreter::value::SoliStr>| {
+            label
+                .as_ref()
+                .is_some_and(|name| name.as_str() == super::chunk::BLOCK_LABEL)
+        };
+        if labels.last().is_some_and(block_label) {
+            let mut relabelled: Vec<Option<crate::interpreter::value::SoliStr>> = labels.to_vec();
+            let mut argc = argc;
+            match &compiled {
+                Some((closure, None)) => {
+                    let proto = &closure.proto;
+                    let positional = labels.iter().filter(|label| label.is_none()).count();
+                    let labelled = |index: usize| {
+                        labels
+                            .iter()
+                            .flatten()
+                            .any(|name| name.as_str() == proto.param_names[index])
+                    };
+                    match block_parameter(
+                        proto.param_names.len(),
+                        proto.block_param.map(usize::from),
+                        positional,
+                        labelled,
+                    ) {
+                        Some(index) => {
+                            relabelled[argc - 1] = Some(proto.param_names[index].clone().into());
+                        }
+                        None => {
+                            relabelled.pop();
+                            self.stack.pop();
+                            argc -= 1;
+                        }
+                    }
+                }
+                _ => relabelled[argc - 1] = None,
+            }
+            if relabelled.iter().all(Option::is_none) {
+                return self.call_value(argc, span);
+            }
+            if let Some((closure, construct)) = compiled {
+                return self.call_compiled_named(closure, argc, &relabelled, construct, span);
+            }
+            return self.call_value_named(argc, &relabelled, span);
+        }
+
         if let Some((closure, construct)) = compiled {
             return self.call_compiled_named(closure, argc, labels, construct, span);
         }
@@ -5165,8 +5248,10 @@ mod bind_method_arguments_tests {
         .is_err());
     }
 
+    /// Without a `&block` parameter the block fills the last parameter when
+    /// no argument did, and is dropped when one did (#638).
     #[test]
-    fn without_a_block_parameter_the_block_is_dropped() {
+    fn without_a_block_parameter_the_block_fills_the_last_or_is_dropped() {
         let mut proto = FunctionProto::new("n".to_string());
         proto.param_names = vec!["a".into(), "f".into()];
         proto.arity = 1;
@@ -5180,7 +5265,17 @@ mod bind_method_arguments_tests {
             Span::default(),
         )
         .expect("binds");
-        assert_eq!(slots, vec![Value::Int(1), Value::Null]);
-        assert_eq!(supplied, 0b01);
+        assert_eq!(slots, vec![Value::Int(1), Value::Int(7)]);
+        assert_eq!(supplied, 0b11);
+
+        let (slots, _) = bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("a".into(), Value::Int(1)), ("f".into(), Value::Int(2))],
+            Some(Value::Int(7)),
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(1), Value::Int(2)]);
     }
 }

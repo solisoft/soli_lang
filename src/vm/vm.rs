@@ -4338,8 +4338,8 @@ impl Vm {
                     let span = self.current_span();
                     if matches!(marker, Value::Null) {
                         // A global of that name: `SelfOrGlobalCallee` put it in
-                        // the callee slot, and it binds as `CallNamed` binds.
-                        let labels = crate::vm::vm_calls::without_block_label(&labels);
+                        // the callee slot, and it binds as `CallNamed` binds,
+                        // its block included.
                         self.call_value_named(argc as usize, &labels, span)?;
                     } else {
                         let name = self.read_string_constant(name_idx);

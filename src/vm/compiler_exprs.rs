@@ -919,8 +919,8 @@ impl Compiler {
     /// `Constant::ArgNames` labelling their slots. A block's slot is labelled
     /// [`super::chunk::BLOCK_LABEL`] so the binder can hand it to the method's
     /// `&block` parameter (or drop it, as the tree-walker does, when the
-    /// method declares none). Only `CallMethodNamed` and
-    /// `CallSelfOrGlobalNamed` carry that label; `CallNamed` never does.
+    /// method declares none). `CallNamed` carries it too, for a function's
+    /// block ([`crate::vm::vm_calls::block_parameter`]).
     fn compile_labelled_method_arguments(
         &mut self,
         arguments: &[Argument],
@@ -1001,10 +1001,13 @@ impl Compiler {
                     labels.push(Some(named_arg.name.clone().into()));
                 }
                 Argument::Block(expr) => {
-                    // A block occupies a plain trailing slot, as it does for a
-                    // fully positional call.
+                    // Labelled, so the binder knows the slot is the block:
+                    // a function takes it in its `&block` parameter, else in
+                    // its last parameter when no argument filled that, else
+                    // drops it (`block_parameter`). Any other callee gets it
+                    // as a plain trailing slot, as before.
                     self.compile_expr(expr)?;
-                    labels.push(None);
+                    labels.push(Some(super::chunk::BLOCK_LABEL.into()));
                 }
             }
             argc += 1;

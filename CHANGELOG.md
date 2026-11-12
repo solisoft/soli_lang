@@ -313,6 +313,21 @@
 
 ### Changed
 
+- **Where a trailing block binds (#638, item 2).** The engines disagreed: the
+  tree-walker gave a block only to a `&block` parameter and dropped it
+  otherwise (`with_cb() do … end` on `def with_cb(cb)` was an arity error),
+  while the VM put it in the next positional slot (`k(y: 1) do … end` on
+  `def k(x = 0, y = 0)` gave `[<fn>, 1]`, and a `&blk` parameter got nil).
+  Both now follow one rule, `vm_calls::block_parameter`: the `&block`
+  parameter; else the last parameter when no argument filled it; else the
+  block is dropped. The VM labels a function call's block slot
+  (`BLOCK_LABEL`, so a call with a block is a `CallNamed`), applies the rule
+  in `call_value_named` and `bind_method_arguments`; the tree-walker in
+  `call_value_with_named`; `soli check` counts the block toward the arity
+  the same way. A compiled closure now answers `nil?`, `class`, `inspect`
+  on the VM as a function value does. Test:
+  `trailing_block_binds_to_block_param_or_last_param`.
+
 - **A builtin's name assigned inside a function is a local (#630).** Under
   `soli serve`, `h = {…}` (or `len = …`, `options = …`) in an action rebound
   the worker's global: the builtin was gone for every later request on that

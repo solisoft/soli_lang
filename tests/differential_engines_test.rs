@@ -642,6 +642,53 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #638 item 2: a trailing block binds to `&block`, else to the last
+        // parameter when no argument filled it, else is dropped — on both
+        // engines. The VM put it in the next slot (`k(y: 1) do … end` gave
+        // `[<fn>, 1]`, `&blk` got nil); the tree-walker always dropped it
+        // (`with_cb() do … end` was an arity error).
+        "trailing_block_binds_to_block_param_or_last_param",
+        r##"def k(x = 0, y = 0)
+  [x, y]
+end
+print(k(5) do |z| z end)
+print(k(y: 1) do |z| z end)
+def kb(x = 0, y = 0, &blk)
+  [x, y, blk(10)]
+end
+print(kb(1) do |z| z * 2 end)
+print(kb(y: 3) do |z| z * 3 end)
+def kc(a, b = 2)
+  [a, b]
+end
+print(kc(a: 7) do |z| z end)
+def with_cb(cb)
+  cb(1)
+end
+print(with_cb() do |x| x + 1 end)
+def with_both(a, cb)
+  cb(a)
+end
+print(with_both(5) do |x| x * 2 end)
+def each_page(size = 10, cb = nil)
+  cb(size)
+end
+print(each_page(20) do |n| n + 1 end)
+def first_cb(cb, opt = 1)
+  [opt]
+end
+print(kb(1, 2) do |z| z end)
+class Runner
+  def go
+    with_cb() do |x| x * 100 end
+  end
+  def go_named
+    k(y: 9) do |z| z end
+  end
+end
+print(Runner.new.go, Runner.new.go_named)"##,
+    ),
+    (
         // #638: `recv.push(x)` on a user class calls its `push` (the VM
         // compiled it to an array push: "can only push to arrays"); a field
         // named like a universal member (`class`, `methods`, `inspect`) does
@@ -5215,7 +5262,8 @@ b = Box.new()
 print(b.f(x: 2), b.nope(z: 1), b.nope(1, z: 2))"##,
     ),
     (
-        // C583: a block passed with labels goes to the `&block` parameter, or is dropped when the method declares none.
+        // C583: a block passed with labels goes to the `&block` parameter; without one it fills the
+        // last parameter when no argument did (`f` here, #638), else it is dropped.
         "named_args_with_a_block",
         r##"class C
   def amp(a, &blk)

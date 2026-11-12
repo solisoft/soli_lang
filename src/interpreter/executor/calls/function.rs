@@ -2446,8 +2446,8 @@ impl Interpreter {
         &mut self,
         callee: Value,
         positional_args: Vec<Value>,
-        named_args: HashMap<String, Value>,
-        block_arg: Option<Value>,
+        mut named_args: HashMap<String, Value>,
+        mut block_arg: Option<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
         match callee {
@@ -2479,6 +2479,25 @@ impl Interpreter {
                                 &param_names,
                             )),
                         ));
+                    }
+                }
+
+                // Without a `&block` parameter, a block fills the last
+                // parameter when no argument did, and is dropped otherwise:
+                // the VM's rule too (`vm_calls::block_parameter`). It used to
+                // be dropped always, so `with_cb() do … end` on
+                // `def with_cb(cb)` was an arity error here and ran there.
+                if block_param_name.is_none() {
+                    if let Some(block_val) = block_arg.take() {
+                        let target = crate::vm::vm_calls::block_parameter(
+                            param_names.len(),
+                            None,
+                            positional_args.len(),
+                            |index| named_args.contains_key(&param_names[index]),
+                        );
+                        if let Some(index) = target {
+                            named_args.insert(param_names[index].clone(), block_val);
+                        }
                     }
                 }
 

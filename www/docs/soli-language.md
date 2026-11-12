@@ -1670,10 +1670,13 @@ missing = nil
 print(missing&.with_fee(fee: 10))      # null
 ```
 
-A block passed along with labels (`list.add(item: x) do … end`) reaches the
-method's `&block` parameter; a method without one ignores it. A builtin method
-receives the labels as one trailing options hash, and `method_missing` gets
-them as a hash after the positional arguments.
+A trailing block (`list.add(item: x) do … end`, `with_cb() do … end`) reaches
+the function's or method's `&block` parameter. Without one, it fills the last
+parameter when no argument filled it (`def with_cb(cb)`, `def each_page(size =
+10, cb = nil)` called as `each_page(20) do … end`), and is ignored otherwise:
+`def k(x = 0, y = 0)` called as `k(y: 1) do … end` is `[0, 1]`. A builtin
+method receives the labels as one trailing options hash, and `method_missing`
+gets them as a hash after the positional arguments.
 
 #### Ruby-Style Calls Without Parentheses
 
