@@ -177,3 +177,22 @@ fn a_migration_sees_the_runner_prelude() {
     assert!(check_at("db/migrations/20260101000000_x.sl", src).is_ok());
     assert!(check_at("scripts/x.sl", src).is_err());
 }
+
+/// An empty `else` or `then` branch inside a `def` or a `for` closed the
+/// branch and then took the enclosing block's `end` too, so the file failed to
+/// parse ("expected end") — in a view, any `<% else %>` followed by markup only.
+#[test]
+fn an_empty_branch_inside_a_block_keeps_the_blocks_end() {
+    for source in [
+        "def f(r)\n  if r\n    print(1)\n  else\n  end\nend\nf(true)\n",
+        "for r in [1]\n  if r\n  end\n  print(r)\nend\n",
+        "def g(r)\n  unless r\n  end\n  r\nend\nprint(g(1))\n",
+        "x = 1\nif x\n  print(1)\nelse end\nprint(2)\n",
+        "def h(r)\n  if r\n    1\n  elsif r == 2\n  else\n  end\nend\nprint(h(1))\n",
+        // An inner `if … end` right before the outer `else` (a view's
+        // `<% if x %>checked<% end %>` then `<% else %>`).
+        "def k(a, b)\n  if a\n    if b\n    end\n  else\n    print(2)\n  end\nend\nk(true, false)\n",
+    ] {
+        assert!(type_check_source(source, None).is_ok(), "{source}");
+    }
+}

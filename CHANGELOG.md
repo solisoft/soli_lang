@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **An empty `else` (or `then`, `unless`) branch inside a `def`, a `for` or a
+  block no longer swallows the block's `end`.** `parse_branch_body` consumed
+  the `end` of an empty indentation-style branch and its caller then took a
+  second one, so `def f(r) / if r / … / else / end / end` failed with
+  "expected end". In a view the same thing broke `soli lint`/`soli check`'s
+  reading of any `<% else %>` followed by markup only. The legacy `if c end
+  else …` form is kept.
+
 ### Added
 
 - **User generics: `class Box<T>`, `def first<T>`, `Box<Int>` (#693, phase

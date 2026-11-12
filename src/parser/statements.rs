@@ -657,25 +657,46 @@ impl Parser {
         let else_line = self.previous_span().line; // line of the 'else' keyword
         let body_line = self.current_span().line; // line of the first body token
         let is_multiline = body_line != else_line;
+        // `else end`: an empty body closed on the same line.
+        let empty = self.check(&TokenKind::End);
 
         let branch = self.parse_branch_body()?;
 
         // For multi-line else bodies (indentation-style), consume the closing 'end'
-        if is_multiline && !self.check(&TokenKind::Else) && !self.check(&TokenKind::Elsif) {
+        if (is_multiline || empty)
+            && !self.check(&TokenKind::Else)
+            && !self.check(&TokenKind::Elsif)
+        {
             self.match_token(&TokenKind::End);
         }
 
         Ok(branch)
     }
 
+    /// The body of an `if`/`elsif`/`else`/`unless` branch. An indentation-style
+    /// body stops *before* its `end`, `else` or `elsif`, empty or not: the
+    /// caller consumes the one `end` that closes the statement. An empty body
+    /// used to consume its `end` here, and the caller then took a second one —
+    /// the `end` of the enclosing `def` or `for` (an `<% else %>` followed only
+    /// by markup, in a view, broke the template's parse). The one `end` it
+    /// still takes is the legacy `if c end else …`.
     fn parse_branch_body(&mut self) -> ParseResult<Box<Stmt>> {
-        if self.match_token(&TokenKind::End) {
-            Ok(Box::new(Stmt::new(
+        // `if c end else { … }`: an `end` straight after the condition, on its
+        // line, is an empty `then`, and the `else`/`elsif` after it belongs to
+        // this `if`. On a line of its own the `end` closes this `if`, and an
+        // `else` after it is the enclosing `if`'s.
+        if self.check(&TokenKind::End)
+            && self.peek().span.line == self.previous_span().line
+            && matches!(self.peek_nth(1).kind, TokenKind::Else | TokenKind::Elsif)
+        {
+            self.advance();
+            return Ok(Box::new(Stmt::new(
                 StmtKind::Block(Vec::new()),
                 self.previous_span(),
                 None,
-            )))
-        } else if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
+            )));
+        }
+        if self.check(&TokenKind::LeftBrace) && !self.looks_like_hash_literal() {
             self.advance(); // consume {
             let mut statements = Vec::new();
             while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
