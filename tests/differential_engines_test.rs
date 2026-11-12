@@ -642,6 +642,50 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #636: DateTimes and Decimals order in `sort`, `sort_by`, `min` and
+        // `max` as `<` orders them (they kept their input order); a
+        // comparator that raises ends the sort and the error propagates (the
+        // VM resumed the failed run's frames); Int builtins raise on
+        // overflow (`divmod` panicked, the others wrapped).
+        "sort_orders_dates_and_decimals_and_int_builtins_check_overflow",
+        r##"d0 = DateTime.parse("2024-01-01T00:00:00Z")
+d1 = DateTime.parse("2024-06-01T00:00:00Z")
+d2 = DateTime.parse("2025-01-01T00:00:00Z")
+stamp = fn(d) { d.year * 100 + d.month }
+print([d2, d0, d1].sort.map { |d| stamp(d) })
+print([d2, d0, d1].sort_by { |d| d }.map { |d| stamp(d) })
+print(stamp([d2, d0, d1].min), stamp([d2, d0, d1].max))
+print([3.5D, 1.25D, 2.0D].sort, [3.5D, 1.25D, 2.0D].min, [3.5D, 1, 2.5].max)
+def cmp(a, b)
+  throw "boom" if a == 5
+  a - b
+end
+def sorted()
+  [3, 1, 2, 5, 4].sort { |a, b| cmp(a, b) }
+end
+print(sorted() rescue "raised")
+print([3, 1, 2].sort { |a, b| b - a })
+def attempt(label, action)
+  try
+    print(label, action())
+  catch error
+    print(label, "raised")
+  end
+end
+min = -9223372036854775807 - 1
+max = 9223372036854775807
+attempt("divmod", fn() { min.divmod(-1) })
+attempt("succ", fn() { max.succ })
+attempt("pred", fn() { min.pred })
+attempt("abs", fn() { min.abs })
+attempt("pow", fn() { 2.pow(64) })
+attempt("pow huge", fn() { 2.pow(4294967298) })
+attempt("lcm", fn() { max.lcm(2) })
+attempt("gcd", fn() { min.gcd(0) })
+print(2.pow(10), (-1).pow(4294967299), 1.pow(4294967298), 2.pow(-2))
+print(12.gcd(8), 12.lcm(8), min.gcd(6), 7.divmod(-2), (-7).abs, 41.succ, 43.pred)"##,
+    ),
+    (
         // A pending call (`System.run`, a backtick command) is resolved before
         // an index read or `==`, as the tree-walker does: the VM indexed the
         // Future itself ("Cannot access property 'get' on Future") and

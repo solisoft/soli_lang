@@ -5,6 +5,7 @@
 //! else is pure and lives in `call_int_method_impl`, shared with the VM
 //! (`vm_int_methods.rs`).
 
+use crate::interpreter::executor::operators::int_overflow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -202,13 +203,13 @@ pub(crate) fn call_int_method_impl(
             if !arguments.is_empty() {
                 return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
             }
-            Ok(Value::Int(n + 1))
+            int_succ(n, span)
         }
         "pred" => {
             if !arguments.is_empty() {
                 return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
             }
-            Ok(Value::Int(n - 1))
+            int_pred(n, span)
         }
         "divmod" => {
             if arguments.len() != 1 {
@@ -226,8 +227,13 @@ pub(crate) fn call_int_method_impl(
                     ))
                 }
             };
+            // `i64::MIN.divmod(-1)`: the quotient is 2^63, which no Int holds;
+            // unchecked, `div_euclid` panicked (a 500 from user input).
+            let quotient = n
+                .checked_div_euclid(divisor)
+                .ok_or_else(|| int_overflow(n, "divmod", divisor, span))?;
             Ok(Value::Array(Rc::new(RefCell::new(vec![
-                Value::Int(n.div_euclid(divisor)),
+                Value::Int(quotient),
                 Value::Int(n.rem_euclid(divisor)),
             ]))))
         }
@@ -270,17 +276,54 @@ fn int_round(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
     })
 }
 
+/// `n.succ`: `n + 1`, raising like `+` past `i64::MAX` (it wrapped).
+pub(crate) fn int_succ(n: i64, span: Span) -> RuntimeResult<Value> {
+    n.checked_add(1)
+        .map(Value::Int)
+        .ok_or_else(|| int_overflow(n, "+", 1, span))
+}
+
+/// `n.pred`: `n - 1`, raising like `-` below `i64::MIN` (it wrapped).
+pub(crate) fn int_pred(n: i64, span: Span) -> RuntimeResult<Value> {
+    n.checked_sub(1)
+        .map(Value::Int)
+        .ok_or_else(|| int_overflow(n, "-", 1, span))
+}
+
+/// `n.abs`, raising for `i64::MIN`, whose magnitude no Int holds (it came
+/// back negative).
+pub(crate) fn int_abs(n: i64, span: Span) -> RuntimeResult<Value> {
+    n.checked_abs()
+        .map(Value::Int)
+        .ok_or_else(|| crate::interpreter::executor::operators::int_negate_overflow(n, span))
+}
+
 fn int_pow(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
     if arguments.len() != 1 {
         return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
     }
     match &arguments[0] {
+        // A negative exponent is a Float, as before — `powf` past the `i32`
+        // range `powi` takes, where the exponent was truncated.
+        Value::Int(exp) if *exp < 0 => Ok(Value::Float(match i32::try_from(*exp) {
+            Ok(exp) => (n as f64).powi(exp),
+            Err(_) => (n as f64).powf(*exp as f64),
+        })),
+        // The exponent was truncated to `u32` (`2.pow(4294967298)` was 4)
+        // and the power wrapped: an Int result that does not fit raises like
+        // `*` does. Past `u32::MAX` only 0, 1 and -1 have one.
         Value::Int(exp) => {
-            if *exp < 0 {
-                Ok(Value::Float((n as f64).powi(*exp as i32)))
-            } else {
-                Ok(Value::Int(n.pow(*exp as u32)))
-            }
+            let power = match u32::try_from(*exp) {
+                Ok(exp) => n.checked_pow(exp),
+                Err(_) => match n {
+                    0 | 1 => Some(n),
+                    -1 => Some(if exp % 2 == 0 { 1 } else { -1 }),
+                    _ => None,
+                },
+            };
+            power
+                .map(Value::Int)
+                .ok_or_else(|| int_overflow(n, "**", *exp, span))
         }
         Value::Float(exp) => Ok(Value::Float((n as f64).powf(*exp))),
         _ => Err(RuntimeError::type_error(
@@ -303,7 +346,7 @@ fn int_gcd(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
             ))
         }
     };
-    Ok(Value::Int(gcd(n, other)))
+    Ok(Value::Int(gcd(n, other, span)?))
 }
 
 fn int_lcm(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
@@ -319,16 +362,27 @@ fn int_lcm(n: i64, arguments: &[Value], span: Span) -> RuntimeResult<Value> {
             ))
         }
     };
-    if n == 0 && other == 0 {
-        Ok(Value::Int(0))
-    } else {
-        Ok(Value::Int((n / gcd(n, other) * other).abs()))
+    if n == 0 || other == 0 {
+        return Ok(Value::Int(0));
     }
+    // Over magnitudes, so `i64::MIN` has one; a result past `i64::MAX`
+    // raises (it wrapped).
+    let divisor = gcd_magnitude(n.unsigned_abs(), other.unsigned_abs());
+    (n.unsigned_abs() / divisor)
+        .checked_mul(other.unsigned_abs())
+        .and_then(|lcm| i64::try_from(lcm).ok())
+        .map(Value::Int)
+        .ok_or_else(|| int_overflow(n, "lcm", other, span))
 }
 
-fn gcd(mut a: i64, mut b: i64) -> i64 {
-    a = a.abs();
-    b = b.abs();
+/// `n.gcd(m)`: `gcd(i64::MIN, 0)` and `gcd(i64::MIN, i64::MIN)` are 2^63,
+/// which no Int holds — raised; `abs` on `i64::MIN` used to panic.
+fn gcd(a: i64, b: i64, span: Span) -> RuntimeResult<i64> {
+    i64::try_from(gcd_magnitude(a.unsigned_abs(), b.unsigned_abs()))
+        .map_err(|_| int_overflow(a, "gcd", b, span))
+}
+
+fn gcd_magnitude(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {
         let t = b;
         b = a % b;

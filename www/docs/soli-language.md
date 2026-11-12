@@ -141,7 +141,8 @@ negative = -100;
 large = 9_000_000;  # Underscores for readability
 # Past the Int range (-9223372036854775808..9223372036854775807) the operators
 # raise "integer overflow" instead of wrapping: + - * / %, unary -, += and -=,
-# ++ and --. The error is catchable, and the variable keeps its value.
+# ++ and --. The error is catchable, and the variable keeps its value. The
+# methods do too: abs, succ/pred, pow, lcm, gcd and divmod.
 
 # Float - 64-bit floating-point
 pi = 3.14159;
@@ -4650,7 +4651,9 @@ print(arr.last(2));   # [4, 5]
 let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
 let sorted = unsorted.sort();  # [1, 1, 2, 3, 4, 5, 6, 9]
 # Ints and floats compare numerically; a NaN goes after every number
-# (here and in sort_by).
+# (here and in sort_by). Decimals compare by value and DateTimes by instant,
+# as `<` compares them — in sort, sort_by, min and max alike.
+# A comparator block that raises ends the sort, and the error propagates.
 
 # Sort by key
 let items = [{"name": "Bob"}, {"name": "Alice"}];

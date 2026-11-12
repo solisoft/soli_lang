@@ -2786,7 +2786,7 @@ impl Interpreter {
             "to_i" | "to_int" => Ok(Value::Int(n)),
             "to_f" | "to_float" => Ok(Value::Float(n as f64)),
             "inspect" => Ok(Value::String(n.to_string().into())),
-            "abs" => Ok(Value::Int(n.abs())),
+            "abs" => crate::interpreter::executor::calls::int_methods::int_abs(n, span),
             "sqrt" => Ok(Value::Float((n as f64).sqrt())),
             // An int is already whole: Float's rounding family answers it
             // unchanged, so a value that may be either (`price.round`) does
@@ -2817,8 +2817,8 @@ impl Interpreter {
                 Ok(Value::Null)
             }
             // Zero-arg sugar (auto-invoked)
-            "succ" | "next" => Ok(Value::Int(n + 1)),
-            "pred" => Ok(Value::Int(n - 1)),
+            "succ" | "next" => crate::interpreter::executor::calls::int_methods::int_succ(n, span),
+            "pred" => crate::interpreter::executor::calls::int_methods::int_pred(n, span),
             // Methods with args (return ValueMethod).
             // `to_s`/`to_string` with 0 args is auto-invoked via
             // is_zero_arg_builtin_method; with 1 arg it's a radix conversion.

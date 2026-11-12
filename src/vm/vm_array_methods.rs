@@ -443,70 +443,15 @@ impl Vm {
                     Ok(Value::Int(total_i))
                 }
             }
-            "min" => {
+            // One definition for both engines (`array_ops::min_or_max`).
+            "min" | "max" => {
                 if !args.is_empty() {
                     return Err(RuntimeError::wrong_arity(0, args.len(), span));
                 }
-                let items = arr.borrow();
-                if items.is_empty() {
-                    return Ok(Value::Null);
-                }
-                let mut min = &items[0];
-                for item in items.iter().skip(1) {
-                    match (min, item) {
-                        // See `max` above — same missing String arm.
-                        (Value::String(a), Value::String(b)) if b < a => min = item,
-                        (Value::Int(a), Value::Int(b)) if b < a => min = item,
-                        (Value::Float(a), Value::Float(b)) if b < a => min = item,
-                        (Value::Int(a), Value::Float(b)) if *b < *a as f64 => min = item,
-                        (Value::Float(a), Value::Int(b)) if (*b as f64) < *a => min = item,
-                        (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() < a.to_f64() => {
-                            min = item
-                        }
-                        (Value::Int(a), Value::Decimal(b)) if b.to_f64() < *a as f64 => min = item,
-                        (Value::Decimal(a), Value::Int(b)) if (*b as f64) < a.to_f64() => {
-                            min = item
-                        }
-                        (Value::Float(a), Value::Decimal(b)) if b.to_f64() < *a => min = item,
-                        (Value::Decimal(a), Value::Float(b)) if *b < a.to_f64() => min = item,
-                        _ => {}
-                    }
-                }
-                Ok(min.clone())
-            }
-            "max" => {
-                if !args.is_empty() {
-                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
-                }
-                let items = arr.borrow();
-                if items.is_empty() {
-                    return Ok(Value::Null);
-                }
-                let mut max = &items[0];
-                for item in items.iter().skip(1) {
-                    match (max, item) {
-                        // Strings had no arm here, so they never displaced the
-                        // running candidate: `["a", "b", "c"].max()` answered
-                        // "a", the first element. The interpreter compares them
-                        // through the shared sort comparator and always has.
-                        (Value::String(a), Value::String(b)) if b > a => max = item,
-                        (Value::Int(a), Value::Int(b)) if b > a => max = item,
-                        (Value::Float(a), Value::Float(b)) if b > a => max = item,
-                        (Value::Int(a), Value::Float(b)) if *b > *a as f64 => max = item,
-                        (Value::Float(a), Value::Int(b)) if (*b as f64) > *a => max = item,
-                        (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() > a.to_f64() => {
-                            max = item
-                        }
-                        (Value::Int(a), Value::Decimal(b)) if b.to_f64() > *a as f64 => max = item,
-                        (Value::Decimal(a), Value::Int(b)) if (*b as f64) > a.to_f64() => {
-                            max = item
-                        }
-                        (Value::Float(a), Value::Decimal(b)) if b.to_f64() > *a => max = item,
-                        (Value::Decimal(a), Value::Float(b)) if *b > a.to_f64() => max = item,
-                        _ => {}
-                    }
-                }
-                Ok(max.clone())
+                Ok(crate::interpreter::executor::calls::array_ops::min_or_max(
+                    &arr.borrow(),
+                    name == "max",
+                ))
             }
             "sort" => {
                 if args.len() > 1 {
@@ -516,9 +461,12 @@ impl Vm {
                 if let Some(comparator) = args.first() {
                     // `names.sort do |a, b| … end`: the comparator's sign orders
                     // the pair. Same reading as the tree-walker's `array_sort` —
-                    // a non-number, or an error, counts as equal — and the same
-                    // tolerant sort, since a user comparator can be
-                    // inconsistent and `slice::sort_by` panics on that.
+                    // a non-number counts as equal — and the same tolerant
+                    // sort, since a user comparator can be inconsistent and
+                    // `slice::sort_by` panics on that. A comparator that raises
+                    // ends the sort and the error propagates, on both engines:
+                    // read as "equal", the failed run's frames were left on the
+                    // VM and resumed later, and the sort returned a stray value.
                     if !comparator.is_callable() {
                         return Err(RuntimeError::type_error(
                             "sort expects a function argument",
@@ -526,20 +474,33 @@ impl Vm {
                         ));
                     }
                     let comparator = comparator.clone();
+                    let mut failure: Option<RuntimeError> = None;
                     crate::interpreter::executor::calls::array_ops::stable_sort_by(
                         &mut sorted,
-                        |a, b| match self.invoke_callable(
-                            comparator.clone(),
-                            &[a.clone(), b.clone()],
-                            span,
-                        ) {
-                            Ok(Value::Int(n)) => n.cmp(&0),
-                            Ok(Value::Float(n)) => {
-                                n.partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal)
+                        |a, b| {
+                            if failure.is_some() {
+                                return std::cmp::Ordering::Equal;
                             }
-                            _ => std::cmp::Ordering::Equal,
+                            match self.invoke_callable(
+                                comparator.clone(),
+                                &[a.clone(), b.clone()],
+                                span,
+                            ) {
+                                Ok(Value::Int(n)) => n.cmp(&0),
+                                Ok(Value::Float(n)) => {
+                                    n.partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal)
+                                }
+                                Ok(_) => std::cmp::Ordering::Equal,
+                                Err(error) => {
+                                    failure = Some(error);
+                                    std::cmp::Ordering::Equal
+                                }
+                            }
                         },
                     );
+                    if let Some(error) = failure {
+                        return Err(error);
+                    }
                     return Ok(Value::Array(Rc::new(RefCell::new(sorted))));
                 }
                 // Total-order fast path for homogeneous Int/String/Float

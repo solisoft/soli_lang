@@ -639,9 +639,29 @@ pub(crate) fn float_order(x: f64, y: f64) -> std::cmp::Ordering {
         .unwrap_or_else(|| x.is_nan().cmp(&y.is_nan()))
 }
 
+/// The pairs `<` orders beyond Int, Float and String, as it orders them: two
+/// Decimals exactly, a Decimal and a number by value, two DateTimes by
+/// instant. `None` for any other pair. `sort`, `sort_by`, `min` and `max`
+/// answered `Equal` for these, so `[d2, d0, d1].sort` kept its input order
+/// while `d0 < d1` was true (#636).
+fn decimal_or_datetime_order(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
+    match (a, b) {
+        (Value::Decimal(x), Value::Decimal(y)) => Some(x.0.cmp(&y.0)),
+        (Value::Decimal(x), Value::Int(y)) => Some(float_order(x.to_f64(), *y as f64)),
+        (Value::Int(x), Value::Decimal(y)) => Some(float_order(*x as f64, y.to_f64())),
+        (Value::Decimal(x), Value::Float(y)) => Some(float_order(x.to_f64(), *y)),
+        (Value::Float(x), Value::Decimal(y)) => Some(float_order(*x, y.to_f64())),
+        _ => match (a.datetime_ts(), b.datetime_ts()) {
+            (Some(x), Some(y)) => Some(x.cmp(&y)),
+            _ => None,
+        },
+    }
+}
+
 /// The default ordering of `Array#sort` without a comparator, shared by both
-/// engines: Int, Float and String compare among themselves (Int and Float
-/// numerically, NaN last), every other pair compares `Equal`.
+/// engines: Int, Float, Decimal and String compare among themselves (the
+/// numbers by value, NaN last), DateTimes by instant, every other pair
+/// compares `Equal`.
 pub(crate) fn default_sort_order(a: &Value, b: &Value) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     match (a, b) {
@@ -650,8 +670,39 @@ pub(crate) fn default_sort_order(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::String(x), Value::String(y)) => x.cmp(y),
         (Value::Int(x), Value::Float(y)) => float_order(*x as f64, *y),
         (Value::Float(x), Value::Int(y)) => float_order(*x, *y as f64),
-        _ => Ordering::Equal,
+        _ => decimal_or_datetime_order(a, b).unwrap_or(Ordering::Equal),
     }
+}
+
+/// `Array#min` (`want_max` false) or `#max`, shared by both engines: the
+/// first element no other is strictly below (above), in the order `<` gives
+/// numbers, Decimals, Strings and DateTimes. A pair `<` cannot compare (mixed
+/// types, NaN) never displaces the candidate. Nil for an empty array.
+pub(crate) fn min_or_max(items: &[Value], want_max: bool) -> Value {
+    use std::cmp::Ordering;
+    let Some(mut best) = items.first() else {
+        return Value::Null;
+    };
+    for item in items.iter().skip(1) {
+        let order = match (item, best) {
+            (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
+            (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
+            (Value::String(x), Value::String(y)) => Some(x.cmp(y)),
+            (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y),
+            (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)),
+            (Value::Float(x), _) | (_, Value::Float(x)) if x.is_nan() => None,
+            _ => decimal_or_datetime_order(item, best),
+        };
+        let wanted = if want_max {
+            Ordering::Greater
+        } else {
+            Ordering::Less
+        };
+        if order == Some(wanted) {
+            best = item;
+        }
+    }
+    best.clone()
 }
 
 /// Which homogeneous shape `sort_values_default` can hand to the standard
@@ -749,7 +800,7 @@ pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
         (Value::Int(a), Value::Float(b)) => float_order(*a as f64, *b),
         (Value::Float(a), Value::Int(b)) => float_order(*a, *b as f64),
-        _ => Ordering::Equal,
+        _ => decimal_or_datetime_order(a, b).unwrap_or(Ordering::Equal),
     }
 }
 

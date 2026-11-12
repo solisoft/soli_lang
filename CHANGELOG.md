@@ -342,6 +342,21 @@
 
 ### Fixed
 
+- **Sorting DateTimes and Decimals, a raising comparator, Int overflow in
+  the methods (#636).** `sort`, `sort_by`, `min` and `max` answered `Equal`
+  for two DateTimes or two Decimals, so `[d2, d0, d1].sort` kept its input
+  order while `d0 < d1` was true; they now order them as `<` does (Decimals
+  exactly, by value against a number; DateTimes by instant), through one
+  `array_ops::min_or_max` / `decimal_or_datetime_order` for both engines. A
+  `sort` comparator that raised counted as "equal": on the VM the failed
+  run's frames were left and resumed later (`"sorted: 1"`); the error now
+  ends the sort and propagates on both engines. `i64::MIN.divmod(-1)`
+  panicked (a 500 from user input), and `succ`, `pred`, `abs`, `pow`, `lcm`
+  and `gcd` wrapped or panicked (`pow` truncated its exponent:
+  `2.pow(4294967298)` was 4); they raise "integer overflow" like `+ - *`.
+  Differential test:
+  `sort_orders_dates_and_decimals_and_int_builtins_check_overflow`.
+
 - **Three cache keys that mixed renders up (#635).** The response cache keyed
   the layout as `Some(name)` / `None`, so a view's default layout and its
   `{"layout": false}` render (an htmx fragment) shared an entry: whichever

@@ -1257,7 +1257,13 @@ impl Interpreter {
 
             // A user comparator can be inconsistent (it runs arbitrary Soli
             // code); `slice::sort_by` panics on that, so use the tolerant sort.
+            // One that raises ends the sort, and the error propagates (#636):
+            // it used to count as "equal" and the sort went on.
+            let mut failure: Option<RuntimeError> = None;
             crate::interpreter::executor::calls::array_ops::stable_sort_by(&mut result, |a, b| {
+                if failure.is_some() {
+                    return std::cmp::Ordering::Equal;
+                }
                 let mut call_env = Environment::for_call(func.closure.clone());
 
                 if func.params.len() >= 2 {
@@ -1278,9 +1284,20 @@ impl Interpreter {
                             std::cmp::Ordering::Equal
                         }
                     }
+                    Ok(ControlFlow::Throw(value)) => {
+                        failure = Some(RuntimeError::Thrown { value, span });
+                        std::cmp::Ordering::Equal
+                    }
+                    Err(error) => {
+                        failure = Some(error);
+                        std::cmp::Ordering::Equal
+                    }
                     _ => std::cmp::Ordering::Equal,
                 }
             });
+            if let Some(error) = failure {
+                return Err(error);
+            }
         } else {
             // Same helper as the VM: a total-order fast path for homogeneous
             // arrays, the tolerant merge sort otherwise (the default ordering
@@ -1752,26 +1769,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        if items.is_empty() {
-            return Ok(Value::Null);
-        }
-        let mut min = &items[0];
-        for item in items.iter().skip(1) {
-            match (min, item) {
-                (Value::Int(a), Value::Int(b)) if b < a => min = item,
-                (Value::Float(a), Value::Float(b)) if b < a => min = item,
-                (Value::String(a), Value::String(b)) if b < a => min = item,
-                (Value::Int(a), Value::Float(b)) if *b < *a as f64 => min = item,
-                (Value::Float(a), Value::Int(b)) if (*b as f64) < *a => min = item,
-                (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() < a.to_f64() => min = item,
-                (Value::Int(a), Value::Decimal(b)) if b.to_f64() < *a as f64 => min = item,
-                (Value::Decimal(a), Value::Int(b)) if (*b as f64) < a.to_f64() => min = item,
-                (Value::Float(a), Value::Decimal(b)) if b.to_f64() < *a => min = item,
-                (Value::Decimal(a), Value::Float(b)) if *b < a.to_f64() => min = item,
-                _ => {}
-            }
-        }
-        Ok(min.clone())
+        Ok(super::array_ops::min_or_max(items, false))
     }
 
     fn array_max(
@@ -1783,26 +1781,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        if items.is_empty() {
-            return Ok(Value::Null);
-        }
-        let mut max = &items[0];
-        for item in items.iter().skip(1) {
-            match (max, item) {
-                (Value::Int(a), Value::Int(b)) if b > a => max = item,
-                (Value::Float(a), Value::Float(b)) if b > a => max = item,
-                (Value::String(a), Value::String(b)) if b > a => max = item,
-                (Value::Int(a), Value::Float(b)) if *b > *a as f64 => max = item,
-                (Value::Float(a), Value::Int(b)) if (*b as f64) > *a => max = item,
-                (Value::Decimal(a), Value::Decimal(b)) if b.to_f64() > a.to_f64() => max = item,
-                (Value::Int(a), Value::Decimal(b)) if b.to_f64() > *a as f64 => max = item,
-                (Value::Decimal(a), Value::Int(b)) if (*b as f64) > a.to_f64() => max = item,
-                (Value::Float(a), Value::Decimal(b)) if b.to_f64() > *a => max = item,
-                (Value::Decimal(a), Value::Float(b)) if *b > a.to_f64() => max = item,
-                _ => {}
-            }
-        }
-        Ok(max.clone())
+        Ok(super::array_ops::min_or_max(items, true))
     }
 
     fn array_push(

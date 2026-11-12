@@ -746,7 +746,7 @@ print(posts.pick("id", "title")); # [1, "Hello"]
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Sort elements. Default is ascending order, or provide a custom comparator. Ints and floats compare numerically; a <code>NaN</code> goes after every number (here and in <code>sort_by</code>).</p>
+                    <p class="text-gray-400 mb-3">Sort elements. Default is ascending order, or provide a custom comparator. Ints and floats compare numerically; a <code>NaN</code> goes after every number (here and in <code>sort_by</code>). Decimals compare by value and DateTimes by instant, as <code>&lt;</code> compares them &mdash; in <code>sort</code>, <code>sort_by</code>, <code>min</code> and <code>max</code> alike. A comparator that raises ends the sort, and the error propagates.</p>
 <pre data-filename="Example"><code class="language-soli text-sm">numbers = [3, 1, 4, 1, 5, 9, 2, 6]
 
 # Default sort (ascending)
