@@ -326,6 +326,18 @@
 
 ### Fixed
 
+- **A NaN no longer breaks a sort (#627).** Model vector search and
+  graph-RAG sorted scores with `partial_cmp().unwrap_or(Equal)`, not a total
+  order — the standard sort may panic on one, so a search meeting a zero
+  vector's NaN similarity could answer 500. They now share
+  `query::sort_by_score_desc` (highest first, NaN last). `Array#sort` and
+  `sort_by` treated NaN as equal to everything, which is not transitive: a
+  sort met by a NaN returned its input in no particular order. Numbers now
+  compare through `array_ops::float_order` (NaN after every number, equal to
+  itself), on both engines. Tests: `score_order_tests`,
+  `tests/builtins/sort_nan_spec.sl`, a `differential_engines_test` case.
+
+
 - **On the VM, `x.get("k")` / `has_key` / `set` reach the receiver's own
   method (#632).** The compiler fuses a call with a string-literal key into
   hash super-instructions (`HashGetLocalConst`, `HashGetGlobalConst`,

@@ -2273,7 +2273,7 @@ fn execute_similar_query(qb: &QueryBuilder, collection: &str, spec: &SimilarSpec
             }
 
             // Sort by score descending
-            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            sort_by_score_desc(&mut scored, |entry| entry.0);
 
             // Take top-k and attach _similarity_score
             let k = top_k.min(scored.len());
@@ -2402,7 +2402,7 @@ fn execute_similar_pushdown(
             (score, super::search::attach_score(item.clone(), score))
         })
         .collect();
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    sort_by_score_desc(&mut scored, |entry| entry.0);
     let values: Vec<Value> = scored
         .into_iter()
         .take(spec.top_k)
@@ -4733,5 +4733,55 @@ mod habtm_integration_tests {
                 let _ = crate::db::sql::drop_table(t);
             }
         });
+    }
+}
+
+/// Sort search results by score, highest first, with a NaN score (the cosine
+/// similarity of a zero vector) last (#627). Comparing with
+/// `partial_cmp().unwrap_or(Equal)` was not a total order, and the standard
+/// sort may panic on one: a 500 for a search that met an empty embedding.
+pub(crate) fn sort_by_score_desc<T>(items: &mut [T], score: impl Fn(&T) -> f64) {
+    let key = |item: &T| {
+        let s = score(item);
+        if s.is_nan() {
+            f64::NEG_INFINITY
+        } else {
+            s
+        }
+    };
+    items.sort_by(|a, b| key(b).total_cmp(&key(a)));
+}
+
+#[cfg(test)]
+mod score_order_tests {
+    use super::sort_by_score_desc;
+
+    #[test]
+    fn nan_scores_sort_last_without_panicking() {
+        let mut scored: Vec<(f64, usize)> = (0..64)
+            .map(|i| {
+                (
+                    if i % 5 == 0 {
+                        f64::NAN
+                    } else {
+                        (i % 17) as f64 / 10.0
+                    },
+                    i,
+                )
+            })
+            .collect();
+        sort_by_score_desc(&mut scored, |entry| entry.0);
+        let first_nan = scored
+            .iter()
+            .position(|e| e.0.is_nan())
+            .unwrap_or(scored.len());
+        assert!(
+            scored[first_nan..].iter().all(|e| e.0.is_nan()),
+            "NaN scores last"
+        );
+        assert!(
+            scored[..first_nan].windows(2).all(|w| w[0].0 >= w[1].0),
+            "the rest highest first"
+        );
     }
 }

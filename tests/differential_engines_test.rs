@@ -17,6 +17,11 @@ use std::process::Command;
 /// (name, source). Each source must run cleanly on the tree-walker and print
 /// deterministic output.
 const CASES: &[(&str, &str)] = &[
+    // --- #627: NaN sorts last, the same way on both engines ---
+    (
+        "sort_with_nan",
+        "n = \"nan\".to_f\nprint([n, 3.0, 1, n, 2.5, 0.5].sort)\nprint([{\"s\": 2.0}, {\"s\": n}, {\"s\": 1.0}].sort_by { |h| h[\"s\"] }.map { |h| h[\"s\"] })",
+    ),
     // --- #632: get / has_key / set with a string literal on a non-hash ---
     // The VM fuses these into hash super-instructions; a receiver that is a
     // class or an object with its own method must still get the call.

@@ -630,17 +630,26 @@ fn merge_sort_range<F>(
     items[out..end].copy_from_slice(&buffer[tail]);
 }
 
+/// Two numbers in a total order: as `partial_cmp`, with NaN after every
+/// number and equal to itself (#627). With NaN `Equal` to everything the
+/// order was not transitive, so a sort met by a NaN returned its input in
+/// no particular order. `-0.0` and `0.0` stay equal, as before.
+pub(crate) fn float_order(x: f64, y: f64) -> std::cmp::Ordering {
+    x.partial_cmp(&y)
+        .unwrap_or_else(|| x.is_nan().cmp(&y.is_nan()))
+}
+
 /// The default ordering of `Array#sort` without a comparator, shared by both
 /// engines: Int, Float and String compare among themselves (Int and Float
-/// numerically), NaN and every other pair compare `Equal`.
+/// numerically, NaN last), every other pair compares `Equal`.
 pub(crate) fn default_sort_order(a: &Value, b: &Value) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        (Value::Float(x), Value::Float(y)) => float_order(*x, *y),
         (Value::String(x), Value::String(y)) => x.cmp(y),
-        (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal),
-        (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal),
+        (Value::Int(x), Value::Float(y)) => float_order(*x as f64, *y),
+        (Value::Float(x), Value::Int(y)) => float_order(*x, *y as f64),
         _ => Ordering::Equal,
     }
 }
@@ -735,11 +744,11 @@ pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Null, _) => Ordering::Less,
         (_, Value::Null) => Ordering::Greater,
         (Value::Int(a), Value::Int(b)) => a.cmp(b),
-        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
+        (Value::Float(a), Value::Float(b)) => float_order(*a, *b),
         (Value::String(a), Value::String(b)) => a.cmp(b),
         (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b).unwrap_or(Ordering::Equal),
-        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)).unwrap_or(Ordering::Equal),
+        (Value::Int(a), Value::Float(b)) => float_order(*a as f64, *b),
+        (Value::Float(a), Value::Int(b)) => float_order(*a, *b as f64),
         _ => Ordering::Equal,
     }
 }

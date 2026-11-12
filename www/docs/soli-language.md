@@ -4629,6 +4629,8 @@ print(arr.last(2));   # [4, 5]
 # Sort
 let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
 let sorted = unsorted.sort();  # [1, 1, 2, 3, 4, 5, 6, 9]
+# Ints and floats compare numerically; a NaN goes after every number
+# (here and in sort_by).
 
 # Sort by key
 let items = [{"name": "Bob"}, {"name": "Alice"}];

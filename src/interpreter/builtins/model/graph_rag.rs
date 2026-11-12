@@ -156,7 +156,7 @@ pub fn exec_graph_rag(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    super::query::sort_by_score_desc(&mut scored, |entry| entry.0);
 
     let results: Vec<Value> = scored
         .into_iter()
