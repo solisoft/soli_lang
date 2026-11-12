@@ -653,6 +653,7 @@ impl Printer<'_> {
         // `print_interface_decl`.
         self.write("def ");
         self.write(&decl.name);
+        self.write(&type_params(&decl.type_params));
         // Free-standing declarations may omit empty parens (Soli convention:
         // "Optional parentheses for no-param functions"). Methods keep
         // their parens to match the project's `def name() ... end` style.
@@ -680,6 +681,7 @@ impl Printer<'_> {
             self.write("def ");
         }
         self.write(&decl.name);
+        self.write(&type_params(&decl.type_params));
         // Drop empty parens (`def run()` -> `def run`), matching Soli's
         // optional-parens convention for no-arg definitions. Keep them when
         // the body's first statement starts with `(`, or the parser would
@@ -777,6 +779,7 @@ impl Printer<'_> {
             self.write("class ");
         }
         self.write(&decl.name);
+        self.write(&type_params(&decl.type_params));
         if let Some(sup) = &decl.superclass {
             self.write(" < ");
             self.write(sup);
@@ -1075,6 +1078,15 @@ fn is_guard_body(stmt: &Stmt) -> bool {
         }
         StmtKind::Expression(e) => matches!(e.kind, ExprKind::Throw(_)),
         _ => false,
+    }
+}
+
+/// `<T>` / `<K, V>` after a class or `def` name, or nothing.
+fn type_params(names: &[String]) -> String {
+    if names.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", names.join(", "))
     }
 }
 

@@ -196,6 +196,7 @@ module.exports = grammar({
           choice('def', 'fn'),
           optional(seq(field('receiver', choice('self', 'this', $.constant)), '.')),
           field('name', $._method_name),
+          optional($.type_parameters),
           optional(field('parameters', $.parameters)),
           optional(seq('->', field('return_type', $._type))),
           optional(
@@ -303,6 +304,7 @@ module.exports = grammar({
         seq(
           choice('def', 'fn'),
           field('name', $._method_name),
+          optional($.type_parameters),
           optional(field('parameters', $.parameters)),
           optional(seq('->', field('return_type', $._type))),
         ),

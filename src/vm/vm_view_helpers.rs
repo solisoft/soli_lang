@@ -265,6 +265,7 @@ fn compile_in_scope(
 ) -> Result<Arc<FunctionProto>, String> {
     let span = func.span.unwrap_or_default();
     let scope = FunctionDecl {
+        type_params: Vec::new(),
         name: "__view_helper_scope".to_string(),
         params: names
             .iter()
@@ -308,6 +309,7 @@ fn compile_in_scope(
 /// `func` as a declaration: its parameters, declared return type and body.
 fn helper_decl(func: &Function) -> FunctionDecl {
     FunctionDecl {
+        type_params: Vec::new(),
         name: func.name.clone(),
         params: func.params.to_vec(),
         return_type: func.return_type.clone(),

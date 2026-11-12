@@ -283,6 +283,9 @@ pub struct ImportDecl {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionDecl {
     pub name: String,
+    /// `def first<T>(…)`: type parameters, erased at run time.
+    #[serde(default)]
+    pub type_params: Vec<String>,
     pub params: Vec<Parameter>,
     pub return_type: Option<TypeAnnotation>,
     pub body: Body,
@@ -303,6 +306,9 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClassDecl {
     pub name: String,
+    /// `class Box<T>`: type parameters, erased at run time.
+    #[serde(default)]
+    pub type_params: Vec<String>,
     pub superclass: Option<String>,
     pub interfaces: Vec<String>,
     pub fields: Vec<FieldDecl>,
@@ -475,6 +481,7 @@ impl EnumDecl {
                     .map(|field| (str_lit(&field.name), var(&field.name)))
                     .collect();
                 methods.push(MethodDecl {
+                    type_params: Vec::new(),
                     visibility: Visibility::Public,
                     is_static: true,
                     name: variant.name.clone(),
@@ -516,6 +523,7 @@ impl EnumDecl {
         // Rebuilds an enum value from its stored DB/JSON shape. (`from` is a
         // reserved keyword, so the factory is named `parse`.)
         methods.push(MethodDecl {
+            type_params: Vec::new(),
             visibility: Visibility::Public,
             is_static: true,
             name: "parse".to_string(),
@@ -546,6 +554,7 @@ impl EnumDecl {
 
         // def variant() { return this.__variant }
         methods.push(MethodDecl {
+            type_params: Vec::new(),
             visibility: Visibility::Public,
             is_static: false,
             name: "variant".to_string(),
@@ -572,6 +581,7 @@ impl EnumDecl {
         methods.extend(self.methods.iter().cloned());
 
         ClassDecl {
+            type_params: Vec::new(),
             name: self.name.clone(),
             superclass: None,
             interfaces: Vec::new(),
@@ -621,6 +631,9 @@ pub struct MethodDecl {
     pub visibility: Visibility,
     pub is_static: bool,
     pub name: String,
+    /// `def map<U>(…)`: type parameters, erased at run time.
+    #[serde(default)]
+    pub type_params: Vec<String>,
     pub params: Vec<Parameter>,
     pub return_type: Option<TypeAnnotation>,
     pub body: Body,

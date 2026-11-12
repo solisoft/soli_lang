@@ -75,6 +75,7 @@ fn compile_function_proto(
     ) -> crate::vm::compiler::CompileResult<crate::vm::chunk::CompiledModule>,
 ) -> Result<Arc<FunctionProto>, String> {
     let func_decl = FunctionDecl {
+        type_params: Vec::new(),
         name: func.name.clone(),
         params: func.params.to_vec(),
         return_type: None,

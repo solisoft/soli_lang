@@ -4,6 +4,7 @@ use crate::ast::expr::Argument;
 use crate::ast::*;
 use crate::error::TypeError;
 use crate::span::Span;
+use crate::types::generics;
 use crate::types::type_repr::Type;
 
 use super::{TypeChecker, TypeResult};
@@ -37,17 +38,13 @@ impl TypeChecker {
         if let ExprKind::Member { object, name } = &callee.kind {
             if name == "new" {
                 if let Some(instance) = self.constructed_instance(object) {
-                    for arg in arguments {
-                        match arg {
-                            Argument::Positional(expr) | Argument::Block(expr) => {
-                                self.check_expr(expr)?;
-                            }
-                            Argument::Named(named) => {
-                                self.check_expr(&named.value)?;
-                            }
+                    let positional = self.check_constructor_arguments(arguments)?;
+                    return Ok(match instance {
+                        Type::Class(class) => {
+                            generics::instance_from_constructor(&class, &positional)
                         }
-                    }
-                    return Ok(instance);
+                        other => other,
+                    });
                 }
             }
         }
@@ -100,6 +97,34 @@ impl TypeChecker {
                 params,
                 return_type,
             } => {
+                // A generic signature (`def first<T>(xs: T[]) -> T`): bind its
+                // type parameters from the positional arguments, then check
+                // and type the call against the bound signature.
+                let mut checked: Vec<Option<Type>> = Vec::new();
+                let (params, return_type) = if params.iter().any(generics::mentions_param)
+                    || generics::mentions_param(&return_type)
+                {
+                    let mut bindings = std::collections::HashMap::new();
+                    for (i, arg) in arguments.iter().enumerate() {
+                        let arg_type = match arg {
+                            Argument::Positional(expr) => Some(self.check_stored(expr)?),
+                            _ => None,
+                        };
+                        if let (Some(arg_type), Some(param)) = (&arg_type, params.get(i)) {
+                            generics::unify(param, arg_type, &mut bindings);
+                        }
+                        checked.push(arg_type);
+                    }
+                    (
+                        params
+                            .iter()
+                            .map(|p| generics::substitute(p, &bindings))
+                            .collect::<Vec<_>>(),
+                        Box::new(generics::substitute(&return_type, &bindings)),
+                    )
+                } else {
+                    (params, return_type)
+                };
                 let total_args = arguments.len();
 
                 // Check argument count (allow fewer args for default parameters)
@@ -126,7 +151,10 @@ impl TypeChecker {
                 for (i, arg) in arguments.iter().enumerate() {
                     match arg {
                         Argument::Positional(expr) => {
-                            let arg_type = self.check_stored(expr)?;
+                            let arg_type = match checked.get_mut(i).and_then(Option::take) {
+                                Some(arg_type) => arg_type,
+                                None => self.check_stored(expr)?,
+                            };
                             if let Some(param_type) = params.get(i) {
                                 // Allow Any param type to accept any argument (for map/filter/each)
                                 if matches!(param_type, Type::Any) {

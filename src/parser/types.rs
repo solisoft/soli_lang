@@ -72,6 +72,20 @@ impl Parser {
                 self.advance();
                 if name == "Fn" && self.check(&TokenKind::LeftParen) {
                     self.parse_function_type(start_span)?
+                } else if self.type_params.contains(&name) {
+                    TypeAnnotation::new(TypeKind::Param(name), start_span)
+                } else if self
+                    .type_params
+                    .iter()
+                    .any(|p| name.strip_suffix('?') == Some(p))
+                {
+                    let base_name = name[..name.len() - 1].to_string();
+                    let base = TypeAnnotation::new(TypeKind::Param(base_name), start_span);
+                    TypeAnnotation::new(TypeKind::Nullable(Box::new(base)), start_span)
+                } else if self.check(&TokenKind::Less)
+                    && self.peek().span.start == self.previous_span().end
+                {
+                    self.parse_type_arguments(name, start_span)?
                 } else if name.ends_with('?') {
                     // Handle nullable suffix attached by lexer (e.g., "String?" -> Nullable(Named("String")))
                     let base_name = name[..name.len() - 1].to_string();
@@ -160,6 +174,68 @@ impl Parser {
         }
 
         Ok(result)
+    }
+
+    /// `Box<Int>`, `Hash<String, Int>`, `Array<Int>`: the `<` is the
+    /// lookahead, written against the name.
+    fn parse_type_arguments(
+        &mut self,
+        name: String,
+        start_span: Span,
+    ) -> ParseResult<TypeAnnotation> {
+        self.expect(&TokenKind::Less)?;
+        // Inside the brackets `|` is a union again, even in `|x: …|`.
+        let no_union_type = std::mem::replace(&mut self.no_union_type, false);
+        let mut args = Vec::new();
+        let parsed = (|| {
+            args.push(self.parse_type()?);
+            while self.match_token(&TokenKind::Comma) {
+                args.push(self.parse_type()?);
+            }
+            self.expect(&TokenKind::Greater)
+        })();
+        self.no_union_type = no_union_type;
+        parsed?;
+        let span = start_span.merge(&self.previous_span());
+        let kind = match (name.as_str(), args.len()) {
+            ("Array", 1) => TypeKind::Array(Box::new(args.remove(0))),
+            ("Hash", 2) => {
+                let value_type = Box::new(args.remove(1));
+                TypeKind::Hash {
+                    key_type: Box::new(args.remove(0)),
+                    value_type,
+                }
+            }
+            _ => TypeKind::Generic(Box::new(GenericType { name, args })),
+        };
+        Ok(TypeAnnotation::new(kind, span))
+    }
+
+    /// `<T>` / `<K, V>` after a class or `def` name: type parameters, read
+    /// only when the brackets close on a list of names — `class B<A` is
+    /// inheritance, as it always was.
+    pub(crate) fn parse_type_parameters(&mut self) -> Vec<String> {
+        if !self.check(&TokenKind::Less) {
+            return Vec::new();
+        }
+        let mut names = Vec::new();
+        let mut i = 1;
+        loop {
+            match &self.peek_nth(i).kind {
+                TokenKind::Identifier(name) => names.push(name.clone()),
+                _ => return Vec::new(),
+            }
+            match &self.peek_nth(i + 1).kind {
+                TokenKind::Comma => i += 2,
+                TokenKind::Greater => {
+                    for _ in 0..=i + 1 {
+                        self.advance();
+                    }
+                    return names;
+                }
+                _ => return Vec::new(),
+            }
+        }
     }
 
     fn parse_function_type(&mut self, start_span: Span) -> ParseResult<TypeAnnotation> {

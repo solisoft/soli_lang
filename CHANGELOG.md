@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **User generics: `class Box<T>`, `def first<T>`, `Box<Int>` (#693, phase
+  5).** Type parameters follow a class or `def` name when the brackets close
+  on a list of names (`Parser::parse_type_parameters`), so `class B<A` stays
+  inheritance; inside their scope a parameter parses as `TypeKind::Param`.
+  `Box<Int>` is `TypeKind::Generic` (boxed, keeping `Stmt` within its size
+  guard); `Array<T>` and `Hash<K, V>` parse as the existing `Array`/`Hash`.
+  Erased at run time (`value_matches_type`/`TypeCheck` check the head; a
+  parameter admits anything). The checker (`types::generics`) binds
+  parameters from a constructor's arguments (`ClassType::constructor_params`
+  → `Box.new(1)` is a `Box<Int>`), from a call's (`unify`, two bindings make a
+  union), or from an annotation, substitutes them into members and
+  signatures, and keeps an unbound one open (`Type::Param`, as `Any`).
+  `soli fmt` prints `<T>` back; the tree-sitter grammar gains `def f<T>`.
+
 ### Changed
 
 - **A bare `Klass.new` builds an instance (#655, #693 phase 6).** Read

@@ -157,20 +157,18 @@ impl Parser {
         self.expect(&TokenKind::Fn)?;
 
         let name = self.expect_identifier()?;
-        let params = self.parse_parameters()?;
-
-        let return_type = if self.match_token(&TokenKind::Arrow) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
-
-        let body = self.parse_function_body()?;
+        let type_params = self.parse_type_parameters();
+        let scope = self.type_params.len();
+        self.type_params.extend(type_params.iter().cloned());
+        let signature = self.parse_signature_and_body();
+        self.type_params.truncate(scope);
+        let (params, return_type, body) = signature?;
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
             StmtKind::function(FunctionDecl {
                 name,
+                type_params,
                 params,
                 return_type,
                 body: body.into(),
@@ -179,6 +177,22 @@ impl Parser {
             span,
             None,
         ))
+    }
+
+    /// `(params) -> Return` and the body of a `def`, its type parameters in
+    /// scope.
+    #[allow(clippy::type_complexity)]
+    fn parse_signature_and_body(
+        &mut self,
+    ) -> ParseResult<(Vec<Parameter>, Option<TypeAnnotation>, Vec<Stmt>)> {
+        let params = self.parse_parameters()?;
+        let return_type = if self.match_token(&TokenKind::Arrow) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        let body = self.parse_function_body()?;
+        Ok((params, return_type, body))
     }
 
     pub(crate) fn class_declaration(&mut self) -> ParseResult<Stmt> {
@@ -204,7 +218,21 @@ impl Parser {
         };
 
         let name = self.expect_identifier()?;
+        let type_params = self.parse_type_parameters();
+        let scope = self.type_params.len();
+        self.type_params.extend(type_params.iter().cloned());
+        let parsed = self.class_declaration_rest(start_span, is_module, name, type_params);
+        self.type_params.truncate(scope);
+        parsed
+    }
 
+    fn class_declaration_rest(
+        &mut self,
+        start_span: crate::span::Span,
+        is_module: bool,
+        name: String,
+        type_params: Vec<String>,
+    ) -> ParseResult<Stmt> {
         let superclass =
             if self.match_token(&TokenKind::Extends) || self.match_token(&TokenKind::Less) {
                 Some(self.expect_identifier()?)
@@ -228,6 +256,7 @@ impl Parser {
             return Ok(Stmt::new(
                 StmtKind::class(ClassDecl {
                     name,
+                    type_params,
                     superclass,
                     interfaces,
                     fields: Vec::new(),
@@ -357,6 +386,7 @@ impl Parser {
         Ok(Stmt::new(
             StmtKind::class(ClassDecl {
                 name,
+                type_params,
                 superclass,
                 interfaces,
                 fields,
@@ -1006,21 +1036,19 @@ impl Parser {
         }
 
         let name = self.expect_identifier()?;
-        let params = self.parse_parameters()?;
-
-        let return_type = if self.match_token(&TokenKind::Arrow) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
-
-        let body = self.parse_function_body()?;
+        let type_params = self.parse_type_parameters();
+        let scope = self.type_params.len();
+        self.type_params.extend(type_params.iter().cloned());
+        let signature = self.parse_signature_and_body();
+        self.type_params.truncate(scope);
+        let (params, return_type, body) = signature?;
         let span = start_span.merge(&self.previous_span());
 
         Ok(MethodDecl {
             visibility,
             is_static,
             name,
+            type_params,
             params,
             return_type,
             body: body.into(),

@@ -1494,6 +1494,7 @@ fn create_function_value(
     interpreter::builtins::register_builtins(&mut env, true);
 
     let decl = ast::FunctionDecl {
+        type_params: Vec::new(),
         name: "test_fn".to_string(),
         params,
         return_type,

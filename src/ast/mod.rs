@@ -11,4 +11,4 @@ pub use stmt::{
     FunctionDecl, ImportDecl, ImportItem, ImportSpecifier, InterfaceDecl, InterfaceMethod,
     MethodDecl, Parameter, Program, Stmt, StmtKind, Visibility,
 };
-pub use types::{TypeAnnotation, TypeKind};
+pub use types::{GenericType, TypeAnnotation, TypeKind};

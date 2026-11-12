@@ -105,6 +105,20 @@ impl TypeChecker {
                 // Look up the class in the environment to get the full definition with methods
                 let class_def = self.env.get_class(&class.name);
                 if let Some(class_def) = class_def {
+                    // `Box<Int>`: the members' `T` read as `Int`.
+                    if !class.type_args.is_empty() {
+                        let mut bound = class_def.clone();
+                        bound.type_args = class.type_args.clone();
+                        let bindings = bound.bindings();
+                        let member = self.member_of_type(
+                            span,
+                            object,
+                            Type::Class(class_def.clone()),
+                            name,
+                            called_with_args,
+                        )?;
+                        return Ok(crate::types::generics::substitute(&member, &bindings));
+                    }
                     if let Some((field, owner)) = class_def.find_field_with_owner(name) {
                         self.check_member_visibility(
                             object,

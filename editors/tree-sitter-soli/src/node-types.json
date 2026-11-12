@@ -1485,9 +1485,13 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "type_parameters",
+          "named": true
+        },
         {
           "type": "visibility",
           "named": true
@@ -2123,6 +2127,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "type_parameters",
+          "named": true
+        }
+      ]
     }
   },
   {

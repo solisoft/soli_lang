@@ -54,6 +54,10 @@ pub enum Type {
     /// where a value is stored; a value read from one is `Any` until the
     /// checker narrows.
     Union(Vec<Type>),
+    /// A type parameter of a generic class or `def` (`T` in `class Box<T>`),
+    /// not yet bound to a type: it goes anywhere and takes anything, as
+    /// `Any` does. A call binds it from its arguments (see `generics`).
+    Param(String),
     /// Type variable (for inference)
     Var(u32),
     /// Unknown type (error recovery)
@@ -80,7 +84,7 @@ impl Type {
     pub fn strip_nullable(self) -> Type {
         match self {
             Type::Nullable(inner) => inner.strip_nullable(),
-            Type::Union(_) => Type::Any,
+            Type::Union(_) | Type::Param(_) => Type::Any,
             other => other,
         }
     }
@@ -132,6 +136,8 @@ impl Type {
         }
 
         match (self, target) {
+            // An unbound type parameter is as open as `Any`.
+            (Type::Param(_), _) | (_, Type::Param(_)) => true,
             // A union goes where each of its members goes.
             (Type::Union(members), _) => members.iter().all(|m| m.is_assignable_to(target)),
             // A union slot takes what any one of its members takes.
@@ -190,10 +196,17 @@ impl Type {
                 // Covariant in return type
                 r1.is_assignable_to(r2)
             }
-            // Class subtyping
+            // Class subtyping. `Box<Int>` goes where `Box<Int>` (or a bare
+            // `Box`) goes, not where `Box<String>` does.
             (Type::Class(sub), Type::Class(super_)) => {
                 if sub.name == super_.name {
-                    return true;
+                    return sub.type_args.is_empty()
+                        || super_.type_args.is_empty()
+                        || sub
+                            .type_args
+                            .iter()
+                            .zip(&super_.type_args)
+                            .all(|(a, b)| a.is_assignable_to(b));
                 }
                 if let Some(ref parent) = sub.superclass {
                     return Type::Class(*parent.clone()).is_assignable_to(target);
@@ -238,6 +251,16 @@ impl fmt::Display for Type {
                 write!(f, ") -> {}", return_type)
             }
             Type::Future(inner) => write!(f, "Future<{}>", inner),
+            Type::Class(class) if !class.type_args.is_empty() => {
+                write!(f, "{}<", class.name)?;
+                for (i, arg) in class.type_args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ">")
+            }
             Type::Class(class) => write!(f, "{}", class.name),
             Type::Interface(iface) => write!(f, "{}", iface.name),
             Type::Nullable(inner) if matches!(**inner, Type::Union(_)) => {
@@ -253,6 +276,7 @@ impl fmt::Display for Type {
                 }
                 Ok(())
             }
+            Type::Param(name) => write!(f, "{}", name),
             Type::Var(id) => write!(f, "?T{}", id),
             Type::Unknown => write!(f, "unknown"),
             Type::Any => write!(f, "Any"),
@@ -298,6 +322,15 @@ pub struct ClassType {
     pub interfaces: Vec<String>,
     pub fields: HashMap<String, FieldInfo>,
     pub methods: HashMap<String, MethodInfo>,
+    /// `class Box<T>`: the names its members' types use for their type
+    /// parameters.
+    pub type_params: Vec<String>,
+    /// For a generic class's instance type, what each type parameter is
+    /// bound to (`Box<Int>`: `[Int]`); empty when nothing is known.
+    pub type_args: Vec<Type>,
+    /// The constructor's parameter types, from which `Box.new(1)` infers
+    /// `Box<Int>`; `None` without a constructor.
+    pub constructor_params: Option<Vec<Type>>,
 }
 
 impl ClassType {
@@ -325,7 +358,20 @@ impl ClassType {
             interfaces: Vec::new(),
             fields: HashMap::new(),
             methods: HashMap::new(),
+            type_params: Vec::new(),
+            type_args: Vec::new(),
+            constructor_params: None,
         }
+    }
+
+    /// What each type parameter of this instance type is bound to, for
+    /// [`crate::types::generics::substitute`].
+    pub fn bindings(&self) -> HashMap<String, Type> {
+        self.type_params
+            .iter()
+            .cloned()
+            .zip(self.type_args.iter().cloned())
+            .collect()
     }
 
     pub fn find_field(&self, name: &str) -> Option<&FieldInfo> {

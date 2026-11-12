@@ -90,13 +90,29 @@ impl TypeChecker {
         class_expr: &Expr,
         arguments: &[Argument],
     ) -> TypeResult<Type> {
-        // For now, just check arguments and return an error type
-        // Full type checking for qualified names would require runtime evaluation
+        let positional = self.check_constructor_arguments(arguments)?;
+        // A class this pass knows builds an instance of it — `Box<Int>` for
+        // a generic `Box` built from an Int; anything else (a nested class, a
+        // qualified name) is left to the runtime.
+        Ok(match self.constructed_instance(class_expr) {
+            Some(Type::Class(class)) => {
+                crate::types::generics::instance_from_constructor(&class, &positional)
+            }
+            Some(other) => other,
+            None => Type::Unknown,
+        })
+    }
+
+    /// Check a construction's arguments as expressions, returning the types
+    /// of the positional ones (from which a generic class is bound).
+    pub(crate) fn check_constructor_arguments(
+        &mut self,
+        arguments: &[Argument],
+    ) -> TypeResult<Vec<Type>> {
+        let mut positional = Vec::new();
         for arg in arguments {
             match arg {
-                Argument::Positional(expr) => {
-                    self.check_expr(expr)?;
-                }
+                Argument::Positional(expr) => positional.push(self.check_stored(expr)?),
                 Argument::Named(named) => {
                     self.check_expr(&named.value)?;
                 }
@@ -105,11 +121,7 @@ impl TypeChecker {
                 }
             }
         }
-        // A class this pass knows builds an instance of it; anything else
-        // (a nested class, a qualified name) is left to the runtime.
-        Ok(self
-            .constructed_instance(class_expr)
-            .unwrap_or(Type::Unknown))
+        Ok(positional)
     }
 
     /// The instance `new C(…)` / `C.new(…)` builds, `class_expr` being `C`:

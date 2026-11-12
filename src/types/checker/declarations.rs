@@ -11,6 +11,14 @@ impl TypeChecker {
     pub(crate) fn declare_class(&mut self, decl: &ClassDecl) {
         let mut class_type = ClassType::new(decl.name.clone());
         class_type.is_module = decl.is_module;
+        class_type.type_params = decl.type_params.clone();
+        class_type.constructor_params = decl.constructor.as_ref().map(|ctor| {
+            ctor.params
+                .iter()
+                .filter(|p| !p.is_block_param)
+                .map(|p| self.resolve_type(&p.type_annotation))
+                .collect()
+        });
 
         // Set superclass. A parent this pass never saw declared is recorded by
         // name rather than dropped: a served application loads every

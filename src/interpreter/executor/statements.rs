@@ -713,6 +713,7 @@ impl Interpreter {
         // after this class so a subclass's do not replace its parent's.
         for (i, invariant) in decl.invariants.iter().enumerate() {
             let method_decl = crate::ast::stmt::MethodDecl {
+                type_params: Vec::new(),
                 visibility: crate::ast::stmt::Visibility::Private,
                 is_static: false,
                 name: crate::interpreter::domain::invariant_method_name(&qualified, i),

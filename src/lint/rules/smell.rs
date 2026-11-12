@@ -309,12 +309,14 @@ mod tests {
     #[test]
     fn test_duplicate_methods_detected() {
         let class = ClassDecl {
+            type_params: Vec::new(),
             name: "Foo".to_string(),
             superclass: None,
             interfaces: vec![],
             fields: vec![],
             methods: vec![
                 MethodDecl {
+                    type_params: Vec::new(),
                     visibility: Visibility::Public,
                     is_static: false,
                     name: "bar".to_string(),
@@ -324,6 +326,7 @@ mod tests {
                     span: span(),
                 },
                 MethodDecl {
+                    type_params: Vec::new(),
                     visibility: Visibility::Public,
                     is_static: false,
                     name: "bar".to_string(),
@@ -356,12 +359,14 @@ mod tests {
     #[test]
     fn test_no_duplicate_methods() {
         let class = ClassDecl {
+            type_params: Vec::new(),
             name: "Foo".to_string(),
             superclass: None,
             interfaces: vec![],
             fields: vec![],
             methods: vec![
                 MethodDecl {
+                    type_params: Vec::new(),
                     visibility: Visibility::Public,
                     is_static: false,
                     name: "bar".to_string(),
@@ -371,6 +376,7 @@ mod tests {
                     span: span(),
                 },
                 MethodDecl {
+                    type_params: Vec::new(),
                     visibility: Visibility::Public,
                     is_static: false,
                     name: "baz".to_string(),

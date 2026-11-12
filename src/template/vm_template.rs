@@ -297,6 +297,7 @@ fn compile_function(
 ) -> Result<Arc<FunctionProto>, String> {
     let span = Span::default();
     let decl = FunctionDecl {
+        type_params: Vec::new(),
         name: "__template".to_string(),
         params: params
             .iter()

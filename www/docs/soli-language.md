@@ -260,6 +260,49 @@ Between the pipes of a block or lambda's parameters, `|` closes them; write a
 union there in parentheses: `|x: (Int | String)| { x.to_s }`. Parentheses
 also group a union inside another type: `(Int | String)[]`.
 
+### Generic Types
+
+A class or a `def` takes type parameters in angle brackets, written against
+its name; a type takes arguments the same way:
+
+```soli
+class Box<T>
+  new(item: T)
+    @item = item
+  end
+
+  def get -> T
+    @item
+  end
+
+  def map<U>(f: (T) -> U) -> Box<U>
+    Box.new(f(@item))
+  end
+end
+
+def first<T>(xs: T[]) -> T
+  xs[0]
+end
+
+box = Box.new(41)              # a Box<Int>
+box.get + 1                    # 42
+box.map(fn(x) { x.to_s }).get  # "41"
+first(["a", "b"])              # "a"
+let names: Box<String> = Box.new("Ada")
+let counts: Hash<String, Int> = {"a": 1}   # also Array<Int> for Int[]
+```
+
+Type parameters are erased at run time: both engines run a generic class as
+any other, and `-> T` admits any value. `soli check` binds them — from a
+constructor's arguments (`Box.new(41)` is a `Box<Int>`), from a call's
+(`first(["a"])` is a `String`), or from an annotation — and checks what
+follows: `let n: Int = first(["a"])` and `let s: Box<String> = Box.new(3)`
+are refused. A parameter nothing binds is as open as `Any`.
+
+`class B<A` (a parent, no space) is still inheritance: brackets are type
+parameters only when they close on a list of names (`class Box<T> < Base`
+has both).
+
 ### Conditions
 
 Any value can be a condition: `false`, `nil`, `0`, `""`, `[]` and `{}` are

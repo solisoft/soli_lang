@@ -286,6 +286,20 @@ impl TypeChecker {
             // `Int?` takes `nil` as well as an `Int` wherever it is stored;
             // dropping the `?` refused `f(nil)` for `def f(x: Int?)`.
             TypeKind::Union(members) => Type::union(members.iter().map(|m| self.resolve_type(m))),
+            TypeKind::Param(name) => Type::Param(name.clone()),
+            // `Box<Int>`: the class's instance type, its parameters bound.
+            TypeKind::Generic(generic) => match self.env.get_class(&generic.name) {
+                Some(class) => {
+                    let mut instance = class.clone();
+                    instance.type_args =
+                        generic.args.iter().map(|a| self.resolve_type(a)).collect();
+                    Type::Class(instance)
+                }
+                None => match self.env.get_interface(&generic.name) {
+                    Some(iface) => Type::Interface(iface.clone()),
+                    None => Type::Unknown,
+                },
+            },
             TypeKind::Nullable(inner) => match self.resolve_type(inner) {
                 inner @ (Type::Nullable(_) | Type::Any | Type::Unknown) => inner,
                 inner => Type::Nullable(Box::new(inner)),

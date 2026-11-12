@@ -3930,6 +3930,12 @@ pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
             matches!(value, Value::Null) || value_matches_type(value, inner)
         }
         TypeKind::Union(members) => members.iter().any(|m| value_matches_type(value, m)),
+        // Erased: `Box<Int>` checks the `Box`, a type parameter admits anything.
+        TypeKind::Generic(generic) => match TypeCheck::builtin(&generic.name) {
+            Some(check) => check.admits(value),
+            None => instance_answers_to(value, &generic.name),
+        },
+        TypeKind::Param(_) => true,
         TypeKind::Array(_) => matches!(value, Value::Array(_)),
         TypeKind::Hash { .. } => matches!(value, Value::Hash(_)),
         TypeKind::Function { .. } => is_function_value(value),
@@ -3993,6 +3999,9 @@ impl TypeCheck {
             TypeKind::Void => Self::Null,
             TypeKind::Nullable(inner) => Self::Nullable(Box::new(Self::lower(inner))),
             TypeKind::Union(members) => Self::Union(members.iter().map(Self::lower).collect()),
+            TypeKind::Generic(generic) => Self::builtin(&generic.name)
+                .unwrap_or_else(|| Self::Class(generic.name.as_str().into())),
+            TypeKind::Param(_) => Self::Any,
             TypeKind::Array(_) => Self::Array,
             TypeKind::Hash { .. } => Self::Hash,
             TypeKind::Function { .. } => Self::Function,

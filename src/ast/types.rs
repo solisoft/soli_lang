@@ -38,6 +38,20 @@ pub enum TypeKind {
     Nullable(Box<TypeAnnotation>),
     /// Union type: `Int | String | nil` — a value of any one of the members.
     Union(Vec<TypeAnnotation>),
+    /// A generic class applied to type arguments: `Box<Int>`. (`Array<T>`
+    /// and `Hash<K, V>` parse as `Array` and `Hash`.)
+    /// Boxed, so `TypeAnnotation` (inside every `let`) stays small.
+    Generic(Box<GenericType>),
+    /// A type parameter of the enclosing `class Box<T>` or `def f<T>`.
+    /// Erased at run time: it admits any value.
+    Param(String),
+}
+
+/// `Box<Int>`: a generic class's name and its type arguments.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GenericType {
+    pub name: String,
+    pub args: Vec<TypeAnnotation>,
 }
 
 impl std::fmt::Display for TypeAnnotation {
@@ -70,6 +84,17 @@ impl std::fmt::Display for TypeAnnotation {
                 write!(f, "({})?", inner)
             }
             TypeKind::Nullable(inner) => write!(f, "{}?", inner),
+            TypeKind::Generic(generic) => {
+                write!(f, "{}<", generic.name)?;
+                for (i, arg) in generic.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ">")
+            }
+            TypeKind::Param(name) => write!(f, "{}", name),
             TypeKind::Union(members) => {
                 for (i, member) in members.iter().enumerate() {
                     if i > 0 {

@@ -691,3 +691,77 @@ xs.map { |x: Int| x }
               (constant))))
         (expression_statement
           (identifier))))))
+
+================================================================================
+Generic classes and defs
+================================================================================
+
+class Box<T>
+  def map<U>(f: (T) -> U) -> Box<U>
+    Box.new(f(@item))
+  end
+end
+def first<T>(xs: T[]) -> T
+  xs[0]
+end
+class B<A
+end
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (class_declaration
+    (constant)
+    (type_parameters
+      (constant))
+    (class_body
+      (function_declaration
+        (identifier)
+        (type_parameters
+          (constant))
+        (parameters
+          (parameter
+            (identifier)
+            (function_type
+              (type_identifier
+                (constant))
+              (type_identifier
+                (constant)))))
+        (generic_type
+          (type_identifier
+            (constant))
+          (type_arguments
+            (type_identifier
+              (constant))))
+        (body
+          (expression_statement
+            (call
+              (member_expression
+                (constant)
+                (property_identifier))
+              (arguments
+                (call
+                  (identifier)
+                  (arguments
+                    (instance_variable))))))))))
+  (function_declaration
+    (identifier)
+    (type_parameters
+      (constant))
+    (parameters
+      (parameter
+        (identifier)
+        (array_type
+          (type_identifier
+            (constant)))))
+    (type_identifier
+      (constant))
+    (body
+      (expression_statement
+        (index_expression
+          (identifier)
+          (integer)))))
+  (class_declaration
+    (constant)
+    (constant)
+    (class_body)))

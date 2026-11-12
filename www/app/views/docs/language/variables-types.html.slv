@@ -109,6 +109,44 @@ find_label("")   # nil</code></pre>
         <p class="text-gray-400 mb-4">
             Between the pipes of a block or lambda's parameters, <code class="text-cyan-400">|</code> closes them; write a union there in parentheses: <code class="text-cyan-400">|x: (Int | String)| { x.to_s }</code>. Parentheses also group a union inside another type: <code class="text-cyan-400">(Int | String)[]</code>.
         </p>
+        <h3 class="text-lg font-semibold text-white mt-6 mb-3">Generic types</h3>
+        <p class="text-gray-400 mb-4">
+            A class or a <code class="text-cyan-400">def</code> takes type parameters in angle brackets, written against its name; a type takes arguments the same way:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Box&lt;T&gt;
+  new(item: T)
+    @item = item
+  end
+
+  def get -&gt; T
+    @item
+  end
+
+  def map&lt;U&gt;(f: (T) -&gt; U) -&gt; Box&lt;U&gt;
+    Box.new(f(@item))
+  end
+end
+
+def first&lt;T&gt;(xs: T[]) -&gt; T
+  xs[0]
+end
+
+box = Box.new(41)              # a Box&lt;Int&gt;
+box.get + 1                    # 42
+box.map(fn(x) { x.to_s }).get  # "41"
+first(["a", "b"])              # "a"
+let names: Box&lt;String&gt; = Box.new("Ada")
+let counts: Hash&lt;String, Int&gt; = {"a": 1}   # also Array&lt;Int&gt; for Int[]</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Type parameters are erased at run time: both engines run a generic class as any other, and <code class="text-cyan-400">-&gt; T</code> admits any value. <code class="text-cyan-400">soli check</code> binds them &mdash; from a constructor's arguments (<code class="text-cyan-400">Box.new(41)</code> is a <code class="text-cyan-400">Box&lt;Int&gt;</code>), from a call's (<code class="text-cyan-400">first(["a"])</code> is a <code class="text-cyan-400">String</code>), or from an annotation &mdash; and checks what follows: <code class="text-cyan-400">let n: Int = first(["a"])</code> and <code class="text-cyan-400">let s: Box&lt;String&gt; = Box.new(3)</code> are refused. A parameter nothing binds is as open as <code class="text-cyan-400">Any</code>.
+        </p>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">class B&lt;A</code> (a parent, no space) is still inheritance: brackets are type parameters only when they close on a list of names (<code class="text-cyan-400">class Box&lt;T&gt; &lt; Base</code> has both).
+        </p>
         <h3 class="text-lg font-semibold text-white mt-6 mb-3">Conditions</h3>
         <p class="text-gray-400 mb-4">
             Any value can be a condition: <code class="text-cyan-400">false</code>, <code class="text-cyan-400">nil</code>, <code class="text-cyan-400">0</code>, <code class="text-cyan-400">""</code>, <code class="text-cyan-400">[]</code> and <code class="text-cyan-400">{}</code> are falsy, everything else (including <code class="text-cyan-400">0.0</code>) is truthy. <code class="text-cyan-400">if xs.length</code>, <code class="text-cyan-400">if hash</code> and <code class="text-cyan-400">while node</code> are all valid, and <code class="text-cyan-400">soli check</code> accepts them.

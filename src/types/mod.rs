@@ -2,6 +2,7 @@
 
 pub mod checker;
 pub mod environment;
+pub mod generics;
 pub mod runtime_globals;
 pub mod type_repr;
 pub mod xml_classes;

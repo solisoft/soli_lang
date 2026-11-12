@@ -48,6 +48,9 @@ pub struct Parser {
     /// parameters, whose closing `|` would otherwise read as a union:
     /// there a union is written in parentheses (`|x: (Int | String)|`).
     pub(crate) no_union_type: bool,
+    /// The type parameters in scope — of the enclosing `class Box<T>` and
+    /// `def f<U>` — so `T` in an annotation parses as `TypeKind::Param`.
+    pub(crate) type_params: Vec<String>,
     /// Whether the outermost class resolves its constants (`class_constants`).
     /// Off in [`Parser::as_written`]: `soli fmt` and the editor's symbols
     /// want the source as written, not the tree the engines run.
@@ -66,6 +69,7 @@ impl Parser {
             in_try_body: false,
             class_nesting: 0,
             no_union_type: false,
+            type_params: Vec::new(),
             resolve_class_constants: true,
         }
     }
