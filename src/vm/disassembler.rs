@@ -124,6 +124,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             ));
         }
         Op::Return => out.push_str("RETURN"),
+        Op::BlockBreak => out.push_str("BLOCK_BREAK"),
         Op::Array(n) => out.push_str(&format!("ARRAY        {:>5}", n)),
         Op::ArrayPush => out.push_str("ARRAY_PUSH"),
         Op::PushMethod => out.push_str("PUSH_METHOD"),

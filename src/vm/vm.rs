@@ -606,6 +606,28 @@ impl Vm {
             && !crate::interpreter::executor::access::member::is_universal_instance_member(name)
     }
 
+    /// Pop the running frame as `Op::Return` does — its upvalues closed, the
+    /// value and iterator stacks and its `try` handlers cut back — and hand
+    /// it back. For `Op::BlockBreak`, which leaves several frames in a row.
+    fn leave_frame(&mut self) -> CallFrame {
+        let frame = self.frames.pop().unwrap();
+        self.debug_left();
+        if self.has_open_upvalues_from(frame.stack_base) {
+            self.close_upvalues(frame.stack_base);
+        }
+        self.stack.truncate(frame.stack_base);
+        self.iter_stack.truncate(frame.iter_base);
+        let depth = self.frames.len();
+        while self
+            .exception_handlers
+            .last()
+            .is_some_and(|h| h.frame_depth > depth)
+        {
+            self.exception_handlers.pop();
+        }
+        frame
+    }
+
     /// Whether a field write on an instance of `class` needs
     /// `set_instance_field`'s rules: a model (read-only `_key`/`_id`
     /// metadata, translated fields staged per locale) or a class with `const`
@@ -3862,6 +3884,36 @@ impl Vm {
                     }
 
                     self.stack.push(result);
+                }
+
+                Op::BlockBreak => {
+                    let span = self.current_span();
+                    // Leave the block, then every block that called it from
+                    // bytecode; stop at what called the last one.
+                    loop {
+                        let frame = self.leave_frame();
+                        if matches!(frame.on_return, FrameReturn::DrivesLoop) {
+                            self.break_callback_loop();
+                            break;
+                        }
+                        if self.frames.len() <= self.return_depth {
+                            return Err(RuntimeError::BlockBreak(span));
+                        }
+                        if self.frames.last().unwrap().closure.proto.name == "<lambda>" {
+                            continue;
+                        }
+                        // The `def` that called the block answers nil.
+                        let frame = self.leave_frame();
+                        if matches!(frame.on_return, FrameReturn::DrivesLoop) {
+                            self.callback_returned(Value::Null)?;
+                            break;
+                        }
+                        if self.frames.len() <= self.return_depth {
+                            return Ok(Value::Null);
+                        }
+                        self.stack.push(Value::Null);
+                        break;
+                    }
                 }
 
                 // --- Collections ---

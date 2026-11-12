@@ -665,7 +665,9 @@ impl Interpreter {
                                     arg_values.push(self.evaluate(expr)?);
                                 }
                             }
-                            return self.call_hash_method_on_rc(&hash, name, arg_values, span);
+                            return super::super::stop_on_block_break(
+                                self.call_hash_method_on_rc(&hash, name, arg_values, span),
+                            );
                         }
                         Value::Array(arr) if is_direct_array_method(name) => {
                             let arr = arr.clone();
@@ -675,7 +677,9 @@ impl Interpreter {
                                     arg_values.push(self.evaluate(expr)?);
                                 }
                             }
-                            return self.call_array_method_on_rc(&arr, name, arg_values, span);
+                            return super::super::stop_on_block_break(
+                                self.call_array_method_on_rc(&arr, name, arg_values, span),
+                            );
                         }
                         Value::String(s) if is_direct_string_method(name) => {
                             let s = s.clone();
@@ -688,9 +692,11 @@ impl Interpreter {
                             if let Some(result) =
                                 self.call_string_method_borrowed(&s, name, &arg_values, span)
                             {
-                                return result;
+                                return super::super::stop_on_block_break(result);
                             }
-                            return self.call_string_method(&s, name, arg_values, span);
+                            return super::super::stop_on_block_break(
+                                self.call_string_method(&s, name, arg_values, span),
+                            );
                         }
                         Value::Instance(inst)
                             if !is_universal_instance_member(name)

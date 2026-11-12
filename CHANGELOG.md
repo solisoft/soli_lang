@@ -313,6 +313,21 @@
 
 ### Changed
 
+- **`break` in a block stops the iterator (#651).** `[1, 2, 3].each do |x|
+  break if x == 2 … end` went on with `3` on both engines: `break` ended only
+  the block call, as `next` would (and the VM's `map` kept a nil for it). It
+  now stops the iterator, which answers nil, as in Ruby; a `def` the block
+  was passed to returns nil. Tree-walker: a lambda's call boundary raises
+  `RuntimeError::BlockBreak` (a `def`'s returns nil on it), the iterators'
+  fast paths raise it for `ControlFlow::Break`, and `stop_on_block_break`
+  turns it into nil at the method dispatch. VM: a loopless `break` in a
+  block compiles to the new `Op::BlockBreak`, which leaves the block and the
+  blocks that called it — an in-VM callback loop stops
+  (`break_callback_loop`), a `def` returns nil, a nested run's edge raises
+  `BlockBreak` for the native iterator's dispatch. `Xml.each` stops too (it
+  answers nil instead of the count); a builder block's `break` still only
+  leaves the block. Test: `break_in_a_block_stops_the_iterator`.
+
 - **Where a trailing block binds (#638, item 2).** The engines disagreed: the
   tree-walker gave a block only to a `&block` parameter and dropped it
   otherwise (`with_cb() do … end` on `def with_cb(cb)` was an arity error),

@@ -686,11 +686,9 @@ reader = Xml.reader("imports/report.xml", "r:item", {"r": "urn:r"}, doctype: "sk
   alone. Its `parent` and `document` are `nil`.
 - **Only the outermost match is yielded.** A match nested inside another is
   part of the outer one's subtree.
-- **`break` inside an `Xml.each` block acts like `next`**: the loop goes on
-  to the following match. This is the same for every block a built-in method
-  runs (card #651). To stop early, use `Xml.reader`, where `break` in the
-  `while` loop really stops. A `throw` inside the block propagates and closes
-  the file.
+- **`break` inside an `Xml.each` block stops the walk**, which then answers
+  `nil` (instead of the count), as every iterator does. A `throw` inside the
+  block propagates and closes the file.
 - The request deadline is checked before each match.
 - An error in the file raises when the reader reaches it, with a line and
   column, even after the last match:

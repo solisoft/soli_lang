@@ -49,7 +49,9 @@ impl Interpreter {
                                     }
                                 }
                             }
-                            return self.call_array_method(&items, name, args, span);
+                            return super::super::stop_on_block_break(
+                                self.call_array_method(&items, name, args, span),
+                            );
                         } else {
                             return Err(RuntimeError::type_error(
                                 format!("{}() expects array, got {}", name, resolved.type_name()),

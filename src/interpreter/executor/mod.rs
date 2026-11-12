@@ -85,6 +85,16 @@ pub struct EngineMark {
     call_depth: usize,
 }
 
+/// What a native iterator (`each`, `map`, `times`…) answers when the block
+/// it called broke: nil, the iteration stopped there (#651). Both engines'
+/// method dispatch passes its result through this.
+pub(crate) fn stop_on_block_break(result: RuntimeResult<Value>) -> RuntimeResult<Value> {
+    match result {
+        Err(RuntimeError::BlockBreak(_)) => Ok(Value::Null),
+        other => other,
+    }
+}
+
 /// The Solilang interpreter.
 pub struct Interpreter {
     pub(crate) environment: Rc<RefCell<Environment>>,
@@ -899,9 +909,17 @@ impl Interpreter {
         let result = match self.execute_block_in(&func.body, call_env_rc) {
             Ok(ControlFlow::Normal(v)) => Ok(v),
             Ok(ControlFlow::Return(return_value)) => Ok(return_value),
-            // A stray `break` outside a loop stops the body; it must not escape
-            // the call boundary.
+            // A stray `break` outside a loop stops the body. In a block (a
+            // lambda) it also stops what called the block: the iterator, or
+            // the `def` that called it, answers nil (#651). It used to end
+            // only the block, so the iterator went on as after `next`.
+            Ok(ControlFlow::Break) if func.name == "<lambda>" => {
+                Err(RuntimeError::BlockBreak(span))
+            }
             Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(Value::Null),
+            // A block this function called broke: the function stops and
+            // answers nil, as Ruby's `break` leaves the method that yielded.
+            Err(RuntimeError::BlockBreak(_)) if func.name != "<lambda>" => Ok(Value::Null),
             // Carry the thrown *value* across the call boundary rather than
             // its rendering — a `catch` further up rebuilds the value from
             // this, so `throw {"code": 404}` is still a hash when caught.

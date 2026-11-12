@@ -107,6 +107,13 @@ pub enum Op {
     Closure(u16),
     /// Return from a function.
     Return,
+    /// `break` in a block, outside any loop of its own (#651): return nil
+    /// from the block, then from every block that called it in bytecode, and
+    /// stop what called the last one — an in-VM iterator loop answers nil, a
+    /// `def` returns nil, and at a nested run's edge (a native iterator) the
+    /// run ends with `RuntimeError::BlockBreak`, which the iterator's
+    /// dispatch turns into nil.
+    BlockBreak,
 
     // --- Collections ---
     /// Build an array from N elements on the stack.

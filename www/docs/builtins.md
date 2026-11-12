@@ -5668,8 +5668,21 @@ loops, and supports postfix conditions (`break if cond` / `break unless cond`).
 
 `break` propagates out of nested blocks, `if` branches and `try`/`catch` — a
 `finally` block still runs before the loop exits. A `break` inside a lambda or
-function body does **not** break an outer loop; it is absorbed at the function
-boundary.
+function body does **not** break an outer loop.
+
+In a block given to an iterator (`each`, `map`, `times`, `Xml.each`…), `break`
+outside any loop of the block's own stops the iterator, which answers `nil`, as
+in Ruby. In a block passed to your own `def`, it makes that `def` return `nil`.
+
+```soli
+found = nil
+[5, 8, 13].each do |x|
+  if x > 6
+    found = x
+    break        # stops the each: found is 8
+  end
+end
+```
 
 **Example:**
 ```soli

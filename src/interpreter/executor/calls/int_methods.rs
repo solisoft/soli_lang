@@ -57,10 +57,8 @@ impl Interpreter {
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_)
-                | ControlFlow::Normal(_)
-                | ControlFlow::Continue
-                | ControlFlow::Break => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -107,10 +105,8 @@ impl Interpreter {
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_)
-                | ControlFlow::Normal(_)
-                | ControlFlow::Continue
-                | ControlFlow::Break => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -158,10 +154,8 @@ impl Interpreter {
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
-                ControlFlow::Return(_)
-                | ControlFlow::Normal(_)
-                | ControlFlow::Continue
-                | ControlFlow::Break => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the

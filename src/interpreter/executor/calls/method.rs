@@ -323,6 +323,17 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
+        crate::interpreter::executor::stop_on_block_break(
+            self.call_method_on_receiver(method, arguments, span),
+        )
+    }
+
+    fn call_method_on_receiver(
+        &mut self,
+        method: Rc<ValueMethod>,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
         match *method.receiver {
             Value::Array(ref arr) => {
                 self.call_array_method_on_rc(arr, &method.method_name, arguments, span)
@@ -801,7 +812,8 @@ impl Interpreter {
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => result.push(v),
                 ControlFlow::Normal(v) => result.push(v),
-                ControlFlow::Continue | ControlFlow::Break => {}
+                ControlFlow::Continue => {}
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -855,7 +867,8 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -909,10 +922,8 @@ impl Interpreter {
             bind_block_item(&call_env_rc, &func.params, &param_name, item);
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
-                ControlFlow::Return(_)
-                | ControlFlow::Normal(_)
-                | ControlFlow::Continue
-                | ControlFlow::Break => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -979,10 +990,8 @@ impl Interpreter {
             }
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
-                ControlFlow::Return(_)
-                | ControlFlow::Normal(_)
-                | ControlFlow::Continue
-                | ControlFlow::Break => {}
+                ControlFlow::Return(_) | ControlFlow::Normal(_) | ControlFlow::Continue => {}
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -1058,7 +1067,8 @@ impl Interpreter {
             acc = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -1108,7 +1118,8 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -1162,7 +1173,8 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -1216,7 +1228,8 @@ impl Interpreter {
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
                 ControlFlow::Normal(v) => v,
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.
                     // Replacing it with a generic message destroyed both the
@@ -1375,7 +1388,8 @@ impl Interpreter {
                         ControlFlow::Throw(v) => {
                             return Err(RuntimeError::Thrown { value: v, span });
                         }
-                        ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                        ControlFlow::Continue => Value::Null,
+                        ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                     };
                     keyed.push((item, key_val));
                 }
@@ -2191,7 +2205,8 @@ impl Interpreter {
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(v) => return Err(RuntimeError::Thrown { value: v, span }),
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
             };
             if !val.is_truthy() {
                 result.push(item.clone());
@@ -2233,7 +2248,8 @@ impl Interpreter {
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(v) => return Err(RuntimeError::Thrown { value: v, span }),
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
             };
             if val.is_truthy() {
                 return Ok(Value::Bool(false));
@@ -2276,7 +2292,8 @@ impl Interpreter {
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                 ControlFlow::Throw(v) => return Err(RuntimeError::Thrown { value: v, span }),
-                ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                ControlFlow::Continue => Value::Null,
+                ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
             };
             if val.is_truthy() {
                 if found {
@@ -2363,7 +2380,8 @@ impl Interpreter {
                         ControlFlow::Throw(v) => {
                             return Err(RuntimeError::Thrown { value: v, span })
                         }
-                        ControlFlow::Continue | ControlFlow::Break => Value::Null,
+                        ControlFlow::Continue => Value::Null,
+                        ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                     };
                     if val.is_truthy() {
                         count += 1;
@@ -2421,7 +2439,8 @@ impl Interpreter {
         let call_env = Environment::for_call(func.closure.clone());
         let result = match self.execute_block(&func.body, call_env)? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
-            ControlFlow::Continue | ControlFlow::Break => Value::Null,
+            ControlFlow::Continue => Value::Null,
+            ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
             ControlFlow::Throw(v) => {
                 // Carry the thrown value out of the callback.
                 // Replacing it with a generic message destroyed both the

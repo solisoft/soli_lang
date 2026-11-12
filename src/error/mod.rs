@@ -396,6 +396,15 @@ pub enum RuntimeError {
     #[error("{0} requires the interpreter at {1}")]
     EngineFallback(String, Span),
 
+    /// `break` in a block, leaving the block's call. The iterator that called
+    /// the block (`each`, `map`, `times`…) stops and answers `nil`, as in
+    /// Ruby (#651); it used to carry on with the next element, as `next`
+    /// would. Raised past any other caller, it reads as an error.
+    #[error(
+        "`break` in a block stops the iterator that called it, and nothing called this one at {0}"
+    )]
+    BlockBreak(Span),
+
     /// A user-level `throw` that escaped the function it was thrown in.
     ///
     /// Within one function body a throw travels as `ControlFlow::Throw(value)`
@@ -665,6 +674,7 @@ impl RuntimeError {
             Self::NoSuchProperty(info) => info.span,
             Self::NotAClass(_, span) => *span,
             Self::EngineFallback(_, span) => *span,
+            Self::BlockBreak(span) => *span,
             Self::Thrown { span, .. } => *span,
             Self::General { span, .. } => *span,
             Self::Breakpoint(capture) | Self::WithEnv(capture) => capture.span,
@@ -785,7 +795,7 @@ impl RuntimeError {
                 .exception_type
                 .clone()
                 .unwrap_or_else(|| classify_error_message(&capture.message).to_string()),
-            Self::EngineFallback(..) | Self::General { .. } => {
+            Self::EngineFallback(..) | Self::BlockBreak(_) | Self::General { .. } => {
                 classify_error_message(&self.to_string()).to_string()
             }
         }
@@ -820,7 +830,7 @@ impl RuntimeError {
                     }
                 })
             }
-            Self::EngineFallback(..) | Self::Breakpoint(_) => None,
+            Self::EngineFallback(..) | Self::BlockBreak(_) | Self::Breakpoint(_) => None,
         }
     }
 

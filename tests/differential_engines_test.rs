@@ -642,6 +642,131 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #651: `break` in a block stops the iterator that called it, which
+        // answers nil, as in Ruby; a `def` that called the block returns nil.
+        // It acted like `next` on both engines (and `map` kept a nil on the
+        // VM). A `break` inside a loop in the block still ends that loop.
+        "break_in_a_block_stops_the_iterator",
+        r##"[1, 2, 3].each do |x|
+  break if x == 2
+  print(x)
+end
+r = [1, 2, 3].map do |x|
+  break if x == 2
+  x
+end
+print(r)
+3.times do |i|
+  break if i == 1
+  print("t", i)
+end
+def f()
+  [1, 2, 3].each do |x|
+    break if x == 2
+    print("f", x)
+  end
+  "after"
+end
+print(f())
+found = nil
+[5, 8, 13].each do |x|
+  if x > 6
+    found = x
+    break
+  end
+end
+print("found", found)
+h = {"a": 1, "b": 2, "c": 3}
+seen = []
+h.each do |k, v|
+  break if v == 2
+  seen.push(k)
+end
+print(seen)
+print([1, 2, 3].each { |x| break if x == 1 })
+r = [1, 2, 3].select do |x|
+  break if x == 3
+  true
+end
+print(r)
+def each_page(cb)
+  [1, 2, 3].each do |n|
+    cb(n)
+  end
+  "pages done"
+end
+print(each_page() do |n|
+  print("page", n)
+  break if n == 2
+end)
+rows = []
+[1, 2].each do |x|
+  i = 0
+  while i < 5
+    i = i + 1
+    break if i == 2
+  end
+  rows.push([x, i])
+end
+print(rows)
+pairs = []
+[1, 2, 3].each do |a|
+  [10, 20, 30].each do |b|
+    break if b == 20
+    pairs.push(a * b)
+  end
+end
+print(pairs)
+caught = []
+[1, 2, 3].each do |x|
+  try
+    break if x == 2
+    caught.push(x)
+  catch e
+    caught.push("err")
+  end
+end
+print(caught)
+up = []
+1.upto(5) do |i|
+  break if i == 3
+  up.push(i)
+end
+print(up)
+print([3, 1, 2].sort_by { |x| x })
+idx = []
+["a", "b", "c"].each_with_index do |v, i|
+  break if i == 2
+  idx.push(v)
+end
+print(idx)
+out = []
+(1..6).each do |i|
+  break if i == 3
+  out.push(i)
+end
+print(out)
+chars = []
+"abcd".chars.each do |c|
+  break if c == "c"
+  chars.push(c)
+end
+print(chars)
+print([1, 2, 3].reduce(fn(acc, x) { if x == 3
+  break
+end
+acc + x }, 0))
+total = 0
+5.downto(1) do |i|
+  break if i == 3
+  total = total + i
+end
+print(total)
+h = {"a": 1, "b": 2}
+print(h.map { |k, v| break if v == 2
+  k })"##,
+    ),
+    (
         // #638 item 2: a trailing block binds to `&block`, else to the last
         // parameter when no argument filled it, else is dropped — on both
         // engines. The VM put it in the next slot (`k(y: 1) do … end` gave

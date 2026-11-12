@@ -1734,6 +1734,26 @@ impl Vm {
     }
 
     /// Pop the finished loop and push the method's result.
+    /// A callback broke (`break` in the block, #651): the loop stops and the
+    /// method answers nil, where its receiver was.
+    pub(crate) fn break_callback_loop(&mut self) {
+        let Some(IterState::Callback(mut state)) = self.iter_stack.pop() else {
+            unreachable!("break_callback_loop with no loop on the iterator stack");
+        };
+        if let Some(closure) = state.closure.take() {
+            self.recycle_closure(closure);
+        }
+        state.current = None;
+        state.source = Source::Empty;
+        super::vm::discard(std::mem::replace(&mut state.item, Value::Null));
+        super::vm::discard(std::mem::replace(&mut state.value, Value::Null));
+        state.out_array.clear();
+        state.out_hash = HashPairs::default();
+        state.keyed.clear();
+        self.spare_callback_loop = Some(state);
+        self.stack.push(Value::Null);
+    }
+
     fn finish_callback_loop(&mut self) -> Result<(), RuntimeError> {
         let Some(IterState::Callback(mut state)) = self.iter_stack.pop() else {
             unreachable!("finish_callback_loop with no loop on the iterator stack");

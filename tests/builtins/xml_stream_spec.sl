@@ -171,14 +171,14 @@ describe("Xml streaming") do
       assert(caught.to_s.includes?("stop at 1"))
     end
 
-    test("break in the block acts like next") do
+    test("break in the block stops the walk, which answers nil") do
       seen = []
       count = Xml.each(FEED, "item") do |item|
-        break if item["id"] == "1"
+        break if item["id"] == "2"
         seen.push(item["id"])
       end
-      assert_eq(count, 2)
-      assert_eq(seen, ["2"])
+      assert_null(count)
+      assert_eq(seen, ["1"])
     end
 
     test("a function value works as the block") do

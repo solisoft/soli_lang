@@ -36,6 +36,19 @@ impl Vm {
         args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // A block that broke stops the iterator, which answers nil (#651).
+        crate::interpreter::executor::stop_on_block_break(
+            self.vm_call_array_method_inner(arr, name, args, span),
+        )
+    }
+
+    fn vm_call_array_method_inner(
+        &mut self,
+        arr: &Rc<RefCell<Vec<Value>>>,
+        name: &str,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
         // Universal zero-argument methods, guarded in one place. The
         // tree-walking interpreter already rejects `x.nil?("junk")`; the VM
         // accepted the argument and threw it away, so the same call errored

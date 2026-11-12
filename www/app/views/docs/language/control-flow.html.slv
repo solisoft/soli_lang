@@ -328,7 +328,10 @@ while true
 end
 print(count);  # 3</code></pre>
                 <p class="text-gray-400 mt-3 mb-3">
-                    <code class="text-amber-400">break</code> propagates out of nested blocks, <code class="text-amber-400">if</code> branches and <code class="text-amber-400">try</code>/<code class="text-amber-400">catch</code> — a <code class="text-amber-400">finally</code> block still runs before the loop exits. A <code class="text-amber-400">break</code> inside a lambda or function body does <em>not</em> break an outer loop; it is absorbed at the function boundary.
+                    <code class="text-amber-400">break</code> propagates out of nested blocks, <code class="text-amber-400">if</code> branches and <code class="text-amber-400">try</code>/<code class="text-amber-400">catch</code> — a <code class="text-amber-400">finally</code> block still runs before the loop exits. A <code class="text-amber-400">break</code> inside a lambda or function body does <em>not</em> break an outer loop.
+                </p>
+                <p class="text-gray-400 mt-3 mb-3">
+                    In a block given to an iterator (<code class="text-amber-400">each</code>, <code class="text-amber-400">map</code>, <code class="text-amber-400">times</code>, <code class="text-amber-400">Xml.each</code>&hellip;), <code class="text-amber-400">break</code> outside any loop of the block&rsquo;s own stops the iterator, which answers <code class="text-amber-400">nil</code>, as in Ruby. In a block passed to your own <code class="text-amber-400">def</code>, it makes that <code class="text-amber-400">def</code> return <code class="text-amber-400">nil</code>: <code class="text-amber-400">[5, 8, 13].each do |x| &hellip; break &hellip; end</code> stops at the first match.
                 </p>
 <pre data-filename="Nested blocks and try/catch"><code class="language-soli text-sm">for path in paths
   try

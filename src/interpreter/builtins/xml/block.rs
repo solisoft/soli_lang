@@ -15,8 +15,9 @@
 //! while Soli code runs. The deadline is checked before the block is called;
 //! an error raised by the block propagates; the block's value is ignored and
 //! the call returns the document (`Xml.build`) or the new child (`add`).
-//! `break` inside the block follows the native-iterator rule: it ends the
-//! block, as `next` would.
+//! `break` inside an `Xml.each` block stops the walk, which answers nil, as
+//! every iterator's does (#651); inside a builder block it leaves the block,
+//! and the call still answers what it built.
 
 use crate::error::RuntimeError;
 use crate::interpreter::value::Value;
@@ -83,7 +84,11 @@ pub fn run(
     let block = split_block(&mut args);
     if name == "Xml.each" {
         if let Some(block) = block {
-            return super::reader::each(args, block, invoke, span);
+            // `break` in the block stops the walk, which answers nil, as
+            // every iterator does (#651).
+            return crate::interpreter::executor::stop_on_block_break(super::reader::each(
+                args, block, invoke, span,
+            ));
         }
     }
     let result = call(&args).map_err(|message| RuntimeError::General { message, span })?;
@@ -95,6 +100,10 @@ pub fn run(
     if crate::interpreter::deadline::expired() {
         return Err(crate::interpreter::deadline::timeout_error(span));
     }
-    invoke(block, subject)?;
-    Ok(result)
+    // `break` in a builder block leaves that block; the call still answers
+    // what it built.
+    match invoke(block, subject) {
+        Ok(_) | Err(RuntimeError::BlockBreak(_)) => Ok(result),
+        Err(error) => Err(error),
+    }
 }

@@ -29,6 +29,19 @@ impl Vm {
         args: &[Value],
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // A block that broke stops the iterator, which answers nil (#651).
+        crate::interpreter::executor::stop_on_block_break(
+            self.vm_call_int_method_inner(n, name, args, span),
+        )
+    }
+
+    fn vm_call_int_method_inner(
+        &mut self,
+        n: i64,
+        name: &str,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
         if args.is_empty() {
             // `n.to_s()` / `n.to_s`: the member table answers these with a
             // method value, built only to be dropped here before the call

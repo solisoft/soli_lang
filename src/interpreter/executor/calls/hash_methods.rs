@@ -68,7 +68,8 @@ impl Interpreter {
         }
         match self.execute_block_in(&func.body, env.clone())? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
-            ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),
+            ControlFlow::Continue => Ok(Value::Null),
+            ControlFlow::Break => Err(RuntimeError::BlockBreak(span)),
             ControlFlow::Throw(v) => {
                 // Carry the thrown value out of the callback.
                 // Replacing it with a generic message destroyed both the
@@ -96,7 +97,8 @@ impl Interpreter {
         }
         match self.execute_block_in(&func.body, env.clone())? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => Ok(v),
-            ControlFlow::Continue | ControlFlow::Break => Ok(Value::Null),
+            ControlFlow::Continue => Ok(Value::Null),
+            ControlFlow::Break => Err(RuntimeError::BlockBreak(span)),
             ControlFlow::Throw(v) => {
                 // Carry the thrown value out of the callback.
                 // Replacing it with a generic message destroyed both the

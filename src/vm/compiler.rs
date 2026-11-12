@@ -1292,6 +1292,12 @@ impl Compiler {
         if self.function_type == FunctionType::Script {
             return true;
         }
+        // In a block, `break` stops the iterator that called it (#651), not
+        // only the block: what `return nil` did, as `next` would.
+        if self.function_type == FunctionType::Lambda && !self.expr_wrapper {
+            self.emit(Op::BlockBreak, line);
+            return true;
+        }
         self.emit_default_return_value(line);
         self.emit(Op::Return, line);
         true
@@ -1529,6 +1535,8 @@ fn stack_effect(op: Op) -> i32 {
         CallMethodNamed(_, argc, _) => -(argc as i32),
         Closure(_) => 1,
         Return => 0,
+        // In place of `Null; Return`.
+        BlockBreak => 1,
         // Collections.
         Array(n) | BuildString(n) | HashWithKeys(_, n) => 1 - n as i32,
         Hash(n) => 1 - 2 * n as i32,
