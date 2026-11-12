@@ -424,6 +424,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         constructor: None,
         nested_classes: Rc::new(RefCell::new(HashMap::new())),
         const_fields: RefCell::new(HashSet::new()),
+        model_resolved_members: RefCell::new(None),
         static_const_fields: RefCell::new(HashSet::new()),
         all_methods_cache: RefCell::new(None),
         all_methods_cache_epoch: std::cell::Cell::new(0),

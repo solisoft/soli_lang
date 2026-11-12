@@ -383,6 +383,14 @@
 
 ### Fixed
 
+- **Model field reads on the VM no longer take the registry lock (#631).**
+  Every field hit on a model instance read `MODEL_REGISTRY` and scanned the
+  model's relations and translated fields, about twice the cost of a plain
+  object's field read. A class keeps that list now
+  (`Class::model_member_needs_resolution`), refreshed when the registry
+  changes (`write_model_registry` bumps a generation): 4M reads went from
+  216 ms to ~137 ms (a plain class: 116 ms).
+
 - **A panicking WebSocket handler drops its event, not the worker (#631).**
   A panic in a WebSocket event escaped `worker_loop`, which rebuilt the
   interpreter and the VM and lost the event without a trace; it is now

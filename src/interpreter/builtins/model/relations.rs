@@ -566,7 +566,7 @@ pub fn seed_relation_filter(
 }
 
 pub fn register_relation(class_name: &str, relation: RelationDef) {
-    MODEL_REGISTRY.write(|registry| {
+    super::registry::write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.relations.push(relation);
     })

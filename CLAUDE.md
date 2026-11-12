@@ -633,12 +633,15 @@ and the plain cargo commands above are the right ones.
 
 ```bash
 rbuild lang                                  # replaces cargo build --release
-rbuild check lang                            # replaces the fmt + clippy gate
+rbuild check lang                            # replaces the fmt + clippy gate (+ lint_unwraps.sh)
 rbuild test lang --profile ci --test <name>  # replaces cargo test
 rbuild audit lang                            # replaces cargo audit --deny warnings
 rbuild soli lang test                        # replaces soli test tests/ (the .sl specs)
 rbuild soli lang test tests-e2e/browser/specs --browser --no-coverage
 ```
+
+`check` also runs `scripts/lint_unwraps.sh` locally (a grep, no compile), the
+unwrap/expect ratchet CI's clippy job ends with.
 
 `audit` is a verb of its own, not a step of `check`: `check` judges the diff you
 just wrote, `audit` judges the dependency tree against third-party advisories.

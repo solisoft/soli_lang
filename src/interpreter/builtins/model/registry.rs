@@ -139,6 +139,40 @@ pub struct ModelMetadata {
 pub static MODEL_REGISTRY: TenantValue<HashMap<String, ModelMetadata>> =
     TenantValue::new(HashMap::new);
 
+/// Bumped by every write to [`MODEL_REGISTRY`]: a class's cached list of the
+/// members that need model resolution (`Class::model_member_needs_resolution`)
+/// is good while it matches.
+static REGISTRY_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Write [`MODEL_REGISTRY`] — the only way to: it bumps the generation that
+/// per-class caches check.
+pub(crate) fn write_model_registry<R>(
+    f: impl FnOnce(&mut HashMap<String, ModelMetadata>) -> R,
+) -> R {
+    let result = MODEL_REGISTRY.write(f);
+    REGISTRY_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Release);
+    result
+}
+
+/// See [`write_model_registry`].
+pub(crate) fn model_registry_generation() -> u64 {
+    REGISTRY_GENERATION.load(std::sync::atomic::Ordering::Acquire)
+}
+
+/// The members of `class_name` that a read must resolve through the model
+/// (its relations and translated fields), not take from the raw field.
+pub(crate) fn members_needing_model_resolution(class_name: &str) -> Vec<String> {
+    MODEL_REGISTRY.read(|registry| {
+        registry.get(class_name).map_or_else(Vec::new, |m| {
+            m.relations
+                .iter()
+                .map(|r| r.name.clone())
+                .chain(m.translated_fields.iter().cloned())
+                .collect()
+        })
+    })
+}
+
 /// Collection name -> encrypted field names. Keyed by collection so the DB
 /// write layer (exec_insert/exec_update) can encrypt without a class handle.
 static ENCRYPTED_COLLECTIONS: TenantValue<HashMap<String, Vec<String>>> =
@@ -167,7 +201,7 @@ pub fn register_collection_type(collection: &str, ctype: &str) {
 /// Bind a model (and its collection) to a named database connection.
 pub fn register_connection(class_name: &str, connection: &str) {
     let collection = crate::interpreter::builtins::model::class_name_to_collection(class_name);
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.connection_name = Some(connection.to_string());
     });
@@ -179,7 +213,7 @@ pub fn register_connection(class_name: &str, connection: &str) {
 /// declaration order inside the class body does not matter.
 pub fn register_table_mapping(class_name: &str, table: &str) {
     let collection = crate::interpreter::builtins::model::class_name_to_collection(class_name);
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.table_mapping = Some(table.to_string());
     });
@@ -269,7 +303,7 @@ pub fn get_collection_type(collection: &str) -> Option<String> {
 
 /// Register an encrypted field for a model (by class) and its collection.
 pub fn register_encryption(class_name: &str, collection: &str, field: &str) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if !metadata.encrypted_fields.iter().any(|s| s == field) {
             metadata.encrypted_fields.push(field.to_string());
@@ -410,7 +444,7 @@ pub fn get_enum_fields(class_name: &str) -> Vec<EnumFieldBinding> {
 /// Register (or replace, by field) a state machine declared on a model class.
 /// Re-declaring the same field overwrites the prior machine.
 pub fn set_state_machine(class_name: &str, def: StateMachineDef) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.state_machines.retain(|m| m.field != def.field);
         metadata.state_machines.push(def);
@@ -428,7 +462,7 @@ pub fn get_state_machines(class_name: &str) -> Vec<StateMachineDef> {
 }
 
 pub fn register_translation(class_name: &str, field_name: &str) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if !metadata.translated_fields.iter().any(|s| s == field_name) {
             metadata.translated_fields.push(field_name.to_string());
@@ -472,7 +506,7 @@ pub fn get_or_create_metadata(class_name: &str) -> ModelMetadata {
 }
 
 pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         registry.insert(class_name.to_string(), metadata);
     })
 }
@@ -482,7 +516,7 @@ pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
 /// last declaration wins). Pass an empty list to lock down the model
 /// completely (`Model.create({...})` will then drop every key).
 pub fn register_accessible_attributes(class_name: &str, fields: Vec<String>) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.accessible_attributes = Some(fields);
     })
@@ -541,7 +575,7 @@ pub fn get_timeseries_spec(class_name: &str) -> Option<TimeseriesSpec> {
 /// Mark a model as columnar (the `columnar` DSL). Keeps any columns already
 /// declared; sets/replaces the compression option.
 pub fn set_columnar(class_name: &str, compression: Option<String>) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         let schema = metadata.columnar.get_or_insert_with(Default::default);
         schema.compression = compression;
@@ -550,7 +584,7 @@ pub fn set_columnar(class_name: &str, compression: Option<String>) {
 
 /// Add (or replace, by name) a `column` declaration on a columnar model.
 pub fn add_columnar_column(class_name: &str, def: ColumnarColumnDef) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         let schema = metadata.columnar.get_or_insert_with(Default::default);
         schema.columns.retain(|c| c.name != def.name);
@@ -560,7 +594,7 @@ pub fn add_columnar_column(class_name: &str, def: ColumnarColumnDef) {
 
 /// Register (replace-by-name) a vector index declaration.
 pub fn add_vector_index(class_name: &str, def: VectorIndexDef) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.vector_indexes.retain(|d| d.name != def.name);
         metadata.vector_indexes.push(def);
@@ -587,7 +621,7 @@ pub fn get_vector_indexes(class_name: &str) -> Vec<VectorIndexDef> {
 }
 
 pub fn add_fulltext_index(class_name: &str, def: FulltextIndexDef) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.fulltext_indexes.retain(|d| d.name != def.name);
         metadata.fulltext_indexes.push(def);
@@ -604,7 +638,7 @@ pub fn get_fulltext_indexes(class_name: &str) -> Vec<FulltextIndexDef> {
 }
 
 pub fn add_geo_index(class_name: &str, def: GeoIndexDef) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.geo_indexes.retain(|d| d.name != def.name);
         metadata.geo_indexes.push(def);
@@ -621,7 +655,7 @@ pub fn get_geo_indexes(class_name: &str) -> Vec<GeoIndexDef> {
 }
 
 pub fn add_secondary_index(class_name: &str, def: SecondaryIndexDef) {
-    MODEL_REGISTRY.write(|registry| {
+    write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.secondary_indexes.retain(|d| d.name != def.name);
         metadata.secondary_indexes.push(def);
@@ -765,9 +799,9 @@ pub fn register_model_class(class_name: &str, class: Rc<Class>) {
         let parent_meta = MODEL_REGISTRY.read(|registry| registry.get(&parent.name).cloned());
         if let Some(meta) = parent_meta {
             super::validation::copy_rule_conditions(&parent.name, class_name, &meta.validations);
-            MODEL_REGISTRY.write(|registry| registry.insert(class_name.to_string(), meta));
+            write_model_registry(|registry| registry.insert(class_name.to_string(), meta));
         } else {
-            MODEL_REGISTRY.write(|registry| registry.remove(class_name));
+            write_model_registry(|registry| registry.remove(class_name));
         }
         super::scopes::copy_scopes(&parent.name, class_name);
         super::state_machine::copy_closures(&parent.name, class_name);
@@ -799,7 +833,7 @@ pub fn clear_model_classes() {
 
 /// Clear all model registries (MODEL_REGISTRY and MODEL_CLASSES). Used during hot reload.
 pub fn clear_all_model_registries() {
-    MODEL_REGISTRY.write(|registry| registry.clear());
+    write_model_registry(|registry| registry.clear());
     COLLECTION_TYPES.write(|c| c.clear());
     COLLECTION_TABLES.write(|c| c.clear());
     // Cached table shapes belong to the mappings just dropped.

@@ -84,7 +84,7 @@ pub fn register_callback(class_name: &str, callback_type: &str, method_name: &st
     if declaring {
         return;
     }
-    MODEL_REGISTRY.write(|registry| {
+    super::registry::write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if let Some(list) = metadata.callbacks.list_mut(callback_type) {
             list.push(method_name.to_string());
@@ -135,7 +135,7 @@ impl Declaration {
     /// The body has run: its callbacks and validations replace the class's.
     pub fn install(mut self) {
         if let Some(declared) = self.take() {
-            MODEL_REGISTRY.write(|registry| {
+            super::registry::write_model_registry(|registry| {
                 let metadata = registry.entry(self.class_name.clone()).or_default();
                 metadata.callbacks = declared.callbacks;
                 metadata.validations = declared.validations;

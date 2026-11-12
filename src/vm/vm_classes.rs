@@ -369,10 +369,7 @@ impl Vm {
                 if inst_ref.class.is_model_subclass()
                     && (universal
                         || !inst_ref.fields.contains_key(name)
-                        || crate::interpreter::builtins::model::member_needs_model_resolution(
-                            &inst_ref.class.name,
-                            name,
-                        ))
+                        || inst_ref.class.model_member_needs_resolution(name))
                     && inst_ref.class.find_method(name).is_none()
                 {
                     drop(inst_ref);

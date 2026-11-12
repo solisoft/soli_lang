@@ -292,7 +292,7 @@ mod register_finders;
 mod register_instance;
 mod register_mutate;
 mod register_search;
-mod registry;
+pub(crate) mod registry;
 pub mod relations;
 pub mod rerank;
 pub mod scopes;

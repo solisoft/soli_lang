@@ -2018,6 +2018,10 @@ pub struct Class {
     pub nested_classes: Rc<RefCell<HashMap<String, Rc<Class>>>>,
     /// Instance field names declared as `const` (immutable after initialization).
     pub const_fields: RefCell<HashSet<String>>,
+    /// A model's members that a read resolves through the model (relations,
+    /// translated fields), with the registry generation they were read at:
+    /// see [`Class::model_member_needs_resolution`].
+    pub model_resolved_members: RefCell<Option<(u64, Rc<[String]>)>>,
     /// Static field names declared as `const` (immutable after initialization).
     pub static_const_fields: RefCell<HashSet<String>>,
     /// Flattened method cache for O(1) lookups including inherited methods.
@@ -2347,6 +2351,34 @@ pub(crate) fn restricted_lookups() -> (usize, usize) {
     RESTRICTED_LOOKUPS.with(Cell::get)
 }
 
+impl Class {
+    /// Whether a read of `name` on an instance of this class must go through
+    /// the model — a relation or a translated field — rather than take the
+    /// raw field. `false` for a class that is no model. The model's list is
+    /// read from the registry once per registry generation and kept here: a
+    /// field hit used to take the registry lock and scan the relations every
+    /// time, about twice the cost of a plain object's field read (#631).
+    pub fn model_member_needs_resolution(&self, name: &str) -> bool {
+        if !self.is_model_subclass() {
+            return false;
+        }
+        let generation = crate::interpreter::builtins::model::registry::model_registry_generation();
+        if let Some((cached_at, members)) = &*self.model_resolved_members.borrow() {
+            if *cached_at == generation {
+                return members.iter().any(|member| member == name);
+            }
+        }
+        let members: Rc<[String]> =
+            crate::interpreter::builtins::model::registry::members_needing_model_resolution(
+                &self.name,
+            )
+            .into();
+        let needs = members.iter().any(|member| member == name);
+        *self.model_resolved_members.borrow_mut() = Some((generation, members));
+        needs
+    }
+}
+
 impl Default for Class {
     fn default() -> Self {
         Self {
@@ -2361,6 +2393,7 @@ impl Default for Class {
             constructor: None,
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
             const_fields: RefCell::new(HashSet::new()),
+            model_resolved_members: RefCell::new(None),
             static_const_fields: RefCell::new(HashSet::new()),
             all_methods_cache: RefCell::new(None),
             all_methods_cache_epoch: Cell::new(0),
@@ -2419,6 +2452,7 @@ impl Class {
             constructor,
             nested_classes,
             const_fields: RefCell::new(HashSet::new()),
+            model_resolved_members: RefCell::new(None),
             static_const_fields: RefCell::new(HashSet::new()),
             all_methods_cache: RefCell::new(None),
             all_methods_cache_epoch: Cell::new(0),

@@ -295,7 +295,7 @@ pub fn register_validation(class_name: &str, rule: ValidationRule) {
     if super::callbacks::declare_validation(class_name, &rule) {
         return;
     }
-    MODEL_REGISTRY.write(|registry| {
+    super::registry::write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if metadata.validations.iter().any(|r| r == &rule) {
             return;

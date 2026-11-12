@@ -598,11 +598,7 @@ impl Vm {
     /// pays one memoized flag read.
     #[inline]
     fn field_hit_is_raw(inst: &crate::interpreter::value::Instance, name: &str) -> bool {
-        (!inst.class.is_model_subclass()
-            || !crate::interpreter::builtins::model::member_needs_model_resolution(
-                &inst.class.name,
-                name,
-            ))
+        !inst.class.model_member_needs_resolution(name)
             && !crate::interpreter::executor::access::member::is_universal_instance_member(name)
     }
 
@@ -6615,12 +6611,7 @@ fn field_needs_model_resolution(
     if crate::interpreter::executor::access::member::is_universal_instance_member(name) {
         return true;
     }
-    let inst = inst.borrow();
-    inst.class.is_model_subclass()
-        && crate::interpreter::builtins::model::member_needs_model_resolution(
-            &inst.class.name,
-            name,
-        )
+    inst.borrow().class.model_member_needs_resolution(name)
 }
 
 #[inline(always)]

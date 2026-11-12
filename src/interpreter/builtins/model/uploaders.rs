@@ -51,7 +51,7 @@ pub struct UploaderConfig {
 /// Register an uploader on a class. Called from the `uploader(...)` native
 /// when the class body is executed.
 pub fn register_uploader(class_name: &str, config: UploaderConfig) {
-    MODEL_REGISTRY.write(|registry| {
+    super::registry::write_model_registry(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if let Some(slot) = metadata
             .uploaders
