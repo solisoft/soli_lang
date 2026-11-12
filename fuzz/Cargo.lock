@@ -1754,12 +1754,12 @@ dependencies = [
 [[package]]
 name = "eui-proto"
 version = "0.11.0"
-source = "git+https://github.com/solisoft/eui?rev=f137388#f137388ed066fc9f11cc0fcd8131b63d5ef8320c"
+source = "git+https://github.com/solisoft/eui?rev=0a305ba#0a305ba7b97360331a10457f6c861f0dd6b3c7b5"
 
 [[package]]
 name = "eui-score"
 version = "0.11.0"
-source = "git+https://github.com/solisoft/eui?rev=1250ae9#1250ae9eced319fb5e47132adedae736108a4664"
+source = "git+https://github.com/solisoft/eui?rev=0a305ba#0a305ba7b97360331a10457f6c861f0dd6b3c7b5"
 dependencies = [
  "serde_json",
 ]
@@ -5377,7 +5377,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "2.34.0"
+version = "2.35.1"
 dependencies = [
  "aes-gcm",
  "ahash 0.8.12",
