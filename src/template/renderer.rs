@@ -975,21 +975,25 @@ mod tests {
     /// layout's `<% heading ||= "MyApp" %>` answered 500 on every page that
     /// did not set `@heading`.
     #[test]
-    fn compound_assignment_on_an_unset_template_name() {
+    fn compound_assignment_on_an_unset_template_name() -> Result<(), String> {
         let _guard = crate::interpreter::executor::enter_template_lenient_vars();
+        let render = |source: &str, data: Value| -> Result<String, String> {
+            let nodes = parse_template(source).map_err(|e| format!("{source}: {e:?}"))?;
+            render_nodes(&nodes, &data, None).map_err(|e| format!("{source}: {e}"))
+        };
         for (source, expected) in [
             ("<% heading ||= \"MyApp\" %><%= heading %>", "MyApp"),
             ("<% n ??= 3 %><% n += 1 %><%= n %>", "4"),
         ] {
-            let nodes = parse_template(source).unwrap();
-            let result = render_nodes(&nodes, &make_hash(vec![]), None)
-                .unwrap_or_else(|e| panic!("{source}: {e}"));
-            assert_eq!(result, expected, "{source}");
+            assert_eq!(render(source, make_hash(vec![]))?, expected, "{source}");
         }
         // A set value is kept.
-        let nodes = parse_template("<% heading ||= \"MyApp\" %><%= heading %>").unwrap();
         let data = make_hash(vec![("heading", Value::String("Posts".into()))]);
-        assert_eq!(render_nodes(&nodes, &data, None).unwrap(), "Posts");
+        assert_eq!(
+            render("<% heading ||= \"MyApp\" %><%= heading %>", data)?,
+            "Posts"
+        );
+        Ok(())
     }
 
     #[test]
