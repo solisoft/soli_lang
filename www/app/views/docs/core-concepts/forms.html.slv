@@ -70,7 +70,7 @@
             form_with
         </h2>
         <p class="text-gray-400 mb-6">
-            Both arguments are optional. With no record, pass <code class="text-amber-300">"url"</code>: <code class="text-amber-300">form_with(null, {"url": "/search", "method": "get"})</code>. GET forms skip both the CSRF token and the <code class="text-amber-300">_method</code> field.
+            Both arguments are optional. With no record, pass <code class="text-amber-300">"url"</code>: <code class="text-amber-300">form_with(null, {"url": "/search", "method": "get"})</code>, or the options alone, <code class="text-amber-300">form_with({"url": "/search"})</code>. GET forms skip both the CSRF token and the <code class="text-amber-300">_method</code> field.
         </p>
         <div class="overflow-x-auto rounded-xl border border-white/10">
             <table class="w-full text-sm text-left">

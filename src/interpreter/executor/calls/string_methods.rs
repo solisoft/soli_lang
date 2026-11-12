@@ -1507,7 +1507,8 @@ impl Interpreter {
     }
 
     fn string_substring(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
-        if arguments.len() != 2 {
+        // `substring(start)` runs to the end (#813).
+        if !(1..=2).contains(&arguments.len()) {
             return Err(RuntimeError::wrong_arity(2, arguments.len(), span));
         }
         let start = match &arguments[0] {
@@ -1519,9 +1520,17 @@ impl Interpreter {
                 ))
             }
         };
-        let end = match &arguments[1] {
-            Value::Int(i) => *i,
-            _ => {
+        let length = s.chars().count() as i64;
+        // `substring(-3)`: the last three characters.
+        let start = if arguments.len() == 1 && start < 0 {
+            (length + start).max(0)
+        } else {
+            start
+        };
+        let end = match arguments.get(1) {
+            Some(Value::Int(i)) => *i,
+            None => length,
+            Some(_) => {
                 return Err(RuntimeError::type_error(
                     "substring expects integer end",
                     span,

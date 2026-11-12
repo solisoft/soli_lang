@@ -977,6 +977,20 @@ impl Printer<'_> {
         self.newline();
     }
 
+    /// Whether the source spells `field` with the `const` keyword, as
+    /// opposed to the bare `NAME = value` that is a constant too. With no
+    /// source text to read, the keyword (which always re-parses).
+    fn field_written_with_const(&self, field: &FieldDecl) -> bool {
+        // The span starts at the name; the modifiers are before it, on its line.
+        let Some(before) = self.source.get(..field.span.start_usize()) else {
+            return true;
+        };
+        let line_start = before.rfind('\n').map_or(0, |at| at + 1);
+        before[line_start..]
+            .split_whitespace()
+            .any(|word| word == "const")
+    }
+
     fn print_field_decl(&mut self, field: &FieldDecl) {
         match field.visibility {
             Visibility::Public => {}
@@ -986,22 +1000,23 @@ impl Printer<'_> {
         if field.is_static {
             self.write("static ");
         }
-        if field.is_const {
+        // `NAME = "k"` is a constant without the keyword (#813): keep the
+        // spelling the source used.
+        if field.is_const && self.field_written_with_const(field) {
             self.write("const ");
         }
         self.write(&field.name);
-        // Regular (non-const) fields require a `: Type` annotation —
-        // the parser rejects bare `name` (see parser/declarations.rs::
-        // parse_field). Const fields may omit the type. Always emit the
-        // annotation if present, even when it's `Any`, so the output
-        // re-parses.
+        // A bare declaration needs a `: Type` annotation (see
+        // parser/declarations.rs::parse_field); a const field, or one given
+        // its value, may omit it. Always emit the annotation if present,
+        // even when it's `Any`, so the output re-parses.
         if let Some(ty) = &field.type_annotation {
             let ty_str = format_type(ty);
             if !ty_str.is_empty() {
                 self.write(": ");
                 self.write(&ty_str);
             }
-        } else if !field.is_const {
+        } else if !field.is_const && field.initializer.is_none() {
             // AST has no annotation but parser requires one — emit `Any`
             // as the safest default so the output still parses.
             self.write(": Any");

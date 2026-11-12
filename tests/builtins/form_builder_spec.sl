@@ -64,6 +64,12 @@ describe("form_with construction") do
     assert_contains(form_for({"title": "Hello"}).open(), "<form action=\"/posts\" method=\"POST\"")
   end
 
+  test("a lone hash with a url is the options of a bare form (#813)") do
+    html = form_with({"url": "/search", "method": "get"}).open()
+    assert_contains(html, "<form action=\"/search\" method=\"GET\"")
+    assert(!html.contains("url="))
+  end
+
   test("a new model instance derives POST to its collection") do
     assert_contains(form_with(Post.new()).open(), "<form action=\"/posts\" method=\"POST\"")
   end

@@ -516,8 +516,9 @@ impl Printer<'_> {
                 // source that was written as an assignment silently
                 // deregisters the hook. Recover the original spelling from the
                 // source and print it back.
-                // `x = try … end` reaches us as a lambda called on the spot
-                // (parser `try_expression`); print the `try` as it was written.
+                // `x = try … end` / `x = if … end` reaches us as a lambda
+                // called on the spot (parser `statement_as_value`); print it
+                // as it was written.
                 if is_try_expression(self.source, expr.span, callee, arguments) {
                     self.write_source_span(expr.span.start_usize(), expr.span.end_usize());
                     // Its comments were copied with it; a trailing one on the
@@ -1402,9 +1403,9 @@ fn gap_is_assignment(gap: &str) -> bool {
     !before_eq.ends_with(['=', '!', '<', '>'])
 }
 
-/// The node `try_expression` builds for a `try` used as a value: a call, with
-/// no argument, of a parameterless lambda whose only statement is the `try`,
-/// at a span the source spells `try`.
+/// The node `statement_as_value` builds for a `try`, `if` or `unless` used as
+/// a value: a call, with no argument, of a parameterless lambda whose only
+/// statement is that statement, at a span the source spells with its keyword.
 fn is_try_expression(
     source: &str,
     span: crate::span::Span,
@@ -1417,10 +1418,16 @@ fn is_try_expression(
     arguments.is_empty()
         && params.is_empty()
         && body.len() == 1
-        && matches!(body[0].kind, crate::ast::stmt::StmtKind::Try { .. })
-        && source
-            .get(span.start_usize()..)
-            .is_some_and(|rest| rest.starts_with("try"))
+        && source.get(span.start_usize()..).is_some_and(|rest| {
+            let keyword = match body[0].kind {
+                crate::ast::stmt::StmtKind::Try { .. } => "try",
+                crate::ast::stmt::StmtKind::If { .. } => "if",
+                crate::ast::stmt::StmtKind::Unless { .. } => "unless",
+                _ => return false,
+            };
+            rest.starts_with(keyword)
+                && !rest[keyword.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
+        })
 }
 
 /// The text inside each `#{…}` of the string literal at `span`, in order, as

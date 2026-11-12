@@ -252,6 +252,11 @@ impl Parser {
                 self.advance();
                 Ok("class".to_string())
             }
+            // A keyword only in `import … from "path"` (#813).
+            TokenKind::From => {
+                self.advance();
+                Ok("from".to_string())
+            }
             _ => Err(ParserError::unexpected_token(
                 "identifier",
                 format!("{}", self.peek().kind),

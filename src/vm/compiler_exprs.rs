@@ -492,9 +492,13 @@ impl Compiler {
     /// resolving to the global builtin — no local, upvalue or program-defined
     /// global of that name.
     fn calls_bare_builtin(&mut self, name: &str) -> bool {
+        // In a method, `Op::SelfOrGlobal` reads the name and already calls
+        // the builtin it finds: a second call here called its result
+        // (`clock` in a method: "Cannot call non-function value").
         crate::interpreter::builtins::is_bare_call_builtin(name)
             && matches!(self.resolve_variable(name), VariableAccess::Global(_))
             && !self.program_globals.borrow().contains(name)
+            && !self.implicit_self_candidate(name)
     }
 
     /// Whether a bare read of `name` (not a call target, which is read through

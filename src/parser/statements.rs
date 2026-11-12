@@ -51,7 +51,7 @@ impl Parser {
         }
     }
 
-    fn if_statement(&mut self) -> ParseResult<Stmt> {
+    pub(super) fn if_statement(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
         self.expect(&TokenKind::If)?;
 
@@ -98,7 +98,7 @@ impl Parser {
     /// `else` is accepted for symmetry with `if`; `elsif` is not, because
     /// "unless A, else if B" reads as a puzzle rather than a guard — Ruby
     /// rejects `elsif` after `unless` for the same reason.
-    fn unless_statement(&mut self) -> ParseResult<Stmt> {
+    pub(super) fn unless_statement(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
         self.expect(&TokenKind::Unless)?;
 

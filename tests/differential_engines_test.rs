@@ -642,6 +642,68 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #813: `x = if … end` / `unless` as values, an untyped class field
+        // given a value (`NAME = "k"` a constant, `static LIMIT = 3`),
+        // `substring(start)` to the end, `from` as a parameter name.
+        "if_as_a_value_untyped_fields_substring_from",
+        r##"c = true
+x = if c
+  1
+else
+  2
+end
+print(x)
+def label(n)
+  kind = if n > 10
+    "big"
+  elsif n > 0
+    "small"
+  else
+    "none"
+  end
+  "#{n}: #{kind}"
+end
+print(label(20), label(3), label(0))
+y = unless c
+  "no"
+else
+  "yes"
+end
+print(y)
+total = 0
+[1, 2].each do |v|
+  total = total + (if v == 1
+    10
+  else
+    100
+  end)
+end
+print(total)
+z = if false
+  1
+end
+print(z)
+class K
+  NAME = "k"
+  static LIMIT = 3
+  count = 0
+
+  def describe
+    "#{NAME} #{@count}"
+  end
+end
+print(K.NAME, K.LIMIT, K.new.describe, K.new.count)
+print("abcdef".substring(2), "abcdef".substring(1, 3), "héllo".substring(1))
+s = "xyz"
+print(s.substring(5), s.substring(0))
+print("hello".substring(-3), "hello".substring(-3, 5))
+def send_mail(to, from = nil)
+  from = from || "noreply@x"
+  [to, from]
+end
+print(send_mail("a"), send_mail("a", "b"), send_mail("a", from: "c"))"##,
+    ),
+    (
         // #667: a trailing block to a static or instance method binds to its
         // `&block` on the VM too (it landed in the optional `tags`), labelled
         // arguments with a block included (an arity error there); a `&block`

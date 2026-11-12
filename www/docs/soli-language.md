@@ -702,6 +702,15 @@ else
 end
 print(letter);  # "B"
 
+# `if` (and `unless`) as a value
+letter = if grade >= 90
+  "A"
+elsif grade >= 80
+  "B"
+else
+  "C"
+end
+
 # Nested conditions
 is_weekend = true;
 is_holiday = false;
@@ -717,6 +726,11 @@ if is_weekend
   end
 end
 ```
+
+Used as a value (`x = if … end`, an argument, a hash value), an `if` or
+`unless` is worth its taken branch's last expression, or `nil` when no branch
+ran. Like `x = try … end`, it runs as a block called on the spot: it reads and
+assigns the enclosing locals, and a `return` inside it leaves that block only.
 
 ### Unless
 
@@ -3157,6 +3171,9 @@ Upload.MAX_BYTES                   # 5000000
 - The instance still reads it as `@MAX_BYTES`, as before.
 - A constant cannot be reassigned. `static const NAME = …` declares a class
   constant only.
+- `NAME = "k"` in a class body — an upper-case name given a value, with no
+  `const` and no type — is a class constant too, as in Ruby. A field given its
+  value needs no type annotation either: `static LIMIT = 3`, `count = 0`.
 
 #### Ruby-style `def self.method_name`
 

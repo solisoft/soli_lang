@@ -368,6 +368,12 @@ end
 #   "pow" true adds a proof-of-work challenge (pow_field), checked by spam_check
 #   anything else becomes an attribute on the <form> tag
 def form_with(record = null, options = null)
+    # `form_with({"url": "/search"})`: a lone hash with a "url" is the
+    # options of a bare form, not a record (#813).
+    if options.nil? && record.class == "hash" && record.has_key("url")
+        options = record
+        record = null
+    end
     opts = options ?? {}
     names = __soli_form_names(record)
 

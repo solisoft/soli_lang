@@ -1065,10 +1065,12 @@ impl Parser {
         let start_span = self.current_span();
         let name = self.expect_identifier()?;
 
-        // Type annotation: required for regular fields, optional for const fields
+        // Type annotation: optional for const fields and for a field given
+        // its value (`NAME = "k"`, `static LIMIT = 3`, #813), required for a
+        // bare declaration.
         let type_annotation = if self.match_token(&TokenKind::Colon) {
             Some(self.parse_type()?)
-        } else if !is_const {
+        } else if !is_const && !self.check(&TokenKind::Equal) {
             return Err(ParserError::general(
                 "expected ':' and type annotation for field declaration",
                 self.current_span(),
@@ -1091,6 +1093,15 @@ impl Parser {
 
         self.match_token(&TokenKind::Semicolon);
         let span = start_span.merge(&self.previous_span());
+
+        // `NAME = "k"` (SCREAMING_CASE, no `static`, no type): a class
+        // constant, as Ruby reads it — the same field `const NAME = "k"`
+        // declares (#805, #813).
+        let is_const = is_const
+            || (!is_static
+                && type_annotation.is_none()
+                && initializer.is_some()
+                && is_constant_name(&name));
 
         Ok(FieldDecl {
             visibility,
@@ -1244,4 +1255,13 @@ impl Parser {
             Ok(statements)
         }
     }
+}
+
+/// `MAX_SIZE`, `NAME`, `V2`: a constant's name — upper-case letters, digits
+/// and underscores, starting with a letter, with at least one letter.
+fn is_constant_name(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }

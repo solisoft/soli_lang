@@ -60,10 +60,12 @@ CSRF token rides along as a hidden `_csrf_token` input on every non-GET form.
 <% f = form_with(record, options) %>
 ```
 
-Both arguments are optional. With no record, pass `"url"`:
+Both arguments are optional. With no record, pass `"url"` — as the second
+argument, or as the only one:
 
 ```erb
 <% f = form_with(null, {"url": "/search", "method": "get"}) %>
+<% f = form_with({"url": "/search", "method": "get"}) %>
 ```
 
 | Option | Effect |

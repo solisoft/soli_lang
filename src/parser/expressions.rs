@@ -83,6 +83,16 @@ impl Parser {
         if self.check(&TokenKind::Try) {
             return self.try_expression();
         }
+        // `x = if c … else … end` / `unless`: the statement, as a value
+        // (#813), the way `try` is one.
+        if self.check(&TokenKind::If) {
+            let stmt = self.if_statement()?;
+            return Ok(Self::statement_as_value(stmt));
+        }
+        if self.check(&TokenKind::Unless) {
+            let stmt = self.unless_statement()?;
+            return Ok(Self::statement_as_value(stmt));
+        }
         let token = self.advance();
         let start_span = token.span;
 
@@ -165,6 +175,13 @@ impl Parser {
                 Ok(Expr::new(ExprKind::Array(exprs), start_span))
             }
             TokenKind::Null => Ok(Expr::new(ExprKind::Null, start_span)),
+
+            // `from` is a keyword only in `import … from "path"`: anywhere a
+            // value goes it is a name (`def send_mail(to, from = nil)`, #813).
+            TokenKind::From => Ok(Expr::new(
+                ExprKind::Variable("from".to_string()),
+                start_span,
+            )),
 
             TokenKind::Identifier(name) => {
                 // `@foo` is sugar for `this.foo`. `@@foo` (Ruby class vars) is intentionally rejected.
@@ -516,6 +533,13 @@ impl Parser {
     /// that lambda, not the enclosing method.
     fn try_expression(&mut self) -> ParseResult<Expr> {
         let stmt = self.try_statement()?;
+        Ok(Self::statement_as_value(stmt))
+    }
+
+    /// A statement used where a value is expected (`x = try … end`,
+    /// `x = if … end`): a body of its own, called on the spot, whose value
+    /// is the statement's last expression.
+    fn statement_as_value(stmt: crate::ast::Stmt) -> Expr {
         let span = stmt.span;
         let lambda = Expr::new(
             ExprKind::Lambda {
@@ -525,13 +549,13 @@ impl Parser {
             },
             span,
         );
-        Ok(Expr::new(
+        Expr::new(
             ExprKind::Call {
                 callee: Box::new(lambda),
                 arguments: Vec::new(),
             },
             span,
-        ))
+        )
     }
 
     fn parse_array(&mut self, start_span: crate::span::Span) -> ParseResult<Expr> {

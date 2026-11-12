@@ -435,7 +435,10 @@ impl Vm {
                 Ok(Value::String(result.into()))
             }
             "substring" => {
-                check_arity(2, args.len(), span)?;
+                // `substring(start)` runs to the end (#813).
+                if !(1..=2).contains(&args.len()) {
+                    return Err(RuntimeError::wrong_arity(2, args.len(), span));
+                }
                 let start = match &args[0] {
                     Value::Int(i) => *i,
                     _ => {
@@ -445,9 +448,17 @@ impl Vm {
                         ))
                     }
                 };
-                let end = match &args[1] {
-                    Value::Int(i) => *i,
-                    _ => {
+                let length = s.chars().count() as i64;
+                // `substring(-3)`: the last three characters.
+                let start = if args.len() == 1 && start < 0 {
+                    (length + start).max(0)
+                } else {
+                    start
+                };
+                let end = match args.get(1) {
+                    Some(Value::Int(i)) => *i,
+                    None => length,
+                    Some(_) => {
                         return Err(RuntimeError::type_error(
                             "substring expects integer end",
                             span,

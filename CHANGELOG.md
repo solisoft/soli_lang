@@ -372,6 +372,18 @@
 
 ### Fixed
 
+- **Smaller language gaps (#813).** `x = if … elsif … else … end` (and
+  `unless`) is a value, as `try` became one (parser `statement_as_value`;
+  `soli fmt` keeps it as written). In a class body a field given a value needs
+  no type (`static LIMIT = 3`, `count = 0`), and an upper-case `NAME = "k"` is
+  a class constant, as `const NAME` is (`soli fmt` keeps the spelling).
+  `"abc".substring(1)` runs to the end and `substring(-3)` takes the last
+  three characters, as the strings page already said. `from` is a keyword only
+  in `import … from`: it works as a parameter or variable name.
+  `form_with({"url": "/x"})` takes the hash as options. And a bare `clock`
+  inside a method no longer calls the time it read on the VM ("Cannot call
+  non-function value"). Test: `if_as_a_value_untyped_fields_substring_from`.
+
 - **A method's block reaches its `&block` on the VM; `&block` is optional
   (#667).** `Metrics.time("x") do … end` (or any static or instance method
   declaring `tags = {}, &block`) got the block in `tags` on the VM: a

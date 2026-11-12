@@ -67,6 +67,20 @@ end
 print(letter);  # "B"</code></pre>
             </div>
         </section>
+        <p class="text-gray-400 mt-4 mb-3">
+            Used as a value (<code class="text-amber-400">x = if &hellip; end</code>, an argument, a hash value), an <code class="text-amber-400">if</code> or <code class="text-amber-400">unless</code> is worth its taken branch&rsquo;s last expression, or <code class="text-amber-400">nil</code> when no branch ran. Like <code class="text-amber-400">x = try &hellip; end</code>, it runs as a block called on the spot: it reads and assigns the enclosing locals, and a <code class="text-amber-400">return</code> inside it leaves that block only.
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">letter = if grade >= 90
+  "A"
+elsif grade >= 80
+  "B"
+else
+  "C"
+end</code></pre>
+            </div>
+        </div>
     </section>
 
     <section id="section-unless" class="scroll-mt-20 mb-12">

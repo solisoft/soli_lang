@@ -397,6 +397,7 @@ Upload.MAX_BYTES                   # 5000000</code></pre>
                     <li>A parameter or local of the same name wins inside its method.</li>
                     <li>The instance still reads it as <code class="text-orange-400">@MAX_BYTES</code>.</li>
                     <li>A constant cannot be reassigned. <code class="text-orange-400">static const NAME = …</code> declares a class constant only.</li>
+                    <li><code class="text-orange-400">NAME = "k"</code> in a class body &mdash; an upper-case name given a value, with no <code class="text-orange-400">const</code> and no type &mdash; is a class constant too, as in Ruby. A field given its value needs no type annotation either: <code class="text-orange-400">static LIMIT = 3</code>, <code class="text-orange-400">count = 0</code>.</li>
                 </ul>
             </div>
         </section>
