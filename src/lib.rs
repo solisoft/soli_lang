@@ -1017,6 +1017,47 @@ pub fn run_vm(
     run_compiled_on_vm(&module, &script_interpreter())
 }
 
+thread_local! {
+    /// The spec file being run on this thread, for drawing a failing test's
+    /// code frame (see [`take_test_failure_frames`]).
+    static TEST_SOURCES: std::cell::RefCell<Option<error::source_map::SourceSet>> =
+        const { std::cell::RefCell::new(None) };
+    /// `(test name, code frame)` for each failing test of the spec file just
+    /// run on this thread whose error has a location the frame can trust.
+    static TEST_FAILURE_FRAMES: std::cell::RefCell<Vec<(String, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The code frames of the tests that failed in the last
+/// [`run_with_path_and_coverage`] on this thread, keyed by test name — what
+/// `soli test` prints under each failure (#694). The failures' text is the
+/// error's, unchanged; a test whose error has no trustworthy location has no
+/// frame.
+pub fn take_test_failure_frames() -> Vec<(String, String)> {
+    TEST_FAILURE_FRAMES.with(|frames| std::mem::take(&mut *frames.borrow_mut()))
+}
+
+/// Note a failing test's frame, when the error points into a file the frame
+/// can be drawn from, and return the error's text — the failure, unchanged.
+fn note_test_failure_frame(test: &str, error: error::RuntimeError) -> String {
+    let text = error.to_string();
+    let error = SolilangError::Runtime(error);
+    let frame = TEST_SOURCES.with(|sources| {
+        let sources = sources.borrow();
+        let sources = sources.as_ref()?;
+        let diagnostic = error::Diagnostic::from_error(&error, sources);
+        let options = error::render::RenderOptions {
+            color: error::render::stdout_color(),
+        };
+        let frame = error::render::frame(&diagnostic, sources, options);
+        (!frame.trim().is_empty()).then_some(frame)
+    });
+    if let Some(frame) = frame {
+        TEST_FAILURE_FRAMES.with(|frames| frames.borrow_mut().push((test.to_string(), frame)));
+    }
+    text
+}
+
 /// Run a Solilang program with optional coverage tracking.
 ///
 /// `preamble_files` is a list of `(path, source)` pairs that are loaded into the
@@ -1036,6 +1077,8 @@ pub fn run_with_path_and_coverage(
 ) -> (i64, Result<(), SolilangError>) {
     interpreter::builtins::test_dsl::clear_test_suites();
     let _ = interpreter::builtins::assertions::get_and_reset_assertion_count();
+    TEST_FAILURE_FRAMES.with(|frames| frames.borrow_mut().clear());
+    TEST_SOURCES.with(|sources| *sources.borrow_mut() = None);
 
     let result = run_with_path_and_coverage_inner(
         source,
@@ -1047,6 +1090,7 @@ pub fn run_with_path_and_coverage(
     );
 
     let assertion_count = interpreter::builtins::assertions::get_and_reset_assertion_count();
+    TEST_SOURCES.with(|sources| *sources.borrow_mut() = None);
     (assertion_count, result)
 }
 
@@ -1099,6 +1143,10 @@ fn run_with_path_and_coverage_inner(
     if let Some(path) = source_file_path {
         interpreter.set_source_path(path.to_path_buf());
     }
+    TEST_SOURCES.with(|sources| {
+        *sources.borrow_mut() =
+            Some(error::source_map::SourceSet::new(source, source_path).with_program(&program))
+    });
     interpreter.interpret(&program)?;
 
     let (failed_count, failed_tests) = execute_test_suites(&mut interpreter, &test_suites)?;
@@ -1654,7 +1702,7 @@ fn execute_test_suites_in(
                 if test_dsl::take_not_run().is_some() {
                     not_run = true;
                 } else if let Err(error) = result {
-                    failure = Some(error.to_string());
+                    failure = Some(note_test_failure_frame(&test.name, error));
                 }
             }
 

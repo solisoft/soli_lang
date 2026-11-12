@@ -292,3 +292,29 @@ fn json_output_stays_json_when_there_is_nothing_to_read() {
         assert_eq!(json["diagnostics"], serde_json::json!([]), "{command}");
     }
 }
+
+/// #694: `soli test` draws a failing test's code frame under its line.
+#[test]
+fn soli_test_frames_a_failing_assertion() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("tests")).unwrap();
+    std::fs::write(dir.path().join(".env.test"), "SOLIDB_DATABASE=frames\n").unwrap();
+    std::fs::write(
+        dir.path().join("tests/math_spec.sl"),
+        "describe(\"math\") do\n  test(\"adds\") do\n    total = 1 + 1\n    assert_eq(total, 3)\n  end\n\n  test(\"typo\") do\n    x = 2\n    assert_eq(y, 2)\n  end\nend\n",
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["test", "tests", "--no-coverage"])
+        .current_dir(dir.path())
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run soli test");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(text.contains("--> tests/math_spec.sl:4:5"), "{text}");
+    assert!(text.contains("4 |     assert_eq(total, 3)"), "{text}");
+    assert!(text.contains("--> tests/math_spec.sl:9:15"), "{text}");
+    assert!(text.contains("did you mean 'x'?"), "{text}");
+    assert!(text.contains("error[E0301]"), "{text}");
+}

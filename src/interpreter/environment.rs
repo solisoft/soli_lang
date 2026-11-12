@@ -330,6 +330,24 @@ impl Environment {
         }
     }
 
+    /// [`Environment::collect_names`], one list per scope, innermost first —
+    /// for a "did you mean" that prefers a nearer name.
+    pub fn collect_name_scopes(&self, out: &mut Vec<Vec<String>>) {
+        let mut names: Vec<String> = self.values.keys().cloned().collect();
+        names.extend(self.consts.keys().cloned());
+        if let Some(Ok(data)) = self.data_hash.as_ref().map(|d| d.try_borrow()) {
+            for key in data.keys() {
+                if let crate::interpreter::value::HashKey::String(s) = key {
+                    names.push(s.to_string());
+                }
+            }
+        }
+        out.push(names);
+        if let Some(Ok(enclosing)) = self.enclosing.as_ref().map(|e| e.try_borrow()) {
+            enclosing.collect_name_scopes(out);
+        }
+    }
+
     /// Get all variable names in the current scope (for REPL introspection).
     pub fn get_var_names(&self) -> Vec<String> {
         self.values.keys().cloned().collect()

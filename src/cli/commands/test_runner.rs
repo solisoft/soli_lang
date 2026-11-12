@@ -1082,7 +1082,9 @@ pub fn run_test(
         tests_passed: 0,
         tests_failed: 0,
     }));
-    type TestResult = (PathBuf, bool, String, Duration, i64);
+    /// The file, whether it passed, its error, how long, how many
+    /// assertions, and the code frame of each failing test (by test name).
+    type TestResult = (PathBuf, bool, String, Duration, i64, Vec<(String, String)>);
     let all_results_shared: Arc<Mutex<Vec<TestResult>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Per-worker live state for the grid display. Each worker writes only
@@ -1310,10 +1312,12 @@ pub fn run_test(
                         slot.last_status = if passed { '✓' } else { '✗' };
                     }
 
+                    // Drawn on this thread while the file ran (#694).
+                    let frames = solilang::take_test_failure_frames();
                     all_results_shared
                         .lock()
                         .unwrap()
-                        .push((file, passed, error, duration, assertions));
+                        .push((file, passed, error, duration, assertions, frames));
                 }
 
                 // This worker is done: shut its browser down here rather than
@@ -1391,7 +1395,7 @@ pub fn run_test(
     // some filenames are longer than the default 40-char padding.
     let display_rows: Vec<String> = all_results
         .iter()
-        .map(|(path, _, _, _, _)| {
+        .map(|(path, _, _, _, _, _)| {
             let file_name = path.file_name().unwrap_or_default().to_string_lossy();
             match relative_parent(path, &test_dir) {
                 Some(parent) => format!("{}/{}", parent, file_name),
@@ -1407,7 +1411,7 @@ pub fn run_test(
         .max(40);
 
     let mut current_dir: Option<PathBuf> = None;
-    for ((path, passed_test, error, duration, assertions), display_path) in
+    for ((path, passed_test, error, duration, assertions, frames), display_path) in
         all_results.iter().zip(display_rows.iter())
     {
         let parent = path.parent().unwrap_or(path).to_path_buf();
@@ -1447,6 +1451,7 @@ pub fn run_test(
                 if body.starts_with("Test failed:") {
                     let test_info = body.strip_prefix("Test failed:").unwrap().trim();
                     println!("  ┌─ ✗ {}", test_info);
+                    print_failure_frame(frames, test_info, "  │ ");
                     println!("  └─");
                 } else if body.contains("tests failed:") {
                     let parts: Vec<&str> = body.splitn(2, "tests failed:").collect();
@@ -1467,6 +1472,7 @@ pub fn run_test(
                                     println!("  │");
                                     println!("  │  ✗ {}", test_name);
                                     println!("  │     → {}", error_detail);
+                                    print_failure_frame(frames, rest, "  │     ");
                                 } else {
                                     println!("  │  • {}", rest);
                                 }
@@ -2741,6 +2747,25 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
                     tracker.register_executable_lines_from_source(&path, &source);
                 }
             }
+        }
+    }
+}
+
+/// The code frame of the failing test `failure` (`"<test name>: <error>"`)
+/// names, indented under its box line — nothing when the test's error had no
+/// location to draw (#694).
+fn print_failure_frame(frames: &[(String, String)], failure: &str, indent: &str) {
+    let frame = frames
+        .iter()
+        .filter(|(name, _)| {
+            failure
+                .strip_prefix(name.as_str())
+                .is_some_and(|rest| rest.starts_with(": "))
+        })
+        .max_by_key(|(name, _)| name.len());
+    if let Some((_, frame)) = frame {
+        for line in frame.trim_end().lines() {
+            println!("{indent}{line}");
         }
     }
 }

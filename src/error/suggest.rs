@@ -48,11 +48,48 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
     prev[m]
 }
 
+/// Whether `a` and `b` start with a letter of the same case (or neither
+/// with an uppercase one).
+fn same_case_start(a: &str, b: &str) -> bool {
+    let upper = |s: &str| s.chars().next().is_some_and(char::is_uppercase);
+    upper(a) == upper(b)
+}
+
 /// The candidate closest to `target`, if one is close enough to be a
-/// plausible typo. A case-only difference wins outright. Ties go to the
-/// alphabetically first name, so the suggestion does not depend on hash
-/// iteration order. Names starting with `__` are internal and never offered.
+/// plausible typo. A case-only difference wins outright. Ties go to a name
+/// whose first letter is cased like the target's, then to the alphabetically
+/// first, so the suggestion does not depend on hash iteration order. Names
+/// starting with `__` are internal and never offered.
 pub fn best_match<I, S>(target: &str, candidates: I) -> Option<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    closest(target, candidates).map(|(_, name)| name)
+}
+
+/// [`best_match`] over scopes, innermost first: a name of a nearer scope
+/// wins a tie with one further out, so a misspelt `y` next to a local `x`
+/// suggests `x` rather than the global `h` that is just as close.
+pub fn best_match_scoped<T, I, S>(target: &str, scopes: T) -> Option<String>
+where
+    T: IntoIterator<Item = I>,
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut best: Option<(usize, String)> = None;
+    for scope in scopes {
+        if let Some((distance, name)) = closest(target, scope) {
+            if best.as_ref().is_none_or(|(d, _)| distance < *d) {
+                best = Some((distance, name));
+            }
+        }
+    }
+    best.map(|(_, name)| name)
+}
+
+/// The closest candidate and its distance (see [`best_match`]).
+fn closest<I, S>(target: &str, candidates: I) -> Option<(usize, String)>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -78,15 +115,20 @@ where
         if distance > max {
             continue;
         }
+        // On a tie, a name cased like the target first — a local `x` for a
+        // misspelt local `y`, not a constant `V` — then the alphabet.
+        let rank = |name: &str| (!same_case_start(target, name), name.to_string());
         let better = match &best {
             None => true,
-            Some((d, name)) => distance < *d || (distance == *d && candidate < name.as_str()),
+            Some((d, name)) => {
+                distance < *d || (distance == *d && rank(candidate) < rank(name.as_str()))
+            }
         };
         if better {
             best = Some((distance, candidate.to_string()));
         }
     }
-    best.map(|(_, name)| name)
+    best
 }
 
 /// The text appended to an error message for a suggestion: empty when there
@@ -221,6 +263,18 @@ mod tests {
     fn case_difference_wins_and_ties_are_alphabetical() {
         assert_eq!(best_match("user", ["User", "uses"]), Some("User".into()));
         assert_eq!(best_match("cat", ["bat", "hat"]), Some("bat".into()));
+        // A tie goes to the name cased like the target first.
+        assert_eq!(best_match("y", ["V", "x"]), Some("x".into()));
+        assert_eq!(best_match("Y", ["x", "V"]), Some("V".into()));
+    }
+
+    #[test]
+    fn a_nearer_scope_wins_a_tie() {
+        let scopes = vec![vec!["x"], vec!["h", "print"]];
+        assert_eq!(best_match_scoped("y", scopes), Some("x".into()));
+        // A strictly closer name further out still wins.
+        let scopes = vec![vec!["totl"], vec!["total_x", "count"]];
+        assert_eq!(best_match_scoped("count_", scopes), Some("count".into()));
     }
 
     #[test]

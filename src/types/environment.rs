@@ -3297,21 +3297,24 @@ impl TypeEnvironment {
         None
     }
 
-    /// Every name a bare identifier could resolve to here — scopes,
-    /// functions, classes, enums, interfaces, and the members of the class
-    /// being checked. Read by the "did you mean" search only.
-    pub fn visible_names(&self) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        for scope in &self.scopes {
-            out.extend(scope.keys().cloned());
-        }
-        out.extend(self.functions.keys().cloned());
-        out.extend(self.classes.keys().cloned());
-        out.extend(self.enums.keys().cloned());
-        out.extend(self.interfaces.keys().cloned());
+    /// Every name visible here, one list per scope, innermost first (the
+    /// class's members, then the globals last), for a "did you mean" that
+    /// prefers a nearer name.
+    pub fn visible_name_scopes(&self) -> Vec<Vec<String>> {
+        let mut out: Vec<Vec<String>> = self
+            .scopes
+            .iter()
+            .rev()
+            .map(|scope| scope.keys().cloned().collect())
+            .collect();
         if let Some(class) = self.current_class_type() {
-            out.extend(class.member_names());
+            out.push(class.member_names());
         }
+        let mut globals: Vec<String> = self.functions.keys().cloned().collect();
+        globals.extend(self.classes.keys().cloned());
+        globals.extend(self.enums.keys().cloned());
+        globals.extend(self.interfaces.keys().cloned());
+        out.push(globals);
         out
     }
 

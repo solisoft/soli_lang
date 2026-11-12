@@ -4,6 +4,17 @@
 
 ### Added
 
+- **`soli test` draws a code frame under a failing test (#694, phase 5).**
+  A failing test's error is rendered against the spec's source
+  (`note_test_failure_frame`, the `soli run` renderer, so only when the error
+  points into that file) and handed to the runner through a thread-local
+  (`take_test_failure_frames`); the runner prints it under the test's line.
+  The failure text is unchanged. Also: "did you mean" prefers a nearer name
+  on a tie (`suggest::best_match_scoped`, scopes innermost first, in the
+  tree-walker, the checker and `smell/undefined-local`), then a name cased
+  like the target — a misspelt local `y` beside a local `x` suggested the
+  global `h` (or `V`).
+
 - **The dev error page names the error (#694, phase 2).** Its header shows
   the error's class (`NameError`, `ZeroDivisionError`) instead of always
   `RuntimeError`, and its stable code — `error[E0301] undefined-variable`,

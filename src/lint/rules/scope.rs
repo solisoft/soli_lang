@@ -543,8 +543,13 @@ fn check_expr(
             if defined.contains(name) || program.contains(name) || is_likely_global(name) {
                 return;
             }
-            let suggestion =
-                crate::error::suggest::best_match(name, defined.iter().chain(program.iter()));
+            let suggestion = crate::error::suggest::best_match_scoped(
+                name,
+                [
+                    defined.iter().collect::<Vec<_>>(),
+                    program.iter().collect::<Vec<_>>(),
+                ],
+            );
             flag(name, suggestion, expr.span, diagnostics, reported);
         }
         ExprKind::Assign { target, value } => {

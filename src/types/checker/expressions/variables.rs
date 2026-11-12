@@ -50,7 +50,8 @@ impl TypeChecker {
         if self.view && !self.view_callee {
             return Ok(Type::Any);
         }
-        let suggestion = crate::error::suggest::best_match(name, self.env.visible_names());
+        let suggestion =
+            crate::error::suggest::best_match_scoped(name, self.env.visible_name_scopes());
         Err(TypeError::UndefinedVariable(
             name.to_string(),
             span,

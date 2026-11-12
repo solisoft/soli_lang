@@ -37,6 +37,12 @@ src/interpreter/value.rs SERIALIZE_DEPTH
 # reads it, so a note left by one request is overwritten, never misreported.
 src/error/source_map.rs ORIGIN
 
+# A spec file's source and its failing tests' code frames, for `soli test`
+# (#694). Set and cleared by `run_with_path_and_coverage` on the runner thread
+# that runs the file, read by the same thread right after; no server reads it.
+src/lib.rs TEST_SOURCES
+src/lib.rs TEST_FAILURE_FRAMES
+
 # Test harness and the test runner
 src/coverage/tracker.rs CURRENT_COVERAGE
 src/interpreter/builtins/assertions.rs ASSERTION_COUNT

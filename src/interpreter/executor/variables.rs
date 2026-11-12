@@ -178,17 +178,21 @@ impl Interpreter {
         let env = self.environment.clone();
         let name = name.to_string();
         crate::error::Hint::lazy(move || {
-            let mut names = Vec::new();
+            let mut scopes = Vec::new();
             // A message can be formatted anywhere, borrows included: never
             // panic for a hint.
             let Ok(env) = env.try_borrow() else {
                 return None;
             };
-            env.collect_names(&mut names);
+            env.collect_name_scopes(&mut scopes);
+            // The members of `this` sit between the method's locals and the
+            // globals.
             if let Some(Value::Instance(inst)) = env.get("this") {
-                names.extend(inst.borrow().class.instance_member_names());
+                let members = inst.borrow().class.instance_member_names();
+                let at = scopes.len().saturating_sub(1);
+                scopes.insert(at, members);
             }
-            crate::error::suggest::best_match(&name, names)
+            crate::error::suggest::best_match_scoped(&name, scopes)
         })
     }
 }

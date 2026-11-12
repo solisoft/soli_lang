@@ -1310,6 +1310,31 @@ soli test --profile                   # sample the specs; hottest functions on s
   6 018 assertions
   Time: 41.2s</code></pre>
 
+        <p class="text-gray-400 mb-4">Under a failing file, each failed test is listed with its error and, when the error points into the spec, a code frame at the line that failed &mdash; the same frame <code class="text-emerald-300">soli run</code> draws, with the &ldquo;did you mean&rdquo; and the error code:</p>
+
+        <pre data-filename="Failures"><code class="language-text text-sm">  math_spec.sl                                  3ms      1 ✗
+  ┌─ 2 test failures
+  │
+  │  ✗ adds
+  │     → expected 3, got 2 at 4:5
+  │      --&gt; tests/math_spec.sl:4:5
+  │       |
+  │     4 |     assert_eq(total, 3)
+  │       |     ^^^^^^^^^
+  │
+  │  ✗ typo
+  │     → Undefined variable 'y' (did you mean 'x'?) at 9:15 at 1:1
+  │      --&gt; tests/math_spec.sl:9:15
+  │       |
+  │     9 |     assert_eq(y, 2)
+  │       |               ^
+  │       |
+  │       = help: did you mean 'x'?
+  │       = note: error[E0301] undefined-variable — `soli explain E0301`
+  └─</code></pre>
+
+        <p class="text-gray-400 mb-4">The failure text itself is unchanged; a test whose error lies in another file (a model, a controller) keeps the text alone rather than a frame of the wrong file.</p>
+
         <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
             <p class="text-amber-300 text-sm">
                 <strong>Note:</strong> A file that panics outright (rather than failing an assertion) loses its own assertion count, so the summary reports what the per-file tally saw. The test count has no second source &mdash; it is counted as each block ends, so the tests a panicking file ran before it died are still there.

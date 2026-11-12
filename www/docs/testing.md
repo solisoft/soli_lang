@@ -917,6 +917,37 @@ The summary repeats the three, and says which unit each line counts:
 Coverage: 87.5% (1250/1428 lines) ✓
 ```
 
+Under a failing file, each failed test is listed with its error and, when the
+error points into the spec, a code frame at the line that failed — the same
+frame `soli run` draws, with the "did you mean" and the error code:
+
+```
+  math_spec.sl                                  3ms      1 ✗
+  ┌─ 2 test failures
+  │
+  │  ✗ adds
+  │     → expected 3, got 2 at 4:5
+  │      --> tests/math_spec.sl:4:5
+  │       |
+  │     4 |     assert_eq(total, 3)
+  │       |     ^^^^^^^^^
+  │
+  │  ✗ typo
+  │     → Undefined variable 'y' (did you mean 'x'?) at 9:15 at 1:1
+  │      --> tests/math_spec.sl:9:15
+  │       |
+  │     9 |     assert_eq(y, 2)
+  │       |               ^
+  │       |
+  │       = help: did you mean 'x'?
+  │       = note: error[E0301] undefined-variable — `soli explain E0301`
+  └─
+```
+
+The failure text itself is unchanged; a test whose error lies in another file
+(a model, a controller) keeps the text alone rather than a frame of the wrong
+file.
+
 A file that panics outright (rather than failing an assertion) loses its own
 assertion count, so the summary reports what the per-file tally saw. The test
 count has no second source — it is counted as each block ends, so the tests a
