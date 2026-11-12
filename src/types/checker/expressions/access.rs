@@ -55,6 +55,10 @@ impl TypeChecker {
         name: &str,
         called_with_args: bool,
     ) -> TypeResult<Type> {
+        // `@title` in a view: a value the controller set, unknown here.
+        if self.view && matches!(object.kind, ExprKind::This) {
+            return Ok(Type::Any);
+        }
         let obj_type = self.check_expr(object)?;
         self.member_of_type(span, object, obj_type, name, called_with_args)
     }

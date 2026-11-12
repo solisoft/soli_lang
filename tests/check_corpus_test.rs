@@ -36,8 +36,14 @@ fn check_corpus(label: &str, root: &Path, out: &mut BTreeMap<String, Vec<String>
     let project = solilang::check::project(&targets);
     let files = solilang::check::source_files(root);
     assert!(!files.is_empty(), "{label}: no .sl file under {root:?}");
-    for file in files {
-        let report = solilang::check::check_file(&file, &project, None).expect("read corpus file");
+    let views = solilang::check::view_files(root);
+    for file in files.into_iter().chain(views) {
+        let report = if file.extension().and_then(|e| e.to_str()) == Some("slv") {
+            solilang::check::check_view(&file, &project, None)
+        } else {
+            solilang::check::check_file(&file, &project, None)
+        }
+        .expect("read corpus file");
         let rel = file.strip_prefix(root).unwrap_or(&file);
         let key = format!("{label}/{}", rel.display());
         out.insert(key, report.errors.iter().map(|e| e.to_string()).collect());

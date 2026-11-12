@@ -60,6 +60,13 @@ pub struct Project {
     pub job_classes: Vec<String>,
     /// `level` under `[check]` in the application's `soli.toml`.
     pub level: Option<Level>,
+    /// What views see on top: the `def`s of `app/helpers/` and the classes
+    /// of `app/components/`, which the template engine loads.
+    pub view_declarations: Vec<crate::ast::Stmt>,
+    /// The top-level `def`s of `app/controllers/`: function-style actions,
+    /// which a view does not call — a bare `docs_og` there is a local the
+    /// action passed, not the action of that name.
+    pub controller_functions: HashSet<String>,
 }
 
 /// How much `soli check` reports for a file.
@@ -167,6 +174,7 @@ pub fn project(targets: &[PathBuf]) -> Project {
     let mut declarations: Vec<crate::ast::Stmt> = Vec::new();
     let mut seen_files: HashSet<PathBuf> = HashSet::new();
     let mut job_classes: Vec<String> = Vec::new();
+    let mut controller_functions: HashSet<String> = HashSet::new();
     for target in &roots {
         for dir in crate::AUTOLOADED_DIRS {
             let dir = target.join(dir);
@@ -188,6 +196,13 @@ pub fn project(targets: &[PathBuf]) -> Project {
                     continue;
                 };
                 crate::lint::rules::scope::collect_program_names(&program.statements, &mut names);
+                if dir.ends_with("app/controllers") {
+                    for stmt in &program.statements {
+                        if let StmtKind::Function(decl) = &stmt.kind {
+                            controller_functions.insert(decl.name.clone());
+                        }
+                    }
+                }
                 declarations.extend(program.statements.into_iter().filter(|stmt| {
                     matches!(
                         stmt.kind,
@@ -221,11 +236,36 @@ pub fn project(targets: &[PathBuf]) -> Project {
     let mut names: Vec<String> = names.into_iter().collect();
     names.sort();
     let level = roots.iter().find_map(|root| configured_level(root));
+    let mut view_declarations = Vec::new();
+    for root in &roots {
+        for path in source_files(&root.join("app/helpers")) {
+            if let Some(program) = parse_file(&path) {
+                view_declarations.extend(
+                    program
+                        .statements
+                        .into_iter()
+                        .filter(|stmt| matches!(stmt.kind, StmtKind::Function(_))),
+                );
+            }
+        }
+        for path in source_files(&root.join("app/components")) {
+            if let Some(program) = parse_file(&path) {
+                view_declarations.extend(
+                    program
+                        .statements
+                        .into_iter()
+                        .filter(|stmt| matches!(stmt.kind, StmtKind::Class(_))),
+                );
+            }
+        }
+    }
     Project {
         names,
         declarations,
         job_classes,
         level,
+        view_declarations,
+        controller_functions,
     }
 }
 
@@ -277,14 +317,107 @@ pub fn check_file(
 ) -> std::io::Result<crate::CheckReport> {
     let source = std::fs::read_to_string(file)?;
     let ambient = file_ambient(file, &project.names);
+    // A spec reaches the view helpers too: a helper spec calls them.
+    let with_helpers: Vec<crate::ast::Stmt>;
+    let declarations = if crate::is_test_path(file) {
+        with_helpers = project
+            .declarations
+            .iter()
+            .chain(&project.view_declarations)
+            .cloned()
+            .collect();
+        &with_helpers
+    } else {
+        &project.declarations
+    };
     let scope = crate::CheckScope {
         ambient: &ambient,
-        declarations: &project.declarations,
+        declarations,
         job_classes: &project.job_classes,
         level: level.or(project.level),
+        view: false,
     };
     Ok(crate::type_check_report_in_project(
         &source,
+        Some(file),
+        &scope,
+    ))
+}
+
+/// The `.slv` views under `target` (or `target` itself), sorted.
+pub fn view_files(target: &Path) -> Vec<PathBuf> {
+    if target.is_file() {
+        return if target.extension().and_then(|e| e.to_str()) == Some("slv") {
+            vec![target.to_path_buf()]
+        } else {
+            Vec::new()
+        };
+    }
+    let mut files = Vec::new();
+    collect_ext(target, "slv", &mut files);
+    files.sort();
+    files
+}
+
+fn collect_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.starts_with('.') && !name.starts_with('_') {
+                collect_ext(&path, ext, out);
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+            out.push(path);
+        }
+    }
+}
+
+/// Read and check one `.slv` view: the Soli code of its tags, as one program
+/// with the template's line numbers, against the project, the view helpers,
+/// `app/helpers/` and `app/components/` (see `TypeChecker::check_as_view`).
+pub fn check_view(
+    file: &Path,
+    project: &Project,
+    level: Option<Level>,
+) -> std::io::Result<crate::CheckReport> {
+    let template = std::fs::read_to_string(file)?;
+    let code = match crate::template::parser::extract_lintable_code(&template) {
+        Ok(code) => code,
+        Err(message) => {
+            let line = crate::template::parser::error_line(&message).unwrap_or(1);
+            let span = crate::span::Span::new(0, 0, line, 1);
+            return Ok(crate::CheckReport {
+                errors: vec![crate::error::ParserError::general(message, span).into()],
+                warnings: Vec::new(),
+                sources: crate::error::source_map::SourceSet::new(&template, Some(file)),
+            });
+        }
+    };
+    let mut declarations: Vec<crate::ast::Stmt> = project
+        .declarations
+        .iter()
+        .filter(|stmt| match &stmt.kind {
+            crate::ast::stmt::StmtKind::Function(decl) => {
+                !project.controller_functions.contains(&decl.name)
+            }
+            _ => true,
+        })
+        .cloned()
+        .collect();
+    declarations.extend(project.view_declarations.iter().cloned());
+    let scope = crate::CheckScope {
+        ambient: &project.names,
+        declarations: &declarations,
+        job_classes: &project.job_classes,
+        level: level.or(project.level),
+        view: true,
+    };
+    Ok(crate::type_check_report_in_project(
+        &code,
         Some(file),
         &scope,
     ))

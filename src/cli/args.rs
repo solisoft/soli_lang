@@ -297,6 +297,8 @@ pub enum Command {
         json: bool,
         /// `--level off|loose|standard|strict`; a file's `# soli:` line wins.
         level: Option<solilang::check::Level>,
+        /// Check the `.slv` views under the targets too (`--no-views` skips them).
+        views: bool,
     },
     /// `soli explain [code]` — what an error code or a lint rule means.
     Explain {
@@ -721,7 +723,7 @@ pub fn print_usage() {
     eprintln!("       soli worker [folder] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--require-assertions] [--watch] [--browser] [--headed] [--profile]");
     eprintln!("       soli lint [paths...]");
-    eprintln!("       soli check [--level off|loose|standard|strict] [paths...]");
+    eprintln!("       soli check [--level off|loose|standard|strict] [--no-views] [paths...]");
     eprintln!("       soli lsp");
     eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone] [--target PLATFORM]");
     eprintln!("  soli build <script.sl> [-o <file>] [--thin] [--target PLATFORM] [--vm|--tree]");
@@ -2385,11 +2387,13 @@ pub fn parse_args() -> Options {
                 let mut paths: Vec<String> = Vec::new();
                 let mut json = false;
                 let mut level = None;
+                let mut views = true;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--format" | "--format=json" | "--format=text" => {
                             json = parse_output_format(&args, &mut i, "check");
                         }
+                        "--no-views" => views = false,
                         arg if arg == "--level" || arg.starts_with("--level=") => {
                             let value = match arg.strip_prefix("--level=") {
                                 Some(value) => value.to_string(),
@@ -2415,7 +2419,12 @@ pub fn parse_args() -> Options {
                     }
                     i += 1;
                 }
-                options.command = Command::Check { paths, json, level };
+                options.command = Command::Check {
+                    paths,
+                    json,
+                    level,
+                    views,
+                };
                 return options;
             }
             "explain" => {

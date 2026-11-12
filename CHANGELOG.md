@@ -2,17 +2,22 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- **An empty `else` (or `then`, `unless`) branch inside a `def`, a `for` or a
-  block no longer swallows the block's `end`.** `parse_branch_body` consumed
-  the `end` of an empty indentation-style branch and its caller then took a
-  second one, so `def f(r) / if r / … / else / end / end` failed with
-  "expected end". In a view the same thing broke `soli lint`/`soli check`'s
-  reading of any `<% else %>` followed by markup only. The legacy `if c end
-  else …` form is kept.
-
 ### Added
+
+- **`soli check` reads the views (#693).** Every `.slv` under the targets
+  (`--no-views` skips them; a view named outright is always checked):
+  `check::check_view` checks the code of its tags as one program
+  (`template::parser::extract_lintable_code`, line numbers kept) with
+  `TypeChecker::check_as_view` — the template helpers
+  (`runtime_globals::view_globals`, derived from the template engine's
+  registration), the `def`s of `app/helpers/` and the classes of
+  `app/components/` (`Project::view_declarations`), the project; `@x` and a
+  bare name read are open (a controller value, a passed local), a name
+  called must exist. Controllers' top-level `def`s are not view helpers
+  (`Project::controller_functions`). Specs see the helpers too. In any
+  application file an undefined `*_path`/`*_url` is a route helper. The
+  in-repo corpus test now covers the views; www's 199 and the ~2,500 views of
+  fifteen sibling applications report nothing.
 
 - **User generics: `class Box<T>`, `def first<T>`, `Box<Int>` (#693, phase
   5).** Type parameters follow a class or `def` name when the brackets close
@@ -27,21 +32,6 @@
   union), or from an annotation, substitutes them into members and
   signatures, and keeps an unbound one open (`Type::Param`, as `Any`).
   `soli fmt` prints `<T>` back; the tree-sitter grammar gains `def f<T>`.
-
-### Changed
-
-- **A bare `Klass.new` builds an instance (#655, #693 phase 6).** Read
-  without parentheses on a capitalised or qualified name, `Post.new` /
-  `Billing::Invoice.new` is now `Post.new()` on both engines
-  (`Expr::is_bare_class_new`: the tree-walker evaluates it as the call, the
-  VM compiles it as one), and `soli check` types it as an instance. It was
-  the native constructor, uncalled, so `Feed.new.build` failed at run time
-  while the checker let it through. No code in the repository or the sibling
-  applications read the bare function; a class's own `static def new` is
-  still what runs. The `Klass.new()` exception to the no-`()` style rule is
-  gone from CLAUDE.md, the generated app's CLAUDE.md and the docs.
-
-### Added
 
 - **Union types: `Int | String | nil` (#693, phase 4).** `TypeKind::Union`
   in the AST, parsed by `parse_union_type` for members joined by `|` on the
@@ -118,6 +108,29 @@
   stale `src/`), runs `tree-sitter test`, compiles the queries and runs
   `script/corpus.sh` (95% minimum). Editor setups (Neovim, Helix, Zed) in the
   grammar's README; not yet submitted to their registries.
+
+### Changed
+
+- **A bare `Klass.new` builds an instance (#655, #693 phase 6).** Read
+  without parentheses on a capitalised or qualified name, `Post.new` /
+  `Billing::Invoice.new` is now `Post.new()` on both engines
+  (`Expr::is_bare_class_new`: the tree-walker evaluates it as the call, the
+  VM compiles it as one), and `soli check` types it as an instance. It was
+  the native constructor, uncalled, so `Feed.new.build` failed at run time
+  while the checker let it through. No code in the repository or the sibling
+  applications read the bare function; a class's own `static def new` is
+  still what runs. The `Klass.new()` exception to the no-`()` style rule is
+  gone from CLAUDE.md, the generated app's CLAUDE.md and the docs.
+
+### Fixed
+
+- **An empty `else` (or `then`, `unless`) branch inside a `def`, a `for` or a
+  block no longer swallows the block's `end`.** `parse_branch_body` consumed
+  the `end` of an empty indentation-style branch and its caller then took a
+  second one, so `def f(r) / if r / … / else / end / end` failed with
+  "expected end". In a view the same thing broke `soli lint`/`soli check`'s
+  reading of any `<% else %>` followed by markup only. The legacy `if c end
+  else …` form is kept.
 
 ## [2.35.0] - 2026-11-11
 

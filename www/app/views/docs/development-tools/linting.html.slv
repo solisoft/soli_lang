@@ -521,6 +521,20 @@ end</code></pre>
             </ul>
             <p class="text-gray-400 mt-3">At <code class="text-cyan-400">strict</code>, a <code class="text-cyan-400">&amp;block</code> parameter and a constructor's return need no type, and a <code class="text-cyan-400">def</code> that returns nothing says <code class="text-cyan-400">-&gt; Void</code>.</p>
 
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">Views</h3>
+            <p class="text-gray-400">
+                <code class="text-cyan-400">soli check</code> reads the <code class="text-cyan-400">.slv</code> views too (<code class="text-cyan-400">--no-views</code> leaves them out; a view named on the command line is always checked). The code of a view's tags is checked as one program, with the template's line numbers, against what a rendering sees: the view helpers (<code class="text-cyan-400">h</code>, <code class="text-cyan-400">t</code>, <code class="text-cyan-400">link_to</code>, <code class="text-cyan-400">partial</code>, <code class="text-cyan-400">form_with</code>, <code class="text-cyan-400">public_path</code>&hellip;), the <code class="text-cyan-400">def</code>s of <code class="text-cyan-400">app/helpers/</code>, the classes of <code class="text-cyan-400">app/components/</code>, and the application's models and services.
+            </p>
+            <pre class="bg-black/40 rounded-lg p-4 mt-3 overflow-x-auto"><code class="language-erb text-sm">&lt;%= monye(post.cents) %&gt;        &lt;%# Undefined variable 'monye' (did you mean 'money'?) %&gt;
+&lt;%= money(post.cents, "EUR") %&gt; &lt;%# Wrong number of arguments: expected 1, got 2 %&gt;
+&lt;%= Invoice.new.totl %&gt;         &lt;%# Cannot access member 'totl' on type 'Invoice' %&gt;</code></pre>
+            <p class="text-gray-400 mt-3">
+                What a view cannot know is left open: <code class="text-cyan-400">@title</code> is whatever the controller set, and a bare name it reads &mdash; <code class="text-cyan-400">post</code>, <code class="text-cyan-400">items</code> &mdash; may be a local the caller passed (a partial's, a component's), so neither is an error. A name it <em>calls</em> must exist somewhere. A controller's own top-level <code class="text-cyan-400">def</code>s (function-style actions) are not view helpers and are not seen. Two tags on one source line are read one line apart, so an error after them may be reported a line low.
+            </p>
+            <p class="text-gray-400 mt-3">
+                In any file of an application, an undefined <code class="text-cyan-400">*_path</code> or <code class="text-cyan-400">*_url</code> is a route helper (<code class="text-cyan-400">post_path(@post)</code>, <code class="text-cyan-400">posts_url()</code>): the router names them when <code class="text-cyan-400">config/routes.sl</code> runs, which the checker does not do.
+            </p>
+
             <h3 class="text-lg font-semibold text-white mt-8 mb-3">What else a file sees, by where it lives</h3>
             <ul class="mt-3 space-y-2 text-gray-400 list-disc list-inside">
                 <li>A file of <code class="text-cyan-400">app/helpers/</code> does <strong class="text-white">not</strong> get the view-only helpers (<code class="text-cyan-400">datetime_format</code>, <code class="text-cyan-400">substring</code>, <code class="text-cyan-400">t</code>, <code class="text-cyan-400">paginate</code>&hellip;): a helper runs in the application&rsquo;s environment, where calling one is a 500 (&ldquo;Cannot call non-function value&rdquo;), so <code class="text-cyan-400">soli check</code> reports it. Use the methods &mdash; <code class="text-cyan-400">DateTime.from_unix(ts).format("%Y")</code>, <code class="text-cyan-400">text.substring(0, 3)</code>.</li>

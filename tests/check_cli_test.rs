@@ -372,3 +372,60 @@ fn a_script_honours_its_own_line() {
     assert!(!run(source));
     assert!(run(&format!("# soli: off\n{source}")));
 }
+
+// The views (#693): their tags' code is checked as one program, against the
+// view helpers, `app/helpers/` and the project.
+
+fn app_with_view(view: &str) -> tempfile::TempDir {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/models/invoice.sl",
+        "class Invoice\n  def total -> Int\n    1\n  end\nend\n",
+    );
+    write(
+        dir.path(),
+        "app/helpers/money_helper.sl",
+        "def money(cents)\n  \"$#{cents}\"\nend\n",
+    );
+    write(dir.path(), "app/views/posts/index.html.slv", view);
+    dir
+}
+
+#[test]
+fn a_view_is_checked_with_its_helpers_and_locals() {
+    let dir = app_with_view(
+        "<h1><%= @title %></h1>\n<% for post in @posts %>\n<a href=\"<%= post_path(post) %>\"><%= h(post.title) %></a>\n<%= money(post.cents) %>\n<%= item %>\n<% if post.draft %>\n<% else %>\n<% end %>\n<% end %>\n<% page_url = \"/x\" %>\n<%= public_path(\"a.js\") %>\n<%= partial(\"posts/row\", {\"post\": 1}) %>\n<%= Invoice.new.total %>\n",
+    );
+    let (ok, text) = check(dir.path(), ".");
+    assert!(ok, "{text}");
+    assert!(text.contains("Checked 7 file(s)"), "{text}");
+}
+
+#[test]
+fn a_view_reports_a_misspelt_helper_a_wrong_arity_and_an_unknown_member() {
+    let dir = app_with_view("<%= monye(1) %>\n<%= money(1, 2) %>\n<%= Invoice.new.totl %>\n");
+    let (ok, text) = check(dir.path(), ".");
+    assert!(!ok, "{text}");
+    assert!(text.contains("Undefined variable 'monye'"), "{text}");
+    assert!(text.contains("expected 1, got 2"), "{text}");
+    assert!(text.contains("'totl' on type 'Invoice'"), "{text}");
+    // A view named outright is checked too.
+    let (ok, _) = check(dir.path(), "app/views/posts/index.html.slv");
+    assert!(!ok);
+    // `--no-views` leaves them out.
+    let (ok, text) = check_with(dir.path(), &["--no-views", "."]);
+    assert!(ok, "{text}");
+}
+
+#[test]
+fn a_route_helper_is_known_in_an_application() {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/controllers/links_controller.sl",
+        "class LinksController < Controller\n  # GET /links\n  def index(req)\n    @back = posts_url()\n    redirect(post_path(1))\n  end\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app");
+    assert!(ok, "{text}");
+}

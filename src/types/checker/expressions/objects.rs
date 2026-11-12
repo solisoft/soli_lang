@@ -161,6 +161,23 @@ impl TypeChecker {
     ) -> TypeResult<Type> {
         let value_type = self.check_expr(value)?;
 
+        // In a view, `@title = …` sets a template value and `page_url = …` a
+        // template local, whatever a global of that name is.
+        if self.view {
+            match &target.kind {
+                ExprKind::Member { object, .. } if matches!(object.kind, ExprKind::This) => {
+                    return Ok(value_type);
+                }
+                ExprKind::Variable(name)
+                    if matches!(self.env.get(name), Some(Type::Function { .. })) =>
+                {
+                    self.env.define(name.clone(), value_type.clone());
+                    return Ok(value_type);
+                }
+                _ => {}
+            }
+        }
+
         // Auto-define: if target is an undefined variable, define it with the RHS type
         if let ExprKind::Variable(name) = &target.kind {
             // A name the checker knows only as a function the runtime does not

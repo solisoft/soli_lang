@@ -875,6 +875,8 @@ pub struct CheckScope<'a> {
     /// `soli check --level`, or else `[check] level` in `soli.toml`. A
     /// `# soli: <level>` line at the top of the file wins over both.
     pub level: Option<check::Level>,
+    /// A view's code, checked as one (`TypeChecker::check_as_view`).
+    pub view: bool,
 }
 
 /// [`type_check_report`], against a whole [`CheckScope`].
@@ -936,6 +938,9 @@ fn type_check_program(
     }
     if source_path.is_some_and(is_migration_path) {
         checker.declare_migration_scope();
+    }
+    if scope.view {
+        checker.check_as_view();
     }
     if level == check::Level::Strict {
         checker.require_annotations();

@@ -32,6 +32,14 @@ pub struct TypeChecker {
     /// The `strict` level: every parameter and return type must be written
     /// (see [`TypeChecker::require_annotations`]).
     pub(crate) strict: bool,
+    /// An application's file: an undefined `*_path` / `*_url` is a route
+    /// helper (see [`TypeChecker::declare_request_scope`]).
+    pub(crate) route_helpers: bool,
+    /// A `.slv` view's code (see [`TypeChecker::check_as_view`]).
+    pub(crate) view: bool,
+    /// Set while the callee of a call is resolved, so a view's unknown name
+    /// is an error only there.
+    pub(crate) view_callee: bool,
 }
 
 impl TypeChecker {
@@ -48,6 +56,9 @@ impl TypeChecker {
             function_arities: std::collections::HashMap::new(),
             job_classes: std::collections::HashSet::new(),
             strict: false,
+            route_helpers: false,
+            view: false,
+            view_callee: false,
         }
     }
 
@@ -74,6 +85,21 @@ impl TypeChecker {
         for name in names {
             self.env
                 .define_function(name.as_ref().to_string(), Type::Any);
+        }
+    }
+
+    /// Check a `.slv` view's code (`template::parser::extract_lintable_code`)
+    /// as it runs: with the view helpers (`h`, `t`, `link_to`, `partial`, the
+    /// form builder…), `@title` read as a value the controller set, and a
+    /// bare unknown name as a local the caller passed. A call to a name that
+    /// exists nowhere — a misspelt helper — is still an error, and so is
+    /// anything wrong about what the view does declare.
+    pub fn check_as_view(&mut self) {
+        self.view = true;
+        // The template engine's helpers win over a project name: they are
+        // what a view's `public_path(…)` reaches.
+        for name in crate::types::runtime_globals::view_globals() {
+            self.env.define_function(name.clone(), Type::Any);
         }
     }
 
@@ -162,6 +188,7 @@ impl TypeChecker {
     /// controller, a helper, a middleware and a job are that file; a loose
     /// script is not, and still gets `Undefined variable 'render'`.
     pub fn declare_request_scope(&mut self) {
+        self.route_helpers = true;
         for name in crate::types::runtime_globals::request_scope_globals() {
             if self.env.get(name).is_none() {
                 self.env.define((*name).to_string(), Type::Any);

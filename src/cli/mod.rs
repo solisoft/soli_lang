@@ -179,9 +179,12 @@ pub fn run() {
             json,
             frames,
         } => commands::run_lint(paths, output_format(*json), *frames),
-        Command::Check { paths, json, level } => {
-            commands::run_check(paths, output_format(*json), *level)
-        }
+        Command::Check {
+            paths,
+            json,
+            level,
+            views,
+        } => commands::run_check(paths, output_format(*json), *level, *views),
         Command::Explain { query } => commands::run_explain(query.as_deref()),
         Command::Fmt {
             paths,

@@ -241,6 +241,49 @@ pub fn test_dsl_globals() -> &'static [String] {
     })
 }
 
+/// What a view sees beyond a served application's globals: the template
+/// helpers (`h`, `t`, `link_to`, `partial`, `content_for?`, `datetime_format`…)
+/// and the form builder. Derived from the registration functions the
+/// template engine calls, like everything else here.
+pub fn view_globals() -> &'static [String] {
+    static NAMES: OnceLock<Vec<String>> = OnceLock::new();
+    NAMES.get_or_init(|| {
+        use crate::interpreter::environment::Environment;
+        let served: std::collections::HashSet<String> =
+            registered(false).into_iter().map(|(n, _)| n).collect();
+        let mut env = Environment::with_builtins_capacity();
+        crate::interpreter::builtins::template::register_template_builtins(&mut env);
+        crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
+        let env = std::rc::Rc::new(std::cell::RefCell::new(env));
+        let _ = crate::interpreter::builtins::template::register_form_builder(&env);
+        let mut names: Vec<String> = env
+            .borrow()
+            .get_all_bindings()
+            .into_keys()
+            .filter(|n| !served.contains(n))
+            .collect();
+        // Engine words the template parser turns into nodes, and what
+        // `yield` / `component` blocks bind.
+        names.extend(
+            [
+                "yield",
+                "content_for",
+                "component",
+                "partial",
+                "render",
+                "slot",
+                // Bound by LiveView into a live template's data.
+                "live_component",
+            ]
+            .iter()
+            .map(|n| n.to_string()),
+        );
+        names.sort();
+        names.dedup();
+        names
+    })
+}
+
 /// What each of [`SOLI_PRELUDES`] declares at the top level, in the same
 /// order.
 ///

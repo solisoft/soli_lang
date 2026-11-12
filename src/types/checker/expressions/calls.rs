@@ -52,7 +52,12 @@ impl TypeChecker {
         // expression decides — see `xml::xml_query_type`.
         let mut query_receiver = None;
         let callee_type = match &callee.kind {
-            ExprKind::Variable(name) => self.check_variable(name, callee.span)?,
+            ExprKind::Variable(name) => {
+                self.view_callee = true;
+                let callee_type = self.check_variable(name, callee.span);
+                self.view_callee = false;
+                callee_type?
+            }
             ExprKind::Member { object, name } | ExprKind::SafeMember { object, name }
                 if !arguments.is_empty() && super::xml::is_query_method(name) =>
             {

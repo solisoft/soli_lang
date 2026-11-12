@@ -11,6 +11,15 @@ impl TypeChecker {
     /// Check variable expression.
     pub(crate) fn check_variable(&mut self, name: &str, span: Span) -> TypeResult<Type> {
         if let Some(ty) = self.env.get(name) {
+            // In a view, a bare read of a function that takes arguments is a
+            // local the caller passed under that name (`items`, `docs_og`):
+            // read bare, the function would fail for want of them.
+            if self.view
+                && !self.view_callee
+                && matches!(&ty, Type::Function { params, .. } if !params.is_empty())
+            {
+                return Ok(Type::Any);
+            }
             return Ok(ty);
         }
         // Inside an instance method, a bare name that is no variable or function
@@ -29,6 +38,17 @@ impl TypeChecker {
                     return Ok(Type::Any);
                 }
             }
+        }
+        // `post_path(@post)`, `mcp_url()`: a route helper. The router names
+        // them when `config/routes.sl` runs, which the checker does not do.
+        if self.route_helpers && (name.ends_with("_path") || name.ends_with("_url")) {
+            return Ok(Type::Any);
+        }
+        // In a view, a bare name read is a local the caller passed — a
+        // partial's, a component's — and unknown here. A name *called* must
+        // still exist (`view_callee`).
+        if self.view && !self.view_callee {
+            return Ok(Type::Any);
         }
         let suggestion = crate::error::suggest::best_match(name, self.env.visible_names());
         Err(TypeError::UndefinedVariable(

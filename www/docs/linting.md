@@ -435,6 +435,33 @@ end
 At `strict`, a `&block` parameter and a constructor's return need no type, and
 a `def` that returns nothing says `-> Void`.
 
+### Views
+
+`soli check` reads the `.slv` views too (`--no-views` leaves them out; a view
+named on the command line is always checked). The code of a view's tags is
+checked as one program, with the template's line numbers, against what a
+rendering sees: the view helpers (`h`, `t`, `link_to`, `partial`,
+`form_with`, `public_path`…), the `def`s of `app/helpers/`, the classes of
+`app/components/`, and the application's models and services.
+
+```erb
+<%= monye(post.cents) %>        <%# Undefined variable 'monye' (did you mean 'money'?) %>
+<%= money(post.cents, "EUR") %> <%# Wrong number of arguments: expected 1, got 2 %>
+<%= Invoice.new.totl %>         <%# Cannot access member 'totl' on type 'Invoice' %>
+```
+
+What a view cannot know is left open: `@title` is whatever the controller
+set, and a bare name it reads — `post`, `items` — may be a local the caller
+passed (a partial's, a component's), so neither is an error. A name it
+*calls* must exist somewhere. A controller's own top-level `def`s
+(function-style actions) are not view helpers and are not seen. Two tags on
+one source line are read one line apart, so an error after them may be
+reported a line low.
+
+In any file of an application, an undefined `*_path` or `*_url` is a route
+helper (`post_path(@post)`, `posts_url()`): the router names them when
+`config/routes.sl` runs, which the checker does not do.
+
 ### What else a file sees, by where it lives
 
 The checker gives a file the names the runtime gives it:

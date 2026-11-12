@@ -1506,7 +1506,12 @@ fn diagnostic_json(
     json
 }
 
-pub fn run_check(paths: &[String], format: OutputFormat, level: Option<solilang::check::Level>) {
+pub fn run_check(
+    paths: &[String],
+    format: OutputFormat,
+    level: Option<solilang::check::Level>,
+    views: bool,
+) {
     let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         vec![cwd]
@@ -1520,8 +1525,16 @@ pub fn run_check(paths: &[String], format: OutputFormat, level: Option<solilang:
             eprintln!("Error: Path '{}' does not exist", t.display());
             process::exit(1);
         }
-        // Type-check Soli programs only (skip .slv templates).
-        files.extend(solilang::check::source_files(t));
+        // Soli programs, and with `--views` (or a view named outright) the
+        // `.slv` templates' code.
+        if t.is_file() {
+            files.push(t.clone());
+        } else {
+            files.extend(solilang::check::source_files(t));
+            if views {
+                files.extend(solilang::check::view_files(t));
+            }
+        }
     }
 
     if files.is_empty() {
@@ -1564,7 +1577,13 @@ pub fn run_check(paths: &[String], format: OutputFormat, level: Option<solilang:
     };
 
     for file in &files {
-        let report = match solilang::check::check_file(file, &project, level) {
+        let is_view = file.extension().and_then(|e| e.to_str()) == Some("slv");
+        let checked = if is_view {
+            solilang::check::check_view(file, &project, level)
+        } else {
+            solilang::check::check_file(file, &project, level)
+        };
+        let report = match checked {
             Ok(report) => report,
             Err(e) => {
                 eprintln!("{}: error reading file: {}", file.display(), e);
