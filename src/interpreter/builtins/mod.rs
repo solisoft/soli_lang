@@ -31,11 +31,11 @@ pub fn current_action_name() -> String {
 }
 
 /// Zero-argument builtins whose bare name means their value, on both engines:
-/// `clock - start` reads the time like `clock() - start`. The tree-walker
-/// calls any zero-argument function read by name; the VM passes a bare
-/// function as a value, so it calls these by name only, and the type checker
-/// gives them their return type. A program that defines its own `clock` keeps
-/// it as written.
+/// `clock - start` reads the time like `clock() - start`. Both engines call a
+/// zero-argument def or helper read by name (the VM through `AutoInvoke` /
+/// `SelfOrGlobal`); a builtin is listed here so the compiler emits the call
+/// directly and the type checker gives it its return type. A program that
+/// defines its own `clock` keeps it as written.
 pub const BARE_CALL_BUILTINS: &[&str] = &["clock"];
 
 /// Whether a bare read of `name` (no local of that name) calls the builtin.

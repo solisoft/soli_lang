@@ -144,10 +144,17 @@ impl Compiler {
             }
         }
 
-        // Compile class statements (validates, before_save, etc.)
-        for stmt in &decl.class_statements {
-            self.emit(Op::Dup, line);
-            self.compile_stmt(stmt)?;
+        // A model's class-level calls (`belongs_to("user")`, `validates`,
+        // `state_machine`…) take the class as their first argument and some
+        // run blocks with the interpreter (`execute_class_level_calls`): this
+        // compiler called them bare ("Expected class as first argument",
+        // #631). Such a class is declared by the tree-walker, as under
+        // `soli serve`.
+        if !decl.class_statements.is_empty() {
+            return Err(crate::error::CompileError::new(
+                "class-level calls (belongs_to, validates, …) are declared by the interpreter",
+                crate::span::Span::new(0, 0, line, 0),
+            ));
         }
 
         // Compile nested classes: each is stored on its parent

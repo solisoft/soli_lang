@@ -3683,7 +3683,17 @@ impl Vm {
                             // wants an integer index, and saying otherwise sends
                             // the reader hunting for the wrong bug.
                             let receiver = other.clone();
-                            if is_lazy(&receiver) {
+                            // `current_user["k"]`: a zero-argument def or
+                            // helper read bare is called, as everywhere else
+                            // a bare name is read (#631) — it reached here
+                            // as the function itself.
+                            let receiver = if auto_invocable(&receiver) {
+                                let span = self.current_span();
+                                self.invoke_callable(receiver, &[], span)?
+                            } else {
+                                receiver
+                            };
+                            if is_lazy(&receiver) || matches!(receiver, Value::Hash(_)) {
                                 let value = self.hash_get_const_on(&receiver, key)?;
                                 self.push(value);
                                 continue;

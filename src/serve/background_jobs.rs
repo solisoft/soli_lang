@@ -235,6 +235,11 @@ fn build_job_interpreter(id: usize, interpreter: &mut Interpreter, config: &Pool
             );
         }
     }
+    // A restarted worker (a panic escaped the loop) keeps its thread-local
+    // template env, built with the previous run's helper env: drop it, as
+    // `worker_loop` does, so a mailer view reads the helpers just loaded
+    // (#631).
+    crate::template::core_eval::reset_builtins_rc();
     template::set_dev_mode(config.dev_mode);
 
     // Mailer/Message/__MailDelivery base classes (used by `deliver_later` jobs).

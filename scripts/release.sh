@@ -20,8 +20,9 @@ if [[ -z "$BUMP_TYPE" || ! "$BUMP_TYPE" =~ ^(major|minor|patch)$ ]]; then
   exit 1
 fi
 
-# Ensure clean working tree
-if [ -n "$(git status --porcelain)" ]; then
+# Ensure clean working tree. Untracked files (a local config.toml) are not
+# part of the release and are left alone.
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "Error: working tree is not clean. Commit or stash changes first."
   exit 1
 fi
@@ -75,26 +76,28 @@ path.write_text(updated)
 print(f"Cargo.toml -> {new}")
 PY
 
-# Update Cargo.lock package version for solilang
-cargo check --quiet 2>/dev/null || true
-
-# edge/ is a crate of its own that depends on solilang by path, and its lock
-# records solilang's version: left behind, CI's `cargo check --locked` of the
-# Workers build fails on every release (it did on v2.19.1 and v2.20.0). Only
-# that one line changes, so it is rewritten rather than re-resolved.
+# The locks record solilang's version: Cargo.lock, and edge/Cargo.lock (edge/
+# is a crate of its own that depends on solilang by path — left behind, CI's
+# `cargo check --locked` of the Workers build failed on v2.19.1 and v2.20.0).
+# Only that one line changes, so it is rewritten rather than re-resolved: a
+# `cargo check` here compiled the crate locally just to refresh it.
 python3 - "$CURRENT" "$NEW_VERSION" <<'PY'
 import sys
 from pathlib import Path
 
 current, new = sys.argv[1], sys.argv[2]
-path = Path("edge/Cargo.lock")
-if path.exists():
+for lock in ("Cargo.lock", "edge/Cargo.lock"):
+    path = Path(lock)
+    if not path.exists():
+        if lock == "Cargo.lock":
+            sys.exit("Error: Cargo.lock is missing")
+        continue
     text = path.read_text()
     old = f'name = "solilang"\nversion = "{current}"\n'
     if text.count(old) != 1:
-        sys.exit(f"Error: expected solilang {current} once in edge/Cargo.lock")
+        sys.exit(f"Error: expected solilang {current} once in {lock}")
     path.write_text(text.replace(old, f'name = "solilang"\nversion = "{new}"\n'))
-    print(f"edge/Cargo.lock -> {new}")
+    print(f"{lock} -> {new}")
 PY
 
 # Commit and tag

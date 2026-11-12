@@ -327,25 +327,25 @@ fn the_native_fixtures_agree_across_engines() {
 
 #[test]
 fn a_function_read_without_parentheses_keeps_the_tree_walker() {
-    // The tree-walker calls `helper` here; the VM would hand over the
-    // function. Scripts were written against the tree-walker, so it keeps
-    // running there.
+    // A `def` read bare is called on both engines (#631): the VM runs it.
     let source = "def helper\n  \"called\"\nend\nx = helper\nprint(x)\n";
     assert_same(source);
     let dir = script(source);
     let run = soli(dir.path(), &["s.sl"], true);
     assert_eq!(run.stdout, "called\n");
+    assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
+
+    // A lambda kept in a variable and read bare is called by the tree-walker
+    // only, so a script doing it keeps running there.
+    let source = "helper = fn() { \"called\" }\nx = helper\nprint(x)\n";
+    let dir = script(source);
+    let run = soli(dir.path(), &["s.sl"], true);
     assert!(
         run.stderr
             .contains("engine: tree-walker — the script calls `helper` without parentheses"),
         "{}",
         run.stderr
     );
-
-    // With the parentheses it is an ordinary call, and the VM runs it.
-    let dir = script("def helper\n  \"called\"\nend\nprint(helper())\n");
-    let run = soli(dir.path(), &["s.sl"], true);
-    assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
 }
 
 /// A function body longer than a 16-bit jump can span: the VM refuses to

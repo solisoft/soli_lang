@@ -372,6 +372,20 @@
 
 ### Fixed
 
+- **Follow-ups of the 2.29.4 security patch (#631).** A zero-argument def or
+  helper read bare and indexed (`current_user["k"]`) is called on the VM
+  too — the fused `HashGetGlobalConst` read the function itself — and
+  `soli check` types it as its return value; a script reading a `def` bare
+  stays on the VM (only a lambda read bare picks the interpreter). A model
+  class with class-level calls (`belongs_to("user")`, `validates`…) is
+  declared by the interpreter in a script, as under `soli serve` (the VM
+  called them without the class: "Expected class as first argument"). A
+  restarted background-job worker drops its template env, so a mailer view
+  reads the helpers just loaded (`reset_builtins_rc`, as `worker_loop`).
+  `scripts/release.sh` rewrites solilang's line in `Cargo.lock` instead of
+  running `cargo check`, and ignores untracked files. Test:
+  `bare_zero_arg_def_indexed`.
+
 - **Minor engine divergences (#639).** A literal match arm compares
   strictly on both engines (`1 =>` no longer matches `1.0` on the VM:
   `Op::MatchLiteral`, `pattern_matching::literal_pattern_equal`); an enum arm

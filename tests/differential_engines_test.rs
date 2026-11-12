@@ -642,6 +642,26 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #631: a zero-argument def read bare and indexed with a constant
+        // key (`current_user["k"]`) is called first on the VM too; the fused
+        // global hash op read the function itself.
+        "bare_zero_arg_def_indexed",
+        r##"def signed_in?
+  true
+end
+def current_user
+  {"k": "v"}
+end
+if signed_in?
+  print("yes")
+end
+print(current_user["k"])
+def show()
+  current_user["k"]
+end
+print(show())"##,
+    ),
+    (
         // #639: literal arms compare strictly (`1` is not `1.0`); an enum
         // pattern naming more fields than the variant has fails; strings and
         // hashes iterate in comprehensions and `for` (chars, keys); a raising

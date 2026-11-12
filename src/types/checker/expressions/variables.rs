@@ -68,6 +68,14 @@ impl TypeChecker {
         if crate::interpreter::builtins::is_bare_call_builtin(name) {
             return Ok(super::access::collapse_zero_arg_method(ty));
         }
+        // A `def` of this file or project that takes no argument, read bare
+        // (`current_user["k"]`, `if signed_in?`): both engines call it, so the
+        // value is what it returns (#631). Unless a local shadows it.
+        if let Some((0, 0, declared, _)) = self.function_arities.get(name) {
+            if *declared == ty {
+                return Ok(super::access::collapse_zero_arg_method(ty));
+            }
+        }
         Ok(ty)
     }
 

@@ -643,9 +643,9 @@ fn class_body_call(stmt: &ast::Stmt) -> Option<&str> {
     }
 }
 
-/// A bare name the tree-walker would call and the VM would not: a function
-/// with no required parameter, read without `()` (`x = helper`,
-/// `print(session_id)`).
+/// A bare name the tree-walker would call and the VM would not: a lambda
+/// with no required parameter kept in a variable, read without `()`
+/// (`x = helper`). A `def` read bare is called on both engines.
 ///
 /// The tree-walker calls it; the VM — and so `soli serve` in production —
 /// hands over the function itself. Scripts were written against the
@@ -668,10 +668,10 @@ pub fn bare_call_reason(
     let callable: std::cell::RefCell<HashSet<String>> = Default::default();
     let variables: std::cell::RefCell<HashSet<String>> = Default::default();
     let mut on_stmt = |stmt: &ast::Stmt| match &stmt.kind {
+        // A `def` read bare is called on both engines now (the VM's
+        // `AutoInvoke` / `SelfOrGlobal`): only a lambda kept in a variable
+        // still differs (#600, #631).
         StmtKind::Function(decl) => {
-            if no_required(&decl.params) {
-                callable.borrow_mut().insert(decl.name.clone());
-            }
             for p in &decl.params {
                 variables.borrow_mut().insert(p.name.clone());
             }
