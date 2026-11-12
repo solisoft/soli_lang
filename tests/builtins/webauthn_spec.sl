@@ -43,7 +43,7 @@ describe("WebAuthn") do
       assert_eq(options["user"]["id"], "dXNlci0x")
       assert_eq(options["user"]["displayName"], "alice@example.com")
       assert_eq(options["attestation"], "none")
-      assert_eq(options["pubKeyCredParams"].map { |param| param["alg"] }, [-7, -257])
+      assert_eq(options["pubKeyCredParams"].map { |param| param["alg"] }, [-7, -8, -257])
       assert_eq(options["excludeCredentials"], [{"id": "AAEC", "type": "public-key"}])
       assert_eq(options["authenticatorSelection"]["residentKey"], "required")
     end
@@ -54,8 +54,8 @@ describe("WebAuthn") do
     end
 
     test("refuses an unsupported algorithm") do
-      assert_raises("WebAuthn.registration_options(): algorithm -8 is not supported") do
-        WebAuthn.registration_options({"rp_id": RP_ID, "user_id": "u", "user_name": "n", "algorithms": [-8]})
+      assert_raises("WebAuthn.registration_options(): algorithm -36 is not supported") do
+        WebAuthn.registration_options({"rp_id": RP_ID, "user_id": "u", "user_name": "n", "algorithms": [-36]})
       end
     end
   end
@@ -71,9 +71,9 @@ describe("WebAuthn") do
   end
 
   context("verify_registration") do
-    test("accepts an ES256 and an RS256 credential") do
+    test("accepts an ES256, an RS256 and an EdDSA credential") do
       vectors = load_vectors()
-      [["es256", -7], ["rs256", -257]].each do |pair|
+      [["es256", -7], ["rs256", -257], ["eddsa", -8]].each do |pair|
         vector = vectors[pair[0]]
         record = WebAuthn.verify_registration(vector["registration"], registration_expected(vector))
         assert_eq(record["algorithm"], pair[1])
@@ -82,9 +82,20 @@ describe("WebAuthn") do
         assert_eq(record["sign_count"], 0)
         assert_eq(record["transports"], ["internal", "hybrid"])
         assert_eq(record["attestation_format"], "none")
+        assert_eq(record["attestation_type"], "none")
         assert(record["user_verified"])
         assert(record["backup_eligible"])
         assert(!record["backed_up"])
+      end
+    end
+
+    test("checks a packed self-attestation") do
+      vectors = load_vectors()
+      ["es256", "rs256", "eddsa"].each do |name|
+        vector = vectors[name]
+        record = WebAuthn.verify_registration(vector["packed_registration"], registration_expected(vector))
+        assert_eq(record["attestation_format"], "packed")
+        assert_eq(record["attestation_type"], "self")
       end
     end
 
@@ -132,9 +143,9 @@ describe("WebAuthn") do
   end
 
   context("verify_authentication") do
-    test("verifies the signature with the stored key, on both algorithms") do
+    test("verifies the signature with the stored key, on every algorithm") do
       vectors = load_vectors()
-      ["es256", "rs256"].each do |name|
+      ["es256", "rs256", "eddsa"].each do |name|
         vector = vectors[name]
         result = WebAuthn.verify_authentication(vector["authentication"], authentication_expected(vector))
         assert_eq(result["credential_id"], vector["credential_id"])

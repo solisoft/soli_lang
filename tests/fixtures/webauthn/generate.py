@@ -1,8 +1,9 @@
 """Regenerate tests/fixtures/webauthn/vectors.json.
 
-WebAuthn registration and authentication responses for an ES256 and an RS256
-credential, signed by the OpenSSL CLI rather than by the Rust code under test,
-so the vectors are an independent implementation of the signing side.
+WebAuthn registration and authentication responses for an ES256, an RS256 and
+an EdDSA (Ed25519) credential, plus "packed" self-attested registrations,
+signed by the OpenSSL CLI rather than by the Rust code under test, so the
+vectors are an independent implementation of the signing side.
 
     python3 tests/fixtures/webauthn/generate.py [workdir]
 
@@ -16,9 +17,11 @@ OUT=os.path.join(os.path.dirname(os.path.abspath(__file__)),'vectors.json')
 def b64u(b): return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
 def run(*a, inp=None): return subprocess.run(a, input=inp, capture_output=True, check=True).stdout
 # keys
-ec=os.path.join(D,'ec.pem'); rsa=os.path.join(D,'rsa.pem')
+ec=os.path.join(D,'ec.pem'); rsa=os.path.join(D,'rsa.pem'); ed=os.path.join(D,'ed.pem')
 if not os.path.exists(ec): run('openssl','ecparam','-name','prime256v1','-genkey','-noout','-out',ec)
 if not os.path.exists(rsa): run('openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:2048','-out',rsa)
+if not os.path.exists(ed): run('openssl','genpkey','-algorithm','ed25519','-out',ed)
+edpub=run('openssl','pkey','-in',ed,'-pubout','-outform','DER')[-32:]
 ecpub=run('openssl','ec','-in',ec,'-pubout','-outform','DER'); pt=ecpub[-65:]; assert pt[0]==4
 x,y=pt[1:33],pt[33:]
 mod=run('openssl','rsa','-in',rsa,'-modulus','-noout').decode().strip().split('=')[1]
@@ -41,10 +44,15 @@ RP='example.com'; ORIGIN='https://example.com'
 rph=hashlib.sha256(RP.encode()).digest()
 AAGUID=bytes.fromhex('adce000235bcc60a648b0b25f1f05503')
 def sign(key,msg):
+    if key==ed:
+        # Ed25519 signs the message itself (PureEdDSA), no prehash.
+        m=os.path.join(D,'msg.bin'); open(m,'wb').write(msg)
+        return run('openssl','pkeyutl','-sign','-inkey',key,'-rawin','-in',m)
     return run('openssl','dgst','-sha256','-sign',key,inp=msg)
 def cdj(typ,chal): return json.dumps({"type":typ,"challenge":chal,"origin":ORIGIN,"crossOrigin":False},separators=(',',':')).encode()
 out={}
-for name,key,cose in [('es256',ec,{1:2,3:-7,-1:1,-2:x,-3:y}),('rs256',rsa,{1:3,3:-257,-1:n,-2:e})]:
+CREDS=[('es256',ec,-7,{1:2,3:-7,-1:1,-2:x,-3:y}),('rs256',rsa,-257,{1:3,3:-257,-1:n,-2:e}),('eddsa',ed,-8,{1:1,3:-8,-1:6,-2:edpub})]
+for name,key,alg,cose in CREDS:
     credid=hashlib.sha256(name.encode()).digest()[:16]
     rchal=b64u(hashlib.sha256(b'reg-'+name.encode()).digest())
     achal=b64u(hashlib.sha256(b'auth-'+name.encode()).digest())
@@ -58,7 +66,12 @@ for name,key,cose in [('es256',ec,{1:2,3:-7,-1:1,-2:x,-3:y}),('rs256',rsa,{1:3,3
     ac=cdj("webauthn.get",achal)
     sig=sign(key,aad+hashlib.sha256(ac).digest())
     auth={"id":b64u(credid),"rawId":b64u(credid),"type":"public-key","response":{"clientDataJSON":b64u(ac),"authenticatorData":b64u(aad),"signature":b64u(sig),"userHandle":b64u(b'user-1')},"clientExtensionResults":{}}
-    out[name]={"registration":reg,"registration_challenge":rchal,"authentication":auth,"authentication_challenge":achal,"public_key":b64u(cbor(cose)),"credential_id":b64u(credid)}
+    # The same registration, "packed" self-attested: attStmt {alg, sig}, the
+    # signature by the credential key over authData || SHA-256(clientDataJSON).
+    psig=sign(key,ad+hashlib.sha256(rc).digest())
+    patt=cbor({"fmt":"packed","attStmt":{"alg":alg,"sig":psig},"authData":ad})
+    preg=json.loads(json.dumps(reg)); preg["response"]["attestationObject"]=b64u(patt)
+    out[name]={"registration":reg,"packed_registration":preg,"registration_challenge":rchal,"authentication":auth,"authentication_challenge":achal,"public_key":b64u(cbor(cose)),"credential_id":b64u(credid)}
 json.dump(out,open(OUT,'w'),indent=1)
 open(OUT,'a').write('\n')
 print("ok")

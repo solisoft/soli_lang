@@ -204,7 +204,7 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
         <div class="callout callout-warning">
             <p class="text-yellow-200/80 text-sm mb-0">
                 <strong>Limits.</strong> Attestation is never verified (the options ask for <code>"none"</code>), so passkeys
-                cannot be restricted to certain authenticator models. ES256 and RS256 are supported; EdDSA is not yet.
+                cannot be restricted to certain authenticator models. ES256, EdDSA (Ed25519) and RS256 are supported; a packed self-attestation is checked, a certificate chain only reported.
                 Passkeys are an additional credential: an account still has a password.
             </p>
         </div>

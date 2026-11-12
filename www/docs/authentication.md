@@ -215,7 +215,8 @@ The generated code is a thin layer over the native `WebAuthn` class —
 [Built-ins → WebAuthn](/docs/builtins/webauthn). Use it directly for an API or
 a different storage model.
 
-**Limits.** Attestation is never verified (the options ask for `"none"`), so
-passkeys cannot be restricted to certain authenticator models. ES256 and RS256
-are supported; EdDSA is not yet. Passkeys are an additional credential: an
+**Limits.** Attestation is never trusted against a vendor root (the options ask for
+`"none"`; a packed self-attestation is checked, a certificate chain only
+reported), so passkeys cannot be restricted to certain authenticator models.
+ES256, EdDSA (Ed25519) and RS256 are supported. Passkeys are an additional credential: an
 account still has a password.

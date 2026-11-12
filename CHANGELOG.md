@@ -4,6 +4,19 @@
 
 ### Added
 
+- **Passkeys: EdDSA and packed self-attestation (#696, phase 2).**
+  `WebAuthn` verifies Ed25519 credentials (COSE -8, OKP/crv 6) per RFC 8032
+  on `curve25519-dalek` + `sha2` (no new dependency): `S` must be canonical,
+  a small-order key is refused, cofactorless equation. The default
+  `pubKeyCredParams` are now `[-7, -8, -257]`. A `"packed"` statement without
+  `x5c` has its self-attestation signature checked against the credential
+  key (same `alg`) — a bad one now fails the registration — and the record
+  gains `attestation_type`: `"none"`, `"self"` or `"unverified"` (a
+  certificate chain or another format, reported, never trusted). Vectors
+  for EdDSA and packed self-attestation are signed by the OpenSSL CLI
+  (`tests/fixtures/webauthn/generate.py`); a test feeds 20 000 random and
+  mutated inputs to the CBOR, authData and COSE parsers.
+
 - **Presence across instances, cross-instance `ws_send` / `ws_close`,
   `ws_count({"cluster": true})` (#695, phases 3 and 4).** With a realtime
   bus, `track` / `untrack` / `set_presence` and a disconnect publish a

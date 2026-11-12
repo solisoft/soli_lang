@@ -23,15 +23,18 @@
 //!
 //! The checks follow WebAuthn L3 §7.1 (registration) and §7.2
 //! (authentication) and are numbered below as the spec numbers them where it
-//! helps. Algorithms: ES256 (COSE -7, P-256 via `p256`) and RS256 (COSE -257,
-//! the in-house PKCS#1 v1.5 verifier in `rsa_key.rs`). EdDSA (-8) is refused.
+//! helps. Algorithms: ES256 (COSE -7, P-256 via `p256`), EdDSA (COSE -8,
+//! Ed25519 per RFC 8032 on `curve25519-dalek`) and RS256 (COSE -257, the
+//! in-house PKCS#1 v1.5 verifier in `rsa_key.rs`).
 //!
-//! Attestation is never *trusted*: the options always ask for `"none"`, and
-//! whatever format the authenticator still sends is reported in
-//! `attestation_format` without its statement being verified. That is the
-//! right ceiling for consumer passkeys (synced passkeys carry no attestation
-//! anyway); it is not enough for an enterprise policy that pins authenticator
-//! models by AAGUID.
+//! Attestation is never *trusted* against a vendor root: the options always
+//! ask for `"none"`. A `"packed"` statement with no certificate chain (self
+//! attestation) has its signature checked against the credential key, and
+//! is reported as `attestation_type: "self"`; any other format, or a packed
+//! statement carrying `x5c`, is reported in `attestation_format` with
+//! `attestation_type: "unverified"`. That is the right ceiling for consumer
+//! passkeys (synced passkeys carry no attestation anyway); it is not enough
+//! for an enterprise policy that pins authenticator models by AAGUID.
 //!
 //! CBOR is decoded by a small strict decoder here rather than a crate: the
 //! two structures WebAuthn needs (the attestation object and a COSE key) use a
@@ -57,7 +60,9 @@ use crate::interpreter::value::{json_to_value, value_to_json, Class, NativeFunct
 /// COSE algorithm identifiers this verifier accepts.
 pub const ALG_ES256: i64 = -7;
 pub const ALG_RS256: i64 = -257;
-const SUPPORTED_ALGORITHMS: [i64; 2] = [ALG_ES256, ALG_RS256];
+pub const ALG_EDDSA: i64 = -8;
+/// Also the default `pubKeyCredParams`, in order of preference.
+const SUPPORTED_ALGORITHMS: [i64; 3] = [ALG_ES256, ALG_EDDSA, ALG_RS256];
 
 /// authenticatorData flag bits (WebAuthn L3 §6.1).
 const FLAG_UP: u8 = 0x01;
@@ -389,7 +394,15 @@ pub(crate) fn parse_auth_data(data: &[u8]) -> Result<AuthData, String> {
 /// A credential public key, parsed from its COSE_Key form.
 pub(crate) enum CredentialKey {
     Es256(EcVerifyingKey),
-    Rs256 { n: Vec<u8>, e: Vec<u8> },
+    Rs256 {
+        n: Vec<u8>,
+        e: Vec<u8>,
+    },
+    /// The public key as encoded (`A`), and decompressed.
+    Ed25519 {
+        encoded: [u8; 32],
+        point: curve25519_dalek::edwards::EdwardsPoint,
+    },
 }
 
 impl CredentialKey {
@@ -397,6 +410,7 @@ impl CredentialKey {
         match self {
             CredentialKey::Es256(_) => ALG_ES256,
             CredentialKey::Rs256 { .. } => ALG_RS256,
+            CredentialKey::Ed25519 { .. } => ALG_EDDSA,
         }
     }
 
@@ -411,8 +425,46 @@ impl CredentialKey {
                 super::rsa_key::verify_pkcs1_v15_components(n, e, message, signature, "sha256")
                     .unwrap_or(false)
             }
+            CredentialKey::Ed25519 { encoded, point } => {
+                ed25519_verify(encoded, point, message, signature)
+            }
         }
     }
+}
+
+/// RFC 8032 §5.1.7 Ed25519 verification (PureEdDSA): with `S` canonical
+/// (`S < L`) and `k = SHA-512(R || A || M) mod L`, accept when
+/// `[S]B - [k]A` encodes to the signature's `R`. The cofactorless equation,
+/// as most libraries check it.
+fn ed25519_verify(
+    encoded: &[u8; 32],
+    point: &curve25519_dalek::edwards::EdwardsPoint,
+    message: &[u8],
+    signature: &[u8],
+) -> bool {
+    use curve25519_dalek::edwards::EdwardsPoint;
+    use curve25519_dalek::scalar::Scalar;
+    use sha2::Sha512;
+
+    let Ok(signature) = <[u8; 64]>::try_from(signature) else {
+        return false;
+    };
+    let mut r = [0u8; 32];
+    r.copy_from_slice(&signature[..32]);
+    let mut s_bytes = [0u8; 32];
+    s_bytes.copy_from_slice(&signature[32..]);
+    let Some(s) = Option::<Scalar>::from(Scalar::from_canonical_bytes(s_bytes)) else {
+        return false;
+    };
+    let mut hasher = Sha512::new();
+    hasher.update(r);
+    hasher.update(encoded);
+    hasher.update(message);
+    let mut wide = [0u8; 64];
+    wide.copy_from_slice(&hasher.finalize());
+    let k = Scalar::from_bytes_mod_order_wide(&wide);
+    let expected_r = EdwardsPoint::vartime_double_scalar_mul_basepoint(&(-k), point, &s);
+    expected_r.compress().to_bytes() == r
 }
 
 fn cose_bytes<'a>(key: &'a Cbor, label: i128, what: &str) -> Result<&'a [u8], String> {
@@ -471,8 +523,25 @@ pub(crate) fn parse_cose_key(bytes: &[u8]) -> Result<CredentialKey, String> {
             }
             Ok(CredentialKey::Rs256 { n, e })
         }
-        (_, -8) => Err("unsupported algorithm -8 (EdDSA)".to_string()),
-        (2, _) | (3, _) => Err(format!(
+        (1, -8) => {
+            // OKP key, Ed25519 curve (RFC 9053 §7.2).
+            if key.int_key(-1).and_then(Cbor::as_int) != Some(6) {
+                return Err("COSE key: EdDSA requires the Ed25519 curve (crv 6)".to_string());
+            }
+            let x = cose_bytes(&key, -2, "x")?;
+            let encoded: [u8; 32] = x
+                .try_into()
+                .map_err(|_| "COSE key: an Ed25519 key must be 32 bytes".to_string())?;
+            let point = curve25519_dalek::edwards::CompressedEdwardsY(encoded)
+                .decompress()
+                .ok_or("COSE key: not a valid Ed25519 point")?;
+            // A small-order key verifies signatures it never made.
+            if point.is_small_order() {
+                return Err("COSE key: Ed25519 key of small order".to_string());
+            }
+            Ok(CredentialKey::Ed25519 { encoded, point })
+        }
+        (1, _) | (2, _) | (3, _) => Err(format!(
             "COSE key: kty {} does not match algorithm {}",
             kty, alg
         )),
@@ -585,7 +654,7 @@ fn algorithms_opt(obj: &Json) -> Result<Vec<i64>, String> {
             .map(|item| match item.as_i64() {
                 Some(alg) if SUPPORTED_ALGORITHMS.contains(&alg) => Ok(alg),
                 Some(alg) => Err(format!(
-                    "algorithm {} is not supported (use -7 for ES256 or -257 for RS256)",
+                    "algorithm {} is not supported (use -7 for ES256, -8 for EdDSA or -257 for RS256)",
                     alg
                 )),
                 None => Err("algorithms must be COSE algorithm integers".to_string()),
@@ -706,7 +775,7 @@ fn format_aaguid(aaguid: &[u8; 16]) -> String {
 pub(crate) fn verify_registration(credential: &Json, expected: &Expected) -> Result<Json, String> {
     let (id, id_text, response) = credential_envelope(credential)?;
     let client_data_json = required_b64(response, "clientDataJSON", "response.clientDataJSON")?;
-    verify_client_data(&client_data_json, "webauthn.create", expected)?;
+    let client_hash = verify_client_data(&client_data_json, "webauthn.create", expected)?;
 
     let attestation = required_b64(response, "attestationObject", "response.attestationObject")?;
     let attestation =
@@ -743,6 +812,8 @@ pub(crate) fn verify_registration(credential: &Json, expected: &Expected) -> Res
             key.algorithm()
         ));
     }
+    let attestation_type =
+        verify_attestation_statement(&fmt, att_stmt, auth_data_bytes, &client_hash, &key)?;
 
     let transports: Vec<Json> = match response.get("transports") {
         Some(Json::Array(items)) => items
@@ -763,7 +834,51 @@ pub(crate) fn verify_registration(credential: &Json, expected: &Expected) -> Res
         "backup_eligible": auth.has(FLAG_BE),
         "backed_up": auth.has(FLAG_BS),
         "attestation_format": fmt,
+        "attestation_type": attestation_type,
     }))
+}
+
+/// Check what can be checked of an attestation statement, and say how far
+/// it went: `"none"`, `"self"` (a packed statement signed by the credential
+/// key itself, §8.2 with no `x5c`), or `"unverified"` (a certificate chain or
+/// another format — reported, never trusted).
+fn verify_attestation_statement(
+    fmt: &str,
+    att_stmt: &Cbor,
+    auth_data: &[u8],
+    client_hash: &[u8; 32],
+    key: &CredentialKey,
+) -> Result<&'static str, String> {
+    match fmt {
+        "none" => Ok("none"),
+        "packed" => {
+            if att_stmt.text_key("x5c").is_some() {
+                return Ok("unverified");
+            }
+            let alg = att_stmt
+                .text_key("alg")
+                .and_then(Cbor::as_int)
+                .ok_or("packed attestation: alg is missing")?;
+            if alg != key.algorithm() as i128 {
+                return Err(format!(
+                    "packed attestation: alg {} does not match the credential key's {}",
+                    alg,
+                    key.algorithm()
+                ));
+            }
+            let sig = match att_stmt.text_key("sig") {
+                Some(Cbor::Bytes(sig)) => sig,
+                _ => return Err("packed attestation: sig is missing".to_string()),
+            };
+            let mut signed = auth_data.to_vec();
+            signed.extend_from_slice(client_hash);
+            if !key.verify(&signed, sig) {
+                return Err("packed attestation: self-attestation signature is invalid".to_string());
+            }
+            Ok("self")
+        }
+        _ => Ok("unverified"),
+    }
 }
 
 /// Verify an authentication response (§7.2) against the stored credential.
@@ -1393,8 +1508,13 @@ mod tests {
     #[test]
     fn openssl_vectors_register_and_authenticate() {
         let v = vectors();
-        for (name, alg) in [("es256", ALG_ES256), ("rs256", ALG_RS256)] {
+        for (name, alg) in [
+            ("es256", ALG_ES256),
+            ("rs256", ALG_RS256),
+            ("eddsa", ALG_EDDSA),
+        ] {
             let record = vector_registration(name).unwrap();
+            assert_eq!(record["attestation_type"], json!("none"), "{name}");
             assert_eq!(record["algorithm"], json!(alg), "{name}");
             assert_eq!(record["credential_id"], v[name]["credential_id"]);
             assert_eq!(record["public_key"], v[name]["public_key"]);
@@ -1419,7 +1539,7 @@ mod tests {
     #[test]
     fn openssl_vectors_reject_a_tampered_signature() {
         let v = vectors();
-        for name in ["es256", "rs256"] {
+        for name in ["es256", "rs256", "eddsa"] {
             let mut credential = v[name]["authentication"].clone();
             let sig = b64url_decode(credential["response"]["signature"].as_str().unwrap()).unwrap();
             let mut sig = sig;
@@ -1443,6 +1563,183 @@ mod tests {
             verify_authentication(&credential, &expected(challenge), &expected_json),
             "signature is invalid",
         );
+    }
+
+    #[test]
+    fn eddsa_rejects_another_message_and_a_non_canonical_s() {
+        let v = vectors();
+        let key =
+            parse_cose_key(&b64url_decode(v["eddsa"]["public_key"].as_str().unwrap()).unwrap())
+                .unwrap();
+        let response = &v["eddsa"]["authentication"]["response"];
+        let auth = b64url_decode(response["authenticatorData"].as_str().unwrap()).unwrap();
+        let client = b64url_decode(response["clientDataJSON"].as_str().unwrap()).unwrap();
+        let sig = b64url_decode(response["signature"].as_str().unwrap()).unwrap();
+        let mut signed = auth.clone();
+        signed.extend_from_slice(&Sha256::digest(&client));
+        assert!(key.verify(&signed, &sig));
+        let mut other = signed.clone();
+        other[0] ^= 1;
+        assert!(!key.verify(&other, &sig));
+        // S + L is the same scalar, non-canonically encoded: refused.
+        let l: [u8; 32] = [
+            0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9,
+            0xde, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+        ];
+        let mut bumped = sig.clone();
+        let mut carry = 0u16;
+        for i in 0..32 {
+            let sum = bumped[32 + i] as u16 + l[i] as u16 + carry;
+            bumped[32 + i] = sum as u8;
+            carry = sum >> 8;
+        }
+        assert!(!key.verify(&signed, &bumped));
+        assert!(!key.verify(&signed, &sig[..63]));
+    }
+
+    /// A vector's packed registration with its statement rebuilt by `edit`.
+    fn packed_registration(name: &str, stmt: Vec<u8>) -> Result<Json, String> {
+        let v = vectors();
+        let mut credential = v[name]["packed_registration"].clone();
+        let att = b64url_decode(
+            credential["response"]["attestationObject"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let Some(Cbor::Bytes(auth)) = cbor_decode_exact(&att)
+            .unwrap()
+            .text_key("authData")
+            .cloned()
+        else {
+            panic!("authData")
+        };
+        let rebuilt = map(&[
+            (text("fmt"), text("packed")),
+            (text("attStmt"), stmt),
+            (text("authData"), bytes(&auth)),
+        ]);
+        credential["response"]["attestationObject"] = json!(b64url_encode(&rebuilt));
+        let challenge = v[name]["registration_challenge"].as_str().unwrap();
+        verify_registration(&credential, &expected(challenge))
+    }
+
+    fn packed_sig(name: &str) -> Vec<u8> {
+        let v = vectors();
+        let att = b64url_decode(
+            v[name]["packed_registration"]["response"]["attestationObject"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let att = cbor_decode_exact(&att).unwrap();
+        match att.text_key("attStmt").and_then(|s| s.text_key("sig")) {
+            Some(Cbor::Bytes(sig)) => sig.clone(),
+            _ => panic!("sig"),
+        }
+    }
+
+    #[test]
+    fn packed_self_attestation_is_verified() {
+        let v = vectors();
+        for name in ["es256", "rs256", "eddsa"] {
+            let challenge = v[name]["registration_challenge"].as_str().unwrap();
+            let record =
+                verify_registration(&v[name]["packed_registration"], &expected(challenge)).unwrap();
+            assert_eq!(record["attestation_format"], json!("packed"), "{name}");
+            assert_eq!(record["attestation_type"], json!("self"), "{name}");
+        }
+    }
+
+    #[test]
+    fn packed_self_attestation_rejects_a_bad_signature_or_alg() {
+        for (name, alg) in [("es256", -7), ("rs256", -257), ("eddsa", -8)] {
+            let mut sig = packed_sig(name);
+            let last = sig.len() - 1;
+            sig[last] ^= 1;
+            assert_err(
+                packed_registration(
+                    name,
+                    map(&[(text("alg"), int(alg)), (text("sig"), bytes(&sig))]),
+                ),
+                "self-attestation signature is invalid",
+            );
+            let other = if alg == -7 { -257 } else { -7 };
+            assert_err(
+                packed_registration(
+                    name,
+                    map(&[
+                        (text("alg"), int(other)),
+                        (text("sig"), bytes(&packed_sig(name))),
+                    ]),
+                ),
+                "does not match the credential key",
+            );
+            assert_err(
+                packed_registration(name, map(&[(text("alg"), int(alg))])),
+                "sig is missing",
+            );
+        }
+    }
+
+    #[test]
+    fn a_certificate_chain_or_another_format_is_reported_unverified() {
+        let chain = map(&[
+            (text("alg"), int(-7)),
+            (text("sig"), bytes(&[1, 2, 3])),
+            (text("x5c"), {
+                let mut array = head(4, 1);
+                array.extend(bytes(&[0x30, 0x00]));
+                array
+            }),
+        ]);
+        let record = packed_registration("es256", chain).unwrap();
+        assert_eq!(record["attestation_type"], json!("unverified"));
+    }
+
+    /// Random input never panics a parser: it is refused, or (rarely) read.
+    #[test]
+    fn the_parsers_survive_random_bytes() {
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let v = vectors();
+        let seeds: Vec<Vec<u8>> = ["es256", "rs256", "eddsa"]
+            .iter()
+            .flat_map(|name| {
+                let att = b64url_decode(
+                    v[*name]["packed_registration"]["response"]["attestationObject"]
+                        .as_str()
+                        .unwrap(),
+                )
+                .unwrap();
+                let key = b64url_decode(v[*name]["public_key"].as_str().unwrap()).unwrap();
+                [att, key]
+            })
+            .collect();
+        for round in 0..20_000 {
+            let mut input = if round % 2 == 0 {
+                // A real structure, a few bytes flipped or cut.
+                let mut seed = seeds[(next() as usize) % seeds.len()].clone();
+                for _ in 0..1 + next() % 4 {
+                    let at = (next() as usize) % seed.len();
+                    seed[at] = next() as u8;
+                }
+                seed.truncate(1 + (next() as usize) % seed.len());
+                seed
+            } else {
+                (0..(next() % 300)).map(|_| next() as u8).collect()
+            };
+            let _ = cbor_decode_exact(&input);
+            let _ = parse_auth_data(&input);
+            let _ = parse_cose_key(&input);
+            input.push(0);
+            let _ = parse_auth_data(&input);
+        }
     }
 
     // -- registration, one negative test per check ----------------------------
@@ -1638,13 +1935,14 @@ mod tests {
         let auth = a.auth_data(RP_ID, UP_UV | FLAG_AT, 0, true);
         let client = client_data("webauthn.create", CHALLENGE, ORIGIN);
         let attestation = map(&[
-            (text("fmt"), text("packed")),
+            (text("fmt"), text("tpm")),
             (text("attStmt"), map(&[(text("alg"), int(-7))])),
             (text("authData"), bytes(&auth)),
         ]);
         let credential = registration_credential(&a.credential_id, &client, &attestation);
         let record = verify_registration(&credential, &expected(CHALLENGE)).unwrap();
-        assert_eq!(record["attestation_format"], json!("packed"));
+        assert_eq!(record["attestation_format"], json!("tpm"));
+        assert_eq!(record["attestation_type"], json!("unverified"));
     }
 
     #[test]
@@ -1719,13 +2017,31 @@ mod tests {
             .err()
             .unwrap()
             .contains("not a valid P-256 point"));
-        let eddsa = map(&[
+        // y = 0 decodes to a point of order 4: refused.
+        let small_order = map(&[
             (int(1), int(1)),
             (int(3), int(-8)),
             (int(-1), int(6)),
             (int(-2), bytes(&[0; 32])),
         ]);
-        assert!(parse_cose_key(&eddsa).err().unwrap().contains("-8"));
+        assert!(parse_cose_key(&small_order).is_err());
+        let x448 = map(&[
+            (int(1), int(1)),
+            (int(3), int(-8)),
+            (int(-1), int(7)),
+            (int(-2), bytes(&[9; 32])),
+        ]);
+        assert!(parse_cose_key(&x448)
+            .err()
+            .unwrap()
+            .contains("Ed25519 curve"));
+        let short = map(&[
+            (int(1), int(1)),
+            (int(3), int(-8)),
+            (int(-1), int(6)),
+            (int(-2), bytes(&[9; 31])),
+        ]);
+        assert!(parse_cose_key(&short).err().unwrap().contains("32 bytes"));
         let mismatched = map(&[(int(1), int(3)), (int(3), int(-7))]);
         assert!(parse_cose_key(&mismatched)
             .err()
@@ -1858,7 +2174,11 @@ mod tests {
         assert_eq!(options["attestation"], json!("none"));
         assert_eq!(
             options["pubKeyCredParams"],
-            json!([{"type": "public-key", "alg": -7}, {"type": "public-key", "alg": -257}])
+            json!([
+                {"type": "public-key", "alg": -7},
+                {"type": "public-key", "alg": -8},
+                {"type": "public-key", "alg": -257}
+            ])
         );
         assert_eq!(
             options["authenticatorSelection"]["residentKey"],
@@ -1899,10 +2219,10 @@ mod tests {
                 .contains("user_id")
         );
         assert!(registration_options(
-            &json!({"rp_id": RP_ID, "user_id": "u", "user_name": "n", "algorithms": [-8]})
+            &json!({"rp_id": RP_ID, "user_id": "u", "user_name": "n", "algorithms": [-36]})
         )
         .unwrap_err()
-        .contains("-8"));
+        .contains("-36"));
         assert!(registration_options(&json!({"rp_id": RP_ID, "user_id": "u", "user_name": "n", "user_verification": "always"}))
             .unwrap_err()
             .contains("user_verification"));

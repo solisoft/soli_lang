@@ -3193,7 +3193,7 @@ random bytes, base64url.
 | `user_verification` | `"preferred"` | `required`, `preferred` or `discouraged` |
 | `resident_key` | `"required"` | discoverable credentials: what makes username-less sign-in work |
 | `authenticator_attachment` | none | `platform` or `cross-platform` |
-| `algorithms` | `[-7, -257]` | COSE ids: ES256 and RS256 are supported |
+| `algorithms` | `[-7, -8, -257]` | COSE ids, in order of preference: ES256, EdDSA (Ed25519) and RS256 are supported |
 | `timeout` | `300000` | milliseconds |
 
 `attestation` is always `"none"`.
@@ -3209,12 +3209,13 @@ and `algorithms`. Returns the record to store:
 |---|---|
 | `credential_id` | base64url — look the passkey up by it at sign-in |
 | `public_key` | the COSE key, base64url — what verifies future signatures |
-| `algorithm` | `-7` or `-257` |
+| `algorithm` | `-7`, `-8` or `-257` |
 | `sign_count` | the authenticator's counter (0 for synced passkeys) |
 | `transports` | from the browser, e.g. `["internal", "hybrid"]` |
 | `aaguid` | the authenticator model, as a UUID (all zeros for most passkeys) |
 | `user_verified`, `backup_eligible`, `backed_up` | the UV, BE and BS flags |
-| `attestation_format` | reported, **never verified** (see below) |
+| `attestation_format` | the format the authenticator sent (`"none"`, `"packed"`…) |
+| `attestation_type` | `"none"`, `"self"` (a packed statement signed by the credential key, checked) or `"unverified"` (a certificate chain or another format: reported, not trusted) |
 
 ### WebAuthn.authentication_options(opts)
 
@@ -3244,15 +3245,19 @@ Type `public-key`, `id` == `rawId`; clientData `type`, `challenge` (constant
 time) and `origin` (exact); `crossOrigin` is refused; `rpIdHash`; the user
 presence flag; user verification when required; backup state only with backup
 eligibility; on registration, attested credential data whose id matches, a
-valid COSE key (P-256 on the curve, RSA ≥ 2048 bits) of an allowed algorithm,
-and an empty statement for `"none"`; on authentication, the signature. CBOR is
+valid COSE key (P-256 on the curve, RSA ≥ 2048 bits, Ed25519 not of small
+order) of an allowed algorithm, an empty statement for `"none"` and a valid
+self-attestation signature for `"packed"` without `x5c`; on authentication, the signature. CBOR is
 decoded strictly: definite lengths, no duplicate keys, no trailing bytes.
 
-**Attestation is not verified.** The options ask for `"none"`, and whatever
-format an authenticator still sends is reported in `attestation_format` without
-its statement being checked. That is the right ceiling for consumer passkeys —
-synced passkeys carry no attestation — but not for a policy that admits only
-certain authenticator models. EdDSA (COSE `-8`) is not supported yet.
+**Attestation is never trusted against a vendor root.** The options ask for
+`"none"`. A `"packed"` self-attestation (no certificate chain) is checked — its
+signature must come from the credential key, with the same algorithm — and
+reported as `attestation_type: "self"`; a certificate chain or any other format
+is reported as `"unverified"` without its statement being checked. That is the
+right ceiling for consumer passkeys — synced passkeys carry no attestation —
+but not for a policy that admits only certain authenticator models. EdDSA
+signatures are verified per RFC 8032 (a non-canonical `S` is refused).
 
 ---
 

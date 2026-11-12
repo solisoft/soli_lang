@@ -92,7 +92,7 @@ return render_json({"error": "Passkey sign-in failed."}, 401) if result.nil?</co
                     <div><code class="text-amber-400">user_verification</code> : <code class="text-orange-400">String</code> - <code>required</code>, <code>preferred</code> (default) or <code>discouraged</code>.</div>
                     <div><code class="text-amber-400">resident_key</code> : <code class="text-orange-400">String</code> - Default <code>required</code>: discoverable credentials are what makes username-less sign-in work.</div>
                     <div><code class="text-amber-400">authenticator_attachment</code> : <code class="text-orange-400">String</code> - <code>platform</code> or <code>cross-platform</code>; unset by default.</div>
-                    <div><code class="text-amber-400">algorithms</code> : <code class="text-orange-400">Array</code> - COSE ids. Default <code>[-7, -257]</code> (ES256, RS256), the two supported.</div>
+                    <div><code class="text-amber-400">algorithms</code> : <code class="text-orange-400">Array</code> - COSE ids. Default <code>[-7, -8, -257]</code> (ES256, EdDSA/Ed25519, RS256), in order of preference.</div>
                     <div><code class="text-amber-400">timeout</code> : <code class="text-orange-400">Int</code> - Milliseconds. Default <code>300000</code>.</div>
                 </div>
             </div>
@@ -137,7 +137,8 @@ return render_json({"error": "Passkey sign-in failed."}, 401) if result.nil?</co
                     <div><code class="text-amber-400">transports</code> - from the browser, e.g. <code>["internal", "hybrid"]</code>.</div>
                     <div><code class="text-amber-400">aaguid</code> - the authenticator model, as a UUID (all zeros for most passkeys).</div>
                     <div><code class="text-amber-400">user_verified</code>, <code class="text-amber-400">backup_eligible</code>, <code class="text-amber-400">backed_up</code> - the UV, BE and BS flags.</div>
-                    <div><code class="text-amber-400">attestation_format</code> - reported, never verified (below).</div>
+                    <div><code class="text-amber-400">attestation_format</code> - the format the authenticator sent (<code>"none"</code>, <code>"packed"</code>&hellip;).</div>
+                    <div><code class="text-amber-400">attestation_type</code> - <code>"none"</code>, <code>"self"</code> (a packed statement signed by the credential key, checked) or <code>"unverified"</code> (a certificate chain or another format: reported, not trusted).</div>
                 </div>
             </div>
         </section>
@@ -172,17 +173,19 @@ return render_json({"error": "Passkey sign-in failed."}, 401) if result.nil?</co
             <li>The credential: type <code>public-key</code>, <code>id</code> equal to <code>rawId</code>.</li>
             <li>clientDataJSON: <code>type</code> (<code>webauthn.create</code> / <code>webauthn.get</code>), <code>challenge</code> in constant time, <code>origin</code> exactly; <code>crossOrigin</code> is refused.</li>
             <li>authenticatorData: <code>rpIdHash</code>, the user presence flag, user verification when required, backup state only with backup eligibility.</li>
-            <li>Registration: attested credential data whose id matches, a valid COSE key (P-256 point on the curve, RSA of at least 2048 bits) of an allowed algorithm, and an empty statement for <code>"none"</code>.</li>
+            <li>Registration: attested credential data whose id matches, a valid COSE key (P-256 point on the curve, RSA of at least 2048 bits, Ed25519 not of small order) of an allowed algorithm, an empty statement for <code>"none"</code>, and a valid self-attestation signature for <code>"packed"</code> without <code>x5c</code>.</li>
             <li>Authentication: the signature, with the stored key.</li>
             <li>CBOR is decoded strictly: definite lengths, no duplicate map keys, no trailing bytes, bounded nesting.</li>
         </ul>
         <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5">
             <p class="text-gray-300 mb-0">
-                <strong class="text-white">Attestation is not verified.</strong> The options ask for <code>"none"</code>, and
-                whatever format an authenticator still sends is reported in <code>attestation_format</code> without its
-                statement being checked. That is the right ceiling for consumer passkeys &mdash; synced passkeys carry no
-                attestation &mdash; but not for a policy that admits only certain authenticator models. EdDSA (COSE
-                <code>-8</code>) is not supported yet.
+                <strong class="text-white">Attestation is never trusted against a vendor root.</strong> The options ask for
+                <code>"none"</code>. A <code>"packed"</code> self-attestation (no certificate chain) is checked &mdash; its signature
+                must come from the credential key, with the same algorithm &mdash; and reported as <code>attestation_type: "self"</code>;
+                a certificate chain or any other format is reported as <code>"unverified"</code> without its statement being checked.
+                That is the right ceiling for consumer passkeys &mdash; synced passkeys carry no attestation &mdash; but not for a
+                policy that admits only certain authenticator models. EdDSA signatures are verified per RFC 8032 (a
+                non-canonical <code>S</code> is refused).
             </p>
         </div>
     </section>
