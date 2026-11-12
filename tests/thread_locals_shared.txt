@@ -49,6 +49,7 @@ src/interpreter/builtins/assertions.rs ASSERTION_COUNT
 src/interpreter/builtins/assertions.rs ASSERTION_FAILED
 src/interpreter/builtins/browser.rs BROWSER
 src/interpreter/builtins/browser.rs ACTIVE_VIEWPORT
+src/interpreter/builtins/browser.rs VIRTUAL_AUTHENTICATORS
 src/interpreter/builtins/factories.rs FACTORY_REGISTRY
 src/interpreter/builtins/jobs.rs CALLS
 src/interpreter/builtins/mock.rs MOCK_CLASS
