@@ -383,6 +383,11 @@
 
 ### Fixed
 
+- **The handler budget stops a block over a big array or hash (#631).** An
+  in-VM `each` / `map` … whose block ran as a template (no frame) checked
+  the deadline only over a count (`n.times`); over an array or a hash it
+  ran to the end. It checks every 256 elements now, as for a count.
+
 - **Model field reads on the VM no longer take the registry lock (#631).**
   Every field hit on a model instance read `MODEL_REGISTRY` and scanned the
   model's relations and translated fields, about twice the cost of a plain

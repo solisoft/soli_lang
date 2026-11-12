@@ -926,6 +926,11 @@ fn run_kernel(
             // No side effect can run while the template does: hold the borrow.
             let array = array.borrow();
             while *index < *len {
+                // The handler budget, as for a count below: a request-sized
+                // array is as long as the request makes it (#631).
+                if *index & 255 == 0 && crate::interpreter::deadline::expired() {
+                    return Ok(KernelRun::Expired);
+                }
                 let Some(item) = array.get(*index) else {
                     return Ok(KernelRun::Done);
                 };
@@ -1010,6 +1015,9 @@ fn run_kernel(
         Source::Hash(hash) => {
             let hash = hash.borrow();
             while *index < *len {
+                if *index & 255 == 0 && crate::interpreter::deadline::expired() {
+                    return Ok(KernelRun::Expired);
+                }
                 let Some((key, value)) = hash.get_index(*index) else {
                     if *mirror {
                         out_hash.truncate(*index);
