@@ -162,11 +162,21 @@ impl Interpreter {
                 // A frame entered without a statement in between (an
                 // expression-bodied lambda): pad with the caller's view.
                 while state.frames.len() < depth {
-                    let filler = state
-                        .frames
-                        .last()
-                        .cloned()
-                        .unwrap_or_else(|| frame.clone());
+                    // Named after the call it is, from the call stack.
+                    let at = state.frames.len();
+                    let call = at.checked_sub(1).and_then(|i| self.call_stack.get(i));
+                    let filler = FrameState {
+                        name: call
+                            .map(|c| c.function_name.clone())
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or_else(|| "<anonymous>".to_string()),
+                        file: call
+                            .and_then(|c| c.file_path.clone())
+                            .map(|p| session::normalize_path(&p))
+                            .unwrap_or_else(|| frame.file.clone()),
+                        line: call.map(|c| c.line as u32).unwrap_or(frame.line),
+                        scope: frame.scope.clone(),
+                    };
                     state.frames.push(filler);
                 }
                 state.frames.push(frame);
@@ -233,6 +243,12 @@ impl Paused for Interpreter {
 /// Stopped: tell the adapter, then serve its commands until one resumes.
 /// `depth` is the stopped frame's, for step over and step out.
 fn serve_pause(target: &mut dyn Paused, depth: usize, reason: &'static str, description: String) {
+    let _one_at_a_time = session::stop_lock();
+    // The editor may have gone while this thread waited for its turn.
+    if !session::client_connected() {
+        return;
+    }
+    let started = web_time::Instant::now();
     session::send(Event::Stopped {
         reason,
         description,
@@ -251,6 +267,8 @@ fn serve_pause(target: &mut dyn Paused, depth: usize, reason: &'static str, desc
         state.mode = mode;
         state.handles.clear();
     });
+    // The request's budget does not run while it is stopped.
+    crate::interpreter::deadline::extend(started.elapsed());
 }
 
 /// Run `source` in `env` on `interpreter`, without stopping inside it; the
@@ -508,6 +526,10 @@ fn scope_entries(
             break;
         }
         for (name, value) in scope.borrow().own_bindings() {
+            // `__…` names are the engine's own bookkeeping.
+            if name.starts_with("__") {
+                continue;
+            }
             if seen.insert(name.clone()) {
                 if !locals && builtins.is_some_and(|b| b.contains(&name)) {
                     continue;

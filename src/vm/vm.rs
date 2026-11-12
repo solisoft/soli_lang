@@ -4685,8 +4685,18 @@ impl Vm {
                     }
                 }
                 Op::DebugBreak => {
-                    if crate::debug::active() && crate::debug::is_debuggee() {
+                    if crate::debug::session::client_connected() {
                         self.debugger_break();
+                    } else {
+                        // No editor attached (`soli serve --inspect` with
+                        // nobody connected): `debug()` does what it does
+                        // without a debugger, a stop that shows the dev page.
+                        let span = self.current_span();
+                        return Err(RuntimeError::breakpoint(
+                            span,
+                            "{}".to_string(),
+                            vec![format!("debug() at line {}", span.line)],
+                        ));
                     }
                 }
 

@@ -147,9 +147,46 @@ completion = [{ name = "script", completion = "filename" }]
 args = { program = "{0}" }
 ```
 
+### Attaching to a running server (`--inspect`)
+
+```bash
+SOLI_DEV_REPL_SECRET=my-dev-token soli serve . --dev --inspect     # 127.0.0.1:9229
+soli serve . --dev --inspect=127.0.0.1:9339                        # another port
+```
+
+The server opens a DAP port next to its HTTP one and prints it with the dev
+token, the secret the dev error page's REPL already requires (set
+`SOLI_DEV_REPL_SECRET` to keep it the same across restarts). An editor
+attaches with `"request": "attach"` and `"token"`; a wrong token closes the
+connection. Then a breakpoint in a controller, model, service, middleware or
+helper stops the request that reaches it, with everything above: the stack,
+locals (`req`, `params`, `this`), evaluate and stepping. `continue` lets the
+response go.
+
+- **Development only.** `--inspect` refuses to start without `--dev`, and
+  binds a loopback address only: an attached debugger runs code in the
+  server.
+- One editor at a time. When it disconnects its breakpoints go, a stopped
+  request resumes, and the server carries on.
+- One request stops at a time; another one reaching a breakpoint waits for
+  the first to resume. The handler timeout does not count the time a
+  request spends stopped, but a proxy in front of the server, or the
+  browser, may give up on it.
+- Nothing stops while no editor is attached; `debug()` then shows the dev
+  page as usual.
+
+nvim-dap:
+
+```lua
+dap.adapters.soli_server = { type = "server", host = "127.0.0.1", port = 9229 }
+dap.configurations.soli = vim.list_extend(dap.configurations.soli or {}, {
+  { type = "soli_server", request = "attach", name = "Attach to soli serve",
+    token = os.getenv("SOLI_DEV_REPL_SECRET") },
+})
+```
+
 **For now:**
 
-- It runs scripts and specs. Attaching to `soli serve` comes next.
 - Native kernels (typed functions compiled to machine code) are off while
   debugging: no debugger stops inside machine code. Specs run on the
   tree-walker.

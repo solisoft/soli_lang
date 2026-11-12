@@ -503,6 +503,25 @@ pub fn run_serve(options: &crate::cli::args::ServeOptions) {
         process::exit(1);
     }
 
+    // `--inspect`: open the debugging session and its port before the
+    // workers start, so they compile with the debugger's stop markers.
+    if let Some(addr) = &options.inspect {
+        if !dev_mode {
+            eprintln!("--inspect needs --dev: an attached debugger runs code in the server");
+            process::exit(64);
+        }
+        match solilang::dap::start_inspector(addr, solilang::serve::dev_token().to_string()) {
+            Ok(bound) => {
+                eprintln!("Debugger: attach a DAP client to {bound} with the dev token");
+                eprintln!("  token: {}", solilang::serve::dev_token());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                process::exit(1);
+            }
+        }
+    }
+
     // Pin before boot: the bind loop reads this when the port is taken.
     if strict_port {
         solilang::serve::request_strict_port();

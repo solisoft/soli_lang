@@ -74,6 +74,40 @@ pub struct Session {
 
 static SESSION: OnceLock<Arc<Session>> = OnceLock::new();
 static ATTACHED: AtomicBool = AtomicBool::new(false);
+/// An editor is connected and authorized. `soli dap` has one from the start;
+/// `soli serve --inspect` only while an editor is attached. Without one,
+/// nothing stops.
+static CLIENT: AtomicBool = AtomicBool::new(false);
+
+/// One stopped thread at a time: a second worker reaching a breakpoint
+/// waits here until the first resumes.
+static STOP_LOCK: Mutex<()> = Mutex::new(());
+
+/// Note whether an editor is connected.
+pub fn set_client_connected(connected: bool) {
+    CLIENT.store(connected, Ordering::Release);
+}
+
+/// Is an editor connected?
+pub fn client_connected() -> bool {
+    CLIENT.load(Ordering::Acquire)
+}
+
+/// Taken by a thread for as long as it is stopped.
+pub(crate) fn stop_lock() -> std::sync::MutexGuard<'static, ()> {
+    STOP_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Forget every breakpoint (the editor went away).
+pub fn clear_breakpoints() {
+    if let Some(session) = session() {
+        session
+            .breakpoints
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
+}
 
 /// Open the process's debugging session. The adapter keeps the command
 /// sender and the event receiver. Fails if one is already open.
@@ -169,6 +203,9 @@ pub fn should_stop(
     mode: StepMode,
 ) -> Option<&'static str> {
     let session = session()?;
+    if !client_connected() {
+        return None;
+    }
     if session.pause.swap(false, Ordering::AcqRel) {
         return Some("pause");
     }
@@ -265,6 +302,7 @@ mod tests {
         // breakpoints, and an open session is harmless to other tests (it
         // only answers `attached()` for code that asks).
         let _ = open();
+        set_client_connected(true);
         let last = at(3, 2);
         assert_eq!(should_stop(&at(4, 2), Some(&last), StepMode::Run), None);
         assert_eq!(

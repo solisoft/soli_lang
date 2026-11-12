@@ -177,10 +177,28 @@ request = "launch"
 completion = [{ name = "script", completion = "filename" }]
 args = { program = "{0}" }</code></pre>
         </div></div>
+        <h3 class="text-xl font-semibold text-white mb-3" id="inspect">Attaching to a running server (<code>--inspect</code>)</h3>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-4"><div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">SOLI_DEV_REPL_SECRET=my-dev-token soli serve . --dev --inspect     # 127.0.0.1:9229
+soli serve . --dev --inspect=127.0.0.1:9339                        # another port</code></pre>
+        </div></div>
+        <p class="text-gray-400 mb-4">The server opens a DAP port next to its HTTP one and prints it with the dev token, the secret the dev error page&rsquo;s REPL already requires (set <code class="text-cyan-400">SOLI_DEV_REPL_SECRET</code> to keep it across restarts). An editor attaches with <code class="text-cyan-400">"request": "attach"</code> and <code class="text-cyan-400">"token"</code>; a wrong token closes the connection. A breakpoint in a controller, model, service, middleware or helper then stops the request that reaches it, with the stack, locals (<code>req</code>, <code>params</code>, <code>this</code>), evaluate and stepping. <code class="text-cyan-400">continue</code> lets the response go.</p>
+        <ul class="list-disc list-inside text-gray-400 mb-4 space-y-2">
+            <li><strong class="text-white">Development only.</strong> <code>--inspect</code> refuses to start without <code>--dev</code>, and binds a loopback address only: an attached debugger runs code in the server.</li>
+            <li>One editor at a time. When it disconnects its breakpoints go, a stopped request resumes, and the server carries on.</li>
+            <li>One request stops at a time; another one reaching a breakpoint waits for the first to resume. The handler timeout does not count the time a request spends stopped, but a proxy in front of the server, or the browser, may give up on it.</li>
+            <li>Nothing stops while no editor is attached; <code>debug()</code> then shows the dev page as usual.</li>
+        </ul>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto">
+<pre><code class="language-lua text-sm">dap.adapters.soli_server = { type = "server", host = "127.0.0.1", port = 9229 }
+dap.configurations.soli = vim.list_extend(dap.configurations.soli or {}, {
+  { type = "soli_server", request = "attach", name = "Attach to soli serve",
+    token = os.getenv("SOLI_DEV_REPL_SECRET") },
+})</code></pre>
+        </div></div>
         <div class="rounded-xl bg-amber-500/5 border border-amber-500/20 p-5">
             <p class="text-gray-300 text-sm leading-relaxed mb-2"><strong class="text-white">For now:</strong></p>
             <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
-                <li>It runs scripts and specs. Attaching to <code>soli serve</code> comes next.</li>
                 <li>Native kernels (typed functions compiled to machine code) are off while debugging: no debugger stops inside machine code. Specs run on the tree-walker.</li>
                 <li>An outer frame&rsquo;s Locals are as they were at its last statement, the call it is waiting on.</li>
                 <li>No conditional breakpoints or logpoints yet, and the VS Code extension does not declare the debugger yet: use an editor above, or any DAP client.</li>

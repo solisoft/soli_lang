@@ -76,6 +76,13 @@ mod dev_jobs;
 mod dev_mobile;
 mod dev_query_stats;
 mod dev_routes;
+
+/// The dev token: the secret the dev error page's REPL requires, and the
+/// one `--inspect` asks an attaching editor for. `SOLI_DEV_REPL_SECRET`,
+/// or a fresh one per process.
+pub fn dev_token() -> &'static str {
+    dev_routes::dev_repl_auth_token()
+}
 mod dev_slow_queries;
 mod dev_spam;
 pub mod dev_store;
@@ -1746,6 +1753,12 @@ fn run_hyper_server_worker_pool(
         let worker_tenant = tenant::current_id();
         let handler = builder.spawn(move || {
             tenant::bind_current(worker_tenant);
+            // `--inspect`: every worker is a thread the debugger may stop,
+            // marked before it compiles a handler, so its bytecode carries
+            // the stop markers.
+            if crate::debug::session::attached() {
+                crate::debug::set_thread_listener(crate::debug::DEBUGGEE, true);
+            }
             // Set tokio runtime handle for this worker thread (used by HTTP builtins)
             set_tokio_handle(runtime_handle.clone());
 

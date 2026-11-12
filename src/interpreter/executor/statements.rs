@@ -80,6 +80,7 @@ impl Interpreter {
                 if matches!(value, Value::Breakpoint)
                     && crate::debug::active()
                     && crate::debug::is_debuggee()
+                    && crate::debug::session::client_connected()
                 {
                     self.debugger_breakpoint_call();
                     return Ok(ControlFlow::Normal(Value::Null));

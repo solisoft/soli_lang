@@ -2709,3 +2709,225 @@ end
 
     drop((on_b, server_a, server_b));
 }
+
+/// A DAP client over TCP, for `soli serve --dev --inspect`.
+struct InspectClient {
+    stream: std::net::TcpStream,
+    reader: std::io::BufReader<std::net::TcpStream>,
+    seq: i64,
+}
+
+impl InspectClient {
+    fn connect(port: u16) -> InspectClient {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let stream = loop {
+            match std::net::TcpStream::connect(("127.0.0.1", port)) {
+                Ok(stream) => break stream,
+                Err(e) if Instant::now() < deadline => {
+                    let _ = e;
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Err(e) => panic!("inspector port: {e}"),
+            }
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
+        let reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        InspectClient {
+            stream,
+            reader,
+            seq: 0,
+        }
+    }
+
+    fn read(&mut self) -> Option<serde_json::Value> {
+        use std::io::{BufRead, Read};
+        let mut length = None;
+        loop {
+            let mut line = String::new();
+            if self.reader.read_line(&mut line).ok()? == 0 {
+                return None;
+            }
+            let line = line.trim_end();
+            if line.is_empty() {
+                break;
+            }
+            if let Some(value) = line.strip_prefix("Content-Length:") {
+                length = value.trim().parse::<usize>().ok();
+            }
+        }
+        let mut body = vec![0u8; length?];
+        self.reader.read_exact(&mut body).ok()?;
+        serde_json::from_slice(&body).ok()
+    }
+
+    /// Send a request and return its response (success or not).
+    fn request(&mut self, command: &str, arguments: serde_json::Value) -> serde_json::Value {
+        use std::io::Write;
+        self.seq += 1;
+        let body = serde_json::json!({"seq": self.seq, "type": "request",
+            "command": command, "arguments": arguments})
+        .to_string();
+        write!(
+            self.stream,
+            "Content-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+        let seq = self.seq;
+        loop {
+            let message = self.read().expect("an answer from the inspector");
+            if message["type"] == "response" && message["request_seq"] == seq {
+                return message;
+            }
+        }
+    }
+
+    fn wait_stopped(&mut self) -> serde_json::Value {
+        loop {
+            let message = self.read().expect("a stopped event");
+            if message["event"] == "stopped" {
+                return message["body"].clone();
+            }
+        }
+    }
+}
+
+/// `soli serve --dev --inspect`: an editor attaches with the dev token, a
+/// breakpoint in a controller stops a real request, its locals are
+/// readable, `continue` lets the response go, and once the editor leaves
+/// the server answers freely again.
+#[test]
+fn an_attached_debugger_stops_a_request() {
+    let dir = tempfile::tempdir().expect("temp app dir");
+    let inspect_port = pick_port();
+    let files: &[(&str, &str)] = &[
+        (
+            "config/routes.sl",
+            "get(\"/ping\", \"home#ping\")\nget(\"/sum\", \"home#sum\")\n",
+        ),
+        (
+            "app/controllers/home_controller.sl",
+            "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /sum
+  def sum(req)
+    a = params[\"a\"].to_i
+    b = params[\"b\"].to_i
+    total = a + b
+    {\"status\": 200, \"body\": \"total #{total}\"}
+  end
+end
+",
+        ),
+    ];
+    let inspect_arg = format!("--inspect=127.0.0.1:{inspect_port}");
+    let server = serve_app_with_args(
+        dir.path(),
+        files,
+        &[("SOLI_DEV_REPL_SECRET", "inspect-spec-token")],
+        &["--dev", &inspect_arg],
+    );
+    let controller = dir
+        .path()
+        .join("app/controllers/home_controller.sl")
+        .to_string_lossy()
+        .to_string();
+
+    // A wrong token is refused and the connection closed.
+    let mut intruder = InspectClient::connect(inspect_port);
+    intruder.request("initialize", serde_json::json!({}));
+    let refused = intruder.request("attach", serde_json::json!({"token": "guess"}));
+    assert_eq!(refused["success"], false, "{refused}");
+    assert!(intruder.read().is_none(), "the connection is closed");
+
+    let mut client = InspectClient::connect(inspect_port);
+    client.request("initialize", serde_json::json!({}));
+    let early = client.request(
+        "setBreakpoints",
+        serde_json::json!({"source": {"path": controller}, "breakpoints": [{"line": 11}]}),
+    );
+    assert_eq!(early["success"], false, "nothing before attach: {early}");
+    let attached = client.request("attach", serde_json::json!({"token": "inspect-spec-token"}));
+    assert_eq!(attached["success"], true, "{attached}");
+    client.request(
+        "setBreakpoints",
+        serde_json::json!({"source": {"path": controller}, "breakpoints": [{"line": 11}]}),
+    );
+    client.request("configurationDone", serde_json::json!({}));
+
+    let url = server.url("/sum?a=2&b=3");
+    let response = thread::spawn(move || {
+        body_string(
+            ureq::get(&url)
+                .timeout(Duration::from_secs(60))
+                .call()
+                .expect("GET /sum"),
+        )
+    });
+    let stopped = client.wait_stopped();
+    assert_eq!(stopped["reason"], "breakpoint", "{stopped}");
+    let trace = client.request("stackTrace", serde_json::json!({"threadId": 1}));
+    let top = &trace["body"]["stackFrames"][0];
+    assert_eq!(top["name"], "sum", "{trace}");
+    assert_eq!(top["line"], 11);
+    let scopes = client.request("scopes", serde_json::json!({"frameId": top["id"]}));
+    let locals = client.request(
+        "variables",
+        serde_json::json!({"variablesReference": scopes["body"]["scopes"][0]["variablesReference"]}),
+    );
+    let names: Vec<&str> = locals["body"]["variables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"a") && names.contains(&"b"), "{locals}");
+    assert!(!names.iter().any(|n| n.starts_with("__")), "{locals}");
+
+    // Held past nothing: the request is still waiting on the breakpoint.
+    thread::sleep(Duration::from_millis(500));
+    assert!(!response.is_finished());
+    client.request("continue", serde_json::json!({"threadId": 1}));
+    assert_eq!(response.join().unwrap(), "total 5");
+
+    client.request("disconnect", serde_json::json!({}));
+    drop(client);
+    // Breakpoints went with the editor.
+    let free = body_string(
+        ureq::get(&server.url("/sum?a=1&b=1"))
+            .timeout(Duration::from_secs(10))
+            .call()
+            .expect("GET /sum after disconnect"),
+    );
+    assert_eq!(free, "total 2");
+}
+
+/// `--inspect` is a development tool: without `--dev` the server refuses to
+/// start, and it binds loopback only.
+#[test]
+fn inspect_needs_dev_and_loopback() {
+    let dir = tempfile::tempdir().expect("temp app dir");
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::write(dir.path().join("config/routes.sl"), "").unwrap();
+    let run = |args: &[&str]| {
+        Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+            .arg("serve")
+            .arg(dir.path())
+            .args(args)
+            .output()
+            .expect("soli serve runs")
+    };
+    let no_dev = run(&["--inspect"]);
+    assert!(!no_dev.status.success());
+    assert!(String::from_utf8_lossy(&no_dev.stderr).contains("--inspect needs --dev"));
+    let remote = run(&["--dev", "--inspect=0.0.0.0:9339"]);
+    assert!(!remote.status.success());
+    assert!(String::from_utf8_lossy(&remote.stderr).contains("loopback"));
+}

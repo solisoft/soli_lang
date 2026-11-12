@@ -22,6 +22,9 @@ use serde_json::{json, Value as Json};
 use crate::debug::session::{self, Command, Event};
 use crate::interpreter::executor::debugger;
 
+mod inspector;
+pub use inspector::start_inspector;
+
 /// How long an inspection waits for the program's thread to answer.
 const INSPECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -120,12 +123,39 @@ struct Adapter {
     /// Set while the program is stopped: inspections are answered only then.
     stopped: Arc<AtomicBool>,
     started: bool,
+    /// `soli serve --inspect`: the token `attach` must carry. `None` for
+    /// `soli dap`, which launches its own program.
+    inspector_token: Option<String>,
+    /// The editor sent `attach` with the right token.
+    authorized: bool,
+    /// The connection is to close after this request's answer.
+    closing: bool,
 }
 
 impl Adapter {
+    fn new(wire: Wire, commands: Sender<Command>, stopped: Arc<AtomicBool>) -> Adapter {
+        Adapter {
+            wire,
+            commands,
+            launch: None,
+            stopped,
+            started: false,
+            inspector_token: None,
+            authorized: false,
+            closing: false,
+        }
+    }
+
     fn handle(&mut self, request: &Json) -> Option<Result<Json, String>> {
         let args = &request["arguments"];
-        let result = match request["command"].as_str().unwrap_or_default() {
+        let command = request["command"].as_str().unwrap_or_default();
+        if self.inspector_token.is_some()
+            && !self.authorized
+            && !matches!(command, "initialize" | "attach" | "disconnect")
+        {
+            return Some(Err("attach first, with the dev token".into()));
+        }
+        let result = match command {
             "initialize" => {
                 let capabilities = json!({
                     "supportsConfigurationDoneRequest": true,
@@ -136,12 +166,17 @@ impl Adapter {
                 self.wire.event("initialized", json!({}));
                 return None;
             }
+            "launch" if self.inspector_token.is_some() => {
+                Err("this is a running soli serve: use attach".into())
+            }
             "launch" => self.launch(args),
-            "attach" => Err("soli dap launches a script; attaching is not supported yet".into()),
+            "attach" => self.attach(args),
             "setBreakpoints" => Ok(set_breakpoints(args)),
             "setExceptionBreakpoints" => Ok(json!({"breakpoints": []})),
             "configurationDone" => {
-                self.start();
+                if self.inspector_token.is_none() {
+                    self.start();
+                }
                 Ok(json!({}))
             }
             "threads" => Ok(json!({"threads": [{"id": THREAD_ID, "name": "main"}]})),
@@ -169,6 +204,12 @@ impl Adapter {
                 session::request_pause();
                 Ok(json!({}))
             }
+            "disconnect" | "terminate" if self.inspector_token.is_some() => {
+                // Leaving a running server: the connection closes, the
+                // server goes on.
+                self.closing = true;
+                Ok(json!({}))
+            }
             "disconnect" | "terminate" => {
                 self.wire.respond(request, Ok(json!({})));
                 std::process::exit(0);
@@ -176,6 +217,24 @@ impl Adapter {
             other => Err(format!("unsupported request {other}")),
         };
         Some(result)
+    }
+
+    /// `attach` to a `soli serve --inspect`: the dev token, compared in
+    /// constant time. A wrong one closes the connection.
+    fn attach(&mut self, args: &Json) -> Result<Json, String> {
+        let Some(token) = &self.inspector_token else {
+            return Err(
+                "soli dap launches a script; attach to `soli serve --dev --inspect`".into(),
+            );
+        };
+        let given = args["token"].as_str().unwrap_or_default();
+        if !inspector::constant_time_eq(given, token) {
+            self.closing = true;
+            return Err("wrong or missing \"token\" (the dev token soli serve printed)".into());
+        }
+        self.authorized = true;
+        session::set_client_connected(true);
+        Ok(json!({}))
     }
 
     fn launch(&mut self, args: &Json) -> Result<Json, String> {
@@ -317,13 +376,7 @@ fn pump_events(wire: Wire, events: std::sync::mpsc::Receiver<Event>, stopped: Ar
                 description,
             } => {
                 stopped.store(true, Ordering::Release);
-                wire.event(
-                    "stopped",
-                    json!({
-                        "reason": reason, "description": description,
-                        "threadId": THREAD_ID, "allThreadsStopped": true,
-                    }),
-                );
+                send_stopped(&wire, reason, &description);
             }
             Event::Finished { error } => {
                 // Let the output pump deliver what the program printed last.
@@ -340,6 +393,16 @@ fn pump_events(wire: Wire, events: std::sync::mpsc::Receiver<Event>, stopped: Ar
             }
         }
     }
+}
+
+fn send_stopped(wire: &Wire, reason: &str, description: &str) {
+    wire.event(
+        "stopped",
+        json!({
+            "reason": reason, "description": description,
+            "threadId": THREAD_ID, "allThreadsStopped": true,
+        }),
+    );
 }
 
 /// Keep the real stdout for the protocol and route fd 1 into a pipe whose
@@ -407,6 +470,8 @@ pub fn run() -> i32 {
             return 1;
         }
     };
+    // The editor that started this process is the client.
+    session::set_client_connected(true);
     let stopped = Arc::new(AtomicBool::new(false));
     {
         let wire = wire.clone();
@@ -414,13 +479,7 @@ pub fn run() -> i32 {
         std::thread::spawn(move || pump_events(wire, events, stopped));
     }
 
-    let mut adapter = Adapter {
-        wire: wire.clone(),
-        commands,
-        launch: None,
-        stopped,
-        started: false,
-    };
+    let mut adapter = Adapter::new(wire.clone(), commands, stopped);
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
     while let Some(request) = read_message(&mut input) {

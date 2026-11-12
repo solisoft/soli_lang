@@ -36,6 +36,8 @@ pub struct ServeOptions {
     /// mode, consulted in order when the served folder has no match. Lets a
     /// docs folder reach images that live beside it rather than in it.
     pub assets: Vec<String>,
+    /// `--inspect[=ADDR]`: the step debugger's port (`--dev` only).
+    pub inspect: Option<String>,
 }
 
 /// What `soli cloud` should do.
@@ -731,6 +733,9 @@ pub fn print_usage() {
     eprintln!("  soli build <script.sl> [-o <file>] [--thin] [--target PLATFORM] [--vm|--tree]");
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli serve <folder> [--strict-port]   (fail instead of scanning for a free port)");
+    eprintln!(
+        "  soli serve <folder> --dev --inspect[=127.0.0.1:9229]   (a DAP port: attach a debugger)"
+    );
     eprintln!("  soli env up [branch] [--server <name>] [--no-seed]");
     eprintln!("  soli env down [branch] [--server <name>] [--keep-data]");
     eprintln!("  soli env <list|url> [branch] [--server <name>]");
@@ -1922,6 +1927,7 @@ pub fn parse_args() -> Options {
                 let mut dev_mode = false;
                 let mut daemonize = false;
                 let mut mode: Option<ServeModeArg> = None;
+                let mut inspect: Option<String> = None;
                 let mut strict_port = false;
                 let mut assets: Vec<String> = Vec::new();
                 // Worker count: `SOLI_WORKERS` if set; else production default
@@ -1959,6 +1965,10 @@ pub fn parse_args() -> Options {
                         dev_mode = true;
                     } else if args[i] == "--strict-port" {
                         strict_port = true;
+                    } else if args[i] == "--inspect" {
+                        inspect = Some("127.0.0.1:9229".to_string());
+                    } else if let Some(addr) = args[i].strip_prefix("--inspect=") {
+                        inspect = Some(addr.to_string());
                     } else if args[i] == "--static" || args[i] == "--app" {
                         let requested = if args[i] == "--static" {
                             ServeModeArg::Files
@@ -1995,6 +2005,7 @@ pub fn parse_args() -> Options {
                     mode,
                     strict_port,
                     assets,
+                    inspect,
                 });
                 return options;
             }

@@ -114,6 +114,16 @@ pub fn expired() -> bool {
     expired
 }
 
+/// Push the current budget's end back by `by`: the time a step debugger
+/// held the request stopped is not the handler's.
+pub fn extend(by: Duration) {
+    DEADLINE.with(|d| {
+        if let Some(deadline) = d.get() {
+            d.set(Some(deadline + by));
+        }
+    });
+}
+
 /// Has the current unit of work's budget run out? Reads the clock now; for
 /// deciding what to do after a failure (serve does not re-run a handler on
 /// the tree-walker once its budget is spent), not for a dispatch loop.

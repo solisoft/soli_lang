@@ -4,6 +4,26 @@
 
 ### Added
 
+- **`soli serve --dev --inspect`: attach the step debugger to a running
+  server (#697, phase 3).** `--inspect[=ADDR]` (default 127.0.0.1:9229,
+  loopback only, refused without `--dev`) opens the debugging session before
+  the workers start — each marks itself the debuggee, so its handlers
+  compile with stop markers — and a DAP port (`dap::start_inspector`). One
+  editor at a time; it must `attach` with the dev token
+  (`serve::dev_token`, the REPL's secret, compared in constant time; a
+  wrong one closes the connection). A breakpoint then stops the request
+  that reaches it; one thread stops at a time (`session::stop_lock`); the
+  handler deadline is pushed back by the time spent stopped
+  (`deadline::extend`). On disconnect the breakpoints are cleared and a
+  stopped request resumes. With no editor attached nothing stops and
+  `debug()` keeps its dev page (`Op::DebugBreak` raises the usual
+  breakpoint). Frames between the action and the request entry are named
+  from the call stack; `__` bookkeeping names are hidden. Tests: e2e
+  `an_attached_debugger_stops_a_request` (wrong token refused, nothing
+  before attach, a real request held at a controller line, locals,
+  continue delivers the response, free after disconnect),
+  `inspect_needs_dev_and_loopback`.
+
 - **The step debugger stops the VM too (#697).** `launch` takes `"engine":
   "vm"`. While a debugger is attached (and only on the thread it stops),
   the compiler emits `Op::DebugStmt(line)` at each statement — function
