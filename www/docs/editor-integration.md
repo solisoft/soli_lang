@@ -271,6 +271,12 @@ language-servers = ["soli"]
 For highlighting, add the `[[grammar]]` entry and the queries from the
 [grammar's README](https://github.com/solisoft/soli_lang/tree/main/editors/tree-sitter-soli#helix).
 
+## Debugging
+
+`soli dap` is the debug adapter: breakpoints, stepping and variables for a
+script, in Neovim (nvim-dap), Helix or any DAP client. Setup and limits:
+[Debugging → Step debugger](debugging.md#step-debugger-soli-dap).
+
 ## Other editors
 
 Any editor with an LSP client can start `soli lsp` on stdio for `.sl` and

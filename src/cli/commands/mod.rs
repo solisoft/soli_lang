@@ -1264,6 +1264,11 @@ pub fn run_repl() {
     solilang::repl_tui::run_tui_repl().unwrap();
 }
 
+/// `soli dap`: the Debug Adapter Protocol server, on stdio.
+pub fn run_dap() {
+    std::process::exit(solilang::dap::run());
+}
+
 #[cfg(feature = "lsp")]
 pub fn run_lsp() {
     // Logs go to stderr so they don't corrupt the LSP stdio framing.

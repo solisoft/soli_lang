@@ -30,6 +30,15 @@ impl Interpreter {
         // load when nothing listens.
         if crate::debug::active() {
             crate::debug::on_line();
+            // A step debugger stops only on the thread running its program.
+            if crate::debug::is_debuggee() {
+                let file = stmt
+                    .source_path
+                    .clone()
+                    .or_else(|| self.current_file_path())
+                    .map(|p| crate::debug::session::normalize_path(&p.to_string_lossy()));
+                self.debugger_statement(file, stmt.span.line_usize());
+            }
         }
         // ATTRIBUER LA LIGNE AU FICHIER QUI LA PORTE, PAS AU FICHIER D'ENTREE.
         //
@@ -66,6 +75,15 @@ impl Interpreter {
             StmtKind::Expression(expr) => {
                 let value = self.evaluate(expr)?;
                 // Check for breakpoint marker
+                // With a step debugger attached, `debug()` is a breakpoint
+                // in place: the program stops here and resumes after it.
+                if matches!(value, Value::Breakpoint)
+                    && crate::debug::active()
+                    && crate::debug::is_debuggee()
+                {
+                    self.debugger_breakpoint_call();
+                    return Ok(ControlFlow::Normal(Value::Null));
+                }
                 if matches!(value, Value::Breakpoint) {
                     let env_json = self.serialize_environment_for_debug();
                     let mut stack_trace = self.get_stack_trace();

@@ -353,6 +353,16 @@ impl Environment {
         self.values.keys().cloned().collect()
     }
 
+    /// This scope's own bindings (variables and constants), not its
+    /// enclosing scopes'. For the step debugger's Variables view.
+    pub fn own_bindings(&self) -> Vec<(String, Value)> {
+        self.values
+            .iter()
+            .chain(self.consts.iter())
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect()
+    }
+
     /// Get the enclosing environment.
     pub fn enclosing(&self) -> Option<Rc<RefCell<Environment>>> {
         self.enclosing.clone()

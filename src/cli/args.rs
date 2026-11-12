@@ -386,6 +386,8 @@ pub enum Command {
     /// Start the Soli LSP server on stdio. Used by editor plugins
     /// (Nova, VS Code, etc.) — not typically run interactively.
     Lsp,
+    /// `soli dap`: a Debug Adapter Protocol server on stdio.
+    Dap,
     Build {
         folder: String,
         output: Option<String>,
@@ -823,6 +825,7 @@ pub fn print_usage() {
     eprintln!("                       --format json: one JSON document (editors, CI)");
     eprintln!("  explain [code]       What an error code (E0301) or a lint rule means");
     eprintln!("  lsp                  Start the Soli LSP server on stdio (for editor plugins)");
+    eprintln!("  dap                  Start the Soli debug adapter (DAP) on stdio (for editors)");
     eprintln!(
         "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
     );
@@ -2353,6 +2356,10 @@ pub fn parse_args() -> Options {
             "--no-native" => solilang::native::set_enabled(false),
             "lsp" => {
                 options.command = Command::Lsp;
+                return options;
+            }
+            "dap" => {
+                options.command = Command::Dap;
                 return options;
             }
             "lint" => {

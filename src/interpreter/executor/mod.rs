@@ -1,5 +1,6 @@
 //! Tree-walking interpreter for Solilang.
 
+pub mod debugger;
 mod expressions;
 pub(crate) use expressions::set_instance_field;
 pub(crate) mod literals;

@@ -83,6 +83,68 @@ The page gives you a REPL running in the breakpoint's context, a clickable stack
 trace, a source viewer with the line highlighted, and a request inspector for
 params, query, headers and body. It also opens automatically on an error.
 
+## Step debugger (`soli dap`)
+
+`soli dap` is a [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/)
+server on stdin/stdout. An editor that speaks DAP launches a script through it
+and can then stop, step and look inside it while it runs — a real pause, unlike
+the `debug()` page above.
+
+- **Breakpoints** on any line of the script or of a file it imports.
+- **Step over, into and out**, continue, and pause a running program.
+- **The call stack**, with each frame's line, and for each frame its
+  **Locals** and the program's **Globals** (builtins left out). Arrays, hashes
+  and objects expand; a name that looks like a secret (`password`, `token`…)
+  shows `[REDACTED]`.
+- **Evaluate** in the paused frame, from the debug console or on hover. It
+  runs real code in that frame's scope, so `total = 0` changes the variable.
+- **`debug()` is a breakpoint** while a debugger is attached: the program
+  stops there and resumes after it.
+- What the program prints arrives in the editor's debug console.
+
+The launch configuration takes `program` (the `.sl` script, required), `cwd`
+and `stopOnEntry`.
+
+**Neovim** ([nvim-dap](https://github.com/mfussenegger/nvim-dap)):
+
+```lua
+local dap = require("dap")
+dap.adapters.soli = { type = "executable", command = "soli", args = { "dap" } }
+dap.configurations.soli = {
+  { type = "soli", request = "launch", name = "Debug this file",
+    program = "${file}", cwd = "${workspaceFolder}" },
+}
+```
+
+**Helix** (`languages.toml`):
+
+```toml
+[language.debugger]
+name = "soli"
+transport = "stdio"
+command = "soli"
+args = ["dap"]
+
+[[language.debugger.templates]]
+name = "script"
+request = "launch"
+completion = [{ name = "script", completion = "filename" }]
+args = { program = "{0}" }
+```
+
+**For now:**
+
+- It runs scripts (`soli script.sl`). Attaching to `soli serve` and debugging
+  a spec come next.
+- The program runs on the tree-walker, without native kernels, whatever
+  engine `soli script.sl` would pick: that is the engine a debugger can stop.
+- An outer frame's Locals are as they were at its last statement, the call
+  it is waiting on.
+- No conditional breakpoints or logpoints yet, and the VS Code extension
+  does not declare the debugger yet: use an editor above, or any DAP client.
+- On Windows the program's output is not captured, and can disturb the
+  protocol.
+
 ## The REPL
 
 The debug page's REPL executes any Soli code in the breakpoint's scope.

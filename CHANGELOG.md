@@ -4,6 +4,25 @@
 
 ### Added
 
+- **`soli dap`: a step debugger for scripts (#697, phase 2).** A Debug
+  Adapter Protocol server on stdio (`src/dap/`, hand-written framing, no new
+  dependency): `initialize`, `launch` (`program`, `cwd`, `stopOnEntry`),
+  `setBreakpoints`, `configurationDone`, `threads`, `stackTrace`, `scopes`
+  (Locals, Globals without the builtins), `variables` (arrays, hashes,
+  object fields; secret-looking names redacted), `evaluate` (runs in the
+  paused frame's scope, so it can assign), `continue`, `next`, `stepIn`,
+  `stepOut`, `pause`, `disconnect`. The program runs on its own thread on the
+  tree-walker, with its path known and no native kernels
+  (`debug_script_file`); fd 1 is piped into `output` events. Engine side:
+  `debug::session` (breakpoints by file, step modes, pause, the
+  engine/adapter channels; only the thread marked `DEBUGGEE` ever stops) and
+  `executor/debugger.rs` (the statement hook, per-depth frame records,
+  variable handles; `debug()` is a breakpoint while attached). Nothing
+  changes when no debugger is attached: the hook sits behind
+  `debug::active()`. Tests: `tests/dap_test.rs` drives the binary over stdio
+  (breakpoint, stack, scopes, expansion, evaluate, next, step out,
+  `debug()`, output, exit code, an uncaught error, a refused launch).
+
 - **Passkeys in native apps (#696, phase 5).** `AppLinks.android(package,
   fingerprints, {"passkeys": true})` adds the
   `delegate_permission/common.get_login_creds` relation, and

@@ -196,3 +196,8 @@ src/request_local.rs KEY
 src/debug/mod.rs MASK
 src/debug/profiler.rs LAST
 src/debug/profiler.rs THREAD_ENTRY
+
+# The step debugger's per-program state (#697): where each frame is, the step
+# mode, the variable handles. Only the `soli dap` program thread writes it; no
+# server ever runs with a debugger attached.
+src/interpreter/executor/debugger.rs STATE

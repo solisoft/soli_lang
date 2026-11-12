@@ -279,6 +279,7 @@ pub fn run() {
         ),
         Command::Engine { action } => commands::run_engine(action),
         Command::Lsp => commands::run_lsp(),
+        Command::Dap => commands::run_dap(),
         Command::BuildScript {
             script,
             output,

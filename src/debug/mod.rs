@@ -30,12 +30,16 @@
 #[cfg(test)]
 mod engine_tests;
 pub mod profiler;
+pub mod session;
 
 use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Bit of the per-thread listener mask: the flamegraph span log is on.
 pub const FLAME: u8 = 1;
+/// Bit of the per-thread listener mask: this thread runs the program a step
+/// debugger is attached to ([`session`]). Only that thread ever stops.
+pub const DEBUGGEE: u8 = 2;
 
 // Process-wide: has any listener ever been switched on, on any thread? Read
 // first by `active`, so an uninstrumented process answers with one load.
@@ -165,6 +169,13 @@ pub fn return_to(mark: usize) {
 #[inline]
 pub fn on_line() {
     profiler::poll();
+}
+
+/// Is the calling thread the one a step debugger stops? Callers check
+/// [`active`] first.
+#[inline]
+pub fn is_debuggee() -> bool {
+    session::attached() && MASK.with(|m| m.get()) & DEBUGGEE != 0
 }
 
 /// The depth of the calling thread's logical stack.
