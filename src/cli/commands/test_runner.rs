@@ -728,10 +728,30 @@ pub fn run_test(
         if !dir.is_dir() {
             continue;
         }
+        // The framework's upload prelude (`AttachmentsController`, the
+        // `attach_upload` helpers) goes in before the controllers, as the
+        // server loads it: `class UploadsController < AttachmentsController`
+        // failed every spec with "Undefined variable 'AttachmentsController'".
+        // A synthetic `<…>` path keeps it out of the coverage report.
+        if sub == "controllers" {
+            model_preamble_files.push((
+                PathBuf::from("<uploads-prelude>"),
+                solilang::serve::uploads_prelude_source(),
+            ));
+        }
         // The server's order, subfolders included: a bounded context keeps
         // its models in `app/models/billing/`, and a spec that names
         // `Billing::Invoice` needs it preloaded like the server has it.
-        for path in solilang::serve::sl_load_order(&dir) {
+        // Controllers parents first, as the server loads them: alphabetical
+        // order put `account_controller.sl` (`< AccountDashboardController`)
+        // before `account/dashboard_controller.sl`, and every spec of the
+        // app failed with "Undefined variable 'AccountDashboardController'".
+        let files = if sub == "controllers" {
+            solilang::serve::controller_load_order(&dir)
+        } else {
+            solilang::serve::sl_load_order(&dir)
+        };
+        for path in files {
             if let Ok(content) = fs::read_to_string(&path) {
                 // A controller's top-level `def`s (function-style actions, an
                 // EUI component and its catalogue) are callable from a spec
@@ -1634,7 +1654,13 @@ pub fn run_test(
                         // Hide synthetic preamble files (e.g. "<test-helpers>")
                         // and any file inside the tests directory, regardless of
                         // whether the path is absolute or relative.
-                        !s.starts_with('<') && !s.contains("/tests/") && !s.starts_with("tests/")
+                        // The tracker may have made a synthetic path absolute,
+                        // so look at its last component too.
+                        let synthetic = s.starts_with('<')
+                            || path
+                                .file_name()
+                                .is_some_and(|name| name.to_string_lossy().starts_with('<'));
+                        !synthetic && !s.contains("/tests/") && !s.starts_with("tests/")
                     })
                     // A file that says `# coverage: off` (the EUI catalogue
                     // `soli new --eui` writes) is code the app carries, not
