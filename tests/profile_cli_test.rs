@@ -122,7 +122,7 @@ fn unsupported_profile_kinds_and_rates_are_refused() {
     let dir = tempfile::tempdir().unwrap();
     script(dir.path(), 10);
     for args in [
-        &["--profile=alloc", "hot.sl"][..],
+        &["--profile=heap", "hot.sl"][..],
         &["--profile-hz", "0", "hot.sl"][..],
         &["--profile-hz", "fast", "hot.sl"][..],
     ] {
@@ -132,5 +132,64 @@ fn unsupported_profile_kinds_and_rates_are_refused() {
             .output()
             .unwrap();
         assert_eq!(output.status.code(), Some(64), "{args:?}");
+    }
+}
+
+const ALLOC_SCRIPT: &str = r#"
+def make_rows(n)
+  (0..n).map { |i| {"id": i, "title": "Row number #{i}", "tags": ["a", "b", "c"]} }
+end
+
+def small(n)
+  total = 0
+  (0..n).each do |i|
+    total = total + i
+  end
+  total
+end
+
+print(make_rows(20000).length)
+print(small(20000))
+"#;
+
+/// `--profile=alloc` weighs bytes: the function that builds 20 000 hashes
+/// carries far more than the one that only adds integers, on both engines.
+#[test]
+fn an_allocation_profile_names_the_allocating_function() {
+    for engine in ["--vm", "--tree"] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("alloc.sl"), ALLOC_SCRIPT).unwrap();
+        let (ok, stdout, stderr) = soli(
+            dir.path(),
+            &[
+                engine,
+                "alloc.sl",
+                "--profile=alloc",
+                "--profile-out",
+                "alloc.folded",
+            ],
+        );
+        assert!(ok, "{engine}: {stderr}");
+        assert!(stdout.starts_with("20000\n"), "{engine}: {stdout}");
+        assert!(
+            stderr.contains("MB allocated by Soli code"),
+            "{engine}: {stderr}"
+        );
+        assert!(stderr.contains("self KB"), "{engine}: {stderr}");
+        let folded = std::fs::read_to_string(dir.path().join("alloc.folded")).unwrap();
+        let bytes_under = |name: &str| -> u64 {
+            folded
+                .lines()
+                .filter(|line| line.contains(name))
+                .filter_map(|line| line.rsplit(' ').next()?.parse::<u64>().ok())
+                .sum()
+        };
+        let rows = bytes_under("make_rows (alloc.sl:2)");
+        let small = bytes_under("small (alloc.sl:6)");
+        assert!(rows > 1_000_000, "{engine}: make_rows {rows}\n{folded}");
+        assert!(
+            rows > 10 * small,
+            "{engine}: make_rows {rows}, small {small}"
+        );
     }
 }

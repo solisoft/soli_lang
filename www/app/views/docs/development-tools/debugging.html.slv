@@ -589,6 +589,7 @@ Profile written to soli-profile.folded</code></pre>
                     <tr><td class="py-2 px-4 font-mono text-rose-300">--profile</td><td class="py-2 px-4 text-gray-400">Turn the profiler on (<code>--profile=cpu</code> is the same)</td></tr>
                     <tr><td class="py-2 px-4 font-mono text-rose-300">--profile-out FILE</td><td class="py-2 px-4 text-gray-400">Where to write the profile (default <code>soli-profile.folded</code>); implies <code>--profile</code></td></tr>
                     <tr><td class="py-2 px-4 font-mono text-rose-300">--profile-hz N</td><td class="py-2 px-4 text-gray-400">Samples per second, 1 to 10&nbsp;000 (default 1000); implies <code>--profile</code></td></tr>
+                    <tr><td class="py-2 px-4 font-mono text-rose-300">--profile=alloc</td><td class="py-2 px-4 text-gray-400">Weigh <strong class="text-white">bytes allocated</strong> instead of time: every byte the program allocates (or a buffer grows by) is charged to the Soli stack running at the next call, return or statement. Same outputs and frames, in bytes. It counts what was allocated, not what is still alive; <code>&lt;main&gt;</code>&rsquo;s own bytes include loading the program. Costs one relaxed atomic load per allocation when off.</td></tr>
                 </tbody>
             </table>
         </div>

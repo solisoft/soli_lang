@@ -1157,7 +1157,12 @@ pub(crate) fn start_profile(
     name: &str,
     entry_file: Option<&str>,
 ) {
-    let Some(profiler) = solilang::debug::profiler::start_with_entry(args.hz, entry_file) else {
+    let started = if args.alloc {
+        solilang::debug::profiler::start_alloc(entry_file)
+    } else {
+        solilang::debug::profiler::start_with_entry(args.hz, entry_file)
+    };
+    let Some(profiler) = started else {
         return;
     };
     let out = args
@@ -1185,14 +1190,22 @@ pub(crate) fn finish_profile() {
     } else {
         report.to_folded()
     };
-    let total_ms = report.period.as_secs_f64() * 1000.0 * report.total_ticks() as f64;
     eprintln!();
-    eprintln!(
-        "Profile: {:.0} ms sampled over {:.0} ms wall time, every {} µs",
-        total_ms,
-        report.elapsed.as_secs_f64() * 1000.0,
-        report.period.as_micros()
-    );
+    if report.unit == solilang::debug::profiler::Unit::Bytes {
+        eprintln!(
+            "Profile: {:.1} MB allocated by Soli code over {:.0} ms wall time",
+            report.total_ticks() as f64 / (1024.0 * 1024.0),
+            report.elapsed.as_secs_f64() * 1000.0,
+        );
+    } else {
+        let total_ms = report.period.as_secs_f64() * 1000.0 * report.total_ticks() as f64;
+        eprintln!(
+            "Profile: {:.0} ms sampled over {:.0} ms wall time, every {} µs",
+            total_ms,
+            report.elapsed.as_secs_f64() * 1000.0,
+            report.period.as_micros()
+        );
+    }
     eprint!("{}", report.top_table(PROFILE_TOP));
     match fs::write(&session.out, body) {
         Ok(()) => eprintln!("Profile written to {}", session.out),

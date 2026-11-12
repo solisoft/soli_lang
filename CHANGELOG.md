@@ -4,6 +4,19 @@
 
 ### Added
 
+- **`--profile=alloc`: an allocation profiler (#697, phase 4).** The
+  binary's global allocator wraps mimalloc (`CountingAlloc`) and reports
+  each allocation's size (and each growing reallocation's increase) to
+  `debug::profiler::note_alloc`: one relaxed atomic load when no allocation
+  profile runs, a const thread-local counter when one does. The profiler's
+  existing polls (call, return, statement, VM loop check) charge the bytes
+  counted since the last poll to the current Soli stack, so nothing records
+  inside the allocator; the profiler's own allocations are discarded. Same
+  outputs as the CPU profile in bytes (`Report::unit`: folded stacks,
+  speedscope `"unit": "bytes"`, a KB table). It counts bytes allocated, not
+  live. Tests: unit `an_allocation_profile_charges_bytes_to_the_stack`, CLI
+  `an_allocation_profile_names_the_allocating_function` on both engines.
+
 - **`soli serve --dev --inspect`: attach the step debugger to a running
   server (#697, phase 3).** `--inspect[=ADDR]` (default 127.0.0.1:9229,
   loopback only, refused without `--dev`) opens the debugging session before

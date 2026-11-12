@@ -376,6 +376,7 @@ Profile written to soli-profile.folded
 | `--profile` (or `--profile=cpu`) | turn the profiler on |
 | `--profile-out FILE` | where to write the profile (default `soli-profile.folded`); implies `--profile` |
 | `--profile-hz N` | samples per second, 1 to 10 000 (default 1000); implies `--profile` |
+| `--profile=alloc` | weigh **bytes allocated** instead of time (below) |
 
 The file is **folded stacks** — one `<main>;outer (app.sl:3);inner (app.sl:9) 42`
 line per distinct stack — unless its name ends in `.json`, which writes a
@@ -403,8 +404,31 @@ How it works, and what that means for reading it:
   wall time. Request specs run their controllers in a separate test-server
   process, which is not profiled. `--profile` cannot be combined with `--watch`.
 
+### Allocations: `--profile=alloc`
+
+```bash
+soli import.sl --profile=alloc
+soli test tests/models --profile=alloc --profile-out allocs.json
+```
+
+```text
+Profile: 15.8 MB allocated by Soli code over 8 ms wall time
+   self KB  self%   total KB total%  function
+   10803.0  65.1%    10803.0  65.1%  make_rows (import.sl:1)
+    5329.2  32.1%    16602.6 100.0%  <main>
+     470.4   2.8%      470.4   2.8%  small (import.sl:5)
+```
+
+Every byte the program allocates (and every byte a buffer grows by) is
+charged to the Soli stack that was running, as of its next call, return or
+statement. The same outputs — the table, folded stacks, speedscope (in bytes) —
+and the same frames. It counts what was allocated, not what is still alive: a
+function that builds and drops a large string each call ranks high even though
+it holds nothing. `<main>`'s own bytes include loading the program (parsing,
+the builtins). `--profile-hz` does not apply.
+
 With no `--profile`, the hooks cost one relaxed atomic load per call and per
-statement, and `soli serve` never turns them on.
+statement, plus one per allocation, and `soli serve` never turns them on.
 
 ## The requests panel
 

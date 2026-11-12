@@ -583,6 +583,8 @@ pub struct ProfileArgs {
     pub out: Option<String>,
     /// Samples per second.
     pub hz: u32,
+    /// `--profile=alloc`: weigh bytes allocated instead of time.
+    pub alloc: bool,
 }
 
 impl Default for ProfileArgs {
@@ -590,6 +592,7 @@ impl Default for ProfileArgs {
         Self {
             out: None,
             hz: solilang::debug::profiler::DEFAULT_HZ,
+            alloc: false,
         }
     }
 }
@@ -618,16 +621,18 @@ fn parse_profile_flag(args: &[String], i: &mut usize, profile: &mut Option<Profi
     };
     match flag {
         "--profile" => {
-            if let Some(kind) = &inline_value {
-                if kind != "cpu" {
+            let alloc = match inline_value.as_deref() {
+                None | Some("cpu") => false,
+                Some("alloc") => true,
+                Some(kind) => {
                     eprintln!(
-                        "Unknown profile kind '{}': only --profile=cpu is supported (the default)",
+                        "Unknown profile kind '{}': --profile=cpu (the default) or --profile=alloc",
                         kind
                     );
                     process::exit(64);
                 }
-            }
-            profile.get_or_insert_with(ProfileArgs::default);
+            };
+            profile.get_or_insert_with(ProfileArgs::default).alloc = alloc;
         }
         "--profile-out" => {
             let out = value_for(flag);
@@ -650,7 +655,7 @@ fn parse_profile_flag(args: &[String], i: &mut usize, profile: &mut Option<Profi
         }
         other => {
             eprintln!(
-                "Unknown option: {} (profiler options: --profile[=cpu], --profile-out FILE, --profile-hz N)",
+                "Unknown option: {} (profiler options: --profile[=cpu|alloc], --profile-out FILE, --profile-hz N)",
                 other
             );
             process::exit(64);

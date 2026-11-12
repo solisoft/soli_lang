@@ -34,6 +34,11 @@ pub const MAX_HZ: u32 = 10_000;
 pub const ROOT_NAME: &str = "<main>";
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
+/// The running profile weighs bytes allocated, not time (`--profile=alloc`).
+static ALLOC_MODE: AtomicBool = AtomicBool::new(false);
+/// Read by the process's global allocator (`note_alloc`): count the bytes
+/// each thread allocates. Off unless an allocation profile runs.
+static COUNTING: AtomicBool = AtomicBool::new(false);
 /// Ticks since an arbitrary origin; only ever grows, across runs too.
 static TICK: AtomicU64 = AtomicU64::new(0);
 /// `TICK` when the current run started. A thread whose last poll is older
@@ -45,6 +50,10 @@ static DATA: Mutex<Option<Collected>> = Mutex::new(None);
 const UNSEEDED: u64 = u64::MAX;
 
 thread_local! {
+    /// Bytes this thread allocated since its last poll, while counting. A
+    /// `const` cell with no destructor, so the allocator may touch it at any
+    /// point of a thread's life.
+    static ALLOCATED: Cell<u64> = const { Cell::new(0) };
     /// `TICK` at this thread's last poll.
     static LAST: Cell<u64> = const { Cell::new(UNSEEDED) };
     /// The file this thread is running, when it runs one of several (a
@@ -136,6 +145,17 @@ impl Collected {
     }
 }
 
+/// Called by the global allocator for every allocation (and every growing
+/// reallocation) of `size` bytes. One relaxed load when no allocation
+/// profile runs; it records nothing itself, it only adds to the thread's
+/// count, which the next poll charges to the Soli stack.
+#[inline(always)]
+pub fn note_alloc(size: usize) {
+    if COUNTING.load(Ordering::Relaxed) {
+        let _ = ALLOCATED.try_with(|count| count.set(count.get().wrapping_add(size as u64)));
+    }
+}
+
 /// Is a profile being collected?
 #[inline(always)]
 pub fn is_running() -> bool {
@@ -154,6 +174,16 @@ pub fn poll() {
 #[cold]
 #[inline(never)]
 fn poll_slow() {
+    if ALLOC_MODE.load(Ordering::Relaxed) {
+        let bytes = ALLOCATED.with(|count| count.replace(0));
+        if bytes > 0 {
+            record(bytes);
+            // What recording itself allocated is the profiler's, not the
+            // program's.
+            ALLOCATED.with(|count| count.set(0));
+        }
+        return;
+    }
     let now = TICK.load(Ordering::Relaxed);
     let last = LAST.with(|l| l.replace(now));
     if last == now || last == UNSEEDED || last > now || last < START_TICK.load(Ordering::Relaxed) {
@@ -189,9 +219,19 @@ fn record(weight: u64) {
     });
 }
 
+/// What a profile's weights count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unit {
+    /// Sampling ticks: time.
+    Ticks,
+    /// Bytes allocated (`--profile=alloc`).
+    Bytes,
+}
+
 /// A running profile. [`Profiler::finish`] stops it and returns the report.
 pub struct Profiler {
     hz: u32,
+    unit: Unit,
     started: Instant,
     #[cfg(not(target_arch = "wasm32"))]
     sampler: Option<std::thread::JoinHandle<()>>,
@@ -247,9 +287,38 @@ pub fn start_with_entry(hz: u32, entry_file: Option<&str>) -> Option<Profiler> {
 
     Some(Profiler {
         hz,
+        unit: Unit::Ticks,
         started,
         #[cfg(not(target_arch = "wasm32"))]
         sampler,
+    })
+}
+
+/// Start an allocation profile: every byte the program's threads allocate
+/// is charged to the Soli stack that allocated it (as of the next call,
+/// return or statement). `None` when a profile is already running.
+pub fn start_alloc(entry_file: Option<&str>) -> Option<Profiler> {
+    {
+        let mut data = DATA.lock().ok()?;
+        if data.is_some() {
+            return None;
+        }
+        *data = Some(Collected {
+            entry_file: entry_file.map(str::to_string),
+            ..Collected::default()
+        });
+    }
+    ALLOCATED.with(|count| count.set(0));
+    ALLOC_MODE.store(true, Ordering::Relaxed);
+    super::mark_ever_on();
+    RUNNING.store(true, Ordering::Relaxed);
+    COUNTING.store(true, Ordering::Relaxed);
+    Some(Profiler {
+        hz: DEFAULT_HZ,
+        unit: Unit::Bytes,
+        started: Instant::now(),
+        #[cfg(not(target_arch = "wasm32"))]
+        sampler: None,
     })
 }
 
@@ -258,7 +327,9 @@ impl Profiler {
     /// last stretch is charged first.
     pub fn finish(self) -> Report {
         poll();
+        COUNTING.store(false, Ordering::Relaxed);
         RUNNING.store(false, Ordering::Relaxed);
+        ALLOC_MODE.store(false, Ordering::Relaxed);
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(handle) = self.sampler {
             let _ = handle.join();
@@ -271,6 +342,7 @@ impl Profiler {
         let mut stacks: Vec<(Vec<u32>, u64)> = collected.stacks.into_iter().collect();
         stacks.sort();
         Report {
+            unit: self.unit,
             frames: collected.frames,
             stacks,
             period: Duration::from_nanos(1_000_000_000u64 / u64::from(self.hz)),
@@ -282,6 +354,8 @@ impl Profiler {
 /// A finished profile.
 #[derive(Debug, Clone)]
 pub struct Report {
+    /// What the weights count: time ticks, or bytes allocated.
+    pub unit: Unit,
     /// Every distinct frame; a stack refers to them by index.
     pub frames: Vec<FrameKey>,
     /// Each distinct stack (frame ids, outermost first) and the ticks it got.
@@ -345,11 +419,19 @@ impl Report {
             })
             .collect();
         let samples: Vec<&Vec<u32>> = self.stacks.iter().map(|(ids, _)| ids).collect();
+        let weight = |ticks: u64| match self.unit {
+            Unit::Ticks => self.ms(ticks),
+            Unit::Bytes => ticks as f64,
+        };
         let weights: Vec<f64> = self
             .stacks
             .iter()
-            .map(|(_, ticks)| self.ms(*ticks))
+            .map(|(_, ticks)| weight(*ticks))
             .collect();
+        let unit = match self.unit {
+            Unit::Ticks => "milliseconds",
+            Unit::Bytes => "bytes",
+        };
         let doc = serde_json::json!({
             "$schema": "https://www.speedscope.app/file-format-schema.json",
             "exporter": format!("soli {}", env!("CARGO_PKG_VERSION")),
@@ -359,9 +441,9 @@ impl Report {
             "profiles": [{
                 "type": "sampled",
                 "name": name,
-                "unit": "milliseconds",
+                "unit": unit,
                 "startValue": 0,
-                "endValue": self.ms(self.total_ticks()),
+                "endValue": weight(self.total_ticks()),
                 "samples": samples,
                 "weights": weights,
             }],
@@ -408,16 +490,24 @@ impl Report {
     /// The `limit` heaviest functions by self time, as a table.
     pub fn top_table(&self, limit: usize) -> String {
         let total = self.total_ticks().max(1);
+        let (self_head, total_head) = match self.unit {
+            Unit::Ticks => ("self ms", "total ms"),
+            Unit::Bytes => ("self KB", "total KB"),
+        };
+        let amount = |ticks: u64| match self.unit {
+            Unit::Ticks => self.ms(ticks),
+            Unit::Bytes => ticks as f64 / 1024.0,
+        };
         let mut out = format!(
             "{:>10} {:>6} {:>10} {:>6}  function\n",
-            "self ms", "self%", "total ms", "total%"
+            self_head, "self%", total_head, "total%"
         );
         for function in self.functions().into_iter().take(limit) {
             out.push_str(&format!(
                 "{:>10.1} {:>5.1}% {:>10.1} {:>5.1}%  {}\n",
-                self.ms(function.self_ticks),
+                amount(function.self_ticks),
                 100.0 * function.self_ticks as f64 / total as f64,
-                self.ms(function.total_ticks),
+                amount(function.total_ticks),
                 100.0 * function.total_ticks as f64 / total as f64,
                 self.frames[function.frame as usize].label(),
             ));
@@ -444,6 +534,7 @@ mod tests {
 
     fn sample_report() -> Report {
         Report {
+            unit: Unit::Ticks,
             frames: vec![FrameKey::root(), frame("outer", 1), frame("inner", 5)],
             stacks: vec![(vec![0, 1], 2), (vec![0, 1, 2], 6), (vec![0], 2)],
             period: Duration::from_millis(1),
@@ -472,9 +563,39 @@ mod tests {
         assert!(report.top_table(5).contains("inner (/nowhere/app.sl:5)"));
     }
 
+    /// `--profile=alloc`: bytes the allocator reports are charged to the
+    /// Soli stack that was running when they were allocated.
+    #[test]
+    fn an_allocation_profile_charges_bytes_to_the_stack() {
+        let _serial = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::thread::spawn(|| {
+            let profiler = start_alloc(Some("/nowhere/app.sl")).expect("no profile running");
+            note_alloc(100);
+            let mark = super::super::enter("make_rows", Some("/nowhere/app.sl"), 3);
+            note_alloc(4096);
+            super::super::return_to(mark);
+            let report = profiler.finish();
+            assert_eq!(report.unit, Unit::Bytes);
+            let functions = report.functions();
+            let make = functions
+                .iter()
+                .find(|f| report.frames[f.frame as usize].name == "make_rows")
+                .expect("make_rows is in the profile");
+            assert!(make.self_ticks >= 4096, "{}", make.self_ticks);
+            assert!(report.top_table(5).contains("self KB"));
+            assert!(report.to_speedscope("x").contains("\"unit\":\"bytes\""));
+            // Counting stops with the profile.
+            note_alloc(1 << 20);
+            assert_eq!(ALLOCATED.with(|c| c.get()), 0);
+        })
+        .join()
+        .unwrap();
+    }
+
     #[test]
     fn recursion_counts_a_stack_once_in_the_total() {
         let report = Report {
+            unit: Unit::Ticks,
             frames: vec![FrameKey::root(), frame("fib", 1)],
             stacks: vec![(vec![0, 1, 1, 1], 4)],
             period: Duration::from_millis(1),

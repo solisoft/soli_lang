@@ -6,9 +6,43 @@ mod cloud;
 #[cfg(not(target_arch = "wasm32"))]
 use mimalloc::MiMalloc;
 
+/// mimalloc, telling the allocation profiler (`--profile=alloc`) how many
+/// bytes each allocation asks for. Without a running allocation profile the
+/// report is one relaxed atomic load per allocation.
+#[cfg(not(target_arch = "wasm32"))]
+struct CountingAlloc;
+
+#[cfg(not(target_arch = "wasm32"))]
+unsafe impl std::alloc::GlobalAlloc for CountingAlloc {
+    #[inline]
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        solilang::debug::profiler::note_alloc(layout.size());
+        MiMalloc.alloc(layout)
+    }
+
+    #[inline]
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        solilang::debug::profiler::note_alloc(layout.size());
+        MiMalloc.alloc_zeroed(layout)
+    }
+
+    #[inline]
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        MiMalloc.dealloc(ptr, layout)
+    }
+
+    #[inline]
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
+        if new_size > layout.size() {
+            solilang::debug::profiler::note_alloc(new_size - layout.size());
+        }
+        MiMalloc.realloc(ptr, layout, new_size)
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: CountingAlloc = CountingAlloc;
 
 /// Install a SIGTERM/SIGINT handler that exits via `process::exit(0)` so atexit
 /// handlers run on graceful shutdown — including the LLVM coverage profile
