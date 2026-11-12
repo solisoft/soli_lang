@@ -331,6 +331,9 @@ pub struct ClassType {
     /// The constructor's parameter types, from which `Box.new(1)` infers
     /// `Box<Int>`; `None` without a constructor.
     pub constructor_params: Option<Vec<Type>>,
+    /// Where the class is declared, when in the file being checked (a code
+    /// frame's second label for an unknown member).
+    pub decl_span: Option<crate::span::Span>,
 }
 
 impl ClassType {
@@ -361,6 +364,7 @@ impl ClassType {
             type_params: Vec::new(),
             type_args: Vec::new(),
             constructor_params: None,
+            decl_span: None,
         }
     }
 

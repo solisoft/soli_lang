@@ -22,6 +22,24 @@ Error: Type error: Undefined variable 'nme' (did you mean 'name'?) at 2:7
   = note: error[E0301] undefined-variable — `soli explain E0301`
 ```
 
+When the error is about something declared in the same file, the frame shows
+that place too, under a `:::` line and a `---` underline — the `def` a call
+gives the wrong number of arguments to, the class that has no such member:
+
+```text
+Error: Type error: Wrong number of arguments: expected 2, got 3 at 11:1
+  --> report.sl:11:1
+   |
+11 | greet("a", "b", "c")
+   | ^^^^^
+  ::: report.sl:7:1
+   |
+ 7 | def greet(name, greeting = "Hi")
+   | --- declared here
+   |
+   = note: error[E0403] wrong-arity — `soli explain E0403`
+```
+
 See [`error-codes.md`](error-codes.md) for how to read a frame, every code,
 and the `--format json` output of `soli check` and `soli lint`.
 

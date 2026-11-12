@@ -181,6 +181,9 @@ pub enum TypeError {
         expected: usize,
         got: usize,
         span: Span,
+        /// Where the function is declared, when it is in the file being
+        /// checked: a code frame's second label. Not in the message.
+        declared: Option<Span>,
     },
 
     #[error("Cannot access member '{member}' on type '{type_name}'{} at {span}", suggest::suffix(.suggestion.as_deref()))]
@@ -190,6 +193,9 @@ pub enum TypeError {
         span: Span,
         /// A "did you mean" suggestion.
         suggestion: Option<String>,
+        /// Where the class is declared, when it is in the file being
+        /// checked: a code frame's second label. Not in the message.
+        declared: Option<Span>,
     },
 
     #[error("Class '{0}' has no superclass at {1}")]
@@ -1043,12 +1049,14 @@ mod tests {
                 expected: 1,
                 got: 2,
                 span: s,
+                declared: None,
             },
             TypeError::NoSuchMember {
                 type_name: "Foo".into(),
                 member: "bar".into(),
                 span: s,
                 suggestion: None,
+                declared: None,
             },
             TypeError::NoSuperclass("A".into(), s),
             TypeError::ThisOutsideClass(s),
@@ -1070,6 +1078,7 @@ mod tests {
             member: "frobnicate".into(),
             span: span(1, 1),
             suggestion: None,
+            declared: None,
         };
         let msg = e.to_string();
         assert!(msg.contains("Array"));

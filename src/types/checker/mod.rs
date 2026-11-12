@@ -25,7 +25,11 @@ pub struct TypeChecker {
     /// For each `def` of the file or the project: the fewest and most
     /// arguments it takes, and the signature it was declared with (a call
     /// reaching another binding of the name is not checked against it).
-    pub(crate) function_arities: std::collections::HashMap<String, (usize, usize, Type)>,
+    pub(crate) function_arities:
+        std::collections::HashMap<String, (usize, usize, Type, Option<crate::span::Span>)>,
+    /// Set while the project's declarations are declared: their spans belong
+    /// to other files, so no frame label may point at them.
+    pub(crate) declaring_project: bool,
     /// Classes the job loader gives `perform_later` and the rest of the
     /// facade (see [`TypeChecker::declare_job_classes`]).
     pub(crate) job_classes: std::collections::HashSet<String>,
@@ -54,6 +58,7 @@ impl TypeChecker {
             warnings: Vec::new(),
             declared_functions: std::collections::HashSet::new(),
             function_arities: std::collections::HashMap::new(),
+            declaring_project: false,
             job_classes: std::collections::HashSet::new(),
             strict: false,
             route_helpers: false,
@@ -131,6 +136,12 @@ impl TypeChecker {
     /// after [`TypeChecker::declare_ambient`]; the checked file's own
     /// declarations, declared by [`TypeChecker::check`], still win.
     pub fn declare_project(&mut self, statements: &[Stmt]) {
+        self.declaring_project = true;
+        self.declare_project_statements(statements);
+        self.declaring_project = false;
+    }
+
+    fn declare_project_statements(&mut self, statements: &[Stmt]) {
         let mut classes: Vec<ClassDecl> = Vec::new();
         for stmt in statements {
             match &stmt.kind {

@@ -211,11 +211,13 @@ impl TypeChecker {
                     _ => {}
                 }
                 let suggestion = crate::error::suggest::best_match(name, class.member_names());
+                let declared = self.env.get_class(&class.name).and_then(|c| c.decl_span);
                 Err(TypeError::NoSuchMember {
                     type_name: class.name,
                     member: name.to_string(),
                     span,
                     suggestion,
+                    declared,
                 })
             }
             Type::Array(inner_type) => self
@@ -254,6 +256,7 @@ impl TypeChecker {
                 member: name.to_string(),
                 span,
                 suggestion: None,
+                declared: None,
             }),
         }
     }
@@ -460,6 +463,7 @@ impl TypeChecker {
                 member: name.to_string(),
                 span,
                 suggestion: crate::error::suggest::primitive_method_suggestion("Array", name),
+                declared: None,
             }),
         }
     }
@@ -614,6 +618,7 @@ impl TypeChecker {
                 member: name.to_string(),
                 span,
                 suggestion: crate::error::suggest::primitive_method_suggestion("Hash", name),
+                declared: None,
             }),
         }
     }
@@ -777,6 +782,7 @@ impl TypeChecker {
                 member: name.to_string(),
                 span,
                 suggestion: crate::error::suggest::primitive_method_suggestion("String", name),
+                declared: None,
             }),
         }
     }

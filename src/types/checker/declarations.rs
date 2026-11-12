@@ -11,6 +11,7 @@ impl TypeChecker {
     pub(crate) fn declare_class(&mut self, decl: &ClassDecl) {
         let mut class_type = ClassType::new(decl.name.clone());
         class_type.is_module = decl.is_module;
+        class_type.decl_span = (!self.declaring_project).then_some(decl.span);
         class_type.type_params = decl.type_params.clone();
         class_type.constructor_params = decl.constructor.as_ref().map(|ctor| {
             ctor.params
@@ -253,8 +254,9 @@ impl TypeChecker {
         let params = decl.params.iter().filter(|p| !p.is_block_param);
         let max = params.clone().count();
         let min = params.filter(|p| p.default_value.is_none()).count();
+        let at = (!self.declaring_project).then_some(decl.span);
         self.function_arities
-            .insert(decl.name.clone(), (min, max, ty.clone()));
+            .insert(decl.name.clone(), (min, max, ty.clone(), at));
     }
 
     /// The signature of a top-level `def`, for a call to check against.

@@ -786,6 +786,26 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; sol
   = note: error[E0301] undefined-variable — `soli explain E0301`</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-4">
+            When the error is about something declared in the same file, the frame shows that place too, under a
+            <code>:::</code> line and a <code>---</code> underline &mdash; the <code>def</code> a call gives the wrong
+            number of arguments to, the class that has no such member:
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-text text-sm">Error: Type error: Wrong number of arguments: expected 2, got 3 at 11:1
+  --&gt; report.sl:11:1
+   |
+11 | greet("a", "b", "c")
+   | ^^^^^
+  ::: report.sl:7:1
+   |
+ 7 | def greet(name, greeting = "Hi")
+   | --- declared here
+   |
+   = note: error[E0403] wrong-arity — `soli explain E0403`</code></pre>
+            </div>
+        </div>
         <p class="text-gray-400">
             See <a href="/docs/development-tools/error-codes" class="text-amber-400 hover:text-amber-300 underline">Error Messages &amp; Codes</a>
             for how to read a frame, every code, and the <code>--format json</code> output of <code>soli check</code> and <code>soli lint</code>.

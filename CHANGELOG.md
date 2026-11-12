@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Code frames point at the declaration too (#694, phase 4).** A wrong
+  argument count to a `def` and an unknown member of a class draw a second
+  label, `::: file:L:C` / `--- declared here`, at the declaration when it is
+  in the file being checked (`TypeError::WrongArity::declared`,
+  `TypeError::NoSuchMember::declared`, `ClassType::decl_span`; declarations
+  of the application's other files carry none, since their spans would be
+  read against the wrong file). `soli check` and `soli run` (which checks
+  first) show it.
+
 - **The VM suggests locals too (#694, phase 6).** A misspelt local,
   parameter, top-level variable or enclosing function's local had no "did you
   mean" under `--vm` (bytecode slots have no names) while `--tree` gave one.

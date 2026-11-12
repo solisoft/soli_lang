@@ -358,3 +358,42 @@ fn the_vm_suggests_locals_like_the_tree_walker() {
         assert_eq!(vm, first_line("--tree"), "{source}");
     }
 }
+
+/// #694, phase 4: a wrong argument count points at the `def` too, and an
+/// unknown member at the class — when they are in the file checked; a
+/// declaration from another file of the application gets no label (its span
+/// would be read against the wrong file).
+#[test]
+fn a_frame_points_at_the_declaration_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("labels.sl");
+    std::fs::write(
+        &file,
+        "class Invoice\n  def total -> Int\n    1\n  end\nend\n\ndef greet(name, greeting = \"Hi\")\n  \"#{greeting} #{name}\"\nend\n\ngreet(\"a\", \"b\", \"c\")\nInvoice.new.totl\n",
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .arg("check")
+        .arg(&file)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run soli check");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains(":::"), "{text}");
+    assert!(
+        text.contains(" 7 | def greet(name, greeting = \"Hi\")"),
+        "{text}"
+    );
+    assert!(text.contains("--- declared here"), "{text}");
+    assert!(text.contains(" 1 | class Invoice"), "{text}");
+    assert!(text.contains("`Invoice` is declared here"), "{text}");
+
+    // `soli run` checks first, and draws the same frame.
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .arg(&file)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run soli");
+    let text = String::from_utf8_lossy(&output.stderr);
+    assert!(text.contains("--- declared here"), "{text}");
+}

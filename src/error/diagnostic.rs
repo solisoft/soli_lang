@@ -74,13 +74,28 @@ impl Diagnostic {
                 span,
                 text: None,
             });
+        // The declaration the error is about, as a second label — only when
+        // the primary is drawn, and only where the file is certain.
+        let secondary = match (error, &primary) {
+            (SolilangError::Type(type_error), Some(_)) => related_declaration(type_error)
+                .and_then(|(span, text)| {
+                    sources.locate(span).map(|(file, span)| Label {
+                        file,
+                        span,
+                        text: Some(text),
+                    })
+                })
+                .into_iter()
+                .collect(),
+            _ => Vec::new(),
+        };
         Self {
             code,
             rule: None,
             severity: Severity::Error,
             message,
             primary,
-            secondary: Vec::new(),
+            secondary,
             hint,
             notes: Vec::new(),
         }
@@ -203,6 +218,21 @@ fn strip_location(text: &str) -> Option<&str> {
     let (line, col) = text[at + 4..].split_once(':')?;
     let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
     (digits(line) && digits(col)).then_some(&text[..at])
+}
+
+/// The declaration a type error points back at, and what to say there.
+fn related_declaration(error: &TypeError) -> Option<(Span, String)> {
+    match error {
+        TypeError::WrongArity {
+            declared: Some(at), ..
+        } => Some((*at, "declared here".to_string())),
+        TypeError::NoSuchMember {
+            type_name,
+            declared: Some(at),
+            ..
+        } => Some((*at, format!("`{type_name}` is declared here"))),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

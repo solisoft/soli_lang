@@ -80,7 +80,7 @@ impl TypeChecker {
         // included, are known — an untyped parameter used to switch the
         // count off altogether.
         if let ExprKind::Variable(name) = &callee.kind {
-            if let Some((min, max, declared)) = self.function_arities.get(name) {
+            if let Some((min, max, declared, at)) = self.function_arities.get(name) {
                 if *declared == callee_type {
                     let given = arguments
                         .iter()
@@ -91,6 +91,7 @@ impl TypeChecker {
                             expected: if given < *min { *min } else { *max },
                             got: given,
                             span,
+                            declared: *at,
                         });
                     }
                 }
@@ -140,6 +141,7 @@ impl TypeChecker {
                         expected: params.len(),
                         got: total_args,
                         span,
+                        declared: None,
                     });
                 }
 
@@ -222,6 +224,7 @@ impl TypeChecker {
                             expected: ctor.params.len(),
                             got: arguments.len(),
                             span,
+                            declared: None,
                         });
                     }
                 }

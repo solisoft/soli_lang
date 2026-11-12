@@ -181,6 +181,8 @@ fn a_neighbours_function_is_checked_for_arity() {
     let (ok, text) = check(dir.path(), "app/controllers/reports_controller.sl");
     assert!(!ok, "{text}");
     assert!(text.contains("expected 1"), "{text}");
+    // The `def` is in another file: no label points into this one.
+    assert!(!text.contains(":::"), "{text}");
 }
 
 #[test]
