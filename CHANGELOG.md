@@ -383,6 +383,13 @@
 
 ### Fixed
 
+- **A model the VM declares is registered like one the interpreter declares
+  (#631).** In a script on the VM, a model class never reached
+  `MODEL_CLASSES`, so `find_model_class_by_collection` missed it and a
+  preloaded `belongs_to` hydrated into the owner's class; the VM registers
+  it when it builds the class (`register_vm_model`). The class rebuilds also
+  keep its `const` / `static const` field lists now.
+
 - **The handler budget stops a block over a big array or hash (#631).** An
   in-VM `each` / `map` … whose block ran as a template (no frame) checked
   the deadline only over a count (`n.times`); over an array or a hash it

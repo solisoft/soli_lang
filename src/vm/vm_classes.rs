@@ -146,6 +146,17 @@ pub(crate) fn is_class_reflection_member(name: &str) -> bool {
     )
 }
 
+/// A model the VM declares is registered as the tree-walker registers one
+/// (`execute_class`): a relation names its class through `MODEL_CLASSES`, and
+/// a preloaded `belongs_to` hydrated into the owner's class without it
+/// (#631). Re-registered on every rebuild of the class, so the entry is the
+/// class the program ends up holding.
+fn register_vm_model(class: &Rc<Class>) {
+    if class.is_model_subclass() {
+        crate::interpreter::builtins::model::register_model_class(&class.name, class.clone());
+    }
+}
+
 impl Vm {
     /// Resolve a `Future` or `grouped` `Deferred` the way the tree-walker does
     /// on member access, so `` `echo hi`.stdout `` and a deferred query's
@@ -1168,10 +1179,13 @@ impl Vm {
             new_class.mixin_static_methods = sub.mixin_static_methods.clone();
             new_class.declared_fields = sub.declared_fields.clone();
             *new_class.field_init.get_mut() = sub.field_init.borrow().clone();
+            *new_class.const_fields.get_mut() = sub.const_fields.borrow().clone();
+            *new_class.static_const_fields.get_mut() = sub.static_const_fields.borrow().clone();
             crate::interpreter::domain::note_class(&new_class);
             // Replace the class on top of the stack
             let new_class = Rc::new(new_class);
             crate::interpreter::domain::register_class(&new_class);
+            register_vm_model(&new_class);
             let top = self.stack.len() - 1;
             self.stack[top] = Value::Class(new_class);
             Ok(())
@@ -1283,7 +1297,12 @@ impl Vm {
                 new_class.concern_static_methods = current.concern_static_methods.clone();
                 new_class.concern_method_names = current.concern_method_names.clone();
                 *new_class.field_init.get_mut() = current.field_init.borrow().clone();
-                self.stack[top] = Value::Class(Rc::new(new_class));
+                *new_class.const_fields.get_mut() = current.const_fields.borrow().clone();
+                *new_class.static_const_fields.get_mut() =
+                    current.static_const_fields.borrow().clone();
+                let new_class = Rc::new(new_class);
+                register_vm_model(&new_class);
+                self.stack[top] = Value::Class(new_class);
             }
             Ok(())
         } else {

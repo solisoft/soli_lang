@@ -642,6 +642,21 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #631: a model the VM declares is in the model class table, as one
+        // the tree-walker declares (a relation finds its class through it).
+        "vm_declared_model_is_registered",
+        r##"class Author < Model
+  def label
+    "a"
+  end
+  static def pick
+    1
+  end
+end
+k = find_model_class_by_collection("authors")
+print(k.nil?, Author.pick)"##,
+    ),
+    (
         // #631: a zero-argument def read bare and indexed with a constant
         // key (`current_user["k"]`) is called first on the VM too; the fused
         // global hash op read the function itself.
