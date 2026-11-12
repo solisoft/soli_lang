@@ -220,3 +220,9 @@ a different storage model.
 reported), so passkeys cannot be restricted to certain authenticator models.
 ES256, EdDSA (Ed25519) and RS256 are supported. Passkeys are an additional credential: an
 account still has a password.
+
+**In a native app.** `AppLinks.android(…, {"passkeys": true})` and
+`AppLinks.apple(…, {"passkeys": true})` let the app use the site's passkeys,
+and `AppLinks.android_origin(fingerprint)` gives the `android:apk-key-hash:…`
+origin to add to `WEBAUTHN_ORIGINS` — see
+[Deep links → Passkeys in the app](/docs/native/deep-links#passkeys).

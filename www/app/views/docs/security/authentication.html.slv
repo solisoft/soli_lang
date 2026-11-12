@@ -203,11 +203,12 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
         </p>
         <div class="callout callout-warning">
             <p class="text-yellow-200/80 text-sm mb-0">
-                <strong>Limits.</strong> Attestation is never verified (the options ask for <code>"none"</code>), so passkeys
+                <strong>Limits.</strong> Attestation is never trusted against a vendor root (the options ask for <code>"none"</code>), so passkeys
                 cannot be restricted to certain authenticator models. ES256, EdDSA (Ed25519) and RS256 are supported; a packed self-attestation is checked, a certificate chain only reported.
                 Passkeys are an additional credential: an account still has a password.
             </p>
         </div>
+        <p class="text-gray-400 mt-4"><strong class="text-white">In a native app.</strong> <code class="text-cyan-400">AppLinks.android(…, {"passkeys": true})</code> and <code class="text-cyan-400">AppLinks.apple(…, {"passkeys": true})</code> let the app use the site&rsquo;s passkeys, and <code class="text-cyan-400">AppLinks.android_origin(fingerprint)</code> gives the <code class="text-cyan-400">android:apk-key-hash:…</code> origin to add to <code class="text-cyan-400">WEBAUTHN_ORIGINS</code> &mdash; see <a href="/docs/native/deep-links#passkeys" class="text-amber-400 hover:underline">Deep links → Passkeys in the app</a>.</p>
     </section>
 
 </div>

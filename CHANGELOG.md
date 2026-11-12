@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Passkeys in native apps (#696, phase 5).** `AppLinks.android(package,
+  fingerprints, {"passkeys": true})` adds the
+  `delegate_permission/common.get_login_creds` relation, and
+  `AppLinks.apple(app_id, paths?, {"passkeys": true})` (the options hash may
+  come second) a `webcredentials` section naming the app, so the app can use
+  the site's passkeys. New `AppLinks.android_origin(fingerprint)` returns
+  `android:apk-key-hash:<base64url SHA-256>`, the origin an Android app's
+  ceremony reports, for `WebAuthn.verify_*` origins / `WEBAUTHN_ORIGINS`.
+  Unknown options raise. Default output unchanged.
+
 - **Passkeys in browser specs: a virtual authenticator (#696, phase 4).**
   `virtual_authenticator(opts?)`, `virtual_credentials(id)` and
   `remove_virtual_authenticator(id)` drive Chrome's DevTools `WebAuthn`

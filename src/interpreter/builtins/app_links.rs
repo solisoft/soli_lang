@@ -16,6 +16,13 @@
 //!   `application/json`, with no `.json` extension and no redirect** — Apple's
 //!   CDN fetches it verbatim and a redirect fails verification.
 //!
+//! **Passkeys.** Pass `{"passkeys": true}` and the same files also let the
+//! app use the site's passkeys: Android gets the `get_login_creds` relation,
+//! Apple a `webcredentials` section. A passkey ceremony run *inside the
+//! Android app* reports the origin `android:apk-key-hash:…` rather than the
+//! site's; `AppLinks.android_origin(fingerprint)` builds it, for the
+//! `origins` a `WebAuthn.verify_*` call accepts.
+//!
 //! ```soli
 //! # config/routes.sl
 //! get("/.well-known/assetlinks.json", "well_known#android")
@@ -76,8 +83,10 @@ fn strings(value: &Value, function: &str, name: &str) -> Result<Vec<String>, Str
     }
 }
 
-/// The Android Digital Asset Links statement list.
-fn android(package: &str, fingerprints: &[String]) -> Result<String, String> {
+/// The Android Digital Asset Links statement list. With `passkeys`, the
+/// statement also delegates `get_login_creds`, which lets the app sign in with
+/// the site's passkeys (and saved passwords).
+fn android(package: &str, fingerprints: &[String], passkeys: bool) -> Result<String, String> {
     if !valid_identifier(package) {
         return Err(format!(
             "AppLinks.android(): '{}' is not a valid package name",
@@ -98,8 +107,12 @@ fn android(package: &str, fingerprints: &[String]) -> Result<String, String> {
         .map(|raw| normalize_fingerprint(raw))
         .collect();
 
+    let mut relation = vec!["delegate_permission/common.handle_all_urls"];
+    if passkeys {
+        relation.push("delegate_permission/common.get_login_creds");
+    }
     let statement = serde_json::json!([{
-        "relation": ["delegate_permission/common.handle_all_urls"],
+        "relation": relation,
         "target": {
             "namespace": "android_app",
             "package_name": package,
@@ -128,8 +141,27 @@ fn normalize_fingerprint(raw: &str) -> Result<String, String> {
     Ok(pairs.join(":"))
 }
 
-/// The Apple App Site Association document.
-fn apple(app_id: &str, paths: &[String]) -> Result<String, String> {
+/// The WebAuthn origin an Android app's passkey ceremony reports:
+/// `android:apk-key-hash:` and the signing certificate's SHA-256, base64url
+/// without padding.
+fn android_origin(fingerprint: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    let normalized = normalize_fingerprint(fingerprint)
+        .map_err(|e| e.replace("AppLinks.android()", "AppLinks.android_origin()"))?;
+    let bytes: Vec<u8> = normalized
+        .split(':')
+        .map(|pair| u8::from_str_radix(pair, 16).unwrap_or(0))
+        .collect();
+    Ok(format!(
+        "android:apk-key-hash:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+    ))
+}
+
+/// The Apple App Site Association document. With `passkeys`, a
+/// `webcredentials` section names the app too, so it can use the site's
+/// passkeys.
+fn apple(app_id: &str, paths: &[String], passkeys: bool) -> Result<String, String> {
     // `TEAMID.bundle.id`: the team prefix plus the reverse-DNS bundle id.
     let (team, bundle) = app_id.split_once('.').ok_or_else(|| {
         format!(
@@ -157,7 +189,7 @@ fn apple(app_id: &str, paths: &[String]) -> Result<String, String> {
         .map(|p| serde_json::json!({ "/": p }))
         .collect();
 
-    let association = serde_json::json!({
+    let mut association = serde_json::json!({
         "applinks": {
             "apps": [],
             "details": [{
@@ -168,16 +200,54 @@ fn apple(app_id: &str, paths: &[String]) -> Result<String, String> {
             }]
         }
     });
+    if passkeys {
+        association["webcredentials"] = serde_json::json!({ "apps": [app_id] });
+    }
     serde_json::to_string_pretty(&association).map_err(|e| format!("AppLinks.apple(): {}", e))
+}
+
+/// The `{"passkeys": bool}` options hash; any other key is a mistake.
+fn passkeys_option(value: Option<&Value>, function: &str) -> Result<bool, String> {
+    let hash = match value {
+        None | Some(Value::Null) => return Ok(false),
+        Some(Value::Hash(hash)) => hash,
+        Some(other) => {
+            return Err(format!(
+                "{}(): options must be a hash, got {}",
+                function,
+                other.type_name()
+            ))
+        }
+    };
+    let mut passkeys = false;
+    for (key, value) in hash.borrow().iter() {
+        match key {
+            crate::interpreter::value::HashKey::String(name) if name.as_ref() == "passkeys" => {
+                passkeys = value.is_truthy()
+            }
+            other => {
+                return Err(format!(
+                    "{}(): unknown option \"{}\" (passkeys)",
+                    function, other
+                ))
+            }
+        }
+    }
+    Ok(passkeys)
 }
 
 pub fn register_app_links_builtins(env: &mut Environment) {
     let mut statics: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
-    // AppLinks.android(package_name, fingerprints) -> String
+    // AppLinks.android(package_name, fingerprints, opts?) -> String
     statics.insert(
         "android".to_string(),
-        Rc::new(NativeFunction::new("AppLinks.android", Some(2), |args| {
+        Rc::new(NativeFunction::new("AppLinks.android", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(
+                    "AppLinks.android() expects (package_name, fingerprints, opts?)".to_string(),
+                );
+            }
             let package = match &args[0] {
                 Value::String(s) => s.to_string(),
                 other => {
@@ -188,16 +258,34 @@ pub fn register_app_links_builtins(env: &mut Environment) {
                 }
             };
             let fingerprints = strings(&args[1], "AppLinks.android", "fingerprint")?;
-            android(&package, &fingerprints).map(|json| Value::String(json.into()))
+            let passkeys = passkeys_option(args.get(2), "AppLinks.android")?;
+            android(&package, &fingerprints, passkeys).map(|json| Value::String(json.into()))
         })),
     );
 
-    // AppLinks.apple(app_id, paths?) -> String
+    // AppLinks.android_origin(fingerprint) -> String
+    statics.insert(
+        "android_origin".to_string(),
+        Rc::new(NativeFunction::new(
+            "AppLinks.android_origin",
+            Some(1),
+            |args| match &args[0] {
+                Value::String(s) => android_origin(s).map(|origin| Value::String(origin.into())),
+                other => Err(format!(
+                    "AppLinks.android_origin() expects a string fingerprint, got {}",
+                    other.type_name()
+                )),
+            },
+        )),
+    );
+
+    // AppLinks.apple(app_id, paths?, opts?) -> String; the options hash may
+    // also come second, with no paths.
     statics.insert(
         "apple".to_string(),
         Rc::new(NativeFunction::new("AppLinks.apple", None, |args| {
-            if args.is_empty() || args.len() > 2 {
-                return Err("AppLinks.apple() expects (app_id, paths?)".to_string());
+            if args.is_empty() || args.len() > 3 {
+                return Err("AppLinks.apple() expects (app_id, paths?, opts?)".to_string());
             }
             let app_id = match &args[0] {
                 Value::String(s) => s.to_string(),
@@ -208,11 +296,13 @@ pub fn register_app_links_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            let paths = match args.get(1) {
-                None | Some(Value::Null) => Vec::new(),
-                Some(value) => strings(value, "AppLinks.apple", "path")?,
+            let (paths, options) = match args.get(1) {
+                Some(hash @ Value::Hash(_)) if args.len() == 2 => (Vec::new(), Some(hash)),
+                None | Some(Value::Null) => (Vec::new(), args.get(2)),
+                Some(value) => (strings(value, "AppLinks.apple", "path")?, args.get(2)),
             };
-            apple(&app_id, &paths).map(|json| Value::String(json.into()))
+            let passkeys = passkeys_option(options, "AppLinks.apple")?;
+            apple(&app_id, &paths, passkeys).map(|json| Value::String(json.into()))
         })),
     );
 
@@ -241,7 +331,7 @@ mod tests {
 
     #[test]
     fn android_statement_names_the_package_and_fingerprint() {
-        let json = android("net.example.app", &[FP.to_string()]).expect("builds");
+        let json = android("net.example.app", &[FP.to_string()], false).expect("builds");
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed[0]["target"]["package_name"], "net.example.app");
         assert_eq!(parsed[0]["target"]["namespace"], "android_app");
@@ -258,7 +348,7 @@ mod tests {
     #[test]
     fn a_plain_hex_fingerprint_is_normalized() {
         let plain = FP.replace(':', "").to_lowercase();
-        let json = android("net.example.app", &[plain]).expect("builds");
+        let json = android("net.example.app", &[plain], false).expect("builds");
         assert!(
             json.contains(FP),
             "fingerprint should be normalized to {}",
@@ -268,18 +358,23 @@ mod tests {
 
     #[test]
     fn a_wrong_length_fingerprint_is_rejected() {
-        assert!(android("net.example.app", &["AB:CD".to_string()]).is_err());
-        assert!(android("net.example.app", &[]).is_err());
+        assert!(android("net.example.app", &["AB:CD".to_string()], false).is_err());
+        assert!(android("net.example.app", &[], false).is_err());
     }
 
     #[test]
     fn an_invalid_package_is_rejected() {
-        assert!(android("not a package", &[FP.to_string()]).is_err());
+        assert!(android("not a package", &[FP.to_string()], false).is_err());
     }
 
     #[test]
     fn apple_association_carries_the_app_id_and_paths() {
-        let json = apple("ABCDE12345.net.example.app", &["/pings/*".to_string()]).expect("builds");
+        let json = apple(
+            "ABCDE12345.net.example.app",
+            &["/pings/*".to_string()],
+            false,
+        )
+        .expect("builds");
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         let detail = &parsed["applinks"]["details"][0];
         assert_eq!(detail["appID"], "ABCDE12345.net.example.app");
@@ -289,8 +384,50 @@ mod tests {
     }
 
     #[test]
+    fn passkeys_add_the_credential_relations() {
+        let parsed: serde_json::Value =
+            serde_json::from_str(&android("net.example.app", &[FP.to_string()], true).unwrap())
+                .unwrap();
+        assert_eq!(
+            parsed[0]["relation"],
+            serde_json::json!([
+                "delegate_permission/common.handle_all_urls",
+                "delegate_permission/common.get_login_creds"
+            ])
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&apple("ABCDE12345.net.example.app", &[], true).unwrap()).unwrap();
+        assert_eq!(
+            parsed["webcredentials"]["apps"],
+            serde_json::json!(["ABCDE12345.net.example.app"])
+        );
+        let without: serde_json::Value =
+            serde_json::from_str(&apple("ABCDE12345.net.example.app", &[], false).unwrap())
+                .unwrap();
+        assert!(without.get("webcredentials").is_none());
+    }
+
+    /// The origin an Android app's WebAuthn ceremony reports: the certificate
+    /// hash, base64url, whichever way the fingerprint was written.
+    #[test]
+    fn the_android_origin_is_the_certificate_hash() {
+        let origin = android_origin(FP).unwrap();
+        assert_eq!(
+            origin,
+            "android:apk-key-hash:FG3pg8VzBlDY7rmVLzT8ZBagg0LmHb6oigSWsj_PROU"
+        );
+        assert_eq!(
+            android_origin(&FP.replace(':', "").to_lowercase()).unwrap(),
+            origin
+        );
+        assert!(android_origin("AB:CD")
+            .unwrap_err()
+            .contains("android_origin"));
+    }
+
+    #[test]
     fn apple_defaults_to_the_whole_site() {
-        let json = apple("ABCDE12345.net.example.app", &[]).expect("builds");
+        let json = apple("ABCDE12345.net.example.app", &[], false).expect("builds");
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["applinks"]["details"][0]["paths"][0], "*");
     }
@@ -301,10 +438,10 @@ mod tests {
     /// from a leading bundle segment.
     #[test]
     fn an_app_id_without_a_team_prefix_is_rejected() {
-        assert!(apple("noteamprefix", &[]).is_err());
-        assert!(apple("", &[]).is_err());
+        assert!(apple("noteamprefix", &[], false).is_err());
+        assert!(apple("", &[], false).is_err());
         // A dotted id is accepted — "ABCDE12345.net.example.app" and even
         // "net.example.app" parse, because the first segment is the team.
-        assert!(apple("ABCDE12345.net.example.app", &[]).is_ok());
+        assert!(apple("ABCDE12345.net.example.app", &[], false).is_ok());
     }
 }

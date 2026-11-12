@@ -77,6 +77,35 @@ Three details the OS is unforgiving about, all handled for you or worth knowing:
 - **`AppLinks.apple`** takes `TEAMID.bundle.id` and emits both the modern `components` form and the
   legacy `paths`, so one file serves every OS version.
 
+### Passkeys in the app
+
+The same two files let the app sign in with the site's
+[passkeys](/docs/security/authentication#passkeys) — pass `{"passkeys": true}`:
+
+```soli
+AppLinks.android("net.example.myapp", [ENV["ANDROID_CERT_SHA256"]], {"passkeys": true})
+AppLinks.apple("TEAMID.net.example.myapp", ["/pings/*"], {"passkeys": true})
+AppLinks.apple("TEAMID.net.example.myapp", {"passkeys": true})   # whole site
+```
+
+Android gets the `delegate_permission/common.get_login_creds` relation (which
+also shares saved passwords with the app), Apple a `webcredentials` section
+naming the app. The app still has to declare the association on its side
+(Credential Manager on Android, the `webcredentials:` associated domain on
+iOS).
+
+A ceremony run inside the Android app reports the origin
+`android:apk-key-hash:…`, not `https://…`, so `WebAuthn.verify_*` must accept
+it. `AppLinks.android_origin(fingerprint)` builds it from the same signing
+certificate fingerprint:
+
+```soli
+origins = [auth_base_url(), AppLinks.android_origin(ENV["ANDROID_CERT_SHA256"])]
+```
+
+With `soli generate auth --passkeys`, add it to `WEBAUTHN_ORIGINS`
+(comma-separated). An iOS app's ceremony reports the site's own origin.
+
 ## The app half: what the shells declare
 
 **Android** — the manifest declares both link types, and the app routes the incoming URL into the

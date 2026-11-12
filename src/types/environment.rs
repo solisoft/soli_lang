@@ -3143,10 +3143,10 @@ impl TypeEnvironment {
         }
         self.classes.insert("Updater".to_string(), updater_class);
 
-        // AppLinks class — AppLinks.android/apple(...) -> String (the
+        // AppLinks class — AppLinks.android/apple/android_origin(...) -> String (the
         // association-file JSON).
         let mut app_links_class = ClassType::new("AppLinks".to_string());
-        for name in ["android", "apple"] {
+        for name in ["android", "apple", "android_origin"] {
             app_links_class.methods.insert(
                 name.to_string(),
                 MethodInfo {
