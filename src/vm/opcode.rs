@@ -214,10 +214,6 @@ pub enum Op {
     StaticMethod(u16),
     /// Instantiate a class with N constructor arguments.
     New(u8),
-    /// Push `this` (slot 0 in methods).
-    GetThis,
-    /// Push a super reference.
-    GetSuper(u16),
     /// `super(args…)` inside a constructor: run the defining class's
     /// superclass constructor with `this` (already in the callee slot) and
     /// `argc` args.
@@ -252,8 +248,6 @@ pub enum Op {
     Rethrow,
     /// Pop exception value, push fallback (for postfix rescue).
     PopHandler,
-    /// Jump offset for rescue fallback (if exception occurred).
-    RescueJump(u16),
 
     // --- Iterators ---
     /// Pop iterable, push iterator state.
@@ -332,12 +326,6 @@ pub enum Op {
     IncrLocal(u16),
     /// Decrement a local integer by 1: local[slot] -= 1
     DecrLocal(u16),
-    /// Add two locals and push result: push(local[a] + local[b])
-    ///
-    /// Nothing emits it at the moment. `a = a + b` becomes `AddLocalsInPlace`,
-    /// and no rule fuses `GetLocal, GetLocal, Add` on its own (the `Sub`,
-    /// `Mul` and `Div` forms have one).
-    AddLocalLocal(u16, u16),
     /// Compare two locals with <=: push(local[a] <= local[b])
     LessEqualLocalLocal(u16, u16),
     /// Get local and add int constant: push(local[slot] + constant_int)
@@ -403,8 +391,6 @@ pub enum Op {
     TestLessEqualJump(u16),
     /// Combined Less + JumpIfFalse: pop two, compare <, jump if false.
     TestLessJump(u16),
-    /// Combined GetGlobal + Call: push global function and call it.
-    CallGlobal(u16, u8),
     /// A bare name inside an instance method that is no local and no global
     /// the compiler knows (`_label`). Pops `this`; pushes the global of that
     /// name when one exists, else `this.name` read like `@name` (a zero-arg
@@ -478,8 +464,6 @@ pub enum Op {
     HashGetConst(u16),
     /// Specialized hash has_key? with a compile-time constant string key.
     HashHasKeyConst(u16),
-    /// Specialized hash delete with a compile-time constant string key.
-    HashDeleteConst(u16),
     /// Specialized hash set with a compile-time constant string key.
     /// Stack: [..., hash, value]
     HashSetConst(u16),
@@ -493,8 +477,6 @@ pub enum Op {
     HashGetConst2(u16, u16),
     /// Specialized local-hash has_key? with a compile-time constant string key.
     HashHasKeyLocalConst(u16, u16),
-    /// Specialized local-hash delete with a compile-time constant string key.
-    HashDeleteLocalConst(u16, u16),
     /// Specialized local-hash set with a compile-time constant string key.
     /// Stack: [..., value]
     HashSetLocalConst(u16, u16),
@@ -502,8 +484,6 @@ pub enum Op {
     HashGetGlobalConst(u16, u16),
     /// Specialized global-hash has_key? with a compile-time constant string key.
     HashHasKeyGlobalConst(u16, u16),
-    /// Specialized global-hash delete with a compile-time constant string key.
-    HashDeleteGlobalConst(u16, u16),
     /// Specialized global-hash set with a compile-time constant string key.
     /// Stack: [..., value]
     HashSetGlobalConst(u16, u16),
@@ -525,8 +505,6 @@ pub enum Op {
     DivLocalConst(u16, u16),
     /// Local modulo constant: push(local[slot] % constant)
     ModLocalConst(u16, u16),
-    /// Push two locals onto stack (reduces GetLocal dispatch overhead)
-    GetLocal2(u16, u16),
     /// Combined Greater + JumpIfFalse: pop two, compare >, jump if false.
     TestGreaterJump(u16),
     /// Combined GreaterEqual + JumpIfFalse: pop two, compare >=, jump if false.
@@ -552,18 +530,10 @@ pub enum Op {
     NotEqualLocalConst(u16, u16),
     /// Check if local == constant, push bool
     EqualLocalConst(u16, u16),
-    /// Check if value is null, push bool (optimized)
-    IsNull,
-    /// Check if value is not null, push bool (optimized)
-    NotNull,
     /// Jump if value is null (for ?? operator fast path)
     JumpIfNull(u16),
     /// Jump if value is not null (for optional chaining)
     JumpIfNotNull(u16),
-    /// Check if local is truthy, push bool
-    IsTruthyLocal(u16),
-    /// Check if local is falsy (null, false, 0, ""), push bool
-    IsFalsyLocal(u16),
     /// `if local` / `while local`: jump `offset` when `local[slot]` is falsy.
     /// The fused form of `GetLocal(slot), JumpIfFalse` — one dispatch, and
     /// nothing pushed or popped. Peephole-only (not patched by `patch_jump`).
@@ -571,35 +541,10 @@ pub enum Op {
     /// `unless local` / `if !local`: jump `offset` when `local[slot]` is
     /// truthy. The fused form of `GetLocal(slot), Not, JumpIfFalse`.
     JumpIfLocalTruthy(u16, u16),
-    /// Get local and add int (optimized for small ints)
-    ///
-    /// Nothing emits it at the moment: `AddLocalConst` takes
-    /// `GetLocal, Constant(Int), Add`, which the callback kernels read.
-    AddLocalInt(u16, i32),
-    /// Increment local by 1 (already have IncrLocal, add this as variant)
-    IncrLocalFast(u16),
-    /// Get local, push it, then set it to null
-    GetAndNullLocal(u16),
-    /// Check if local == 0, push bool
-    IsZeroLocal(u16),
-    /// Check if local != 0, push bool
-    NotZeroLocal(u16),
-    /// Get global and check if null/undefined in one op
-    GetGlobalNullCheck(u16),
-    /// Get global, call if exists (optimized fast path)
-    GetGlobalCall(u16, u8),
-    /// Get local, apply Not, push result
-    NotLocal(u16),
-    /// Get local, apply Negate, push result  
-    NegateLocal(u16),
     /// Check if two locals are equal, push bool
     EqualLocalLocal(u16, u16),
     /// Check if two locals are not equal, push bool
     NotEqualLocalLocal(u16, u16),
-    /// Pop and discard, push Null
-    PopNull,
-    /// Duplicate top of stack N times
-    DupN(u8),
     /// Get local by index, then get property (common in loops):
     /// `(slot, name constant, method id, zero-arg mask)`, the last three as
     /// in `GetProperty`.
@@ -699,7 +644,6 @@ pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::JumpIfParamSupplied(0, 0),
     Op::ForIter(0),
     Op::ForIterRange(0),
-    Op::RescueJump(0),
     Op::CatchMatch(0, 0),
     Op::TestLessJump(0),
     Op::TestLessEqualJump(0),

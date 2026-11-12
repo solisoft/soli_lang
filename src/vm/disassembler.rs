@@ -190,11 +190,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("STATIC_METH  {:>5} ({})", idx, name));
         }
         Op::New(argc) => out.push_str(&format!("NEW          {:>5}", argc)),
-        Op::GetThis => out.push_str("GET_THIS"),
-        Op::GetSuper(idx) => {
-            let name = constant_string(chunk, *idx);
-            out.push_str(&format!("GET_SUPER    {:>5} ({})", idx, name));
-        }
         Op::Field(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("FIELD        {:>5} ({})", idx, name));
@@ -226,7 +221,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::Rethrow => out.push_str("RETHROW"),
         Op::PopHandler => out.push_str("POP_HANDLER"),
-        Op::RescueJump(offset) => out.push_str(&format!("RESCUE_JUMP  {:>5}", offset)),
         Op::GetIter => out.push_str("GET_ITER"),
         Op::GetIterRange => out.push_str("GET_ITER_RNG"),
         Op::ForIter(offset) => out.push_str(&format!("FOR_ITER     {:>5}", offset)),
@@ -257,7 +251,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }),
         Op::IncrLocal(slot) => out.push_str(&format!("INCR_LOCAL   {:>5}", slot)),
         Op::DecrLocal(slot) => out.push_str(&format!("DECR_LOCAL   {:>5}", slot)),
-        Op::AddLocalLocal(a, b) => out.push_str(&format!("ADD_LL       {:>3},{:>3}", a, b)),
         Op::LessEqualLocalLocal(a, b) => out.push_str(&format!("LE_LL        {:>3},{:>3}", a, b)),
         Op::AddLocalConst(slot, cidx) => {
             out.push_str(&format!("ADD_LC       {:>3},{:>3}", slot, cidx))
@@ -287,10 +280,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::TestLessEqualJump(offset) => out.push_str(&format!("TEST_LE_JUMP {:>5}", offset)),
         Op::TestLessJump(offset) => out.push_str(&format!("TEST_LT_JUMP {:>5}", offset)),
-        Op::CallGlobal(idx, argc) => {
-            let name = constant_string(chunk, *idx);
-            out.push_str(&format!("CALL_GLOBAL  {:>5} ({}) argc={}", idx, name, argc));
-        }
         Op::SelfOrGlobal(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("SELF_OR_GLOBAL {:>3} ({})", idx, name));
@@ -394,10 +383,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("HASH_HAS_C   {:>5} ({})", idx, name));
         }
-        Op::HashDeleteConst(idx) => {
-            let name = constant_string(chunk, *idx);
-            out.push_str(&format!("HASH_DEL_C   {:>5} ({})", idx, name));
-        }
         Op::HashSetConst(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("HASH_SET_C   {:>5} ({})", idx, name));
@@ -433,10 +418,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("HHAS_L_C     slot={} key={}", slot, name));
         }
-        Op::HashDeleteLocalConst(slot, idx) => {
-            let name = constant_string(chunk, *idx);
-            out.push_str(&format!("HDEL_L_C     slot={} key={}", slot, name));
-        }
         Op::HashSetLocalConst(slot, idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("HSET_L_C     slot={} key={}", slot, name));
@@ -450,11 +431,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let g = constant_string(chunk, *gidx);
             let k = constant_string(chunk, *kidx);
             out.push_str(&format!("HHAS_G_C     {:>5} ({}) key={}", gidx, g, k));
-        }
-        Op::HashDeleteGlobalConst(gidx, kidx) => {
-            let g = constant_string(chunk, *gidx);
-            let k = constant_string(chunk, *kidx);
-            out.push_str(&format!("HDEL_G_C     {:>5} ({}) key={}", gidx, g, k));
         }
         Op::HashSetGlobalConst(gidx, kidx) => {
             let g = constant_string(chunk, *gidx);
@@ -477,7 +453,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::ModLocalConst(slot, cidx) => {
             out.push_str(&format!("MOD_LC       {:>3},{:>3}", slot, cidx))
         }
-        Op::GetLocal2(a, b) => out.push_str(&format!("GET_LOCAL_2  {:>3},{:>3}", a, b)),
         Op::LessLocalLocal(a, b) => out.push_str(&format!("LESS_LL      {:>3},{:>3}", a, b)),
         Op::GreaterLocalLocal(a, b) => out.push_str(&format!("GREATER_LL   {:>3},{:>3}", a, b)),
         Op::LessLocalConst(a, c) => out.push_str(&format!("LESS_LC      {:>3},{:>3}", a, c)),
@@ -496,42 +471,18 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::TestGreaterEqualJump(offset) => out.push_str(&format!("TEST_GE_JUMP {:>5}", offset)),
         Op::TestNotEqualJump(offset) => out.push_str(&format!("TEST_NE_JUMP {:>5}", offset)),
         Op::TestEqualJump(offset) => out.push_str(&format!("TEST_EQ_JUMP {:>5}", offset)),
-        Op::IsNull => out.push_str("IS_NULL"),
-        Op::NotNull => out.push_str("NOT_NULL"),
         Op::JumpIfNull(offset) => out.push_str(&format!("JUMP_IF_NULL {:>5}", offset)),
         Op::JumpIfNotNull(offset) => out.push_str(&format!("JUMP_IF_NOT_NULL {:>4}", offset)),
-        Op::IsTruthyLocal(slot) => out.push_str(&format!("IS_TRUTHY_LOCAL {:>3}", slot)),
-        Op::IsFalsyLocal(slot) => out.push_str(&format!("IS_FALSY_LOCAL {:>3}", slot)),
         Op::JumpIfLocalFalsy(slot, offset) => {
             out.push_str(&format!("JUMP_LOCAL_FALSY {:>3} {:>5}", slot, offset))
         }
         Op::JumpIfLocalTruthy(slot, offset) => {
             out.push_str(&format!("JUMP_LOCAL_TRUTHY {:>3} {:>5}", slot, offset))
         }
-        Op::AddLocalInt(slot, n) => out.push_str(&format!("ADD_LOCAL_INT {:>3},{:>3}", slot, n)),
-        Op::IncrLocalFast(slot) => out.push_str(&format!("INCR_LOCAL_FAST {:>2}", slot)),
-        Op::GetAndNullLocal(slot) => out.push_str(&format!("GET_AND_NULL_LOCAL {:>2}", slot)),
-        Op::IsZeroLocal(slot) => out.push_str(&format!("IS_ZERO_LOCAL  {:>3}", slot)),
-        Op::NotZeroLocal(slot) => out.push_str(&format!("NOT_ZERO_LOCAL {:>3}", slot)),
-        Op::GetGlobalNullCheck(idx) => {
-            let name = constant_string(chunk, *idx);
-            out.push_str(&format!("GET_GLOBAL_NULL  {:>5} ({})", idx, name))
-        }
-        Op::GetGlobalCall(idx, argc) => {
-            let name = constant_string(chunk, *idx);
-            out.push_str(&format!(
-                "GET_GLOBAL_CALL  {:>5} ({}) argc={}",
-                idx, name, argc
-            ))
-        }
-        Op::NotLocal(slot) => out.push_str(&format!("NOT_LOCAL        {:>3}", slot)),
-        Op::NegateLocal(slot) => out.push_str(&format!("NEGATE_LOCAL     {:>3}", slot)),
         Op::EqualLocalLocal(a, b) => out.push_str(&format!("EQ_LL            {:>3},{:>3}", a, b)),
         Op::NotEqualLocalLocal(a, b) => {
             out.push_str(&format!("NE_LL            {:>3},{:>3}", a, b))
         }
-        Op::PopNull => out.push_str("POP_NULL"),
-        Op::DupN(n) => out.push_str(&format!("DUP_N            {:>3}", n)),
         Op::GetLocalProperty(slot, idx, _, _) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(
@@ -691,11 +642,8 @@ mod tests {
             (Op::Equal, "EQUAL"),
             (Op::NotEqual, "NOT_EQUAL"),
             (Op::Not, "NOT"),
-            (Op::IsNull, "IS_NULL"),
-            (Op::NotNull, "NOT_NULL"),
             (Op::Return, "RETURN"),
             (Op::CloseUpvalue, "CLOSE_UPVALUE"),
-            (Op::PopNull, "POP_NULL"),
         ] {
             let body = body_for(vec![(op, 1)]);
             assert!(body.contains(expected), "for {op:?}: got body {body:?}");
@@ -820,19 +768,13 @@ mod tests {
     #[test]
     fn super_ops_render_in_short_form() {
         let body = body_for(vec![
-            (Op::IncrLocalFast(3), 1),
             (Op::EqualLocalLocal(1, 2), 1),
             (Op::NotEqualLocalLocal(1, 2), 1),
-            (Op::IsTruthyLocal(0), 1),
-            (Op::IsFalsyLocal(0), 1),
             (Op::JumpIfLocalFalsy(0, 2), 1),
             (Op::JumpIfLocalTruthy(0, 2), 1),
         ]);
-        assert!(body.contains("INCR_LOCAL_FAST"));
         assert!(body.contains("EQ_LL"));
         assert!(body.contains("NE_LL"));
-        assert!(body.contains("IS_TRUTHY_LOCAL"));
-        assert!(body.contains("IS_FALSY_LOCAL"));
         assert!(body.contains("JUMP_LOCAL_FALSY"));
         assert!(body.contains("JUMP_LOCAL_TRUTHY"));
     }

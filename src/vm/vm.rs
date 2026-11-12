@@ -606,6 +606,49 @@ impl Vm {
             && !crate::interpreter::executor::access::member::is_universal_instance_member(name)
     }
 
+    /// The fast tier's answer to `receiver.name` (`GetProperty`, and
+    /// `GetLocalProperty` with `slot_zero` saying whether the receiver is
+    /// slot 0): a hash key (unless a Hash user method exists), an instance
+    /// field, a class's static, or a paren-less zero-argument builtin by id.
+    /// `None` hands the read to the general arm. One definition for both
+    /// arms (#649), which were copies of each other.
+    #[inline(always)]
+    fn fast_property_hit(
+        &self,
+        receiver: &Value,
+        name: &Constant,
+        mid: u16,
+        mask: u16,
+        slot_zero: bool,
+    ) -> Option<Value> {
+        match receiver {
+            Value::Hash(hash)
+                if !crate::interpreter::executor::calls::user_methods::has_user_methods(
+                    crate::interpreter::executor::calls::user_methods::PrimType::Hash,
+                ) =>
+            {
+                let key = match name {
+                    Constant::String(name) => hash.borrow().get(&StrKey(name.as_ref())).cloned(),
+                    _ => None,
+                };
+                match key {
+                    None if mask != 0 => super::method_table::bare_zero_arg(receiver, mid, mask),
+                    key => key,
+                }
+            }
+            Value::Instance(_) => match name {
+                Constant::String(name) => self.fast_field_read(receiver, name, slot_zero),
+                _ => None,
+            },
+            Value::Class(class) => match name {
+                Constant::String(name) => Self::fast_static_read(class, name),
+                _ => None,
+            },
+            receiver if mask != 0 => super::method_table::bare_zero_arg(receiver, mid, mask),
+            _ => None,
+        }
+    }
+
     /// Pop the running frame as `Op::Return` does — its upvalues closed, the
     /// value and iterator stacks and its `try` handlers cut back — and hand
     /// it back. For `Op::BlockBreak`, which leaves several frames in a row.
@@ -1179,12 +1222,6 @@ impl Vm {
                     let ok = array_len_matches(&self.stack[base + slot as usize], len, at_least);
                     self.stack.push(Value::Bool(ok));
                 }
-                Op::GetLocal2(slot_a, slot_b) => {
-                    let a = clone_scalar_fast(&self.stack[base + slot_a as usize]);
-                    let b = clone_scalar_fast(&self.stack[base + slot_b as usize]);
-                    self.stack.push(a);
-                    self.stack.push(b);
-                }
                 Op::SetLocal(slot) => {
                     let value = clone_scalar_fast(self.peek(0));
                     discard(std::mem::replace(
@@ -1200,10 +1237,6 @@ impl Vm {
                     ));
                 }
                 Op::Pop => discard(self.pop()),
-                Op::PopNull => {
-                    discard(self.pop());
-                    self.stack.push(Value::Null);
-                }
                 Op::Dup => {
                     let value = clone_scalar_fast(self.peek(0));
                     self.stack.push(value);
@@ -1330,46 +1363,11 @@ impl Vm {
                 // Anything else (a miss, a method, a deferred or refused
                 // field) goes to the general arm.
                 Op::GetProperty(idx, mid, mask) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let name = unsafe { &*constants.add(idx as usize) };
                     let hit = match self.stack.last() {
-                        Some(receiver @ Value::Hash(hash))
-                            if !crate::interpreter::executor::calls::user_methods::has_user_methods(
-                                crate::interpreter::executor::calls::user_methods::PrimType::Hash,
-                            ) =>
-                        {
-                            // SAFETY: as for `Op::Constant` above.
-                            let key = match unsafe { &*constants.add(idx as usize) } {
-                                Constant::String(name) => {
-                                    hash.borrow().get(&StrKey(name.as_ref())).cloned()
-                                }
-                                _ => None,
-                            };
-                            match key {
-                                None if mask != 0 => {
-                                    super::method_table::bare_zero_arg(receiver, mid, mask)
-                                }
-                                key => key,
-                            }
-                        }
-                        Some(receiver @ Value::Instance(_)) => {
-                            // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
-                                Constant::String(name) => {
-                                    self.fast_field_read(receiver, name, false)
-                                }
-                                _ => None,
-                            }
-                        }
-                        Some(Value::Class(class)) => {
-                            // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
-                                Constant::String(name) => Self::fast_static_read(class, name),
-                                _ => None,
-                            }
-                        }
-                        Some(receiver) if mask != 0 => {
-                            super::method_table::bare_zero_arg(receiver, mid, mask)
-                        }
-                        _ => None,
+                        Some(receiver) => self.fast_property_hit(receiver, name, mid, mask, false),
+                        None => None,
                     };
                     match hit {
                         Some(value) => {
@@ -1383,47 +1381,15 @@ impl Vm {
                 // that has the field — the fused form of the arm above, which
                 // also answers a paren-less zero-argument builtin by id.
                 Op::GetLocalProperty(slot, idx, mid, mask) => {
-                    let hit = match &self.stack[base + slot as usize] {
-                        receiver @ Value::Hash(hash)
-                            if !crate::interpreter::executor::calls::user_methods::has_user_methods(
-                                crate::interpreter::executor::calls::user_methods::PrimType::Hash,
-                            ) =>
-                        {
-                            // SAFETY: as for `Op::Constant` above.
-                            let key = match unsafe { &*constants.add(idx as usize) } {
-                                Constant::String(name) => {
-                                    hash.borrow().get(&StrKey(name.as_ref())).cloned()
-                                }
-                                _ => None,
-                            };
-                            match key {
-                                None if mask != 0 => {
-                                    super::method_table::bare_zero_arg(receiver, mid, mask)
-                                }
-                                key => key,
-                            }
-                        }
-                        receiver @ Value::Instance(_) => {
-                            // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
-                                Constant::String(name) => {
-                                    self.fast_field_read(receiver, name, slot == 0)
-                                }
-                                _ => None,
-                            }
-                        }
-                        Value::Class(class) => {
-                            // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
-                                Constant::String(name) => Self::fast_static_read(class, name),
-                                _ => None,
-                            }
-                        }
-                        receiver if mask != 0 => {
-                            super::method_table::bare_zero_arg(receiver, mid, mask)
-                        }
-                        _ => None,
-                    };
+                    // SAFETY: as for `Op::Constant` above.
+                    let name = unsafe { &*constants.add(idx as usize) };
+                    let hit = self.fast_property_hit(
+                        &self.stack[base + slot as usize],
+                        name,
+                        mid,
+                        mask,
+                        slot == 0,
+                    );
                     match hit {
                         Some(value) => self.stack.push(value),
                         None => break Some(op),
@@ -1638,7 +1604,7 @@ impl Vm {
                         ip += offset as usize;
                     }
                 }
-                Op::IncrLocal(slot) | Op::IncrLocalFast(slot) => {
+                Op::IncrLocal(slot) => {
                     let idx = base + slot as usize;
                     match self.stack[idx] {
                         Value::Int(n) if n != i64::MAX => self.stack[idx] = Value::Int(n + 1),
@@ -1783,42 +1749,6 @@ impl Vm {
                     if from_function {
                         self.stack[callee] = Value::VmClosure(closure.clone());
                     }
-                    let params = closure.proto.param_names.len();
-                    enter_closure!(closure, argc, params);
-                }
-                Op::CallGlobal(name_idx, argc) => {
-                    let argc = argc as usize;
-                    // SAFETY: as for `Op::Constant`.
-                    let name = match unsafe { &*constants.add(name_idx as usize) } {
-                        Constant::String(name) => name.as_ref(),
-                        _ => break Some(op),
-                    };
-                    let closure = match self.globals.get(name) {
-                        Some(Value::VmClosure(closure))
-                            if accepts_positional(&closure.proto, argc)
-                                && self.frames.len() < MAX_CALL_DEPTH =>
-                        {
-                            if closure.proto.kernel.is_some() {
-                                if let Some(value) = self.kernel_value(closure, argc) {
-                                    let args = self.stack.len() - argc;
-                                    self.stack.truncate(args);
-                                    self.stack.push(value);
-                                    continue;
-                                }
-                            }
-                            closure.clone()
-                        }
-                        _ => break Some(op),
-                    };
-                    // The handler budget, before the stack is touched (see
-                    // `Op::Call` above).
-                    if crate::interpreter::deadline::expired() {
-                        break Some(op);
-                    }
-                    // The general arm inserts the callee below the arguments.
-                    let insert_at = self.stack.len() - argc;
-                    self.stack
-                        .insert(insert_at, Value::VmClosure(closure.clone()));
                     let params = closure.proto.param_names.len();
                     enter_closure!(closure, argc, params);
                 }
@@ -2012,20 +1942,16 @@ impl Vm {
                     };
                     self.stack.push(value);
                 }
-                Op::AddLocalLocal(slot_a, slot_b)
-                | Op::SubLocalLocal(slot_a, slot_b)
-                | Op::MulLocalLocal(slot_a, slot_b) => {
+                Op::SubLocalLocal(slot_a, slot_b) | Op::MulLocalLocal(slot_a, slot_b) => {
                     let a = &self.stack[base + slot_a as usize];
                     let b = &self.stack[base + slot_b as usize];
                     let result = match (a, b) {
                         (Value::Int(x), Value::Int(y)) => match op {
-                            Op::AddLocalLocal(..) => x.checked_add(*y),
                             Op::SubLocalLocal(..) => x.checked_sub(*y),
                             _ => x.checked_mul(*y),
                         }
                         .map(Value::Int),
                         (Value::Float(x), Value::Float(y)) => Some(Value::Float(match op {
-                            Op::AddLocalLocal(..) => x + y,
                             Op::SubLocalLocal(..) => x - y,
                             _ => x * y,
                         })),
@@ -2051,13 +1977,6 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
-                Op::AddLocalInt(slot, n) => match self.stack[base + slot as usize] {
-                    Value::Int(x) => match x.checked_add(n as i64) {
-                        Some(sum) => self.stack.push(Value::Int(sum)),
-                        None => break Some(op),
-                    },
-                    _ => break Some(op),
-                },
                 Op::AddLocalsInPlace(a, b) => {
                     let (ia, ib) = (base + a as usize, base + b as usize);
                     enum Pair {
@@ -2211,14 +2130,6 @@ impl Vm {
                         ip += offset as usize;
                     }
                 }
-                Op::IsTruthyLocal(slot) => {
-                    let truthy = self.stack[base + slot as usize].is_truthy();
-                    self.stack.push(Value::Bool(truthy));
-                }
-                Op::IsFalsyLocal(slot) | Op::NotLocal(slot) => {
-                    let truthy = self.stack[base + slot as usize].is_truthy();
-                    self.stack.push(Value::Bool(!truthy));
-                }
                 // `if local` / `unless local`: test the slot in place, no
                 // push and pop. A `Deferred` local is resolved by
                 // `is_truthy`, as `IsTruthyLocal` did.
@@ -2231,15 +2142,6 @@ impl Vm {
                     if self.stack[base + slot as usize].is_truthy() {
                         ip += offset as usize;
                     }
-                }
-                Op::IsZeroLocal(slot) | Op::NotZeroLocal(slot) => {
-                    let zero = match &self.stack[base + slot as usize] {
-                        Value::Int(x) => *x == 0,
-                        Value::Float(x) => *x == 0.0,
-                        _ => false,
-                    };
-                    let want_zero = matches!(op, Op::IsZeroLocal(_));
-                    self.stack.push(Value::Bool(zero == want_zero));
                 }
                 Op::Not => {
                     let top = self.peek_mut(0);
@@ -2256,11 +2158,6 @@ impl Vm {
                         ip += offset as usize;
                     }
                 }
-                Op::IsNull | Op::NotNull => {
-                    let null = matches!(self.peek(0), Value::Null);
-                    self.stack
-                        .push(Value::Bool(null == matches!(op, Op::IsNull)));
-                }
                 Op::JumpIfNull(offset) => {
                     if matches!(self.peek(0), Value::Null) {
                         ip += offset as usize;
@@ -2272,11 +2169,6 @@ impl Vm {
                     if !matches!(self.peek(0), Value::Null) {
                         ip += offset as usize;
                     }
-                }
-                Op::GetAndNullLocal(slot) => {
-                    let value =
-                        std::mem::replace(&mut self.stack[base + slot as usize], Value::Null);
-                    self.stack.push(value);
                 }
                 // `try` and `expr rescue x` on the path that does not throw.
                 // None of these pushes a frame, so the cached state stays
@@ -2302,7 +2194,6 @@ impl Vm {
                         break Some(op);
                     }
                 }
-                Op::RescueJump(offset) => ip += offset as usize,
                 _ => break Some(op),
             }
         };
@@ -2833,36 +2724,6 @@ impl Vm {
                     } else {
                         let span = self.current_span();
                         self.call_value(argc, span)?;
-                    }
-                }
-                Op::CallGlobal(name_idx, argc) => {
-                    // Combined GetGlobal + Call: lookup global, push, and call in one step
-                    let val = {
-                        let frame = self.frames.last().unwrap();
-                        let name = match &frame.closure.proto.chunk.constants[name_idx as usize] {
-                            Constant::String(s) => s.as_ref(),
-                            _ => "",
-                        };
-                        self.globals.get(name).cloned()
-                    };
-                    match val {
-                        Some(func) => {
-                            // Insert the function below the arguments
-                            let insert_pos = self.stack.len() - argc as usize;
-                            self.stack.insert(insert_pos, func);
-                            let span = self.current_span();
-                            self.call_value(argc as usize, span)?;
-                        }
-                        None => {
-                            let name = self.read_string_constant_owned(name_idx);
-                            let Some(func) = self.namespaced(&name) else {
-                                return Err(self.undefined_global(name));
-                            };
-                            let insert_pos = self.stack.len() - argc as usize;
-                            self.stack.insert(insert_pos, func);
-                            let span = self.current_span();
-                            self.call_value(argc as usize, span)?;
-                        }
                     }
                 }
                 Op::SelfOrGlobal(name_idx) => {
@@ -3420,33 +3281,6 @@ impl Vm {
                         }
                     }
                 }
-                Op::HashDeleteConst(key_idx) => {
-                    let receiver = self.pop();
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
-                    match receiver {
-                        Value::Hash(hash) => {
-                            let value = hash
-                                .borrow_mut()
-                                .shift_remove(&StrKey(key))
-                                .unwrap_or(Value::Null);
-                            self.push(value);
-                        }
-                        other => {
-                            return Err(RuntimeError::no_such_property(
-                                other.type_name(),
-                                "delete".to_string(),
-                                self.current_span(),
-                            ));
-                        }
-                    }
-                }
                 Op::HashSetConst(key_idx) => {
                     let value = self.pop();
                     let receiver = self.pop();
@@ -3592,31 +3426,6 @@ impl Vm {
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
                             self.call_fused_as_method(receiver, "has_key", vec![arg])?;
                             continue;
-                        }
-                    };
-                    self.push(result);
-                }
-                Op::HashDeleteLocalConst(slot, key_idx) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
-                    let result = match &self.stack[base + slot as usize] {
-                        Value::Hash(hash) => hash
-                            .borrow_mut()
-                            .shift_remove(&StrKey(key))
-                            .unwrap_or(Value::Null),
-                        other => {
-                            return Err(RuntimeError::no_such_property(
-                                other.type_name(),
-                                "delete".to_string(),
-                                self.current_span(),
-                            ));
                         }
                     };
                     self.push(result);
@@ -3767,43 +3576,6 @@ impl Vm {
                         }
                     };
                     self.push(result);
-                }
-                Op::HashDeleteGlobalConst(global_idx, key_idx) => {
-                    let global_name: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[global_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let global_name: &str = unsafe { &*global_name };
-                    let key: &str = unsafe { &*key };
-                    match self.globals.get(global_name) {
-                        Some(Value::Hash(hash)) => {
-                            let value = hash
-                                .borrow_mut()
-                                .shift_remove(&StrKey(key))
-                                .unwrap_or(Value::Null);
-                            self.push(value);
-                        }
-                        Some(other) => {
-                            return Err(RuntimeError::no_such_property(
-                                other.type_name(),
-                                "delete".to_string(),
-                                self.current_span(),
-                            ));
-                        }
-                        None => {
-                            return Err(self.undefined_global(global_name.to_string()));
-                        }
-                    }
                 }
                 Op::HashSetGlobalConst(global_idx, key_idx) => {
                     let value = self.pop();
@@ -4445,15 +4217,6 @@ impl Vm {
                         self.call_method_named(receiver_idx, &labels, &name, false, span)?;
                     }
                 }
-                Op::GetThis => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let this = self.stack[base].clone();
-                    self.stack.push(this);
-                }
-                Op::GetSuper(_idx) => {
-                    let _this = self.stack.pop().unwrap();
-                    self.stack.push(Value::Null);
-                }
                 Op::CallSuperInit(argc) => {
                     let span = self.current_span();
                     let superclass = self.frame_superclass(span)?;
@@ -4723,10 +4486,6 @@ impl Vm {
                 Op::PopHandler => {
                     self.exception_handlers.pop();
                 }
-                Op::RescueJump(offset) => {
-                    let frame = self.frames.last_mut().unwrap();
-                    frame.ip += offset as usize;
-                }
 
                 // --- Iterators ---
                 Op::GetIter => {
@@ -4926,7 +4685,7 @@ impl Vm {
                 // local as it was. A bare `n + 1` wrapped instead (release
                 // builds have no overflow checks), so `i += 1` on the largest
                 // Int gave the smallest. `run_fast` hands its overflows here.
-                Op::IncrLocal(slot) | Op::IncrLocalFast(slot) => {
+                Op::IncrLocal(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
                     if let Value::Int(n) = self.stack[idx] {
@@ -4976,30 +4735,6 @@ impl Vm {
                         };
                         self.stack[idx] = result;
                     }
-                }
-                Op::AddLocalLocal(slot_a, slot_b) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let a = &self.stack[base + slot_a as usize];
-                    let b = &self.stack[base + slot_b as usize];
-                    let result = match (a, b) {
-                        (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
-                            Some(result) => Value::Int(result),
-                            None => {
-                                let span = self.current_span();
-                                return Err(crate::interpreter::executor::operators::int_overflow(
-                                    *x, "+", *y, span,
-                                ));
-                            }
-                        },
-                        (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
-                        _ => {
-                            let a = a.clone();
-                            let b = b.clone();
-                            let span = self.current_span();
-                            self.op_add(a, b, span)?
-                        }
-                    };
-                    self.stack.push(result);
                 }
                 Op::LessEqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
@@ -5523,13 +5258,6 @@ impl Vm {
                     };
                     self.stack.push(result);
                 }
-                Op::GetLocal2(slot_a, slot_b) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let a = self.stack[base + slot_a as usize].clone();
-                    let b = self.stack[base + slot_b as usize].clone();
-                    self.stack.push(a);
-                    self.stack.push(b);
-                }
                 Op::LessLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let a = &self.stack[base + slot_a as usize];
@@ -5654,14 +5382,6 @@ impl Vm {
                 }
 
                 // --- Null/boolean checks ---
-                Op::IsNull => {
-                    let val = self.stack.last().unwrap();
-                    self.stack.push(Value::Bool(matches!(val, Value::Null)));
-                }
-                Op::NotNull => {
-                    let val = self.stack.last().unwrap();
-                    self.stack.push(Value::Bool(!matches!(val, Value::Null)));
-                }
                 Op::JumpIfNull(offset) => {
                     let val = self.stack.last().unwrap();
                     if matches!(val, Value::Null) {
@@ -5674,137 +5394,12 @@ impl Vm {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
-                Op::IsTruthyLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let val = &self.stack[base + slot as usize];
-                    self.stack.push(Value::Bool(val.is_truthy()));
-                }
-                Op::IsFalsyLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let val = &self.stack[base + slot as usize];
-                    self.stack.push(Value::Bool(!val.is_truthy()));
-                }
                 Op::JumpIfLocalFalsy(slot, offset) | Op::JumpIfLocalTruthy(slot, offset) => {
                     let frame = self.frames.last_mut().unwrap();
                     let truthy = self.stack[frame.stack_base + slot as usize].is_truthy();
                     if truthy == matches!(op, Op::JumpIfLocalTruthy(..)) {
                         frame.ip += offset as usize;
                     }
-                }
-                Op::AddLocalInt(slot, n) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let local = &self.stack[base + slot as usize];
-                    let result = match local {
-                        Value::Int(x) => match x.checked_add(n as i64) {
-                            Some(sum) => Value::Int(sum),
-                            None => {
-                                let span = self.current_span();
-                                return Err(crate::interpreter::executor::operators::int_overflow(
-                                    *x, "+", n as i64, span,
-                                ));
-                            }
-                        },
-                        Value::Float(x) => Value::Float(*x + n as f64),
-                        _ => {
-                            let a = local.clone();
-                            let span = self.current_span();
-                            self.op_add(a, Value::Int(n as i64), span)?
-                        }
-                    };
-                    self.stack.push(result);
-                }
-                Op::GetAndNullLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let val = self.stack[base + slot as usize].clone();
-                    self.stack[base + slot as usize] = Value::Null;
-                    self.stack.push(val);
-                }
-                Op::IsZeroLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let local = &self.stack[base + slot as usize];
-                    let result = match local {
-                        Value::Int(x) => *x == 0,
-                        Value::Float(x) => *x == 0.0,
-                        _ => false,
-                    };
-                    self.stack.push(Value::Bool(result));
-                }
-                Op::NotZeroLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let local = &self.stack[base + slot as usize];
-                    let result = match local {
-                        Value::Int(x) => *x != 0,
-                        Value::Float(x) => *x != 0.0,
-                        _ => true,
-                    };
-                    self.stack.push(Value::Bool(result));
-                }
-                Op::GetGlobalNullCheck(idx) => {
-                    let val = {
-                        let frame = self.frames.last().unwrap();
-                        let name = match &frame.closure.proto.chunk.constants[idx as usize] {
-                            Constant::String(s) => s.as_ref(),
-                            _ => "",
-                        };
-                        self.globals.get(name).cloned()
-                    };
-                    match val {
-                        Some(v) => self.stack.push(v),
-                        None => self.stack.push(Value::Null),
-                    };
-                }
-                Op::GetGlobalCall(idx, argc) => {
-                    let val = {
-                        let frame = self.frames.last().unwrap();
-                        let name = match &frame.closure.proto.chunk.constants[idx as usize] {
-                            Constant::String(s) => s.as_ref(),
-                            _ => "",
-                        };
-                        self.globals.get(name).cloned()
-                    };
-                    match val {
-                        Some(v) => {
-                            self.stack.push(v);
-                            let span = self.current_span();
-                            self.call_value(argc as usize, span)?;
-                        }
-                        None => {
-                            let name = self.read_string_constant_owned(idx);
-                            return Err(self.undefined_global(name));
-                        }
-                    };
-                }
-                Op::NotLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let val = self.stack[base + slot as usize].clone();
-                    self.stack.push(Value::Bool(!val.is_truthy()));
-                }
-                Op::NegateLocal(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let val = self.stack[base + slot as usize].clone();
-                    let result =
-                        match val {
-                            Value::Int(n) => match n.checked_neg() {
-                                Some(negated) => Value::Int(negated),
-                                None => return Err(
-                                    crate::interpreter::executor::operators::int_negate_overflow(
-                                        n,
-                                        self.current_span(),
-                                    ),
-                                ),
-                            },
-                            Value::Float(n) => Value::Float(-n),
-                            Value::Decimal(d) => {
-                                Value::Decimal(crate::interpreter::value::DecimalValue(-d.0, d.1))
-                            }
-                            _ => {
-                                return Err(RuntimeError::type_error(
-                                    format!("Cannot negate {}", val.type_name()),
-                                    self.current_span(),
-                                ));
-                            }
-                        };
-                    self.stack.push(result);
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
@@ -5821,16 +5416,6 @@ impl Vm {
                         &self.stack[base + slot_b as usize],
                     )?;
                     self.stack.push(Value::Bool(!equal));
-                }
-                Op::PopNull => {
-                    self.stack.pop();
-                    self.stack.push(Value::Null);
-                }
-                Op::DupN(n) => {
-                    let len = self.stack.len();
-                    for _ in 0..n {
-                        self.stack.push(self.stack[len - 1].clone());
-                    }
                 }
                 Op::GetLocalProperty(slot, idx, _, _) => {
                     let base = self.frames.last().unwrap().stack_base;
@@ -7787,15 +7372,9 @@ let g = guarded("alice-password")
         let max_plus_one = "integer overflow: 9223372036854775807 + 1 does not fit in an Int";
         let cases: Vec<(Vec<Op>, &str)> = vec![
             (vec![Op::Constant(MAX), Op::IncrLocal(1)], max_plus_one),
-            (vec![Op::Constant(MAX), Op::IncrLocalFast(1)], max_plus_one),
             (
                 vec![Op::Constant(MIN), Op::DecrLocal(1)],
                 "integer overflow: -9223372036854775808 - 1 does not fit in an Int",
-            ),
-            (vec![Op::Constant(MAX), Op::AddLocalInt(1, 1)], max_plus_one),
-            (
-                vec![Op::Constant(MIN), Op::AddLocalInt(1, -1)],
-                "integer overflow: -9223372036854775808 + -1 does not fit in an Int",
             ),
             (
                 vec![
@@ -11553,10 +11132,6 @@ let x = Mailer.welcome()
             // The outer handler of a try/finally, dropped on the normal path.
             (&[Op::TryBegin(0, 0), Op::PopHandler], vec![]),
             (&[Op::Constant(SEVEN), Op::ForceFuture], vec![Value::Int(7)]),
-            (
-                &[Op::RescueJump(1), Op::Constant(SEVEN), Op::Null],
-                vec![Value::Null],
-            ),
             // `7 rescue 0`, as the compiler lays it out: the Jump skips the
             // catch target's Pop and the fallback.
             (
@@ -11627,7 +11202,6 @@ let x = Mailer.welcome()
     #[test]
     fn defaulted_parameters_and_short_calls_stay_in_the_fast_tier() {
         const FIVE: u16 = 0;
-        const F: u16 = 1;
         let constants = || vec![Constant::Int(5), Constant::String("f".into())];
         let five = || Value::Int(5);
         let seven = || Value::Int(7);
@@ -11666,11 +11240,6 @@ let x = Mailer.welcome()
                 ],
                 vec![five()],
             ),
-            (&[Op::Constant(FIVE), Op::CallGlobal(F, 1)], vec![seven()]),
-            (
-                &[Op::Constant(FIVE), Op::Constant(FIVE), Op::CallGlobal(F, 2)],
-                vec![five()],
-            ),
         ];
         for (code, expected) in calls {
             let (declined, stack) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
@@ -11688,7 +11257,6 @@ let x = Mailer.welcome()
                 Op::Constant(FIVE),
                 Op::Call(3),
             ],
-            &[Op::CallGlobal(F, 0)],
         ];
         for code in declined {
             let (handed_back, _) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
@@ -11728,7 +11296,6 @@ let x = Mailer.welcome()
         const A: u16 = 0;
         const B: u16 = 1;
         const INT: u16 = 2;
-        const ADDF: u16 = 3;
         let constants = || {
             vec![
                 Constant::Float(1.5),
@@ -11745,26 +11312,19 @@ let x = Mailer.welcome()
             Op::Constant(B),
             Op::Call(2),
         ];
-        let by_name: &[Op] = &[Op::Constant(A), Op::Constant(B), Op::CallGlobal(ADDF, 2)];
-
         // The kernel answers: no frame, the value where the callee was.
-        for code in [by_value, by_name] {
-            let (declined, mut vm) = run_fast_tier_vm(constants(), &callee, code, 0, &bound);
-            assert_eq!(declined, None, "{code:?} left the fast tier");
-            assert_eq!(vm.frames.len(), 1, "{code:?} opened a frame");
-            assert_eq!(vm.stack.split_off(2), vec![Value::Float(3.5)], "{code:?}");
-        }
+        let (declined, mut vm) = run_fast_tier_vm(constants(), &callee, by_value, 0, &bound);
+        assert_eq!(declined, None, "left the fast tier");
+        assert_eq!(vm.frames.len(), 1, "opened a frame");
+        assert_eq!(vm.stack.split_off(2), vec![Value::Float(3.5)]);
 
         // An Int argument: declined, and the bytecode runs in the tier.
-        let int_arg: Vec<&[Op]> = vec![
-            &[
-                Op::GetLocal(1),
-                Op::Constant(A),
-                Op::Constant(INT),
-                Op::Call(2),
-            ],
-            &[Op::Constant(A), Op::Constant(INT), Op::CallGlobal(ADDF, 2)],
-        ];
+        let int_arg: Vec<&[Op]> = vec![&[
+            Op::GetLocal(1),
+            Op::Constant(A),
+            Op::Constant(INT),
+            Op::Call(2),
+        ]];
         for code in int_arg {
             let (declined, vm) = run_fast_tier_vm(constants(), &callee, code, 0, &bound);
             assert_eq!(declined, Some(Op::Print(0)), "{code:?}");
@@ -12239,11 +11799,6 @@ let x = Mailer.welcome()
             (
                 &[Op::GetLocal(1), Op::JumpIfTrueNoPop(1), Op::True],
                 vec![array.clone()],
-                1,
-            ),
-            (
-                &[Op::GetLocal(1), Op::IsNull],
-                vec![array.clone(), Value::Bool(false)],
                 1,
             ),
             (

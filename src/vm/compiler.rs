@@ -1496,9 +1496,8 @@ fn stack_effect(op: Op) -> i32 {
         Nip => -1,
         Pop => -1,
         // Reads push; stores leave the value in place (net 0).
-        GetLocal(_) | GetGlobal(_) | GetUpvalue(_) | GetThis => 1,
+        GetLocal(_) | GetGlobal(_) | GetUpvalue(_) => 1,
         // Pops `this` and pushes nil: a stub nothing emits.
-        GetSuper(_) => 0,
         SetLocal(_) | SetGlobal(_) | SetUpvalue(_) => 0,
         DefineGlobal(_) | CloseUpvalue => -1,
         // Binary arithmetic / comparison: pop 2, push 1. Unary: pop 1, push 1.
@@ -1523,7 +1522,6 @@ fn stack_effect(op: Op) -> i32 {
         CallNamed(argc, _) | NewNamed(argc, _) => -(argc as i32),
         // [this, args…] collapse to the result: net -argc.
         CallSuperInit(argc) | CallSuperMethod(_, argc) => -(argc as i32),
-        CallGlobal(_, argc) | GetGlobalCall(_, argc) => 1 - argc as i32,
         SelfOrGlobal(_) | MarkPrivate(_) | MarkProtected(_) => 0,
         // `this` becomes the callee, and the resolution marker is pushed on
         // top; the call collapses `[callee, marker, args…]` to the result.
@@ -1553,7 +1551,7 @@ fn stack_effect(op: Op) -> i32 {
         | ConstField(_) | StaticConstField(_) => -1,
         New(argc) => -(argc as i32),
         // Exceptions.
-        TryBegin(_, _) | TryEnd | ForceFuture | CatchMatch(_, _) | PopHandler | RescueJump(_) => 0,
+        TryBegin(_, _) | TryEnd | ForceFuture | CatchMatch(_, _) | PopHandler => 0,
         Throw | Rethrow => -1,
         // Iterators (GetIter/GetIterRange consume from the value stack; ForIter
         // pushes the element on the continue path — loops resync regardless).
@@ -1576,13 +1574,10 @@ fn stack_effect(op: Op) -> i32 {
         // Peephole super-instructions, and the `Hash*Const` family, which the
         // compiler emits itself (`h["k"]`, `h["k"] = v`, `h.get("k")`,
         // `h.set("k", v)`) so the gate reads those values.
-        HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) | HashGetConst2(_, _) => 0,
+        HashGetConst(_) | HashHasKeyConst(_) | HashGetConst2(_, _) => 0,
         // Pops the receiver and the value, pushes the value back.
         HashSetConst(_) => -1,
-        HashGetLocalConst(_, _)
-        | HashHasKeyLocalConst(_, _)
-        | HashDeleteLocalConst(_, _)
-        | HashGetLocalConst2(_, _, _) => 1,
+        HashGetLocalConst(_, _) | HashHasKeyLocalConst(_, _) | HashGetLocalConst2(_, _, _) => 1,
         AddLocalsInPlace(_, _)
         | AppendLocalConst(_, _)
         | AppendGlobalConst(_, _)
@@ -1597,17 +1592,10 @@ fn stack_effect(op: Op) -> i32 {
         // seeing a clean stack, and a comprehension or binding `match` later
         // in the expression took an occupied slot.
         HashSetLocalConst(_, _) => 0,
-        HashGetGlobalConst(_, _)
-        | HashHasKeyGlobalConst(_, _)
-        | HashDeleteGlobalConst(_, _)
-        | HashGetGlobalConst2(_, _, _) => 1,
+        HashGetGlobalConst(_, _) | HashHasKeyGlobalConst(_, _) | HashGetGlobalConst2(_, _, _) => 1,
         HashSetGlobalConst(_, _) => 0,
-        IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | PopNull | Nop | CoverLine(_)
-        | DebugStmt(_) | DebugBreak => 0,
-        // Peek the value and push a bool.
-        IsNull | NotNull => 1,
-        AddLocalLocal(_, _)
-        | SubLocalLocal(_, _)
+        IncrLocal(_) | DecrLocal(_) | Nop | CoverLine(_) | DebugStmt(_) | DebugBreak => 0,
+        SubLocalLocal(_, _)
         | MulLocalLocal(_, _)
         | DivLocalLocal(_, _)
         | ModLocalLocal(_, _)
@@ -1625,21 +1613,10 @@ fn stack_effect(op: Op) -> i32 {
         | MulLocalConst(_, _)
         | DivLocalConst(_, _)
         | ModLocalConst(_, _)
-        | AddLocalInt(_, _)
         | EqualLocalConst(_, _)
-        | NotEqualLocalConst(_, _)
-        | IsTruthyLocal(_)
-        | IsFalsyLocal(_)
-        | IsZeroLocal(_)
-        | NotZeroLocal(_)
-        | GetAndNullLocal(_)
-        | NotLocal(_)
-        | NegateLocal(_)
-        | GetGlobalNullCheck(_) => 1,
+        | NotEqualLocalConst(_, _) => 1,
         // Replaces the value read with the call's result, or leaves it.
         AutoInvoke => 0,
-        GetLocal2(_, _) => 2,
-        DupN(n) => n as i32,
         SetLocalPop(_) => -1,
         TestLessEqualJump(_)
         | TestLessJump(_)
@@ -1706,7 +1683,6 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             | Op::JumpIfLocalTruthy(_, offset)
             | Op::ForIter(offset)
             | Op::ForIterRange(offset)
-            | Op::RescueJump(offset)
             | Op::CatchMatch(_, offset)
             | Op::MatchType(_, offset)
             | Op::TestLessEqualJump(offset)
@@ -2725,7 +2701,6 @@ fn compact_nops(chunk: &mut Chunk) {
             // opcode that advances `ip` by an operand MUST be added here.
             Op::ForIter(d) => Op::ForIter(fwd(&old_to_new, old, d, here)),
             Op::ForIterRange(d) => Op::ForIterRange(fwd(&old_to_new, old, d, here)),
-            Op::RescueJump(d) => Op::RescueJump(fwd(&old_to_new, old, d, here)),
             Op::CatchMatch(name_idx, d) => Op::CatchMatch(name_idx, fwd(&old_to_new, old, d, here)),
             Op::MatchType(name_idx, d) => Op::MatchType(name_idx, fwd(&old_to_new, old, d, here)),
             // `TryBegin` carries TWO targets and neither has "jump" in its
@@ -2832,7 +2807,6 @@ mod inplace_peephole_tests {
             Op::JumpIfLocalTruthy(slot, _) => Op::JumpIfLocalTruthy(slot, d),
             Op::ForIter(_) => Op::ForIter(d),
             Op::ForIterRange(_) => Op::ForIterRange(d),
-            Op::RescueJump(_) => Op::RescueJump(d),
             Op::CatchMatch(n, _) => Op::CatchMatch(n, d),
             Op::TestLessJump(_) => Op::TestLessJump(d),
             Op::TestLessEqualJump(_) => Op::TestLessEqualJump(d),
@@ -2861,7 +2835,6 @@ mod inplace_peephole_tests {
             | Op::JumpIfLocalTruthy(_, d)
             | Op::ForIter(d)
             | Op::ForIterRange(d)
-            | Op::RescueJump(d)
             | Op::CatchMatch(_, d)
             | Op::TestLessJump(d)
             | Op::TestLessEqualJump(d)
@@ -3306,14 +3279,8 @@ mod inplace_peephole_tests {
             let ops = fn_ops(body);
             assert!(ops.iter().any(fused), "{body}\n{ops:?}");
             assert!(
-                !ops.iter().any(|op| matches!(
-                    op,
-                    Op::IsTruthyLocal(_)
-                        | Op::IsFalsyLocal(_)
-                        | Op::Not
-                        | Op::JumpIfFalse(_)
-                        | Op::JumpIfTrue(_)
-                )),
+                !ops.iter()
+                    .any(|op| matches!(op, Op::Not | Op::JumpIfFalse(_) | Op::JumpIfTrue(_))),
                 "{body}\n{ops:?}"
             );
         }
@@ -3699,10 +3666,7 @@ let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].ma
             "{ops:?}"
         );
         assert!(
-            !ops.iter().any(|op| matches!(
-                op,
-                Op::Equal | Op::NotEqual | Op::IsZeroLocal(_) | Op::NotZeroLocal(_)
-            )),
+            !ops.iter().any(|op| matches!(op, Op::Equal | Op::NotEqual)),
             "{ops:?}"
         );
 
@@ -4199,25 +4163,18 @@ mod stack_effect_tests {
             (&[], Symbol(KEY)),
             (&[Constant(INT)], Pop),
             (&[Constant(INT)], Dup),
-            (&[Constant(INT)], DupN(2)),
-            (&[Constant(INT)], PopNull),
             (&[], Nop),
             (&[], CoverLine(1)),
             (&[], Import(KEY)),
             // Locals and globals.
             (&[], GetLocal(N)),
-            (&[], GetLocal2(N, IDX)),
             (&[Constant(INT)], SetLocal(N)),
             (&[Constant(INT)], SetLocalPop(N)),
-            (&[], GetAndNullLocal(N)),
-            (&[], GetThis),
             (&[], GetGlobal(HASH_GLOBAL)),
-            (&[], GetGlobalNullCheck(HASH_GLOBAL)),
             (&[Constant(INT)], SetGlobal(STR_GLOBAL)),
             (&[Constant(INT)], DefineGlobal(STR_GLOBAL)),
             (&[Null], SelfOrGlobal(HASH_GLOBAL)),
             (&[Null], SelfOrGlobalCallee(HASH_GLOBAL)),
-            (&[Null], GetSuper(KEY)),
             (&[Constant(INT)], CloseUpvalue),
             // Arithmetic and comparison.
             (two_ints, Add),
@@ -4235,8 +4192,6 @@ mod stack_effect_tests {
             (two_ints, GreaterEqual),
             (&[Constant(INT)], Negate),
             (&[Constant(INT)], Not),
-            (&[Null], IsNull),
-            (&[Null], NotNull),
             // Branches.
             (&[], Jump(0)),
             (&[True], JumpIfFalse(0)),
@@ -4256,7 +4211,6 @@ mod stack_effect_tests {
             (two_ints, TestNotEqualJump(0)),
             (two_ints, TestEqualJump(0)),
             (&[Constant(STR), Constant(STR)], TestEqualJump(0)),
-            (&[], RescueJump(0)),
             (&[Constant(INT)], CatchMatch(KEY, 0)),
             (&[Constant(INT)], MatchType(KEY, 0)),
             (&[], MatchArrayLen(KEYS, 1, 0)),
@@ -4265,7 +4219,6 @@ mod stack_effect_tests {
             (&[], ArrayRestLocal(KEYS, 0)),
             (&[], ArrayRestLocal(KEYS, 5)),
             // Fused reads of locals: each pushes its result.
-            (&[], AddLocalLocal(N, N)),
             (&[], SubLocalLocal(N, N)),
             (&[], MulLocalLocal(N, N)),
             (&[], DivLocalLocal(N, N)),
@@ -4286,20 +4239,12 @@ mod stack_effect_tests {
             (&[], MulLocalConst(N, INT)),
             (&[], DivLocalConst(N, INT)),
             (&[], ModLocalConst(N, INT)),
-            (&[], AddLocalInt(N, 1)),
-            (&[], IsTruthyLocal(N)),
-            (&[], IsFalsyLocal(N)),
-            (&[], IsZeroLocal(N)),
-            (&[], NotZeroLocal(N)),
-            (&[], NotLocal(N)),
-            (&[], NegateLocal(N)),
             (&[], GetLocalProperty(FLAT, KEY, 0, 0)),
             (&[], GetLocalIndex(KEYS, IDX)),
             (&[], GetNestedIndex(FLAT, KEYS, IDX)),
             // In place: no stack traffic.
             (&[], IncrLocal(N)),
             (&[], DecrLocal(N)),
-            (&[], IncrLocalFast(N)),
             (&[], AddLocalsInPlace(N, N)),
             (&[], AppendLocalConst(TEXT, STR)),
             (&[], AddLocalConstInPlace(N, INT)),
@@ -4322,17 +4267,14 @@ mod stack_effect_tests {
             // Constant-key hash ops.
             (&[GetLocal(FLAT)], HashGetConst(KEY)),
             (&[GetLocal(FLAT)], HashHasKeyConst(KEY)),
-            (&[GetLocal(FLAT)], HashDeleteConst(KEY)),
             (&[GetLocal(NESTED)], HashGetConst2(KEY, KEY)),
             (&[GetLocal(FLAT), Constant(INT)], HashSetConst(KEY)),
             (&[], HashGetLocalConst(FLAT, KEY)),
             (&[], HashHasKeyLocalConst(FLAT, KEY)),
-            (&[], HashDeleteLocalConst(FLAT, KEY)),
             (&[], HashGetLocalConst2(NESTED, KEY, KEY)),
             (&[Constant(INT)], HashSetLocalConst(FLAT, KEY)),
             (&[], HashGetGlobalConst(HASH_GLOBAL, KEY)),
             (&[], HashHasKeyGlobalConst(HASH_GLOBAL, KEY)),
-            (&[], HashDeleteGlobalConst(HASH_GLOBAL, KEY)),
             (&[], HashGetGlobalConst2(HASH_GLOBAL, KEY, KEY)),
             (&[Constant(INT)], HashSetGlobalConst(HASH_GLOBAL, KEY)),
             // Collections, indexing and properties.
@@ -4367,8 +4309,6 @@ mod stack_effect_tests {
             (&[Constant(INT)], ForceFuture),
             // Calls (through a native function), objects and output.
             (&[GetGlobal(FN_GLOBAL), Constant(INT)], Call(1)),
-            (&[Constant(INT)], CallGlobal(FN_GLOBAL, 1)),
-            (&[], GetGlobalCall(FN_GLOBAL, 0)),
             (&[GetLocal(KEYS)], CallMethod(LENGTH, 0, false)),
             (
                 &[Null, SelfOrGlobalCallee(FN_GLOBAL), Constant(INT)],
