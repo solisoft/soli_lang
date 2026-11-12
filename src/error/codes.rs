@@ -153,6 +153,12 @@ pub static CODES: &[ErrorCode] = &[
         "wrong number of arguments"
     ),
     code!(
+        "E0404",
+        "missing-annotation",
+        "CheckError",
+        "a type annotation `strict` requires is missing"
+    ),
+    code!(
         "E0501",
         "division-by-zero",
         "ZeroDivisionError",

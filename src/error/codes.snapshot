@@ -15,6 +15,7 @@ E0307 no-superclass
 E0401 type-mismatch
 E0402 not-callable
 E0403 wrong-arity
+E0404 missing-annotation
 E0501 division-by-zero
 E0502 index-out-of-bounds
 E0503 not-a-class

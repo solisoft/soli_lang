@@ -256,3 +256,119 @@ fn model_fields_stay_open_across_files() {
     let (ok, text) = check(dir.path(), "app/services/audit.sl");
     assert!(ok, "{text}");
 }
+
+// Phase 3 of #693: strictness levels.
+
+fn check_with(dir: &Path, args: &[&str]) -> (bool, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_soli"))
+        .arg("check")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("run soli check");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), text)
+}
+
+const MISMATCH: &str = "def double(n: Int) -> Int\n  n * 2\nend\ndouble(\"two\")\n";
+const UNTYPED: &str = "def double(n)\n  n * 2\nend\nprint(double(2))\n";
+
+#[test]
+fn a_file_can_turn_itself_off_or_loose() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.sl", MISMATCH);
+    assert!(!check_with(dir.path(), &["a.sl"]).0);
+
+    write(dir.path(), "a.sl", &format!("# soli: off\n{MISMATCH}"));
+    let (ok, text) = check_with(dir.path(), &["a.sl"]);
+    assert!(ok, "{text}");
+
+    // Loose keeps what certainly fails at run time, not a type mismatch.
+    write(dir.path(), "a.sl", &format!("# soli: loose\n{MISMATCH}"));
+    let (ok, text) = check_with(dir.path(), &["a.sl"]);
+    assert!(ok, "{text}");
+    write(
+        dir.path(),
+        "a.sl",
+        &format!("# soli: loose\n{MISMATCH}dobule(2)\n"),
+    );
+    let (ok, text) = check_with(dir.path(), &["a.sl"]);
+    assert!(!ok && text.contains("dobule"), "{text}");
+}
+
+#[test]
+fn strict_requires_parameter_and_return_types() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.sl", UNTYPED);
+    assert!(check_with(dir.path(), &["a.sl"]).0);
+
+    let (ok, text) = check_with(dir.path(), &["--level", "strict", "a.sl"]);
+    assert!(!ok, "{text}");
+    assert!(text.contains("parameter 'n' of double()"), "{text}");
+    assert!(text.contains("return type of double()"), "{text}");
+    assert!(text.contains("E0404"), "{text}");
+
+    write(
+        dir.path(),
+        "a.sl",
+        "# soli: strict\ndef double(n: Int) -> Int\n  n * 2\nend\n\nclass Box\n  new(item: Any)\n    @item = item\n  end\n\n  def each(&block) -> Void\n    block(@item)\n  end\nend\n",
+    );
+    let (ok, text) = check_with(dir.path(), &["a.sl"]);
+    assert!(ok, "{text}");
+
+    // The file's own line wins over the flag.
+    write(dir.path(), "a.sl", &format!("# soli: standard\n{UNTYPED}"));
+    let (ok, text) = check_with(dir.path(), &["--level=strict", "a.sl"]);
+    assert!(ok, "{text}");
+}
+
+#[test]
+fn soli_toml_sets_the_project_level() {
+    let dir = app();
+    write(
+        dir.path(),
+        "soli.toml",
+        "[package]\nname = \"x\"\n\n[check]\nlevel = \"strict\"\n",
+    );
+    let (ok, text) = check_with(dir.path(), &["app/services"]);
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains("parameter 'name' of report_title()"),
+        "{text}"
+    );
+
+    let (ok, text) = check_with(dir.path(), &["--level", "standard", "app/services"]);
+    assert!(ok, "{text}");
+}
+
+#[test]
+fn an_unknown_level_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.sl", UNTYPED);
+    let (ok, text) = check_with(dir.path(), &["--level", "pedantic", "a.sl"]);
+    assert!(!ok);
+    assert!(text.contains("--level takes"), "{text}");
+}
+
+#[test]
+fn a_script_honours_its_own_line() {
+    let dir = tempfile::tempdir().unwrap();
+    // `shout(5)` runs (parameter types are not enforced at run time), but the
+    // checker refuses it unless the file turns it off.
+    let source = "def shout(s: String)\n  s\nend\nprint(shout(5))\nprint(\"ran\")\n";
+    let run = |contents: &str| {
+        write(dir.path(), "a.sl", contents);
+        let output = Command::new(env!("CARGO_BIN_EXE_soli"))
+            .arg("a.sl")
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).contains("ran")
+    };
+    assert!(!run(source));
+    assert!(run(&format!("# soli: off\n{source}")));
+}

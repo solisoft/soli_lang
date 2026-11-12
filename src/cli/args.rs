@@ -295,6 +295,8 @@ pub enum Command {
         paths: Vec<String>,
         /// `--format json`: one JSON document instead of framed text.
         json: bool,
+        /// `--level off|loose|standard|strict`; a file's `# soli:` line wins.
+        level: Option<solilang::check::Level>,
     },
     /// `soli explain [code]` — what an error code or a lint rule means.
     Explain {
@@ -719,7 +721,7 @@ pub fn print_usage() {
     eprintln!("       soli worker [folder] [--workers N]");
     eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--require-assertions] [--watch] [--browser] [--headed] [--profile]");
     eprintln!("       soli lint [paths...]");
-    eprintln!("       soli check [paths...]");
+    eprintln!("       soli check [--level off|loose|standard|strict] [paths...]");
     eprintln!("       soli lsp");
     eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone] [--target PLATFORM]");
     eprintln!("  soli build <script.sl> [-o <file>] [--thin] [--target PLATFORM] [--vm|--tree]");
@@ -2382,10 +2384,27 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut paths: Vec<String> = Vec::new();
                 let mut json = false;
+                let mut level = None;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--format" | "--format=json" | "--format=text" => {
                             json = parse_output_format(&args, &mut i, "check");
+                        }
+                        arg if arg == "--level" || arg.starts_with("--level=") => {
+                            let value = match arg.strip_prefix("--level=") {
+                                Some(value) => value.to_string(),
+                                None => {
+                                    i += 1;
+                                    args.get(i).cloned().unwrap_or_default()
+                                }
+                            };
+                            let Some(parsed) = solilang::check::Level::parse(&value) else {
+                                eprintln!(
+                                    "soli check: --level takes off, loose, standard or strict (got '{value}')"
+                                );
+                                process::exit(64);
+                            };
+                            level = Some(parsed);
                         }
                         s if !s.starts_with('-') => paths.push(args[i].clone()),
                         other => {
@@ -2396,7 +2415,7 @@ pub fn parse_args() -> Options {
                     }
                     i += 1;
                 }
-                options.command = Command::Check { paths, json };
+                options.command = Command::Check { paths, json, level };
                 return options;
             }
             "explain" => {

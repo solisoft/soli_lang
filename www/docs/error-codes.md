@@ -126,6 +126,7 @@ that is still a free-form message has no code yet, rather than a catch-all one.
 | `E0401` | `type-mismatch` | `TypeError` | a value of the wrong type |
 | `E0402` | `not-callable` | `TypeError` | calling something that is not a function |
 | `E0403` | `wrong-arity` | `ArgumentError` | too many or too few arguments |
+| `E0404` | `missing-annotation` | `soli check` | a parameter or return type left unwritten, at the `strict` level |
 | `E0501` | `division-by-zero` | `ZeroDivisionError` | integer `/` or `%` by zero |
 | `E0502` | `index-out-of-bounds` | `IndexError` | an index past the end |
 | `E0503` | `not-a-class` | `TypeError` | a superclass or `new` target that is not a class |

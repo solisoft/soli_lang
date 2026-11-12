@@ -497,6 +497,30 @@ soli check --format json   # one JSON document, for editors and CI</code></pre>
                 And the <strong class="text-white">request scope</strong> &mdash; <code class="text-cyan-400">req</code>, <code class="text-cyan-400">request</code>, <code class="text-cyan-400">params</code>, <code class="text-cyan-400">session</code>, <code class="text-cyan-400">cookies</code>, <code class="text-cyan-400">flash</code>, <code class="text-cyan-400">current_user</code>, plus <code class="text-cyan-400">render</code> and <code class="text-cyan-400">redirect</code> &mdash; is declared for a file that belongs to an application: under <code class="text-cyan-400">app/</code>, <code class="text-cyan-400">config/</code> or <code class="text-cyan-400">stdlib/</code>. A controller, a helper, a job and a middleware get them; a loose script still gets <code>Undefined variable 'render'</code>, which is the point &mdash; a controller-shaped call in a script that cannot run it should not pass the check.
             </p>
 
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">Strictness levels</h3>
+            <p class="text-gray-400">How much <code class="text-cyan-400">soli check</code> reports is set per file, per run or per project:</p>
+            <div class="overflow-x-auto mt-3">
+                <table class="w-full text-sm text-left text-gray-400">
+                    <thead><tr class="border-b border-white/10"><th class="py-2 pr-4 text-white">Level</th><th class="py-2 text-white">Reports</th></tr></thead>
+                    <tbody>
+                        <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">off</code></td><td class="py-2">nothing &mdash; the file is not checked</td></tr>
+                        <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">loose</code></td><td class="py-2">only what certainly fails at run time: an undefined name or type (<code>E0301</code>&ndash;<code>E0303</code>), an unknown member (<code>E0304</code>), calling what is not a function (<code>E0402</code>), a wrong number of arguments (<code>E0403</code>)</td></tr>
+                        <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">standard</code></td><td class="py-2">everything the checker knows &mdash; the default</td></tr>
+                        <tr class="border-b border-white/5"><td class="py-2 pr-4"><code class="text-cyan-400">strict</code></td><td class="py-2"><code>standard</code>, and every parameter and return type must be written (<code>E0404</code>)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <pre class="bg-black/40 rounded-lg p-4 mt-3 overflow-x-auto"><code class="language-soli text-sm"># soli: strict
+def total(prices: Array) -&gt; Int   # `def total(prices)` is two E0404 errors
+  prices.length
+end</code></pre>
+            <ul class="mt-3 space-y-2 text-gray-400 list-disc list-inside">
+                <li><strong class="text-white"><code class="text-cyan-400"># soli: &lt;level&gt;</code></strong> among the comment lines at the top of a file sets that file's level and wins over everything else. <code class="text-cyan-400">soli script.sl</code> honours it too: <code class="text-cyan-400"># soli: off</code> runs a script unchecked, as <code class="text-cyan-400">--no-type-check</code> does for one run.</li>
+                <li><strong class="text-white"><code class="text-cyan-400">soli check --level &lt;level&gt;</code></strong> sets it for the run.</li>
+                <li><strong class="text-white"><code class="text-cyan-400">level</code> under <code class="text-cyan-400">[check]</code> in <code class="text-cyan-400">soli.toml</code></strong> sets it for the application when no flag is given (<code class="text-cyan-400">[check]</code> / <code class="text-cyan-400">level = "strict"</code>).</li>
+            </ul>
+            <p class="text-gray-400 mt-3">At <code class="text-cyan-400">strict</code>, a <code class="text-cyan-400">&amp;block</code> parameter and a constructor's return need no type, and a <code class="text-cyan-400">def</code> that returns nothing says <code class="text-cyan-400">-&gt; Void</code>.</p>
+
             <h3 class="text-lg font-semibold text-white mt-8 mb-3">What else a file sees, by where it lives</h3>
             <ul class="mt-3 space-y-2 text-gray-400 list-disc list-inside">
                 <li>A file of <code class="text-cyan-400">app/helpers/</code> does <strong class="text-white">not</strong> get the view-only helpers (<code class="text-cyan-400">datetime_format</code>, <code class="text-cyan-400">substring</code>, <code class="text-cyan-400">t</code>, <code class="text-cyan-400">paginate</code>&hellip;): a helper runs in the application&rsquo;s environment, where calling one is a 500 (&ldquo;Cannot call non-function value&rdquo;), so <code class="text-cyan-400">soli check</code> reports it. Use the methods &mdash; <code class="text-cyan-400">DateTime.from_unix(ts).format("%Y")</code>, <code class="text-cyan-400">text.substring(0, 3)</code>.</li>

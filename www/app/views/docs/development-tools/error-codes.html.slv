@@ -237,6 +237,12 @@ soli explain                        # list every code and rule</code></pre>
                         <td class="py-2">too many or too few arguments</td>
                     </tr>
                     <tr class="border-b border-white/5">
+                        <td class="py-2 pr-4"><code class="text-amber-400">E0404</code></td>
+                        <td class="py-2 pr-4"><code class="text-cyan-400">missing-annotation</code></td>
+                        <td class="py-2 pr-4"><code>soli check</code></td>
+                        <td class="py-2">a parameter or return type left unwritten, at the <code>strict</code> level</td>
+                    </tr>
+                    <tr class="border-b border-white/5">
                         <td class="py-2 pr-4"><code class="text-amber-400">E0501</code></td>
                         <td class="py-2 pr-4"><code class="text-cyan-400">division-by-zero</code></td>
                         <td class="py-2 pr-4"><code>ZeroDivisionError</code></td>

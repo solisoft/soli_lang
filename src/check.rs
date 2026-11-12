@@ -58,6 +58,81 @@ pub struct Project {
     /// The classes of `app/jobs/*_job.sl`, which the loader gives
     /// `perform_later`, `perform_now` and the rest of the job facade.
     pub job_classes: Vec<String>,
+    /// `level` under `[check]` in the application's `soli.toml`.
+    pub level: Option<Level>,
+}
+
+/// How much `soli check` reports for a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Level {
+    /// Not checked at all.
+    Off,
+    /// Only what certainly fails at run time: an undefined name or type, a
+    /// member the class does not have, a call with the wrong number of
+    /// arguments, calling what is not a function.
+    Loose,
+    /// Everything the checker knows: the default.
+    #[default]
+    Standard,
+    /// `Standard`, and every parameter and return type must be written
+    /// (`E0404`).
+    Strict,
+}
+
+impl Level {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.trim() {
+            "off" => Some(Self::Off),
+            "loose" => Some(Self::Loose),
+            "standard" => Some(Self::Standard),
+            "strict" => Some(Self::Strict),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Loose => "loose",
+            Self::Standard => "standard",
+            Self::Strict => "strict",
+        }
+    }
+
+    /// Whether `error` is reported at this level.
+    pub fn reports(self, error: &crate::error::TypeError) -> bool {
+        match self {
+            Self::Off => false,
+            Self::Loose => matches!(
+                error.code(),
+                Some("E0301" | "E0302" | "E0303" | "E0304" | "E0402" | "E0403")
+            ),
+            Self::Standard | Self::Strict => true,
+        }
+    }
+}
+
+/// The level a `# soli: <level>` line sets, among the comment lines at the
+/// top of `source` (a shebang counts as one). Any other value is ignored.
+pub fn directive(source: &str) -> Option<Level> {
+    for line in source.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let comment = line.strip_prefix('#')?;
+        if let Some(value) = comment.trim().strip_prefix("soli:") {
+            return Level::parse(value);
+        }
+    }
+    None
+}
+
+/// `level` under `[check]` in `root/soli.toml`.
+fn configured_level(root: &Path) -> Option<Level> {
+    let text = std::fs::read_to_string(root.join("soli.toml")).ok()?;
+    let parsed: toml::Value = text.parse().ok()?;
+    Level::parse(parsed.get("check")?.get("level")?.as_str()?)
 }
 
 /// The project around `targets`, or an empty one.
@@ -145,10 +220,12 @@ pub fn project(targets: &[PathBuf]) -> Project {
     }
     let mut names: Vec<String> = names.into_iter().collect();
     names.sort();
+    let level = roots.iter().find_map(|root| configured_level(root));
     Project {
         names,
         declarations,
         job_classes,
+        level,
     }
 }
 
@@ -190,15 +267,26 @@ pub fn file_ambient(file: &Path, project: &[String]) -> Vec<String> {
 
 /// Read and check one file against `project` (see [`project`] and
 /// [`file_ambient`]).
-pub fn check_file(file: &Path, project: &Project) -> std::io::Result<crate::CheckReport> {
+///
+/// `level` is `soli check --level`; without it, the project's `soli.toml`
+/// decides, and a file's own `# soli: <level>` line wins over both.
+pub fn check_file(
+    file: &Path,
+    project: &Project,
+    level: Option<Level>,
+) -> std::io::Result<crate::CheckReport> {
     let source = std::fs::read_to_string(file)?;
     let ambient = file_ambient(file, &project.names);
+    let scope = crate::CheckScope {
+        ambient: &ambient,
+        declarations: &project.declarations,
+        job_classes: &project.job_classes,
+        level: level.or(project.level),
+    };
     Ok(crate::type_check_report_in_project(
         &source,
         Some(file),
-        &ambient,
-        &project.declarations,
-        &project.job_classes,
+        &scope,
     ))
 }
 

@@ -232,7 +232,7 @@ pub fn parse_resolve_check(
 ) -> Result<ast::Program, SolilangError> {
     let program = parse_and_resolve(source, source_path)?;
     if type_check {
-        check_first_error(&program)?;
+        check_first_error(&program, check::directive(source).unwrap_or_default())?;
     }
     Ok(program)
 }
@@ -256,11 +256,20 @@ fn parse_and_resolve(
     Ok(program)
 }
 
-/// Type-check `program`, failing on the first error.
-fn check_first_error(program: &ast::Program) -> Result<(), SolilangError> {
+/// Type-check `program` at `level` (a script's `# soli: <level>` line),
+/// failing on the first error that level reports.
+fn check_first_error(program: &ast::Program, level: check::Level) -> Result<(), SolilangError> {
+    if level == check::Level::Off {
+        return Ok(());
+    }
     let mut checker = types::TypeChecker::new();
+    if level == check::Level::Strict {
+        checker.require_annotations();
+    }
     if let Err(errors) = checker.check(program) {
-        return Err(errors.into_iter().next().unwrap().into());
+        if let Some(error) = errors.into_iter().find(|e| level.reports(e)) {
+            return Err(error.into());
+        }
     }
     Ok(())
 }
@@ -313,7 +322,7 @@ pub fn run_script_report(
         Ok(program) => {
             sources = sources.with_program(&program);
             if type_check {
-                check_first_error(&program)
+                check_first_error(&program, check::directive(source).unwrap_or_default())
             } else {
                 Ok(())
             }
@@ -846,21 +855,45 @@ pub fn type_check_report(
     source_path: Option<&std::path::Path>,
     ambient: &[String],
 ) -> CheckReport {
-    type_check_report_in_project(source, source_path, ambient, &[], &[])
+    let scope = CheckScope {
+        ambient,
+        ..CheckScope::default()
+    };
+    type_check_report_in_project(source, source_path, &scope)
 }
 
-/// [`type_check_report`], the project's top-level declarations known by their
-/// signatures rather than as `Any` names (see `check::Project`).
+/// What a file is checked against besides itself: the project's names and
+/// declarations (see `check::Project`), and the level asked for.
+#[derive(Default)]
+pub struct CheckScope<'a> {
+    /// Names that exist but are not declared in the file, as `Any`.
+    pub ambient: &'a [String],
+    /// The project's top-level declarations, known by their signatures.
+    pub declarations: &'a [ast::Stmt],
+    /// The classes of `app/jobs/*_job.sl` (they get the job facade).
+    pub job_classes: &'a [String],
+    /// `soli check --level`, or else `[check] level` in `soli.toml`. A
+    /// `# soli: <level>` line at the top of the file wins over both.
+    pub level: Option<check::Level>,
+}
+
+/// [`type_check_report`], against a whole [`CheckScope`].
 pub fn type_check_report_in_project(
     source: &str,
     source_path: Option<&std::path::Path>,
-    ambient: &[String],
-    declarations: &[ast::Stmt],
-    job_classes: &[String],
+    scope: &CheckScope<'_>,
 ) -> CheckReport {
     error::source_map::clear_origin();
     let sources = error::source_map::SourceSet::new(source, source_path);
-    match type_check_program(source, source_path, ambient, declarations, job_classes) {
+    let level = check::directive(source).or(scope.level).unwrap_or_default();
+    if level == check::Level::Off {
+        return CheckReport {
+            errors: Vec::new(),
+            warnings: Vec::new(),
+            sources,
+        };
+    }
+    match type_check_program(source, source_path, scope, level) {
         Ok((program, warnings, errors)) => CheckReport {
             errors,
             warnings,
@@ -880,21 +913,21 @@ pub fn type_check_report_in_project(
 fn type_check_program(
     source: &str,
     source_path: Option<&std::path::Path>,
-    ambient: &[String],
-    declarations: &[ast::Stmt],
-    job_classes: &[String],
+    scope: &CheckScope<'_>,
+    level: check::Level,
 ) -> Result<(ast::Program, Vec<error::TypeError>, Vec<SolilangError>), SolilangError> {
     let program = parse_and_resolve(source, source_path)?;
 
     let mut checker = types::TypeChecker::new();
     checker.declare_job_classes(
-        job_classes
+        scope
+            .job_classes
             .iter()
             .cloned()
             .chain(source_path.and_then(job_class_of)),
     );
-    checker.declare_ambient(ambient);
-    checker.declare_project(declarations);
+    checker.declare_ambient(scope.ambient);
+    checker.declare_project(scope.declarations);
     if source_path.is_some_and(is_test_path) {
         checker.declare_test_dsl();
     }
@@ -904,10 +937,17 @@ fn type_check_program(
     if source_path.is_some_and(is_migration_path) {
         checker.declare_migration_scope();
     }
+    if level == check::Level::Strict {
+        checker.require_annotations();
+    }
     let (result, warnings) = checker.check_collecting_warnings(&program);
     let errors = match result {
         Ok(()) => Vec::new(),
-        Err(errs) => errs.into_iter().map(Into::into).collect(),
+        Err(errs) => errs
+            .into_iter()
+            .filter(|e| level.reports(e))
+            .map(Into::into)
+            .collect(),
     };
     Ok((program, warnings, errors))
 }

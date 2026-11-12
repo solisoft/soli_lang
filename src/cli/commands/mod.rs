@@ -1506,7 +1506,7 @@ fn diagnostic_json(
     json
 }
 
-pub fn run_check(paths: &[String], format: OutputFormat) {
+pub fn run_check(paths: &[String], format: OutputFormat, level: Option<solilang::check::Level>) {
     let targets: Vec<std::path::PathBuf> = if paths.is_empty() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         vec![cwd]
@@ -1564,7 +1564,7 @@ pub fn run_check(paths: &[String], format: OutputFormat) {
     };
 
     for file in &files {
-        let report = match solilang::check::check_file(file, &project) {
+        let report = match solilang::check::check_file(file, &project, level) {
             Ok(report) => report,
             Err(e) => {
                 eprintln!("{}: error reading file: {}", file.display(), e);

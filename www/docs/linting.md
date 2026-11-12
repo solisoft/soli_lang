@@ -401,6 +401,40 @@ per-file view.
 `render` and `redirect` stay unknown to the checker on purpose: they only mean
 anything inside a request, and `serve` does not type-check.
 
+### Strictness levels
+
+How much `soli check` reports is set per file, per run or per project:
+
+| Level | Reports |
+|---|---|
+| `off` | nothing — the file is not checked |
+| `loose` | only what certainly fails at run time: an undefined name or type (`E0301`–`E0303`), an unknown member (`E0304`), calling what is not a function (`E0402`), a wrong number of arguments (`E0403`) |
+| `standard` | everything the checker knows — the default |
+| `strict` | `standard`, and every parameter and return type must be written (`E0404`) |
+
+```soli
+# soli: strict
+def total(prices: Array) -> Int   # `def total(prices)` is two E0404 errors
+  prices.length
+end
+```
+
+- **`# soli: <level>`** among the comment lines at the top of a file sets that
+  file's level, and wins over everything else. `soli script.sl` honours it
+  too: `# soli: off` runs a script unchecked, as `--no-type-check` does for
+  one run.
+- **`soli check --level <level>`** sets it for the run.
+- **`level` under `[check]` in `soli.toml`** sets it for the application, when
+  no flag is given:
+
+  ```toml
+  [check]
+  level = "strict"
+  ```
+
+At `strict`, a `&block` parameter and a constructor's return need no type, and
+a `def` that returns nothing says `-> Void`.
+
 ### What else a file sees, by where it lives
 
 The checker gives a file the names the runtime gives it:

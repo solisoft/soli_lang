@@ -29,6 +29,9 @@ pub struct TypeChecker {
     /// Classes the job loader gives `perform_later` and the rest of the
     /// facade (see [`TypeChecker::declare_job_classes`]).
     pub(crate) job_classes: std::collections::HashSet<String>,
+    /// The `strict` level: every parameter and return type must be written
+    /// (see [`TypeChecker::require_annotations`]).
+    pub(crate) strict: bool,
 }
 
 impl TypeChecker {
@@ -44,6 +47,7 @@ impl TypeChecker {
             declared_functions: std::collections::HashSet::new(),
             function_arities: std::collections::HashMap::new(),
             job_classes: std::collections::HashSet::new(),
+            strict: false,
         }
     }
 
@@ -71,6 +75,12 @@ impl TypeChecker {
             self.env
                 .define_function(name.as_ref().to_string(), Type::Any);
         }
+    }
+
+    /// Check at the `strict` level: a parameter or a `def` without a type is
+    /// an error (`E0404`), instead of an unknown the checker stays quiet about.
+    pub fn require_annotations(&mut self) {
+        self.strict = true;
     }
 
     /// Name the classes of `app/jobs/*_job.sl`: the loader gives each the
@@ -234,6 +244,9 @@ impl TypeChecker {
         // top-level `x = broken(…)` still binds `x`, so the script's later
         // lines do not each report "Undefined variable 'x'".
         self.check_body(&program.statements);
+        if self.strict {
+            self.check_annotations(&program.statements);
+        }
 
         if self.errors.is_empty() {
             Ok(())
@@ -282,6 +295,75 @@ impl TypeChecker {
                 key_type: Box::new(self.resolve_type(key_type)),
                 value_type: Box::new(self.resolve_type(value_type)),
             },
+        }
+    }
+}
+
+impl TypeChecker {
+    /// `strict`: report every parameter and return type left unwritten in
+    /// the `def`s and methods of `statements`, classes nested included.
+    fn check_annotations(&mut self, statements: &[Stmt]) {
+        for stmt in statements {
+            match &stmt.kind {
+                StmtKind::Function(decl) => self.require_signature(
+                    &decl.name,
+                    &decl.params,
+                    decl.return_type.as_ref(),
+                    decl.span,
+                ),
+                StmtKind::Class(decl) => self.check_class_annotations(decl),
+                _ => {}
+            }
+        }
+    }
+
+    fn check_class_annotations(&mut self, decl: &ClassDecl) {
+        for method in decl.methods.iter().chain(&decl.concern_class_methods) {
+            let name = format!("{}.{}", decl.name, method.name);
+            self.require_signature(
+                &name,
+                &method.params,
+                method.return_type.as_ref(),
+                method.span,
+            );
+        }
+        if let Some(ctor) = &decl.constructor {
+            let name = format!("{}.new", decl.name);
+            self.require_params(&name, &ctor.params);
+        }
+        for nested in &decl.nested_classes {
+            self.check_class_annotations(nested);
+        }
+    }
+
+    fn require_signature(
+        &mut self,
+        name: &str,
+        params: &[Parameter],
+        return_type: Option<&TypeAnnotation>,
+        span: crate::span::Span,
+    ) {
+        self.require_params(name, params);
+        if return_type.is_none() {
+            self.errors.push(TypeError::MissingAnnotation {
+                what: format!("return type of {name}() (write `-> Void` if it returns nothing)"),
+                span,
+            });
+        }
+    }
+
+    fn require_params(&mut self, name: &str, params: &[Parameter]) {
+        for param in params {
+            // The parser gives an unannotated parameter an `Any` spanning its
+            // own name; a written `: Any` starts after the colon.
+            let unwritten = matches!(&param.type_annotation.kind, TypeKind::Named(n) if n == "Any")
+                && param.type_annotation.span.start == param.span.start;
+            if unwritten && !param.is_block_param {
+                self.errors.push(TypeError::MissingAnnotation {
+                    what: format!("parameter '{}' of {name}()", param.name),
+                    span: param.span,
+                });
+            }
         }
     }
 }

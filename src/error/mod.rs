@@ -204,6 +204,11 @@ pub enum TypeError {
     #[error("{message} at {span}")]
     General { message: String, span: Span },
 
+    /// `# soli: strict` (or `--level strict`): a parameter or a return type
+    /// written without a type. `what` reads "parameter 'x' of greet()".
+    #[error("Missing type annotation: {what} at {span}")]
+    MissingAnnotation { what: String, span: Span },
+
     /// Non-blocking warning: a `match` on a known enum doesn't cover every
     /// variant and has no `_` catch-all. Surfaced by `soli check`; never fails
     /// the check or blocks `soli run`.
@@ -240,6 +245,7 @@ impl TypeError {
             Self::ThisOutsideClass(_) => Some("E0305"),
             Self::SuperOutsideClass(_) => Some("E0306"),
             Self::General { .. } => None,
+            Self::MissingAnnotation { .. } => Some("E0404"),
             Self::ExhaustivenessWarning { .. } => Some("W0401"),
         }
     }
@@ -262,6 +268,7 @@ impl TypeError {
             Self::ThisOutsideClass(span) => *span,
             Self::SuperOutsideClass(span) => *span,
             Self::General { span, .. } => *span,
+            Self::MissingAnnotation { span, .. } => *span,
             Self::ExhaustivenessWarning { span, .. } => *span,
         }
     }

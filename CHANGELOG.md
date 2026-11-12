@@ -4,6 +4,17 @@
 
 ### Added
 
+- **`soli check` strictness levels (#693, phase 3).** `off`, `loose`,
+  `standard` (the default) and `strict`, set by a `# soli: <level>` line at the
+  top of a file (`check::directive`; it wins), `soli check --level`, or
+  `level` under `[check]` in `soli.toml`. `loose` keeps only what certainly
+  fails at run time (`E0301`–`E0304`, `E0402`, `E0403`); `strict` adds
+  `E0404 missing-annotation` for every unwritten parameter and return type of
+  a `def`, method or constructor parameter (`TypeChecker::require_annotations`;
+  `&block` and constructor returns exempt). `soli script.sl` honours the file's
+  line, so `# soli: off` runs it unchecked. The check entry point now takes a
+  `CheckScope` (ambient names, project declarations, job classes, level).
+
 - **`soli check` knows the application's other files by their declarations
   (#693, phase 2).** It used to know a sibling's top-level names only, each as
   `Any`. Now `check::Project` parses the auto-loaded directories once and
