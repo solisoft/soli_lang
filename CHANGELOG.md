@@ -326,6 +326,15 @@
 
 ### Fixed
 
+- **A panicking event handler no longer leaks a nesting level (#628).**
+  `run_blocks` raised `events::DEPTH` before the handlers and lowered it
+  after, by hand: a handler that panicked (caught per request) left the
+  level counted, and after 32 of them every `publish` on that worker failed
+  with "levels deep — a loop?" until a restart. A drop guard
+  (`DepthLevel`) gives the level back on every path. Test:
+  `a_panic_under_a_level_does_not_leak_it`.
+
+
 - **A NaN no longer breaks a sort (#627).** Model vector search and
   graph-RAG sorted scores with `partial_cmp().unwrap_or(Equal)`, not a total
   order — the standard sort may panic on one, so a search meeting a zero

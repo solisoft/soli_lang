@@ -325,15 +325,34 @@ fn run_blocks(class: &Class, event: &Value) -> Result<(), RuntimeError> {
             Span::default(),
         ));
     }
-    DEPTH.with(|d| d.set(depth + 1));
-    let result = subscriptions_for(class)
+    let _level = DepthLevel::enter(depth);
+    subscriptions_for(class)
         .iter()
         .try_for_each(|handler| match handler {
             Handler::Block(func) => call_block(func, event),
             Handler::Job(_) | Handler::Stream { .. } => Ok(()),
-        });
-    DEPTH.with(|d| d.set(depth));
-    result
+        })
+}
+
+/// One level of handler nesting, given back when it drops — on every path,
+/// a panicking handler included (#628). Lowered by hand after the handlers,
+/// a panic left the level counted, and after 32 of them every `publish` on
+/// that worker failed with "levels deep — a loop?" until a restart.
+struct DepthLevel {
+    previous: usize,
+}
+
+impl DepthLevel {
+    fn enter(depth: usize) -> DepthLevel {
+        DEPTH.with(|d| d.set(depth + 1));
+        DepthLevel { previous: depth }
+    }
+}
+
+impl Drop for DepthLevel {
+    fn drop(&mut self) {
+        DEPTH.with(|d| d.set(self.previous));
+    }
 }
 
 /// Run a handler block with the event as its parameter. A `throw` in it
@@ -742,6 +761,20 @@ pub fn event_version_native(args: &[Value]) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// #628: a level is given back even when the code under it panics.
+    #[test]
+    fn a_panic_under_a_level_does_not_leak_it() {
+        DEPTH.with(|d| d.set(0));
+        for _ in 0..(MAX_DEPTH + 5) {
+            let caught = std::panic::catch_unwind(|| {
+                let _level = DepthLevel::enter(DEPTH.with(|d| d.get()));
+                panic!("a handler blew up");
+            });
+            assert!(caught.is_err());
+        }
+        assert_eq!(DEPTH.with(|d| d.get()), 0, "every level was given back");
+    }
     use super::*;
 
     #[test]
