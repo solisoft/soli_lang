@@ -31,6 +31,7 @@ src/solidb_driver.rs CLIENT
 src/interpreter/value.rs DISPLAY_DEPTH
 src/interpreter/value.rs EQ_DEPTH
 src/interpreter/value.rs SERIALIZE_DEPTH
+src/types/runtime_globals.rs COMPUTING_SHADOWABLE
 
 # The file an uncaught error came from, for the CLI's code frame (`soli run`,
 # `soli check`). Read only by the run that clears it first; a server never

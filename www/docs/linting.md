@@ -92,9 +92,9 @@ statically.
 `smell/shadowed-builtin` flags a local — a bare assignment, or a parameter
 annotated with a value type (`options: Hash`) — named after a global the runtime
 installs, when the same scope also calls that global. The call then reaches the
-local, not the builtin; and the tree-walking engine reads a bare assignment to
-an existing global as rebinding it, so the builtin is gone for the rest of the
-program:
+local, not the builtin. (Inside a def, a method, a lambda or a block the
+assignment only makes a local — the builtin is still there outside it. At the
+file's top level it rebinds the builtin for the rest of the program.)
 
 ```soli
 def register(path)
@@ -492,9 +492,10 @@ runs is not refused for being Soli:
   makes it a `Float`, a String later given a Hash becomes `Any` — instead of an
   error. A binding whose type you wrote down still refuses: `let x: Int = 1`
   then `x = "s"`, or a typed parameter, is a mismatch. So is a bare
-  `helper = 5` where `helper` is a builtin or a `def` of the same file: both
-  engines rebind the function rather than make a local, so the next
-  `helper()` fails. Rename the local, or write `let helper = 5` to shadow it.
+  `helper = 5` where `helper` is a `def` of the same file, or a builtin at the
+  top level: both engines rebind the function rather than make a local, so
+  the next `helper()` fails. Rename the local, or write `let helper = 5` to
+  shadow it. Inside a function, a builtin's name is an ordinary local.
 - **`T?` takes `nil`.** `def f(x: Int?)` accepts `f(nil)` and `f(2)`, and
   `x = nil` or `return nil` into an `Int?` slot is fine. A value read from it
   is used as the `T` (there is no narrowing after `x.nil?` yet).

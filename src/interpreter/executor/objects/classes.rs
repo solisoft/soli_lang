@@ -288,7 +288,7 @@ impl Interpreter {
         if let Some(ctor) = class.find_constructor() {
             let ctor_args =
                 self.bind_constructor_args(&ctor, positional_args, &named_args, span)?;
-            let mut ctor_env = Environment::with_enclosing(ctor.closure.clone());
+            let mut ctor_env = Environment::for_call(ctor.closure.clone());
             ctor_env.define("this".to_string(), Value::Instance(instance.clone()));
             for (param, value) in ctor.params.iter().zip(ctor_args) {
                 ctor_env.define(param.name.clone(), value);

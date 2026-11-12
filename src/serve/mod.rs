@@ -5916,9 +5916,8 @@ fn call_class_method(
         // Bind `this` to the instance by wrapping the method's closure.
         // Mirrors the dispatch pattern in interpreter/executor/access/member.rs.
         let bound_method = {
-            let mut bound_env = crate::interpreter::environment::Environment::with_enclosing(
-                method.closure.clone(),
-            );
+            let mut bound_env =
+                crate::interpreter::environment::Environment::for_call(method.closure.clone());
             bound_env.define("this".to_string(), instance.clone());
             Rc::new(crate::interpreter::value::Function {
                 name: method.name.clone(),

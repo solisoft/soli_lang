@@ -1538,7 +1538,7 @@ impl Interpreter {
             let Some(method) = class.find_method(cb_name) else {
                 continue;
             };
-            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+            let mut bound_env = Environment::for_call(method.closure.clone());
             bound_env.define("this".to_string(), Value::Instance(instance.clone()));
             let bound_method = crate::interpreter::value::Function {
                 name: method.name.clone(),
@@ -1825,7 +1825,7 @@ impl Interpreter {
         closure: &Rc<crate::interpreter::value::Function>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        let mut bound_env = Environment::with_enclosing(closure.closure.clone());
+        let mut bound_env = Environment::for_call(closure.closure.clone());
         bound_env.define("this".to_string(), Value::Instance(inst.clone()));
         bound_env.define("self".to_string(), Value::Instance(inst.clone()));
         let bound = crate::interpreter::value::Function {
@@ -2397,7 +2397,7 @@ impl Interpreter {
         };
         if let (Some(as_json_method), Value::Instance(instance)) = (as_json_method, args[0].clone())
         {
-            let mut bound_env = Environment::with_enclosing(as_json_method.closure.clone());
+            let mut bound_env = Environment::for_call(as_json_method.closure.clone());
             bound_env.define("this".to_string(), Value::Instance(instance));
             let bound = crate::interpreter::value::Function {
                 name: as_json_method.name.clone(),

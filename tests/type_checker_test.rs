@@ -1078,10 +1078,11 @@ fn match_rest_bindings_are_defined_in_the_arm() {
 // #678: a local named after a builtin. The assignment used to fail as
 // "expected (Any, Any) -> String, found String", naming neither the builtin
 // nor the fix; the call of a deliberately shadowed name as "Cannot call
-// non-function type 'String'".
+// non-function type 'String'". At the top level the assignment rebinds the
+// builtin, and the message says so.
 #[test]
 fn assigning_over_a_builtin_names_the_builtin() {
-    let errors = check_err("def probe\n  page_url = \"x\"\n  page_url.length\nend\n");
+    let errors = check_err("page_url = \"x\"\nprint(page_url.length)\n");
     assert_any(
         &errors,
         |e| {
@@ -1089,6 +1090,24 @@ fn assigning_over_a_builtin_names_the_builtin() {
                 if message.contains("builtin page_url()") && message.contains("rename"))
         },
         "a message naming the builtin page_url()",
+    );
+}
+
+// #630: inside a def, a method, a lambda or a block, the same assignment
+// defines a local on both engines, so it type-checks as one; calling it is
+// still the error that names the builtin.
+#[test]
+fn a_builtin_named_local_inside_a_function_is_a_local() {
+    check_ok("def probe\n  page_url = \"x\"\n  page_url.length\nend\n");
+    check_ok("def probe\n  [1].each do |x|\n    h = x + 1\n    print(h * 2)\n  end\nend\n");
+    let errors = check_err("def probe\n  stream = \"x\"\n  stream(1, 2)\nend\n");
+    assert_any(
+        &errors,
+        |e| {
+            matches!(e, TypeError::General { message, .. }
+                if message.contains("shadowing the builtin stream()"))
+        },
+        "a message naming the shadowed builtin stream()",
     );
 }
 

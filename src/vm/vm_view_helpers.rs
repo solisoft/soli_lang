@@ -654,9 +654,10 @@ mod tests {
     /// A helper's bare assignment to a name the shared env holds — a
     /// builtin like `h`, a sibling helper — defines a local, whichever
     /// engine runs it: the env is frozen once its helpers are loaded
-    /// (`load_view_helpers`), and the view VM leaves a helper that assigns
-    /// such a name to the tree-walker. Neither may overwrite the env every
-    /// later helper call on the worker reads.
+    /// (`load_view_helpers`). A builtin's name compiles to a local on the
+    /// view VM (#630); a helper that assigns a sibling's name stays on the
+    /// tree-walker. Neither may overwrite the env every later helper call on
+    /// the worker reads.
     #[test]
     fn a_helper_assigning_a_shared_name_defines_a_local() {
         let env = builtins_env();
@@ -681,7 +682,7 @@ mod tests {
                 Value::str("&lt;b&gt;")
             );
         }
-        assert_eq!(decided(&helpers["shout"]), Some(false));
+        assert_eq!(decided(&helpers["shout"]), Some(true));
         assert_eq!(decided(&helpers["shadow"]), Some(false));
         assert!(matches!(
             env.borrow().get("h"),

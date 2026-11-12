@@ -130,6 +130,40 @@ pub fn is_builtin_name(name: &str) -> bool {
     is_runtime_global(name) || test_dsl_globals().iter().any(|global| global == name)
 }
 
+/// Whether a bare assignment to `name` inside a function, method, lambda or
+/// block defines a local rather than rebinding a global: `name` is a builtin
+/// (served, view or test DSL), so rebinding it would replace it for every
+/// later request on the worker. Both engines ask this — the tree-walker's
+/// `Environment::assign`, the VM's `Compiler::hoist_locals` — and the checker
+/// types the assignment the same way.
+///
+/// Computing the set registers the builtins into throwaway environments; a
+/// registration that itself assigned from a function would ask again on the
+/// same thread before the set exists, so that inner call answers `false`
+/// rather than wait on itself.
+pub fn is_shadowable_builtin(name: &str) -> bool {
+    static NAMES: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    if let Some(names) = NAMES.get() {
+        return names.contains(name);
+    }
+    if COMPUTING_SHADOWABLE.with(|computing| computing.replace(true)) {
+        return false;
+    }
+    let names = NAMES.get_or_init(|| {
+        let mut names = runtime_global_names().clone();
+        names.extend(view_globals().iter().cloned());
+        names.extend(test_dsl_globals().iter().cloned());
+        names
+    });
+    COMPUTING_SHADOWABLE.with(|computing| computing.set(false));
+    names.contains(name)
+}
+
+thread_local! {
+    /// Set while this thread computes [`is_shadowable_builtin`]'s set.
+    static COMPUTING_SHADOWABLE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// [`is_runtime_global`], restricted to the builtin *classes*.
 pub fn is_runtime_class(name: &str) -> bool {
     runtime_globals()

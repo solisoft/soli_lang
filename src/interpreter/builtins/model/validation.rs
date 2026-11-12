@@ -83,7 +83,7 @@ fn invoke_validator_value(
     field_value: &Value,
     record: &Value,
 ) -> Result<Value, String> {
-    let mut env_inner = Environment::with_enclosing(func.closure.clone());
+    let mut env_inner = Environment::for_call(func.closure.clone());
     // Bind positional params: (value), (value, record), or fewer.
     let mut params = func.params.iter();
     if let Some(p) = params.next() {
@@ -159,7 +159,7 @@ fn run_custom_method(
         }
     }
     let record = Rc::new(RefCell::new(record));
-    let mut env = Environment::with_enclosing(func.closure.clone());
+    let mut env = Environment::for_call(func.closure.clone());
     env.define("this".to_string(), Value::Instance(record.clone()));
     if let Some(p) = func.params.first() {
         env.define(
@@ -652,7 +652,7 @@ pub fn build_unique_violation_errors(class_name: &str, err: &str) -> Vec<Validat
 /// the closure's first parameter (if it declares one); the closure's
 /// truthiness decides.
 fn invoke_condition(func: &Function, record: &Value) -> Result<bool, String> {
-    let mut env = Environment::with_enclosing(func.closure.clone());
+    let mut env = Environment::for_call(func.closure.clone());
     if let Some(p) = func.params.first() {
         env.define(p.name.clone(), record.clone());
     }
@@ -1087,7 +1087,7 @@ fn run_model_invariants(
                 invariant.message
             )
         })?;
-        let mut env = Environment::with_enclosing(func.closure.clone());
+        let mut env = Environment::for_call(func.closure.clone());
         env.define("this".to_string(), Value::Instance(record.clone()));
         let held = run_validator_body(&func, env, "invariant")?;
         if !held.is_truthy() {

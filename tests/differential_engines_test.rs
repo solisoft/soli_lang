@@ -642,6 +642,43 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // Inside a def, a method, a lambda or a block, a bare assignment to a
+        // builtin's name defines a local; the builtin stays. At the top level
+        // it is still the program's own binding (#630).
+        "builtin_named_locals_shadow_inside_functions",
+        r##"def handler()
+  h = {"a": 1}
+  len = "mine"
+  [h, len]
+end
+print(handler())
+print(len("abc"), h("<b>"))
+class Ctl
+  def index
+    print = "shadow"
+    print
+  end
+end
+print(Ctl.new.index)
+[1, 2].each do |x|
+  sleep = x
+end
+print(type(sleep))
+def counts()
+  len = 0
+  [1, 2, 3].each do |x|
+    len = len + x
+  end
+  len
+end
+print(counts())
+shout = fn(word) {
+  upcase = word + "!"
+  upcase
+}
+print(shout("hi"))"##,
+    ),
+    (
         // `instance_variable_set` writes as `obj.name = v` does: a model's
         // `_key`/`_id` and a `const` field are refused. The VM never recorded
         // `const` / `static const` fields, so it let both be reassigned.
@@ -6702,6 +6739,25 @@ fn a_bound_that_is_not_an_integer_is_reported_at_the_range() {
 /// (name, source). Each source declares `class Probe` with a zero-argument
 /// `run` that returns a string, and runs cleanly on the tree-walker.
 const APP_CASES: &[(&str, &str)] = &[
+    (
+        // A bare assignment to a builtin's name inside an action defines a
+        // local: it used to replace the worker's global, so the next request
+        // found `len` and `h` gone (#630).
+        "app_builtin_named_local_stays_in_the_action",
+        r##"class Probe
+  def first
+    len = "shadow"
+    h = {"a": 1}
+    options = [len, h.a]
+    options
+  end
+
+  def run
+    got = @first
+    "#{got} #{len("abc")} #{h("<i>")}"
+  end
+end"##,
+    ),
     (
         "app_constructor_calls_super",
         r##"class Point

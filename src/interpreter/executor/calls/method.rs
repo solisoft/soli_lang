@@ -786,7 +786,7 @@ impl Interpreter {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
 
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         call_env_rc
             .borrow_mut()
@@ -840,7 +840,7 @@ impl Interpreter {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
 
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         call_env_rc
             .borrow_mut()
@@ -897,7 +897,7 @@ impl Interpreter {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
 
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         call_env_rc
             .borrow_mut()
@@ -952,7 +952,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         let param0_name = func.params.first().map(|p| p.name.clone());
         let param1_name = func.params.get(1).map(|p| p.name.clone());
@@ -1029,7 +1029,7 @@ impl Interpreter {
 
         let start_idx = if arguments.len() == 2 { 0 } else { 1 };
 
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         let param0_name = func.params.first().map(|p| p.name.clone());
         let param1_name = func.params.get(1).map(|p| p.name.clone());
@@ -1095,9 +1095,7 @@ impl Interpreter {
             .first()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
-        let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env_rc = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         call_env_rc
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
@@ -1151,9 +1149,7 @@ impl Interpreter {
             .first()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
-        let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env_rc = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         call_env_rc
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
@@ -1207,9 +1203,7 @@ impl Interpreter {
             .first()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
-        let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env_rc = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         call_env_rc
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
@@ -1264,7 +1258,7 @@ impl Interpreter {
             // A user comparator can be inconsistent (it runs arbitrary Soli
             // code); `slice::sort_by` panics on that, so use the tolerant sort.
             crate::interpreter::executor::calls::array_ops::stable_sort_by(&mut result, |a, b| {
-                let mut call_env = Environment::with_enclosing(func.closure.clone());
+                let mut call_env = Environment::for_call(func.closure.clone());
 
                 if func.params.len() >= 2 {
                     call_env.define(func.params[0].name.clone(), a.clone());
@@ -1335,9 +1329,8 @@ impl Interpreter {
                 // Extract key values for each item using the function.
                 // Reuse a single lambda env across iterations to avoid re-allocating
                 // HashMaps and the parameter's String per item.
-                let call_env_rc = Rc::new(RefCell::new(Environment::with_enclosing(
-                    func.closure.clone(),
-                )));
+                let call_env_rc =
+                    Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
                 call_env_rc
                     .borrow_mut()
                     .define(param_name.clone(), Value::Null);
@@ -2208,7 +2201,7 @@ impl Interpreter {
             .first()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         call_env_rc
             .borrow_mut()
@@ -2251,7 +2244,7 @@ impl Interpreter {
             .first()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         call_env_rc
             .borrow_mut()
@@ -2293,7 +2286,7 @@ impl Interpreter {
             .first()
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "it".to_string());
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let call_env_rc = Rc::new(RefCell::new(call_env));
         call_env_rc
             .borrow_mut()
@@ -2378,7 +2371,7 @@ impl Interpreter {
                     .first()
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| "it".to_string());
-                let call_env = Environment::with_enclosing(func.closure.clone());
+                let call_env = Environment::for_call(func.closure.clone());
                 let call_env_rc = Rc::new(RefCell::new(call_env));
                 call_env_rc
                     .borrow_mut()
@@ -2446,7 +2439,7 @@ impl Interpreter {
         };
 
         // Execute block
-        let call_env = Environment::with_enclosing(func.closure.clone());
+        let call_env = Environment::for_call(func.closure.clone());
         let result = match self.execute_block(&func.body, call_env)? {
             ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
             ControlFlow::Continue | ControlFlow::Break => Value::Null,

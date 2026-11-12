@@ -97,7 +97,7 @@ pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) 
         name,
         arity,
         move |args: &[Value]| -> Result<Value, String> {
-            let call_env = Environment::with_enclosing(func.closure.clone());
+            let call_env = Environment::for_call(func.closure.clone());
             let mut env_inner = call_env;
             env_inner.define("this".to_string(), receiver.clone());
             env_inner.define("self".to_string(), receiver.clone());
@@ -293,7 +293,7 @@ pub(crate) fn bind_class_method_missing(
                 Value::String(method_name.clone().into()),
                 Value::Array(Rc::new(RefCell::new(args.to_vec()))),
             ];
-            let mut env_inner = Environment::with_enclosing(mm_method.closure.clone());
+            let mut env_inner = Environment::for_call(mm_method.closure.clone());
             env_inner.define("this".to_string(), class_val.clone());
             env_inner.define("self".to_string(), class_val.clone());
             for (i, param) in mm_method.params.iter().enumerate() {
@@ -1048,7 +1048,7 @@ impl Interpreter {
                         } else if let Some(method) = inst_ref.class.find_method(&method_name) {
                             // User-defined method - execute it directly
                             drop(inst_ref);
-                            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+                            let mut bound_env = Environment::for_call(method.closure.clone());
                             bound_env
                                 .define("this".to_string(), Value::Instance(inst_clone.clone()));
 
@@ -1090,8 +1090,7 @@ impl Interpreter {
                             let mut mm_args = vec![Value::String(method_name.clone())];
                             mm_args.extend(call_args);
 
-                            let mut bound_env =
-                                Environment::with_enclosing(mm_method.closure.clone());
+                            let mut bound_env = Environment::for_call(mm_method.closure.clone());
                             bound_env
                                 .define("this".to_string(), Value::Instance(inst_clone.clone()));
 
@@ -1317,7 +1316,7 @@ impl Interpreter {
                         };
 
                         // Create environment with self bound to instance
-                        let mut eval_env = Environment::with_enclosing(block.closure.clone());
+                        let mut eval_env = Environment::for_call(block.closure.clone());
                         eval_env.define("this".to_string(), Value::Instance(inst_clone.clone()));
 
                         // Also define 'self' as alias for 'this'
@@ -1891,7 +1890,7 @@ impl Interpreter {
             drop(inst_ref);
 
             // Bind 'this'
-            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+            let mut bound_env = Environment::for_call(method.closure.clone());
             bound_env.define("this".to_string(), Value::Instance(inst.clone()));
 
             let bound_method = Function {
@@ -1930,7 +1929,7 @@ impl Interpreter {
                     mm_args.extend_from_slice(args);
 
                     // Build environment for method_missing execution
-                    let call_env = Environment::with_enclosing(mm_method.closure.clone());
+                    let call_env = Environment::for_call(mm_method.closure.clone());
                     let mut env_inner = call_env;
                     env_inner.define("this".to_string(), Value::Instance(inst_clone.clone()));
 
@@ -2014,7 +2013,7 @@ impl Interpreter {
             if !method.binds_this {
                 return Ok(Value::Function(method));
             }
-            let mut bound_env = Environment::with_enclosing(method.closure.clone());
+            let mut bound_env = Environment::for_call(method.closure.clone());
             bound_env.define("this".to_string(), class_val.clone());
             return Ok(Value::Function(Rc::new(Function {
                 name: method.name.clone(),
@@ -2139,7 +2138,7 @@ impl Interpreter {
                         // Check static methods
                         if let Some(method) = class_clone.find_static_method(&method_name) {
                             // Build environment for method execution
-                            let call_env = Environment::with_enclosing(method.closure.clone());
+                            let call_env = Environment::for_call(method.closure.clone());
                             let mut env_inner = call_env;
 
                             // Bind call arguments to parameters
@@ -2298,7 +2297,7 @@ impl Interpreter {
                         };
 
                         // Create environment with self bound to class
-                        let mut eval_env = Environment::with_enclosing(block.closure.clone());
+                        let mut eval_env = Environment::for_call(block.closure.clone());
                         eval_env.define("this".to_string(), Value::Class(class_rc.clone()));
                         eval_env.define("self".to_string(), Value::Class(class_rc.clone()));
 
@@ -2400,7 +2399,7 @@ impl Interpreter {
 
         // super.method() - look up method in superclass
         if let Some(method) = superclass.find_method(name) {
-            let bound_env = Environment::with_enclosing(method.closure.clone());
+            let bound_env = Environment::for_call(method.closure.clone());
             let mut bound_env = bound_env;
             bound_env.define("this".to_string(), Value::Instance(instance.clone()));
 

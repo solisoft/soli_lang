@@ -885,8 +885,9 @@ impl Compiler {
     /// in `body`, a function body about to be compiled. Must be called inside
     /// the body scope after parameters have been added. A candidate is skipped
     /// when it is already a parameter/local, is captured from an enclosing
-    /// scope (so it stays an upvalue), or is a known global (so the assignment
-    /// targets the existing global) — matching the tree-walking interpreter.
+    /// scope (so it stays an upvalue), or is a known global other than a
+    /// builtin (so the assignment targets the existing global) — matching the
+    /// tree-walking interpreter.
     ///
     /// A candidate whose first mention is a top-level `name = value` is
     /// declared by that statement, the way `let name = value` declares it
@@ -900,8 +901,13 @@ impl Compiler {
         let candidates: Vec<String> = super::compiler_hoist::collect_hoisted_locals(body)
             .into_iter()
             .filter(|name| {
+                // A builtin's name is a local of the function, not the
+                // worker's global: `h = {…}` in an action must not replace
+                // `h()` for every later request (the tree-walker's
+                // `Environment::assign` makes the same choice).
                 self.resolve_local(name).is_none()
-                    && !self.is_known_global(name)
+                    && (!self.is_known_global(name)
+                        || crate::types::runtime_globals::is_shadowable_builtin(name))
                     && !self.enclosing_has_local(name)
             })
             .collect();

@@ -869,9 +869,7 @@ impl Interpreter {
                 cached.borrow_mut().reset_for_call();
                 cached
             }
-            None => Rc::new(RefCell::new(Environment::with_enclosing(
-                func.closure.clone(),
-            ))),
+            None => Rc::new(RefCell::new(Environment::for_call(func.closure.clone()))),
         };
 
         {

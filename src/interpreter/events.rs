@@ -358,7 +358,7 @@ impl Drop for DepthLevel {
 /// Run a handler block with the event as its parameter. A `throw` in it
 /// keeps its value, so an uncaught `DomainError` still answers its status.
 fn call_block(func: &Function, event: &Value) -> Result<(), RuntimeError> {
-    let mut env = Environment::with_enclosing(func.closure.clone());
+    let mut env = Environment::for_call(func.closure.clone());
     if let Some(param) = func.params.first() {
         env.define(param.name.clone(), event.clone());
     }
@@ -592,7 +592,7 @@ fn event_version(class: &Class) -> i64 {
 
 /// Call a tree-walker function with positional arguments.
 fn call_function(func: &Function, args: Vec<Value>) -> Result<Value, RuntimeError> {
-    let mut env = Environment::with_enclosing(func.closure.clone());
+    let mut env = Environment::for_call(func.closure.clone());
     for (param, arg) in func.params.iter().zip(args) {
         env.define(param.name.clone(), arg);
     }

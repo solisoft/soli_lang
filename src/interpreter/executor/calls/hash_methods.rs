@@ -125,9 +125,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let v = self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
@@ -164,9 +162,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let result_value =
@@ -198,9 +194,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         for (key, value) in entries {
             self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
         }
@@ -228,9 +222,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let new_value = self.invoke_hash_single(&func, &call_env, value.clone(), span)?;
@@ -259,9 +251,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let new_key = self.invoke_hash_single(&func, &call_env, key.to_value(), span)?;
@@ -293,9 +283,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let result_value =
@@ -327,9 +315,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let result_value =
@@ -361,9 +347,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         for (key, _value) in entries {
             self.invoke_hash_single(&func, &call_env, key.to_value(), span)?;
         }
@@ -391,9 +375,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         for (_key, value) in entries {
             self.invoke_hash_single(&func, &call_env, value.clone(), span)?;
         }
@@ -421,9 +403,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let result_value =
@@ -455,9 +435,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         let mut result: HashPairs = HashPairs::default();
         for (key, value) in entries {
             let result_value =
@@ -489,9 +467,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         for (key, value) in entries {
             let result_value =
                 self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;
@@ -522,9 +498,7 @@ impl Interpreter {
             }
         };
 
-        let call_env = Rc::new(RefCell::new(Environment::with_enclosing(
-            func.closure.clone(),
-        )));
+        let call_env = Rc::new(RefCell::new(Environment::for_call(func.closure.clone())));
         for (key, value) in entries {
             let result_value =
                 self.invoke_hash_kv(&func, &call_env, key.to_value(), value.clone(), span)?;

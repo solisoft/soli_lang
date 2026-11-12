@@ -366,6 +366,26 @@ if data != null
 end
 ```
 
+### A builtin's name inside a function
+
+Inside a `def`, a method, a lambda or a block, a bare assignment to the name of
+a builtin (`h`, `len`, `options`, `stream`…) defines a local. The builtin is
+untouched outside that body, so an action that writes `h = {…}` does not take
+`h()` away from the next request on the worker. Both engines agree, and
+`soli check` types the name as the local.
+
+```soli
+def summary(post)
+  len = post.body.length     # a local
+  "#{post.title}: #{len} chars"
+end
+
+print(len("abc"))            # 3 — the builtin
+```
+
+At the file's top level the same assignment is the program's own binding and
+rebinds the builtin for the rest of the program; `soli check` reports it.
+
 ---
 
 ## Operators

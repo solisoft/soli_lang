@@ -20,6 +20,15 @@ pub(crate) fn inherited_field(controller: &Instance, name: &str) -> Option<Value
 }
 
 /// Whether a controller field of this name reaches the views it renders.
+/// Whether `env` is the root scope (the builtins live there) and `name` one
+/// of the runtime's builtins: a bare assignment arriving here from inside a
+/// function defines a local instead.
+fn shadows_builtin_here(env: &Environment, name: &str) -> bool {
+    env.enclosing.is_none()
+        && env.values.contains_key(name)
+        && crate::types::runtime_globals::is_shadowable_builtin(name)
+}
+
 pub(crate) fn is_inherited_field(name: &str) -> bool {
     !matches!(name, "req" | "params" | "session" | "headers")
 }
@@ -70,6 +79,11 @@ pub struct Environment {
     /// template builtins, the view helpers' env): user code never writes it.
     /// See [`Environment::freeze`].
     frozen: bool,
+    /// The scope of one call of a function, method, lambda or block
+    /// ([`Environment::for_call`]). A bare assignment made below such a scope
+    /// does not reach a builtin at the root: it defines a local instead
+    /// ([`Environment::assign`]).
+    function_scope: bool,
 }
 
 impl Environment {
@@ -81,6 +95,7 @@ impl Environment {
             data_hash: None,
             inherited: None,
             frozen: false,
+            function_scope: false,
         }
     }
 
@@ -94,7 +109,17 @@ impl Environment {
             data_hash: None,
             inherited: None,
             frozen: false,
+            function_scope: false,
         }
+    }
+
+    /// The scope of a call of a function, method, lambda or block whose
+    /// closure is `enclosing`: [`Environment::with_enclosing`], marked so that
+    /// a bare assignment to a builtin's name inside the body defines a local.
+    pub fn for_call(enclosing: Rc<RefCell<Environment>>) -> Self {
+        let mut env = Self::with_enclosing(enclosing);
+        env.function_scope = true;
+        env
     }
 
     pub fn with_enclosing(enclosing: Rc<RefCell<Environment>>) -> Self {
@@ -105,6 +130,7 @@ impl Environment {
             data_hash: None,
             inherited: None,
             frozen: false,
+            function_scope: false,
         }
     }
 
@@ -122,6 +148,7 @@ impl Environment {
             data_hash: Some(data_hash),
             inherited: None,
             frozen: false,
+            function_scope: false,
         }
     }
 
@@ -260,6 +287,13 @@ impl Environment {
     /// `buf = buf + "x"` stays linear for the unique case and still leaves a
     /// second variable that aliased `buf` unchanged.
     pub fn append_string(&mut self, name: &str, extra: &str) -> AppendString {
+        self.append_string_from(name, extra, false)
+    }
+
+    fn append_string_from(&mut self, name: &str, extra: &str, in_function: bool) -> AppendString {
+        if in_function && shadows_builtin_here(self, name) {
+            return AppendString::NotFound;
+        }
         if !self.consts.is_empty() && self.consts.contains_key(name) {
             return AppendString::IsConst;
         }
@@ -288,14 +322,30 @@ impl Environment {
             }
         }
         if let Some(ref enclosing) = self.enclosing {
-            return enclosing.borrow_mut().append_string(name, extra);
+            return enclosing.borrow_mut().append_string_from(
+                name,
+                extra,
+                in_function || self.function_scope,
+            );
         }
         AppendString::NotFound
     }
 
     /// Assign to an existing variable, searching up the scope chain.
     /// Returns false if the variable is const.
+    ///
+    /// From inside a function, method, lambda or block, the builtins at the
+    /// root are out of reach: `h = {…}` in an action defines a local `h`
+    /// rather than replacing the worker's `h()` for every later request. The
+    /// VM's compiler makes the same choice (`Compiler::hoist_locals`).
     pub fn assign(&mut self, name: &str, value: Value) -> AssignResult {
+        self.assign_from(name, value, false)
+    }
+
+    fn assign_from(&mut self, name: &str, value: Value, in_function: bool) -> AssignResult {
+        if in_function && shadows_builtin_here(self, name) {
+            return AssignResult::NotFound;
+        }
         if !self.consts.is_empty() && self.consts.contains_key(name) {
             return AssignResult::IsConst;
         }
@@ -307,7 +357,11 @@ impl Environment {
             return AssignResult::Assigned;
         }
         if let Some(ref enclosing) = self.enclosing {
-            return enclosing.borrow_mut().assign(name, value);
+            return enclosing.borrow_mut().assign_from(
+                name,
+                value,
+                in_function || self.function_scope,
+            );
         }
         AssignResult::NotFound
     }

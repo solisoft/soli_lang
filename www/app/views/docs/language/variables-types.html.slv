@@ -262,6 +262,19 @@ end
 print(x)           # Output: 1 (outer x)</code></pre>
             </div>
         </div>
+        <h3 class="text-xl font-semibold text-white mt-8 mb-3">A builtin&rsquo;s name inside a function</h3>
+        <p class="text-gray-400 mb-4">Inside a <code>def</code>, a method, a lambda or a block, a bare assignment to the name of a builtin (<code>h</code>, <code>len</code>, <code>options</code>, <code>stream</code>&hellip;) defines a local. The builtin is untouched outside that body, so an action that writes <code>h = {&hellip;}</code> does not take <code>h()</code> away from the next request on the worker. Both engines agree, and <code>soli check</code> types the name as the local.</p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def summary(post)
+  len = post.body.length     # a local
+  "#{post.title}: #{len} chars"
+end
+
+print(len("abc"))            # 3 — the builtin</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">At the file&rsquo;s top level the same assignment is the program&rsquo;s own binding and rebinds the builtin for the rest of the program; <code>soli check</code> reports it.</p>
     </section>
 
 </div>

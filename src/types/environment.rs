@@ -3266,6 +3266,15 @@ impl TypeEnvironment {
         self.scopes.iter().any(|scope| scope.contains_key(name))
     }
 
+    /// Whether `name` is a variable of a scope inside the global one: a
+    /// local of the function being checked or of one around it.
+    pub fn is_local(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .skip(1)
+            .any(|scope| scope.contains_key(name))
+    }
+
     /// Replace the type of the variable `name` in the scope that holds it.
     pub fn widen(&mut self, name: &str, ty: Type) {
         if let Some(scope) = self

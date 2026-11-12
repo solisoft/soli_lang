@@ -313,6 +313,22 @@
 
 ### Changed
 
+- **A builtin's name assigned inside a function is a local (#630).** Under
+  `soli serve`, `h = {…}` (or `len = …`, `options = …`) in an action rebound
+  the worker's global: the builtin was gone for every later request on that
+  worker, and the value could be read by the next one. Inside a def, a
+  method, a lambda or a block, a bare assignment to a builtin's name
+  (`runtime_globals::is_shadowable_builtin`: served, view and test-DSL
+  globals) now defines a local on both engines — the tree-walker's
+  `Environment::assign` stops at the root from a call scope
+  (`Environment::for_call`), and the VM's `hoist_locals` declares the name
+  instead of skipping it as a known global. At the top level the assignment
+  still rebinds. `soli check` types the name as a local there (it refused
+  the assignment), and a view helper that assigns `h` now compiles for the
+  view VM. Tests: `builtin_named_locals_shadow_inside_functions`,
+  `app_builtin_named_local_stays_in_the_action`,
+  `a_builtin_named_local_inside_a_function_is_a_local`.
+
 - **A bare `Klass.new` builds an instance (#655, #693 phase 6).** Read
   without parentheses on a capitalised or qualified name, `Post.new` /
   `Billing::Invoice.new` is now `Post.new()` on both engines

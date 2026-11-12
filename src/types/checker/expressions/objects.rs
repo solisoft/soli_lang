@@ -190,7 +190,15 @@ impl TypeChecker {
                 && !self.env.is_variable(name)
                 && self.env.get_class(name).is_none()
                 && !crate::types::runtime_globals::is_builtin_name(name);
-            if self.env.get(name).is_none() || shadows_a_non_builtin {
+            // Inside a function, method, lambda or block, a builtin's name is
+            // a fresh local too: both engines define one there rather than
+            // rebind the worker's global (`Environment::assign`,
+            // `Compiler::hoist_locals`). A local of an enclosing function
+            // keeps its binding.
+            let shadows_a_builtin = self.env.return_type().is_some()
+                && !self.env.is_local(name)
+                && crate::types::runtime_globals::is_shadowable_builtin(name);
+            if self.env.get(name).is_none() || shadows_a_non_builtin || shadows_a_builtin {
                 // Same reading as `let x = nil` (see `statements.rs`): a bare
                 // `x = nil` says nothing is known yet. Defining it as `Null`
                 // refused the next `x = records` as "expected Null, found …"

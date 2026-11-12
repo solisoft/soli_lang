@@ -52,7 +52,7 @@ impl Interpreter {
             .unwrap_or_else(|| "it".to_string());
 
         for i in 0..n {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
+            let mut call_env = Environment::for_call(func.closure.clone());
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
@@ -102,7 +102,7 @@ impl Interpreter {
             .unwrap_or_else(|| "it".to_string());
 
         for i in n..=limit {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
+            let mut call_env = Environment::for_call(func.closure.clone());
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
@@ -153,7 +153,7 @@ impl Interpreter {
 
         let mut i = n;
         while i >= limit {
-            let mut call_env = Environment::with_enclosing(func.closure.clone());
+            let mut call_env = Environment::for_call(func.closure.clone());
             call_env.define(param_name.clone(), Value::Int(i));
 
             match self.execute_block(&func.body, call_env)? {
