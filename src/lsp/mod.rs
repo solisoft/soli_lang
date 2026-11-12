@@ -13,6 +13,7 @@ pub mod rename;
 pub mod symbols;
 pub mod symbols_lsp;
 mod util;
+mod view_ivars;
 
 #[cfg(test)]
 mod tests;
@@ -446,6 +447,13 @@ impl LanguageServer for Backend {
             if is_template(&uri) && !completions::in_template_code(&text, pos) {
                 return Ok(None);
             }
+            // `@` in a view: the instance variables the actions that render
+            // it set (#820).
+            if is_template(&uri) {
+                if let Some(items) = view_ivar_completions(&uri, &text, pos) {
+                    return Ok(Some(lsp_types::CompletionResponse::Array(items)));
+                }
+            }
             let table = self.get_symbol_table(&uri);
             return Ok(self.with_project(&uri, |project| {
                 completions::get_completions(&text, pos, table.as_ref(), project)
@@ -669,6 +677,31 @@ pub(crate) fn diagnostics_for(
             })
             .collect(),
     };
+    // `@x` the view reads and nothing that renders it sets (#820): it reads
+    // nil. Only where the view can be judged (see `view_ivars`).
+    if let (true, Some(path)) = (template, path) {
+        let read = |file: &Path| std::fs::read_to_string(file).ok();
+        if let Some(ivars) = view_ivars::view_ivars(path, &read) {
+            for missing in view_ivars::undefined_reads(text, &ivars) {
+                diagnostics.push(Diagnostic {
+                    range: util::range_of(text, missing.start, missing.end),
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    message: format!(
+                        "`@{}` is not set by {}#{} (nor its before_action hooks, parent \
+                         controllers, helpers or middleware): it reads nil here",
+                        missing.name,
+                        ivars.controller,
+                        ivars.actions.join(", #"),
+                    ),
+                    code: Some(lsp_types::NumberOrString::String(
+                        "view/undefined-ivar".to_string(),
+                    )),
+                    source: Some("soli".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+    }
     // What the extraction lets through but the template engine refuses — an
     // `<% if %>` without its `end` — fails at render time: an error here.
     if template
@@ -688,6 +721,46 @@ pub(crate) fn diagnostics_for(
         }
     }
     diagnostics
+}
+
+/// The completions for an `@name` being typed in a view: the instance
+/// variables the view may read (`view_ivars`). `None` when the cursor is not
+/// after `@`, or the view cannot be judged — the general completion runs.
+fn view_ivar_completions(
+    uri: &Uri,
+    text: &str,
+    position: lsp_types::Position,
+) -> Option<Vec<lsp_types::CompletionItem>> {
+    let offset = util::position_to_offset(text, position)?;
+    let leading = &text[..offset];
+    let word_start = leading
+        .rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .map_or(0, |i| i + 1);
+    if !leading[..word_start].ends_with('@') {
+        return None;
+    }
+    let prefix = &leading[word_start..];
+    let path = document_path(uri)?;
+    let read = |file: &Path| std::fs::read_to_string(file).ok();
+    let ivars = view_ivars::view_ivars(&path, &read)?;
+    Some(
+        ivars
+            .set
+            .iter()
+            .filter(|name| name.starts_with(prefix))
+            .map(|name| lsp_types::CompletionItem {
+                label: format!("@{name}"),
+                kind: Some(lsp_types::CompletionItemKind::FIELD),
+                insert_text: Some(name.clone()),
+                detail: Some(format!(
+                    "set by {}#{}",
+                    ivars.controller,
+                    ivars.actions.join(", #")
+                )),
+                ..Default::default()
+            })
+            .collect(),
+    )
 }
 
 /// The whole of 1-based `line`, as an LSP range.

@@ -4,6 +4,17 @@
 
 ### Added
 
+- **LSP: instance variables in views (#820).** In a `.slv` view, a read of
+  `@x` that nothing rendering the view sets is a warning on the `@x`
+  (`view/undefined-ivar`): it reads nil. The view is tied to the actions
+  that render it (`posts#show`, an explicit `render("posts/show")`), whose
+  `@x = …` count with the methods they call, the controller's `static`
+  hooks (`before_action`), its fields, its parent controllers, and every
+  helper and middleware. `@` completes those names in the view. Doubt is
+  silence: layouts, partials, components, a computed `render`, reflection,
+  an included module or an unreadable parent controller report nothing
+  (`src/lsp/view_ivars.rs`).
+
 - **Conditional breakpoints, hit counts, logpoints, and the debugger in VS
   Code (#697, phase 5).** `setBreakpoints` takes `condition` (a Soli
   expression evaluated in the reached frame — on the VM through the same

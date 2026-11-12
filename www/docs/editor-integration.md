@@ -9,7 +9,7 @@ server reports its version in `initialize` (`serverInfo`).
 
 | Feature | What you get |
 |---|---|
-| Diagnostics | The lint rules as warnings while you type, and a syntax error as an error at its position. A file under `app/` gets the path-aware rules too (`security/unfiltered-mass-assignment`, `style/redundant-model-import`…), with the names its auto-loaded neighbours declare in scope, as `soli lint` does. A `.slv` template has its `<% %>` code linted, not its HTML: an unclosed tag or an `<% if %>` without its `end` is an error on its line, and a finding covers its whole line. |
+| Diagnostics | The lint rules as warnings while you type, and a syntax error as an error at its position. A file under `app/` gets the path-aware rules too (`security/unfiltered-mass-assignment`, `style/redundant-model-import`…), with the names its auto-loaded neighbours declare in scope, as `soli lint` does. A `.slv` template has its `<% %>` code linted, not its HTML: an unclosed tag or an `<% if %>` without its `end` is an error on its line, and a finding covers its whole line. A view's `@post` that nothing rendering it sets is a warning on the `@post` (`view/undefined-ivar`) — see below. |
 | Hover | On a name declared in the file — at its declaration or at any use — its kind or declared type (`greet : function`). On a name declared elsewhere in the application — `Post` in a controller, a helper in a view, `post.summary` — its signature and the file and line it is in. Either way, the `#` comment lines right above a `def`, a class or a constant come with it — a blank line ends the block. On a common builtin (`print`, `len`, `json_parse`, `HTTP`, `DateTime`…), its signature. |
 | Completion | Keywords, types, the names declared in the file, and the application's classes and functions. After `.` or `@`, the receiver's members — see below. |
 | Go to definition | The declaration of the name under the cursor: in the file first, then anywhere in the application's auto-loaded files (`app/models`, `app/controllers`, `app/services`, `app/policies`, `app/mailers`, `app/middleware`, `app/jobs`, `app/subscribers`, and `app/helpers` from a helper or a view). `Post` in a controller lands on `class Post` in `app/models/post.sl`; `post.summary` on the `def summary` of the class `post` holds. A name declared twice answers with both. |
@@ -51,8 +51,21 @@ two variables called `count` in two functions count as one name, and across
 the application `post.title` counts for a `title` field even when `post` is a
 hash. A name in a string — `permit(params, {"title": true})`,
 `has_many("comments")` — is not renamed. Member completion follows one step: `post.` is resolved,
-`post.author.` is not. Instance variables a controller sets are not offered in
-its views.
+`post.author.` is not.
+
+### Instance variables in views
+
+In `app/views/posts/show.html.slv`, `@` offers the instance variables the
+view can count on, and a read of any other — `@author` when nothing sets it —
+is a warning: it reads `nil`. The view's instance variables are those set by
+the actions that render it (`PostsController#show`, and any action that calls
+`render("posts/show")`) and by the methods they call, by the controller's
+`static { … }` hooks (`before_action`), declared as the controller's fields,
+by its parent controllers, and by any helper or middleware. Doubt is silence:
+nothing is reported in a layout, a partial or a component, in a view no action
+renders, or when the controller renders a computed name, sets instance
+variables by reflection (`instance_variable_set`, `send`…), includes a module,
+or inherits from a controller the server cannot read.
 
 ## Requirements
 
