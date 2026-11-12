@@ -642,6 +642,37 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // A closure made in a match arm captures the arm's binding: the VM
+        // popped it plainly, leaving an open upvalue to a slot that was gone
+        // (a panic in `close_upvalues`) or reused (#637).
+        "match_arm_closures_keep_their_bindings",
+        r##"def make(kind)
+  match kind {
+    "double" => fn(x) { x * 2 },
+    k => fn(x) { "#{k}: #{x}" }
+  }
+end
+print(make("hello")(1))
+print(make("double")(4))
+def guarded(n)
+  match n {
+    [a, b] => fn() { a + b },
+    {name: who} => fn() { "hi #{who}" },
+    m if m > 10 => fn() { "big #{m}" },
+    other => fn() { "small #{other}" }
+  }
+end
+fs = [guarded(20), guarded(3), guarded([1, 2]), guarded({"name": "Ann"})]
+print(fs.map { |f| f() })
+def skipped(n)
+  match n {
+    v if [fn() { v }].length > 5 => "never",
+    w => "kept #{w}"
+  }
+end
+print(skipped(7))"##,
+    ),
+    (
         // #636: DateTimes and Decimals order in `sort`, `sort_by`, `min` and
         // `max` as `<` orders them (they kept their input order); a
         // comparator that raises ends the sort and the error propagates (the

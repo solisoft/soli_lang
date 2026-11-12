@@ -342,6 +342,15 @@
 
 ### Fixed
 
+- **A closure made in a `match` arm keeps the arm's binding on the VM
+  (#637).** `match kind { k => fn(x) { "#{k}: #{x}" } }` returned a closure
+  over `k`, but `compile_match` dropped the arm's bindings with a plain
+  `Pop`: the closure kept an open upvalue to a slot that was gone (a panic,
+  index out of bounds in `close_upvalues`) or reused by a later local (a
+  wrong value). A captured binding is now closed with `CloseUpvalue`, on the
+  success path and the guard-failure path, as `end_scope` does. Differential
+  test: `match_arm_closures_keep_their_bindings`.
+
 - **Sorting DateTimes and Decimals, a raising comparator, Int overflow in
   the methods (#636).** `sort`, `sort_by`, `min` and `max` answered `Equal`
   for two DateTimes or two Decimals, so `[d2, d0, d1].sort` kept its input

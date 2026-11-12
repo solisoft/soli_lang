@@ -140,12 +140,33 @@ impl Compiler {
 
             self.compile_expr(&arm.body)?;
 
+            // A binding a closure in the guard or the body captured is closed
+            // as it leaves the stack, as `end_scope` closes a block's locals:
+            // popped plainly, the closure kept an open upvalue to a slot the
+            // next local reused (a wrong value) or that was gone (a panic in
+            // `close_upvalues`). Top of the stack first.
+            let captured: Vec<bool> = self.locals[self.locals.len() - bindings..]
+                .iter()
+                .rev()
+                .map(|local| local.is_captured)
+                .collect();
+            let drop_bindings = |compiler: &mut Self| {
+                for &is_captured in &captured {
+                    compiler.emit(
+                        if is_captured {
+                            Op::CloseUpvalue
+                        } else {
+                            Op::Pop
+                        },
+                        line,
+                    );
+                }
+            };
+
             // Collapse [subject, …bindings, result] down to [result].
             self.emit(Op::SetLocal(subject_slot), line);
             self.emit(Op::Pop, line);
-            for _ in 0..bindings {
-                self.emit(Op::Pop, line);
-            }
+            drop_bindings(self);
             end_jumps.push(self.emit_jump(Op::Jump(0), line));
 
             // Past here is failure. The bindings are not in scope on any of
@@ -158,9 +179,7 @@ impl Compiler {
             let mut converge = Vec::new();
             if let Some(gf) = guard_fail {
                 self.patch_jump(gf);
-                for _ in 0..bindings {
-                    self.emit(Op::Pop, line);
-                }
+                drop_bindings(self);
                 converge.push(self.emit_jump(Op::Jump(0), line));
             }
             for (jump, live) in fails {
