@@ -970,6 +970,28 @@ mod tests {
         assert_eq!(result, "[]");
     }
 
+    /// #633: `||=` (and the other compound assignments) on a name the
+    /// template does not define panicked with "RefCell already borrowed": a
+    /// layout's `<% heading ||= "MyApp" %>` answered 500 on every page that
+    /// did not set `@heading`.
+    #[test]
+    fn compound_assignment_on_an_unset_template_name() {
+        let _guard = crate::interpreter::executor::enter_template_lenient_vars();
+        for (source, expected) in [
+            ("<% heading ||= \"MyApp\" %><%= heading %>", "MyApp"),
+            ("<% n ??= 3 %><% n += 1 %><%= n %>", "4"),
+        ] {
+            let nodes = parse_template(source).unwrap();
+            let result = render_nodes(&nodes, &make_hash(vec![]), None)
+                .unwrap_or_else(|e| panic!("{source}: {e}"));
+            assert_eq!(result, expected, "{source}");
+        }
+        // A set value is kept.
+        let nodes = parse_template("<% heading ||= \"MyApp\" %><%= heading %>").unwrap();
+        let data = make_hash(vec![("heading", Value::String("Posts".into()))]);
+        assert_eq!(render_nodes(&nodes, &data, None).unwrap(), "Posts");
+    }
+
     #[test]
     fn test_render_if_true() {
         let nodes = parse_template("<% if show %>visible<% end %>").unwrap();

@@ -326,6 +326,16 @@
 
 ### Fixed
 
+- **`x ||= v` on a name a template does not define no longer panics
+  (#633).** In the tree-walker's `assign_to_target`, the environment's
+  `borrow_mut()` sat in the `match` scrutinee and lived into the `NotFound`
+  arm, which borrowed again: "RefCell already borrowed" for `||=`, `&&=`,
+  `??=`, `+=`, `x++`… on template data, an inherited `@ivar` or a lenient
+  undefined name. A layout's `<% heading ||= "MyApp" %>` answered 500 on
+  every page that did not set `@heading`. Test:
+  `template::renderer::tests::compound_assignment_on_an_unset_template_name`.
+
+
 - **An empty `else` (or `then`, `unless`) branch inside a `def`, a `for` or a
   block no longer swallows the block's `end`.** `parse_branch_body` consumed
   the `end` of an empty indentation-style branch and its caller then took a

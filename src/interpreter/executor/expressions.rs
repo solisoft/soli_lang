@@ -599,7 +599,11 @@ impl Interpreter {
             ExprKind::Variable(name) => {
                 use crate::interpreter::environment::AssignResult;
                 let value_for_define = value.clone();
-                match self.environment.borrow_mut().assign(name, value) {
+                // Bound first: in the scrutinee the borrow would live through
+                // the arms, and `NotFound` borrows again (#633: "RefCell
+                // already borrowed" on `heading ||= …` in a layout).
+                let assigned = self.environment.borrow_mut().assign(name, value);
+                match assigned {
                     AssignResult::Assigned => Ok(()),
                     AssignResult::IsConst => Err(RuntimeError::type_error(
                         format!("cannot reassign constant '{}'", name),
