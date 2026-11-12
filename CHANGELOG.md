@@ -200,6 +200,18 @@
 
 ### Fixed
 
+- **An empty `else` (or `then`, `unless`) branch inside a `def`, a `for` or a
+  block no longer swallows the block's `end`.** `parse_branch_body` consumed
+  the `end` of an empty indentation-style branch and its caller then took a
+  second one, so `def f(r) / if r / … / else / end / end` failed with
+  "expected end". In a view the same thing broke `soli lint`/`soli check`'s
+  reading of any `<% else %>` followed by markup only. The legacy `if c end
+  else …` form is kept.
+
+## [2.35.1] - 2026-11-12
+
+### Fixed
+
 - **`soli test` loads an app's controllers as `soli serve` does (2.35.0
   regression).** Preloading `app/controllers` into specs (2.35.0) took the
   files in plain path order and without the framework's upload prelude, so
@@ -210,16 +222,7 @@
   parents first (`serve::controller_load_order`, the server's
   `sort_controllers_by_dependency`) after the upload prelude
   (`serve::uploads_prelude_source`, under a synthetic `<uploads-prelude>`
-  path kept out of coverage). Bonfire: 223 of 225 spec files pass again; the
-  two left fail for their own reasons.
-
-- **An empty `else` (or `then`, `unless`) branch inside a `def`, a `for` or a
-  block no longer swallows the block's `end`.** `parse_branch_body` consumed
-  the `end` of an empty indentation-style branch and its caller then took a
-  second one, so `def f(r) / if r / … / else / end / end` failed with
-  "expected end". In a view the same thing broke `soli lint`/`soli check`'s
-  reading of any `<% else %>` followed by markup only. The legacy `if c end
-  else …` form is kept.
+  path kept out of coverage).
 
 ## [2.35.0] - 2026-11-11
 
