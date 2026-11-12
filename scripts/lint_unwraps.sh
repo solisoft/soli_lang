@@ -32,14 +32,19 @@ src/interpreter/builtins/xml/reader.rs|XML binding: Xml.each / Xml.reader stream
 src/interpreter/builtins/xml/query.rs|XML binding: find / find_all / xpath / at_xpath (untrusted expressions)
 "
 
+# `self.expect(&TokenKind::X)` is the parser's own token check: it returns a
+# `ParseResult`, never panics, and is not counted.
+NOT_A_PANIC='self\.expect\(&TokenKind'
+
 count() {
     local path="$1"
     if [ -d "$path" ]; then
         # No match is exit 1, which `pipefail` would turn into an abort.
-        { grep -rE '\.(unwrap|expect)\(' "$path" --include='*.rs' || true; } | wc -l | tr -d ' '
+        { grep -rE '\.(unwrap|expect)\(' "$path" --include='*.rs' || true; } \
+            | { grep -vE "$NOT_A_PANIC" || true; } | wc -l | tr -d ' '
     else
-        # `grep -c` exits 1 when the count is zero; neutralize under `set -e`.
-        { grep -cE '\.(unwrap|expect)\(' "$path" || true; } | tr -d ' '
+        { grep -E '\.(unwrap|expect)\(' "$path" || true; } \
+            | { grep -vE "$NOT_A_PANIC" || true; } | wc -l | tr -d ' '
     fi
 }
 
