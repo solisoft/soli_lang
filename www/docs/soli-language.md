@@ -1674,7 +1674,8 @@ A trailing block (`list.add(item: x) do … end`, `with_cb() do … end`) reache
 the function's or method's `&block` parameter. Without one, it fills the last
 parameter when no argument filled it (`def with_cb(cb)`, `def each_page(size =
 10, cb = nil)` called as `each_page(20) do … end`), and is ignored otherwise:
-`def k(x = 0, y = 0)` called as `k(y: 1) do … end` is `[0, 1]`. A builtin
+`def k(x = 0, y = 0)` called as `k(y: 1) do … end` is `[0, 1]`. Called with
+no block, a `&block` parameter is `nil`. A builtin
 method receives the labels as one trailing options hash, and `method_missing`
 gets them as a hash after the positional arguments.
 

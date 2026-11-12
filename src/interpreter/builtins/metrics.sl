@@ -34,16 +34,8 @@ class Metrics
 
   # Run the block, record how long it took in seconds (a distribution, also
   # when it raises), and answer its value: `Metrics.time("x") do … end`,
-  # `Metrics.time("x", {"step": "pay"}) do … end`. Tags go positionally
-  # here: the VM refuses a labelled call that also carries a block.
-  #
-  # `block` is only ever called, never read bare: on the tree-walker a bare
-  # read of a zero-parameter function runs it. The VM binds an unlabelled
-  # `do` block to `tags` instead of `&block` (and never runs a bare read), so
-  # a function found there is the block.
+  # `Metrics.time("x", tags: {"step": "pay"}) do … end`.
   static def time(name, tags = {}, &block)
-    return Metrics._time_block(name, tags) if __metrics_callable(tags)
-
     started = __metrics_clock()
     result = nil
     try
@@ -53,20 +45,6 @@ class Metrics
       throw error
     end
     __metrics_record("histogram", "d", name, __metrics_clock() - started, tags)
-    result
-  end
-
-  # `time` for a block the VM bound to `tags` (reached on the VM only).
-  static def _time_block(name, block)
-    started = __metrics_clock()
-    result = nil
-    try
-      result = block()
-    catch error
-      __metrics_record("histogram", "d", name, __metrics_clock() - started, {})
-      throw error
-    end
-    __metrics_record("histogram", "d", name, __metrics_clock() - started, {})
     result
   end
 

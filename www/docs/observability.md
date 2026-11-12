@@ -615,7 +615,6 @@ Production logging reuses the same channel buffers as the dev bar (`query`, `htt
 - No auto-instrumentation of every third-party client library — only Soli's own request path, ORM, and `HTTP.*` client.
 - OTLP export covers **traces** and, opt-in, **logs** (`SOLI_OTEL_LOGS=1`) and **metrics** (`SOLI_OTEL_METRICS=1`) — HTTP/JSON only, no gRPC or protobuf. Logs always stay on stdout/stderr too, and Prometheus `/_metrics` keeps working alongside. The last metrics interval before the process exits is not flushed; DogStatsD lines still queued at exit are lost too.
 - Metrics are per process: several processes (or hosts) each expose their own `/_metrics` and send their own series — aggregate in Prometheus or Datadog.
-- `Metrics.time` takes its tags positionally (`Metrics.time("x", {"k": "v"}) do … end`): the bytecode VM refuses a labelled call that also carries a block.
 - Head sampling only (`OTEL_TRACES_SAMPLER`); tail sampling and any sampling UI belong on the collector.
 - Calls made outside Soli's `HTTP.*` client — `Apns`, `Fcm`, S3, webhook deliveries — carry no `traceparent`.
 - Background jobs are traced, but their log lines have no JSON mode, so they carry no `dd` correlation.

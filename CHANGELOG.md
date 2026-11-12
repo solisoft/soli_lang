@@ -372,6 +372,19 @@
 
 ### Fixed
 
+- **A method's block reaches its `&block` on the VM; `&block` is optional
+  (#667).** `Metrics.time("x") do … end` (or any static or instance method
+  declaring `tags = {}, &block`) got the block in `tags` on the VM: a
+  positional call passed it as one more argument. `CallMethod` /
+  `CallMethodById` now bind a user method's trailing block by the
+  `block_parameter` rule (`Vm::call_user_method_with_block`, the fast tier
+  defers to it), and `call_method_named` keeps the block's label, so
+  `Metrics.time("x", tags: {…}) do … end` no longer fails with "expected 2,
+  got 2". A `&block` parameter called with no block is nil on both engines
+  (it was an arity error). `Metrics.time` takes its tags labelled again;
+  its VM-only workaround (`_time_block`, `__metrics_callable`) is gone.
+  Test: `method_blocks_bind_to_the_block_param`.
+
 - **Three calls the VM resolved differently (#638, items 1, 3 and 4).** A
   labelled constructor call on a class an app loads (`Point.new(x: 1)`,
   whose constructor is the tree-walker's) fell back to the interpreter under

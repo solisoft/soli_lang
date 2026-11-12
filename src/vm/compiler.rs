@@ -614,16 +614,8 @@ impl Compiler {
         for param in func.params.iter() {
             compiler.add_local(param.name.clone(), false);
         }
-        compiler.proto.arity = func
-            .params
-            .iter()
-            .filter(|p| p.default_value.is_none())
-            .count() as u8;
-        compiler.proto.defaults = func
-            .params
-            .iter()
-            .filter(|p| p.default_value.is_some())
-            .count() as u8;
+        compiler.proto.arity = func.params.iter().filter(|p| !has_default(p)).count() as u8;
+        compiler.proto.defaults = func.params.iter().filter(|p| has_default(p)).count() as u8;
         compiler.proto.param_names = func.params.iter().map(|p| p.name.clone()).collect();
         compiler.proto.block_param = block_param_index(&func.params);
         compiler.proto.defaults_mask = defaults_mask(&func.params);
@@ -1091,10 +1083,8 @@ impl Compiler {
         for param in params {
             new_compiler.add_local(param.name.clone(), false);
         }
-        new_compiler.proto.arity =
-            params.iter().filter(|p| p.default_value.is_none()).count() as u8;
-        new_compiler.proto.defaults =
-            params.iter().filter(|p| p.default_value.is_some()).count() as u8;
+        new_compiler.proto.arity = params.iter().filter(|p| !has_default(p)).count() as u8;
+        new_compiler.proto.defaults = params.iter().filter(|p| has_default(p)).count() as u8;
         new_compiler.proto.param_names = params.iter().map(|p| p.name.clone()).collect();
         new_compiler.proto.block_param = block_param_index(params);
         new_compiler.proto.defaults_mask = defaults_mask(params);
@@ -1461,11 +1451,18 @@ fn defaults_mask(params: &[Parameter]) -> u64 {
             mask |= !0u64 << 63;
             break;
         }
-        if param.default_value.is_some() {
+        if has_default(param) {
             mask |= 1u64 << i;
         }
     }
     mask
+}
+
+/// Whether a call may leave `param` out: it has a default, or it is the
+/// `&block` parameter, which is nil without a block (#667) — as when a
+/// labelled call passes none.
+fn has_default(param: &Parameter) -> bool {
+    param.default_value.is_some() || param.is_block_param
 }
 
 /// The index of the `&block` parameter, when `params` declares one.

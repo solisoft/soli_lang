@@ -7453,7 +7453,7 @@ development. Under `soli test` samples are kept so a spec can read them back.
 | `Metrics.gauge(name, value, tags: {})` | Set a gauge to its current value. |
 | `Metrics.histogram(name, value, tags: {})` | Record one observation in a histogram (DogStatsD `\|h`). |
 | `Metrics.distribution(name, value, tags: {})` | The same histogram locally; DogStatsD `\|d` (a Datadog distribution). |
-| `Metrics.time(name, tags = {}) do … end` | Run the block, record its duration **in seconds** as a distribution (also when it raises), answer its value. Pass tags positionally here. |
+| `Metrics.time(name, tags = {}) do … end` | Run the block, record its duration **in seconds** as a distribution (also when it raises), answer its value. Tags go positionally or labelled (`tags: {…}`). |
 | `Metrics.value(name, tags = {})` | The current value of one series: a number (counter, gauge), `{"count", "sum", "buckets"}` (histogram), or `nil`. |
 | `Metrics.enabled?` | Whether samples are being stored (a sink is configured, or `soli test`). |
 | `Metrics.reset` | Forget every app metric — tests only (`APP_ENV=test`). |

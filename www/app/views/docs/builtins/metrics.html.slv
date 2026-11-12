@@ -18,7 +18,7 @@ Metrics.histogram(&quot;cart.items&quot;, cart.items.length)</code></pre>
     </section>
     <section id="def-metrics-time" class="mb-16 scroll-mt-20">
         <h2 class="text-2xl font-bold text-white mb-6">Metrics.time(name, tags = {}) do … end</h2>
-        <p class="text-gray-400 mb-4">Runs the block, records its duration <strong class="text-white">in seconds</strong> as a distribution — also when the block raises, which then reaches the caller unchanged — and answers the block's value. Pass the tags positionally here.</p>
+        <p class="text-gray-400 mb-4">Runs the block, records its duration <strong class="text-white">in seconds</strong> as a distribution — also when the block raises, which then reaches the caller unchanged — and answers the block's value. The tags go positionally or labelled (<code>tags: {…}</code>).</p>
         <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
             <pre class="text-sm text-gray-300 overflow-x-auto"><code class="language-soli">total = Metrics.time(&quot;checkout.duration&quot;, {&quot;step&quot;: &quot;charge&quot;}) do
   Payments.charge(order)

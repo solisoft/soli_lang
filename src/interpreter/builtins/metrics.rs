@@ -208,14 +208,7 @@ pub fn register_metrics_natives(env: &mut Environment) {
         let anchor = *ANCHOR.get_or_init(web_time::Instant::now);
         Ok(Value::Float(anchor.elapsed().as_secs_f64()))
     });
-    let callable = NativeFunction::new("__metrics_callable", Some(1), |args| {
-        Ok(Value::Bool(matches!(
-            args[0],
-            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
-        )))
-    });
     for (name, native) in [
-        ("__metrics_callable", callable),
         ("__metrics_record", record),
         ("__metrics_value", value),
         ("__metrics_enabled", enabled),

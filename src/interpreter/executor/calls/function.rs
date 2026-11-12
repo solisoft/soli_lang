@@ -2753,7 +2753,13 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         match callee {
             Value::Function(func) => {
-                let required_arity = func.arity();
+                // A `&block` parameter is nil when no block is passed (#667),
+                // as for a labelled call: it is not required.
+                let block_index = func.params.iter().position(|p| p.is_block_param);
+                let required_arity = func.arity()
+                    - usize::from(
+                        block_index.is_some_and(|i| func.params[i].default_value.is_none()),
+                    );
                 let full_arity = func.full_arity();
 
                 if arguments.len() < required_arity {
@@ -2769,7 +2775,9 @@ impl Interpreter {
                 }
 
                 while arguments.len() < full_arity {
-                    if let Some(default_expr) = func.param_default_value(arguments.len()) {
+                    if block_index == Some(arguments.len()) {
+                        arguments.push(Value::Null);
+                    } else if let Some(default_expr) = func.param_default_value(arguments.len()) {
                         let default_value = self.evaluate(default_expr)?;
                         arguments.push(default_value);
                     } else {

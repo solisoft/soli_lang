@@ -741,7 +741,6 @@ end</code></pre>
         <li>No auto-instrumentation of every third-party client library &mdash; only Soli's own request path, ORM, and <code>HTTP.*</code> client.</li>
         <li>OTLP export covers <strong class="text-white">traces</strong> and, opt-in, <strong class="text-white">logs</strong> (<code>SOLI_OTEL_LOGS=1</code>) and <strong class="text-white">metrics</strong> (<code>SOLI_OTEL_METRICS=1</code>) &mdash; HTTP/JSON only, no gRPC or protobuf. Logs always stay on stdout/stderr too, and Prometheus <code>/_metrics</code> keeps working alongside. The last metrics interval before the process exits is not flushed; DogStatsD lines still queued at exit are lost too.</li>
         <li>Metrics are per process: several processes (or hosts) each expose their own <code>/_metrics</code> and send their own series &mdash; aggregate in Prometheus or Datadog.</li>
-        <li><code>Metrics.time</code> takes its tags positionally (<code>Metrics.time("x", {"k": "v"}) do … end</code>): the bytecode VM refuses a labelled call that also carries a block.</li>
         <li>Head sampling only (<code>OTEL_TRACES_SAMPLER</code>); tail sampling and any sampling UI belong on the collector.</li>
         <li>Calls made outside Soli's <code>HTTP.*</code> client &mdash; <code>Apns</code>, <code>Fcm</code>, S3, webhook deliveries &mdash; carry no <code>traceparent</code>.</li>
         <li>Background jobs are traced, but their log lines have no JSON mode, so they carry no <code>dd</code> correlation.</li>

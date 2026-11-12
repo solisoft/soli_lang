@@ -518,19 +518,6 @@ pub(crate) fn block_parameter(
     (last >= positional && !labelled(last)).then_some(last)
 }
 
-/// `labels` as `CallNamed` carries them: a block's slot is positional.
-pub(crate) fn without_block_label(
-    labels: &[Option<crate::interpreter::value::SoliStr>],
-) -> Vec<Option<crate::interpreter::value::SoliStr>> {
-    labels
-        .iter()
-        .map(|label| match label {
-            Some(name) if name.as_str() == super::chunk::BLOCK_LABEL => None,
-            other => other.clone(),
-        })
-        .collect()
-}
-
 /// How many of the `passed` arguments an iterator hands its block.
 ///
 /// A block binds only the parameters it declares, and the iterator's other
@@ -1145,6 +1132,112 @@ impl Vm {
         Ok((positional, named, block))
     }
 
+    /// `receiver.name(args…) do … end` on an object or a class whose `name`
+    /// is a user method: the trailing block binds by `block_parameter`'s rule
+    /// (`&block`, else the last parameter no argument filled, else dropped),
+    /// as on the tree-walker (#667). The VM used to pass it as one more
+    /// positional argument, so it landed in an optional parameter and `&block`
+    /// got nil. `false` when `name` is no user method: the caller dispatches
+    /// as before.
+    pub(crate) fn call_user_method_with_block(
+        &mut self,
+        receiver_idx: usize,
+        name: &str,
+    ) -> Result<bool, RuntimeError> {
+        if !matches!(
+            &self.stack[receiver_idx],
+            Value::Instance(_) | Value::Class(_)
+        ) {
+            return Ok(false);
+        }
+        let (closure, defining_class) = match self.user_method_target(receiver_idx, name)? {
+            Some((closure, defining_class)) => (closure, Some(defining_class)),
+            // A plain static of a tree-walker class (`Metrics.time`, a
+            // prelude class's), compiled as a function, as
+            // `call_method_slow_path` runs it.
+            None => {
+                let Value::Class(class) = &self.stack[receiver_idx] else {
+                    return Ok(false);
+                };
+                let class = class.clone();
+                match resolve_static_callee(&class, name, false) {
+                    Some(StaticCallee::TreeWalker {
+                        func,
+                        defining,
+                        own,
+                    }) if !func.binds_this && !self.tree_walk_functions && name != "new" => {
+                        let closure = self.compile_plain_static(&func, &defining, name, own)?;
+                        self.stack[receiver_idx] = Value::VmClosure(closure.clone());
+                        (closure, None)
+                    }
+                    _ => return Ok(false),
+                }
+            }
+        };
+        self.check_private_receiver(receiver_idx, name)?;
+        let span = self.current_span();
+        let block = self.pop();
+        let positional = self.stack.split_off(receiver_idx + 1);
+        let (slots, supplied) =
+            bind_method_arguments(&closure.proto, positional, Vec::new(), Some(block), span)?;
+        self.call_closure_with_slots(closure, slots, supplied, defining_class)?;
+        Ok(true)
+    }
+
+    /// The compiled method `receiver.name` runs when it is a user method —
+    /// an instance's (unless a field of that name shadows one not compiled
+    /// yet) or a class's static — with the class that declares it; `None`
+    /// for anything else (a native, `new`, a model scope, a field).
+    pub(crate) fn user_method_target(
+        &mut self,
+        receiver_idx: usize,
+        name: &str,
+    ) -> Result<Option<MethodWithClass>, RuntimeError> {
+        Ok(match &self.stack[receiver_idx] {
+            Value::Instance(inst) => {
+                let class = inst.borrow().class.clone();
+                // As `call_method_slow_path`: a field of that name shadows a
+                // method not compiled yet; otherwise the nearest definition
+                // wins, level by level.
+                if inst.borrow().fields.contains_key(name) {
+                    match class.find_instance_method_level(name) {
+                        Some((InstanceMethodDef::Compiled(closure), defining)) => {
+                            Some((closure, defining))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    self.resolve_instance_method(&class, name)?
+                }
+            }
+            Value::Class(class) => {
+                let class = class.clone();
+                if name == "new"
+                    || (class.is_model_subclass() && Self::is_model_class_scope(&class, name))
+                {
+                    None
+                } else {
+                    // The bytecode static, or a tree-walker one that reads
+                    // `this` compiled as a method, as `call_method_slow_path`
+                    // resolves them; a plain tree-walker static is read and
+                    // called below.
+                    match resolve_static_callee(&class, name, false) {
+                        Some(StaticCallee::Compiled(closure)) => Some((closure, class.clone())),
+                        Some(StaticCallee::TreeWalker { func, defining, .. })
+                            if func.binds_this =>
+                        {
+                            let closure =
+                                self.compile_tree_walking_static(&func, &defining, name)?;
+                            Some((closure, class.clone()))
+                        }
+                        _ => None,
+                    }
+                }
+            }
+            _ => None,
+        })
+    }
+
     /// A method call with labelled arguments (`Op::CallMethodNamed`,
     /// `Op::CallSelfOrGlobalNamed`): the receiver at `receiver_idx`, one
     /// argument slot per entry of `labels` above it.
@@ -1189,49 +1282,7 @@ impl Vm {
             }
         }
 
-        let target: Option<MethodWithClass> = match &self.stack[receiver_idx] {
-            Value::Instance(inst) => {
-                let class = inst.borrow().class.clone();
-                // As `call_method_slow_path`: a field of that name shadows a
-                // method not compiled yet; otherwise the nearest definition
-                // wins, level by level.
-                if inst.borrow().fields.contains_key(name) {
-                    match class.find_instance_method_level(name) {
-                        Some((InstanceMethodDef::Compiled(closure), defining)) => {
-                            Some((closure, defining))
-                        }
-                        _ => None,
-                    }
-                } else {
-                    self.resolve_instance_method(&class, name)?
-                }
-            }
-            Value::Class(class) => {
-                let class = class.clone();
-                if name == "new"
-                    || (class.is_model_subclass() && Self::is_model_class_scope(&class, name))
-                {
-                    None
-                } else {
-                    // The bytecode static, or a tree-walker one that reads
-                    // `this` compiled as a method, as `call_method_slow_path`
-                    // resolves them; a plain tree-walker static is read and
-                    // called below.
-                    match resolve_static_callee(&class, name, false) {
-                        Some(StaticCallee::Compiled(closure)) => Some((closure, class.clone())),
-                        Some(StaticCallee::TreeWalker { func, defining, .. })
-                            if func.binds_this =>
-                        {
-                            let closure =
-                                self.compile_tree_walking_static(&func, &defining, name)?;
-                            Some((closure, class.clone()))
-                        }
-                        _ => None,
-                    }
-                }
-            }
-            _ => None,
-        };
+        let target = self.user_method_target(receiver_idx, name)?;
 
         if let Some((closure, defining_class)) = target {
             let (positional, named, block) = self.take_labelled_arguments(labels, span)?;
@@ -1278,8 +1329,10 @@ impl Vm {
             None => self.op_get_property_member(&object, name, span)?,
         };
         self.stack[receiver_idx] = callee;
-        let labels = without_block_label(labels);
-        self.call_value_named(labels.len(), &labels, span)
+        // The block keeps its label: `call_value_named` binds it to a
+        // function's `&block` (or by `block_parameter`'s rule) and hands any
+        // other callee a plain trailing slot (#667).
+        self.call_value_named(labels.len(), labels, span)
     }
 
     fn call_native(

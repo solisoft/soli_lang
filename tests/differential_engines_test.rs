@@ -642,6 +642,45 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // #667: a trailing block to a static or instance method binds to its
+        // `&block` on the VM too (it landed in the optional `tags`), labelled
+        // arguments with a block included (an arity error there); a `&block`
+        // with no block passed is nil (an arity error on both engines).
+        "method_blocks_bind_to_the_block_param",
+        r##"class Timer
+  static def time(name, tags = {}, &block)
+    r = block()
+    "#{name} #{tags} #{r}"
+  end
+  static def probe(name, tags = {}, &block)
+    block.nil?
+  end
+end
+print(Timer.time("x", tags: {"a": 1}) do
+  42
+end)
+print(Timer.time("y") do
+  7
+end)
+print(Timer.probe("z"))
+print(Metrics.time("checkout", {"step": "pay"}) do
+  21 * 2
+end)
+print(Metrics.time("checkout", tags: {"step": "pay"}) do
+  1
+end)
+print(Metrics.time("x") do
+  5
+end)
+class T2
+  def each(&blk)
+    [1, 2].each { |x| blk(x) }
+    "done"
+  end
+end
+print(T2.new.each do |x| x end)"##,
+    ),
+    (
         // #651: `break` in a block stops the iterator that called it, which
         // answers nil, as in Ruby; a `def` that called the block returns nil.
         // It acted like `next` on both engines (and `map` kept a nil on the

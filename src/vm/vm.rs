@@ -1829,7 +1829,13 @@ impl Vm {
                 // AST-only method, `method_missing`, `send`, omitted
                 // parameters, the depth limit and a refused call go to the
                 // general arm.
-                Op::CallMethod(name_idx, argc, _) | Op::CallMethodById(name_idx, argc, _, _) => {
+                Op::CallMethod(name_idx, argc, block)
+                | Op::CallMethodById(name_idx, argc, _, block) => {
+                    // A trailing block binds by name in the general arm
+                    // (`call_user_method_with_block`), not positionally.
+                    if block {
+                        break Some(op);
+                    }
                     let argc = argc as usize;
                     // SAFETY: as for `Op::Constant`.
                     let name = match unsafe { &*constants.add(name_idx as usize) } {
@@ -2996,6 +3002,9 @@ impl Vm {
                     // SAFETY: name points into the constant pool which is alive for
                     // the entire execution of this frame. We never mutate constants.
                     let name: &str = unsafe { &*name };
+                    if block && self.call_user_method_with_block(receiver_idx, name)? {
+                        continue;
+                    }
 
                     // A method `define_method` gave a primitive type. One load
                     // of the whole mask when none exist (the common case).
@@ -3124,6 +3133,19 @@ impl Vm {
                         let span = self.current_span();
                         let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
                         self.stack[receiver_idx] = resolved;
+                    }
+                    // A user class's own `each` / `map`… with a block binds
+                    // it as its `&block` (`call_user_method_with_block`).
+                    if block
+                        && matches!(
+                            &self.stack[receiver_idx],
+                            Value::Instance(_) | Value::Class(_)
+                        )
+                    {
+                        let name = self.read_string_constant(name_idx);
+                        if self.call_user_method_with_block(receiver_idx, &name)? {
+                            continue;
+                        }
                     }
                     // The id tables below are builtins only; a primitive user
                     // method has to be looked for first, under the same rule
