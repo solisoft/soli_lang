@@ -542,25 +542,33 @@ print("Connected: #{connected.length}")</code></pre>
                 </thead>
                 <tbody>
                     <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>local</code> (default)</td><td class="py-2">no bus; everything stays in the process</td></tr>
-                    <tr><td class="py-2 pr-4"><code>solidb</code></td><td class="py-2">each broadcast is also written to the engine-owned <code>_rt_bus</code> collection, and every <code>soli serve</code> process delivers what the others wrote, read off its changefeed</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>solidb</code></td><td class="py-2">each broadcast is also written to the engine-owned <code>_rt_bus</code> collection, and every <code>soli serve</code> process delivers what the others wrote, read off its changefeed</td></tr>
+                    <tr><td class="py-2 pr-4"><code>solikv</code> (also <code>redis</code>, <code>valkey</code>)</td><td class="py-2">each broadcast is <code>PUBLISH</code>ed on a channel of the SoliKV — or Redis, or Valkey — named by <code>SOLIKV_RESP_HOST</code> / <code>SOLIKV_RESP_PORT</code> / <code>SOLIKV_TOKEN</code>; every <code>soli serve</code> process holds one <code>SUBSCRIBE</code> connection to it. No database needed</td></tr>
                 </tbody>
             </table>
         </div>
         <pre data-filename=".env"><code class="language-bash"># on every instance and on the job worker
-SOLI_REALTIME_BUS=solidb</code></pre>
+SOLI_REALTIME_BUS=solidb
+
+# or, through SoliKV / Redis / Valkey
+SOLI_REALTIME_BUS=solikv
+SOLIKV_RESP_HOST=kv.internal
+SOLIKV_RESP_PORT=6380
+SOLIKV_TOKEN=…</code></pre>
         <p class="text-gray-400 my-4">
             With a bus, <code>broadcast</code>, <code>Model.broadcast</code>, <code>ws_broadcast</code>, <code>ws_broadcast_room</code>,
             <code>sse_broadcast</code> and the handler <code>broadcast</code>, <code>broadcast_room</code> and <code>broadcast_channel</code>
             actions reach every instance. Each call delivers to its own process first, then hands the message to a background publisher
-            and returns — the caller never waits on the database. A process ignores its own messages, and never re-publishes what it received.
+            and returns — the caller never waits on the bus. A process ignores its own messages, and never re-publishes what it received.
         </p>
         <ul class="text-gray-400 text-sm list-disc list-inside space-y-2 mb-6">
             <li><strong class="text-white">Stay home per call:</strong> <code>broadcast(channel, payload, {"local": true})</code> (also on <code>Model.broadcast</code>, <code>ws_broadcast</code>, <code>ws_broadcast_room</code>).</li>
-            <li><strong class="text-white">Fire and forget.</strong> The changefeed drops events for a lagging subscriber and does not cross SoliDB cluster nodes, so a message can be lost — the contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the database.</li>
+            <li><strong class="text-white">Fire and forget.</strong> The changefeed drops events for a lagging subscriber and does not cross SoliDB cluster nodes; a <code>solikv</code> subscriber that is reconnecting misses what was published meanwhile. A message can be lost — the contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the database.</li>
             <li><strong class="text-white">Return values and counts are local.</strong> <code>broadcast</code> returns the SSE subscribers of this process; <code>ws_count</code>, <code>ws_clients</code>, <code>ws_clients_in</code>, <code>ws_send</code> and <code>ws_close</code> see only this process's connections.</li>
             <li><strong class="text-white">Presence is still per process:</strong> <code>track</code> / <code>ws_list_presence</code> see the connections of the instance they run on.</li>
-            <li><strong class="text-white">Every broadcast is a database write.</strong> For a very chatty room, use <code>{"local": true}</code> or pin its clients to one instance.</li>
-            <li>The bus lives in the application's <strong class="text-white">base database</strong> (<code>SOLIDB_DATABASE</code>), even inside a request that called <code>switch_tenant</code>.</li>
+            <li><strong class="text-white">On <code>solidb</code>, every broadcast is a database write.</strong> For a very chatty room, prefer <code>solikv</code>, use <code>{"local": true}</code>, or pin its clients to one instance.</li>
+            <li>The <code>solidb</code> bus lives in the application's <strong class="text-white">base database</strong> (<code>SOLIDB_DATABASE</code>), even inside a request that called <code>switch_tenant</code>.</li>
+            <li>The <code>solikv</code> bus publishes on the channel <code>soli:rt</code>, or on <code>SOLI_REALTIME_CHANNEL</code> when set: two apps sharing one SoliKV must set distinct channels. In a multi-app (vhost) server, every app but the first appends its directory name. Its <code>PUBLISH</code> stays out of the dev bar's KV panel. Each subscriber pings every 15&nbsp;s and reconnects, with backoff, after 45&nbsp;s of silence.</li>
             <li>Messages over 256&nbsp;KB are delivered locally but not published.</li>
             <li><code>soli worker</code> publishes but does not subscribe. A script publishes from a background thread: one that exits right after its <code>broadcast</code> can exit before the message is written.</li>
         </ul>
@@ -571,7 +579,7 @@ SOLI_REALTIME_BUS=solidb</code></pre>
         <p class="text-gray-400 text-sm">
             <code>connected</code> is <code>true</code> while this process's subscription is established; <code>dropped</code> counts messages
             that could not be published (database down, queue full, too large). Any other <code>SOLI_REALTIME_BUS</code> value is reported once
-            at boot and treated as <code>local</code>; a <code>solidb</code> bus on an app whose database is SQL does the same.
+            at boot and treated as <code>local</code>; a <code>solidb</code> bus on an app whose database is SQL does the same — use <code>solikv</code> there.
         </p>
     </section>
 

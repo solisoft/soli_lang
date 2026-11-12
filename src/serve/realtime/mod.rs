@@ -15,6 +15,9 @@
 //! * `solidb` writes each envelope to the engine-owned `_rt_bus` collection
 //!   and reads the others' off its changefeed — the transport `live_update`
 //!   already uses, pinned to the application's base database.
+//! * `solikv` (also `redis`, `valkey`) publishes on a RESP channel of the
+//!   SoliKV the app names with `SOLIKV_RESP_HOST`, and holds one `SUBSCRIBE`
+//!   connection per process.
 //!
 //! **Fire and forget.** The changefeed drops events for a lagging subscriber
 //! and does not cross SoliDB cluster nodes, so a message can be lost — the
@@ -22,6 +25,7 @@
 //! count `broadcast` returns is this process's SSE subscribers.
 
 pub mod solidb;
+pub mod solikv;
 
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::OnceLock;
@@ -48,6 +52,8 @@ pub enum Backend {
     Local,
     /// The `_rt_bus` SoliDB collection and its changefeed.
     Solidb,
+    /// `PUBLISH` / `SUBSCRIBE` on SoliKV, Redis or Valkey.
+    Solikv,
 }
 
 impl Backend {
@@ -55,6 +61,7 @@ impl Backend {
         match self {
             Backend::Local => "local",
             Backend::Solidb => "solidb",
+            Backend::Solikv => "solikv",
         }
     }
 
@@ -63,12 +70,9 @@ impl Backend {
         match value.map(str::trim).unwrap_or("") {
             "" | "local" => Ok(Backend::Local),
             "solidb" => Ok(Backend::Solidb),
-            "solikv" | "redis" => Err(format!(
-                "SOLI_REALTIME_BUS={} is not supported yet (use solidb or local)",
-                value.unwrap_or_default().trim()
-            )),
+            "solikv" | "redis" | "valkey" => Ok(Backend::Solikv),
             other => Err(format!(
-                "SOLI_REALTIME_BUS={other} is not a realtime bus (local, solidb)"
+                "SOLI_REALTIME_BUS={other} is not a realtime bus (local, solidb, solikv)"
             )),
         }
     }
@@ -242,7 +246,10 @@ pub fn publish_for(id: TenantId, target: Target, message: &str) -> bool {
 fn publisher() -> Option<&'static SyncSender<(TenantId, Envelope)>> {
     static QUEUE: OnceLock<Option<SyncSender<(TenantId, Envelope)>>> = OnceLock::new();
     QUEUE
-        .get_or_init(|| spawn_publisher(solidb::publish))
+        .get_or_init(|| match backend() {
+            Backend::Solikv => spawn_publisher(solikv::publish),
+            _ => spawn_publisher(solidb::publish),
+        })
         .as_ref()
 }
 
@@ -342,6 +349,7 @@ pub fn start(runtime_handle: &tokio::runtime::Handle) {
             }
             solidb::start(runtime_handle);
         }
+        Backend::Solikv => solikv::start(runtime_handle),
     }
 }
 
@@ -370,7 +378,8 @@ mod tests {
         assert_eq!(Backend::parse(Some("")), Ok(Backend::Local));
         assert_eq!(Backend::parse(Some("local")), Ok(Backend::Local));
         assert_eq!(Backend::parse(Some(" solidb ")), Ok(Backend::Solidb));
-        assert!(Backend::parse(Some("solikv")).is_err());
+        assert_eq!(Backend::parse(Some("solikv")), Ok(Backend::Solikv));
+        assert_eq!(Backend::parse(Some("redis")), Ok(Backend::Solikv));
         assert!(Backend::parse(Some("kafka")).is_err());
     }
 

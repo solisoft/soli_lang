@@ -64,6 +64,19 @@ pub(crate) fn with_solikv_config<R>(f: impl FnOnce(&SolikvConfig) -> R) -> R {
     SOLIKV_CONFIG.read(f)
 }
 
+/// Where this application's SoliKV answers: host, port and token. The realtime
+/// bus opens its own `SUBSCRIBE` connection there.
+pub(crate) fn resp_endpoint() -> (String, u16, Option<String>) {
+    with_solikv_config(|cfg| (cfg.resp_host.clone(), cfg.resp_port, cfg.auth_token.clone()))
+}
+
+/// A RESP command kept out of the KV log: the realtime bus's `PUBLISH`, which
+/// would otherwise fill the dev bar's KV panel with traffic the page never
+/// made.
+pub(crate) fn resp_cmd_unlogged(args: &[&str]) -> Result<RespValue, String> {
+    RESP_POOL.read(|pool| pool.execute(args))
+}
+
 /// Execute a RESP command and return the raw RespValue.
 pub(crate) fn resp_cmd(args: &[&str]) -> Result<RespValue, String> {
     // Fast path when neither the dev bar nor the prod KV log is collecting:

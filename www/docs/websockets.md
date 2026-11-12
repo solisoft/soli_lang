@@ -278,34 +278,49 @@ standalone `soli worker` — and the other process's clients hear nothing.
 |---|---|
 | `local` (default) | no bus; everything stays in the process |
 | `solidb` | each broadcast is also written to the engine-owned `_rt_bus` collection, and every `soli serve` process delivers what the others wrote, read off its changefeed |
+| `solikv` (also `redis`, `valkey`) | each broadcast is `PUBLISH`ed on a channel of the SoliKV — or Redis, or Valkey — named by `SOLIKV_RESP_HOST` / `SOLIKV_RESP_PORT` / `SOLIKV_TOKEN`; every `soli serve` process holds one `SUBSCRIBE` connection to it. No database needed |
 
 ```bash
 # .env, on every instance and on the job worker
 SOLI_REALTIME_BUS=solidb
+
+# or, through SoliKV / Redis / Valkey
+SOLI_REALTIME_BUS=solikv
+SOLIKV_RESP_HOST=kv.internal
+SOLIKV_RESP_PORT=6380
+SOLIKV_TOKEN=…
 ```
 
 With a bus, `broadcast`, `Model.broadcast`, `ws_broadcast`,
 `ws_broadcast_room`, `sse_broadcast` and the handler `broadcast`,
 `broadcast_room` and `broadcast_channel` actions reach every instance. Each call
 delivers to its own process first, then hands the message to a background
-publisher and returns — the caller never waits on the database. A process
+publisher and returns — the caller never waits on the bus. A process
 ignores its own messages, and never re-publishes what it received.
 
 - **Opt in per call to stay home:** `broadcast(channel, payload, {"local": true})`
   (also on `Model.broadcast`, `ws_broadcast`, `ws_broadcast_room`).
 - **Fire and forget.** The changefeed drops events for a lagging subscriber and
-  does not cross SoliDB cluster nodes, so a message can be lost — the contract
-  of a Phoenix PubSub broadcast. Keep anything that must not be missed in the
+  does not cross SoliDB cluster nodes; a `solikv` subscriber that is
+  reconnecting misses what was published meanwhile. A message can be lost — the
+  contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the
   database, and let the client re-read it.
 - **Return values and counts are local.** `broadcast` returns the SSE
   subscribers *of this process*; `ws_count`, `ws_clients`, `ws_clients_in`,
   `ws_send` and `ws_close` see only this process's connections.
 - **Presence is still per process**: `track` / `ws_list_presence` see the
   connections of the instance they run on.
-- **Every broadcast is a database write.** For a very chatty room, keep the
-  traffic local with `{"local": true}` or pin its clients to one instance.
-- The bus lives in the application's **base database** (`SOLIDB_DATABASE`),
-  even inside a request that called `switch_tenant`.
+- **On `solidb`, every broadcast is a database write.** For a very chatty
+  room, prefer `solikv`, keep the traffic local with `{"local": true}`, or pin
+  its clients to one instance.
+- The `solidb` bus lives in the application's **base database**
+  (`SOLIDB_DATABASE`), even inside a request that called `switch_tenant`.
+- The `solikv` bus publishes on the channel `soli:rt`, or on
+  `SOLI_REALTIME_CHANNEL` when set: two apps sharing one SoliKV must set
+  distinct channels. In a multi-app (vhost) server, every app but the first
+  appends its directory name. Its `PUBLISH` stays out of the dev bar's KV
+  panel. Each subscriber pings every 15 s and reconnects, with backoff, after
+  45 s of silence.
 - Messages over 256 KB are delivered locally but not published.
 - `soli worker` publishes but does not subscribe. A script (`soli app.sl`)
   publishes from a background thread: one that exits right after its
@@ -323,7 +338,7 @@ realtime_bus()
 `dropped` counts messages that could not be published (database down, queue
 full, too large). Any other `SOLI_REALTIME_BUS` value is reported once at boot
 and treated as `local`; a `solidb` bus on an app whose database is SQL does the
-same.
+same — use `solikv` there.
 
 ## Performance
 

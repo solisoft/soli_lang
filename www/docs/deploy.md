@@ -494,7 +494,7 @@ Several `soli serve` processes can share one database behind a load balancer. Wh
 keeps in memory decides what else to set:
 
 - **Realtime.** WebSocket rooms and SSE subscribers live in the process that accepted the
-  connection. Set `SOLI_REALTIME_BUS=solidb` on every instance (and on `soli worker`) so
+  connection. Set `SOLI_REALTIME_BUS=solidb` (or `solikv`, through SoliKV/Redis) on every instance (and on `soli worker`) so
   `broadcast`, `Model.broadcast`, `ws_broadcast*`, `sse_broadcast` and the handler broadcast
   actions reach every instance — see
   [Running more than one instance](websockets.md#running-more-than-one-instance). Presence

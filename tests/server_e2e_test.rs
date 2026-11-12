@@ -2431,7 +2431,58 @@ fn a_realtime_bus_carries_broadcasts_between_two_servers() {
     let _ = ureq::post(&format!("http://{host}/_api/database"))
         .set("Authorization", &auth)
         .send_json(serde_json::json!({ "name": database }));
+    two_servers_share_a_realtime_bus(&[
+        ("SOLIDB_HOST", format!("http://{host}")),
+        ("SOLIDB_DATABASE", database.clone()),
+        ("SOLIDB_USERNAME", user.clone()),
+        ("SOLIDB_PASSWORD", password.clone()),
+        ("SOLI_REALTIME_BUS", "solidb".to_string()),
+    ]);
+    let _ = ureq::delete(&format!("http://{host}/_api/database/{database}"))
+        .set("Authorization", &auth)
+        .call();
+}
 
+/// `SOLIKV_TEST_HOST` (`host:port`) names a SoliKV, Redis or Valkey for the
+/// `solikv` realtime bus test; without it the test skips.
+fn solikv_test_host() -> Option<(String, String)> {
+    match std::env::var("SOLIKV_TEST_HOST") {
+        Ok(host) if !host.is_empty() => {
+            let (name, port) = host.rsplit_once(':').unwrap_or((host.as_str(), "6380"));
+            Some((name.to_string(), port.to_string()))
+        }
+        _ => {
+            eprintln!("skip: SOLIKV_TEST_HOST unset (no SoliKV for the realtime bus)");
+            None
+        }
+    }
+}
+
+/// The same two-server exchange over `SOLI_REALTIME_BUS=solikv`: `PUBLISH` /
+/// `SUBSCRIBE`, no database at all.
+#[test]
+fn a_solikv_realtime_bus_carries_broadcasts_between_two_servers() {
+    let Some((host, port)) = solikv_test_host() else {
+        return;
+    };
+    let mut env = vec![
+        ("SOLIKV_RESP_HOST", host),
+        ("SOLIKV_RESP_PORT", port),
+        ("SOLI_REALTIME_BUS", "solikv".to_string()),
+        (
+            "SOLI_REALTIME_CHANNEL",
+            format!("soli:rt:test:{}", std::process::id()),
+        ),
+    ];
+    if let Ok(token) = std::env::var("SOLIKV_TEST_TOKEN") {
+        env.push(("SOLIKV_TOKEN", token));
+    }
+    two_servers_share_a_realtime_bus(&env);
+}
+
+/// Boot two copies of one app on `bus_env`, wait for both to subscribe, and
+/// check that broadcasts cross between them.
+fn two_servers_share_a_realtime_bus(bus_env: &[(&str, String)]) {
     let files: &[(&str, &str)] = &[
         (
             "config/routes.sl",
@@ -2488,15 +2539,8 @@ end
 ",
         ),
     ];
-    let env = [
-        ("SOLIDB_HOST", format!("http://{host}")),
-        ("SOLIDB_DATABASE", database.clone()),
-        ("SOLIDB_USERNAME", user.clone()),
-        ("SOLIDB_PASSWORD", password.clone()),
-        ("SOLI_REALTIME_BUS", "solidb".to_string()),
-        ("SOLI_FAIL_ON_VM_DEMOTION", "1".to_string()),
-    ];
-    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let mut env: Vec<(&str, &str)> = bus_env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    env.push(("SOLI_FAIL_ON_VM_DEMOTION", "1"));
     let app_a = tempfile::tempdir().expect("temp app dir");
     let app_b = tempfile::tempdir().expect("temp app dir");
     let server_a = serve_app_in(app_a.path(), files, &env);
@@ -2573,7 +2617,4 @@ end
     assert!(received >= 3, "B received {counts}");
 
     drop((on_a, on_b, server_a, server_b));
-    let _ = ureq::delete(&format!("http://{host}/_api/database/{database}"))
-        .set("Authorization", &auth)
-        .call();
 }

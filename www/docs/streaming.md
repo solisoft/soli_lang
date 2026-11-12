@@ -143,13 +143,13 @@ re-renders itself on writes, prefer [reactive live queries](liveview.md).
 ### Across instances
 
 Subscribers live in the process that accepted them. With more than one `soli serve` instance,
-set `SOLI_REALTIME_BUS=solidb` and `broadcast`, `Model.broadcast` and `sse_broadcast` reach the
+set `SOLI_REALTIME_BUS=solidb` (or `solikv`) and `broadcast`, `Model.broadcast` and `sse_broadcast` reach the
 subscribers of every instance (and a job in `soli worker` reaches them too) — see
 [Running more than one instance](websockets.md#running-more-than-one-instance). The count they
 return stays this process's, and so does `sse_subscribers`. `broadcast(channel, payload,
 {"local": true})` keeps one message home. `HTTP.stream_to` topics are not carried by the bus:
-a stream belongs to the request that started it, and its token rate would make every delta a
-database write.
+a stream belongs to the request that started it, and its token rate would put every delta
+on the bus.
 
 ## When to use what
 

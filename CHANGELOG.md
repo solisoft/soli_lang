@@ -4,6 +4,22 @@
 
 ### Added
 
+- **A SoliKV / Redis realtime bus (#695, phase 2).**
+  `SOLI_REALTIME_BUS=solikv` (aliases `redis`, `valkey`) carries every
+  broadcast the `solidb` bus carries over RESP `PUBLISH` / `SUBSCRIBE`, on the
+  SoliKV named by `SOLIKV_RESP_HOST` / `SOLIKV_RESP_PORT` / `SOLIKV_TOKEN`.
+  Publishing goes through the app's RESP pool on the publisher thread, kept
+  out of the KV log (`solikv::resp_cmd_unlogged`), and is retried once when a
+  pooled connection to a restarted server fails its read. Each `soli serve`
+  holds one async `SUBSCRIBE` connection (`serve::realtime::solikv`, new
+  incremental RESP2 decoder that refuses nested arrays and oversized bulks),
+  pings every 15 s, reconnects after 45 s of silence with backoff, and logs
+  an outage once. Channel: `SOLI_REALTIME_CHANNEL` or `soli:rt`, plus the
+  app directory name for every vhost app but the first. Verified by hand
+  with two servers, AUTH, a wrong token and a SoliKV restart; new e2e
+  `a_solikv_realtime_bus_carries_broadcasts_between_two_servers` (runs when
+  `SOLIKV_TEST_HOST` is set).
+
 - **Code frames point at the declaration too (#694, phase 4).** A wrong
   argument count to a `def` and an unknown member of a class draw a second
   label, `::: file:L:C` / `--- declared here`, at the declaration when it is
