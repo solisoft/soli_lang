@@ -6,18 +6,28 @@ use crate::interpreter::Interpreter;
 use super::RequestData;
 
 /// Helper function to render error page with full details.
+///
+/// `error_type` is the error's class (`NameError`, `ZeroDivisionError`), and
+/// `code` its stable code (`E0301`), when the failure was a `RuntimeError`;
+/// a handler that failed with only a string gives neither.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_error_page(
     error_msg: &str,
     interpreter: &Interpreter,
     request_data: &RequestData,
     stack_trace: &[String],
     breakpoint_env_json: Option<&str>,
+    error_type: Option<&str>,
+    code: Option<&str>,
 ) -> String {
-    let error_type = if breakpoint_env_json.is_some() {
+    // The caller's class wins: `handler_failure` hands every failure its
+    // captured environment, so an environment alone does not make a
+    // breakpoint (the header said "Breakpoint" for every handler error).
+    let error_type = error_type.unwrap_or(if breakpoint_env_json.is_some() {
         "Breakpoint"
     } else {
         "RuntimeError"
-    };
+    });
 
     let captured_env = if let Some(env) = breakpoint_env_json {
         env.to_string()
@@ -42,6 +52,7 @@ pub(super) fn render_error_page(
 
     let span_info = extract_span_from_error(&actual_error);
     let error_line = span_info.line;
+    let error_column = span_info.column;
     // Prefer the deepest stack frame's file: when an error happens inside
     // a callee, the error span's line belongs to that callee, not to the
     // outermost (controller) frame. Picking the first frame would yield a
@@ -185,6 +196,8 @@ pub(super) fn render_error_page(
     render_dev_error_page(
         &actual_error,
         error_type,
+        code,
+        (&error_file, error_line, error_column),
         &location,
         &full_stack_trace,
         &request_data_json,
@@ -329,6 +342,8 @@ fn extract_file_from_frame(frame: &str) -> Option<String> {
 pub(super) fn render_dev_error_page(
     error: &str,
     error_type: &str,
+    code: Option<&str>,
+    (error_file, error_line, error_column): (&str, usize, usize),
     location: &str,
     stack_trace: &[String],
     request_data_json: &str,
@@ -339,6 +354,13 @@ pub(super) fn render_dev_error_page(
     let error_message = escape_html(error);
     let error_type = escape_html(error_type);
     let error_location = escape_html(location);
+    let code_block = code_explanation_html(code);
+    let error_at_js = serde_json::json!({
+        "file": error_file,
+        "line": error_line,
+        "column": error_column,
+    })
+    .to_string();
     let mut stack_frames = Vec::new();
     let mut frame_index = 0;
 
@@ -513,6 +535,7 @@ pub(super) fn render_dev_error_page(
             </div>
             <h1 class="text-3xl font-bold text-white mb-2">{error_message}</h1>
             <p class="text-gray-400">{error_location}</p>
+            {code_block}
         </div>
         <div class="mb-8 rounded-xl bg-gray-900 border border-white/10 overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-white/10">
@@ -634,6 +657,10 @@ pub(super) fn render_dev_error_page(
         const currentRequestData = {request_data_json};
         const breakpointEnv = {breakpoint_env_js};
         const devReplToken = {dev_repl_token_js};
+        // Where the error is: the source viewer draws a caret under its
+        // column when it shows that line of that file.
+        const errorAt = {error_at_js};
+        let currentFile = null;
         function showRequestTab(tabName) {{
             document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.request-tab').forEach(el => el.classList.remove('active'));
@@ -643,6 +670,7 @@ pub(super) fn render_dev_error_page(
         async function showSource(file, line, element) {{
             document.querySelectorAll('.stack-frame').forEach(el => el.classList.remove('active'));
             element.classList.add('active');
+            currentFile = file;
             document.getElementById('source-file').textContent = file + ':' + line;
             document.getElementById('source-line').textContent = 'Line ' + line;
             const cacheKey = file + ':' + line;
@@ -670,6 +698,10 @@ pub(super) fn render_dev_error_page(
             if (!text) return '';
             return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }}
+        function isErrorFile(file) {{
+            if (!file || !errorAt.file || errorAt.file === 'unknown') return false;
+            return file === errorAt.file || file.endsWith('/' + errorAt.file) || errorAt.file.endsWith('/' + file);
+        }}
         function displaySource(data, highlightLine) {{
             let html = '';
             const start = Math.max(1, data.line - 5);
@@ -681,6 +713,12 @@ pub(super) fn render_dev_error_page(
                 const bgClass = isErrorLine ? 'bg-red-500/10' : '';
                 const escapedLine = escapeHtml(data.lines[i] || '');
                 html += '<tr class="' + bgClass + '"><td class="text-gray-600 select-none pr-2">' + lineNum + '</td><td class="' + lineClass + '"><pre style="margin:0;white-space:pre-wrap;">' + escapedLine + '</pre></td></tr>';
+                if (isErrorLine && isErrorFile(currentFile) && i === errorAt.line && errorAt.column > 1) {{
+                    // The caret under the column: the line's own leading
+                    // characters are kept (tabs stay tabs) so it lines up.
+                    const lead = (data.lines[i] || '').slice(0, errorAt.column - 1).replace(/[^\t]/g, ' ');
+                    html += '<tr class="bg-red-500/10"><td class="select-none pr-2"></td><td class="text-red-400"><pre style="margin:0;white-space:pre;" data-error-caret>' + lead + '^</pre></td></tr>';
+                }}
             }}
             document.getElementById('source-code').innerHTML = '<table class="w-full">' + html + '</table>';
         }}
@@ -841,6 +879,8 @@ pub(super) fn render_dev_error_page(
         error_type = error_type,
         error_message = error_message,
         error_location = error_location,
+        code_block = code_block,
+        error_at_js = escape_for_script_tag(&error_at_js),
         stack_frames = stack_frames.join("\n"),
         request_data_json = escape_for_script_tag(request_data_json),
         breakpoint_env_js = escape_for_script_tag(breakpoint_env_json.unwrap_or("null")),
@@ -849,6 +889,29 @@ pub(super) fn render_dev_error_page(
         request_method = escape_html(&request_method),
         request_path = escape_html(&request_path),
         request_time = request_time,
+    )
+}
+
+/// The stable code of the error, its title and its explanation, for the
+/// dev page's header: `error[E0301] undefined-variable — …`, the `soli
+/// explain` command, and the explanation behind a disclosure. Empty without a
+/// registered code.
+fn code_explanation_html(code: Option<&str>) -> String {
+    let Some(entry) = code.and_then(crate::error::codes::by_code) else {
+        return String::new();
+    };
+    format!(
+        r#"<div class="mt-3 text-sm text-gray-400" data-error-code="{code}">
+                <span class="font-mono text-red-300">error[{code}]</span>
+                <span class="font-mono text-gray-300">{name}</span> &mdash; {title}
+                &middot; <code class="font-mono text-indigo-300">soli explain {code}</code>
+                <details class="mt-2"><summary class="cursor-pointer text-gray-500 hover:text-gray-300">What this means</summary>
+                <pre class="mt-2 p-3 rounded-lg bg-gray-900 border border-white/10 text-gray-300 whitespace-pre-wrap">{explanation}</pre></details>
+            </div>"#,
+        code = escape_html(entry.code),
+        name = escape_html(entry.name),
+        title = escape_html(entry.title),
+        explanation = escape_html(entry.explanation),
     )
 }
 
@@ -1232,6 +1295,46 @@ mod tests {
     // broken, and live reload never sees their 500 (the navigation entry is the
     // page they were swapped into), so a fix left them on screen. The meta
     // makes nav.js load them with a real navigation.
+    /// #694: the dev page names the error's class and stable code, shows
+    /// the explanation, and hands the source viewer the column to mark.
+    #[test]
+    fn the_dev_page_shows_the_class_the_code_and_the_column() {
+        let dev = render_dev_error_page(
+            "Undefined variable 'titel' (did you mean 'title'?) at 3:5",
+            "NameError",
+            Some("E0301"),
+            ("app/controllers/posts_controller.sl", 3, 5),
+            "app/controllers/posts_controller.sl:3",
+            &[],
+            "{}",
+            None,
+            &HashMap::new(),
+            true,
+        );
+        assert!(dev.contains(">NameError</div>"), "class badge");
+        assert!(dev.contains("error[E0301]"), "code");
+        assert!(dev.contains("undefined-variable"), "code name");
+        assert!(dev.contains("soli explain E0301"), "explain command");
+        assert!(dev.contains("What this means"), "explanation");
+        assert!(dev.contains(r#""column":5"#), "caret column");
+        assert!(dev.contains("data-error-caret"), "caret row");
+
+        // Without a code (a string error) there is no code block.
+        let plain = render_dev_error_page(
+            "boom",
+            "RuntimeError",
+            None,
+            ("unknown", 1, 1),
+            "unknown:1",
+            &[],
+            "{}",
+            None,
+            &HashMap::new(),
+            true,
+        );
+        assert!(!plain.contains("data-error-code"));
+    }
+
     #[test]
     fn built_in_error_pages_opt_out_of_instant_navigation() {
         let opt_out = r#"<meta name="soli-nav" content="off">"#;
@@ -1240,6 +1343,8 @@ mod tests {
         let dev = render_dev_error_page(
             "boom",
             "Error",
+            None,
+            ("app/controllers/posts_controller.sl", 3, 1),
             "app/controllers/posts_controller.sl:3",
             &[],
             "{}",

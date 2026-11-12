@@ -548,8 +548,15 @@ pub(crate) fn run(
                         Some(&env_json),
                         None,
                     );
-                    let error_html =
-                        error_pages::render_error_page(&err, interpreter, data, &stack_trace, None);
+                    let error_html = error_pages::render_error_page(
+                        &err,
+                        interpreter,
+                        data,
+                        &stack_trace,
+                        None,
+                        None,
+                        None,
+                    );
                     return Step::Halt(ResponseData {
                         status: 500,
                         headers: vec![(
@@ -608,6 +615,8 @@ pub(crate) fn run(
                     data,
                     &stack_trace,
                     breakpoint_env,
+                    Some(&e.exception_type()),
+                    e.code(),
                 );
                 return Step::Halt(ResponseData {
                     status: if e.is_breakpoint() { 200 } else { 500 },

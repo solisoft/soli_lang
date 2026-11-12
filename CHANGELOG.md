@@ -4,6 +4,15 @@
 
 ### Added
 
+- **The dev error page names the error (#694, phase 2).** Its header shows
+  the error's class (`NameError`, `ZeroDivisionError`) instead of always
+  `RuntimeError`, and its stable code — `error[E0301] undefined-variable`,
+  the `soli explain E0301` command and the explanation behind a disclosure
+  (`handler_failure` and the middleware path pass `RuntimeError::code`). The
+  source viewer draws a caret under the error's column. Fixed on the way:
+  every handler error was labelled "Breakpoint", because the page inferred a
+  breakpoint from the captured environment it is always given.
+
 - **`soli check` reads the views (#693).** Every `.slv` under the targets
   (`--no-views` skips them; a view named outright is always checked):
   `check::check_view` checks the code of its tags as one program

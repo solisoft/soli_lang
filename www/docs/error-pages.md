@@ -8,7 +8,12 @@ Soli provides a comprehensive error handling system that displays detailed error
 
 When running in development mode, Soli displays detailed error pages that include:
 
-- Full stack traces with source code context
+- The error's class in the header (`NameError`, `ZeroDivisionError`,
+  `Breakpoint` for a `debug()` pause) and, when it has one, its stable code:
+  `error[E0301] undefined-variable`, the `soli explain E0301` command, and
+  the explanation behind "What this means" (see [Error codes](error-codes.md))
+- Full stack traces with source code context, a caret under the error's
+  column on its line
 - Interactive REPL for inspecting request state
 - Request details (params, query, body, headers, session)
 - Quick inspection buttons for common data

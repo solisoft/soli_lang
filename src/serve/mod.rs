@@ -5368,6 +5368,7 @@ fn call_handler(
                                 &request_id,
                                 false,
                                 Some(&err.exception_type()),
+                                err.code(),
                             );
                         }
                     }
@@ -5436,6 +5437,7 @@ fn call_handler(
                         &request_id,
                         e.is_breakpoint(),
                         Some(&e.exception_type()),
+                        e.code(),
                     )
                 }
             }
@@ -5458,6 +5460,7 @@ fn call_handler(
                 // `e` is the `String` `resolve_handler` returns; a breakpoint
                 // cannot arrive through it.
                 false,
+                None,
                 None,
             )
         }
@@ -5587,6 +5590,7 @@ fn call_oop_controller_action(
                 // breakpoint cannot arrive through it.
                 false,
                 None,
+                None,
             ));
         }
     };
@@ -5703,6 +5707,7 @@ fn call_oop_controller_action(
                     &request_id,
                     e.is_breakpoint(),
                     Some(&e.exception_type()),
+                    e.code(),
                 )
             }
         }
