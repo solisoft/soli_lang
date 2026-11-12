@@ -313,6 +313,8 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Nop => out.push_str("NOP"),
         Op::AutoInvoke => out.push_str("AUTO_INVOKE"),
         Op::CoverLine(line) => out.push_str(&format!("COVER_LINE {line}")),
+        Op::DebugStmt(line) => out.push_str(&format!("DEBUG_STMT {line}")),
+        Op::DebugBreak => out.push_str("DEBUG_BREAK"),
         Op::PopIter => out.push_str("POP_ITER"),
         Op::PopRangeComprehension(slot) => {
             out.push_str(&format!("POP_RANGE_COMPREHENSION {:>3}", slot))

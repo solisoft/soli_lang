@@ -148,7 +148,8 @@ end</code></pre>
             <li><strong class="text-white"><code>debug()</code> is a breakpoint</strong> while a debugger is attached: the program stops there and resumes after it.</li>
             <li>What the program prints arrives in the editor&rsquo;s debug console.</li>
         </ul>
-        <p class="text-gray-400 mb-4">The launch configuration takes <code class="text-cyan-400">program</code> (required), <code class="text-cyan-400">cwd</code>, <code class="text-cyan-400">stopOnEntry</code> and <code class="text-cyan-400">mode</code>:</p>
+        <p class="text-gray-400 mb-4">The launch configuration takes <code class="text-cyan-400">program</code> (required), <code class="text-cyan-400">cwd</code>, <code class="text-cyan-400">stopOnEntry</code>, <code class="text-cyan-400">engine</code> and <code class="text-cyan-400">mode</code>. <code class="text-cyan-400">engine</code> is <code class="text-cyan-400">"tree"</code> (the default) or <code class="text-cyan-400">"vm"</code>: the VM stops on the same statements, compiling stop markers and slot names in while a debugger is attached. Two differences there: <code class="text-cyan-400">evaluate</code> reads the frame but an assignment does not reach the program, and a script&rsquo;s top-level variables are locals of its <code>&lt;main&gt;</code> frame (the VM keeps them in slots), not globals.</p>
+        <p class="text-gray-400 mb-4"><code class="text-cyan-400">mode</code>:</p>
         <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
             <li><code class="text-cyan-400">"script"</code> (the default): <code>program</code> is a <code>.sl</code> script.</li>
             <li><code class="text-cyan-400">"test"</code>: <code>program</code> is a spec file or directory, run by <code>soli test</code> with one worker and no coverage; <code class="text-cyan-400">filter</code> narrows it like <code>--filter</code>. The debugger stops in the spec and in whatever it calls in-process (models, services, helpers); a request a spec sends goes to the test server, a separate process the debugger does not reach. The session&rsquo;s exit code is the runner&rsquo;s: <code>1</code> when a spec fails.</li>
@@ -180,7 +181,7 @@ args = { program = "{0}" }</code></pre>
             <p class="text-gray-300 text-sm leading-relaxed mb-2"><strong class="text-white">For now:</strong></p>
             <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
                 <li>It runs scripts and specs. Attaching to <code>soli serve</code> comes next.</li>
-                <li>The program runs on the tree-walker, without native kernels, whatever engine <code>soli script.sl</code> would pick: that is the engine a debugger can stop.</li>
+                <li>Native kernels (typed functions compiled to machine code) are off while debugging: no debugger stops inside machine code. Specs run on the tree-walker.</li>
                 <li>An outer frame&rsquo;s Locals are as they were at its last statement, the call it is waiting on.</li>
                 <li>No conditional breakpoints or logpoints yet, and the VS Code extension does not declare the debugger yet: use an editor above, or any DAP client.</li>
                 <li>On Windows the program&rsquo;s output is not captured, and can disturb the protocol.</li>

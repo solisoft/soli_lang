@@ -4,6 +4,21 @@
 
 ### Added
 
+- **The step debugger stops the VM too (#697).** `launch` takes `"engine":
+  "vm"`. While a debugger is attached (and only on the thread it stops),
+  the compiler emits `Op::DebugStmt(line)` at each statement — function
+  tails included — kept apart from `Op::CoverLine`, which also marks
+  expression continuation lines, `Op::DebugBreak` for a statement
+  `debug()` (otherwise still refused on the VM), and a slot-name table
+  (`Chunk::debug_locals`: slot, name, live ip range; remapped by
+  `compact_nops`). When the VM stops it reads each frame off its stack
+  (`vm_debugger.rs`); stack, scopes and variables are shared with the
+  tree-walker (`debugger::{stack_trace, scopes, variables}`, the `Paused`
+  trait), and `evaluate` on a VM frame runs on a scratch tree-walker given
+  the frame's slots and the globals (read-only). The compiled-module cache
+  key now includes the marker mode (coverage, debugger). `dap_test` runs the
+  same scenario on both engines: identical stops, stack and locals.
+
 - **Specs under the step debugger (#697).** `soli dap`'s `launch` takes
   `"mode": "test"` (and `filter`): `program` is a spec file or directory,
   run by `soli test` with one worker and no coverage; the worker thread is

@@ -4677,6 +4677,19 @@ impl Vm {
                     }
                 }
 
+                // The step debugger's stop points (compiled in only with a
+                // debugger attached; see `Op::DebugStmt`).
+                Op::DebugStmt(line) => {
+                    if crate::debug::active() && crate::debug::is_debuggee() {
+                        self.debugger_statement(line);
+                    }
+                }
+                Op::DebugBreak => {
+                    if crate::debug::active() && crate::debug::is_debuggee() {
+                        self.debugger_break();
+                    }
+                }
+
                 // Imports are resolved before VM execution; the opcode is a
                 // no-op marker at runtime.
                 Op::Import(_) => {}

@@ -20,7 +20,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// What the engine runs while paused.
-pub type InspectFn = Box<dyn FnOnce(&mut crate::interpreter::executor::Interpreter) + Send>;
+pub type InspectFn =
+    Box<dyn FnOnce(&mut dyn crate::interpreter::executor::debugger::Paused) + Send>;
 
 /// Sent by the adapter to a stopped engine.
 pub enum Command {

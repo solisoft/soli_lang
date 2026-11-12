@@ -429,6 +429,16 @@ pub enum Op {
     /// the VM was never counted: once every action ran there (2.6.2), a suite
     /// that covered 97% of an app reported 63%.
     CoverLine(u32),
+    /// A statement begins on this line: the step debugger's stop point.
+    /// Emitted at the start of each statement ONLY when a debugging session
+    /// was open at compile time (`soli dap`), so nothing else pays for it.
+    /// Kept apart from `CoverLine`, which also marks the continuation lines
+    /// of a multi-line expression: a debugger stops on statements, as the
+    /// tree-walker does.
+    DebugStmt(u32),
+    /// `debug()` as a statement, compiled only with a debugger attached: the
+    /// program stops here (a breakpoint in the source).
+    DebugBreak,
     /// Combined property access + call: receiver is below args, method name from constant.
     /// Avoids allocating Value::Method intermediary.
     /// Fields: (name_constant_idx, argc, block). `block` is true when the

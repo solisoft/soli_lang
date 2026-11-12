@@ -153,6 +153,20 @@ pub struct Chunk {
     /// (`Compiler::check_jump_offsets`), so the code runs on the tree-walker
     /// instead of jumping to a truncated target.
     pub offset_overflow: bool,
+    /// The step debugger's names for the stack slots: which local a slot
+    /// holds over which instructions. Recorded only when a debugging
+    /// session was open at compile time; `compact_nops` remaps the ranges.
+    pub debug_locals: Vec<DebugLocal>,
+}
+
+/// One local's slot and the instructions it is live over, `start..end`
+/// (`end` is `u32::MAX` while the compiler never saw it go).
+#[derive(Debug, Clone)]
+pub struct DebugLocal {
+    pub slot: u16,
+    pub name: std::sync::Arc<str>,
+    pub start: u32,
+    pub end: u32,
 }
 
 /// The longest forward or backward distance a branch operand may hold.
@@ -171,6 +185,7 @@ impl Chunk {
             columns: Vec::new(),
             constants: Vec::new(),
             offset_overflow: false,
+            debug_locals: Vec::new(),
         }
     }
 

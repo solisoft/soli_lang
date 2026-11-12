@@ -20,13 +20,29 @@ use crate::debug::session::{self, Command, Event, Location, StepMode};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::Value;
 
+/// Where a frame's variables come from.
+#[derive(Clone)]
+pub(crate) enum FrameScope {
+    /// The tree-walker's live scope chain.
+    Env(Rc<RefCell<Environment>>),
+    /// The VM's slots, read when the program stopped.
+    Values(Vec<(String, Value)>),
+}
+
 /// What one frame of the paused program looked like at its last statement.
 #[derive(Clone)]
-struct FrameState {
-    name: String,
-    file: String,
-    line: u32,
-    env: Rc<RefCell<Environment>>,
+pub(crate) struct FrameState {
+    pub name: String,
+    pub file: String,
+    pub line: u32,
+    pub scope: FrameScope,
+}
+
+/// The engine-specific part of a paused program: running code in it.
+/// Everything else (stack, scopes, variables) reads the recorded frames.
+pub trait Paused {
+    /// DAP `evaluate` in the frame at `depth` (the innermost when `None`).
+    fn evaluate(&mut self, source: &str, depth: Option<usize>) -> Result<Json, String>;
 }
 
 /// Something the adapter can expand.
@@ -38,6 +54,8 @@ enum Handle {
         env: Rc<RefCell<Environment>>,
         locals: bool,
     },
+    /// A fixed list of bindings (a VM frame's slots, the VM's globals).
+    List(Vec<(String, Value)>),
     Value(Value),
 }
 
@@ -52,6 +70,9 @@ struct DebuggerState {
     builtins: Option<HashSet<String>>,
     /// Set while `evaluate` runs code, so it never stops inside itself.
     evaluating: bool,
+    /// The VM's globals when it stopped (the tree-walker reads its global
+    /// scope instead).
+    vm_globals: Option<Vec<(String, Value)>>,
 }
 
 thread_local! {
@@ -63,6 +84,7 @@ thread_local! {
             handles: Vec::new(),
             builtins: None,
             evaluating: false,
+            vm_globals: None,
         })
     };
 }
@@ -132,7 +154,7 @@ impl Interpreter {
                 name,
                 file,
                 line,
-                env: self.environment.clone(),
+                scope: FrameScope::Env(self.environment.clone()),
             };
             if state.frames.len() == depth + 1 {
                 state.frames[depth] = frame;
@@ -171,33 +193,211 @@ impl Interpreter {
         self.debugger_pause("breakpoint", description);
     }
 
-    /// Stopped: tell the adapter, then serve its commands until one resumes.
     fn debugger_pause(&mut self, reason: &'static str, description: String) {
-        session::send(Event::Stopped {
-            reason,
-            description,
-        });
         let depth = self.call_stack.len();
-        let mode = loop {
-            match session::next_command() {
-                None | Some(Command::Continue) => break StepMode::Run,
-                Some(Command::Next) => break StepMode::Over(depth),
-                Some(Command::StepIn) => break StepMode::In,
-                Some(Command::StepOut) => break StepMode::Out(depth),
-                Some(Command::Inspect(inspect)) => inspect(self),
-            }
-        };
-        STATE.with(|state| {
-            let mut state = state.borrow_mut();
-            state.mode = mode;
-            state.handles.clear();
-        });
+        serve_pause(self, depth, reason, description);
     }
 
-    // -- inspection, run inside `Command::Inspect` --------------------------
+    /// DAP `evaluate` in the frame at `depth` (the innermost when `None`):
+    /// the source runs with that frame's scope, and its last expression's
+    /// value is the result. It can assign: that is how a variable is changed
+    /// from the debug console.
+    pub fn debugger_evaluate(
+        &mut self,
+        source: &str,
+        depth: Option<usize>,
+    ) -> Result<Json, String> {
+        let env = STATE.with(|state| {
+            let state = state.borrow();
+            let frame = match depth {
+                Some(depth) => state.frames.get(depth),
+                None => state.frames.last(),
+            };
+            match frame.map(|f| &f.scope) {
+                Some(FrameScope::Env(env)) => Some(env.clone()),
+                _ => None,
+            }
+        });
+        let env = env.unwrap_or_else(|| self.environment.clone());
+        let value = run_source(self, env, source)?;
+        Ok(describe_result(&value))
+    }
+}
 
-    /// DAP `stackTrace`: innermost first; a frame's id is its depth.
-    pub fn debugger_stack_trace(&self) -> Json {
+impl Paused for Interpreter {
+    fn evaluate(&mut self, source: &str, depth: Option<usize>) -> Result<Json, String> {
+        self.debugger_evaluate(source, depth)
+    }
+}
+
+/// Stopped: tell the adapter, then serve its commands until one resumes.
+/// `depth` is the stopped frame's, for step over and step out.
+fn serve_pause(target: &mut dyn Paused, depth: usize, reason: &'static str, description: String) {
+    session::send(Event::Stopped {
+        reason,
+        description,
+    });
+    let mode = loop {
+        match session::next_command() {
+            None | Some(Command::Continue) => break StepMode::Run,
+            Some(Command::Next) => break StepMode::Over(depth),
+            Some(Command::StepIn) => break StepMode::In,
+            Some(Command::StepOut) => break StepMode::Out(depth),
+            Some(Command::Inspect(inspect)) => inspect(target),
+        }
+    };
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.mode = mode;
+        state.handles.clear();
+    });
+}
+
+/// Run `source` in `env` on `interpreter`, without stopping inside it; the
+/// value of its last statement.
+fn run_source(
+    interpreter: &mut Interpreter,
+    env: Rc<RefCell<Environment>>,
+    source: &str,
+) -> Result<Value, String> {
+    let tokens = crate::lexer::Scanner::new(source)
+        .scan_tokens()
+        .map_err(|e| e.to_string())?;
+    let program = crate::parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| e.to_string())?;
+    let saved = std::mem::replace(&mut interpreter.environment, env);
+    STATE.with(|state| state.borrow_mut().evaluating = true);
+    let mut result = Ok(Value::Null);
+    for stmt in &program.statements {
+        match interpreter.execute(stmt) {
+            Ok(ControlFlow::Normal(value)) | Ok(ControlFlow::Return(value)) => result = Ok(value),
+            Ok(ControlFlow::Throw(value)) => {
+                result = Err(format!("{}", value));
+                break;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                result = Err(e.to_string());
+                break;
+            }
+        }
+    }
+    STATE.with(|state| state.borrow_mut().evaluating = false);
+    interpreter.environment = saved;
+    result
+}
+
+fn describe_result(value: &Value) -> Json {
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let (text, kind, reference) = describe(&mut state, value);
+        json!({"result": text, "type": kind, "variablesReference": reference})
+    })
+}
+
+// -- the VM's side --------------------------------------------------------
+
+/// A statement of the VM's at `here`: record it, and say whether and why to
+/// stop. `globals` names what the program found defined (builtins), asked
+/// for once.
+pub(crate) fn vm_statement(
+    here: Location,
+    builtins: impl FnOnce() -> HashSet<String>,
+) -> Option<(&'static str, String)> {
+    let (last, mode, evaluating) = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if state.builtins.is_none() {
+            state.builtins = Some(builtins());
+        }
+        let evaluating = state.evaluating;
+        if evaluating {
+            return (None, state.mode, true);
+        }
+        (state.last.replace(here.clone()), state.mode, false)
+    });
+    if evaluating {
+        return None;
+    }
+    session::should_stop(&here, last.as_ref(), mode)
+        .map(|reason| (reason, format!("{}:{}", here.file, here.line)))
+}
+
+/// The names defined before the program ran (builtins), as first seen.
+pub(crate) fn builtin_names() -> HashSet<String> {
+    STATE.with(|state| state.borrow().builtins.clone().unwrap_or_default())
+}
+
+/// The description of a `debug()` stop, at the last statement seen.
+pub(crate) fn breakpoint_description() -> String {
+    STATE.with(|state| {
+        state
+            .borrow()
+            .last
+            .as_ref()
+            .map(|l| format!("debug() at {}:{}", l.file, l.line))
+            .unwrap_or_else(|| "debug()".to_string())
+    })
+}
+
+/// The VM stopped: `frames` (outermost first) and `globals` are what it
+/// read off its stack. Serve the adapter until it resumes.
+pub(crate) fn vm_pause(
+    frames: Vec<FrameState>,
+    globals: Vec<(String, Value)>,
+    reason: &'static str,
+    description: String,
+) {
+    let depth = frames.len().saturating_sub(1);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.frames = frames;
+        state.vm_globals = Some(globals);
+    });
+    serve_pause(&mut SnapshotEvaluator, depth, reason, description);
+    STATE.with(|state| state.borrow_mut().vm_globals = None);
+}
+
+/// `evaluate` on a stopped VM: a scratch tree-walker gets the VM's globals
+/// and the frame's slots, so reading works; an assignment changes the copy,
+/// not the program.
+struct SnapshotEvaluator;
+
+impl Paused for SnapshotEvaluator {
+    fn evaluate(&mut self, source: &str, depth: Option<usize>) -> Result<Json, String> {
+        let (locals, globals) = STATE.with(|state| {
+            let state = state.borrow();
+            let frame = match depth {
+                Some(depth) => state.frames.get(depth),
+                None => state.frames.last(),
+            };
+            let locals = match frame.map(|f| &f.scope) {
+                Some(FrameScope::Values(values)) => values.clone(),
+                _ => Vec::new(),
+            };
+            (locals, state.vm_globals.clone().unwrap_or_default())
+        });
+        let mut interpreter = Interpreter::new();
+        {
+            let mut global = interpreter.environment.borrow_mut();
+            for (name, value) in globals {
+                global.define(name, value);
+            }
+        }
+        let mut scope = Environment::with_enclosing(interpreter.environment.clone());
+        for (name, value) in locals {
+            scope.define(name, value);
+        }
+        let value = run_source(&mut interpreter, Rc::new(RefCell::new(scope)), source)?;
+        Ok(describe_result(&value))
+    }
+}
+
+// -- inspection, run inside `Command::Inspect` ------------------------------
+
+/// DAP `stackTrace`: innermost first; a frame's id is its depth.
+pub fn stack_trace() -> Json {
+    {
         STATE.with(|state| {
             let state = state.borrow();
             let frames: Vec<Json> = state
@@ -222,37 +422,45 @@ impl Interpreter {
             json!({"stackFrames": frames, "totalFrames": frames.len()})
         })
     }
+}
 
-    /// DAP `scopes` for the frame at `depth`.
-    pub fn debugger_scopes(&self, depth: usize) -> Json {
+/// DAP `scopes` for the frame at `depth`.
+pub fn scopes(depth: usize) -> Json {
+    {
         STATE.with(|state| {
             let mut state = state.borrow_mut();
             let Some(frame) = state.frames.get(depth).cloned() else {
                 return json!({"scopes": []});
             };
-            let locals = push_handle(
-                &mut state,
-                Handle::Scope {
-                    env: frame.env.clone(),
-                    locals: true,
-                },
-            );
-            let globals = push_handle(
-                &mut state,
-                Handle::Scope {
-                    env: global_env(&frame.env),
-                    locals: false,
-                },
-            );
+            let (locals, globals) = match &frame.scope {
+                FrameScope::Env(env) => (
+                    Handle::Scope {
+                        env: env.clone(),
+                        locals: true,
+                    },
+                    Handle::Scope {
+                        env: global_env(env),
+                        locals: false,
+                    },
+                ),
+                FrameScope::Values(values) => (
+                    Handle::List(values.clone()),
+                    Handle::List(state.vm_globals.clone().unwrap_or_default()),
+                ),
+            };
+            let locals = push_handle(&mut state, locals);
+            let globals = push_handle(&mut state, globals);
             json!({"scopes": [
                 {"name": "Locals", "presentationHint": "locals", "variablesReference": locals, "expensive": false},
                 {"name": "Globals", "variablesReference": globals, "expensive": false},
             ]})
         })
     }
+}
 
-    /// DAP `variables` for a handle from `scopes` or an earlier `variables`.
-    pub fn debugger_variables(&self, reference: usize) -> Json {
+/// DAP `variables` for a handle from `scopes` or an earlier `variables`.
+pub fn variables(reference: usize) -> Json {
+    {
         STATE.with(|state| {
             let mut state = state.borrow_mut();
             let Some(handle) = reference
@@ -266,6 +474,7 @@ impl Interpreter {
                 Handle::Scope { env, locals } => {
                     scope_entries(&env, locals, state.builtins.as_ref())
                 }
+                Handle::List(values) => values,
                 Handle::Value(value) => children(&value),
             };
             let variables: Vec<Json> = entries
@@ -274,58 +483,6 @@ impl Interpreter {
                 .collect();
             json!({"variables": variables})
         })
-    }
-
-    /// DAP `evaluate` in the frame at `depth` (the innermost when `None`):
-    /// the source runs with that frame's scope, and its last expression's
-    /// value is the result. It can assign: that is how a variable is changed
-    /// from the debug console.
-    pub fn debugger_evaluate(
-        &mut self,
-        source: &str,
-        depth: Option<usize>,
-    ) -> Result<Json, String> {
-        let env = STATE.with(|state| {
-            let state = state.borrow();
-            match depth {
-                Some(depth) => state.frames.get(depth).map(|f| f.env.clone()),
-                None => state.frames.last().map(|f| f.env.clone()),
-            }
-        });
-        let env = env.unwrap_or_else(|| self.environment.clone());
-        let tokens = crate::lexer::Scanner::new(source)
-            .scan_tokens()
-            .map_err(|e| e.to_string())?;
-        let program = crate::parser::Parser::new(tokens)
-            .parse()
-            .map_err(|e| e.to_string())?;
-        let saved = std::mem::replace(&mut self.environment, env);
-        STATE.with(|state| state.borrow_mut().evaluating = true);
-        let mut result = Ok(Value::Null);
-        for stmt in &program.statements {
-            match self.execute(stmt) {
-                Ok(ControlFlow::Normal(value)) | Ok(ControlFlow::Return(value)) => {
-                    result = Ok(value)
-                }
-                Ok(ControlFlow::Throw(value)) => {
-                    result = Err(format!("{}", value));
-                    break;
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    result = Err(e.to_string());
-                    break;
-                }
-            }
-        }
-        STATE.with(|state| state.borrow_mut().evaluating = false);
-        self.environment = saved;
-        let value = result?;
-        Ok(STATE.with(|state| {
-            let mut state = state.borrow_mut();
-            let (text, kind, reference) = describe(&mut state, &value);
-            json!({"result": text, "type": kind, "variablesReference": reference})
-        }))
     }
 }
 

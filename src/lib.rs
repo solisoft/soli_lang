@@ -378,11 +378,23 @@ pub fn execute_program_tree(program: &ast::Program) -> Result<(), SolilangError>
 /// tree-walker, with the script's path known to every statement (a
 /// breakpoint is a file and a line), and without native kernels, whose
 /// machine code no debugger can stop in.
+///
+/// `vm` runs it on the VM instead: compiled with a debugger attached, its
+/// bytecode carries the statement markers and slot names the debugger needs.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn debug_script_file(path: &std::path::Path) -> Result<(), String> {
+pub fn debug_script_file(path: &std::path::Path, vm: bool) -> Result<(), String> {
     let source = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
     let program = parse_resolve_check(&source, Some(path), false).map_err(|e| e.to_string())?;
+    if vm {
+        let entry = Some(std::sync::Arc::new(path.to_path_buf()));
+        let interpreter = script_interpreter();
+        let env = interpreter.environment.clone();
+        let is_builtin = |name: &str| env.borrow().get(name).is_some();
+        let module = vm::Compiler::compile_entry_script_from(&program, None, &is_builtin, entry)
+            .map_err(|e| format!("the VM cannot compile it: {e}"))?;
+        return run_compiled_on_vm(&module, &interpreter).map_err(|e| e.to_string());
+    }
     let mut interpreter = script_interpreter();
     interpreter.set_source_path(path.to_path_buf());
     interpreter.interpret(&program).map_err(|e| e.to_string())

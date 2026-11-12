@@ -32,7 +32,18 @@ pub fn get_or_compile(
     source_path: Option<&std::path::Path>,
     type_check: bool,
 ) -> Result<CompiledModule, SolilangError> {
-    let cache_key = source.to_string();
+    // The markers a module carries depend on what was listening when it was
+    // compiled (`Op::CoverLine` under coverage, `Op::DebugStmt` under a
+    // debugger), so that is part of the key: bytecode compiled without them
+    // must not be handed to a process that needs them, nor the reverse.
+    let markers = (
+        crate::coverage::global_coverage_tracker_installed(),
+        crate::debug::is_debuggee(),
+    );
+    let mut cache_key = String::with_capacity(source.len() + 2);
+    cache_key.push(if markers.0 { 'C' } else { '-' });
+    cache_key.push(if markers.1 { 'D' } else { '-' });
+    cache_key.push_str(source);
 
     if let Some(cached) = get_cache().lock().unwrap().get(&cache_key) {
         return Ok(cached.clone());

@@ -29,6 +29,7 @@ impl Compiler {
         let line = stmt.span.line as usize;
         self.last_cover_line = 0;
         self.cover_line(line);
+        self.debug_stmt(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 // A bare `name = value` that `hoist_locals` (or, at file
@@ -46,6 +47,11 @@ impl Compiler {
                 // produces (`next` bare, via zero-arg auto-invoke, and
                 // `next()`). A local or a user-declared global of that name is
                 // an ordinary variable and is left alone.
+                // `debug()` under a debugger: a breakpoint in the source.
+                if self.debugger && self.is_builtin_named(expr, "debug") {
+                    self.emit(Op::DebugBreak, line);
+                    return Ok(());
+                }
                 if self.is_builtin_next(expr) {
                     if !self.emit_continue(line) {
                         return Err(CompileError::new(
@@ -212,6 +218,12 @@ impl Compiler {
     /// Only the builtin: a local or a global the program declared itself is an
     /// ordinary variable, and reading it must not turn into a jump.
     fn is_builtin_next(&mut self, expr: &crate::ast::Expr) -> bool {
+        self.is_builtin_named(expr, "next")
+    }
+
+    /// `expr` is a zero-argument call (or bare read) of the builtin `wanted`,
+    /// not shadowed by a local or a global of the program's.
+    fn is_builtin_named(&mut self, expr: &crate::ast::Expr, wanted: &str) -> bool {
         use crate::ast::ExprKind;
         let name = match &expr.kind {
             ExprKind::Variable(name) => name,
@@ -221,13 +233,13 @@ impl Compiler {
             },
             _ => return false,
         };
-        if name != "next" {
+        if name != wanted {
             return false;
         }
         matches!(
             self.resolve_variable(name),
             super::compiler::VariableAccess::Global(_)
-        ) && !self.program_globals.borrow().contains("next")
+        ) && !self.program_globals.borrow().contains(wanted)
     }
 
     fn compile_let(
@@ -759,6 +771,11 @@ impl Compiler {
         // `compile_stmt`: it needs its marker too.
         self.last_cover_line = 0;
         self.cover_line(line);
+        // A block's statements get their own markers; marking the block too
+        // would stop on its first line twice.
+        if !matches!(stmt.kind, StmtKind::Block(_)) {
+            self.debug_stmt(line);
+        }
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 match self.take_in_place_decl(stmt)? {

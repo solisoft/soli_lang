@@ -156,6 +156,17 @@ impl Drop for Client {
 
 #[test]
 fn a_script_stops_steps_and_shows_its_variables() {
+    script_scenario("tree");
+}
+
+/// The same stops, stack, locals and steps on the VM, which a debugger
+/// stops through the statement markers it compiles in.
+#[test]
+fn the_vm_stops_where_the_tree_walker_does() {
+    script_scenario("vm");
+}
+
+fn script_scenario(engine: &str) {
     let dir = tempfile::tempdir().unwrap();
     let program = dir.path().join("prog.sl");
     std::fs::write(&program, PROGRAM).unwrap();
@@ -165,7 +176,7 @@ fn a_script_stops_steps_and_shows_its_variables() {
     let capabilities = client.request("initialize", json!({"adapterID": "soli"}));
     assert_eq!(capabilities["supportsConfigurationDoneRequest"], true);
     client.wait_event("initialized");
-    client.request("launch", json!({"program": program}));
+    client.request("launch", json!({"program": program, "engine": engine}));
     let set = client.request(
         "setBreakpoints",
         json!({"source": {"path": program}, "breakpoints": [{"line": 2}]}),
@@ -191,13 +202,20 @@ fn a_script_stops_steps_and_shows_its_variables() {
     );
     let globals = client.variables(&scopes["scopes"][1]["variablesReference"]);
     let names: Vec<&str> = globals.iter().map(|(n, _)| n.as_str()).collect();
-    assert_eq!(names, ["add", "user"], "builtins stay out of Globals");
+    // The VM keeps a script's top-level variables in the `<main>` frame's
+    // slots: `user` is a local of that frame there, a global on the
+    // tree-walker.
+    let user_scope = if engine == "vm" {
+        assert_eq!(names, ["add"], "builtins stay out of Globals");
+        let main = client.request("scopes", json!({"frameId": 0}));
+        main["scopes"][0]["variablesReference"].clone()
+    } else {
+        assert_eq!(names, ["add", "user"], "builtins stay out of Globals");
+        scopes["scopes"][1]["variablesReference"].clone()
+    };
 
     // Expand the hash.
-    let globals_raw = client.request(
-        "variables",
-        json!({"variablesReference": scopes["scopes"][1]["variablesReference"]}),
-    );
+    let globals_raw = client.request("variables", json!({"variablesReference": user_scope}));
     let user = globals_raw["variables"]
         .as_array()
         .unwrap()

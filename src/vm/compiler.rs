@@ -70,6 +70,10 @@ pub struct Compiler {
     /// Emit `Op::CoverLine` markers: a coverage tracker was installed when
     /// compilation began (`soli test --coverage`). Off for `soli serve`.
     pub coverage: bool,
+    /// Emit `Op::DebugStmt` markers and the slot-name table: a step debugger
+    /// (`soli dap`) was attached, and this thread is the one it stops, when
+    /// compilation began.
+    pub debugger: bool,
     /// The last line a `CoverLine` marker was emitted for, so a line spread
     /// over several expressions is marked once.
     pub last_cover_line: usize,
@@ -244,6 +248,7 @@ impl Compiler {
     pub fn new(function_type: FunctionType, name: String) -> Self {
         let mut compiler = Self {
             coverage: crate::coverage::global_coverage_tracker_installed(),
+            debugger: crate::debug::is_debuggee(),
             last_cover_line: 0,
             proto: FunctionProto::new(name),
             locals: Vec::new(),
@@ -758,6 +763,33 @@ impl Compiler {
                 self.emit(Op::Pop, line);
             }
             self.locals.pop();
+            self.close_debug_local();
+        }
+    }
+
+    /// The local just popped from `self.locals` stops being live here.
+    fn close_debug_local(&mut self) {
+        if !self.debugger {
+            return;
+        }
+        let slot = self.locals.len() as u16;
+        let here = self.proto.chunk.code.len() as u32;
+        if let Some(local) = self
+            .proto
+            .chunk
+            .debug_locals
+            .iter_mut()
+            .rev()
+            .find(|l| l.slot == slot && l.end == u32::MAX)
+        {
+            local.end = here;
+        }
+    }
+
+    /// A statement starts on `line`: the step debugger may stop here.
+    pub(crate) fn debug_stmt(&mut self, line: usize) {
+        if self.debugger && line > 0 && self.proto.source_path.is_some() {
+            self.emit(Op::DebugStmt(line as u32), line);
         }
     }
 
@@ -773,12 +805,25 @@ impl Compiler {
             self.emit(Op::Pop, line);
         }
         self.locals.pop();
+        self.close_debug_local();
     }
 
     // --- Local variables ---
 
     pub fn add_local(&mut self, name: String, is_const: bool) {
         note_debug_name(&mut self.proto.debug_names.locals, &name);
+        if self.debugger && !name.is_empty() && !name.starts_with("__") {
+            let start = self.proto.chunk.code.len() as u32;
+            self.proto
+                .chunk
+                .debug_locals
+                .push(crate::vm::chunk::DebugLocal {
+                    slot: self.locals.len() as u16,
+                    name: name.as_str().into(),
+                    start,
+                    end: u32::MAX,
+                });
+        }
         self.locals.push(Local {
             name,
             depth: self.scope_depth,
@@ -1545,7 +1590,8 @@ fn stack_effect(op: Op) -> i32 {
         | HashDeleteGlobalConst(_, _)
         | HashGetGlobalConst2(_, _, _) => 1,
         HashSetGlobalConst(_, _) => 0,
-        IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | PopNull | Nop | CoverLine(_) => 0,
+        IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | PopNull | Nop | CoverLine(_)
+        | DebugStmt(_) | DebugBreak => 0,
         // Peek the value and push a bool.
         IsNull | NotNull => 1,
         AddLocalLocal(_, _)
@@ -2616,6 +2662,12 @@ fn compact_nops(chunk: &mut Chunk) {
         }
     }
     old_to_new[len] = next;
+    for local in &mut chunk.debug_locals {
+        local.start = old_to_new[(local.start as usize).min(len)] as u32;
+        if local.end != u32::MAX {
+            local.end = old_to_new[(local.end as usize).min(len)] as u32;
+        }
+    }
 
     let mut code = Vec::with_capacity(next);
     let mut lines = Vec::with_capacity(next);

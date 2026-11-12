@@ -20,6 +20,7 @@ use std::time::Duration;
 use serde_json::{json, Value as Json};
 
 use crate::debug::session::{self, Command, Event};
+use crate::interpreter::executor::debugger;
 
 /// How long an inspection waits for the program's thread to answer.
 const INSPECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -96,6 +97,8 @@ struct Launch {
     test: bool,
     /// `soli test --filter`.
     filter: Option<String>,
+    /// Run a script on the VM rather than the tree-walker.
+    vm: bool,
 }
 
 /// Runs specs for `launch` in test mode: `soli test` lives in the CLI, which
@@ -142,19 +145,19 @@ impl Adapter {
                 Ok(json!({}))
             }
             "threads" => Ok(json!({"threads": [{"id": THREAD_ID, "name": "main"}]})),
-            "stackTrace" => self.inspect(|interpreter| Ok(interpreter.debugger_stack_trace())),
+            "stackTrace" => self.inspect(|_| Ok(debugger::stack_trace())),
             "scopes" => {
                 let depth = args["frameId"].as_u64().unwrap_or(0) as usize;
-                self.inspect(move |interpreter| Ok(interpreter.debugger_scopes(depth)))
+                self.inspect(move |_| Ok(debugger::scopes(depth)))
             }
             "variables" => {
                 let reference = args["variablesReference"].as_u64().unwrap_or(0) as usize;
-                self.inspect(move |interpreter| Ok(interpreter.debugger_variables(reference)))
+                self.inspect(move |_| Ok(debugger::variables(reference)))
             }
             "evaluate" => {
                 let expression = args["expression"].as_str().unwrap_or_default().to_string();
                 let depth = args["frameId"].as_u64().map(|d| d as usize);
-                self.inspect(move |interpreter| interpreter.debugger_evaluate(&expression, depth))
+                self.inspect(move |target| target.evaluate(&expression, depth))
             }
             "continue" => self
                 .resume(Command::Continue)
@@ -205,6 +208,11 @@ impl Adapter {
             stop_on_entry: args["stopOnEntry"].as_bool().unwrap_or(false),
             test,
             filter: args["filter"].as_str().map(str::to_string),
+            vm: match args["engine"].as_str().unwrap_or("tree") {
+                "tree" => false,
+                "vm" => true,
+                other => return Err(format!("engine is \"tree\" or \"vm\", not \"{other}\"")),
+            },
         });
         Ok(json!({}))
     }
@@ -237,7 +245,8 @@ impl Adapter {
                     return;
                 }
                 crate::debug::set_thread_listener(crate::debug::DEBUGGEE, true);
-                let result = crate::debug_script_file(std::path::Path::new(&launch.program));
+                let result =
+                    crate::debug_script_file(std::path::Path::new(&launch.program), launch.vm);
                 let _ = std::io::stdout().flush();
                 session::send(Event::Finished {
                     error: result.err(),
@@ -253,9 +262,7 @@ impl Adapter {
     /// Run `f` on the paused program's thread and wait for its answer.
     fn inspect(
         &self,
-        f: impl FnOnce(&mut crate::interpreter::executor::Interpreter) -> Result<Json, String>
-            + Send
-            + 'static,
+        f: impl FnOnce(&mut dyn debugger::Paused) -> Result<Json, String> + Send + 'static,
     ) -> Result<Json, String> {
         if !self.stopped.load(Ordering::Acquire) {
             return Err("the program is running".into());

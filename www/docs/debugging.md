@@ -102,7 +102,14 @@ the `debug()` page above.
   stops there and resumes after it.
 - What the program prints arrives in the editor's debug console.
 
-The launch configuration takes `program` (required), `cwd`, `stopOnEntry` and
+The launch configuration takes `program` (required), `cwd`, `stopOnEntry`,
+`engine` and `mode`. `engine` is `"tree"` (the default) or `"vm"`: the VM
+stops on the same statements, compiling stop markers and slot names in while
+a debugger is attached. Two differences there: `evaluate` reads the frame
+but an assignment does not reach the program, and a script's top-level
+variables are locals of its `<main>` frame (the VM keeps them in slots), not
+globals.
+
 `mode`:
 
 - `"script"` (the default): `program` is a `.sl` script.
@@ -143,8 +150,9 @@ args = { program = "{0}" }
 **For now:**
 
 - It runs scripts and specs. Attaching to `soli serve` comes next.
-- The program runs on the tree-walker, without native kernels, whatever
-  engine `soli script.sl` would pick: that is the engine a debugger can stop.
+- Native kernels (typed functions compiled to machine code) are off while
+  debugging: no debugger stops inside machine code. Specs run on the
+  tree-walker.
 - An outer frame's Locals are as they were at its last statement, the call
   it is waiting on.
 - No conditional breakpoints or logpoints yet, and the VS Code extension
