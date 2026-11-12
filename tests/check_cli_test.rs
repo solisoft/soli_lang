@@ -166,3 +166,93 @@ fn a_module_imported_by_a_window_script_sees_the_widget_catalogue() {
     );
     assert!(text.contains("button"), "{text}");
 }
+
+// Phase 2 of #693: the project's declarations are known by their signatures,
+// not only by their names.
+
+#[test]
+fn a_neighbours_function_is_checked_for_arity() {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/controllers/reports_controller.sl",
+        "class ReportsController < Controller\n  # GET /reports\n  def index(req)\n    @title = report_title(\"x\", \"y\")\n  end\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/controllers/reports_controller.sl");
+    assert!(!ok, "{text}");
+    assert!(text.contains("expected 1"), "{text}");
+}
+
+#[test]
+fn a_neighbours_class_is_checked_for_its_members() {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/services/pricing.sl",
+        "class Pricing\n  def total(cents: Int) -> Int\n    cents * 2\n  end\nend\n",
+    );
+    write(
+        dir.path(),
+        "app/services/checkout.sl",
+        "def checkout_total\n  pricing = Pricing.new()\n  pricing.totl(3)\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/services/checkout.sl");
+    assert!(!ok, "{text}");
+    assert!(text.contains("totl"), "{text}");
+
+    write(
+        dir.path(),
+        "app/services/checkout.sl",
+        "def checkout_total -> Int\n  pricing = Pricing.new()\n  pricing.total(3)\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/services/checkout.sl");
+    assert!(ok, "{text}");
+}
+
+#[test]
+fn a_parent_in_another_file_is_resolved() {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/policies/application_policy.sl",
+        "class ApplicationPolicy\n  def allowed? -> Bool\n    true\n  end\nend\n",
+    );
+    write(
+        dir.path(),
+        "app/policies/post_policy.sl",
+        "class PostPolicy < ApplicationPolicy\n  def show? -> Bool\n    @allowed?\n  end\n\n  def edit? -> Bool\n    @alowed?\n  end\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/policies/post_policy.sl");
+    assert!(!ok, "{text}");
+    assert!(text.contains("alowed?"), "{text}");
+    assert!(text.contains("1 error(s)"), "{text}");
+}
+
+#[test]
+fn a_name_two_files_declare_stays_unchecked() {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/services/other_report.sl",
+        "def report_title(name, suffix)\n  name + suffix\nend\n",
+    );
+    write(
+        dir.path(),
+        "app/services/uses_title.sl",
+        "def heading\n  report_title(\"a\", \"b\")\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/services/uses_title.sl");
+    assert!(ok, "{text}");
+}
+
+#[test]
+fn model_fields_stay_open_across_files() {
+    let dir = app();
+    write(
+        dir.path(),
+        "app/services/audit.sl",
+        "def audit_names\n  AuditEntry.recent.map { |entry| entry.whatever }\nend\n",
+    );
+    let (ok, text) = check(dir.path(), "app/services/audit.sl");
+    assert!(ok, "{text}");
+}

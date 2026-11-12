@@ -22,6 +22,13 @@ pub struct TypeChecker {
     /// them as globals, so a bare `name = value` anywhere in the file rebinds
     /// the function rather than creating a local (`let name = …` shadows).
     pub(crate) declared_functions: std::collections::HashSet<String>,
+    /// For each `def` of the file or the project: the fewest and most
+    /// arguments it takes, and the signature it was declared with (a call
+    /// reaching another binding of the name is not checked against it).
+    pub(crate) function_arities: std::collections::HashMap<String, (usize, usize, Type)>,
+    /// Classes the job loader gives `perform_later` and the rest of the
+    /// facade (see [`TypeChecker::declare_job_classes`]).
+    pub(crate) job_classes: std::collections::HashSet<String>,
 }
 
 impl TypeChecker {
@@ -35,6 +42,8 @@ impl TypeChecker {
             errors: Vec::new(),
             warnings: Vec::new(),
             declared_functions: std::collections::HashSet::new(),
+            function_arities: std::collections::HashMap::new(),
+            job_classes: std::collections::HashSet::new(),
         }
     }
 
@@ -61,6 +70,58 @@ impl TypeChecker {
         for name in names {
             self.env
                 .define_function(name.as_ref().to_string(), Type::Any);
+        }
+    }
+
+    /// Name the classes of `app/jobs/*_job.sl`: the loader gives each the
+    /// static `perform_now`, `perform_later`, `perform_in`, `perform_at` and
+    /// `schedule_cron` it does not define itself. Call it before the classes
+    /// are declared.
+    pub fn declare_job_classes<I: IntoIterator<Item = String>>(&mut self, names: I) {
+        self.job_classes.extend(names);
+    }
+
+    /// Declare what the application's other files declare at the top level,
+    /// with their real signatures (#693): a sibling controller's helper is
+    /// checked for arity and argument types, a service class for its members,
+    /// and `class UserPolicy < ApplicationPolicy` resolves its parent across
+    /// files instead of answering every member with `Any`.
+    ///
+    /// `statements` are the top-level classes, modules, enums, interfaces and
+    /// `def`s of the project, a name declared once (see
+    /// `crate::check::Project`). Model subclasses keep their schemaless
+    /// fields as `Any` (`ClassType::extends_model`); a class whose ancestry
+    /// leaves the project (`< Controller`) keeps `extends_unknown`. Call it
+    /// after [`TypeChecker::declare_ambient`]; the checked file's own
+    /// declarations, declared by [`TypeChecker::check`], still win.
+    pub fn declare_project(&mut self, statements: &[Stmt]) {
+        let mut classes: Vec<ClassDecl> = Vec::new();
+        for stmt in statements {
+            match &stmt.kind {
+                StmtKind::Interface(decl) => self.declare_interface(decl),
+                StmtKind::Class(decl) => classes.push((**decl).clone()),
+                StmtKind::Enum(decl) => {
+                    self.declare_class(&decl.lower_to_class());
+                    self.declare_enum(decl);
+                }
+                _ => {}
+            }
+        }
+        // Parents before children, since a class keeps a copy of its parent;
+        // twice, so a signature naming a class declared later resolves.
+        let ordered = parents_first(&classes);
+        for _ in 0..2 {
+            for decl in &ordered {
+                self.declare_class(decl);
+            }
+        }
+        self.apply_mixin_members(&classes);
+        for stmt in statements {
+            if let StmtKind::Function(decl) = &stmt.kind {
+                let ty = self.function_type(decl);
+                self.note_arity(decl, &ty);
+                self.env.define_function(decl.name.clone(), ty);
+            }
         }
     }
 
@@ -223,6 +284,37 @@ impl TypeChecker {
             },
         }
     }
+}
+
+/// `classes` ordered so a superclass declared among them comes before its
+/// subclasses; a cycle (refused at run time) keeps declaration order.
+fn parents_first(classes: &[ClassDecl]) -> Vec<&ClassDecl> {
+    use std::collections::{HashMap, HashSet};
+    let by_name: HashMap<&str, &ClassDecl> = classes.iter().map(|d| (d.name.as_str(), d)).collect();
+    let mut placed: HashSet<&str> = HashSet::new();
+    let mut out = Vec::with_capacity(classes.len());
+    for decl in classes {
+        let mut chain = vec![decl];
+        let mut seen: HashSet<&str> = HashSet::from([decl.name.as_str()]);
+        let mut current = decl;
+        while let Some(parent) = current
+            .superclass
+            .as_deref()
+            .and_then(|name| by_name.get(name))
+        {
+            if !seen.insert(parent.name.as_str()) || placed.contains(parent.name.as_str()) {
+                break;
+            }
+            chain.push(parent);
+            current = parent;
+        }
+        for decl in chain.into_iter().rev() {
+            if placed.insert(decl.name.as_str()) {
+                out.push(decl);
+            }
+        }
+    }
+    out
 }
 
 impl Default for TypeChecker {

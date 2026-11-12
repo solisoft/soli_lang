@@ -4,6 +4,28 @@
 
 ### Added
 
+- **`soli check` knows the application's other files by their declarations
+  (#693, phase 2).** It used to know a sibling's top-level names only, each as
+  `Any`. Now `check::Project` parses the auto-loaded directories once and
+  hands their classes, modules, enums, interfaces and `def`s to
+  `TypeChecker::declare_project` (parents before children), so a sibling's
+  `def` is checked for arity and annotated parameter types, its classes for
+  their members, and `class PostPolicy < ApplicationPolicy` resolves its parent
+  across files. A name two files declare stays an `Any` name (load order
+  decides which wins); `Model` fields and ancestries leaving the app
+  (`< Controller`) stay open. Along the way, three things the checker got
+  wrong in any file: `Klass.new(…)` / `new Klass(…)` built `Any`, so no member
+  of an instance was ever checked (an `#[ignore]`d test said so); an
+  instance variable assigned in a method or the constructor without a field
+  declaration (`@a = a`) was `Cannot access member 'a'`, though both engines
+  accept it and `obj.a` reads it; and a `def` with an unannotated parameter
+  was never checked for arity — now every `def` is, defaults counted. The
+  class of an `app/jobs/*_job.sl` gets the job facade (`perform_later`…), as
+  the loader gives it, and a private static method read on its class
+  (`Feed._text(…)`) is accepted, as on both engines. The corpus stays at zero
+  errors; on 19 applications outside the repository the only new error is a
+  real one (`find_by_code(null)` against `code: String`).
+
 - **LSP: references and rename across the application, doc comments in hover
   (#691).** A name the project declares — a class, a top-level `def`, a
   helper, a constant, a method or a field — is searched in every `.sl` file

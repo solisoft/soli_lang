@@ -49,6 +49,20 @@ impl TypeChecker {
             );
         }
 
+        // An instance variable a method or the constructor assigns is a
+        // field, declared or not: both engines create it on the first
+        // `@name = …`, and `obj.name` reads it from outside. Its type is
+        // whatever was assigned, so `Any`.
+        for name in assigned_instance_variables(decl) {
+            class_type.fields.entry(name.clone()).or_insert(FieldInfo {
+                name,
+                ty: Type::Any,
+                is_private: false,
+                is_protected: false,
+                is_static: false,
+            });
+        }
+
         // Add methods
         for method in &decl.methods {
             let params: Vec<(String, Type)> = method
@@ -81,6 +95,22 @@ impl TypeChecker {
                     is_static: method.is_static,
                 },
             );
+        }
+
+        if self.job_classes.contains(&decl.name) {
+            for name in JOB_FACADE {
+                class_type
+                    .methods
+                    .entry(name.to_string())
+                    .or_insert_with(|| MethodInfo {
+                        name: name.to_string(),
+                        params: Vec::new(),
+                        return_type: Type::Any,
+                        is_private: false,
+                        is_protected: false,
+                        is_static: true,
+                    });
+            }
         }
 
         self.env.define_class(class_type);
@@ -202,6 +232,25 @@ impl TypeChecker {
     }
 
     pub(crate) fn declare_function(&mut self, decl: &FunctionDecl) {
+        let ty = self.function_type(decl);
+        self.note_arity(decl, &ty);
+        self.declared_functions.insert(decl.name.clone());
+        self.env.define_function(decl.name.clone(), ty);
+    }
+
+    /// Remember how many arguments `decl` takes: its parameters without a
+    /// default at least, all of them at most (a `&block` parameter is passed
+    /// as a block, not counted).
+    pub(crate) fn note_arity(&mut self, decl: &FunctionDecl, ty: &Type) {
+        let params = decl.params.iter().filter(|p| !p.is_block_param);
+        let max = params.clone().count();
+        let min = params.filter(|p| p.default_value.is_none()).count();
+        self.function_arities
+            .insert(decl.name.clone(), (min, max, ty.clone()));
+    }
+
+    /// The signature of a top-level `def`, for a call to check against.
+    pub(crate) fn function_type(&self, decl: &FunctionDecl) -> Type {
         let params: Vec<Type> = decl
             .params
             .iter()
@@ -212,16 +261,47 @@ impl TypeChecker {
             .as_ref()
             .map(|t| self.resolve_type(t))
             .unwrap_or(Type::Any);
-
-        self.declared_functions.insert(decl.name.clone());
-        self.env.define_function(
-            decl.name.clone(),
-            Type::Function {
-                params,
-                return_type: Box::new(return_type),
-            },
-        );
+        Type::Function {
+            params,
+            return_type: Box::new(return_type),
+        }
     }
+}
+
+/// What `jobs::inject_facade_methods` adds to a job class.
+const JOB_FACADE: [&str; 5] = [
+    "perform_now",
+    "perform_later",
+    "perform_in",
+    "perform_at",
+    "schedule_cron",
+];
+
+/// The names of `@name = …` (and `this.name = …`, `@name ||= …`) in the
+/// instance methods and constructor of `decl`.
+fn assigned_instance_variables(decl: &ClassDecl) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut on_expr = |expr: &Expr| {
+        let target = match &expr.kind {
+            ExprKind::Assign { target, .. } | ExprKind::CompoundAssign { target, .. } => target,
+            _ => return,
+        };
+        if let ExprKind::Member { object, name } = &target.kind {
+            if matches!(object.kind, ExprKind::This) && !names.contains(name) {
+                names.push(name.clone());
+            }
+        }
+    };
+    let bodies = decl
+        .methods
+        .iter()
+        .filter(|m| !m.is_static)
+        .map(|m| &*m.body)
+        .chain(decl.constructor.iter().map(|c| &*c.body));
+    for body in bodies {
+        crate::ast::walk::walk_stmts(body, &mut |_| {}, &mut on_expr);
+    }
+    names
 }
 
 /// Every module reachable from `roots`, innermost first, matching the order the

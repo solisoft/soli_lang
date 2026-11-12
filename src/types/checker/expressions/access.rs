@@ -915,6 +915,11 @@ impl TypeChecker {
         if is_protected && inside_hierarchy {
             return Ok(());
         }
+        // `DemoFarm._task(…)`, a static method read on its class: neither
+        // engine enforces visibility there, so neither does the checker.
+        if matches!(&object.kind, ExprKind::Variable(name) if name == receiver_class) {
+            return Ok(());
+        }
         Err(TypeError::General {
             message: format!(
                 "{} {} '{}' {} for an instance of {}",

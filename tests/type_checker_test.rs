@@ -869,16 +869,10 @@ fn bug_unknown_type_name_in_annotation_is_silently_accepted() {
     );
 }
 
-/// BUG: `check_new_expr` always returns `Type::Unknown` for `new ClassName()`
-/// (see `src/types/checker/expressions/objects.rs:87-111`). Since
-/// `Type::Unknown` is permissively assignable to/from anything, every
-/// downstream member access on the instance silently passes — including
-/// references to fields and methods that don't exist on the class. The type
-/// checker therefore cannot catch typos like `instance.no_such_field`,
-/// undermining the whole point of declaring the class.
+/// `new ClassName()` builds an instance of the class (#693): a member the
+/// class does not have is refused, as on `this`.
 #[test]
-#[ignore = "BUG: `new ClassName()` returns Type::Unknown, hiding member-access errors"]
-fn bug_member_access_on_new_instance_is_silently_accepted() {
+fn member_access_on_new_instance_is_checked() {
     let errors = check_err(
         "
         class A {
@@ -1336,4 +1330,90 @@ fn a_bare_assignment_to_a_def_of_the_file_is_still_refused() {
 fn a_top_level_failing_statement_does_not_cascade() {
     let errors = check_err("let a: Int = \"one\"\nprint(a + 1)\nb = a\n");
     assert_eq!(errors.len(), 1, "{errors:?}");
+}
+
+// #693 phase 2: instances, instance variables and `def` arity.
+
+#[test]
+fn klass_new_builds_a_checked_instance() {
+    let errors = check_err(
+        "class Pricing\n  def total(cents: Int) -> Int\n    cents * 2\n  end\nend\npricing = Pricing.new()\npricing.totl(3)\n",
+    );
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::NoSuchMember { member, .. } if member == "totl"),
+        "NoSuchMember(totl)",
+    );
+}
+
+#[test]
+fn an_instance_variable_the_constructor_assigns_is_a_field() {
+    check_ok(
+        "class Point\n  new(x)\n    @x = x\n  end\n\n  def shifted\n    @x + 1\n  end\nend\np = Point.new(1)\nprint(p.x)\nprint(p.shifted)\n",
+    );
+}
+
+#[test]
+fn a_def_is_checked_for_arity_with_its_defaults() {
+    let src = "def greet(name, greeting = \"Hi\")\n  \"#{greeting} #{name}\"\nend\n";
+    check_ok(&format!(
+        "{src}greet(\"a\")\ngreet(\"a\", \"Yo\")\ngreet(name: \"a\")\n"
+    ));
+    let errors = check_err(&format!("{src}greet(\"a\", \"b\", \"c\")\n"));
+    assert_any(
+        &errors,
+        |e| {
+            matches!(
+                e,
+                TypeError::WrongArity {
+                    expected: 2,
+                    got: 3,
+                    ..
+                }
+            )
+        },
+        "WrongArity(2, 3)",
+    );
+    let errors = check_err(&format!("{src}greet()\n"));
+    assert_any(
+        &errors,
+        |e| {
+            matches!(
+                e,
+                TypeError::WrongArity {
+                    expected: 1,
+                    got: 0,
+                    ..
+                }
+            )
+        },
+        "WrongArity(1, 0)",
+    );
+}
+
+#[test]
+fn a_class_with_its_own_static_new_is_not_assumed_to_build_itself() {
+    check_ok(
+        "class Cache\n  static def new(name)\n    {\"name\": name}\n  end\nend\nc = Cache.new(\"x\")\nprint(c.anything)\n",
+    );
+}
+
+#[test]
+fn a_private_static_method_read_on_its_class_is_accepted() {
+    // Neither engine enforces visibility on `Klass._helper(…)`.
+    check_ok(
+        "class Feed\n  static def run\n    Feed._text(1)\n  end\n\n  private\n\n  static def _text(x)\n    x\n  end\nend\nprint(Feed.run)\nprint(Feed._text(2))\n",
+    );
+}
+
+#[test]
+fn a_job_class_has_the_job_facade() {
+    let source = "class EmailJob\n  static def perform(args: Hash)\n    args\n  end\nend\nEmailJob.perform_later({})\nEmailJob.perform_now({})\n";
+    let ok = solilang::type_check_source_with_ambient(
+        source,
+        Some(std::path::Path::new("app/jobs/email_job.sl")),
+        &[],
+    );
+    assert!(ok.is_ok(), "{ok:?}");
+    assert!(solilang::type_check_source_with_ambient(source, None, &[]).is_err());
 }

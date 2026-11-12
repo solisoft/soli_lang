@@ -371,10 +371,32 @@ the application's root (the nearest directory up holding `soli.toml` or
 `config/routes.sl`), and still checks only the files it names. `soli check app`
 used to look for `app/app/models` and report every model as undefined.
 
+A neighbour is known by its declaration, not only its name:
+
+- **A `def` is checked for arity** — at least its parameters without a
+  default, at most all of them — and for the types of its annotated
+  parameters, wherever it is called from. `report_title("x", "y")` against a
+  sibling's `def report_title(name)` is `Wrong number of arguments: expected
+  1, got 2`.
+- **A class is known by its members.** `Pricing.new()` (or `new Pricing()`)
+  is a `Pricing`, so `pricing.totl(3)` is `Cannot access member 'totl' on type
+  'Pricing' (did you mean 'total'?)`, whichever file declares `Pricing`.
+- **A parent in another file is resolved.** `class PostPolicy <
+  ApplicationPolicy` inherits the sibling's methods, and a typo in one of them
+  is reported instead of answered with `Any`.
+
+What stays open: a `Model` subclass's fields (the schema is the database's),
+a class whose ancestry leaves the application (`< Controller`), and a name two
+files declare — which one wins depends on load order, so it is only known to
+exist. An instance variable a method or the constructor assigns (`@total =
+…`) is a field of the class, declared or not, as on both engines. The class
+of an `app/jobs/*_job.sl` file has the job facade (`perform_later`,
+`perform_now`, `perform_in`, `perform_at`, `schedule_cron`) the loader gives
+it, and a static method read on its class (`Feed._text(…)`) is not refused
+for being `private`: neither engine enforces it there.
+
 A loose file or directory with no application around it keeps the narrower
-per-file view. A neighbour's *type* is not inferred, only its existence —
-what it is would mean checking the file that declares it, so its calls are
-unconstrained rather than wrongly constrained.
+per-file view.
 
 `render` and `redirect` stay unknown to the checker on purpose: they only mean
 anything inside a request, and `serve` does not type-check.

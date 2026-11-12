@@ -33,11 +33,11 @@ fn baseline() -> BTreeMap<String, usize> {
 /// keyed `<label>/<path relative to root>`.
 fn check_corpus(label: &str, root: &Path, out: &mut BTreeMap<String, Vec<String>>) {
     let targets = vec![root.to_path_buf()];
-    let ambient = solilang::check::ambient_names(&targets);
+    let project = solilang::check::project(&targets);
     let files = solilang::check::source_files(root);
     assert!(!files.is_empty(), "{label}: no .sl file under {root:?}");
     for file in files {
-        let report = solilang::check::check_file(&file, &ambient).expect("read corpus file");
+        let report = solilang::check::check_file(&file, &project).expect("read corpus file");
         let rel = file.strip_prefix(root).unwrap_or(&file);
         let key = format!("{label}/{}", rel.display());
         out.insert(key, report.errors.iter().map(|e| e.to_string()).collect());

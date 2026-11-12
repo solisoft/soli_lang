@@ -87,7 +87,7 @@ impl TypeChecker {
     pub(crate) fn check_new_expr(
         &mut self,
         _span: Span,
-        _class_expr: &Expr,
+        class_expr: &Expr,
         arguments: &[Argument],
     ) -> TypeResult<Type> {
         // For now, just check arguments and return an error type
@@ -105,9 +105,31 @@ impl TypeChecker {
                 }
             }
         }
-        // Return an error type that will be resolved at runtime
-        // This is a simplified approach for nested classes
-        Ok(Type::Unknown)
+        // A class this pass knows builds an instance of it; anything else
+        // (a nested class, a qualified name) is left to the runtime.
+        Ok(self
+            .constructed_instance(class_expr)
+            .unwrap_or(Type::Unknown))
+    }
+
+    /// The instance `new C(…)` / `C.new(…)` builds, `class_expr` being `C`:
+    /// a class this pass declared (in this file or, in a project, in
+    /// another), not shadowed by a local of that name, and without a
+    /// `static def new` of its own that may return anything.
+    pub(crate) fn constructed_instance(&self, class_expr: &Expr) -> Option<Type> {
+        let ExprKind::Variable(name) = &class_expr.kind else {
+            return None;
+        };
+        let class = self.env.get_class(name)?;
+        match self.env.get(name) {
+            None => {}
+            Some(Type::Class(bound)) if bound.name == class.name => {}
+            Some(_) => return None,
+        }
+        if class.methods.get("new").is_some_and(|m| m.is_static) {
+            return None;
+        }
+        Some(Type::Class(class.clone()))
     }
 
     /// Check block expression.

@@ -41,17 +41,38 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Top-level names declared anywhere in the auto-loaded directories under any
-/// of `targets`, for [`crate::type_check_source_with_ambient`].
+/// What an application's auto-loaded files declare at the top level, for
+/// each of its files to be checked against: a served app loads them all
+/// into one environment, so a name one of them declares is reachable from all
+/// of them with no import.
+#[derive(Default)]
+pub struct Project {
+    /// Every top-level name: classes, modules, `def`s, constants, variables.
+    /// Declared `Any`, so a name is never undefined.
+    pub names: Vec<String>,
+    /// The classes, modules, enums, interfaces and `def`s declared by exactly
+    /// one file, which the checker knows by their signatures. A name two files
+    /// declare (`smell/duplicate-global`, or a controller's function-style
+    /// action) stays a bare name: which one wins depends on load order.
+    pub declarations: Vec<crate::ast::Stmt>,
+    /// The classes of `app/jobs/*_job.sl`, which the loader gives
+    /// `perform_later`, `perform_now` and the rest of the job facade.
+    pub job_classes: Vec<String>,
+}
+
+/// The project around `targets`, or an empty one.
 ///
 /// A target inside an application — `soli check app`, `soli check
 /// app/controllers/posts_controller.sl` — is widened to that application's
 /// root (see [`crate::app_layout::app_root`]): its auto-loaded set is what the
 /// running server puts in scope, whichever subset of files is being checked.
 ///
-/// Returns nothing for a loose file or a directory that is not a project: the
-/// narrower per-file view is right when there is no project to widen it to.
-pub fn ambient_names(targets: &[PathBuf]) -> Vec<String> {
+/// Empty for a loose file or a directory that is not a project: the narrower
+/// per-file view is right when there is no project to widen it to.
+pub fn project(targets: &[PathBuf]) -> Project {
+    use crate::ast::stmt::StmtKind;
+    use std::collections::HashMap;
+
     let mut roots: Vec<PathBuf> = Vec::new();
     let mut seen_roots: HashSet<PathBuf> = HashSet::new();
     for target in targets {
@@ -68,6 +89,9 @@ pub fn ambient_names(targets: &[PathBuf]) -> Vec<String> {
     }
 
     let mut names: HashSet<String> = HashSet::new();
+    let mut declarations: Vec<crate::ast::Stmt> = Vec::new();
+    let mut seen_files: HashSet<PathBuf> = HashSet::new();
+    let mut job_classes: Vec<String> = Vec::new();
     for target in &roots {
         for dir in crate::AUTOLOADED_DIRS {
             let dir = target.join(dir);
@@ -75,19 +99,73 @@ pub fn ambient_names(targets: &[PathBuf]) -> Vec<String> {
                 continue;
             }
             for path in source_files(&dir) {
+                let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+                if !seen_files.insert(key) {
+                    continue;
+                }
                 // Parse only. A neighbour that does not parse is its own error,
                 // reported when its turn comes; it must not stop this file from
                 // being checked.
+                if let Some(class) = crate::job_class_of(&path) {
+                    job_classes.push(class);
+                }
                 let Some(program) = parse_file(&path) else {
                     continue;
                 };
                 crate::lint::rules::scope::collect_program_names(&program.statements, &mut names);
+                declarations.extend(program.statements.into_iter().filter(|stmt| {
+                    matches!(
+                        stmt.kind,
+                        StmtKind::Class(_)
+                            | StmtKind::Enum(_)
+                            | StmtKind::Interface(_)
+                            | StmtKind::Function(_)
+                    )
+                }));
+            }
+        }
+    }
+
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for stmt in &declarations {
+        if let Some(name) = declared_name(stmt) {
+            *counts.entry(name.to_string()).or_default() += 1;
+        }
+    }
+    declarations.retain(|stmt| declared_name(stmt).is_some_and(|name| counts[name] == 1));
+
+    // A class known by its declaration must not also be bound as an `Any`
+    // name: that binding would hide it, and `Pricing.new()` would build `Any`.
+    for stmt in &declarations {
+        if !matches!(stmt.kind, StmtKind::Function(_)) {
+            if let Some(name) = declared_name(stmt) {
+                names.remove(name);
             }
         }
     }
     let mut names: Vec<String> = names.into_iter().collect();
     names.sort();
-    names
+    Project {
+        names,
+        declarations,
+        job_classes,
+    }
+}
+
+fn declared_name(stmt: &crate::ast::Stmt) -> Option<&str> {
+    use crate::ast::stmt::StmtKind;
+    match &stmt.kind {
+        StmtKind::Class(decl) => Some(&decl.name),
+        StmtKind::Enum(decl) => Some(&decl.name),
+        StmtKind::Interface(decl) => Some(&decl.name),
+        StmtKind::Function(decl) => Some(&decl.name),
+        _ => None,
+    }
+}
+
+/// The top-level names of the project around `targets` (see [`project`]).
+pub fn ambient_names(targets: &[PathBuf]) -> Vec<String> {
+    project(targets).names
 }
 
 /// The names `file` can reach without declaring them: the project's
@@ -110,11 +188,18 @@ pub fn file_ambient(file: &Path, project: &[String]) -> Vec<String> {
     names
 }
 
-/// Read and check one file against `project` (see [`file_ambient`]).
-pub fn check_file(file: &Path, project: &[String]) -> std::io::Result<crate::CheckReport> {
+/// Read and check one file against `project` (see [`project`] and
+/// [`file_ambient`]).
+pub fn check_file(file: &Path, project: &Project) -> std::io::Result<crate::CheckReport> {
     let source = std::fs::read_to_string(file)?;
-    let ambient = file_ambient(file, project);
-    Ok(crate::type_check_report(&source, Some(file), &ambient))
+    let ambient = file_ambient(file, &project.names);
+    Ok(crate::type_check_report_in_project(
+        &source,
+        Some(file),
+        &ambient,
+        &project.declarations,
+        &project.job_classes,
+    ))
 }
 
 fn parse_file(path: &Path) -> Option<crate::ast::Program> {

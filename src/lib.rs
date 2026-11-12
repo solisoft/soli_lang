@@ -120,11 +120,9 @@ fn run_preamble_files(
     Ok(())
 }
 
-/// Give an `app/jobs/*_job.sl` class the facade the server injects when it
-/// loads the app (`perform_later`, `perform_in`, `perform_at`, `perform_now`,
-/// `schedule_cron`). Without it a spec — or a model callback or service a spec
-/// drives — failed on `perform_later` while the same call worked in the app.
-fn inject_job_facade(interpreter: &mut interpreter::Interpreter, path: &std::path::Path) {
+/// The class a `jobs/*_job.sl` file declares (`email_job.sl` → `EmailJob`),
+/// which gets the job facade; `None` for any other file.
+pub(crate) fn job_class_of(path: &std::path::Path) -> Option<String> {
     let in_jobs_dir = path
         .parent()
         .and_then(|dir| dir.file_name())
@@ -133,10 +131,17 @@ fn inject_job_facade(interpreter: &mut interpreter::Interpreter, path: &std::pat
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.ends_with("_job.sl"));
-    if !in_jobs_dir || !is_job_file {
+    (in_jobs_dir && is_job_file).then(|| serve::app_loader::job_class_name_from_path(path))
+}
+
+/// Give an `app/jobs/*_job.sl` class the facade the server injects when it
+/// loads the app (`perform_later`, `perform_in`, `perform_at`, `perform_now`,
+/// `schedule_cron`). Without it a spec — or a model callback or service a spec
+/// drives — failed on `perform_later` while the same call worked in the app.
+fn inject_job_facade(interpreter: &mut interpreter::Interpreter, path: &std::path::Path) {
+    let Some(class_name) = job_class_of(path) else {
         return;
-    }
-    let class_name = serve::app_loader::job_class_name_from_path(path);
+    };
     let Some(interpreter::value::Value::Class(class)) =
         interpreter.environment.borrow().get(&class_name)
     else {
@@ -841,9 +846,21 @@ pub fn type_check_report(
     source_path: Option<&std::path::Path>,
     ambient: &[String],
 ) -> CheckReport {
+    type_check_report_in_project(source, source_path, ambient, &[], &[])
+}
+
+/// [`type_check_report`], the project's top-level declarations known by their
+/// signatures rather than as `Any` names (see `check::Project`).
+pub fn type_check_report_in_project(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    ambient: &[String],
+    declarations: &[ast::Stmt],
+    job_classes: &[String],
+) -> CheckReport {
     error::source_map::clear_origin();
     let sources = error::source_map::SourceSet::new(source, source_path);
-    match type_check_program(source, source_path, ambient) {
+    match type_check_program(source, source_path, ambient, declarations, job_classes) {
         Ok((program, warnings, errors)) => CheckReport {
             errors,
             warnings,
@@ -864,11 +881,20 @@ fn type_check_program(
     source: &str,
     source_path: Option<&std::path::Path>,
     ambient: &[String],
+    declarations: &[ast::Stmt],
+    job_classes: &[String],
 ) -> Result<(ast::Program, Vec<error::TypeError>, Vec<SolilangError>), SolilangError> {
     let program = parse_and_resolve(source, source_path)?;
 
     let mut checker = types::TypeChecker::new();
+    checker.declare_job_classes(
+        job_classes
+            .iter()
+            .cloned()
+            .chain(source_path.and_then(job_class_of)),
+    );
     checker.declare_ambient(ambient);
+    checker.declare_project(declarations);
     if source_path.is_some_and(is_test_path) {
         checker.declare_test_dsl();
     }

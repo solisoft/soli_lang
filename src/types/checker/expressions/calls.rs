@@ -30,6 +30,27 @@ impl TypeChecker {
                 }
             }
         }
+        // `C.new(…)` on a class this pass knows: an instance of `C`, so its
+        // members are checked (#693). The arguments are checked as
+        // expressions; the constructor's shape (positional, or one hash of
+        // attributes) is left to the runtime.
+        if let ExprKind::Member { object, name } = &callee.kind {
+            if name == "new" {
+                if let Some(instance) = self.constructed_instance(object) {
+                    for arg in arguments {
+                        match arg {
+                            Argument::Positional(expr) | Argument::Block(expr) => {
+                                self.check_expr(expr)?;
+                            }
+                            Argument::Named(named) => {
+                                self.check_expr(&named.value)?;
+                            }
+                        }
+                    }
+                    return Ok(instance);
+                }
+            }
+        }
         // The receiver of an XML query (`doc.find("…")`), whose answer the
         // expression decides — see `xml::xml_query_type`.
         let mut query_receiver = None;
@@ -52,6 +73,27 @@ impl TypeChecker {
             }
             _ => self.check_expr(callee)?,
         };
+
+        // A `def` of this file or of the project: its parameters, defaults
+        // included, are known — an untyped parameter used to switch the
+        // count off altogether.
+        if let ExprKind::Variable(name) = &callee.kind {
+            if let Some((min, max, declared)) = self.function_arities.get(name) {
+                if *declared == callee_type {
+                    let given = arguments
+                        .iter()
+                        .filter(|a| !matches!(a, Argument::Block(_)))
+                        .count();
+                    if given < *min || given > *max {
+                        return Err(TypeError::WrongArity {
+                            expected: if given < *min { *min } else { *max },
+                            got: given,
+                            span,
+                        });
+                    }
+                }
+            }
+        }
 
         match callee_type {
             Type::Function {

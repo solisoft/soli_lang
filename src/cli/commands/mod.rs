@@ -1552,7 +1552,7 @@ pub fn run_check(paths: &[String], format: OutputFormat) {
     // of an application is widened to that application's root (`soli check
     // app` sees the models `soli check .` sees). `soli check one.sl` on a
     // loose script has no project around it and keeps the narrower view.
-    let ambient = solilang::check::ambient_names(&targets);
+    let project = solilang::check::project(&targets);
 
     let checked = files.len();
     let mut total_errors = 0;
@@ -1564,7 +1564,7 @@ pub fn run_check(paths: &[String], format: OutputFormat) {
     };
 
     for file in &files {
-        let report = match solilang::check::check_file(file, &ambient) {
+        let report = match solilang::check::check_file(file, &project) {
             Ok(report) => report,
             Err(e) => {
                 eprintln!("{}: error reading file: {}", file.display(), e);
