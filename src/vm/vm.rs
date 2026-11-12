@@ -2599,11 +2599,13 @@ impl Vm {
                 // --- Comparison (inlined fast paths for Int) ---
                 Op::Equal => {
                     let (a, b) = self.pop2();
-                    self.stack.push(Value::Bool(values_equal(&a, &b)));
+                    let equal = self.equal_values(&a, &b)?;
+                    self.stack.push(Value::Bool(equal));
                 }
                 Op::NotEqual => {
                     let (a, b) = self.pop2();
-                    self.stack.push(Value::Bool(!values_equal(&a, &b)));
+                    let equal = self.equal_values(&a, &b)?;
+                    self.stack.push(Value::Bool(!equal));
                 }
                 Op::Less => {
                     let (a, b) = self.pop2();
@@ -3310,6 +3312,11 @@ impl Vm {
                             // let normal dispatch produce the message that says
                             // what is actually wrong.
                             let receiver = other.clone();
+                            if is_lazy(&receiver) {
+                                let value = self.hash_get_const_on(&receiver, key)?;
+                                self.push(value);
+                                continue;
+                            }
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
                             if Self::fused_call_is_method(&receiver, "get") {
                                 self.call_fused_as_method(receiver, "get", vec![arg])?;
@@ -3447,6 +3454,11 @@ impl Vm {
                         // wrong.
                         None => {
                             let receiver = self.stack[base + slot as usize].clone();
+                            if is_lazy(&receiver) {
+                                let value = self.hash_get_const_on(&receiver, key)?;
+                                self.push(value);
+                                continue;
+                            }
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
                             // A class (`HTTP.get`) or an object with its own
                             // `get` (#632): the method, as the tree-walker calls it.
@@ -3622,6 +3634,11 @@ impl Vm {
                             // wants an integer index, and saying otherwise sends
                             // the reader hunting for the wrong bug.
                             let receiver = other.clone();
+                            if is_lazy(&receiver) {
+                                let value = self.hash_get_const_on(&receiver, key)?;
+                                self.push(value);
+                                continue;
+                            }
                             let arg = Value::String(crate::interpreter::value::SoliStr::from(key));
                             // A class (`HTTP.get`) or an object with its own
                             // `get` (#632): the method, as the tree-walker calls it.
@@ -5420,7 +5437,7 @@ impl Vm {
                         (Value::Int(x), Constant::Int(y)) => *x != *y,
                         (Value::Float(x), Constant::Float(y)) => *x != *y,
                         (Value::String(x), Constant::String(y)) => x != y,
-                        _ => !values_equal(local, &constant_to_value(constant)),
+                        _ => !self.equal_values(local, &constant_to_value(constant))?,
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -5433,7 +5450,7 @@ impl Vm {
                         (Value::Int(x), Constant::Int(y)) => *x == *y,
                         (Value::Float(x), Constant::Float(y)) => *x == *y,
                         (Value::String(x), Constant::String(y)) => x == y,
-                        _ => values_equal(local, &constant_to_value(constant)),
+                        _ => self.equal_values(local, &constant_to_value(constant))?,
                     };
                     self.stack.push(Value::Bool(result));
                 }
@@ -5493,13 +5510,13 @@ impl Vm {
                 }
                 Op::TestNotEqualJump(offset) => {
                     let (a, b) = self.pop2();
-                    if values_equal(&a, &b) {
+                    if self.equal_values(&a, &b)? {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
                 Op::TestEqualJump(offset) => {
                     let (a, b) = self.pop2();
-                    if !values_equal(&a, &b) {
+                    if !self.equal_values(&a, &b)? {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }
@@ -5659,18 +5676,18 @@ impl Vm {
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let equal = values_equal(
+                    let equal = self.equal_values(
                         &self.stack[base + slot_a as usize],
                         &self.stack[base + slot_b as usize],
-                    );
+                    )?;
                     self.stack.push(Value::Bool(equal));
                 }
                 Op::NotEqualLocalLocal(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
-                    let equal = values_equal(
+                    let equal = self.equal_values(
                         &self.stack[base + slot_a as usize],
                         &self.stack[base + slot_b as usize],
-                    );
+                    )?;
                     self.stack.push(Value::Bool(!equal));
                 }
                 Op::PopNull => {
@@ -6262,6 +6279,19 @@ impl Vm {
         (p1, p2)
     }
 
+    /// `a == b` for the general arms: [`values_equal`], with a `Future` or a
+    /// `grouped` `Deferred` resolved first, as the tree-walker's operators do
+    /// — `HTTP.get(url) == "ok"` compared the pending call itself.
+    fn equal_values(&self, a: &Value, b: &Value) -> Result<bool, RuntimeError> {
+        if is_lazy(a) || is_lazy(b) {
+            let span = self.current_span();
+            let a = Self::force_lazy_receiver(a, span)?;
+            let b = Self::force_lazy_receiver(b, span)?;
+            return Ok(values_equal(&a, &b));
+        }
+        Ok(values_equal(a, b))
+    }
+
     /// `receiver[k1][k2]` with the same miss rules as two `HashGetConst`s:
     /// a missing first key is Null, and indexing Null raises.
     fn hash_get_nested(
@@ -6303,6 +6333,10 @@ impl Vm {
             Value::Instance(_) => {
                 let span = self.current_span();
                 self.op_get_index(receiver, &Value::String(key.into()), span)
+            }
+            lazy @ (Value::Future(_) | Value::Deferred(_)) => {
+                let resolved = Self::force_lazy_receiver(lazy, self.current_span())?;
+                self.hash_get_const_on(&resolved, key)
             }
             other => Err(RuntimeError::no_such_property(
                 other.type_name(),
@@ -6434,10 +6468,11 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         // `@posts[0]` after a `grouped {}` block: force the deferred query
         // result first, the way the tree-walker's variable/member reads do.
-        if let Value::Deferred(cell) = object {
-            let resolved = crate::interpreter::builtins::model::batch::force(cell)
-                .map_err(|e| RuntimeError::General { message: e, span })?;
-            return self.op_get_index(&resolved, index, span);
+        // A Future (`HTTP.get_json(url)["name"]`) too.
+        if is_lazy(object) || is_lazy(index) {
+            let object = Self::force_lazy_receiver(object, span)?;
+            let index = Self::force_lazy_receiver(index, span)?;
+            return self.op_get_index(&object, &index, span);
         }
         match (object, index) {
             (Value::Array(arr), Value::Int(i)) => {
@@ -6731,6 +6766,13 @@ fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Bool(x), Value::Bool(y)) => x == y,
         _ => crate::interpreter::value::enum_aware_equal(a, b),
     }
+}
+
+/// A value the tree-walker resolves before reading or comparing it: a
+/// pending `Future` (`HTTP.get_json`, `System.run`) or a `grouped` read.
+#[inline(always)]
+fn is_lazy(value: &Value) -> bool {
+    matches!(value, Value::Future(_) | Value::Deferred(_))
 }
 
 /// Whether `value` is one of the kinds `primitive_equal` answers for.

@@ -342,6 +342,16 @@
 
 ### Fixed
 
+- **The VM resolves a pending call before indexing or comparing it (#634).**
+  `HTTP.get_json(url)["name"]`, `HTTP.request(…)["status"]` and
+  `System.run([…])["exit_code"]` raised "Cannot access property 'get' on
+  Future" on the VM, and `HTTP.get(url) == "ok"` compared the pending call
+  itself; under `soli serve` the action fell back to the interpreter and the
+  call ran twice. `op_get_index`, `hash_get_const_on`, the fused
+  `HashGet*Const` arms and every `==` / `!=` arm (`Vm::equal_values`) now
+  resolve a `Future` or a `grouped` `Deferred` first, as the tree-walker
+  does. Differential test: `futures_resolve_for_index_and_equality`.
+
 - **`instance_variable_set` keeps the field rules; the VM keeps `const` (#629).**
   `obj.instance_variable_set("_key", v)` wrote a model's metadata, a `const`
   field and the raw column of a translated field on both engines: the native

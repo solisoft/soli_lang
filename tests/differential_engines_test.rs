@@ -642,6 +642,28 @@ p.instance_variable_set("x", 7)
 print(p.x)"##,
     ),
     (
+        // A pending call (`System.run`, a backtick command) is resolved before
+        // an index read or `==`, as the tree-walker does: the VM indexed the
+        // Future itself ("Cannot access property 'get' on Future") and
+        // compared it by identity (#634).
+        "futures_resolve_for_index_and_equality",
+        r##"def run()
+  r = System.run(["echo", "hi"])
+  out = [r["exit_code"], r.exit_code, r.get("exit_code")]
+  x = System.run(["true"])["exit_code"]
+  same = System.run(["true"]) == System.run(["true"])
+  differ = System.run(["true"]) != System.run(["false"])
+  key = "exit_code"
+  dynamic = System.run(["true"])[key]
+  nested = {"r": System.run(["true"])}
+  [out, x, same, differ, dynamic, nested["r"]["exit_code"]]
+end
+print(run())
+r2 = System.run(["echo", "a"])
+print(r2["exit_code"], r2.get("exit_code"))
+print(`echo hi` == `echo hi`, `echo hi` != "x")"##,
+    ),
+    (
         // Inside a def, a method, a lambda or a block, a bare assignment to a
         // builtin's name defines a local; the builtin stays. At the top level
         // it is still the program's own binding (#630).
