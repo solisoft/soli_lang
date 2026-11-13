@@ -577,8 +577,7 @@ impl Parser {
         };
         let mut body: Vec<String> = Vec::new();
         let mut next = line + 1;
-        for current in line + 1..self.lines.len() {
-            let raw = &self.lines[current];
+        for (current, raw) in self.lines.iter().enumerate().skip(line + 1) {
             if raw.trim_matches([' ', '\t']).is_empty() {
                 body.push(raw.get(content_indent..).unwrap_or("").to_string());
                 next = current + 1;
