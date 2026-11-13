@@ -510,7 +510,9 @@ pub fn sync_graph(
 /// or edges from the same source, so `soli graph build` resyncs unchanged
 /// files. Embeddings of nodes whose text did not change are still reused.
 /// 2: database collections, assigns/implicit renders, Python imports.
-pub const EXTRACTOR_VERSION: u64 = 2;
+/// 3: Python calls and instantiations.
+/// 4: Python methods defined by their class.
+pub const EXTRACTOR_VERSION: u64 = 4;
 
 pub fn is_up_to_date(file_hashes: &HashMap<String, String>, database: Option<&str>) -> bool {
     let Ok((client, _db)) = connect(database) else {

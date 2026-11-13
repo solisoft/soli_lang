@@ -16,6 +16,16 @@
   IN`, a traversal's edge collection, `INSERT … INTO`, `UPDATE`/`REPLACE`/
   `REMOVE`/`UPSERT … IN`; `LET`/`FOR`-bound names and bind parameters are not
   collections).
+- **A Python call graph.** The Python extractor emits `calls` /
+  `instantiates` with their receiver (`self.m`, `super.m`, `Class.m`, a local
+  whose class is certain: typed parameter, `x = Class(…)`, `x: Class = …`,
+  `x = Registry.get(Class)`), and the generic builder resolves them through
+  the class's bases (`resolve_member_call`, breadth-first, nearest wins),
+  skipping a class name two files declare. A bare Python call reaches only a
+  function; `Class(…)` instantiates only a unique project class. Python (and
+  C#) methods are now `defines` children of their class, not only of their
+  file. On tenacy's 2,123-file Flask backend: 18,328 `calls` and 10,366
+  `instantiates` edges, where there were none. `EXTRACTOR_VERSION` 4.
 - **More static analysis in the graph.** A controller action that names no
   view gets `renders` (relation `implicit`) to `<controller>/<action>`; an
   `assigns` edge (relation `@x`) per instance variable the action sets that

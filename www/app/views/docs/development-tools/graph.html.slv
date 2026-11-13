@@ -160,7 +160,12 @@ soli graph build</code></pre>
             TypeScript/TSX, Rust and C# get real <code>class</code>/<code>module</code>/<code>method</code>/<code>function</code>
             nodes plus <code>inherits</code>, <code>implements</code> and <code>imports</code> edges; an import lands on the
             project file it names (Python&rsquo;s <code>a.b.c</code> and <code>..b.c</code>, packages&rsquo; <code>__init__.py</code>,
-            relative <code>require</code>s and JS/TS imports), on an <code>external</code> stub otherwise. <strong class="text-white">C# also gets a call graph</strong>
+            relative <code>require</code>s and JS/TS imports), on an <code>external</code> stub otherwise.
+            <strong class="text-white">Python gets a call graph</strong>: <code>self.m()</code> / <code>cls.m()</code> through the
+            class's bases, <code>super().m()</code>, <code>Class.m()</code>, <code>x.m()</code> when <code>x</code>'s class is certain
+            (a typed parameter, <code>x = Class(&hellip;)</code>, <code>x = Registry.get(Class)</code>), a bare call to the one project
+            function of that name, and <code>Class(&hellip;)</code> &rarr; <code>instantiates</code>; an ambiguous class name or an
+            unknown receiver stays unlinked. <strong class="text-white">C# also gets a call graph</strong>
             &mdash; method-body <code>calls</code> and <code>new</code>&nbsp;&rarr;&nbsp;<code>instantiates</code> edges, attributed to
             the enclosing method. Every other extension (<code>.erb</code>, <code>.slim</code>, config, &hellip;) is
             <strong class="text-white">chunk-embedded</strong> &mdash; split into windows and embedded &mdash; so semantic

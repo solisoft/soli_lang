@@ -94,6 +94,44 @@ mod tests {
     }
 
     #[test]
+    fn python_calls_name_their_receiver() {
+        let src = r#"
+class ActionService(BaseService):
+    def insert_action(self, action: Action, repo: "ActionRepository"):
+        self.validate(action)
+        super().insert(action)
+        repo.add(action)
+        helper = Helper()
+        helper.run()
+        service = ServiceRegistry.get(AuditService)
+        service.log(action)
+        service = make_service()
+        service.flush()
+        notify(action)
+        ActionRepository.count()
+        unknown.thing()
+"#;
+        let out = defs_extract("py", src);
+        let from = "ActionService.insert_action";
+        for target in [
+            "self.validate",
+            "super.insert",
+            "ActionRepository.add",
+            "Helper.run",
+            "AuditService.log",
+            "notify",
+            "ActionRepository.count",
+        ] {
+            assert!(has_edge_from(&out, "calls", target, from), "{target}");
+        }
+        assert!(has_edge_from(&out, "instantiates", "Helper", from));
+        // `service` was reassigned to an unknown value: no receiver.
+        assert!(!has_edge(&out, "calls", "AuditService.flush"));
+        assert!(!out.edges.iter().any(|e| e.target.ends_with(".flush")));
+        assert!(!out.edges.iter().any(|e| e.target.ends_with(".thing")));
+    }
+
+    #[test]
     fn ruby_class_method_and_inherits() {
         let out = defs_extract(
             "rb",

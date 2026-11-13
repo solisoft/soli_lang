@@ -132,6 +132,11 @@ struct GenericBuilder {
     // Resolution indexes.
     class_by_name: HashMap<String, String>, // name -> node id (classes/modules)
     defs_by_name: HashMap<String, Vec<String>>, // name -> node ids (methods/functions)
+    /// Simple class name -> how many classes carry it (a name two files
+    /// declare is not a receiver the graph can trust).
+    class_name_count: HashMap<String, usize>,
+    /// Simple class name -> its base classes' simple names, from `inherits`.
+    class_bases: HashMap<String, Vec<String>>,
 
     // Deferred by-name edges: (from_id, RawEdge, relpath).
     deferred: Vec<(String, RawEdge, String)>,
@@ -234,11 +239,17 @@ impl GenericBuilder {
                     self.class_by_name
                         .entry(def.name.clone())
                         .or_insert_with(|| id.clone());
+                    *self.class_name_count.entry(def.name.clone()).or_default() += 1;
                 }
                 _ => {
                     // method/function: attach to its enclosing class when the
                     // qualified name carries one (`User#authenticate`).
-                    if let Some((owner, _)) = def.qualified_name.split_once('#') {
+                    // `User#authenticate` (Ruby), `User.authenticate` (Python).
+                    let owner = def
+                        .qualified_name
+                        .split_once('#')
+                        .or_else(|| def.qualified_name.rsplit_once('.'));
+                    if let Some((owner, _)) = owner {
                         let owner_id = format!("class:{}", owner);
                         if self.node_ids.contains(&owner_id) {
                             self.push_edge(&owner_id, &id, "defines", "", rel, def.line);
@@ -258,6 +269,21 @@ impl GenericBuilder {
         // Defer by-name edges (need the full project def index). The enclosing
         // def was just interned above, so resolve `from` against real node ids
         // rather than guessing the kind from the name's shape.
+        for edge in &edges {
+            if edge.kind == "inherits" {
+                let class = edge
+                    .from_qualified
+                    .rsplit(['.', ':', '#'])
+                    .next()
+                    .unwrap_or(&edge.from_qualified)
+                    .to_string();
+                let base = edge.target.rsplit('.').next().unwrap_or(&edge.target);
+                self.class_bases
+                    .entry(class)
+                    .or_default()
+                    .push(base.to_string());
+            }
+        }
         for edge in edges {
             let from_id = if edge.from_qualified.is_empty() {
                 file_id.clone()
@@ -314,20 +340,41 @@ impl GenericBuilder {
                         self.push_edge(&from_id, &ext, "imports", "", &rel, edge.line);
                     }
                 }
+                // A receiver-qualified Python call: `self.m`, `super.m`,
+                // `Class.m`.
+                "calls" if edge.target.contains('.') => {
+                    if let Some(to) = self.resolve_member_call(&edge.from_qualified, &edge.target) {
+                        self.push_edge(&from_id, &to, "calls", "", &rel, edge.line);
+                    }
+                }
                 "calls" => {
-                    // Precision-first: only link an unambiguous name.
-                    if let Some(ids) = self.defs_by_name.get(&edge.target) {
-                        if ids.len() == 1 {
-                            let to = ids[0].clone();
-                            self.push_edge(&from_id, &to, "calls", "", &rel, edge.line);
+                    // Precision-first: only link an unambiguous name. A bare
+                    // Python call reaches a function, never a method.
+                    let python = rel.ends_with(".py") || rel.ends_with(".pyi");
+                    let to = self.defs_by_name.get(&edge.target).and_then(|ids| {
+                        let mut candidates = ids
+                            .iter()
+                            .filter(|id| !python || id.starts_with("function:"));
+                        match (candidates.next(), candidates.next()) {
+                            (Some(only), None) => Some(only.clone()),
+                            _ => None,
                         }
+                    });
+                    if let Some(to) = to {
+                        self.push_edge(&from_id, &to, "calls", "", &rel, edge.line);
                     }
                 }
                 "instantiates" => {
                     // Link `new Foo()` only to a known project class — never an
                     // external stub, so framework types (`new List<T>()`) don't
                     // flood the graph with noise.
-                    if let Some(to) = self.class_by_name.get(&edge.target).cloned() {
+                    let unique = self.class_name_count.get(&edge.target).copied() == Some(1);
+                    if let Some(to) = self
+                        .class_by_name
+                        .get(&edge.target)
+                        .cloned()
+                        .filter(|_| unique)
+                    {
                         self.push_edge(&from_id, &to, "instantiates", "", &rel, edge.line);
                     }
                 }
@@ -343,6 +390,42 @@ impl GenericBuilder {
     /// shape — so a `.`/`::`-separated method name (C#, Rust) resolves to its
     /// `method:` node instead of a nonexistent `class:` one. Falls back to the
     /// shape heuristic when nothing matches, preserving prior behaviour.
+    /// `self.m` / `super.m` / `Class.m` called from `from_qualified`
+    /// (`Owner.caller`): the method `m` of that class or its nearest ancestor
+    /// that defines it. Nothing when the class is unknown or its name is
+    /// declared twice in the project.
+    fn resolve_member_call(&self, from_qualified: &str, target: &str) -> Option<String> {
+        let (receiver, method) = target.rsplit_once('.')?;
+        let owner = from_qualified
+            .rsplit_once('.')
+            .map(|(owner, _)| owner.rsplit('.').next().unwrap_or(owner));
+        let start: Vec<String> = match receiver {
+            "self" => vec![owner?.to_string()],
+            "super" => self.class_bases.get(owner?).cloned().unwrap_or_default(),
+            class => vec![class.to_string()],
+        };
+        // Breadth-first up the hierarchy: the nearest definition wins.
+        let mut queue: std::collections::VecDeque<String> = start.into();
+        let mut seen = HashSet::new();
+        while let Some(class) = queue.pop_front() {
+            if !seen.insert(class.clone()) || seen.len() > 32 {
+                continue;
+            }
+            if self.class_name_count.get(&class).copied().unwrap_or(0) != 1 {
+                // Unknown (a library base) or ambiguous: stop on this branch.
+                continue;
+            }
+            let id = format!("method:{}.{}", class, method);
+            if self.node_ids.contains(&id) {
+                return Some(id);
+            }
+            if let Some(bases) = self.class_bases.get(&class) {
+                queue.extend(bases.iter().cloned());
+            }
+        }
+        None
+    }
+
     fn resolve_from_id(&self, qualified: &str, rel: &str) -> String {
         let candidates = [
             format!("method:{}", qualified),
@@ -594,6 +677,87 @@ mod tests {
             .edges
             .iter()
             .any(|e| e.from == f && e.to == t && e.edge_kind == edge_kind)
+    }
+
+    #[test]
+    fn python_calls_resolve_through_receivers_and_bases() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, body: &str| fs::write(dir.path().join(rel), body).unwrap();
+        write(
+            "base.py",
+            "class BaseService:\n    def validate(self, x):\n        pass\n    def insert(self, x):\n        pass\n",
+        );
+        write(
+            "repo.py",
+            "class ActionRepository:\n    def add(self, x):\n        pass\n    def save(self):\n        pass\n",
+        );
+        write("dup_a.py", "class Twin:\n    def go(self):\n        pass\n");
+        write("dup_b.py", "class Twin:\n    def go(self):\n        pass\n");
+        write("util.py", "def notify(x):\n    pass\n");
+        write(
+            "service.py",
+            concat!(
+                "class ActionService(BaseService):\n",
+                "    def insert(self, x):\n",
+                "        self.validate(x)\n",
+                "        super().insert(x)\n",
+                "    def run(self, repo: ActionRepository, twin: Twin):\n",
+                "        self.insert(1)\n",
+                "        repo.add(1)\n",
+                "        twin.go()\n",
+                "        notify(1)\n",
+                "        save()\n",
+                "        ActionRepository()\n",
+            ),
+        );
+        let config = GraphConfig {
+            extensions: vec!["py".to_string()],
+            ..Default::default()
+        };
+        let graph = build_generic_graph(dir.path(), &config, &mut |_, _| {}).unwrap();
+        let insert = ("method", "ActionService.insert");
+        let run = ("method", "ActionService.run");
+        // `self.validate` is inherited; `super().insert` skips the override.
+        assert!(has_edge(
+            &graph,
+            insert,
+            ("method", "BaseService.validate"),
+            "calls"
+        ));
+        assert!(has_edge(
+            &graph,
+            insert,
+            ("method", "BaseService.insert"),
+            "calls"
+        ));
+        // `self.insert` finds the class's own override first.
+        assert!(has_edge(&graph, run, insert, "calls"));
+        assert!(has_edge(
+            &graph,
+            run,
+            ("method", "ActionRepository.add"),
+            "calls"
+        ));
+        assert!(has_edge(&graph, run, ("function", "notify"), "calls"));
+        assert!(has_edge(
+            &graph,
+            run,
+            ("class", "ActionRepository"),
+            "instantiates"
+        ));
+        // A Python method is defined by its class, not only its file.
+        assert!(has_edge(&graph, ("class", "ActionService"), run, "defines"));
+        // Two classes named `Twin`: no edge. A bare `save()` is not the method.
+        assert!(!graph
+            .edges
+            .iter()
+            .any(|e| e.edge_kind == "calls" && e.to.contains("Twin.go")));
+        assert!(!has_edge(
+            &graph,
+            run,
+            ("method", "ActionRepository.save"),
+            "calls"
+        ));
     }
 
     #[test]

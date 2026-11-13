@@ -132,7 +132,25 @@ nodes plus `inherits`, `implements`, and `imports` edges. An import lands on the
 project file it names when there is one — Python's `a.b.c` from the indexed
 root and `.c` / `..b.c` from the importer's package (`c.py`, `c.pyi` or
 `c/__init__.py`), relative `require`s and JS/TS imports — and on an `external`
-stub otherwise (a library). **C# additionally gets
+stub otherwise (a library).
+
+**Python also gets a call graph**, precision-first like C#'s: `calls` and
+`instantiates` edges from each function and method body, each linked only when
+its target is certain.
+
+| Call | Linked to |
+|------|-----------|
+| `self.m(…)`, `cls.m(…)` | `m` on the enclosing class, or its nearest base class that defines it |
+| `super().m(…)` | `m` on the nearest base class |
+| `Order.m(…)` | `Order`'s `m` (a static or class method) |
+| `x.m(…)` | `m` on `x`'s class, when it is certain: a typed parameter (`x: Order`, `Optional[Order]`), `x = Order(…)`, `x: Order = …`, or `x = Registry.get(Order)` / `.resolve(Order)` (a service locator). Any other assignment forgets it |
+| `notify(…)` | the one project **function** of that name (never a method) |
+| `Order(…)` | `instantiates` the project class |
+
+A class name two files declare is never a target, and a receiver with no known
+class (`self.repo.add(…)`, `obj.m(…)`) stays unlinked. On a 2,100-file Flask
+backend this gives about 18,000 `calls` and 10,000 `instantiates` edges, e.g.
+`ActionInsertResource.post → ActionService.insert_action`. **C# additionally gets
 a call graph** — method-body `calls` and `new` → `instantiates` edges,
 attributed to the enclosing method (see the call-graph note below). Every other
 extension (`.erb`, `.slim`, `.md`, config, …) is **chunk-embedded** — split into
@@ -161,8 +179,9 @@ exactly one project method carries that name (C#'s heavy overloading means
 shared names like `ToString`/`Add` are deliberately dropped rather than
 mis-linked). Precise cross-type resolution would need full semantic/type
 analysis, which tree-sitter alone doesn't provide, so treat the C# call graph as
-a high-confidence subset, not exhaustive. The other foreign languages still emit
-structure only (`inherits`/`implements`/`imports`). `--fresh`, `--dry-run`,
+a high-confidence subset, not exhaustive. Python's call graph is described
+above. The other foreign languages still emit structure only
+(`inherits`/`implements`/`imports`). `--fresh`, `--dry-run`,
 `--no-embed`, incremental MD5 skipping and non-destructive sync all work the
 same as for Soli apps.
 

@@ -6,7 +6,9 @@
 //! *inheritance* (`inherits`/`implements`), and *imports*. The C# walker also
 //! emits by-name `calls` and `instantiates` references from method bodies; the
 //! caller resolves each name against the project's definitions (best-effort,
-//! precision-first). Other languages still emit structure only.
+//! precision-first). The Python walker emits them too, with a receiver when it
+//! is known (`self.m`, `super.m`, `Class.m`, a local whose class is certain);
+//! see [`python_scan_body`]. Other languages still emit structure only.
 
 use tree_sitter::{Node, Parser};
 
@@ -285,11 +287,18 @@ fn walk_python(node: Node, bytes: &[u8], scope: &mut Vec<String>, out: &mut Extr
                     out,
                     kind,
                     &name,
-                    qn,
+                    qn.clone(),
                     child,
                     format!("def {}{}", name, params),
                     None,
                 );
+                let mut locals = std::collections::HashMap::new();
+                if let Some(parameters) = child.child_by_field_name("parameters") {
+                    python_typed_params(parameters, bytes, &mut locals);
+                }
+                if let Some(body) = child.child_by_field_name("body") {
+                    python_scan_body(body, bytes, &qn, &mut locals, out);
+                }
             }
             "import_statement" | "import_from_statement" => {
                 let target = field_text(child, "module_name", bytes);
@@ -306,6 +315,223 @@ fn walk_python(node: Node, bytes: &[u8], scope: &mut Vec<String>, out: &mut Extr
             }
             _ => walk_python(child, bytes, scope, out),
         }
+    }
+}
+
+/// `x: Order` / `x: Order = …` parameters: the local's class.
+fn python_typed_params(
+    parameters: Node,
+    bytes: &[u8],
+    locals: &mut std::collections::HashMap<String, String>,
+) {
+    let mut cursor = parameters.walk();
+    for param in parameters.named_children(&mut cursor) {
+        if !matches!(param.kind(), "typed_parameter" | "typed_default_parameter") {
+            continue;
+        }
+        let name = match param.child_by_field_name("name") {
+            Some(n) => text(n, bytes).to_string(),
+            None => child_of_kind(param, "identifier", bytes),
+        };
+        let class = param
+            .child_by_field_name("type")
+            .map(|t| python_class_name(text(t, bytes)))
+            .unwrap_or_default();
+        if !name.is_empty() && !class.is_empty() {
+            locals.insert(name, class);
+        }
+    }
+}
+
+/// A type annotation's class, when it names exactly one: `Order`,
+/// `Optional[Order]`, `"Order"`, `models.Order` → `Order`; `list[Order]` or
+/// `Order | None` style unions of several classes → none.
+fn python_class_name(annotation: &str) -> String {
+    let raw = annotation.trim().trim_matches(|c| c == '"' || c == '\'');
+    let raw = raw
+        .strip_prefix("Optional[")
+        .and_then(|r| r.strip_suffix(']'))
+        .unwrap_or(raw);
+    let raw = raw.trim_end_matches("| None").trim_end_matches(" ").trim();
+    let last = raw.rsplit('.').next().unwrap_or(raw);
+    if is_simple_ident(last) && last.chars().next().is_some_and(char::is_uppercase) {
+        last.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Emit `calls` / `instantiates` references from a Python body, attributed to
+/// `from_qn`. A call's target names its receiver when it is known, and the
+/// builder resolves each against the project, dropping what it cannot place:
+///
+/// - `name(…)` → `calls name` (a lowercase function) or `instantiates Name`;
+/// - `self.m(…)` / `cls.m(…)` → `calls self.m`; `super().m(…)` → `calls super.m`;
+/// - `Name.m(…)` → `calls Name.m` (a class's static or class method);
+/// - `x.m(…)` where `x` holds a class for certain → `calls Class.m`. A local
+///   gets one from a typed parameter, `x = Class(…)`, `x: Class = …`, or
+///   `x = Registry.get(Class)` (a service locator handing out an instance).
+///   Any other assignment clears it.
+fn python_scan_body(
+    node: Node,
+    bytes: &[u8],
+    from_qn: &str,
+    locals: &mut std::collections::HashMap<String, String>,
+    out: &mut Extraction,
+) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "assignment" => {
+                // Walk the value first: `x = Foo(x.bar())` reads the old `x`.
+                if let Some(right) = child.child_by_field_name("right") {
+                    python_scan_body_node(right, bytes, from_qn, locals, out);
+                }
+                if let Some(left) = child.child_by_field_name("left") {
+                    if left.kind() == "identifier" {
+                        let name = text(left, bytes).to_string();
+                        let annotated = child
+                            .child_by_field_name("type")
+                            .map(|t| python_class_name(text(t, bytes)))
+                            .unwrap_or_default();
+                        let inferred = if annotated.is_empty() {
+                            child
+                                .child_by_field_name("right")
+                                .map(|r| python_value_class(r, bytes))
+                                .unwrap_or_default()
+                        } else {
+                            annotated
+                        };
+                        if inferred.is_empty() {
+                            locals.remove(&name);
+                        } else {
+                            locals.insert(name, inferred);
+                        }
+                    }
+                }
+            }
+            // Nested definitions are not walked as defs; their calls still
+            // belong to the enclosing function, with their own locals.
+            "function_definition" | "class_definition" => {
+                let mut nested = locals.clone();
+                python_scan_body(child, bytes, from_qn, &mut nested, out);
+            }
+            _ => python_scan_body_node(child, bytes, from_qn, locals, out),
+        }
+    }
+}
+
+/// [`python_scan_body`] on one node: a call is recorded, then its children
+/// (callee chain, arguments) are scanned.
+fn python_scan_body_node(
+    node: Node,
+    bytes: &[u8],
+    from_qn: &str,
+    locals: &mut std::collections::HashMap<String, String>,
+    out: &mut Extraction,
+) {
+    if node.kind() == "call" {
+        if let Some(func) = node.child_by_field_name("function") {
+            if let Some((kind, target)) = python_call_target(func, bytes, locals) {
+                out.edges.push(edge(kind, &target, from_qn, line_of(node)));
+            }
+        }
+    }
+    python_scan_body(node, bytes, from_qn, locals, out);
+}
+
+/// The reference a call's callee makes, when its receiver is known.
+fn python_call_target(
+    func: Node,
+    bytes: &[u8],
+    locals: &std::collections::HashMap<String, String>,
+) -> Option<(&'static str, String)> {
+    match func.kind() {
+        "identifier" => {
+            let name = text(func, bytes);
+            if name.chars().next().is_some_and(char::is_uppercase) {
+                Some(("instantiates", name.to_string()))
+            } else {
+                Some(("calls", name.to_string()))
+            }
+        }
+        "attribute" => {
+            let object = func.child_by_field_name("object")?;
+            let method = text(func.child_by_field_name("attribute")?, bytes);
+            let receiver = match object.kind() {
+                "identifier" => {
+                    let name = text(object, bytes);
+                    match name {
+                        "self" | "cls" => "self".to_string(),
+                        _ => match locals.get(name) {
+                            Some(class) => class.clone(),
+                            None if name.chars().next().is_some_and(char::is_uppercase) => {
+                                name.to_string()
+                            }
+                            None => return None,
+                        },
+                    }
+                }
+                // `super().m(…)`
+                "call"
+                    if object
+                        .child_by_field_name("function")
+                        .is_some_and(|f| text(f, bytes) == "super") =>
+                {
+                    "super".to_string()
+                }
+                _ => return None,
+            };
+            is_simple_ident(method).then(|| ("calls", format!("{}.{}", receiver, method)))
+        }
+        _ => None,
+    }
+}
+
+/// The class a value certainly holds: `Class(…)`, or `X.get(Class)` /
+/// `X.resolve(Class)` — a registry handing out an instance of its argument.
+fn python_value_class(value: Node, bytes: &[u8]) -> String {
+    if value.kind() != "call" {
+        return String::new();
+    }
+    let Some(func) = value.child_by_field_name("function") else {
+        return String::new();
+    };
+    match func.kind() {
+        "identifier" => {
+            let name = text(func, bytes);
+            if name.chars().next().is_some_and(char::is_uppercase) && is_simple_ident(name) {
+                name.to_string()
+            } else {
+                String::new()
+            }
+        }
+        "attribute" => {
+            let method = func
+                .child_by_field_name("attribute")
+                .map(|a| text(a, bytes))
+                .unwrap_or("");
+            if !matches!(method, "get" | "resolve") {
+                return String::new();
+            }
+            let Some(args) = value.child_by_field_name("arguments") else {
+                return String::new();
+            };
+            let mut cursor = args.walk();
+            let positional: Vec<Node> = args.named_children(&mut cursor).collect();
+            match positional.as_slice() {
+                [only] if only.kind() == "identifier" => {
+                    let name = text(*only, bytes);
+                    if name.chars().next().is_some_and(char::is_uppercase) {
+                        name.to_string()
+                    } else {
+                        String::new()
+                    }
+                }
+                _ => String::new(),
+            }
+        }
+        _ => String::new(),
     }
 }
 
