@@ -1,0 +1,62 @@
+<svg style="font-variant-ligatures:none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Soli 2.36, see what your code does. A paused debugger frame on the left: a controller action stopped at a breakpoint on line 12, with its locals. On the right, five cards: Debugger (soli dap, VS Code, attach to soli serve with --inspect, conditional breakpoints and logpoints, --profile=alloc); Types (Int | String | nil, class Box&lt;T&gt;, # soli: strict, soli check reads the views); Errors (a declared-here frame, did-you-mean on both engines, named errors on the dev page); Editor (references and rename across the app, view @x warnings, a tree-sitter grammar); Production (passkeys with EdDSA, native apps and a virtual authenticator; presence and ws_send across instances over SoliDB or SoliKV).">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d0f12"/><stop offset="1" stop-color="#08090b"/></linearGradient></defs>
+<rect width="1024" height="576" fill="url(#bg)"/>
+<text x="40" y="70" font-family="ui-sans-serif,system-ui,sans-serif" font-size="28" font-weight="700" fill="#e5e7eb">Soli 2.36 <tspan fill="#f59e0b">· see what your code does</tspan></text>
+<text x="40" y="98" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#8b929e">A step debugger, types across the app, errors that show both ends, an editor that knows the whole project.</text>
+
+<!-- Debugger frame -->
+<rect x="40" y="126" width="420" height="410" rx="14" fill="#101319" stroke="#2b3038"/>
+<circle cx="62" cy="148" r="5" fill="#ef4444"/><circle cx="78" cy="148" r="5" fill="#f59e0b"/><circle cx="94" cy="148" r="5" fill="#22c55e"/>
+<text x="116" y="153" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#8b929e">posts_controller.sl — paused on breakpoint</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" xml:space="preserve">
+<text x="60" y="190" fill="#4b5260">10</text><text x="92" y="190" fill="#8b929e">  # POST /posts</text>
+<text x="60" y="212" fill="#4b5260">11</text><text x="92" y="212" fill="#e5e7eb">  def create(req)</text>
+<rect x="54" y="220" width="392" height="22" rx="4" fill="#f59e0b" fill-opacity="0.16"/>
+<circle cx="50" cy="231" r="5" fill="#ef4444"/>
+<text x="60" y="236" fill="#f59e0b">12</text><text x="92" y="236" fill="#e5e7eb">    attrs = permit(params, FIELDS)</text>
+<text x="60" y="258" fill="#4b5260">13</text><text x="92" y="258" fill="#e5e7eb">    @post = Post.create(attrs)</text>
+<text x="60" y="280" fill="#4b5260">14</text><text x="92" y="280" fill="#e5e7eb">    redirect(post_path(@post))</text>
+<text x="60" y="302" fill="#4b5260">15</text><text x="92" y="302" fill="#e5e7eb">  end</text>
+</g>
+<line x1="56" y1="322" x2="444" y2="322" stroke="#2b3038"/>
+<text x="60" y="346" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700" fill="#8b929e" letter-spacing="1">LOCALS</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" xml:space="preserve">
+<text x="60" y="372" fill="#e5e7eb">▸ req      <tspan fill="#8b929e">Hash (6)</tspan></text>
+<text x="60" y="394" fill="#e5e7eb">▸ params   <tspan fill="#8b929e">{"title": "Hello", …}</tspan></text>
+<text x="60" y="416" fill="#e5e7eb">  attrs    <tspan fill="#8b929e">nil</tspan></text>
+</g>
+<line x1="56" y1="436" x2="444" y2="436" stroke="#2b3038"/>
+<text x="60" y="460" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" font-weight="700" fill="#8b929e" letter-spacing="1">DEBUG CONSOLE</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13" xml:space="preserve">
+<text x="60" y="486" fill="#f59e0b">&gt; <tspan fill="#e5e7eb">params.title.length</tspan></text>
+<text x="60" y="508" fill="#22c55e">5</text>
+</g>
+
+<!-- Feature cards -->
+<g font-family="ui-sans-serif,system-ui,sans-serif">
+<rect x="484" y="126" width="500" height="74" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="504" y="152" font-size="15" font-weight="700" fill="#f59e0b">Debugger</text>
+<text x="504" y="174" font-size="13" fill="#e5e7eb" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">soli dap · VS Code · serve --dev --inspect</text>
+<text x="504" y="192" font-size="12.5" fill="#8b929e">Conditions, hit counts, logpoints; both engines; --profile=alloc</text>
+
+<rect x="484" y="210" width="500" height="74" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="504" y="236" font-size="15" font-weight="700" fill="#f59e0b">Types</text>
+<text x="504" y="258" font-size="13" fill="#e5e7eb" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">Int | String | nil · class Box&lt;T&gt; · # soli: strict</text>
+<text x="504" y="276" font-size="12.5" fill="#8b929e">soli check follows other files' declarations and reads the views</text>
+
+<rect x="484" y="294" width="500" height="74" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="504" y="320" font-size="15" font-weight="700" fill="#f59e0b">Errors</text>
+<text x="504" y="342" font-size="13" fill="#e5e7eb" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">::: arity.sl:1:1 — declared here</text>
+<text x="504" y="360" font-size="12.5" fill="#8b929e">Did-you-mean on the VM too; the dev page names the error and its code</text>
+
+<rect x="484" y="378" width="500" height="74" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="504" y="404" font-size="15" font-weight="700" fill="#f59e0b">Editor</text>
+<text x="504" y="426" font-size="13" fill="#e5e7eb" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">references · rename · @x a view never gets</text>
+<text x="504" y="444" font-size="12.5" fill="#8b929e">Across app/, config/, tests/ and views; a tree-sitter grammar</text>
+
+<rect x="484" y="462" width="500" height="74" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="504" y="488" font-size="15" font-weight="700" fill="#f59e0b">Production</text>
+<text x="504" y="510" font-size="13" fill="#e5e7eb" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">EdDSA passkeys · SOLI_REALTIME_BUS=solikv</text>
+<text x="504" y="528" font-size="12.5" fill="#8b929e">Native apps, virtual authenticator; presence across instances</text>
+</g>
+</svg>
