@@ -164,6 +164,31 @@ pub fn run() {
             kind.as_deref(),
             *json,
         ),
+        Command::GraphNote {
+            text,
+            anchors,
+            question,
+            folder,
+            database,
+            json,
+        } => commands::run_graph_note(
+            text,
+            anchors,
+            question.as_deref(),
+            folder,
+            database.as_deref(),
+            *json,
+        ),
+        Command::GraphNotes {
+            folder,
+            database,
+            json,
+        } => commands::run_graph_notes(folder, database.as_deref(), *json),
+        Command::GraphForget {
+            key,
+            folder,
+            database,
+        } => commands::run_graph_forget(key, folder, database.as_deref()),
         Command::Agent { port, dev_token } => {
             let dir = std::env::current_dir().unwrap_or_else(|_| ".".into());
             std::process::exit(solilang::dev_agent::run(solilang::dev_agent::Options {

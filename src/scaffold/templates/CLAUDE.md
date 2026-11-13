@@ -123,7 +123,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | CI/CD on GitHub: checks, deploy, release executables | `.github/workflows/*.yml` | `docs/ci-cd.md` |
 | Fast numeric code: typed functions as machine code | `def f(n: Int) -> Int` | `docs/native-kernels.md` |
 | Debugging: breakpoints, query log, flamegraph, mail inbox | `soli serve --dev` | `docs/debugging.md`, `docs/live-reload.md` |
-| Code search for agents | `soli graph build` / `query` | `docs/graph.md` |
+| Code search for agents (and notes they keep) | `soli graph build` / `query` / `note` | `docs/graph.md` |
 | Metaprogramming, extending core types | `define_method`, `class_eval` | `docs/metaprogramming.md` |
 
 Everything else in `docs/`: language reference `docs/soli-language.md`,

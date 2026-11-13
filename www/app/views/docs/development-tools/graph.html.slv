@@ -14,11 +14,13 @@
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             <code>soli graph build</code> extracts a graph of your project's source &mdash; files, classes,
-            models, controllers, methods, functions, routes and views, plus the relationships between them &mdash;
-            and stores it in SolidB. Every node's text is embedded, so AI agents (and your own tools) can retrieve
+            models, controllers, methods, functions, routes, views and the database collections they use, plus
+            the relationships between them &mdash; and stores it in SolidB. Every node's text is embedded, so AI agents (and your own tools) can retrieve
             the right code by <strong class="text-white">semantic search</strong> and then
             <strong class="text-white">traverse relationships</strong> from there. It's a graph RAG index of your
-            own codebase.
+            own codebase. It also keeps what agents learn: <code>soli graph note</code> anchors a finding to the
+            code, and every query is logged, so later queries
+            <a href="#section-learn" class="text-amber-400 hover:underline">return both</a>.
         </p>
     </div>
 
@@ -193,8 +195,12 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
     <section id="section-schema" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Schema</h2>
         <p class="text-gray-400 mb-4">
-            Two SolidB collections, namespaced so they never clash with your app data.
+            Two SolidB collections hold the graph, namespaced so they never clash with your app data (two more
+            keep <a href="#section-learn" class="text-amber-400 hover:underline">what agents learn</a>).
             <strong class="text-white">soli_graph_nodes</strong> holds one document per code entity;
+            <code>kind</code> is <code>file</code>, <code>class</code>, <code>model</code>, <code>controller</code>,
+            <code>method</code>, <code>function</code>, <code>route</code>, <code>view</code>,
+            <code>collection</code>, <code>enum</code>, <code>interface</code> or <code>external</code>;
             <code>_key</code> is a sanitized, stable id and the human-readable identity is
             <code>kind</code> + <code>qualified_name</code> (with <code>file</code>, <code>line</code>,
             <code>signature</code>, <code>doc</code>, <code>role</code>, and the embedded <code>text</code>/<code>embedding</code>).
@@ -215,7 +221,11 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
                     <tr><td class="py-2.5 px-4"><code>imports</code></td><td class="py-2.5 px-4">file &rarr; local file</td></tr>
                     <tr><td class="py-2.5 px-4"><code>calls</code></td><td class="py-2.5 px-4">method/function &rarr; the function or class-method it calls</td></tr>
                     <tr><td class="py-2.5 px-4"><code>instantiates</code></td><td class="py-2.5 px-4">method/function &rarr; class it constructs (<code>X.new()</code>, or <code>new X()</code>)</td></tr>
-                    <tr><td class="py-2.5 px-4"><code>renders</code></td><td class="py-2.5 px-4">controller action &rarr; view (<code>render</code>/<code>partial</code>); view &rarr; partial view</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>renders</code></td><td class="py-2.5 px-4">controller action &rarr; view (<code>render</code>/<code>partial</code>); an action that names no view &rarr; its own (<code>posts#index</code> &rarr; <code>posts/index</code>, <code>relation: "implicit"</code>); view &rarr; partial view</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>assigns</code></td><td class="py-2.5 px-4">controller action &rarr; view, one per <code>@x</code> the action sets and the view reads (<code>relation: "@posts"</code>)</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>reads</code></td><td class="py-2.5 px-4">method/function &rarr; collection it queries; <code>relation</code> is the operation (<code>where</code>, <code>find</code>, <code>count</code>, <code>FOR</code>)</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>writes</code></td><td class="py-2.5 px-4">method/function &rarr; collection it changes; <code>relation</code> is the operation (<code>create</code>, <code>save</code>, <code>update</code>, <code>INSERT</code>, <code>REMOVE</code>)</td></tr>
+                    <tr><td class="py-2.5 px-4"><code>stored_in</code></td><td class="py-2.5 px-4">model &rarr; its collection (an STI subclass &rarr; its root's)</td></tr>
                     <tr><td class="py-2.5 px-4"><code>redirects</code></td><td class="py-2.5 px-4">method/function &rarr; route whose path matches <code>redirect("/path")</code> (prefers the <code>GET</code> route when a path is served by several verbs)</td></tr>
                     <tr><td class="py-2.5 px-4"><code>routes_to</code></td><td class="py-2.5 px-4">route &rarr; controller action</td></tr>
                     <tr><td class="py-2.5 px-4"><code>relates</code></td><td class="py-2.5 px-4">model &rarr; model (<code>has_many</code>/<code>belongs_to</code>/<code>edge</code>; DSL name in <code>relation</code>)</td></tr>
@@ -226,7 +236,10 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
             <h4 class="text-base font-semibold text-amber-400 mb-2">Precision-first call graph</h4>
             <p class="text-amber-200/80 text-sm mb-3">
                 Linked when high-confidence: class-method calls (<code>User.find(...)</code>),
-                <code>this.method(...)</code>, bare <code>super(...)</code>/<code>super.method(...)</code>,
+                <code>this.method(...)</code> / <code>@method</code>, a bare <code>method(...)</code> inside a class
+                (its own or an inherited method, before a top-level function of that name), bare
+                <code>super(...)</code>/<code>super.method(...)</code>, a call written without parentheses
+                (<code>Post.count</code>, <code>@save</code>),
                 unambiguous bare functions, and instance calls on a <strong>locally typed</strong> variable
                 (<code>u = User.new()</code>, <code>let u: User = &hellip;</code>, or
                 <code>u = User.find(...)</code> then <code>u.authenticate(...)</code>). Unbound receivers
@@ -241,6 +254,35 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
   return redirect("/dashboard")                   # redirects &rarr; matching route
 }</code></pre>
         </div>
+    </section>
+
+    <!-- Database access -->
+    <section id="section-db" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Database access</h2>
+        <p class="text-gray-400 mb-4">
+            Each model gets a <code>collection</code> node, named as the ORM names it (<code>Post</code> &rarr;
+            <code>posts</code>, <code>BlogPost</code> &rarr; <code>blog_posts</code>, an STI subclass &rarr; its
+            root's), and the code that touches it points there:
+        </p>
+        <ul class="list-disc list-inside text-gray-400 space-y-2 mb-4">
+            <li>a model's class methods: <code>Post.where(&hellip;)</code>, <code>Post.find(id)</code>,
+                <code>Post.count</code> &rarr; <code>reads</code>; <code>Post.create(&hellip;)</code>,
+                <code>Post.update_all(&hellip;)</code>, <code>Post.delete(&hellip;)</code> &rarr; <code>writes</code></li>
+            <li>writes on a record: <code>post.save</code>, <code>post.update(&hellip;)</code>,
+                <code>post.destroy</code> on a locally typed variable, and <code>@save</code> /
+                <code>this.update(&hellip;)</code> inside the model itself</li>
+            <li>raw SDBQL in <code>@sdbql{ &hellip; }</code> and in the string given to <code>query(&hellip;)</code> /
+                <code>db.query(&hellip;)</code>: <code>FOR x IN posts</code> and a traversal's edge collection
+                &rarr; <code>reads</code>; <code>INSERT &hellip; INTO</code>, <code>UPDATE</code> /
+                <code>REPLACE</code> / <code>REMOVE</code> / <code>UPSERT &hellip; IN</code> &rarr; <code>writes</code>.
+                Names bound by <code>LET</code> or <code>FOR</code> and bind parameters (<code>@@coll</code>) are not
+                collections</li>
+        </ul>
+        <p class="text-gray-400 mb-4">
+            So &ldquo;what writes <code>orders</code>?&rdquo; is one traversal from <code>collection:orders</code>,
+            and a query on a method lists the collections it touches, with the operation in each edge's
+            <code>relation</code>.
+        </p>
     </section>
 
     <!-- Querying -->
@@ -266,13 +308,18 @@ soli graph query "login" --kind method,controller   # only those node kinds</cod
             <code>--json</code> emits a structured result an agent parses directly (each seed with
             <code>kind</code>, <code>qualified_name</code>, <code>file</code>/<code>line</code>,
             <code>signature</code>, truncated <code>snippet</code>, <code>score</code>, and a
-            <code>neighbors</code> list of <code>{direction, edge_kind, kind, name, signature?}</code>).
+            <code>neighbors</code> list of <code>{direction, edge_kind, relation?, kind, name, signature?}</code>,
+            where <code>relation</code> is the operation of <code>reads</code>/<code>writes</code>, the
+            <code>@x</code> of <code>assigns</code> or <code>implicit</code> for an action's own view; plus
+            <code>insights</code> and <code>related_queries</code> when there are some, see
+            <a href="#section-learn" class="text-amber-400 hover:underline">below</a>).
             <code>--limit</code> sets seed count (default 6), <code>--hops</code> the expansion depth
             (default 1). <code>--path PREFIX</code> keeps only seeds whose <code>file</code> starts with
             <code>PREFIX</code>; <code>--kind KINDS</code> keeps only seeds whose <code>kind</code> is in the
             comma-separated list (e.g. <code>method,controller,route</code>). Neighbours are unaffected and
             ordered with structural edges first (<code>routes_to</code>, <code>calls</code>,
-            <code>renders</code>, <code>redirects</code>, &hellip;). Semantic search over-fetches then filters;
+            <code>renders</code>, <code>reads</code>, <code>writes</code>, <code>assigns</code>,
+            <code>redirects</code>, &hellip;). Semantic search over-fetches then filters;
             the keyword fallback filters in AQL. The heavy <code>embedding</code> field is never included.
         </p>
 
@@ -344,6 +391,61 @@ FOR v, e IN 1..2 OUTBOUND "soli_graph_nodes/method:PostsController.create" soli_
             Re-run <code>soli graph build</code> any time to refresh &mdash; it's incremental (hashes files, skips
             when unchanged, updates in place), and in dev it auto-reindexes on save. See the full reference in
             <code>www/docs/graph.md</code>.
+        </p>
+    </section>
+
+    <!-- What agents learn -->
+    <section id="section-learn" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">What agents learn: notes and past questions</h2>
+        <p class="text-gray-400 mb-4">
+            The graph says what the code <em>is</em>. What an agent works out about it &mdash; which of three similar
+            methods is the real refund path, why a guard exists, where a vague question actually led &mdash; is not
+            in the source, and was lost after every session. Two collections keep it beside the graph:
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli graph note "Refunds go through Refund#perform; Order#refund is the legacy path, kept for the API" \
+  --on Refund#perform,Order#refund --question "how is an order refunded?"
+soli graph notes                 # every note, stale ones marked
+soli graph forget i3f9c…         # delete one by its key</code></pre>
+        </div>
+        <p class="text-gray-400 mb-4">
+            <code>--on</code> takes the <code>qualified_name</code>s a query prints (<code>PostsController#create</code>,
+            <code>Post</code>, <code>posts</code>) or node keys, comma-separated or repeated; a name the graph does not
+            hold is refused. The same text on the same anchors updates the note. With an embedding key the note is
+            embedded (question first, then the finding) into its own vector index. From then on
+            <code>soli graph query</code>:
+        </p>
+        <ul class="list-disc list-inside text-gray-400 space-y-2 mb-4">
+            <li>returns the <strong class="text-white">notes</strong> that match the question (semantically, or by
+                shared words without an embedding key) and those anchored on one of its results, under
+                <code>insights</code>;</li>
+            <li>brings a matching note's anchors in as results (up to three, marked <code>"via": "note"</code>), so
+                code the search ranked low still comes back;</li>
+            <li>lists up to three <strong class="text-white">earlier questions</strong> that share its words, with
+                the code each returned, under <code>related_queries</code>. Every query is logged (the last 1,000
+                are kept).</li>
+        </ul>
+        <p class="text-gray-400 mb-4">
+            A note remembers a fingerprint of each anchor's code (signature, doc and source; not its line, so code
+            that only moved does not count). When that code changes, or the node disappears, the note is reported
+            <code>"stale": true</code>: it may no longer hold. <code>soli graph build</code>, even
+            <code>--fresh</code>, never touches notes or the log &mdash; node keys come from the code's names, so an
+            anchor survives every rebuild.
+        </p>
+        <div class="overflow-x-auto rounded-xl ring-1 ring-white/10 mb-6">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-2.5 px-4 font-semibold">Collection</th><th class="py-2.5 px-4 font-semibold">One document per</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-2.5 px-4"><code>soli_graph_insights</code></td><td class="py-2.5 px-4">note: <code>text</code>, <code>question</code>, <code>anchors</code> (<code>key</code>, <code>name</code>, <code>fingerprint</code>), <code>created_at</code>, <code>embedding</code></td></tr>
+                    <tr><td class="py-2.5 px-4"><code>soli_graph_queries</code></td><td class="py-2.5 px-4">question: <code>question</code>, <code>terms</code>, <code>results</code> (qualified names), <code>at</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400">
+            Under <a href="/docs/development-tools/debugging#soli-agent" class="text-amber-400 hover:underline"><code>soli agent</code></a>
+            the same is a coding agent's <code>graph_note</code> tool, beside <code>graph</code>.
         </p>
     </section>
 </div>

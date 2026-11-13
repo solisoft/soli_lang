@@ -1,8 +1,9 @@
 # Code Graph (Graph RAG for agents)
 
 `soli graph build` extracts a **graph of your project's source code** — files,
-classes, models, controllers, methods, functions, routes and views, plus the
-relationships between them — and stores it in SolidB. Every node's text is
+classes, models, controllers, methods, functions, routes, views and the
+database collections they use, plus the relationships between them — and
+stores it in SolidB. Every node's text is
 embedded, so AI agents (and your own tools) can retrieve the right code by
 **semantic search** and then **traverse relationships** from there. It's a graph
 RAG index of your own codebase.
@@ -14,6 +15,12 @@ RAG index of your own codebase.
 
 Unlike `Model.rag`, which indexes your *application data*, this points the same
 vector + graph machinery at the *code itself*.
+
+The graph also keeps what agents learn while they work: `soli graph note`
+anchors a finding to the code it is about, and every `soli graph query` is
+logged. A later query returns the notes that match it and the earlier
+questions that share its words (see
+[What agents learn](#what-agents-learn-notes-and-past-questions)).
 
 ## Building the graph
 
@@ -156,7 +163,9 @@ same as for Soli apps.
 
 ## Schema
 
-Two SolidB collections, namespaced so they never clash with your app data.
+Two SolidB collections hold the graph, namespaced so they never clash with your
+app data. Two more keep what agents learn (`soli_graph_insights`,
+`soli_graph_queries`; see [below](#what-agents-learn-notes-and-past-questions)).
 
 ### `soli_graph_nodes`
 
@@ -165,7 +174,7 @@ human-readable identity is `kind` + `qualified_name`.
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `file`, `class`, `model`, `controller`, `method`, `function`, `route`, `view`, `enum`, `interface`, `external` |
+| `kind` | `file`, `class`, `model`, `controller`, `method`, `function`, `route`, `view`, `collection`, `enum`, `interface`, `external` |
 | `name` | short name (`authenticate`, `User`, `GET /login`) |
 | `qualified_name` | `User#authenticate`, `posts#index`, `sessions/new` |
 | `file`, `line` | source location |
@@ -188,15 +197,22 @@ One document per relationship, as a SolidB edge (`_from` / `_to` reference
 | `imports` | file → local file |
 | `calls` | method/function → the function or class-method it calls |
 | `instantiates` | method/function → class it constructs (`X.new()`, or `new X()`) |
-| `renders` | controller action → view (`render` / `partial`); view → partial view |
+| `renders` | controller action → view (`render` / `partial`); an action that names no view → its own (`posts#index` → `posts/index`, `relation: "implicit"`); view → partial view |
+| `assigns` | controller action → view, one per `@x` the action sets and the view reads (`relation: "@posts"`) |
+| `reads` | method/function → collection it queries; `relation` is the operation (`where`, `find`, `count`, `FOR`) |
+| `writes` | method/function → collection it changes; `relation` is the operation (`create`, `save`, `update`, `INSERT`, `REMOVE`) |
+| `stored_in` | model → its collection (an STI subclass → its root's) |
 | `redirects` | method/function → route whose path matches `redirect("/path")` (prefers the `GET` route when a path is served by several verbs) |
 | `routes_to` | route → controller action |
 | `relates` | model → model (`has_many` / `belongs_to` / `edge`; the DSL name is in `relation`) |
 
 Call-graph resolution is **precision-first**. Linked when high-confidence:
 
-- class-method calls (`User.find(...)`), `this.method(...)`, bare `super(...)` /
-  `super.method(...)` when the parent method exists
+- class-method calls (`User.find(...)`), `this.method(...)` / `@method`, a bare
+  `method(...)` inside a class (its own method or an inherited one, before any
+  top-level function of that name), bare `super(...)` / `super.method(...)`
+  when the parent method exists. A call written without parentheses
+  (`Post.count`, `@save`) counts as a call
 - unambiguous bare function calls
 - instance calls on a **locally typed** variable only: `u = User.new()`,
   `let u: User = …`, or `u = User.find(...)` (and other model factories
@@ -208,6 +224,23 @@ with no known class (`user = req["row"]`) drops its type, so a later
 `user.save()` won't resolve against a class the variable no longer holds. A bare
 `partial("form")` inside a view resolves against that view's own directory
 first, then falls back to the name as given.
+
+**Database access** is read from the same code. A model's collection is the
+one the ORM uses (`Post` → `posts`, `BlogPost` → `blog_posts`, an STI subclass
+→ its root's). Linked:
+
+- a model's class methods: `Post.where(…)`, `Post.find(id)`, `Post.count` →
+  `reads`; `Post.create(…)`, `Post.update_all(…)`, `Post.delete(…)` → `writes`
+- writes on a record: `post.save`, `post.update(…)`, `post.destroy` on a locally
+  typed variable, and `@save` / `this.update(…)` inside the model itself
+- raw SDBQL in `@sdbql{ … }` blocks and in the string given to
+  `query(…)` / `db.query(…)`: `FOR x IN posts` and a traversal's edge
+  collection → `reads`; `INSERT … INTO`, `UPDATE` / `REPLACE` / `REMOVE` /
+  `UPSERT … IN` → `writes`. Names bound by `LET` or `FOR` and bind parameters
+  (`@@coll`) are not collections
+
+So "what writes `orders`?" is one traversal from `collection:orders`, and a
+query on a method lists the collections it touches.
 
 Example of edges a typical controller action produces:
 
@@ -265,12 +298,33 @@ beats body text), so the command always works.
       "neighbors": [
         { "direction": "in",  "edge_kind": "routes_to", "kind": "route",  "name": "POST /login" },
         { "direction": "out", "edge_kind": "calls",     "kind": "method", "name": "User#authenticate" },
+        { "direction": "out", "edge_kind": "reads", "relation": "find_by", "kind": "collection", "name": "users" },
         { "direction": "out", "edge_kind": "renders",   "kind": "view",   "name": "sessions/new" }
       ]
     }
+  ],
+  "insights": [
+    {
+      "key": "i5b0e…",
+      "text": "Login also accepts an API token: ApiController#authenticate, not this action",
+      "question": "where is authentication handled?",
+      "anchors": ["SessionsController#create", "ApiController#authenticate"],
+      "stale": false,
+      "created_at": "2026-11-13T10:12:04Z",
+      "score": 0.71
+    }
+  ],
+  "related_queries": [
+    { "question": "how does login work?", "at": "2026-11-12T16:40:11Z",
+      "results": ["SessionsController#create", "User#authenticate"] }
   ]
 }
 ```
+
+A neighbour's `relation` details its edge: the operation of `reads` / `writes`,
+the `@x` of `assigns`, the association of `relates`, `implicit` for an
+action's own view. `insights` and `related_queries` are left out when empty;
+a result brought in by a note carries `"via": "note"`.
 
 | Flag | Effect |
 |------|--------|
@@ -284,7 +338,8 @@ beats body text), so the command always works.
 over-fetches then filters (so an out-of-filter top ranking doesn't starve
 results); the keyword fallback filters server-side in AQL. Each seed includes a
 truncated `snippet` of node text for agent context. Neighbours are ordered with
-structural edges first (`routes_to`, `calls`, `renders`, `redirects`, …). The
+structural edges first (`routes_to`, `calls`, `renders`, `reads`, `writes`,
+`assigns`, `redirects`, …). The
 heavy `embedding` field is never included in the output.
 
 ### Raw queries
@@ -350,6 +405,53 @@ FOR n IN soli_graph_nodes FILTER n.kind == "model"
 Semantic **seed → traverse** (graph RAG) combines both: `similar()` finds the
 relevant nodes, then an OUTBOUND/INBOUND traversal expands to their callers,
 callees, routes and views — exactly the context an agent needs to make a change.
+
+## What agents learn: notes and past questions
+
+The graph says what the code *is*. What an agent works out about it — which of
+three similar methods is the real refund path, why a guard exists, where a
+vague question actually led — is not in the source, and was lost after every
+session. Two collections keep it beside the graph:
+
+```bash
+soli graph note "Refunds go through Refund#perform; Order#refund is the legacy path, kept for the API" \
+  --on Refund#perform,Order#refund --question "how is an order refunded?"
+soli graph notes                 # every note, stale ones marked
+soli graph forget i3f9c…         # delete one by its key
+```
+
+`--on` takes the `qualified_name`s a query prints (`PostsController#create`,
+`Post`, `posts`) or node keys, comma-separated or repeated; a name the graph
+does not hold is refused. The same text on the same anchors updates the note
+instead of adding one. With an embedding key the note is embedded (question
+first, then the finding) into its own vector index.
+
+From then on `soli graph query`:
+
+- returns the **notes** that match the question (semantically, or by shared
+  words without an embedding key) and those anchored on one of its results,
+  under `insights`;
+- brings a matching note's anchors in as results (up to three, marked
+  `"via": "note"`), so code the search ranked low still comes back;
+- lists up to three **earlier questions** that share its words, with the code
+  each returned, under `related_queries`. Every query is logged (the last
+  1,000 are kept).
+
+A note remembers a fingerprint of each anchor's code (its signature, doc and
+source; not its line, so code that only moved does not count). When the code
+changes — or the node disappears — the note is reported `"stale": true`: it may
+no longer hold, and the agent should check it before trusting it.
+
+`soli graph build`, even `--fresh`, never touches notes or the query log: node
+keys come from the code's names, so an anchor survives every rebuild.
+
+| Collection | One document per |
+|------------|------------------|
+| `soli_graph_insights` | note: `text`, `question`, `anchors` (`key`, `name`, `fingerprint`), `created_at`, `embedding` |
+| `soli_graph_queries` | question: `question`, `terms`, `results` (qualified names), `at` |
+
+Under `soli agent` the same is available to a coding agent as the `graph_note`
+tool, beside `graph`.
 
 ## Notes
 

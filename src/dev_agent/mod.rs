@@ -6,11 +6,12 @@
 //! `tools/list` and `tools/call` are implemented — no resources, prompts or
 //! sampling, and no socket of its own.
 //!
-//! Every tool but `graph` and `test` is a call to the dev server's own
+//! Every tool but `graph`, `graph_note` and `test` is a call to the dev server's own
 //! `/__solidev/*` or `/__dev/repl` endpoints on `127.0.0.1`, so the gates in
 //! `serve::dev_routes::dispatch` (trusted peer, local `Host`, same-origin
 //! POST, REPL token) apply to the agent exactly as they do to the browser.
-//! Nothing here writes into the application.
+//! Nothing here writes into the application; `graph_note` writes a note into
+//! the code graph's own store (`soli_graph_insights`), beside the graph.
 
 pub mod discovery;
 pub mod http;
@@ -238,6 +239,7 @@ impl Agent {
                 self.http_json(self.client.get(&format!("/__solidev/errors?limit={limit}")))
             }
             "graph" => self.graph(args),
+            "graph_note" => self.graph_note(args),
             "test" => self.test(args),
             "repl" => self.repl(args),
             _ => return None,
@@ -340,15 +342,42 @@ impl Agent {
         ))
     }
 
-    fn graph(&mut self, args: &Value) -> ToolOutcome {
-        let Some(question) = str_arg(args, "question") else {
-            return ToolOutcome::err("`question` is required");
-        };
+    /// Load the app's `.env` and DB config once, for the graph tools.
+    fn load_graph_env(&mut self) {
         if !self.graph_env_loaded {
             crate::serve::env_loader::load_env_files(&self.app_root);
             crate::interpreter::builtins::model::init_db_config();
             self.graph_env_loaded = true;
         }
+    }
+
+    fn graph_note(&mut self, args: &Value) -> ToolOutcome {
+        let Some(text) = str_arg(args, "text").filter(|t| !t.trim().is_empty()) else {
+            return ToolOutcome::err("`text` is required");
+        };
+        let anchors: Vec<String> = match args.get("on") {
+            Some(Value::Array(list)) => list
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+            Some(Value::String(list)) => crate::graph::parse_kinds(list),
+            _ => Vec::new(),
+        };
+        self.load_graph_env();
+        match crate::graph::add_note(text, &anchors, str_arg(args, "question"), None) {
+            Ok(note) => match serde_json::to_value(&note) {
+                Ok(v) => ToolOutcome::ok(v),
+                Err(e) => ToolOutcome::err(format!("note was not JSON: {e}")),
+            },
+            Err(e) => ToolOutcome::err(e),
+        }
+    }
+
+    fn graph(&mut self, args: &Value) -> ToolOutcome {
+        let Some(question) = str_arg(args, "question") else {
+            return ToolOutcome::err("`question` is required");
+        };
+        self.load_graph_env();
         let opts = crate::graph::QueryOptions {
             database: None,
             limit: args.get("limit").and_then(Value::as_u64).unwrap_or(6) as usize,
@@ -476,7 +505,7 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "graph",
-            "description": "Find the code most relevant to a question in the app's code graph (`soli graph query --json`). Needs `soli graph build` and SolidB; when they are not set up, the error says what is missing. Read-only.",
+            "description": "Find the code most relevant to a question in the app's code graph (`soli graph query --json`): each result with its callers, callees, routes, views and the collections it reads or writes, plus the notes earlier sessions left (`insights`, `stale` when the code changed since) and earlier questions that share its words. Needs `soli graph build` and SolidB; when they are not set up, the error says what is missing. Records the question in the graph's query log.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -487,6 +516,19 @@ pub fn tool_definitions() -> Value {
                     "path": { "type": "string", "description": "Keep only files under this path prefix." }
                 },
                 "required": ["question"]
+            }
+        },
+        {
+            "name": "graph_note",
+            "description": "Keep a finding about the code in the code graph (`soli graph note`) so later `graph` queries return it: what a flow really does, why a method exists, where a question led. Anchor it on the qualified names a `graph` result printed (`PostsController#create`, `posts`). Writes to the graph's note store only, never to the app.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": { "type": "string", "description": "The finding, in a sentence or two." },
+                    "on": { "type": "array", "items": { "type": "string" }, "description": "Qualified names (or graph keys) of the nodes it is about." },
+                    "question": { "type": "string", "description": "The question it answers, if any." }
+                },
+                "required": ["text", "on"]
             }
         },
         {

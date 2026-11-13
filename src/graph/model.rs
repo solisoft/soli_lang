@@ -190,6 +190,13 @@ pub fn edge_key(edge: &Edge) -> String {
     format!("e{:016x}", fnv1a(&sig))
 }
 
+/// A stable fingerprint of a node's text (its kind, name, signature, doc and
+/// source), which does not move when the code only shifts lines. A note
+/// remembers its anchors' fingerprints to tell when their code changed.
+pub fn text_fingerprint(text: &str) -> String {
+    format!("{:016x}", fnv1a(text))
+}
+
 /// Tiny FNV-1a hash — used to disambiguate over-long truncated keys and to
 /// derive deterministic edge keys.
 fn fnv1a(s: &str) -> u64 {

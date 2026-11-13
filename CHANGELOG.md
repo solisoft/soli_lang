@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The code graph knows the database.** `soli graph build` adds a
+  `collection` node per model (`stored_in`; an STI subclass points at its
+  root's collection, named by `class_name_to_collection_with_engine`) and
+  `reads` / `writes` edges from the method or function that touches it, the
+  operation in `relation`: model statics (`MODEL_READS` / `MODEL_WRITES`:
+  `Post.where`, `Post.count`, `Post.create`…, plus `find_by_*`), record writes
+  on a locally typed variable and `@save` / `this.update` inside the model
+  (`RECORD_WRITES`), and raw SDBQL in `@sdbql{}` blocks and in the string
+  given to `query`/`db.query`/`sdbql`/`execute` (`sdbql_collections`: `FOR …
+  IN`, a traversal's edge collection, `INSERT … INTO`, `UPDATE`/`REPLACE`/
+  `REMOVE`/`UPSERT … IN`; `LET`/`FOR`-bound names and bind parameters are not
+  collections).
+- **More static analysis in the graph.** A controller action that names no
+  view gets `renders` (relation `implicit`) to `<controller>/<action>`; an
+  `assigns` edge (relation `@x`) per instance variable the action sets that
+  the view reads (`template::ivars::ivar_reads`, moved out of the LSP so the
+  graph shares it). A bare call inside a class reaches its own or an
+  inherited method before a top-level function, `@method` resolves through
+  ancestors, and a parenthesis-less member call (`Post.count`) is a call.
+  `soli graph query` returns each neighbour's `relation` and ranks `reads`,
+  `writes` and `assigns` after `renders`.
+- **The graph keeps what agents learn (`graph::insights`).** `soli graph note
+  "<finding>" --on NAME[,NAME…] [--question Q]` stores a note in
+  `soli_graph_insights`, anchored on graph nodes with a fingerprint of their
+  text (`model::text_fingerprint`; a line shift does not count); `soli graph
+  notes` lists them and `soli graph forget <key>` deletes one. `soli graph
+  query` logs every question in `soli_graph_queries` (last 1,000 kept) and
+  returns `insights` (notes matching the question, by vector or shared
+  words, or anchored on a result; `stale` when an anchor's code changed or
+  vanished), up to three anchors of matching notes as extra results (`"via":
+  "note"`), and `related_queries` (earlier questions sharing its words, with
+  what they returned). Builds, even `--fresh`, never touch either
+  collection. `soli agent` gains a `graph_note` tool.
+
+### Fixed
+
+- The comparison page's type-checker cell carried a garbled repeat of an
+  older sentence ("a sibling file's names are known but not yet…").
+
 ## [2.36.0] - 2026-11-12
 
 ### Added

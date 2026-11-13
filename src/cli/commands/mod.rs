@@ -3660,13 +3660,21 @@ pub fn run_graph_query(
                 println!("     \x1b[2m{}\x1b[0m", context);
             }
         }
+        if hit.via == "note" {
+            println!("     \x1b[2m(from a note)\x1b[0m");
+        }
         // Show a bounded set of relationships; the rest stay in --json.
         let shown = hit.neighbors.iter().take(12);
         for nb in shown {
             let arrow = if nb.direction == "out" { "→" } else { "←" };
+            let edge = if nb.relation.is_empty() {
+                nb.edge_kind.clone()
+            } else {
+                format!("{} {}", nb.edge_kind, nb.relation)
+            };
             println!(
-                "       {} \x1b[33m{:<12}\x1b[0m {}:{}",
-                arrow, nb.edge_kind, nb.kind, nb.name
+                "       {} \x1b[33m{:<18}\x1b[0m {}:{}",
+                arrow, edge, nb.kind, nb.name
             );
         }
         if hit.neighbors.len() > 12 {
@@ -3676,7 +3684,115 @@ pub fn run_graph_query(
             );
         }
     }
+    if !result.insights.is_empty() {
+        println!();
+        println!("  \x1b[1mNotes\x1b[0m");
+        for note in &result.insights {
+            print_note(note);
+        }
+    }
+    if !result.related_queries.is_empty() {
+        println!();
+        println!("  \x1b[1mAsked before\x1b[0m");
+        for past in &result.related_queries {
+            println!(
+                "    \"{}\"  \x1b[2m→ {}\x1b[0m",
+                past.question,
+                past.results
+                    .iter()
+                    .take(4)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
     println!();
+}
+
+fn print_note(note: &solilang::graph::InsightHit) {
+    let stale = if note.stale {
+        "  \x1b[33m(stale: the code changed since)\x1b[0m"
+    } else {
+        ""
+    };
+    println!("    \x1b[36m{}\x1b[0m  {}{}", note.key, note.text, stale);
+    if !note.question.is_empty() {
+        println!("      \x1b[2masked: {}\x1b[0m", note.question);
+    }
+    println!("      \x1b[2mon: {}\x1b[0m", note.anchors.join(", "));
+}
+
+/// `soli graph note "<finding>" --on NAME…` — keep a finding with the graph.
+pub fn run_graph_note(
+    text: &str,
+    anchors: &[String],
+    question: Option<&str>,
+    folder: &str,
+    database: Option<&str>,
+    json: bool,
+) {
+    solilang::serve::env_loader::load_env_files(Path::new(folder));
+    solilang::interpreter::builtins::model::init_db_config();
+    match solilang::graph::add_note(text, anchors, question, database) {
+        Ok(note) if json => println!(
+            "{}",
+            serde_json::to_string_pretty(&note).unwrap_or_else(|_| "{}".to_string())
+        ),
+        Ok(note) => {
+            println!(
+                "  \x1b[32m✓\x1b[0m noted \x1b[36m{}\x1b[0m on {}",
+                note.key,
+                note.anchors.join(", ")
+            );
+        }
+        Err(e) => {
+            eprintln!("\x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+/// `soli graph notes` — every note, stale ones marked.
+pub fn run_graph_notes(folder: &str, database: Option<&str>, json: bool) {
+    solilang::serve::env_loader::load_env_files(Path::new(folder));
+    solilang::interpreter::builtins::model::init_db_config();
+    let notes = match solilang::graph::list_notes(database) {
+        Ok(notes) => notes,
+        Err(e) => {
+            eprintln!("\x1b[31mError:\x1b[0m {}", e);
+            process::exit(1);
+        }
+    };
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&notes).unwrap_or_else(|_| "[]".to_string())
+        );
+        return;
+    }
+    if notes.is_empty() {
+        println!("  No notes yet. Add one with soli graph note \"<finding>\" --on NAME");
+        return;
+    }
+    let stale = notes.iter().filter(|n| n.stale).count();
+    println!();
+    println!("  \x1b[1m{} note(s)\x1b[0m, {} stale", notes.len(), stale);
+    for note in &notes {
+        print_note(note);
+    }
+    println!();
+}
+
+/// `soli graph forget <key>` — delete a note.
+pub fn run_graph_forget(key: &str, folder: &str, database: Option<&str>) {
+    solilang::serve::env_loader::load_env_files(Path::new(folder));
+    solilang::interpreter::builtins::model::init_db_config();
+    if let Err(e) = solilang::graph::forget_note(key, database) {
+        eprintln!("\x1b[31mError:\x1b[0m {}", e);
+        process::exit(1);
+    }
+    println!("  \x1b[32m✓\x1b[0m forgot {}", key);
 }
 
 /// `soli db:import [collection…]` — SoliDB → SQL document tables (Phase 3).

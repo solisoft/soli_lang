@@ -20,7 +20,7 @@
 //!    into the controller action (or the controller unit as a fallback);
 //!    then resolve deferred `redirects` against route paths.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::ast::expr::{Argument, Expr, ExprKind};
@@ -41,6 +41,66 @@ const CLASS_INSTANCE_FACTORIES: &[&str] = &[
     "new",
     "find_or_create_by",
 ];
+
+/// Model statics that read the model's collection (`Post.where(…)`).
+const MODEL_READS: &[&str] = &[
+    "all",
+    "find",
+    "find_by",
+    "first",
+    "first_by",
+    "last",
+    "where",
+    "count",
+    "exists",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "pluck",
+    "order",
+    "limit",
+    "offset",
+    "includes",
+    "search",
+    "rag",
+    "paginate",
+    "group_by",
+    "distinct",
+    "select",
+    "find_or_create_by",
+];
+
+/// Model statics that write the model's collection.
+const MODEL_WRITES: &[&str] = &[
+    "create",
+    "create_many",
+    "insert",
+    "upsert",
+    "update",
+    "update_all",
+    "delete",
+    "delete_all",
+    "destroy",
+    "destroy_all",
+    "increment",
+    "decrement",
+    "import",
+];
+
+/// Instance methods that write the record's collection (`post.save`).
+const RECORD_WRITES: &[&str] = &[
+    "save",
+    "update",
+    "delete",
+    "destroy",
+    "increment",
+    "decrement",
+    "touch",
+];
+
+/// Calls whose first string argument is raw SDBQL (`db.query("FOR …")`).
+const RAW_QUERY_CALLS: &[&str] = &["query", "sdbql", "execute", "raw_query"];
 
 const MAX_SNIPPET: usize = 1200;
 const MAX_TEXT: usize = 2000;
@@ -155,6 +215,17 @@ struct GraphBuilder {
 
     unresolved_calls: usize,
     resolved_imports: usize,
+
+    /// Simple class name → its superclass, for model detection and STI roots.
+    class_super: HashMap<String, Option<String>>,
+    /// Model class name → the collection it is stored in.
+    model_collections: HashMap<String, String>,
+    /// View id → the `@x` its code reads (its own assignments aside).
+    view_reads: HashMap<String, BTreeSet<String>>,
+    /// The callable being walked in pass 3: the `@x` it assigns and the views
+    /// it renders by name.
+    walk_assigned: BTreeSet<String>,
+    walk_rendered: Vec<String>,
 }
 
 /// Build the code-graph for the Soli app rooted at `app_path`.
@@ -239,6 +310,9 @@ fn build_graph_inner(
 
     // Pass 2: resolve inherit/implement/relation records into edges.
     builder.resolve_structure();
+    // Models → the collections they live in (`stored_in`), so pass 3 can
+    // point a model's queries at its collection.
+    builder.index_models();
     // View → partial `renders` edges once every view node is interned.
     builder.link_view_partials();
 
@@ -428,6 +502,15 @@ impl GraphBuilder {
                 embedding: vec![],
             },
         );
+        let (reads, assigned) = crate::template::ivars::ivar_reads(source);
+        let reads: BTreeSet<String> = reads
+            .into_iter()
+            .map(|read| read.name)
+            .filter(|name| !assigned.contains(name))
+            .collect();
+        if !reads.is_empty() {
+            self.view_reads.insert(id.clone(), reads);
+        }
         // Record partial("…") targets; resolved after every view is interned.
         for (target, line) in scan_partial_calls(source) {
             self.view_partials
@@ -573,6 +656,9 @@ impl GraphBuilder {
         self.class_by_name
             .entry(decl.name.clone())
             .or_insert_with(|| id.clone());
+        self.class_super
+            .entry(decl.name.clone())
+            .or_insert_with(|| decl.superclass.clone());
         self.push_edge(&file_id, &id, "defines", "", relpath, decl.span.line);
 
         if let Some(sc) = &decl.superclass {
@@ -904,8 +990,8 @@ impl GraphBuilder {
                     render_prefix: render_prefix.map(str::to_string),
                     relpath: relpath.to_string(),
                 };
-                let mut locals = HashMap::new();
-                self.walk_block(&decl.body, &ctx, &mut locals);
+                let action = render_prefix.is_some() && !decl.name.starts_with('_');
+                self.walk_callable(&decl.body, &ctx, action);
             }
             StmtKind::Class(decl) => self.walk_class_bodies(decl, None, relpath, render_prefix),
             StmtKind::Enum(decl) => {
@@ -947,8 +1033,7 @@ impl GraphBuilder {
                 render_prefix: render_prefix.map(str::to_string),
                 relpath: relpath.to_string(),
             };
-            let mut locals = HashMap::new();
-            self.walk_block(&ctor.body, &ctx, &mut locals);
+            self.walk_callable(&ctor.body, &ctx, false);
         }
         for m in &decl.methods {
             let ctx = WalkCtx {
@@ -959,11 +1044,150 @@ impl GraphBuilder {
                 render_prefix: render_prefix.map(str::to_string),
                 relpath: relpath.to_string(),
             };
-            let mut locals = HashMap::new();
-            self.walk_block(&m.body, &ctx, &mut locals);
+            // A public, non-`_` instance method of a controller is an action:
+            // it renders its own view when it names none.
+            let action = render_prefix.is_some()
+                && !m.is_static
+                && !m.name.starts_with('_')
+                && matches!(m.visibility, crate::ast::stmt::Visibility::Public);
+            self.walk_callable(&m.body, &ctx, action);
         }
         for nested in &decl.nested_classes {
             self.walk_class_bodies(nested, Some(&qualified), relpath, render_prefix);
+        }
+    }
+
+    /// Walk one method or function body, then link an action to the views it
+    /// renders: its own view when it names none (`renders`, relation
+    /// `implicit`), and an `assigns` edge per `@x` it sets that the view reads.
+    fn walk_callable(&mut self, body: &[Stmt], ctx: &WalkCtx, action: bool) {
+        self.walk_assigned.clear();
+        self.walk_rendered.clear();
+        let mut locals = HashMap::new();
+        self.walk_block(body, ctx, &mut locals);
+        if !action {
+            return;
+        }
+        let mut views = std::mem::take(&mut self.walk_rendered);
+        if views.is_empty() {
+            if let (Some(prefix), Some(method)) = (&ctx.render_prefix, &ctx.enclosing_method) {
+                let own = format!("view:{}/{}", prefix, method);
+                if self.has_node(&own) {
+                    self.push_edge(&ctx.caller_id, &own, "renders", "implicit", &ctx.relpath, 0);
+                    views.push(own);
+                }
+            }
+        }
+        let assigned = std::mem::take(&mut self.walk_assigned);
+        for view in views {
+            let Some(reads) = self.view_reads.get(&view).cloned() else {
+                continue;
+            };
+            for name in reads.intersection(&assigned) {
+                self.push_edge(
+                    &ctx.caller_id,
+                    &view,
+                    "assigns",
+                    &format!("@{}", name),
+                    &ctx.relpath,
+                    0,
+                );
+            }
+        }
+    }
+
+    /// A method `name` of `class` or of one of its project ancestors.
+    fn method_in_hierarchy(&self, class: &str, name: &str) -> Option<String> {
+        let mut current = class.to_string();
+        for _ in 0..16 {
+            let id = format!("method:{}#{}", current, name);
+            if self.has_node(&id) {
+                return Some(id);
+            }
+            let simple = current.rsplit("::").next().unwrap_or(&current).to_string();
+            current = self.class_super.get(&simple)?.clone()?;
+        }
+        None
+    }
+
+    /// Whether `class` (a simple name) descends from `Model`.
+    fn is_model(&self, class: &str) -> bool {
+        let mut current = class.to_string();
+        for _ in 0..16 {
+            match self.class_super.get(&current) {
+                Some(Some(parent)) if parent == "Model" => return true,
+                Some(Some(parent)) => current = parent.clone(),
+                _ => return false,
+            }
+        }
+        false
+    }
+
+    /// A model's collection: the one of its STI root (`Admin < User` →
+    /// `users`), named as the ORM names it.
+    fn index_models(&mut self) {
+        let mut names: Vec<String> = self.class_super.keys().cloned().collect();
+        names.sort();
+        for name in names {
+            if !self.is_model(&name) {
+                continue;
+            }
+            let mut root = name.clone();
+            while let Some(Some(parent)) = self.class_super.get(&root) {
+                if parent == "Model" || !self.is_model(parent) {
+                    break;
+                }
+                root = parent.clone();
+            }
+            let collection =
+                crate::interpreter::builtins::model::core::class_name_to_collection_with_engine(
+                    &root, None,
+                );
+            let coll_id = self.ensure_collection(&collection);
+            if let Some(class_id) = self.class_by_name.get(&name).cloned() {
+                self.push_edge(&class_id, &coll_id, "stored_in", "", "", 0);
+            }
+            self.model_collections.insert(name, collection);
+        }
+    }
+
+    /// The `collection:<name>` node, created on first use.
+    fn ensure_collection(&mut self, name: &str) -> String {
+        let id = format!("collection:{}", name);
+        if !self.has_node(&id) {
+            self.intern(
+                &id,
+                Node {
+                    key: String::new(),
+                    kind: "collection".to_string(),
+                    name: name.to_string(),
+                    qualified_name: name.to_string(),
+                    file: String::new(),
+                    line: 0,
+                    signature: String::new(),
+                    superclass: None,
+                    role: String::new(),
+                    doc: String::new(),
+                    text: format!("collection {} (database table / collection)", name),
+                    embedding: vec![],
+                },
+            );
+        }
+        id
+    }
+
+    /// A `reads` / `writes` edge from the current callable to `collection`,
+    /// with the operation (`where`, `save`, `FOR`, …) as its relation.
+    fn db_edge(&mut self, ctx: &WalkCtx, collection: &str, write: bool, op: &str, line: u32) {
+        let to = self.ensure_collection(collection);
+        let kind = if write { "writes" } else { "reads" };
+        self.push_edge(&ctx.caller_id, &to, kind, op, &ctx.relpath, line);
+    }
+
+    /// The collections a raw SDBQL query touches.
+    fn sdbql_edges(&mut self, query: &str, ctx: &WalkCtx, line: u32) {
+        for (collection, write, op) in sdbql_collections(query) {
+            self.db_edge(ctx, &collection, write, op, line);
         }
     }
 
@@ -1086,7 +1310,27 @@ impl GraphBuilder {
                     }
                 }
                 self.resolve_call(callee, arguments, expr.span.line, ctx, locals);
-                self.walk_expr(callee, ctx, locals);
+                let called = match &callee.kind {
+                    ExprKind::Variable(name) | ExprKind::Member { name, .. } => Some(name.as_str()),
+                    _ => None,
+                };
+                if called.is_some_and(|name| RAW_QUERY_CALLS.contains(&name)) {
+                    if let Some(query) = arguments.iter().find_map(|a| match a {
+                        Argument::Positional(e) => literal_text(e),
+                        _ => None,
+                    }) {
+                        self.sdbql_edges(&query, ctx, expr.span.line);
+                    }
+                }
+                // The callee was resolved above as a call: walk only its
+                // receiver, so the member arm below does not resolve it again
+                // as a parenthesis-less call.
+                match &callee.kind {
+                    ExprKind::Member { object, .. } | ExprKind::SafeMember { object, .. } => {
+                        self.walk_expr(object, ctx, locals)
+                    }
+                    _ => self.walk_expr(callee, ctx, locals),
+                }
                 for a in arguments {
                     self.walk_argument(a, ctx, locals);
                 }
@@ -1125,15 +1369,25 @@ impl GraphBuilder {
             | ExprKind::Throw(e)
             | ExprKind::PostfixIncrement(e)
             | ExprKind::PostfixDecrement(e) => self.walk_expr(e, ctx, locals),
-            ExprKind::Member { object, .. } | ExprKind::SafeMember { object, .. } => {
+            ExprKind::Member { object, .. } => {
+                // `Post.count`, `post.save`, `@publish`: a member read with no
+                // parentheses calls a zero-argument method.
+                self.resolve_call(expr, &[], expr.span.line, ctx, locals);
                 self.walk_expr(object, ctx, locals)
             }
+            ExprKind::SafeMember { object, .. } => self.walk_expr(object, ctx, locals),
             ExprKind::QualifiedName { qualifier, .. } => self.walk_expr(qualifier, ctx, locals),
             ExprKind::Index { object, index } => {
                 self.walk_expr(object, ctx, locals);
                 self.walk_expr(index, ctx, locals);
             }
+            ExprKind::SdqlBlock { query, .. } => self.sdbql_edges(query, ctx, expr.span.line),
             ExprKind::Assign { target, value } => {
+                if let ExprKind::Member { object, name } = &target.kind {
+                    if matches!(object.kind, ExprKind::This) {
+                        self.walk_assigned.insert(name.clone());
+                    }
+                }
                 self.walk_expr(target, ctx, locals);
                 self.walk_expr(value, ctx, locals);
                 // Reassigning a bare local updates (or clears) its tracked type
@@ -1287,6 +1541,7 @@ impl GraphBuilder {
                 if let Some(view) = render_target(arguments, ctx.render_prefix.as_deref()) {
                     if let Some(to) = self.resolve_view_id(&view) {
                         self.push_edge(&ctx.caller_id, &to, "renders", "", &ctx.relpath, line);
+                        self.walk_rendered.push(to);
                     }
                 }
             }
@@ -1314,7 +1569,15 @@ impl GraphBuilder {
             }
             // Bare `foo(...)` — a project function if there's exactly one.
             ExprKind::Variable(name) => {
-                if let Some(ids) = self.functions_by_name.get(name) {
+                // A bare call inside a class reaches its own (or an inherited)
+                // method first, as at run time.
+                let own = ctx
+                    .enclosing_class
+                    .as_ref()
+                    .and_then(|class| self.method_in_hierarchy(class, name));
+                if let Some(to) = own {
+                    self.push_edge(&ctx.caller_id, &to, "calls", "", &ctx.relpath, line);
+                } else if let Some(ids) = self.functions_by_name.get(name) {
                     match ids.len() {
                         1 => {
                             let to = ids[0].clone();
@@ -1335,11 +1598,25 @@ impl GraphBuilder {
                     } else if let Some(class_id) = self.class_by_name.get(recv).cloned() {
                         self.push_edge(&ctx.caller_id, &class_id, "calls", "", &ctx.relpath, line);
                     }
+                    if let Some(collection) = self.model_collections.get(recv).cloned() {
+                        if MODEL_WRITES.contains(&name.as_str()) {
+                            self.db_edge(ctx, &collection, true, name, line);
+                        } else if MODEL_READS.contains(&name.as_str())
+                            || name.starts_with("find_by_")
+                        {
+                            self.db_edge(ctx, &collection, false, name, line);
+                        }
+                    }
                 }
                 ExprKind::Variable(recv) => {
                     // Instance call on a locally-typed variable — method only
                     // (no class fallback; avoids inventing edges for Hashes).
                     if let Some(class) = locals.get(recv) {
+                        if RECORD_WRITES.contains(&name.as_str()) {
+                            if let Some(collection) = self.model_collections.get(class).cloned() {
+                                self.db_edge(ctx, &collection, true, name, line);
+                            }
+                        }
                         let target = format!("method:{}#{}", class, name);
                         if self.has_node(&target) {
                             self.push_edge(
@@ -1354,9 +1631,8 @@ impl GraphBuilder {
                     }
                 }
                 ExprKind::This => {
-                    if let Some(class) = &ctx.enclosing_class {
-                        let target = format!("method:{}#{}", class, name);
-                        if self.has_node(&target) {
+                    if let Some(class) = ctx.enclosing_class.clone() {
+                        if let Some(target) = self.method_in_hierarchy(&class, name) {
                             self.push_edge(
                                 &ctx.caller_id,
                                 &target,
@@ -1365,6 +1641,14 @@ impl GraphBuilder {
                                 &ctx.relpath,
                                 line,
                             );
+                        }
+                        // `@save` / `this.update(…)` inside a model writes
+                        // its own collection.
+                        let simple = class.rsplit("::").next().unwrap_or(&class).to_string();
+                        if RECORD_WRITES.contains(&name.as_str()) {
+                            if let Some(collection) = self.model_collections.get(&simple).cloned() {
+                                self.db_edge(ctx, &collection, true, name, line);
+                            }
                         }
                     }
                 }
@@ -1712,6 +1996,188 @@ fn named_string_arg(arguments: &[Argument], key: &str) -> Option<String> {
 }
 
 /// The class name for `new X(...)` / `new Outer::Inner(...)`.
+/// The text of a string literal, or of an interpolated string's literal parts
+/// (`"FOR p IN posts FILTER p.id == #{id}"` → its query shape).
+fn literal_text(expr: &Expr) -> Option<String> {
+    match &expr.kind {
+        ExprKind::StringLiteral(text) => Some(text.clone()),
+        ExprKind::InterpolatedString(parts) => Some(
+            parts
+                .iter()
+                .map(|part| match part {
+                    crate::ast::expr::InterpolatedPart::Literal(text) => text.as_str(),
+                    crate::ast::expr::InterpolatedPart::Expression(_) => " _ ",
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+/// SDBQL keywords that can follow `IN` without naming a collection.
+const SDBQL_KEYWORDS: &[&str] = &[
+    "FOR",
+    "IN",
+    "INTO",
+    "LET",
+    "FILTER",
+    "RETURN",
+    "SORT",
+    "LIMIT",
+    "COLLECT",
+    "INSERT",
+    "UPDATE",
+    "REPLACE",
+    "REMOVE",
+    "UPSERT",
+    "WITH",
+    "OUTBOUND",
+    "INBOUND",
+    "ANY",
+    "GRAPH",
+    "DISTINCT",
+    "AGGREGATE",
+    "OPTIONS",
+    "SEARCH",
+    "WINDOW",
+    "TRUE",
+    "FALSE",
+    "NULL",
+    "NOT",
+    "AND",
+    "OR",
+    "LIKE",
+    "ASC",
+    "DESC",
+];
+
+/// The collections a raw SDBQL query reads (`FOR x IN posts`, a traversal's
+/// edge collection) and writes (`INSERT … INTO`, `UPDATE`/`REPLACE`/`REMOVE`/
+/// `UPSERT … IN`), each with the keyword that touches it. Names bound by
+/// `LET` or `FOR`, bind parameters (`@@coll`) and expressions are skipped.
+fn sdbql_collections(query: &str) -> Vec<(String, bool, &'static str)> {
+    // Tokens: identifiers (dotted paths split), strings as one opaque token,
+    // everything else one character each.
+    let mut tokens: Vec<String> = Vec::new();
+    let chars: Vec<char> = query.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c.is_alphabetic() || c == '_' {
+            let start = i;
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+            tokens.push(chars[start..i].iter().collect());
+            continue;
+        }
+        if c == '"' || c == '\'' || c == '`' {
+            let quote = c;
+            i += 1;
+            while i < chars.len() && chars[i] != quote {
+                if chars[i] == '\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            tokens.push("\"".to_string());
+            i += 1;
+            continue;
+        }
+        if !c.is_whitespace() {
+            tokens.push(c.to_string());
+        }
+        i += 1;
+    }
+
+    let upper = |t: &str| t.to_ascii_uppercase();
+    let is_name = |t: &str| {
+        t.chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_')
+            && !SDBQL_KEYWORDS.contains(&upper(t).as_str())
+    };
+    let mut bound: HashSet<String> = HashSet::new();
+    let mut out: Vec<(String, bool, &'static str)> = Vec::new();
+    let mut add = |name: &str, write: bool, op: &'static str, bound: &HashSet<String>| {
+        if bound.contains(name) || out.iter().any(|(c, w, _)| c == name && *w == write) {
+            return;
+        }
+        out.push((name.to_string(), write, op));
+    };
+    let mut k = 0;
+    while k < tokens.len() {
+        // A bind parameter (`@name`, `@@coll`) is never a collection name.
+        if tokens[k] == "@" {
+            k += 1;
+            while k < tokens.len() && tokens[k] == "@" {
+                k += 1;
+            }
+            k += 1;
+            continue;
+        }
+        match upper(&tokens[k]).as_str() {
+            "LET" => {
+                if let Some(name) = tokens.get(k + 1) {
+                    bound.insert(name.clone());
+                }
+            }
+            "FOR" => {
+                let mut j = k + 1;
+                while j < tokens.len() && upper(&tokens[j]) != "IN" {
+                    if is_name(&tokens[j]) {
+                        bound.insert(tokens[j].clone());
+                    }
+                    j += 1;
+                }
+                if let Some(next) = tokens.get(j + 1) {
+                    if is_name(next) {
+                        add(next, false, "FOR", &bound);
+                    } else {
+                        // A traversal: `IN 1..2 OUTBOUND start edges`.
+                        if let Some(d) = ((j + 1)..tokens.len().min(j + 12)).find(|&d| {
+                            matches!(upper(&tokens[d]).as_str(), "OUTBOUND" | "INBOUND" | "ANY")
+                        }) {
+                            // The start vertex: a string, a name or `@param`.
+                            let mut e = d + 1;
+                            while tokens.get(e).is_some_and(|t| t == "@") {
+                                e += 1;
+                            }
+                            if let Some(edges) = tokens.get(e + 1).filter(|t| is_name(t)) {
+                                add(edges, false, "FOR", &bound);
+                            }
+                        }
+                    }
+                }
+                k = j;
+            }
+            op @ ("INSERT" | "UPDATE" | "REPLACE" | "REMOVE" | "UPSERT") => {
+                let op: &'static str = match op {
+                    "INSERT" => "INSERT",
+                    "UPDATE" => "UPDATE",
+                    "REPLACE" => "REPLACE",
+                    "REMOVE" => "REMOVE",
+                    _ => "UPSERT",
+                };
+                if let Some(j) = ((k + 1)..tokens.len())
+                    .find(|&j| matches!(upper(&tokens[j]).as_str(), "IN" | "INTO"))
+                {
+                    if let Some(name) = tokens.get(j + 1).filter(|t| is_name(t)) {
+                        add(name, true, op, &bound);
+                    }
+                    // `UPSERT … INSERT … UPDATE … IN coll`: one write.
+                    if op == "UPSERT" {
+                        k = j;
+                    }
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    out
+}
+
 fn simple_name(expr: &Expr) -> Option<String> {
     match &expr.kind {
         ExprKind::Variable(name) => Some(name.clone()),
@@ -2256,5 +2722,198 @@ mod tests {
             .edges
             .iter()
             .any(|e| e.from == create_key && e.to == get_route_key && e.edge_kind == "redirects"));
+    }
+
+    fn edge_relation(graph: &ProjectGraph, from_q: &str, to_q: &str, kind: &str) -> Vec<String> {
+        let key_of = |q: &str| {
+            graph
+                .nodes
+                .iter()
+                .find(|n| n.qualified_name == q)
+                .map(|n| n.key.clone())
+        };
+        let (Some(from), Some(to)) = (key_of(from_q), key_of(to_q)) else {
+            return Vec::new();
+        };
+        let mut relations: Vec<String> = graph
+            .edges
+            .iter()
+            .filter(|e| e.from == from && e.to == to && e.edge_kind == kind)
+            .map(|e| e.relation.clone())
+            .collect();
+        relations.sort();
+        relations
+    }
+
+    fn build_db_fixture() -> (tempfile::TempDir, ProjectGraph) {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/post.sl",
+            "class Post < Model\n  def publish\n    @published = true\n    @save\n  end\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/models/featured_post.sl",
+            "class FeaturedPost < Post\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/controllers/posts_controller.sl",
+            concat!(
+                "class PostsController < Controller\n",
+                "  # GET /posts\n",
+                "  def index(req)\n",
+                "    @posts = Post.where({\"published\": true}).order(\"title\").all\n",
+                "    @count = FeaturedPost.count\n",
+                "    @unused = 1\n",
+                "  end\n",
+                "\n",
+                "  # POST /posts\n",
+                "  def create(req)\n",
+                "    post = Post.create({\"title\": \"x\"})\n",
+                "    post.save\n",
+                "    _audit(post)\n",
+                "    redirect(\"/posts\")\n",
+                "  end\n",
+                "\n",
+                "  # GET /posts/stats\n",
+                "  def stats(req)\n",
+                "    rows = @sdbql{ FOR p IN posts FOR c IN comments FILTER c.post == p._key RETURN p }\n",
+                "    db.query(\"FOR v IN 1..2 OUTBOUND @start follows RETURN v\")\n",
+                "    render(\"posts/index\", {})\n",
+                "  end\n",
+                "\n",
+                "  def _audit(post)\n",
+                "    db.query(\"INSERT {at: 1} INTO audit_log\")\n",
+                "  end\n",
+                "end\n",
+            ),
+        );
+        write(
+            dir.path(),
+            "app/views/posts/index.html.slv",
+            "<% for post in @posts %><%= post.title %><% end %> <%= @count %> <% @local = 1 %><%= @local %>\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        (dir, graph)
+    }
+
+    #[test]
+    fn a_model_is_stored_in_its_collection_sti_in_its_roots() {
+        let (_dir, graph) = build_db_fixture();
+        let posts = graph
+            .nodes
+            .iter()
+            .find(|n| n.qualified_name == "posts")
+            .expect("posts collection node");
+        assert_eq!(posts.kind, "collection");
+        assert!(has_edge(&graph, "Post", "posts", "stored_in"));
+        assert!(has_edge(&graph, "FeaturedPost", "posts", "stored_in"));
+    }
+
+    #[test]
+    fn orm_calls_read_and_write_the_models_collection() {
+        let (_dir, graph) = build_db_fixture();
+        assert_eq!(
+            edge_relation(&graph, "PostsController#index", "posts", "reads"),
+            vec!["count", "where"]
+        );
+        assert_eq!(
+            edge_relation(&graph, "PostsController#create", "posts", "writes"),
+            vec!["create", "save"]
+        );
+        // `@save` inside the model writes its own collection.
+        assert_eq!(
+            edge_relation(&graph, "Post#publish", "posts", "writes"),
+            vec!["save"]
+        );
+    }
+
+    #[test]
+    fn raw_sdbql_names_its_collections() {
+        let (_dir, graph) = build_db_fixture();
+        assert_eq!(
+            edge_relation(&graph, "PostsController#stats", "posts", "reads"),
+            vec!["FOR"]
+        );
+        assert_eq!(
+            edge_relation(&graph, "PostsController#stats", "comments", "reads"),
+            vec!["FOR"]
+        );
+        assert_eq!(
+            edge_relation(&graph, "PostsController#stats", "follows", "reads"),
+            vec!["FOR"]
+        );
+        assert_eq!(
+            edge_relation(&graph, "PostsController#_audit", "audit_log", "writes"),
+            vec!["INSERT"]
+        );
+    }
+
+    #[test]
+    fn sdbql_collections_skips_bound_names_and_parameters() {
+        assert_eq!(
+            sdbql_collections("LET ids = [1] FOR x IN ids FOR u IN @@coll FOR p IN posts RETURN p"),
+            vec![("posts".to_string(), false, "FOR")]
+        );
+        assert_eq!(
+            sdbql_collections("UPSERT {k: 1} INSERT {k: 1} UPDATE {n: 2} IN counters RETURN NEW"),
+            vec![("counters".to_string(), true, "UPSERT")]
+        );
+        assert_eq!(
+            sdbql_collections(
+                "FOR u IN users FILTER u.name == \"FOR x IN fake\" REMOVE u IN users"
+            ),
+            vec![
+                ("users".to_string(), false, "FOR"),
+                ("users".to_string(), true, "REMOVE")
+            ]
+        );
+    }
+
+    #[test]
+    fn an_action_renders_its_own_view_and_assigns_what_it_reads() {
+        let (_dir, graph) = build_db_fixture();
+        assert_eq!(
+            edge_relation(&graph, "PostsController#index", "posts/index", "renders"),
+            vec!["implicit"]
+        );
+        // `@unused` is set but not read; the view's own `@local` is not the
+        // action's.
+        assert_eq!(
+            edge_relation(&graph, "PostsController#index", "posts/index", "assigns"),
+            vec!["@count", "@posts"]
+        );
+        // An explicit render is not doubled by an implicit one; `create`
+        // redirects and has no view of its own.
+        assert_eq!(
+            edge_relation(&graph, "PostsController#stats", "posts/index", "renders"),
+            vec![""]
+        );
+        assert!(!has_edge(
+            &graph,
+            "PostsController#create",
+            "posts/index",
+            "renders"
+        ));
+        // `_audit` is a helper, not an action.
+        assert!(!has_edge(
+            &graph,
+            "PostsController#_audit",
+            "posts/index",
+            "renders"
+        ));
+    }
+
+    #[test]
+    fn a_bare_call_reaches_the_classs_own_method() {
+        let (_dir, graph) = build_db_fixture();
+        assert!(has_edge(
+            &graph,
+            "PostsController#create",
+            "PostsController#_audit",
+            "calls"
+        ));
     }
 }

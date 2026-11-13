@@ -515,7 +515,8 @@ endpoints the dev bar uses, so the same gates apply: loopback peer, local
 | `request` | One request: phase timings, middleware and template timings, every query (statement, binds, duration), outgoing HTTP and KV calls, `n_plus_one` when the dev bar flags one |
 | `replay` | Re-runs a request (see **Replay** above) and returns the new request id and status. Anything but `GET`/`HEAD` needs `confirm: true` |
 | `errors` | Open [error groups](observability.md#error-tracking-__solierrors) with their latest sample: message, stack, a `curl` line, locals — redacted when stored |
-| `graph` | `soli graph query --json` for a question (needs `soli graph build` and SolidB) |
+| `graph` | `soli graph query --json` for a question (needs `soli graph build` and SolidB): the code, the collections it reads and writes, the notes earlier sessions left and earlier questions that share its words |
+| `graph_note` | `soli graph note`: keeps a finding (`text`, anchored `on` qualified names, optional `question`) so later `graph` calls return it. Writes to the graph's note store only |
 | `test` | `soli test <path>` for one spec file or directory, never the whole suite; failures only, 120 s timeout, 20 failures / 8 KB at most |
 | `repl` | Runs Soli code inside the dev process — models, config, database. Pass `repl_session_id` back to keep variables |
 

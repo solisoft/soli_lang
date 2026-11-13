@@ -12,6 +12,7 @@ pub mod content_store;
 pub mod core_eval;
 pub mod declared_props;
 pub mod helpers;
+pub(crate) mod ivars;
 pub mod layout;
 pub mod parser;
 pub mod renderer;

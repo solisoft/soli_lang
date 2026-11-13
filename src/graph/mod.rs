@@ -14,6 +14,7 @@
 pub mod builder;
 pub mod config;
 pub mod generic;
+pub mod insights;
 pub mod model;
 pub mod query;
 pub mod sync;
@@ -23,6 +24,7 @@ pub use builder::{
 };
 pub use config::GraphConfig;
 pub use generic::build_generic_graph;
+pub use insights::{add_note, forget_note, list_notes, InsightHit, PastQuery};
 pub use model::{Edge, Node, ProjectGraph};
 pub use query::{parse_kinds, run_query, QueryOptions, QueryResult};
 pub use sync::{

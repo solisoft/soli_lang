@@ -164,7 +164,16 @@ fn stdio_handshake_list_and_call() {
         .collect();
     assert_eq!(
         names,
-        ["requests", "request", "replay", "errors", "graph", "test", "repl"]
+        [
+            "requests",
+            "request",
+            "replay",
+            "errors",
+            "graph",
+            "graph_note",
+            "test",
+            "repl"
+        ]
     );
     let repl = replies[1]["result"]["tools"]
         .as_array()

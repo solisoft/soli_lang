@@ -276,6 +276,28 @@ pub enum Command {
         /// Emit JSON instead of the human-readable summary.
         json: bool,
     },
+    /// `soli graph note "<finding>" --on NAME[,NAME…]` — keep what an agent
+    /// learnt about the code, anchored to graph nodes.
+    GraphNote {
+        text: String,
+        anchors: Vec<String>,
+        question: Option<String>,
+        folder: String,
+        database: Option<String>,
+        json: bool,
+    },
+    /// `soli graph notes` — list the notes, stale ones marked.
+    GraphNotes {
+        folder: String,
+        database: Option<String>,
+        json: bool,
+    },
+    /// `soli graph forget <key>` — delete a note.
+    GraphForget {
+        key: String,
+        folder: String,
+        database: Option<String>,
+    },
     /// `soli agent` — a local MCP server on stdin/stdout that lets a coding
     /// agent read the running `soli serve --dev` (requests, queries, errors),
     /// replay a request, run one spec and use the dev REPL.
@@ -758,6 +780,8 @@ pub fn print_usage() {
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
     eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N] [--path PREFIX] [--kind KINDS]");
+    eprintln!("  soli graph note \"<finding>\" --on NAME[,NAME…] [--question Q] [folder] [--json]");
+    eprintln!("  soli graph notes [folder] [--json]  |  soli graph forget <key> [folder]");
     eprintln!("  soli agent");
     eprintln!();
     eprintln!("Commands:");
@@ -851,6 +875,7 @@ pub fn print_usage() {
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
     eprintln!("  graph build [folder] Build a code graph in SolidB for agents (graph RAG); --dry-run for JSON");
     eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents, --path PREFIX / --kind KINDS to filter");
+    eprintln!("  graph note <text>    Keep a finding about the code (--on NAME…); later queries return it");
     eprintln!("  agent                MCP server on stdio: lets a coding agent read the running `serve --dev` (requests, queries, errors), replay, test, REPL");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
     eprintln!("  -e <code>            Evaluate code and print result");
@@ -1863,9 +1888,93 @@ pub fn parse_args() -> Options {
                         };
                         return options;
                     }
+                    "note" | "notes" | "forget" => {
+                        i += 1; // consume the subcommand
+                        let mut positionals: Vec<String> = Vec::new();
+                        let mut database: Option<String> = None;
+                        let mut anchors: Vec<String> = Vec::new();
+                        let mut question: Option<String> = None;
+                        let mut json = false;
+                        while i < args.len() {
+                            let value_of = |i: usize, flag: &str| -> String {
+                                match args.get(i + 1) {
+                                    Some(value) => value.clone(),
+                                    None => {
+                                        eprintln!("{} requires a value", flag);
+                                        process::exit(64);
+                                    }
+                                }
+                            };
+                            match args[i].as_str() {
+                                "--json" => json = true,
+                                "--on" => {
+                                    anchors.extend(parse_kinds_list(&value_of(i, "--on")));
+                                    i += 1;
+                                }
+                                arg if arg.starts_with("--on=") => {
+                                    anchors.extend(parse_kinds_list(&arg["--on=".len()..]));
+                                }
+                                "--question" => {
+                                    question = Some(value_of(i, "--question"));
+                                    i += 1;
+                                }
+                                arg if arg.starts_with("--question=") => {
+                                    question = Some(arg["--question=".len()..].to_string());
+                                }
+                                "--database" => {
+                                    database = Some(value_of(i, "--database"));
+                                    i += 1;
+                                }
+                                arg if arg.starts_with("--database=") => {
+                                    database = Some(arg["--database=".len()..].to_string());
+                                }
+                                arg if arg.starts_with('-') => {
+                                    eprintln!("Unknown option for graph {}: {}", action, arg);
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                                _ => positionals.push(args[i].clone()),
+                            }
+                            i += 1;
+                        }
+                        let mut positionals = positionals.into_iter();
+                        options.command = match action.as_str() {
+                            "note" => {
+                                let Some(text) = positionals.next() else {
+                                    eprintln!("graph note requires the finding: soli graph note \"<text>\" --on NAME");
+                                    process::exit(64);
+                                };
+                                Command::GraphNote {
+                                    text,
+                                    anchors,
+                                    question,
+                                    folder: positionals.next().unwrap_or_else(|| ".".to_string()),
+                                    database,
+                                    json,
+                                }
+                            }
+                            "notes" => Command::GraphNotes {
+                                folder: positionals.next().unwrap_or_else(|| ".".to_string()),
+                                database,
+                                json,
+                            },
+                            _ => {
+                                let Some(key) = positionals.next() else {
+                                    eprintln!("graph forget requires a note key (soli graph notes lists them)");
+                                    process::exit(64);
+                                };
+                                Command::GraphForget {
+                                    key,
+                                    folder: positionals.next().unwrap_or_else(|| ".".to_string()),
+                                    database,
+                                }
+                            }
+                        };
+                        return options;
+                    }
                     other => {
                         eprintln!(
-                            "graph requires a subcommand: build or query (got '{}')",
+                            "graph requires a subcommand: build, query, note, notes or forget (got '{}')",
                             other
                         );
                         print_usage();
@@ -3494,4 +3603,13 @@ pub fn parse_args() -> Options {
     }
 
     options
+}
+
+/// A comma-separated list of names, trimmed, empties dropped.
+fn parse_kinds_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }

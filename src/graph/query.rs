@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::graph::insights::{self, InsightHit, PastQuery};
 use crate::graph::model::{NODE_COLLECTION, VECTOR_INDEX};
 use crate::solidb_http::SoliDBClient;
 
@@ -24,6 +25,9 @@ const MAX_NEIGHBORS: usize = 50;
 /// Max characters of node `text` included as a seed snippet (embeddings never
 /// appear in query output).
 const SNIPPET_MAX: usize = 400;
+
+/// Results a query adds from the anchors of the notes that matched it.
+const MAX_NOTE_SEEDS: usize = 3;
 
 /// When a `--path` or `--kind` filter is active the vector index can't
 /// pre-filter, so we over-fetch and filter afterwards.
@@ -35,12 +39,16 @@ const EDGE_KIND_RANK: &[&str] = &[
     "routes_to",
     "calls",
     "renders",
+    "reads",
+    "writes",
+    "assigns",
     "redirects",
     "relates",
     "instantiates",
     "inherits",
     "imports",
     "implements",
+    "stored_in",
     "defines",
 ];
 
@@ -65,6 +73,11 @@ pub struct Neighbor {
     /// `out` (this edge points away from the seed) or `in` (points at it).
     pub direction: String,
     pub edge_kind: String,
+    /// The edge's detail: the operation of a `reads`/`writes` edge (`where`,
+    /// `save`, `FOR`), the `@x` of an `assigns` edge, the association of a
+    /// `relates` edge, `implicit` for an action's own view.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub relation: String,
     pub kind: String,
     pub name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -90,6 +103,10 @@ pub struct SeedHit {
     /// Truncated node `text` for agent context (never the embedding vector).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub snippet: String,
+    /// `note` when the result came in through a note's anchor rather than
+    /// the search itself.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub via: String,
     pub neighbors: Vec<Neighbor>,
 }
 
@@ -100,6 +117,13 @@ pub struct QueryResult {
     pub mode: String,
     pub query: String,
     pub results: Vec<SeedHit>,
+    /// Notes agents left (`soli graph note`) that match the question or
+    /// touch its results.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub insights: Vec<InsightHit>,
+    /// Earlier questions that share words with this one, and what they found.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub related_queries: Vec<PastQuery>,
 }
 
 impl QueryResult {
@@ -123,16 +147,45 @@ pub fn run_query(question: &str, opts: &QueryOptions) -> Result<QueryResult, Str
     };
 
     // Seeds: semantic first, keyword fallback.
-    let (seeds, mode) = match semantic_seeds(&client, question, limit, path, kinds) {
+    let vector = crate::embedding::generate_embedding(question);
+    let semantic = vector
+        .as_deref()
+        .and_then(|v| semantic_seeds(&client, v, limit, path, kinds));
+    let (mut seeds, mode) = match semantic {
         Some(v) if !v.is_empty() => (v, "semantic"),
         _ => (
             keyword_seeds(&client, question, limit, path, kinds)?,
             "keyword",
         ),
     };
+    let mut via: Vec<&str> = vec![""; seeds.len()];
+
+    // What agents learnt before: notes matching the question or anchored on a
+    // result, and the earlier questions that share its words.
+    let terms = tokenize(question);
+    let seed_keys: Vec<String> = seeds.iter().map(|(doc, _)| field(doc, "_key")).collect();
+    let related_queries = insights::past_queries(&client, question, &terms);
+    let insight_hits = insights::related_insights(&client, vector.as_deref(), &terms, &seed_keys);
+    // A note that matched the question points at code the search may have
+    // missed: bring its anchors in as results.
+    let extra: Vec<String> = insight_hits
+        .iter()
+        .filter(|hit| hit.score.is_some() || vector.is_none())
+        .flat_map(|hit| hit.anchor_keys.iter().cloned())
+        .filter(|key| !seed_keys.contains(key))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .take(MAX_NOTE_SEEDS)
+        .collect();
+    for doc in fetch_nodes(&client, &extra) {
+        if path_matches(&doc, path) && kind_matches(&doc, kinds) {
+            seeds.push((doc, 0.0));
+            via.push("note");
+        }
+    }
 
     let mut results = Vec::with_capacity(seeds.len());
-    for (doc, score) in seeds {
+    for ((doc, score), via) in seeds.into_iter().zip(via) {
         let key = field(&doc, "_key");
         let neighbors = if key.is_empty() {
             Vec::new()
@@ -148,15 +201,35 @@ pub fn run_query(question: &str, opts: &QueryOptions) -> Result<QueryResult, Str
             signature: field(&doc, "signature"),
             doc: field(&doc, "doc"),
             snippet: truncate_snippet(&field(&doc, "text")),
+            via: via.to_string(),
             neighbors,
         });
     }
+
+    let found: Vec<String> = results.iter().map(|r| r.qualified_name.clone()).collect();
+    insights::log_query(&client, question, &terms, &found);
 
     Ok(QueryResult {
         mode: mode.to_string(),
         query: question.to_string(),
         results,
+        insights: insight_hits,
+        related_queries,
     })
+}
+
+/// Node documents by key, without their embeddings.
+fn fetch_nodes(client: &SoliDBClient, keys: &[String]) -> Vec<Value> {
+    if keys.is_empty() {
+        return Vec::new();
+    }
+    let query = format!(
+        "FOR n IN {} FILTER n._key IN @keys RETURN UNSET(n, \"embedding\")",
+        NODE_COLLECTION
+    );
+    let mut binds = HashMap::new();
+    binds.insert("keys".to_string(), serde_json::json!(keys));
+    client.query(&query, Some(binds)).unwrap_or_default()
 }
 
 /// ANN seeds via the `node_vec` vector index. `None` when embeddings are
@@ -167,12 +240,11 @@ pub fn run_query(question: &str, opts: &QueryOptions) -> Result<QueryResult, Str
 /// matching seeds when the top-ranked nodes fall outside the filter.
 fn semantic_seeds(
     client: &SoliDBClient,
-    question: &str,
+    vector: &[f64],
     limit: usize,
     path: Option<&str>,
     kinds: Option<&[String]>,
 ) -> Option<Vec<(Value, f64)>> {
-    let vector = crate::embedding::generate_embedding(question)?;
     let needs_overfetch = path.is_some() || kinds.is_some();
     let fetch = if needs_overfetch {
         (limit * PATH_OVERFETCH).min(PATH_OVERFETCH_CAP)
@@ -180,7 +252,7 @@ fn semantic_seeds(
         limit
     };
     let hits = client
-        .vector_search(NODE_COLLECTION, VECTOR_INDEX, &vector, fetch, None)
+        .vector_search(NODE_COLLECTION, VECTOR_INDEX, vector, fetch, None)
         .ok()?;
     let seeds: Vec<(Value, f64)> = hits
         .into_iter()
@@ -258,7 +330,7 @@ fn fetch_neighbors(client: &SoliDBClient, key: &str, hops: usize) -> Result<Vec<
     // we can label direction relative to the seed.
     let query = format!(
         "FOR v, e IN 1..{} ANY \"{}\" soli_graph_edges LIMIT {} \
-         RETURN {{ efrom: e._from, edge_kind: e.edge_kind, kind: v.kind, \
+         RETURN {{ efrom: e._from, edge_kind: e.edge_kind, relation: e.relation, kind: v.kind, \
          name: v.qualified_name, signature: v.signature, file: v.file, line: v.line }}",
         hops, start, fetch_cap
     );
@@ -273,6 +345,7 @@ fn fetch_neighbors(client: &SoliDBClient, key: &str, hops: usize) -> Result<Vec<
             Neighbor {
                 direction: direction.to_string(),
                 edge_kind: field(&row, "edge_kind"),
+                relation: field(&row, "relation"),
                 kind: field(&row, "kind"),
                 name: field(&row, "name"),
                 signature: field(&row, "signature"),
