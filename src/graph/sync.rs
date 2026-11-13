@@ -147,6 +147,7 @@ pub fn write_graph(
     opts: &SyncOptions,
     on_progress: &mut dyn FnMut(usize, usize),
 ) -> Result<SyncReport, String> {
+    ensure_database(opts.database.as_deref())?;
     let (client, database) = connect(opts.database.as_deref())?;
 
     // Clean rebuild. Drops are best-effort (404 on first run is fine).
@@ -405,6 +406,7 @@ pub fn sync_graph(
     opts: &SyncOptions,
     on_progress: &mut dyn FnMut(usize, usize),
 ) -> Result<SyncReport, String> {
+    ensure_database(opts.database.as_deref())?;
     let (client, database) = connect(opts.database.as_deref())?;
 
     // Create-if-missing (never drop). Errors (e.g. "already exists") are fine.
@@ -759,6 +761,38 @@ fn store_manifest(client: &SoliDBClient, files: &HashMap<String, String>) -> Res
 /// Build a SolidB client from the model-layer config, honoring an optional
 /// database override. Auth priority mirrors `crud.rs`: JWT > API key > basic.
 /// Shared by the write path and the query path.
+/// Make sure the graph's database exists, creating it when SolidB answers
+/// that it does not (SolidB never creates one on a first write). Any other
+/// failure — SolidB unreachable, credentials refused — is returned, so a
+/// build stops before its slow embedding phase rather than after it.
+pub fn ensure_database(database: Option<&str>) -> Result<(), String> {
+    let (client, name) = connect(database)?;
+    // The list answers for an admin. A `RETURN 1` does not tell: SolidB runs it
+    // without opening the database, so it succeeds on one that is missing.
+    if let Ok(names) = client.list_databases() {
+        if names.iter().any(|n| n == &name) {
+            return Ok(());
+        }
+        return client
+            .create_database(&name)
+            .map_err(|e| format!("create database {}: {}", name, e));
+    }
+    // Not allowed to list: probe a collection read instead.
+    match client.query("FOR d IN _graph_probe LIMIT 1 RETURN 1", None) {
+        Err(e) if is_missing_database(&e.to_string()) => client
+            .create_database(&name)
+            .map_err(|e| format!("create database {}: {}", name, e)),
+        // A missing collection, or any answer from the database itself, means
+        // the database is there.
+        _ => Ok(()),
+    }
+}
+
+/// SolidB's answer for a database that does not exist.
+fn is_missing_database(message: &str) -> bool {
+    message.contains("Database '") && message.contains("not found")
+}
+
 pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), String> {
     let (scheme, db_host) = db_config::db_scheme_and_host();
     let host = format!("{}{}", scheme, db_host);
@@ -783,7 +817,18 @@ pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), 
 
 #[cfg(test)]
 mod tests {
-    use super::is_already_applied;
+    use super::{is_already_applied, is_missing_database};
+
+    #[test]
+    fn a_missing_database_is_recognised() {
+        let msg = "HTTP 404 Not Found /_api/database/tenacy/cursor: \
+                   {\"code\":404,\"error\":\"Database 'tenacy' not found\",\"type\":\"CollectionNotFound\"}";
+        assert!(is_missing_database(msg));
+        assert!(!is_missing_database("HTTP 401 Unauthorized"));
+        assert!(!is_missing_database(
+            "Collection 'soli_graph_nodes' not found"
+        ));
+    }
 
     #[test]
     fn remove_of_missing_key_counts_as_applied() {

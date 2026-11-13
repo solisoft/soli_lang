@@ -42,6 +42,13 @@
 
 ### Fixed
 
+- `soli graph build` creates its database when SolidB does not have it, and
+  checks it before embedding (`graph::ensure_database`, also called by
+  `sync_graph` / `write_graph`). It used to fail at the sync, after a full
+  embedding run (18 minutes on a 22,800-node repository with a local model),
+  with `Database '…' not found` — although the docs said the database was
+  created on first write. A `RETURN 1` probe does not tell: SolidB answers it
+  for a missing database, so the list (or a collection read) decides.
 - The comparison page's type-checker cell carried a garbled repeat of an
   older sentence ("a sibling file's names are known but not yet…").
 

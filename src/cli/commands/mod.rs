@@ -3433,6 +3433,13 @@ pub fn run_graph(
     solilang::serve::env_loader::load_env_files(app_path);
     solilang::interpreter::builtins::model::init_db_config();
 
+    // Reach (or create) the database now: a wrong host or a missing database
+    // found after the embedding phase would throw that work away.
+    if let Err(e) = graph::ensure_database(database) {
+        eprintln!("\x1b[31mError:\x1b[0m {}", e);
+        process::exit(1);
+    }
+
     let embed = !no_embed;
     let opts = graph::SyncOptions {
         database: database.map(str::to_string),

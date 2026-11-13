@@ -28,6 +28,6 @@ pub use insights::{add_note, forget_note, list_notes, InsightHit, PastQuery};
 pub use model::{Edge, Node, ProjectGraph};
 pub use query::{parse_kinds, run_query, QueryOptions, QueryResult};
 pub use sync::{
-    embed_graph, embed_incremental, is_up_to_date, reindex, sync_graph, write_graph, ReindexReport,
-    SyncOptions, SyncReport,
+    embed_graph, embed_incremental, ensure_database, is_up_to_date, reindex, sync_graph,
+    write_graph, ReindexReport, SyncOptions, SyncReport,
 };
