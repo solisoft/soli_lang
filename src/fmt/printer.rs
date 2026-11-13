@@ -330,17 +330,11 @@ impl<'a> Printer<'a> {
     /// `lint::suppress`, but the next-line form survives any line-splitting
     /// the formatter might apply to the statement.
     pub(super) fn rewrite_trailing_lint_disable(&mut self, stmt_line: usize) {
-        let mut idx = None;
-        for i in self.comment_cursor..self.comments.len() {
-            let c = &self.comments[i];
-            if c.line > stmt_line {
-                break;
-            }
-            if c.line == stmt_line && c.text.contains("soli-lint-disable-line") {
-                idx = Some(i);
-                break;
-            }
-        }
+        let idx = self.comments[self.comment_cursor..]
+            .iter()
+            .take_while(|c| c.line <= stmt_line)
+            .position(|c| c.line == stmt_line && c.text.contains("soli-lint-disable-line"))
+            .map(|offset| self.comment_cursor + offset);
         let Some(i) = idx else { return };
         let new_text = self.comments[i]
             .text

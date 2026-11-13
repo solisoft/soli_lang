@@ -3335,8 +3335,8 @@ impl Vm {
         let mut mm_args = vec![Value::String(name.into())];
         mm_args.extend(self.stack.drain(receiver_idx + 1..));
         let params = closure.proto.param_names.len();
-        for i in 0..params {
-            let value = if i > 0 && i + 1 == params && closure.proto.param_names[i] == "args" {
+        for (i, param) in closure.proto.param_names.iter().enumerate() {
+            let value = if i > 0 && i + 1 == params && param == "args" {
                 Value::Array(Rc::new(RefCell::new(mm_args[1..].to_vec())))
             } else {
                 mm_args.get(i).cloned().unwrap_or(Value::Null)

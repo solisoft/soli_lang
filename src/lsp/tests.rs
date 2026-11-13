@@ -587,10 +587,18 @@ fn files_of(locations: &[lsp_types::Location], root: &Path) -> Vec<String> {
     let mut files: Vec<String> = locations
         .iter()
         .map(|location| {
-            let path = location.uri.to_file_path().unwrap().into_owned();
-            path.strip_prefix(root)
-                .unwrap()
-                .to_string_lossy()
+            // On Windows the canonical root is `\\?\C:\…` while the URI's
+            // path is `C:\…` (its drive letter possibly in another case):
+            // compare them without the verbatim prefix, ignoring case.
+            let unverbatim = |p: &Path| p.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+            let path = unverbatim(&location.uri.to_file_path().unwrap());
+            let root = unverbatim(root);
+            assert!(
+                path.to_lowercase().starts_with(&root.to_lowercase()),
+                "{path} is not under {root}"
+            );
+            path[root.len()..]
+                .trim_start_matches(['/', '\\'])
                 .replace('\\', "/")
         })
         .collect();

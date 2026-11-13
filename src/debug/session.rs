@@ -366,7 +366,9 @@ mod tests {
 
     fn at(line: u32, depth: usize) -> Location {
         Location {
-            file: "/app/main.sl".into(),
+            // Normalized as `set_breakpoints` stores it: on Windows a
+            // rooted path gains the current drive.
+            file: normalize_path("/app/main.sl"),
             line,
             depth,
         }
@@ -387,8 +389,11 @@ mod tests {
 
     #[test]
     fn paths_are_compared_absolute_and_lexically_resolved() {
+        assert_eq!(normalize_path("/a/./b/../c.sl"), normalize_path("/a/c.sl"));
+        #[cfg(unix)]
         assert_eq!(normalize_path("/a/./b/../c.sl"), "/a/c.sl");
-        assert!(normalize_path("x.sl").ends_with("/x.sl"));
+        let relative = normalize_path("x.sl");
+        assert!(std::path::Path::new(&relative).is_absolute() && relative.ends_with("x.sl"));
     }
 
     #[test]
