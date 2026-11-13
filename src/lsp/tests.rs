@@ -587,22 +587,20 @@ fn files_of(locations: &[lsp_types::Location], root: &Path) -> Vec<String> {
     let mut files: Vec<String> = locations
         .iter()
         .map(|location| {
-            // On Windows the canonical root is `\\?\C:\…` and the URI's
-            // path reads `/C:/…` (drive letter in either case): compare both
-            // as forward-slashed, case-folded strings (the expected names are lower-case).
-            let plain = |p: &Path| {
-                p.to_string_lossy()
-                    .trim_start_matches(r"\\?\")
-                    .replace('\\', "/")
-                    .trim_start_matches('/')
-                    .to_lowercase()
-            };
-            let path = plain(&location.uri.to_file_path().unwrap());
-            let root = plain(root);
-            path.strip_prefix(root.as_str())
-                .unwrap_or_else(|| panic!("{path} is not under {root}"))
-                .trim_start_matches('/')
-                .to_string()
+            // Windows spells the same file three ways here (the canonical
+            // root `\\?\C:\…`, a URI path `/C:/…`, or one without the drive),
+            // so cut at the project's own directory, a unique temp name.
+            let path = location
+                .uri
+                .to_file_path()
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let marker = format!("/{}/", root.file_name().unwrap().to_string_lossy());
+            let at = path
+                .find(&marker)
+                .unwrap_or_else(|| panic!("{path} is not under {}", root.display()));
+            path[at + marker.len()..].to_string()
         })
         .collect();
     files.sort();
