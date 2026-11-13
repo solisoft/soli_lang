@@ -22,7 +22,9 @@
   the view reads (`template::ivars::ivar_reads`, moved out of the LSP so the
   graph shares it). A bare call inside a class reaches its own or an
   inherited method before a top-level function, `@method` resolves through
-  ancestors, and a parenthesis-less member call (`Post.count`) is a call.
+  ancestors, a parenthesis-less member call (`Post.count`) is a call, and a
+  parameter annotated with a project class (`order: Order`) types its local
+  for instance calls and record writes.
   `soli graph query` returns each neighbour's `relation` and ranks `reads`,
   `writes` and `assigns` after `renders`.
 - **The graph keeps what agents learn (`graph::insights`).** `soli graph note

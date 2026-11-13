@@ -215,8 +215,9 @@ Call-graph resolution is **precision-first**. Linked when high-confidence:
   (`Post.count`, `@save`) counts as a call
 - unambiguous bare function calls
 - instance calls on a **locally typed** variable only: `u = User.new()`,
-  `let u: User = …`, or `u = User.find(...)` (and other model factories
-  like `find_by` / `create`) then `u.authenticate(...)`
+  `let u: User = …`, a parameter annotated with a project class
+  (`def perform(order: Order)`), or `u = User.find(...)` (and other model
+  factories like `find_by` / `create`) then `u.authenticate(...)`
 
 Unbound receivers (`user.save()` when `user` has no known class) stay
 unlinked — an edge is never invented. Reassigning a tracked local to a value

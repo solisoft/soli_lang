@@ -241,7 +241,8 @@ chunk_lines = 50                       # window for chunk-embedded files</code><
                 <code>super(...)</code>/<code>super.method(...)</code>, a call written without parentheses
                 (<code>Post.count</code>, <code>@save</code>),
                 unambiguous bare functions, and instance calls on a <strong>locally typed</strong> variable
-                (<code>u = User.new()</code>, <code>let u: User = &hellip;</code>, or
+                (<code>u = User.new()</code>, <code>let u: User = &hellip;</code>, a parameter annotated with a project class
+                (<code>def perform(order: Order)</code>), or
                 <code>u = User.find(...)</code> then <code>u.authenticate(...)</code>). Unbound receivers
                 (<code>user.save()</code> with no known class) stay unlinked &mdash; an edge is never invented.
                 Reassigning a tracked local to a value with no known class drops its type, and a bare

@@ -991,7 +991,7 @@ impl GraphBuilder {
                     relpath: relpath.to_string(),
                 };
                 let action = render_prefix.is_some() && !decl.name.starts_with('_');
-                self.walk_callable(&decl.body, &ctx, action);
+                self.walk_callable(&decl.params, &decl.body, &ctx, action);
             }
             StmtKind::Class(decl) => self.walk_class_bodies(decl, None, relpath, render_prefix),
             StmtKind::Enum(decl) => {
@@ -1033,7 +1033,7 @@ impl GraphBuilder {
                 render_prefix: render_prefix.map(str::to_string),
                 relpath: relpath.to_string(),
             };
-            self.walk_callable(&ctor.body, &ctx, false);
+            self.walk_callable(&ctor.params, &ctor.body, &ctx, false);
         }
         for m in &decl.methods {
             let ctx = WalkCtx {
@@ -1050,7 +1050,7 @@ impl GraphBuilder {
                 && !m.is_static
                 && !m.name.starts_with('_')
                 && matches!(m.visibility, crate::ast::stmt::Visibility::Public);
-            self.walk_callable(&m.body, &ctx, action);
+            self.walk_callable(&m.params, &m.body, &ctx, action);
         }
         for nested in &decl.nested_classes {
             self.walk_class_bodies(nested, Some(&qualified), relpath, render_prefix);
@@ -1060,10 +1060,23 @@ impl GraphBuilder {
     /// Walk one method or function body, then link an action to the views it
     /// renders: its own view when it names none (`renders`, relation
     /// `implicit`), and an `assigns` edge per `@x` it sets that the view reads.
-    fn walk_callable(&mut self, body: &[Stmt], ctx: &WalkCtx, action: bool) {
+    fn walk_callable(
+        &mut self,
+        params: &[crate::ast::stmt::Parameter],
+        body: &[Stmt],
+        ctx: &WalkCtx,
+        action: bool,
+    ) {
         self.walk_assigned.clear();
         self.walk_rendered.clear();
+        // A parameter annotated with a project class types its local, as a
+        // `let x: T` does: `def perform(order: Order)` then `order.refund`.
         let mut locals = HashMap::new();
+        for param in params {
+            let class = named_class_type(&param.type_annotation)
+                .filter(|class| self.class_by_name.contains_key(class));
+            bind_local(&mut locals, &param.name, class);
+        }
         self.walk_block(body, ctx, &mut locals);
         if !action {
             return;
@@ -2904,6 +2917,32 @@ mod tests {
             "posts/index",
             "renders"
         ));
+    }
+
+    #[test]
+    fn a_typed_parameter_resolves_instance_calls() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "app/models/order.sl",
+            "class Order < Model\n  def mark_refunded\n    @save\n  end\nend\n",
+        );
+        write(
+            dir.path(),
+            "app/services/refund_service.sl",
+            "class RefundService\n  static def perform(order: Order, note)\n    order.mark_refunded\n    order.update({})\n    note.mark_refunded\n  end\nend\n",
+        );
+        let graph = build_graph(dir.path()).unwrap();
+        assert!(has_edge(
+            &graph,
+            "RefundService#perform",
+            "Order#mark_refunded",
+            "calls"
+        ));
+        assert_eq!(
+            edge_relation(&graph, "RefundService#perform", "orders", "writes"),
+            vec!["update"]
+        );
     }
 
     #[test]
