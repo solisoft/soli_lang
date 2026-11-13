@@ -1,0 +1,78 @@
+<svg style="font-variant-ligatures:none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="A code graph that remembers. The shop app's graph: OrdersController#index reads orders (where, count), renders orders/index implicitly and assigns @orders and @total. OrdersController#refund reads orders (find) and calls RefundService#perform, which writes refunds (INSERT) and calls Order#mark_refunded, which writes orders (save). OrdersController#report reads orders and refunds through raw SDBQL. On the right, a note anchored on RefundService#perform, Order#mark_refunded and refunds: a refund is RefundService.perform, nothing else writes refunds. It is marked stale because Order#mark_refunded changed since.">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d0f12"/><stop offset="1" stop-color="#08090b"/></linearGradient>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#4b5260"/></marker>
+<marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#d97706"/></marker>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#22c55e"/></marker>
+</defs>
+<rect width="1024" height="576" fill="url(#bg)"/>
+<text x="40" y="66" font-family="ui-sans-serif,system-ui,sans-serif" font-size="28" font-weight="700" fill="#e5e7eb">A code graph <tspan fill="#f59e0b">that remembers</tspan></text>
+<text x="40" y="92" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#8b929e">The collections each method touches, what an action hands its view, and the notes agents leave.</text>
+
+<g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12.5">
+<!-- method nodes -->
+<rect x="40" y="128" width="200" height="34" rx="8" fill="#101319" stroke="#2b3038"/><text x="52" y="150" fill="#e5e7eb">OrdersController#index</text>
+<rect x="40" y="250" width="200" height="34" rx="8" fill="#101319" stroke="#2b3038"/><text x="52" y="272" fill="#e5e7eb">OrdersController#refund</text>
+<rect x="40" y="430" width="200" height="34" rx="8" fill="#101319" stroke="#2b3038"/><text x="52" y="452" fill="#e5e7eb">OrdersController#report</text>
+<rect x="290" y="330" width="180" height="34" rx="8" fill="#101319" stroke="#f59e0b"/><text x="302" y="352" fill="#e5e7eb">RefundService#perform</text>
+<rect x="290" y="200" width="180" height="34" rx="8" fill="#101319" stroke="#f59e0b"/><text x="302" y="222" fill="#e5e7eb">Order#mark_refunded</text>
+<!-- view -->
+<rect x="290" y="128" width="130" height="34" rx="8" fill="#101319" stroke="#2b3038" stroke-dasharray="4 3"/><text x="302" y="150" fill="#8b929e">orders/index</text>
+<!-- collections -->
+<ellipse cx="590" cy="256" rx="58" ry="22" fill="#0f1a12" stroke="#22c55e"/><text x="590" y="260" text-anchor="middle" fill="#e5e7eb">orders</text>
+<ellipse cx="590" cy="428" rx="58" ry="22" fill="#0f1a12" stroke="#22c55e"/><text x="590" y="432" text-anchor="middle" fill="#e5e7eb">refunds</text>
+</g>
+
+<g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="none" stroke-width="1.5">
+<!-- index -> view -->
+<path d="M240 140 L288 140" stroke="#4b5260" marker-end="url(#a)"/>
+<text x="246" y="122" fill="#8b929e" stroke="none">renders implicit</text>
+<path d="M240 152 L288 152" stroke="#4b5260" marker-end="url(#a)"/>
+<text x="246" y="178" fill="#8b929e" stroke="none">assigns @orders @total</text>
+<!-- index -> orders -->
+<path d="M240 134 C 430 100, 610 150, 594 232" stroke="#22c55e" marker-end="url(#ar)"/>
+<text x="438" y="114" fill="#22c55e" stroke="none">reads where, count</text>
+<!-- refund -> orders, perform -->
+<path d="M240 262 L530 258" stroke="#22c55e" marker-end="url(#ar)"/>
+<text x="352" y="252" fill="#22c55e" stroke="none">reads find</text>
+<path d="M200 284 L300 328" stroke="#4b5260" marker-end="url(#a)"/>
+<text x="196" y="314" fill="#8b929e" stroke="none">calls</text>
+<!-- perform -> mark_refunded, refunds -->
+<path d="M380 330 L380 236" stroke="#4b5260" marker-end="url(#a)"/>
+<text x="386" y="292" fill="#8b929e" stroke="none">calls</text>
+<path d="M440 364 L540 412" stroke="#d97706" marker-end="url(#aw)"/>
+<text x="448" y="404" fill="#d97706" stroke="none">writes INSERT</text>
+<!-- mark_refunded -> orders -->
+<path d="M470 222 L540 244" stroke="#d97706" marker-end="url(#aw)"/>
+<text x="478" y="216" fill="#d97706" stroke="none">writes save</text>
+<!-- report -> orders, refunds -->
+<path d="M240 440 C 400 430, 470 300, 538 270" stroke="#22c55e" marker-end="url(#ar)"/>
+<path d="M240 448 L528 432" stroke="#22c55e" marker-end="url(#ar)"/>
+<text x="292" y="478" fill="#22c55e" stroke="none">reads FOR (@sdbql)</text>
+</g>
+
+<!-- note card -->
+<g font-family="ui-sans-serif,system-ui,sans-serif">
+<rect x="650" y="128" width="334" height="336" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="670" y="156" font-size="12" font-weight="700" fill="#8b929e" letter-spacing="1">SOLI GRAPH NOTE</text>
+<rect x="874" y="141" width="92" height="22" rx="11" fill="#f59e0b" fill-opacity="0.16" stroke="#f59e0b"/>
+<text x="920" y="156" font-size="12" font-weight="700" fill="#f59e0b" text-anchor="middle">stale</text>
+<text x="670" y="190" font-size="14" fill="#e5e7eb">A refund is RefundService.perform:</text>
+<text x="670" y="210" font-size="14" fill="#e5e7eb">it inserts into refunds, then</text>
+<text x="670" y="230" font-size="14" fill="#e5e7eb">Order#mark_refunded saves the order.</text>
+<text x="670" y="250" font-size="14" fill="#e5e7eb">Nothing else writes refunds.</text>
+<text x="670" y="282" font-size="12.5" fill="#8b929e">asked: how is an order refunded?</text>
+<text x="670" y="312" font-size="12" font-weight="700" fill="#8b929e" letter-spacing="1">ON</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12.5">
+<text x="670" y="334" fill="#e5e7eb">RefundService#perform</text>
+<text x="670" y="354" fill="#f59e0b">Order#mark_refunded  <tspan fill="#8b929e">· changed</tspan></text>
+<text x="670" y="374" fill="#e5e7eb">refunds</text>
+</g>
+<line x1="670" y1="394" x2="964" y2="394" stroke="#2b3038"/>
+<text x="670" y="418" font-size="12.5" fill="#8b929e">Returned by later queries that match it</text>
+<text x="670" y="438" font-size="12.5" fill="#8b929e">or touch its code; kept through rebuilds.</text>
+</g>
+<path d="M650 172 C 560 172, 470 160, 432 198" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4 4"/>
+<path d="M650 330 C 600 340, 520 350, 472 347" fill="none" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="4 4"/>
+<text x="40" y="530" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" fill="#8b929e">Extracted by <tspan font-family="ui-monospace,SFMono-Regular,Menlo,monospace" fill="#e5e7eb">soli graph build</tspan> from a four-file shop app; the note added with <tspan font-family="ui-monospace,SFMono-Regular,Menlo,monospace" fill="#e5e7eb">soli graph note</tspan>.</text>
+</svg>
