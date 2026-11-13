@@ -1,0 +1,71 @@
+<svg style="font-variant-ligatures:none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Soli 2.35. On the left, the four prompts of a Claude Code session that built a yoga studio booking site: schedule and back office, Stripe payments, live seats and email, specs. On the right, the eight places where the agent tripped, each with what 2.35 does now: class constants are read by name, try is a value, nested interpolation lexes, a bare save calls Model#save, soli new writes .env.test and a fresh app tests at 100%, scaffold specs pass, mailer views no longer double-escape, and an edited validation is replaced on a dev reload.">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d0f12"/><stop offset="1" stop-color="#08090b"/></linearGradient><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#4b5260"/></marker></defs>
+<rect width="1024" height="576" fill="url(#bg)"/>
+<text x="40" y="66" font-family="ui-sans-serif,system-ui,sans-serif" font-size="28" font-weight="700" fill="#e5e7eb">Soli 2.35 <tspan fill="#f59e0b">· the bugs an agent tripped on</tspan></text>
+<text x="40" y="94" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#8b929e">One Claude Code session building a booking site, from soli new. Each trip, fixed.</text>
+<text x="40" y="136" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="12" fill="#8b929e" letter-spacing="1">CLAUDE -P · 4 PROMPTS · 28 MIN</text>
+<rect x="40" y="150" width="250" height="68" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="60" y="178" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="13" fill="#f59e0b">prompt 1</text>
+<text x="60" y="200" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#e5e7eb">Schedule and back office</text>
+<rect x="40" y="236" width="250" height="68" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="60" y="264" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="13" fill="#f59e0b">prompt 2</text>
+<text x="60" y="286" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#e5e7eb">Stripe payments</text>
+<rect x="40" y="322" width="250" height="68" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="60" y="350" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="13" fill="#f59e0b">prompt 3</text>
+<text x="60" y="372" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#e5e7eb">Live seats and email</text>
+<rect x="40" y="408" width="250" height="68" rx="14" fill="#101319" stroke="#2b3038"/>
+<text x="60" y="436" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="13" fill="#f59e0b">prompt 4</text>
+<text x="60" y="458" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#e5e7eb">Specs</text>
+<text x="40" y="510" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="13" fill="#22c55e">151 specs passing · Stripe test payment</text>
+<path d="M300 320 L340 320" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="352" y="136" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="12" fill="#8b929e" letter-spacing="1">WHERE IT TRIPPED</text>
+<text x="760" y="136" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="12" fill="#8b929e" letter-spacing="1">2.35</text>
+<rect x="352" y="150" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="168" r="5" fill="#ef4444"/>
+<text x="388" y="173" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">MAX_SEATS in a method</text>
+<path d="M712 168 L744 168" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="168" r="5" fill="#22c55e"/>
+<text x="780" y="173" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">class constants by name</text>
+<rect x="352" y="194" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="212" r="5" fill="#ef4444"/>
+<text x="388" y="217" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">port = try … catch … end</text>
+<path d="M712 212 L744 212" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="212" r="5" fill="#22c55e"/>
+<text x="780" y="217" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">try is a value</text>
+<rect x="352" y="238" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="256" r="5" fill="#ef4444"/>
+<text x="388" y="261" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">&quot;#{&quot;#{a} #{b}&quot;}&quot;</text>
+<path d="M712 256 L744 256" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="256" r="5" fill="#22c55e"/>
+<text x="780" y="261" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">nested interpolation</text>
+<rect x="352" y="282" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="300" r="5" fill="#ef4444"/>
+<text x="388" y="305" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">save inside a model method</text>
+<path d="M712 300 L744 300" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="300" r="5" fill="#22c55e"/>
+<text x="780" y="305" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">bare save</text>
+<rect x="352" y="326" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="344" r="5" fill="#ef4444"/>
+<text x="388" y="349" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">soli test on a fresh app</text>
+<path d="M712 344 L744 344" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="344" r="5" fill="#22c55e"/>
+<text x="780" y="349" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">writes .env.test, 100%</text>
+<rect x="352" y="370" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="388" r="5" fill="#ef4444"/>
+<text x="388" y="393" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">scaffold spec assumes id 1</text>
+<path d="M712 388 L744 388" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="388" r="5" fill="#22c55e"/>
+<text x="780" y="393" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">specs that pass</text>
+<rect x="352" y="414" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="432" r="5" fill="#ef4444"/>
+<text x="388" y="437" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">&lt;%= h(x) %&gt; in a mailer view</text>
+<path d="M712 432 L744 432" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="432" r="5" fill="#22c55e"/>
+<text x="780" y="437" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">no double escape</text>
+<rect x="352" y="458" width="632" height="36" rx="10" fill="#101319" stroke="#2b3038"/>
+<circle cx="372" cy="476" r="5" fill="#ef4444"/>
+<text x="388" y="481" font-family="ui-monospace,Menlo,Consolas,'DejaVu Sans Mono','Noto Sans Mono',monospace" font-size="14" fill="#e5e7eb">validates(…, on: &quot;create&quot;)</text>
+<path d="M712 476 L744 476" stroke="#4b5260" stroke-width="2" marker-end="url(#arrow)"/>
+<circle cx="764" cy="476" r="5" fill="#22c55e"/>
+<text x="780" y="481" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" fill="#e5e7eb">replaced on dev reload</text>
+</svg>
