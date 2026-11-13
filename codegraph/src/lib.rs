@@ -132,6 +132,58 @@ class ActionService(BaseService):
     }
 
     #[test]
+    fn python_flask_routes_tables_and_sqlalchemy() {
+        let src = r#"
+bp = Blueprint("bp_actions", __name__, url_prefix="/actions")
+
+class Action(Base):
+    __tablename__ = "todo_item"
+
+@bp.route("/<int:id>")
+class ActionResource(MethodView):
+    @bp.arguments(Schema)
+    def get(self, id):
+        return db.session.get(Action, id)
+    def post(self, id):
+        action = Action(name="x")
+        db.session.add(action)
+        db.session.execute(update(Action).where(Action.id == id))
+    def helper(self):
+        pass
+
+@bp.route("/search", methods=["POST", "put"])
+def search():
+    rows = db.session.execute(select(Action.id, Owner).join(Team)).all()
+    Action.query.filter_by(id=1).first()
+    found = Action.query.filter_by(id=2).first()
+    db.session.delete(found)
+    row = db.session.get(Owner, 3)
+    db.session.merge(row)
+
+class Team(Base):
+    def save(self):
+        db.session.add(self)
+"#;
+        let out = defs_extract("py", src);
+        assert!(has_edge(&out, "blueprint", "bp\t/actions"));
+        assert!(has_edge_from(&out, "table", "todo_item", "Action"));
+        assert!(has_edge_from(&out, "route", "bp\tGET\t/<int:id>", "ActionResource.get"));
+        assert!(has_edge_from(&out, "route", "bp\tPOST\t/<int:id>", "ActionResource.post"));
+        assert!(!out.edges.iter().any(|e| e.kind == "route" && e.from_qualified.ends_with("helper")));
+        assert!(has_edge_from(&out, "route", "bp\tPOST\t/search", "search"));
+        assert!(has_edge_from(&out, "route", "bp\tPUT\t/search", "search"));
+        assert!(has_edge_from(&out, "db_read", "Action\tget", "ActionResource.get"));
+        assert!(has_edge_from(&out, "db_write", "Action\tadd", "ActionResource.post"));
+        assert!(has_edge_from(&out, "db_write", "Action\tupdate", "ActionResource.post"));
+        assert!(has_edge_from(&out, "db_write", "Action\tdelete", "search"));
+        assert!(has_edge_from(&out, "db_write", "Owner\tmerge", "search"));
+        assert!(has_edge_from(&out, "db_write", "self\tadd", "Team.save"));
+        for target in ["Action\tselect", "Owner\tselect", "Team\tjoin", "Action\tquery"] {
+            assert!(has_edge_from(&out, "db_read", target, "search"), "{target}");
+        }
+    }
+
+    #[test]
     fn ruby_class_method_and_inherits() {
         let out = defs_extract(
             "rb",

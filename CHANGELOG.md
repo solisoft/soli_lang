@@ -16,6 +16,17 @@
   IN`, a traversal's edge collection, `INSERT … INTO`, `UPDATE`/`REPLACE`/
   `REMOVE`/`UPSERT … IN`; `LET`/`FOR`-bound names and bind parameters are not
   collections).
+- **Flask routes and SQLAlchemy tables in the code graph.** The Python
+  walker reads `Blueprint(…, url_prefix=…)` and `@bp.route(path, methods=…)`
+  on functions and `MethodView` classes (one `route` per verb, `routes_to`
+  the handler), `__tablename__` (a `collection`, `stored_in`; subclasses
+  share their base's table through `table_of`), and SQLAlchemy reads
+  (`select`, `.join`, `Model.query`, `session.query/get`) and writes
+  (`insert/update/delete(Model)`, `session.add/delete/merge` on an instance
+  of a known class, `self` in a model method). A local also gets its class
+  from one row of a model query. `soli graph query` lists `writes` before
+  `reads`. On tenacy: 702 routes, 220 tables, 3,301 reads, 555 writes.
+  `EXTRACTOR_VERSION` 5.
 - **A Python call graph.** The Python extractor emits `calls` /
   `instantiates` with their receiver (`self.m`, `super.m`, `Class.m`, a local
   whose class is certain: typed parameter, `x = Class(…)`, `x: Class = …`,

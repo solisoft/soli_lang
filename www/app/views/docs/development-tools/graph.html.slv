@@ -165,7 +165,11 @@ soli graph build</code></pre>
             class's bases, <code>super().m()</code>, <code>Class.m()</code>, <code>x.m()</code> when <code>x</code>'s class is certain
             (a typed parameter, <code>x = Class(&hellip;)</code>, <code>x = Registry.get(Class)</code>), a bare call to the one project
             function of that name, and <code>Class(&hellip;)</code> &rarr; <code>instantiates</code>; an ambiguous class name or an
-            unknown receiver stays unlinked. <strong class="text-white">C# also gets a call graph</strong>
+            unknown receiver stays unlinked. <strong class="text-white">Flask and SQLAlchemy</strong> are read like Soli's routes and
+            models: <code>@bp.route(&hellip;)</code> on a function or a <code>MethodView</code> gives <code>route</code> nodes (with the
+            blueprint's own <code>url_prefix</code>), <code>__tablename__</code> a <code>collection</code>, and <code>select(M)</code>,
+            <code>.join(M)</code>, <code>M.query</code>, <code>session.query/get(M)</code> &rarr; <code>reads</code>;
+            <code>insert/update/delete(M)</code> and <code>session.add/delete/merge(x)</code> on a known class &rarr; <code>writes</code>. <strong class="text-white">C# also gets a call graph</strong>
             &mdash; method-body <code>calls</code> and <code>new</code>&nbsp;&rarr;&nbsp;<code>instantiates</code> edges, attributed to
             the enclosing method. Every other extension (<code>.erb</code>, <code>.slim</code>, config, &hellip;) is
             <strong class="text-white">chunk-embedded</strong> &mdash; split into windows and embedded &mdash; so semantic

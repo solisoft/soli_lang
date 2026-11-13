@@ -512,7 +512,8 @@ pub fn sync_graph(
 /// 2: database collections, assigns/implicit renders, Python imports.
 /// 3: Python calls and instantiations.
 /// 4: Python methods defined by their class.
-pub const EXTRACTOR_VERSION: u64 = 4;
+/// 5: Flask routes, SQLAlchemy tables and their reads/writes.
+pub const EXTRACTOR_VERSION: u64 = 5;
 
 pub fn is_up_to_date(file_hashes: &HashMap<String, String>, database: Option<&str>) -> bool {
     let Ok((client, _db)) = connect(database) else {

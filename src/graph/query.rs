@@ -39,8 +39,10 @@ const EDGE_KIND_RANK: &[&str] = &[
     "routes_to",
     "calls",
     "renders",
-    "reads",
+    // Writes before reads: fewer, and usually what a question about a table
+    // is after.
     "writes",
+    "reads",
     "assigns",
     "redirects",
     "relates",

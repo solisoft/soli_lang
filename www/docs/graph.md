@@ -148,9 +148,34 @@ its target is certain.
 | `Order(…)` | `instantiates` the project class |
 
 A class name two files declare is never a target, and a receiver with no known
-class (`self.repo.add(…)`, `obj.m(…)`) stays unlinked. On a 2,100-file Flask
-backend this gives about 18,000 `calls` and 10,000 `instantiates` edges, e.g.
-`ActionInsertResource.post → ActionService.insert_action`. **C# additionally gets
+class (`self.repo.add(…)`, `obj.m(…)`) stays unlinked. A local also gets its
+class from one row of a model query (`x = Order.query….first()` / `.get(…)` /
+`.one()`, `x = db.session.get(Order, id)`). On a 2,100-file Flask backend this
+gives about 18,000 `calls` and 10,000 `instantiates` edges, e.g.
+`ActionInsertResource.post → ActionService.insert_action`.
+
+**Flask routes and SQLAlchemy tables**, the same way the Soli extractor reads
+routes and models:
+
+- `bp = Blueprint("name", __name__, url_prefix="/actions")` then
+  `@bp.route("/<int:id>", methods=[…])` gives a `route` node per verb
+  (`GET /actions/<int:id>`) with a `routes_to` edge to its handler: the
+  function (verbs from `methods=`, `GET` by default), or each `get` / `post` /
+  `put` / `patch` / `delete` method of a `MethodView` class. The prefix is the
+  blueprint's own; one set by a parent's `register_blueprint(…, url_prefix=…)`
+  is not followed, and a blueprint declared under the same name in two files
+  gives no prefix.
+- A class with `__tablename__ = "orders"` gets a `collection` node
+  (`stored_in`); a subclass without one shares its base's.
+- `reads`: `select(Order, Order.id…)`, `.join(Order)`, `Order.query…`,
+  `session.query(Order…)`, `session.get(Order, …)`. `writes`:
+  `insert(Order)`, `update(Order)`, `delete(Order)`, and
+  `session.add/delete/merge(x)` when `x`'s class is known (`self` in a model
+  method included). The operation is the edge's `relation`.
+
+On the same backend: 702 routes, 220 tables, 3,301 `reads` and 555 `writes`,
+so "which endpoints end up writing `remediation`?" is a traversal from the
+routes through `calls` to the `writes` edges. **C# additionally gets
 a call graph** — method-body `calls` and `new` → `instantiates` edges,
 attributed to the enclosing method (see the call-graph note below). Every other
 extension (`.erb`, `.slim`, `.md`, config, …) is **chunk-embedded** — split into

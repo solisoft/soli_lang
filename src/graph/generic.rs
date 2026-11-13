@@ -137,6 +137,10 @@ struct GenericBuilder {
     class_name_count: HashMap<String, usize>,
     /// Simple class name -> its base classes' simple names, from `inherits`.
     class_bases: HashMap<String, Vec<String>>,
+    /// Simple model class name -> its table (`__tablename__`).
+    model_tables: HashMap<String, String>,
+    /// Blueprint variable -> the `url_prefix`es declared under that name.
+    blueprint_prefixes: HashMap<String, Vec<String>>,
 
     // Deferred by-name edges: (from_id, RawEdge, relpath).
     deferred: Vec<(String, RawEdge, String)>,
@@ -270,6 +274,23 @@ impl GenericBuilder {
         // def was just interned above, so resolve `from` against real node ids
         // rather than guessing the kind from the name's shape.
         for edge in &edges {
+            if edge.kind == "table" {
+                let class = edge
+                    .from_qualified
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(&edge.from_qualified);
+                self.model_tables
+                    .insert(class.to_string(), edge.target.clone());
+            }
+            if edge.kind == "blueprint" {
+                if let Some((var, prefix)) = edge.target.split_once('\t') {
+                    self.blueprint_prefixes
+                        .entry(var.to_string())
+                        .or_default()
+                        .push(prefix.to_string());
+                }
+            }
             if edge.kind == "inherits" {
                 let class = edge
                     .from_qualified
@@ -340,6 +361,54 @@ impl GenericBuilder {
                         self.push_edge(&from_id, &ext, "imports", "", &rel, edge.line);
                     }
                 }
+                // A model's table: `__tablename__`.
+                "table" => {
+                    let collection = self.ensure_collection(&edge.target);
+                    self.push_edge(&from_id, &collection, "stored_in", "", &rel, edge.line);
+                }
+                // `@bp.route(path)`: `bp\tVERB\tpath`, from the handler.
+                "route" => {
+                    let mut parts = edge.target.splitn(3, '\t');
+                    let (Some(bp), Some(verb), Some(path)) =
+                        (parts.next(), parts.next(), parts.next())
+                    else {
+                        continue;
+                    };
+                    // The blueprint's prefix when one declaration carries the name.
+                    let prefix = match self.blueprint_prefixes.get(bp).map(Vec::as_slice) {
+                        Some([only]) => only.as_str(),
+                        _ => "",
+                    };
+                    let full = join_route(prefix, path);
+                    let route = self.ensure_route(verb, &full, &rel, edge.line);
+                    let file_id = format!("file:{}", rel);
+                    self.push_edge(&file_id, &route, "defines", "", &rel, edge.line);
+                    self.push_edge(&route, &from_id, "routes_to", "", &rel, edge.line);
+                }
+                // SQLAlchemy access: `Model\top`.
+                "db_read" | "db_write" => {
+                    let Some((model, op)) = edge.target.split_once('\t') else {
+                        continue;
+                    };
+                    // `self` inside a model method: the method's class.
+                    let model = if model == "self" {
+                        edge.from_qualified
+                            .rsplit_once('.')
+                            .map(|(owner, _)| owner.rsplit('.').next().unwrap_or(owner))
+                            .unwrap_or("")
+                    } else {
+                        model
+                    };
+                    if let Some(table) = self.table_of(model) {
+                        let collection = self.ensure_collection(&table);
+                        let kind = if edge.kind == "db_read" {
+                            "reads"
+                        } else {
+                            "writes"
+                        };
+                        self.push_edge(&from_id, &collection, kind, op, &rel, edge.line);
+                    }
+                }
                 // A receiver-qualified Python call: `self.m`, `super.m`,
                 // `Class.m`.
                 "calls" if edge.target.contains('.') => {
@@ -390,6 +459,53 @@ impl GenericBuilder {
     /// shape — so a `.`/`::`-separated method name (C#, Rust) resolves to its
     /// `method:` node instead of a nonexistent `class:` one. Falls back to the
     /// shape heuristic when nothing matches, preserving prior behaviour.
+    /// The table of `model`, or of the nearest base that declares one (a
+    /// subclass without `__tablename__` shares its parent's). Nothing for a
+    /// class name two files declare.
+    fn table_of(&self, model: &str) -> Option<String> {
+        let mut queue: std::collections::VecDeque<String> = vec![model.to_string()].into();
+        let mut seen = HashSet::new();
+        while let Some(class) = queue.pop_front() {
+            if !seen.insert(class.clone()) || seen.len() > 32 {
+                continue;
+            }
+            if self.class_name_count.get(&class).copied().unwrap_or(0) != 1 {
+                continue;
+            }
+            if let Some(table) = self.model_tables.get(&class) {
+                return Some(table.clone());
+            }
+            if let Some(bases) = self.class_bases.get(&class) {
+                queue.extend(bases.iter().cloned());
+            }
+        }
+        None
+    }
+
+    /// The `collection:<table>` node, created on first use.
+    fn ensure_collection(&mut self, table: &str) -> String {
+        let id = format!("collection:{}", table);
+        if !self.node_ids.contains(&id) {
+            let text = format!("collection {} (database table / collection)", table);
+            self.intern(
+                &id,
+                node("collection", table, table, "", 0, "", None, &text),
+            );
+        }
+        id
+    }
+
+    /// The `route:VERB /path` node, created on first use.
+    fn ensure_route(&mut self, verb: &str, path: &str, rel: &str, line: u32) -> String {
+        let name = format!("{} {}", verb, path);
+        let id = format!("route:{}", name);
+        if !self.node_ids.contains(&id) {
+            let text = format!("route {}", name);
+            self.intern(&id, node("route", &name, &name, rel, line, "", None, &text));
+        }
+        id
+    }
+
     /// `self.m` / `super.m` / `Class.m` called from `from_qualified`
     /// (`Owner.caller`): the method `m` of that class or its nearest ancestor
     /// that defines it. Nothing when the class is unknown or its name is
@@ -544,6 +660,24 @@ fn node(
         doc: String::new(),
         text: text.to_string(),
         embedding: vec![],
+    }
+}
+
+/// A blueprint prefix and a route path as one URL path: `/actions` + `` →
+/// `/actions`, `/actions` + `/<int:id>` → `/actions/<int:id>`.
+fn join_route(prefix: &str, path: &str) -> String {
+    let joined = format!(
+        "{}/{}",
+        prefix.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    );
+    let trimmed = joined.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{}", trimmed)
     }
 }
 
@@ -757,6 +891,62 @@ mod tests {
             run,
             ("method", "ActionRepository.save"),
             "calls"
+        ));
+    }
+
+    #[test]
+    fn python_flask_routes_and_tables_reach_the_graph() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, body: &str| fs::write(dir.path().join(rel), body).unwrap();
+        write(
+            "models.py",
+            "class Base:\n    pass\nclass Action(Base):\n    __tablename__ = \"todo_item\"\nclass SubAction(Action):\n    pass\n",
+        );
+        write(
+            "resources.py",
+            concat!(
+                "bp = Blueprint(\"bp_actions\", __name__, url_prefix=\"/actions\")\n",
+                "@bp.route(\"\")\n",
+                "class ActionsResource(MethodView):\n",
+                "    def get(self):\n",
+                "        return Action.query.all()\n",
+                "    def post(self):\n",
+                "        sub = SubAction()\n",
+                "        db.session.add(sub)\n",
+            ),
+        );
+        let config = GraphConfig {
+            extensions: vec!["py".to_string()],
+            ..Default::default()
+        };
+        let graph = build_generic_graph(dir.path(), &config, &mut |_, _| {}).unwrap();
+        let get = ("method", "ActionsResource.get");
+        let post = ("method", "ActionsResource.post");
+        assert!(has_edge(
+            &graph,
+            ("route", "GET /actions"),
+            get,
+            "routes_to"
+        ));
+        assert!(has_edge(
+            &graph,
+            ("route", "POST /actions"),
+            post,
+            "routes_to"
+        ));
+        assert!(has_edge(
+            &graph,
+            ("class", "Action"),
+            ("collection", "todo_item"),
+            "stored_in"
+        ));
+        assert!(has_edge(&graph, get, ("collection", "todo_item"), "reads"));
+        // `SubAction` has no table of its own: its parent's.
+        assert!(has_edge(
+            &graph,
+            post,
+            ("collection", "todo_item"),
+            "writes"
         ));
     }
 

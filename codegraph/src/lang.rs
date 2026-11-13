@@ -300,6 +300,16 @@ fn walk_python(node: Node, bytes: &[u8], scope: &mut Vec<String>, out: &mut Extr
                     python_scan_body(body, bytes, &qn, &mut locals, out);
                 }
             }
+            "decorated_definition" => {
+                python_routes(child, bytes, scope, out);
+                walk_python(child, bytes, scope, out);
+            }
+            "expression_statement" => {
+                if let Some(assignment) = child.named_child(0).filter(|n| n.kind() == "assignment") {
+                    python_declaration(assignment, bytes, scope, out);
+                }
+                walk_python(child, bytes, scope, out);
+            }
             "import_statement" | "import_from_statement" => {
                 let target = field_text(child, "module_name", bytes);
                 let target = if target.is_empty() {
@@ -315,6 +325,306 @@ fn walk_python(node: Node, bytes: &[u8], scope: &mut Vec<String>, out: &mut Extr
             }
             _ => walk_python(child, bytes, scope, out),
         }
+    }
+}
+
+/// HTTP verbs a Flask `MethodView` answers with methods of that name.
+const HTTP_VERBS: &[&str] = &["get", "post", "put", "patch", "delete", "head", "options"];
+
+/// Module- and class-level declarations the graph reads:
+/// `bp = Blueprint("name", __name__, url_prefix="/p")` → `blueprint`
+/// (`bp\t/p`), and `__tablename__ = "t"` in a class → `table` (`t`).
+fn python_declaration(assignment: Node, bytes: &[u8], scope: &[String], out: &mut Extraction) {
+    let (Some(left), Some(right)) = (
+        assignment.child_by_field_name("left"),
+        assignment.child_by_field_name("right"),
+    ) else {
+        return;
+    };
+    if left.kind() != "identifier" {
+        return;
+    }
+    let name = text(left, bytes);
+    let line = line_of(assignment);
+    if name == "__tablename__" && !scope.is_empty() {
+        if let Some(table) = python_string(right, bytes) {
+            out.edges
+                .push(edge("table", &table, &scope.join("."), line));
+        }
+        return;
+    }
+    if right.kind() != "call" {
+        return;
+    }
+    let callee = right
+        .child_by_field_name("function")
+        .map(|f| text(f, bytes))
+        .unwrap_or("");
+    if callee.rsplit('.').next() != Some("Blueprint") {
+        return;
+    }
+    let prefix = right
+        .child_by_field_name("arguments")
+        .and_then(|args| python_keyword(args, "url_prefix", bytes))
+        .and_then(|value| python_string(value, bytes))
+        .unwrap_or_default();
+    out.edges.push(edge(
+        "blueprint",
+        &format!("{}\t{}", name, prefix),
+        "",
+        line,
+    ));
+}
+
+/// `@bp.route("/path", methods=[…])` on a function or a `MethodView` class:
+/// one `route` reference per verb (`bp\tVERB\t/path`), from the handler.
+fn python_routes(decorated: Node, bytes: &[u8], scope: &[String], out: &mut Extraction) {
+    let Some(definition) = decorated.child_by_field_name("definition") else {
+        return;
+    };
+    let def_name = field_text(definition, "name", bytes);
+    if def_name.is_empty() {
+        return;
+    }
+    let mut cursor = decorated.walk();
+    for decorator in decorated.named_children(&mut cursor) {
+        if decorator.kind() != "decorator" {
+            continue;
+        }
+        let Some(call) = decorator.named_child(0).filter(|n| n.kind() == "call") else {
+            continue;
+        };
+        let Some(func) = call.child_by_field_name("function").filter(|f| f.kind() == "attribute")
+        else {
+            continue;
+        };
+        if func.child_by_field_name("attribute").map(|a| text(a, bytes)) != Some("route") {
+            continue;
+        }
+        let blueprint = func
+            .child_by_field_name("object")
+            .map(|o| text(o, bytes).to_string())
+            .unwrap_or_default();
+        let Some(args) = call.child_by_field_name("arguments") else {
+            continue;
+        };
+        let mut arg_cursor = args.walk();
+        let Some(path) = args
+            .named_children(&mut arg_cursor)
+            .next()
+            .and_then(|first| python_string(first, bytes))
+        else {
+            continue;
+        };
+        let line = line_of(decorator);
+        if definition.kind() == "class_definition" {
+            // A `MethodView`: each verb method is a handler.
+            let Some(body) = definition.child_by_field_name("body") else {
+                continue;
+            };
+            let mut body_cursor = body.walk();
+            for item in body.named_children(&mut body_cursor) {
+                let function = if item.kind() == "decorated_definition" {
+                    item.child_by_field_name("definition")
+                } else {
+                    Some(item)
+                };
+                let Some(function) = function.filter(|f| f.kind() == "function_definition") else {
+                    continue;
+                };
+                let verb = field_text(function, "name", bytes);
+                if HTTP_VERBS.contains(&verb.as_str()) {
+                    out.edges.push(edge(
+                        "route",
+                        &format!("{}\t{}\t{}", blueprint, verb.to_uppercase(), path),
+                        &format!("{}.{}", def_name, verb),
+                        line,
+                    ));
+                }
+            }
+        } else {
+            let verbs: Vec<String> = python_keyword(args, "methods", bytes)
+                .map(|list| {
+                    let mut list_cursor = list.walk();
+                    list.named_children(&mut list_cursor)
+                        .filter_map(|item| python_string(item, bytes))
+                        .map(|verb| verb.to_uppercase())
+                        .collect()
+                })
+                .filter(|verbs: &Vec<String>| !verbs.is_empty())
+                .unwrap_or_else(|| vec!["GET".to_string()]);
+            let (_, handler) = member(scope, &def_name, ".");
+            for verb in verbs {
+                out.edges.push(edge(
+                    "route",
+                    &format!("{}\t{}\t{}", blueprint, verb, path),
+                    &handler,
+                    line,
+                ));
+            }
+        }
+    }
+}
+
+/// The value of keyword argument `name` in an argument list.
+fn python_keyword<'t>(arguments: Node<'t>, name: &str, bytes: &[u8]) -> Option<Node<'t>> {
+    let mut cursor = arguments.walk();
+    let found = arguments.named_children(&mut cursor).find(|arg| {
+        arg.kind() == "keyword_argument"
+            && arg.child_by_field_name("name").map(|n| text(n, bytes)) == Some(name)
+    });
+    found.and_then(|arg| arg.child_by_field_name("value"))
+}
+
+/// A plain string literal's value (`"x"`, `'x'`, `r"x"`); none for an
+/// f-string or a concatenation.
+fn python_string(node: Node, bytes: &[u8]) -> Option<String> {
+    if node.kind() != "string" {
+        return None;
+    }
+    let raw = text(node, bytes);
+    let unprefixed = raw.trim_start_matches(['r', 'R', 'b', 'B', 'u', 'U']);
+    if unprefixed.starts_with(['f', 'F']) {
+        return None;
+    }
+    let quote = unprefixed.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    Some(unprefixed.trim_matches(quote).to_string())
+}
+
+/// The model class an SQLAlchemy argument names: `Order`, or `Order.id`
+/// (a column of it).
+fn python_model_head(node: Node, bytes: &[u8]) -> Option<String> {
+    let head = match node.kind() {
+        "identifier" => text(node, bytes),
+        "attribute" => {
+            let mut object = node.child_by_field_name("object")?;
+            while object.kind() == "attribute" {
+                object = object.child_by_field_name("object")?;
+            }
+            if object.kind() != "identifier" {
+                return None;
+            }
+            text(object, bytes)
+        }
+        _ => return None,
+    };
+    (head.chars().next().is_some_and(char::is_uppercase) && is_simple_ident(head))
+        .then(|| head.to_string())
+}
+
+/// SQLAlchemy reads and writes in one call or attribute, as `db_read` /
+/// `db_write` references (`Model\top`):
+/// `select(M, M.col…)`, `.join(M)`, `session.query(M…)`, `session.get(M, …)`,
+/// `M.query…` read; `insert(M)`, `update(M)`, `delete(M)` and
+/// `session.add/delete/merge(x)` on an instance of a known class write.
+fn python_db_refs(
+    node: Node,
+    bytes: &[u8],
+    from_qn: &str,
+    locals: &std::collections::HashMap<String, String>,
+    out: &mut Extraction,
+) {
+    let line = line_of(node);
+    let mut push = |kind: &str, model: &str, op: &str| {
+        out.edges
+            .push(edge(kind, &format!("{}\t{}", model, op), from_qn, line));
+    };
+    if node.kind() == "attribute" {
+        if node.child_by_field_name("attribute").map(|a| text(a, bytes)) == Some("query") {
+            if let Some(object) = node.child_by_field_name("object") {
+                if let Some(model) = python_model_head(object, bytes).filter(|_| object.kind() == "identifier") {
+                    push("db_read", &model, "query");
+                }
+            }
+        }
+        return;
+    }
+    if node.kind() != "call" {
+        return;
+    }
+    let (Some(func), Some(args)) = (
+        node.child_by_field_name("function"),
+        node.child_by_field_name("arguments"),
+    ) else {
+        return;
+    };
+    let mut cursor = args.walk();
+    let positional: Vec<Node> = args
+        .named_children(&mut cursor)
+        .filter(|a| a.kind() != "keyword_argument")
+        .collect();
+    let (name, on_session) = match func.kind() {
+        "identifier" => (text(func, bytes), false),
+        "attribute" => {
+            let attribute = func
+                .child_by_field_name("attribute")
+                .map(|a| text(a, bytes))
+                .unwrap_or("");
+            let object = func
+                .child_by_field_name("object")
+                .map(|o| text(o, bytes))
+                .unwrap_or("");
+            (attribute, object.ends_with("session"))
+        }
+        _ => return,
+    };
+    match (name, on_session) {
+        ("select", false) => {
+            for arg in &positional {
+                if let Some(model) = python_model_head(*arg, bytes) {
+                    push("db_read", &model, "select");
+                }
+            }
+        }
+        ("insert" | "update" | "delete", false) if func.kind() == "identifier" => {
+            if let Some(model) = positional.first().and_then(|a| python_model_head(*a, bytes)) {
+                push("db_write", &model, name);
+            }
+        }
+        ("join" | "outerjoin" | "select_from", false) => {
+            if let Some(model) = positional
+                .first()
+                .filter(|a| a.kind() == "identifier")
+                .and_then(|a| python_model_head(*a, bytes))
+            {
+                push("db_read", &model, name);
+            }
+        }
+        ("query", true) => {
+            for arg in &positional {
+                if let Some(model) = python_model_head(*arg, bytes) {
+                    push("db_read", &model, "query");
+                }
+            }
+        }
+        ("get", true) => {
+            if let Some(model) = positional
+                .first()
+                .filter(|a| a.kind() == "identifier")
+                .and_then(|a| python_model_head(*a, bytes))
+            {
+                push("db_read", &model, "get");
+            }
+        }
+        ("add" | "delete" | "merge", true) => {
+            let class = positional.first().and_then(|arg| match arg.kind() {
+                // Inside a model method: the builder reads `self` as its class.
+                "identifier" if text(*arg, bytes) == "self" => Some("self".to_string()),
+                "identifier" => locals.get(text(*arg, bytes)).cloned(),
+                "call" => {
+                    let value = python_value_class(*arg, bytes);
+                    (!value.is_empty()).then_some(value)
+                }
+                _ => None,
+            });
+            if let Some(class) = class {
+                push("db_write", &class, name);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -437,6 +747,7 @@ fn python_scan_body_node(
             }
         }
     }
+    python_db_refs(node, bytes, from_qn, locals, out);
     python_scan_body(node, bytes, from_qn, locals, out);
 }
 
@@ -488,11 +799,17 @@ fn python_call_target(
     }
 }
 
-/// The class a value certainly holds: `Class(…)`, or `X.get(Class)` /
-/// `X.resolve(Class)` — a registry handing out an instance of its argument.
+/// The class a value certainly holds: `Class(…)`; `X.get(Class)` /
+/// `X.resolve(Class)` — a registry handing out an instance of its argument
+/// (SQLAlchemy's `session.get(Model, id)` included); or one row of a model
+/// query, `Model.query….get(…)` / `.first()` / `.one()` /
+/// `.one_or_none()` / `.first_or_404()` / `.get_or_404(…)`.
 fn python_value_class(value: Node, bytes: &[u8]) -> String {
     if value.kind() != "call" {
         return String::new();
+    }
+    if let Some(model) = python_query_row_model(value, bytes) {
+        return model;
     }
     let Some(func) = value.child_by_field_name("function") else {
         return String::new();
@@ -519,7 +836,19 @@ fn python_value_class(value: Node, bytes: &[u8]) -> String {
             };
             let mut cursor = args.walk();
             let positional: Vec<Node> = args.named_children(&mut cursor).collect();
+            let on_session = func
+                .child_by_field_name("object")
+                .is_some_and(|o| text(o, bytes).ends_with("session"));
             match positional.as_slice() {
+                // SQLAlchemy's `session.get(Model, id)`.
+                [model, _, ..] if on_session && method == "get" && model.kind() == "identifier" => {
+                    let name = text(*model, bytes);
+                    if name.chars().next().is_some_and(char::is_uppercase) {
+                        name.to_string()
+                    } else {
+                        String::new()
+                    }
+                }
                 [only] if only.kind() == "identifier" => {
                     let name = text(*only, bytes);
                     if name.chars().next().is_some_and(char::is_uppercase) {
@@ -532,6 +861,42 @@ fn python_value_class(value: Node, bytes: &[u8]) -> String {
             }
         }
         _ => String::new(),
+    }
+}
+
+/// `Model.query.filter_by(…).first()` → `Model`: a call whose method returns
+/// one row, on a chain rooted at `Model.query`.
+fn python_query_row_model(call: Node, bytes: &[u8]) -> Option<String> {
+    let func = call.child_by_field_name("function")?;
+    if func.kind() != "attribute" {
+        return None;
+    }
+    let method = text(func.child_by_field_name("attribute")?, bytes);
+    if !matches!(
+        method,
+        "get" | "first" | "one" | "one_or_none" | "first_or_404" | "get_or_404"
+    ) {
+        return None;
+    }
+    // Walk down the receiver chain (`a.b(…).c(…)`) to `Model.query`.
+    let mut node = func.child_by_field_name("object")?;
+    loop {
+        match node.kind() {
+            "call" => node = node.child_by_field_name("function")?,
+            "attribute" => {
+                let object = node.child_by_field_name("object")?;
+                if text(node.child_by_field_name("attribute")?, bytes) == "query"
+                    && object.kind() == "identifier"
+                {
+                    let model = text(object, bytes);
+                    return (model.chars().next().is_some_and(char::is_uppercase)
+                        && is_simple_ident(model))
+                    .then(|| model.to_string());
+                }
+                node = object;
+            }
+            _ => return None,
+        }
     }
 }
 
