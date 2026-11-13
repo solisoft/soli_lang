@@ -506,12 +506,27 @@ pub fn sync_graph(
 
 /// True when the stored manifest matches the current file hashes and the node
 /// collection is populated — i.e. a rebuild would be a no-op.
+/// Bumped whenever the extractors (Soli or generic) produce different nodes
+/// or edges from the same source, so `soli graph build` resyncs unchanged
+/// files. Embeddings of nodes whose text did not change are still reused.
+/// 2: database collections, assigns/implicit renders, Python imports.
+pub const EXTRACTOR_VERSION: u64 = 2;
+
 pub fn is_up_to_date(file_hashes: &HashMap<String, String>, database: Option<&str>) -> bool {
     let Ok((client, _db)) = connect(database) else {
         return false;
     };
     let stored = fetch_manifest(&client);
     if stored.is_empty() || &stored != file_hashes {
+        return false;
+    }
+    // Unchanged files built by an older extractor still need a resync.
+    let extractor = client
+        .get(META_COLLECTION, "manifest")
+        .ok()
+        .flatten()
+        .and_then(|doc| doc.get("extractor").and_then(|v| v.as_u64()));
+    if extractor != Some(EXTRACTOR_VERSION) {
         return false;
     }
     fetch_keys(&client, NODE_COLLECTION)
@@ -740,7 +755,11 @@ fn fetch_manifest(client: &SoliDBClient) -> HashMap<String, String> {
 }
 
 fn store_manifest(client: &SoliDBClient, files: &HashMap<String, String>) -> Result<(), String> {
-    let doc = serde_json::json!({ "_key": "manifest", "files": files });
+    let doc = serde_json::json!({
+        "_key": "manifest",
+        "files": files,
+        "extractor": EXTRACTOR_VERSION,
+    });
     let exists = client
         .get(META_COLLECTION, "manifest")
         .map(|d| d.is_some())
@@ -758,9 +777,6 @@ fn store_manifest(client: &SoliDBClient, files: &HashMap<String, String>) -> Res
     Ok(())
 }
 
-/// Build a SolidB client from the model-layer config, honoring an optional
-/// database override. Auth priority mirrors `crud.rs`: JWT > API key > basic.
-/// Shared by the write path and the query path.
 /// Make sure the graph's database exists, creating it when SolidB answers
 /// that it does not (SolidB never creates one on a first write). Any other
 /// failure — SolidB unreachable, credentials refused — is returned, so a
@@ -793,6 +809,9 @@ fn is_missing_database(message: &str) -> bool {
     message.contains("Database '") && message.contains("not found")
 }
 
+/// Build a SolidB client from the model-layer config, honoring an optional
+/// database override. Auth priority mirrors `crud.rs`: JWT > API key > basic.
+/// Shared by the write path and the query path.
 pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), String> {
     let (scheme, db_host) = db_config::db_scheme_and_host();
     let host = format!("{}{}", scheme, db_host);

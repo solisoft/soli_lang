@@ -65,7 +65,8 @@ soli graph build --dry-run | jq '.nodes | length, .edges | length'
 
 The build is **incremental and non-destructive**. It hashes every source file
 (MD5) into a manifest, so a re-run when nothing changed is a fast no-op
-(`✓ code graph already up to date`). When something did change, it updates SolidB
+(`✓ code graph already up to date`) — unless the graph was built by an older
+extractor, in which case unchanged files are resynced too (embeddings reused). When something did change, it updates SolidB
 **in place** — inserts new nodes/edges, updates changed ones, prunes removed ones
 — rather than dropping the collections, so a concurrent reader never sees an
 empty graph and **unchanged embeddings are reused** (only changed/new node text
@@ -127,7 +128,11 @@ multi-language extractor** runs instead of the Soli one.
 
 **Structural extraction (tree-sitter):** Ruby, Python, JavaScript/JSX,
 TypeScript/TSX, Rust, and C# get real `class` / `module` / `method` / `function`
-nodes plus `inherits`, `implements`, and `imports` edges. **C# additionally gets
+nodes plus `inherits`, `implements`, and `imports` edges. An import lands on the
+project file it names when there is one — Python's `a.b.c` from the indexed
+root and `.c` / `..b.c` from the importer's package (`c.py`, `c.pyi` or
+`c/__init__.py`), relative `require`s and JS/TS imports — and on an `external`
+stub otherwise (a library). **C# additionally gets
 a call graph** — method-body `calls` and `new` → `instantiates` edges,
 attributed to the enclosing method (see the call-graph note below). Every other
 extension (`.erb`, `.slim`, `.md`, config, …) is **chunk-embedded** — split into
@@ -335,7 +340,9 @@ a result brought in by a note carries `"via": "note"`.
 | `--kind KINDS` | keep only seeds whose `kind` is in the comma-separated list (`method,controller,route`, …) |
 | `--json` | structured result for agents |
 
-`--path` / `--kind` only filter seeds; neighbours are unaffected. Semantic search
+`--path` / `--kind` only filter seeds; neighbours are unaffected. Without
+`--kind`, `external` stubs (library modules a file imports) are never seeds:
+they are graph endpoints, not answers. Semantic search
 over-fetches then filters (so an out-of-filter top ranking doesn't starve
 results); the keyword fallback filters server-side in AQL. Each seed includes a
 truncated `snippet` of node text for agent context. Neighbours are ordered with

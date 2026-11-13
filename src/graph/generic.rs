@@ -65,7 +65,14 @@ pub fn build_generic_graph(
             Some((defs, edges)) if !defs.is_empty() => {
                 builder.add_structure(&rel, &source, defs, edges);
             }
-            _ => builder.add_chunks(&rel, &source, config.chunk_lines),
+            // A parsed file with no definitions (a package `__init__.py` that
+            // re-exports, a module of constants) is chunk-embedded, but its
+            // imports are still edges.
+            Some((_, edges)) => {
+                builder.add_chunks(&rel, &source, config.chunk_lines);
+                builder.add_structure(&rel, &source, Vec::new(), edges);
+            }
+            None => builder.add_chunks(&rel, &source, config.chunk_lines),
         }
     }
 
@@ -351,12 +358,26 @@ impl GenericBuilder {
     }
 
     fn resolve_import(&self, importer: &str, target: &str) -> Option<String> {
+        if importer.ends_with(".py") || importer.ends_with(".pyi") {
+            return self.resolve_python_import(importer, target);
+        }
         if !(target.starts_with("./") || target.starts_with("../") || target.contains('/')) {
             return None;
         }
         let dir = Path::new(importer).parent().unwrap_or(Path::new(""));
-        // Try the path as-is and with common source extensions appended.
-        for candidate in [target.to_string(), format!("{}.rb", target)] {
+        // Try the path as-is and with common source extensions appended
+        // (Ruby's `require_relative`, JS/TS relative imports).
+        let candidates = [
+            target.to_string(),
+            format!("{}.rb", target),
+            format!("{}.js", target),
+            format!("{}.ts", target),
+            format!("{}.tsx", target),
+            format!("{}.jsx", target),
+            format!("{}/index.ts", target),
+            format!("{}/index.js", target),
+        ];
+        for candidate in candidates {
             let joined = normalize_rel(&dir.join(&candidate));
             let id = format!("file:{}", joined);
             if self.node_ids.contains(&id) {
@@ -364,6 +385,43 @@ impl GenericBuilder {
             }
         }
         None
+    }
+
+    /// A Python module path to its project file: `a.b.c` from the indexed
+    /// root, `.c` / `..b.c` from the importer's package, each as `c.py` or the
+    /// package's `c/__init__.py`. `from a.b import c` names the module `a.b`;
+    /// when `c` is itself a submodule the import still lands on `a/b`.
+    fn resolve_python_import(&self, importer: &str, target: &str) -> Option<String> {
+        let dots = target.chars().take_while(|&c| c == '.').count();
+        let mut path = if dots == 0 {
+            std::path::PathBuf::new()
+        } else {
+            let mut dir = Path::new(importer)
+                .parent()
+                .unwrap_or(Path::new(""))
+                .to_path_buf();
+            for _ in 1..dots {
+                dir.pop();
+            }
+            dir
+        };
+        for segment in target[dots..].split('.').filter(|s| !s.is_empty()) {
+            path.push(segment);
+        }
+        let module = normalize_rel(&path);
+        let candidates = if module.is_empty() {
+            vec!["__init__.py".to_string()]
+        } else {
+            vec![
+                format!("{}.py", module),
+                format!("{}.pyi", module),
+                format!("{}/__init__.py", module),
+            ]
+        };
+        candidates
+            .into_iter()
+            .map(|candidate| format!("file:{}", candidate))
+            .find(|id| self.node_ids.contains(id))
     }
 
     fn into_graph(self) -> ProjectGraph {
@@ -536,6 +594,45 @@ mod tests {
             .edges
             .iter()
             .any(|e| e.from == f && e.to == t && e.edge_kind == edge_kind)
+    }
+
+    #[test]
+    fn python_imports_resolve_to_project_modules() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, body: &str| {
+            let path = dir.path().join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, body).unwrap();
+        };
+        write("contexts/__init__.py", "");
+        write("contexts/risk/__init__.py", "");
+        write(
+            "contexts/risk/domain/measure_risk.py",
+            "def measure():\n    pass\n",
+        );
+        write("contexts/risk/resources/risk_scale.py", "SCALE = 1\n");
+        write(
+            "contexts/risk/services/register.py",
+            "import os\nfrom contexts.risk.domain.measure_risk import measure\nfrom ..resources.risk_scale import SCALE\nfrom .. import resources\nimport contexts.risk\n",
+        );
+        let config = GraphConfig {
+            extensions: vec!["py".to_string()],
+            ..Default::default()
+        };
+        let graph = build_generic_graph(dir.path(), &config, &mut |_, _| {}).unwrap();
+        let importer = ("file", "contexts/risk/services/register.py");
+        for target in [
+            "contexts/risk/domain/measure_risk.py",
+            "contexts/risk/resources/risk_scale.py",
+            "contexts/risk/__init__.py",
+        ] {
+            assert!(
+                has_edge(&graph, importer, ("file", target), "imports"),
+                "{target}"
+            );
+        }
+        // A library stays an external stub.
+        assert!(has_edge(&graph, importer, ("external", "os"), "imports"));
     }
 
     #[test]

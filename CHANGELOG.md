@@ -42,6 +42,21 @@
 
 ### Fixed
 
+- **`soli graph` on Python repositories.** Imports resolve to the project's
+  own modules — `a.b.c` from the indexed root, `.c` / `..b.c` from the
+  importer's package, as `c.py`, `c.pyi` or `c/__init__.py` — instead of
+  becoming `external` stubs (on a 2,123-file Flask backend: 11,425 imports
+  now land on files, external stubs 1,548 → 228). A parsed file with no
+  definitions (an `__init__.py` that re-exports) keeps its imports; it was
+  chunk-embedded and lost them. Relative JS/TS imports try `.js`, `.ts`,
+  `.tsx`, `.jsx` and `index.*`.
+- `soli graph query` no longer returns `external` stubs as results unless
+  `--kind external` asks for them: their one-line text ranked above the
+  project's code (a SAML question returned `onelogin.saml2.*`).
+- `soli graph build` resyncs when the extractor changed
+  (`sync::EXTRACTOR_VERSION`, stored in the manifest): with only file
+  hashes compared, a better extractor reported "already up to date".
+  Embeddings of unchanged nodes are still reused.
 - `soli graph build` creates its database when SolidB does not have it, and
   checks it before embedding (`graph::ensure_database`, also called by
   `sync_graph` / `write_graph`). It used to fail at the sync, after a full

@@ -245,12 +245,9 @@ fn semantic_seeds(
     path: Option<&str>,
     kinds: Option<&[String]>,
 ) -> Option<Vec<(Value, f64)>> {
-    let needs_overfetch = path.is_some() || kinds.is_some();
-    let fetch = if needs_overfetch {
-        (limit * PATH_OVERFETCH).min(PATH_OVERFETCH_CAP)
-    } else {
-        limit
-    };
+    // Hits are filtered after the search (external stubs always, `--path` /
+    // `--kind` when given), so over-fetch.
+    let fetch = (limit * PATH_OVERFETCH).min(PATH_OVERFETCH_CAP);
     let hits = client
         .vector_search(NODE_COLLECTION, VECTOR_INDEX, vector, fetch, None)
         .ok()?;
@@ -286,6 +283,8 @@ fn keyword_seeds(
     }
     if kinds.is_some() {
         filters.push_str("FILTER n.kind IN @kinds ");
+    } else {
+        filters.push_str("FILTER n.kind != \"external\" ");
     }
     // Weighted score: qualified_name > name > signature > full text.
     let query = format!(
@@ -400,9 +399,12 @@ fn path_matches(doc: &Value, path: Option<&str>) -> bool {
 }
 
 /// True when `doc`'s `kind` is in `kinds` (or no kind filter is set).
+/// Without `--kind`, every kind but `external`: an out-of-project stub (an
+/// imported library module, `onelogin.saml2.utils`) is a graph endpoint, not
+/// an answer, and its one-line text ranks high on any question near its name.
 fn kind_matches(doc: &Value, kinds: Option<&[String]>) -> bool {
     match kinds {
-        None | Some([]) => true,
+        None | Some([]) => field(doc, "kind") != "external",
         Some(list) => {
             let k = field(doc, "kind");
             list.iter().any(|want| want == &k)
@@ -487,6 +489,12 @@ mod tests {
         let method = serde_json::json!({ "kind": "method" });
         let route = serde_json::json!({ "kind": "route" });
         assert!(kind_matches(&method, None));
+        let external = serde_json::json!({ "kind": "external" });
+        assert!(
+            !kind_matches(&external, None),
+            "external stubs are not answers"
+        );
+        assert!(kind_matches(&external, Some(&["external".to_string()])));
         let kinds = vec!["method".to_string(), "controller".to_string()];
         assert!(kind_matches(&method, Some(&kinds)));
         assert!(!kind_matches(&route, Some(&kinds)));
