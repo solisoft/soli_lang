@@ -357,6 +357,28 @@ fn boots_a_mounted_app_and_answers_requests() {
             // Nothing stayed behind in the isolate.
             assert!(solilang::live::view::live_registry().get(instance["id"].as_str().unwrap()).is_none());
 
+            // The LiveView client revalidates (no-cache + an ETag of its text),
+            // so a fixed client reaches browsers at once.
+            let client = edge::handle(EdgeRequest {
+                method: "GET".to_string(),
+                path: "/live/client.js".to_string(),
+                ..Default::default()
+            });
+            assert_eq!(client.status, 200);
+            let header = |r: &edge::EdgeResponse, name: &str| {
+                r.headers.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone())
+            };
+            assert_eq!(header(&client, "cache-control").as_deref(), Some("no-cache"));
+            let etag = header(&client, "etag").expect("an ETag");
+            let again = edge::handle(EdgeRequest {
+                method: "GET".to_string(),
+                path: "/live/client.js".to_string(),
+                headers: vec![("if-none-match".to_string(), etag)],
+                ..Default::default()
+            });
+            assert_eq!(again.status, 304);
+            assert!(again.body.is_empty());
+
             // The instant-navigation script every page links to.
             let (status, body) = get("/__soli/nav.js", "v=1");
             assert_eq!(status, 200);

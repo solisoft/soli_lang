@@ -22,8 +22,9 @@ use super::{
 };
 
 /// The LiveView client, embedded so it cannot go stale against the patch
-/// protocol it speaks. `no-cache` plus a version ETag: a browser revalidates
-/// and gets a 304 until the binary changes.
+/// protocol it speaks. `no-cache` plus an ETag of its text
+/// ([`crate::live::live_client_etag`]): a browser revalidates and gets a 304
+/// until the client itself changes.
 ///
 /// Served before the same-origin gate, where its block has always been.
 pub(super) fn live_client(
@@ -34,13 +35,13 @@ pub(super) fn live_client(
     if path != crate::live::LIVE_CLIENT_PATH || !(method == "GET" || method == "HEAD") {
         return None;
     }
-    const ETAG: &str = concat!("\"soli-live-", env!("CARGO_PKG_VERSION"), "\"");
+    let etag = crate::live::live_client_etag();
 
-    if if_none_match.is_some_and(|v| v.contains(ETAG)) {
+    if if_none_match.is_some_and(|v| v.contains(etag)) {
         return Some(
             Response::builder()
                 .status(StatusCode::NOT_MODIFIED)
-                .header("ETag", ETAG)
+                .header("ETag", etag)
                 .header("Cache-Control", "no-cache")
                 .body(full(Bytes::new()))
                 .expect("static 304 is always valid"),
@@ -51,7 +52,7 @@ pub(super) fn live_client(
             .status(StatusCode::OK)
             .header("Content-Type", "application/javascript; charset=utf-8")
             .header("Cache-Control", "no-cache")
-            .header("ETag", ETAG)
+            .header("ETag", etag)
             .body(full(Bytes::from_static(
                 crate::live::LIVE_CLIENT_JS.as_bytes(),
             )))

@@ -167,6 +167,9 @@ pub fn handle(request: EdgeRequest) -> EdgeResponse {
     if let Some(script) = framework_script(&request.method, &request.path) {
         return script;
     }
+    if let Some(client) = live_client(&request) {
+        return client;
+    }
     // An isolate serves one request after another: each starts and ends with
     // no tenant, so one site's database never answers another site's request.
     crate::db::tenancy::clear();
@@ -371,6 +374,47 @@ fn parse_multipart(
 /// The scripts every page loads from the binary itself (`framework_assets` on
 /// the hyper side): instant navigation and hover prefetch. The native-bridge,
 /// camera and LiveView clients need what the edge build does not serve.
+/// `/live/client.js`, as `soli serve` answers it (`framework_assets::live_client`):
+/// `no-cache` and an ETag of the client's text, so a browser revalidates and a
+/// new client reaches it at once. Not `immutable` like the `?v=`-stamped
+/// scripts below: pages load the client at its bare path.
+fn live_client(request: &EdgeRequest) -> Option<EdgeResponse> {
+    if request.path != crate::live::LIVE_CLIENT_PATH
+        || !(request.method == "GET" || request.method == "HEAD")
+    {
+        return None;
+    }
+    let etag = crate::live::live_client_etag();
+    let fresh = request
+        .headers
+        .iter()
+        .any(|(name, value)| name.eq_ignore_ascii_case("if-none-match") && value.contains(etag));
+    let mut headers = vec![
+        ("Cache-Control".to_string(), "no-cache".to_string()),
+        ("ETag".to_string(), etag.to_string()),
+    ];
+    if fresh {
+        return Some(EdgeResponse {
+            status: 304,
+            headers,
+            body: Vec::new(),
+        });
+    }
+    headers.push((
+        "Content-Type".to_string(),
+        "application/javascript; charset=utf-8".to_string(),
+    ));
+    Some(EdgeResponse {
+        status: 200,
+        headers,
+        body: if request.method == "HEAD" {
+            Vec::new()
+        } else {
+            crate::live::LIVE_CLIENT_JS.as_bytes().to_vec()
+        },
+    })
+}
+
 fn framework_script(method: &str, path: &str) -> Option<EdgeResponse> {
     if method != "GET" && method != "HEAD" {
         return None;
@@ -378,7 +422,6 @@ fn framework_script(method: &str, path: &str) -> Option<EdgeResponse> {
     let script = match path {
         "/__soli/nav.js" => nav::NAV_SCRIPT,
         "/__soli/prefetch.js" => prefetch::PREFETCH_SCRIPT,
-        crate::live::LIVE_CLIENT_PATH => crate::live::LIVE_CLIENT_JS,
         _ => return None,
     };
     Some(EdgeResponse {

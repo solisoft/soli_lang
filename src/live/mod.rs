@@ -28,5 +28,18 @@ pub const LIVE_CLIENT_PATH: &str = "/live/client.js";
 /// (shadow splices + DOM morphing) always matches the server that serves it.
 pub const LIVE_CLIENT_JS: &str = include_str!("client.js");
 
+/// The client's ETag: a hash of its text, not the Soli version. A client
+/// changed without a version bump (a build from source, a patched release)
+/// gets a new tag, so a browser revalidating with `no-cache` picks it up.
+pub fn live_client_etag() -> &'static str {
+    static ETAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ETAG.get_or_init(|| {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        LIVE_CLIENT_JS.hash(&mut hasher);
+        format!("\"soli-live-{:016x}\"", hasher.finish())
+    })
+}
+
 /// Session timeout for LiveViews (seconds)
 pub const LIVE_SESSION_TIMEOUT: u64 = 3600;

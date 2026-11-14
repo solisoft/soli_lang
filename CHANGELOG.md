@@ -13,6 +13,12 @@
   `disconnect()` it asked for no longer schedules a reconnect. Found on
   cf.solisoft.net/live; checked in headless Chromium (link, away and back,
   reload: one open socket) and with `live_view_spec` / `live_upload_resume_spec`.
+- **`/live/client.js` is revalidated by its content, not the Soli version.**
+  Its ETag (`live::live_client_etag`) hashes the client's text, so a client
+  changed without a version bump reaches browsers at once under `soli serve`.
+  The edge build served it like the `?v=`-stamped nav scripts (`public,
+  max-age=86400, immutable`), so the fix above stayed out of browsers for a
+  day; it now answers `no-cache` + that ETag + 304, as `soli serve` does.
 
 ### Added
 
