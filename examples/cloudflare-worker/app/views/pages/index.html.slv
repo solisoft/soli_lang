@@ -88,7 +88,7 @@ SOLI_DB_ADAPTER = "postgres"</code></pre>
         <li>The same SQL as <code>soli serve</code>: document tables, column-aware models
             (<code>table "orders"</code>), and <code>Model.transaction</code> — each request runs on one connection.</li>
         <li><code>soli edge build</code> bundles the <code>pg</code> driver, about 40 KB, when the app names Postgres.</li>
-        <li>MySQL stays with <code>soli serve</code>: its driver does not fit under the free plan.</li>
+        <li>MySQL stays with <code>soli serve</code> for now: the Worker has no glue for its driver yet.</li>
       </ul>
     </article>
 

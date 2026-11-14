@@ -16,6 +16,7 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
       <li>Attachments in <a href="/#r2">R2</a>, with <code>Range</code>, and
           <a href="/#images">image transforms</a> on read</li>
       <li>Background jobs through <a href="/#queues">Cloudflare Queues</a></li>
+      <li><a href="/live">LiveView</a>, each instance's socket held by a Durable Object</li>
       <li>The <code>HTTP</code> class, over the Worker's <code>fetch</code></li>
       <li>Static files from <code>public/</code>, served by Cloudflare</li>
     </ul>
@@ -23,7 +24,8 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
   <article>
     <h2>Stays with soli serve</h2>
     <ul>
-      <li>WebSockets, LiveView, server-sent events and streamed bodies (answered with a 501)</li>
+      <li>Other WebSockets, server-sent events and streamed bodies (answered with a 501);
+          LiveView <code>tick</code>, live queries and <code>live_update</code></li>
       <li>Cron (use a Cron Trigger), mailers that send, jobs delayed past 12 hours</li>
       <li>Resumable and direct uploads, files over about 20 MB, anything that writes files</li>
       <li>MySQL, SQLite files and the native SoliDB driver; transactions on D1</li>
@@ -39,8 +41,10 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
       its isolate; Cloudflare spreads load over more isolates.</li>
   <li><strong>A Rust panic ends the isolate</strong>, where <code>soli serve</code> would answer
       a 500 and carry on. The next request boots a fresh one.</li>
-  <li><strong>Size.</strong> About 2.9 MB compressed: inside the free plan's 3 MB, just. The
-      Postgres driver adds about 40 KB.</li>
+  <li><strong>Size.</strong> About 11.7 MB of WebAssembly (3.6 MB gzipped). Workers limit the
+      uncompressed bundle to 64 MiB on every plan, free included, and no longer cap the
+      compressed size. The limit that still applies is startup time: 1 second. The Postgres
+      driver adds about 40 KB.</li>
   <li><strong>Sessions.</strong> The in-memory store lives as long as an isolate; use the
       <code>cookie</code> driver with <code>SOLI_SESSION_SECRET</code>.</li>
 </ul>

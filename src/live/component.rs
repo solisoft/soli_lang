@@ -110,13 +110,16 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     let html_erb_path = app_root.join(format!("app/views/live/{}.html.erb", component_name));
     let sliv_path = app_root.join(format!("app/views/live/{}.sliv", component_name));
 
-    let template_path = if html_slv_path.exists() {
+    // Through `platform::fs`: on the edge build the app's files are mounted in
+    // memory, and `Path::exists` / `std::fs` would find none of them.
+    let found = |path: &std::path::Path| crate::platform::fs::is_file(path);
+    let template_path = if found(&html_slv_path) {
         html_slv_path
-    } else if slv_path.exists() {
+    } else if found(&slv_path) {
         slv_path
-    } else if html_erb_path.exists() {
+    } else if found(&html_erb_path) {
         html_erb_path
-    } else if sliv_path.exists() {
+    } else if found(&sliv_path) {
         sliv_path
     } else {
         // The paths stay on the server log; the returned message is shown in the
@@ -136,7 +139,7 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
         ));
     };
 
-    let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
+    let content = crate::platform::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
 
     // Convert JSON state to interpreter Value
     let data = json_to_value_ref(state)?;

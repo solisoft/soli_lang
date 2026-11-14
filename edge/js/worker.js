@@ -6,6 +6,7 @@
 // (jspi.js) — a D1 or Postgres query too. Files under public/ are served by Workers static assets before
 // the request ever reaches this script. Jobs enqueued on the edge come back
 // through `queue()` as Cloudflare Queue messages.
+import { DurableObject } from "cloudflare:workers";
 import wasmModule from "./soli_edge_bg.wasm";
 import { initSync, mount, set_env, boot } from "./soli_edge.js";
 import { setHost, endSql } from "./jspi.js";
@@ -17,6 +18,7 @@ export { SoliSqlObject } from "./durable.js";
 let wasm = null;
 let handleRequest = null;
 let runJob = null;
+let runLive = null;
 let bootError = null;
 // One request inside wasm at a time: a suspended stack still owns its part of
 // the shadow stack in linear memory, which a second request would overwrite.
@@ -35,6 +37,7 @@ function ensureBooted(env) {
     wasm = initSync({ module: wasmModule });
     handleRequest = WebAssembly.promising(wasm.soli_handle);
     runJob = WebAssembly.promising(wasm.soli_run_job);
+    runLive = WebAssembly.promising(wasm.soli_live);
     // The D1 and R2 imports read and write wasm memory and look bindings up in env.
     setHost(wasm, env);
     set_env(JSON.stringify(Object.entries(env).filter(([, value]) => typeof value === "string")));
@@ -77,6 +80,140 @@ async function dispatchJob(message) {
   return JSON.parse(
     decoder.decode(new Uint8Array(wasm.memory.buffer, out, wasm.soli_response_len())),
   );
+}
+
+// One LiveView frame through wasm (`edge::live_frame`), behind any request
+// inside wasm: `{instance, messages, error?}`.
+function liveFrame(input, ctx) {
+  const job = queue
+    .then(async () => {
+      const bytes = encoder.encode(JSON.stringify(input));
+      const ptr = wasm.soli_alloc(bytes.length);
+      new Uint8Array(wasm.memory.buffer, ptr, bytes.length).set(bytes);
+      const out = await runLive(ptr, bytes.length);
+      return JSON.parse(
+        decoder.decode(new Uint8Array(wasm.memory.buffer, out, wasm.soli_response_len())),
+      );
+    })
+    .finally(() => endSql(ctx));
+  queue = job.catch(() => {});
+  return job;
+}
+
+// A LiveView lives in a Durable Object: one object per instance (a session's,
+// or a room's), which holds the sockets and keeps the instance in its storage.
+// Sockets are accepted with the hibernation API, so the object — and its
+// isolate — can be evicted between events: each event reads the instance
+// back, runs one frame and stores the result.
+//
+// wrangler.toml:
+//   [[durable_objects.bindings]]
+//   name = "SOLI_LIVE"
+//   class_name = "SoliLiveObject"
+//   [[migrations]]
+//   tag = "soli-live-v1"
+//   new_sqlite_classes = ["SoliLiveObject"]
+export class SoliLiveObject extends DurableObject {
+  async fetch(request) {
+    ensureBooted(this.env);
+    if (bootError) return new Response(`Soli failed to boot: ${bootError}`, { status: 500 });
+    const meta = {
+      component: request.headers.get("x-soli-live-component"),
+      session: request.headers.get("x-soli-live-session"),
+      room: request.headers.get("x-soli-live-room") || undefined,
+    };
+    const [client, server] = Object.values(new WebSocketPair());
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment(meta);
+
+    const stored = await this.ctx.storage.get("instance");
+    if (stored) {
+      // Already mounted (another tab, a reconnect, a room's next visitor):
+      // its current markup to this socket only.
+      server.send(JSON.stringify({ type: "Render", html: stored.last_html, liveview_id: stored.id }));
+    } else {
+      await this.frame({ op: "mount", ...meta }, null);
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(ws, data) {
+    ensureBooted(this.env);
+    let message;
+    try {
+      message = JSON.parse(typeof data === "string" ? data : decoder.decode(data));
+    } catch {
+      return;
+    }
+    if (message.type === "heartbeat") {
+      ws.send(JSON.stringify({ type: "heartbeat_ack" }));
+      return;
+    }
+    const instance = await this.ctx.storage.get("instance");
+    if (!instance) return;
+    if (message.type === "resync") {
+      ws.send(JSON.stringify({ type: "Render", html: instance.last_html, liveview_id: instance.id }));
+      return;
+    }
+    if (message.type !== "event" || typeof message.event !== "string") return;
+    const meta = ws.deserializeAttachment() || {};
+    await this.frame(
+      { op: "event", instance, event: message.event, params: message.params || {}, session: meta.session },
+      ws,
+    );
+  }
+
+  webSocketClose(ws, code) {
+    // 1005 (no status) and 1006 (abnormal) describe a close; they cannot be sent.
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code);
+    } catch {}
+  }
+
+  // Run a frame, keep the instance, send its messages to every socket of this
+  // LiveView (or report an error to the one that sent the event).
+  async frame(input, from) {
+    const started = Date.now();
+    const result = await liveFrame(input, this.ctx);
+    if (result.instance) await this.ctx.storage.put("instance", result.instance);
+    for (const socket of this.ctx.getWebSockets()) {
+      for (const message of result.messages || []) socket.send(message);
+    }
+    if (result.error) {
+      console.error(`LiveView ${input.op}: ${result.error}`);
+      if (from) from.send(JSON.stringify({ type: "Error", message: result.error }));
+    }
+    console.log(`LiveView ${input.op} ${input.event || input.component}: ${Date.now() - started} ms`);
+  }
+}
+
+// `/live/socket/<component>`: the Durable Object of that LiveView instance —
+// the room's when `?room=` names one, else the visitor's session's.
+async function liveSocket(request, env, ctx, url) {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+    return new Response("Expected a WebSocket upgrade", { status: 426 });
+  }
+  if (!env.SOLI_LIVE) {
+    return new Response(
+      'LiveView on the edge needs a Durable Object binding: add [[durable_objects.bindings]] name = "SOLI_LIVE", class_name = "SoliLiveObject" to wrangler.toml',
+      { status: 501 },
+    );
+  }
+  const component = decodeURIComponent(url.pathname.slice("/live/socket/".length));
+  if (!/^[A-Za-z0-9_-]+$/.test(component)) return new Response("Bad component", { status: 400 });
+  const room = url.searchParams.get("room");
+  const cookie = request.headers.get("cookie") || "";
+  const session =
+    /(?:^|;\s*)(?:__Host-)?session_id=([^;]+)/.exec(cookie)?.[1] || `sess-${crypto.randomUUID()}`;
+  // The instance id by the server's rules: a room only for a component
+  // `live_rooms` declared. One Durable Object per instance.
+  const { id: name } = await liveFrame({ op: "id", component, session, room: room || undefined }, ctx);
+  const headers = new Headers(request.headers);
+  headers.set("x-soli-live-component", component);
+  headers.set("x-soli-live-session", session);
+  if (room) headers.set("x-soli-live-room", room);
+  const stub = env.SOLI_LIVE.get(env.SOLI_LIVE.idFromName(name));
+  return stub.fetch(new Request(request, { headers }));
 }
 
 // Statuses whose Response must not have a body, even an empty one.
@@ -154,6 +291,7 @@ export default {
       return new Response(`Soli failed to boot: ${bootError}`, { status: 500 });
     }
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/live/socket/")) return liveSocket(request, env, ctx, url);
     const headers = [...request.headers];
     // Where Cloudflare ran this request: request.cf, which is not a header.
     if (request.cf?.colo) headers.push(["cf-colo", request.cf.colo]);

@@ -378,6 +378,7 @@ fn framework_script(method: &str, path: &str) -> Option<EdgeResponse> {
     let script = match path {
         "/__soli/nav.js" => nav::NAV_SCRIPT,
         "/__soli/prefetch.js" => prefetch::PREFETCH_SCRIPT,
+        crate::live::LIVE_CLIENT_PATH => crate::live::LIVE_CLIENT_JS,
         _ => return None,
     };
     Some(EdgeResponse {
@@ -410,4 +411,137 @@ fn text(status: u16, body: &str) -> EdgeResponse {
         )],
         body: body.as_bytes().to_vec(),
     }
+}
+
+/// One LiveView frame for a host that keeps the instance itself — on the edge,
+/// a Durable Object that hibernates between events and holds the instance in
+/// its storage.
+///
+/// `input` is `{"op": "id", "component", "session", "room"?}` (the instance
+/// id alone), `{"op": "mount", "component", "session", "room"?}` or
+/// `{"op": "event", "instance", "event", "params"?, "session"?}`, `instance`
+/// being what an earlier frame returned. The answer is
+/// `{"instance": {id, component, session_id, state, last_html},
+/// "messages": [<the JSON frames to send to the browser>], "error"?}`.
+///
+/// Nothing outlives the call: the instance goes through the same registry and
+/// the same `handle_liveview_event` as under `soli serve`, then leaves it, so
+/// the isolate can be evicted at any time. What needs a long-lived process —
+/// `tick` intervals, live queries, `live_update` from elsewhere — is not
+/// carried over (see the edge docs).
+pub fn live_frame(input: &serde_json::Value) -> serde_json::Value {
+    use crate::live::view::{live_registry, LiveViewInstance};
+
+    let text = |key: &str| input[key].as_str().unwrap_or_default().to_string();
+    // `?room=` counts only for a component `live_rooms` declared, as in
+    // `serve::upgrade`: anything else gets its session's own instance.
+    let room = input["room"]
+        .as_str()
+        .filter(|room| !room.is_empty())
+        .filter(|_| crate::live::socket::is_room_component(&text("component")))
+        .map(str::to_string);
+    let (tx, rx) = async_channel::unbounded();
+    let sender = Arc::new(tx);
+    let mut error = None;
+
+    // The event to run once the instance is in the registry: the client's, or
+    // on a mount the synthetic `connect` `soli serve` fires so a handler can
+    // seed the initial state.
+    let (liveview_id, component, event) = match text("op").as_str() {
+        // The instance a socket belongs to, by the rules `soli serve` applies:
+        // `?room=` counts only for a component `live_rooms` declared. The
+        // host names the Durable Object after it, so an undeclared room
+        // cannot make two visitors share one object.
+        "id" => {
+            return serde_json::json!({
+                "id": crate::live::socket::liveview_instance_id(
+                    &text("session"),
+                    &text("component"),
+                    room.as_deref(),
+                ),
+            });
+        }
+        "mount" => {
+            let component = text("component");
+            let session = text("session");
+            crate::live::socket::handle_live_connection(
+                component.clone(),
+                session.clone(),
+                sender.clone(),
+                room.clone(),
+            );
+            let id =
+                crate::live::socket::liveview_instance_id(&session, &component, room.as_deref());
+            let connect = crate::live::socket::get_liveview_handler(&component)
+                .map(|_| "connect".to_string());
+            (id, component, connect)
+        }
+        "event" => {
+            let stored = &input["instance"];
+            let field = |key: &str| stored[key].as_str().unwrap_or_default().to_string();
+            let (id, component) = (field("id"), field("component"));
+            let mut instance = LiveViewInstance::new(
+                component.clone(),
+                PathBuf::from(format!("app/views/live/{component}.sliv")),
+                stored["state"].clone(),
+                field("session_id"),
+                sender.clone(),
+            );
+            instance.id = id.clone();
+            instance.last_html = field("last_html");
+            live_registry().register(instance);
+            (id, component, Some(text("event")))
+        }
+        other => {
+            return serde_json::json!({
+                "error": format!("unknown LiveView op {other:?}: use \"mount\" or \"event\""),
+            })
+        }
+    };
+
+    if let Some(event) = event {
+        let (response_tx, _response_rx) = oneshot::channel();
+        let data = LiveViewEventData {
+            liveview_id: liveview_id.clone(),
+            component,
+            event,
+            params: input
+                .get("params")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({})),
+            sender_session: input["session"].as_str().map(str::to_string),
+            response_tx,
+        };
+        let outcome = APP.with(|app| match app.borrow_mut().as_mut() {
+            Some(app) => handle_liveview_event_caught(&mut app.interpreter, &data),
+            None => Err("the app has not booted".to_string()),
+        });
+        if let Err(e) = outcome {
+            error = Some(e);
+        }
+    }
+
+    let instance = live_registry().get(&liveview_id);
+    live_registry().unregister(&liveview_id);
+    crate::live::socket::cancel_tick_task(&liveview_id);
+    let mut messages = Vec::new();
+    while let Ok(Ok(message)) = rx.try_recv() {
+        if let Ok(frame) = message.to_text() {
+            messages.push(serde_json::Value::String(frame.to_string()));
+        }
+    }
+    let mut answer = serde_json::json!({ "messages": messages });
+    if let Some(instance) = instance {
+        answer["instance"] = serde_json::json!({
+            "id": instance.id,
+            "component": instance.component,
+            "session_id": instance.session_id,
+            "state": instance.state,
+            "last_html": instance.last_html,
+        });
+    }
+    if let Some(error) = error {
+        answer["error"] = serde_json::Value::String(error);
+    }
+    answer
 }

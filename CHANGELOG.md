@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Added
+
+- **LiveView on Cloudflare Workers.** Each LiveView instance's socket is held
+  by a Durable Object (`SoliLiveObject`, exported by `edge/js/worker.js`) that
+  accepts it with the hibernation API and keeps the instance — state and last
+  markup — in its storage. Each event runs one stateless frame through the new
+  `soli_live` export (`serve::edge::live_frame`): the instance goes into the
+  registry, through the same `handle_live_connection` / `connect` /
+  `handle_liveview_event` as `soli serve`, and out again with the messages to
+  send. The Worker routes `/live/socket/<component>` to the object named after
+  the instance id the frame computes (`op: "id"`), so `?room=` counts only for
+  a component `live_rooms` declared. `/live/client.js` is served on the edge,
+  and LiveView templates resolve through `platform::fs` (they read `std::fs`,
+  which finds nothing in a Worker). `soli edge build` binds `SOLI_LIVE` in the
+  `wrangler.toml` it writes when `routes.sl` declares `router_live`, and warns
+  when an existing one lacks it. Measured on workerd: ~1 ms per frame in
+  wasm, 8–10 ms per click round trip, 65–170 ms for a cold isolate's first
+  render; the state survives a full restart; +205 KB of wasm. Not carried:
+  `tick`, live queries, `live_update`, LiveView uploads, EUI.
+  cf.solisoft.net gains `/live`, a shared board.
+
 ### Changed
 
 - **Edge docs: the Workers size limit is 64 MiB uncompressed.** Cloudflare

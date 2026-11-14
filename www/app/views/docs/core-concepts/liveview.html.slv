@@ -645,6 +645,11 @@ live_update("board", { "id": "main", "score": 9 }, { "child": "score" })  # a ne
         </div>
     </div>
 
+    <h2 id="edge" class="text-2xl font-bold text-white mb-6">On Cloudflare Workers</h2>
+    <p class="text-gray-400 mb-12">
+        The same LiveView runs inside a Worker (<code>soli edge build</code>): each instance&rsquo;s socket is held by a Durable Object that hibernates between events and keeps the state in its storage, and every frame runs the handler, render and diff above. <code>tick</code>, live queries, <code>live_update</code> and uploads are not carried there yet. See <a href="/docs/development-tools/edge#liveview" class="text-amber-400 hover:underline">Cloudflare Workers &rarr; LiveView</a>; <a href="https://cf.solisoft.net/live" class="text-amber-400 hover:underline">cf.solisoft.net/live</a> is a shared board running that way.
+    </p>
+
     <h2 id="current-limitations" class="text-2xl font-bold text-white mb-6">Current Limitations</h2>
     <p class="text-gray-400 mb-6">Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:</p>
     <div class="mb-12 p-6 rounded-xl bg-white/5 border border-white/10">

@@ -459,11 +459,51 @@ What the edge cannot do with them:
 - **Cron** (`Cron.*`, `static cron`): use a
   [Cron Trigger](https://developers.cloudflare.com/workers/configuration/cron-triggers/).
 
+## LiveView: sockets in Durable Objects
+
+A [LiveView](liveview.md) runs on the edge unchanged: the same template, the
+same `router_live` handler, the same `/live/client.js`. A Worker cannot keep a
+socket between requests, so each LiveView instance gets a
+[Durable Object](https://developers.cloudflare.com/durable-objects/):
+
+- The Worker sends `/live/socket/<component>` to the object of that instance —
+  the visitor's session's, or the room's for a component `live_rooms`
+  declared (an undeclared `?room=` shares nothing, as under `soli serve`).
+- The object accepts the socket with the
+  [hibernation API](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
+  and keeps the instance — its state and last markup — in its own storage. It
+  can be evicted between events; the next event wakes it, reads the instance
+  back, runs one frame (handler, render, diff) and stores the result. Every
+  socket of the instance gets the patch.
+- `soli edge build` adds the binding to the `wrangler.toml` it writes when
+  `config/routes.sl` declares `router_live`; an existing `wrangler.toml` gets a
+  warning naming it:
+
+```toml
+[[durable_objects.bindings]]
+name = "SOLI_LIVE"
+class_name = "SoliLiveObject"
+
+[[migrations]]
+tag = "soli-live-v1"
+new_sqlite_classes = ["SoliLiveObject"]
+```
+
+Measured on `wrangler dev --local` (workerd) with a counter: a click takes
+about 1 ms inside wasm and 8–10 ms round trip; the first socket of a fresh
+isolate gets its render in 65–170 ms (boot included). The instance survives a
+restart of the whole process. LiveView adds about 205 KB to the runtime.
+
+Not carried on the edge yet: `tick` intervals, live queries
+(`Model.live_where`), `live_update` from a controller or a job — they need a
+process that stays up — LiveView uploads (`soli-upload`), and EUI. Other
+WebSocket routes and server-sent events still answer `501`.
+
 ## What runs on the edge
 
 | Runs | Stays with `soli serve` |
 |------|-------------------------|
-| routes, controllers, `before_action`, middleware | WebSockets, LiveView |
+| routes, controllers, `before_action`, middleware; [LiveView](#liveview-sockets-in-durable-objects) | other WebSockets; LiveView `tick`, live queries, `live_update` |
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
 | i18n from `config/locales`; background jobs through Cloudflare Queues | cron, sending mail |

@@ -15,6 +15,14 @@ class PagesController < Controller
     @runtime = RuntimeInfo.of(req)
   end
 
+  # GET /live — a LiveView whose socket is a Durable Object
+  def live(req)
+    @title = "LiveView"
+    @description = "A Soli LiveView inside a Cloudflare Worker: the socket is held by a Durable Object that " +
+      "hibernates between events, and every frame runs the same handler as soli serve."
+    @runtime = RuntimeInfo.of(req)
+  end
+
   # GET /limits — what the edge build does and does not do
   def limits(req)
     @title = "Limits"

@@ -1,0 +1,32 @@
+<h1>LiveView at the edge</h1>
+<p class="lead">This counter is a Soli <strong>LiveView</strong>: the page opens a WebSocket,
+every click goes to a handler written in Soli, and the server sends back a patch of the
+markup. Here the socket ends in a <strong>Cloudflare Durable Object</strong>. Every visitor
+shares this board: open the page in two windows and click.</p>
+
+<div data-live-root data-live-room="edge-demo" data-liveview-url="/live/socket/tally">
+  <p class="muted">Connecting…</p>
+</div>
+
+<h2>How it runs</h2>
+<ul>
+  <li>The Worker sends <code>/live/socket/tally</code> to one Durable Object per LiveView
+      instance; this board is a room (<code>live_rooms("tally")</code>), so it has one for
+      everybody.</li>
+  <li>The object accepts the socket with the <strong>hibernation API</strong> and keeps the
+      LiveView's state and last markup in its storage. Between clicks it can be evicted; the
+      next click wakes it, reads the state back and runs one frame.</li>
+  <li>A frame is the same code as under <code>soli serve</code>: the handler in
+      <code>app/controllers/live_controller.sl</code>, the template in
+      <code>app/views/live/tally.html.slv</code>, the same diff and the same client
+      (<code>/live/client.js</code>).</li>
+</ul>
+
+<h2>Not on the edge yet</h2>
+<ul>
+  <li><code>tick</code> intervals, live queries (<code>Model.live_where</code>) and
+      <code>live_update</code> from a controller or a job: they need a process that stays up.</li>
+  <li>Uploads through <code>soli-upload</code>.</li>
+</ul>
+
+<script src="/live/client.js"></script>

@@ -1,0 +1,9 @@
+<div class="tally">
+  <div class="tally-count"><%= count || 0 %></div>
+  <div class="tally-buttons">
+    <button class="button" soli-click="decrement">−1</button>
+    <button class="button" soli-click="increment">+1</button>
+    <button class="button ghost" soli-click="reset">Reset</button>
+  </div>
+  <p class="muted"><%= clicks || 0 %> clicks on this board since it was created.</p>
+</div>

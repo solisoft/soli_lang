@@ -111,7 +111,7 @@ jobs:
           done
           status=0
           if [ -n "$ok" ]; then
-            for path in / /api/info /guide /limits /try /d1; do
+            for path in / /api/info /guide /limits /live /live/client.js /try /d1; do
               code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8787$path")"
               echo "$path -> $code"
               [ "$code" = "200" ] || status=1

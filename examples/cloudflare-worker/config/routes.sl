@@ -5,7 +5,13 @@
 get("/", "pages#index")
 get("/guide", "pages#guide")
 get("/limits", "pages#limits")
+get("/live", "pages#live")
 get("/try", "playground#show")
 get("/d1", "check_ins#index")
 post("/d1/check-in", "check_ins#create")
 get("/api/info", "api#info")
+
+# A LiveView on the edge: its socket is a Cloudflare Durable Object that
+# hibernates between clicks. One shared board for every visitor (a room).
+router_live("tally", "live#tally")
+live_rooms("tally")

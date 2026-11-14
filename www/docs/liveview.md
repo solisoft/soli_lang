@@ -626,6 +626,16 @@ the partial-assembly map had only the expiry sweep, so a single unauthenticated
 client could mint a fresh `X-Soli-Upload-Id` per request, send one chunk of a
 declared 512, and park memory until the server ran out.
 
+## On Cloudflare Workers
+
+The same LiveView runs inside a Worker (`soli edge build`): each instance's
+socket is held by a Durable Object that hibernates between events and keeps the
+state in its storage, and every frame runs the handler, render and diff above.
+`tick`, live queries, `live_update` and uploads are not carried there yet. See
+[Cloudflare Workers → LiveView](edge.md#liveview-sockets-in-durable-objects);
+[cf.solisoft.net/live](https://cf.solisoft.net/live) is a shared board running
+that way.
+
 ## Current limitations
 
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:

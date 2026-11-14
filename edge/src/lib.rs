@@ -152,6 +152,27 @@ fn split_frame(mut input: Vec<u8>) -> Result<(serde_json::Value, Vec<u8>), Strin
     Ok((json, input))
 }
 
+/// One LiveView frame (see `edge::live_frame`): the JSON at `ptr` (from
+/// `soli_alloc`) is the frame's input, and the answer, `soli_response_len`
+/// bytes long and valid until the next call, its JSON output. The Durable
+/// Object that holds the LiveView calls it, through `WebAssembly.promising`
+/// like `soli_handle`: a handler's queries suspend the stack.
+#[no_mangle]
+pub extern "C" fn soli_live(ptr: *mut u8, len: usize) -> *const u8 {
+    // SAFETY: as in `soli_handle`.
+    let input = unsafe { Vec::from_raw_parts(ptr, len, len) };
+    let answer = match serde_json::from_slice::<serde_json::Value>(&input) {
+        Ok(json) => edge::live_frame(&json),
+        Err(e) => {
+            serde_json::json!({ "error": format!("Malformed LiveView frame from the host: {e}") })
+        }
+    };
+    RESPONSE.with(|cell| {
+        *cell.borrow_mut() = answer.to_string().into_bytes();
+        cell.borrow().as_ptr()
+    })
+}
+
 #[no_mangle]
 pub extern "C" fn soli_response_len() -> usize {
     RESPONSE.with(|cell| cell.borrow().len())

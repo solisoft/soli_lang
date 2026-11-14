@@ -210,3 +210,8 @@ footer strong { color: var(--text); font-weight: 600; }
   .wiring tr { border-bottom: 1px solid var(--rule); padding: .6rem 0; }
   .wiring tr:last-child { border-bottom: 0; }
 }
+
+/* /live — the shared LiveView board */
+.tally { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; margin: 1.5rem 0 2rem; }
+.tally-count { font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 5rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.tally-buttons { display: flex; flex-wrap: wrap; gap: .75rem; }

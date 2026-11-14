@@ -79,6 +79,22 @@ url = "do://PROBE/{tenant}"
 
 const PROBE_MODEL: &str = "class ProbeNote < Model\n  connection \"probe\"\nend\n";
 
+/// A LiveView, as an app declares one: a template, `router_live`, a handler.
+const TALLY_TEMPLATE: &str = r#"<div class="tally">
+  <span id="count"><%= count || 0 %></span>
+  <button soli-click="increment">+</button>
+</div>
+"#;
+
+const TALLY_CONTROLLER: &str = r#"def probe_tally(event_data)
+  state = event_data["state"]
+  count = state["count"] || 0
+  return state.merge({"count": count + 1}) if event_data["event"] == "increment"
+
+  state
+end
+"#;
+
 /// What `soli_queue_send` would have handed to Cloudflare.
 #[derive(Default)]
 struct SentMessages(std::sync::Mutex<Vec<(String, serde_json::Value, u32)>>);
@@ -109,7 +125,7 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
     for (path, contents) in files.iter_mut() {
         if path == "/app/config/routes.sl" {
             contents.extend_from_slice(
-                b"\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\n",
+                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\n",
             );
         }
     }
@@ -132,6 +148,14 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
     files.push((
         "/app/app/models/probe_note.sl".to_string(),
         PROBE_MODEL.as_bytes().to_vec(),
+    ));
+    files.push((
+        "/app/app/views/live/probe_tally.html.slv".to_string(),
+        TALLY_TEMPLATE.as_bytes().to_vec(),
+    ));
+    files.push((
+        "/app/app/controllers/probe_live_controller.sl".to_string(),
+        TALLY_CONTROLLER.as_bytes().to_vec(),
     ));
     files
 }
@@ -293,6 +317,45 @@ fn boots_a_mounted_app_and_answers_requests() {
             let retries = unlucky["max_retries"].as_u64().unwrap() as u32;
             let report = edge::run_job(&unlucky.to_string(), retries + 1);
             assert_eq!(report["status"], "dead", "{report}");
+
+            // The instance a socket joins: `?room=` counts only for a component
+            // `live_rooms` declared, so an undeclared room shares nothing.
+            let id = edge::live_frame(&serde_json::json!({
+                "op": "id", "component": "probe_tally", "session": "sess-edge", "room": "lobby",
+            }));
+            assert_eq!(id["id"], "sess-edge:probe_tally", "{id}");
+            // The site's own board is declared with `live_rooms("tally")`.
+            let id = edge::live_frame(&serde_json::json!({
+                "op": "id", "component": "tally", "session": "sess-edge", "room": "lobby",
+            }));
+            assert_eq!(id["id"], "room:lobby:tally", "{id}");
+
+            // A LiveView with no process to live in: each frame gets the instance
+            // the previous one returned, as a hibernating Durable Object would
+            // hand it back from its storage.
+            let mounted = edge::live_frame(&serde_json::json!({
+                "op": "mount", "component": "probe_tally", "session": "sess-edge",
+            }));
+            assert!(mounted.get("error").is_none(), "{mounted}");
+            let instance = mounted["instance"].clone();
+            // Mounting renders the initial state ({id}) without calling the handler,
+            // as under `soli serve`.
+            assert!(instance["last_html"].as_str().unwrap().contains(r#"<span id="count"></span>"#), "{mounted}");
+            assert!(mounted["messages"][0].as_str().unwrap().contains(r#""type":"Render""#), "{mounted}");
+            let mut instance = instance;
+            for expected in [1, 2] {
+                let frame = edge::live_frame(&serde_json::json!({
+                    "op": "event", "instance": instance, "event": "increment",
+                }));
+                assert!(frame.get("error").is_none(), "{frame}");
+                assert_eq!(frame["instance"]["state"]["count"], expected, "{frame}");
+                let html = frame["instance"]["last_html"].as_str().unwrap();
+                assert!(html.contains(&format!(r#"<span id="count">{expected}</span>"#)), "{frame}");
+                assert!(frame["messages"][0].as_str().unwrap().contains(r#""type":"Patch""#), "{frame}");
+                instance = frame["instance"].clone();
+            }
+            // Nothing stayed behind in the isolate.
+            assert!(solilang::live::view::live_registry().get(instance["id"].as_str().unwrap()).is_none());
 
             // The instant-navigation script every page links to.
             let (status, body) = get("/__soli/nav.js", "v=1");

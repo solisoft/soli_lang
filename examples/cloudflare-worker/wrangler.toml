@@ -36,3 +36,13 @@ database_id = "3640133c-3d97-4dfb-a178-aeb4fc09d988"
 
 [vars]
 SOLI_DB_ADAPTER = "d1"
+
+# LiveView: each LiveView instance's socket is held by a Durable Object
+# (`SoliLiveObject`, exported by the Worker) that hibernates between events.
+[[durable_objects.bindings]]
+name = "SOLI_LIVE"
+class_name = "SoliLiveObject"
+
+[[migrations]]
+tag = "soli-live-v1"
+new_sqlite_classes = ["SoliLiveObject"]

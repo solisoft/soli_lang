@@ -173,17 +173,24 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
             .map_err(|e| format!("copy {}: {e}", app_wrangler_toml.display()))?;
     }
     let wrote_wrangler_toml = !wrangler_toml_from_app && !wrangler_toml.exists();
+    let live = uses_liveview(app_dir);
     if wrote_wrangler_toml {
-        let config = wrangler_config(&worker_name(app_dir), asset_files > 0, &sql_drivers);
+        let config = wrangler_config(&worker_name(app_dir), asset_files > 0, &sql_drivers, live);
         fs::write(&wrangler_toml, config).map_err(|e| format!("write wrangler.toml: {e}"))?;
-    } else if !sql_drivers.is_empty() {
+    } else {
         let existing = fs::read_to_string(&wrangler_toml).unwrap_or_default();
-        if !existing.contains("nodejs_compat") {
+        if !sql_drivers.is_empty() && !existing.contains("nodejs_compat") {
             warnings.push(
                 "the SQL driver needs Node.js compatibility: add \
                  `compatibility_flags = [\"nodejs_compat\"]` to wrangler.toml, above its first table"
                     .to_string(),
             );
+        }
+        if live && !existing.contains("SoliLiveObject") {
+            warnings.push(format!(
+                "the app declares LiveViews (router_live): their sockets need a Durable Object \
+                 binding in wrangler.toml —{LIVE_BINDING}"
+            ));
         }
     }
 
@@ -411,7 +418,28 @@ fn worker_name(app_dir: &Path) -> String {
     }
 }
 
-fn wrangler_config(name: &str, assets: bool, sql_drivers: &[&str]) -> String {
+/// The Durable Object a LiveView's socket lives in (`SoliLiveObject`, which
+/// the Worker exports), as `wrangler.toml` binds it.
+const LIVE_BINDING: &str = r#"
+[[durable_objects.bindings]]
+name = "SOLI_LIVE"
+class_name = "SoliLiveObject"
+
+[[migrations]]
+tag = "soli-live-v1"
+new_sqlite_classes = ["SoliLiveObject"]
+"#;
+
+/// Whether the app declares a LiveView (`router_live` in `config/routes.sl`).
+fn uses_liveview(app_dir: &Path) -> bool {
+    fs::read_to_string(app_dir.join("config/routes.sl")).is_ok_and(|routes| {
+        routes
+            .lines()
+            .any(|line| line.trim_start().starts_with("router_live"))
+    })
+}
+
+fn wrangler_config(name: &str, assets: bool, sql_drivers: &[&str], live: bool) -> String {
     let today = chrono::Utc::now().format("%Y-%m-%d");
     // Top-level keys first: in TOML everything after a `[table]` header
     // belongs to that table, `routes` included.
@@ -498,6 +526,13 @@ directory = "./public"
 # localConnectionString = "postgres://user:password@localhost:5432/my_app"
 "#,
     );
+    if live {
+        config.push_str(
+            "\n# LiveView: each LiveView instance's socket is held by a Durable Object that\n\
+             # hibernates between events (config/routes.sl declares router_live).",
+        );
+        config.push_str(LIVE_BINDING);
+    }
     config
 }
 
@@ -525,6 +560,52 @@ mod tests {
         fs::write(dir.join("app/logo.bin"), [0xff, 0xfe, 0x00]).unwrap();
         fs::write(dir.join("public/css/site.css"), "body{}").unwrap();
         fs::write(dir.join(".env"), "SECRET=1").unwrap();
+    }
+
+    #[test]
+    fn an_app_with_liveviews_gets_their_durable_object() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (app, runtime) = (tmp.path().join("app"), tmp.path().join("rt"));
+        fake_app(&app);
+        fake_runtime(&runtime);
+        let options = |out| Options {
+            app_dir: &app,
+            out_dir: out,
+            runtime_dir: Some(&runtime),
+            sql: None,
+            npm_install: false,
+        };
+
+        // No LiveView: the binding stays out.
+        let plain = tmp.path().join("plain");
+        build(&options(&plain)).unwrap();
+        assert!(!fs::read_to_string(plain.join("wrangler.toml"))
+            .unwrap()
+            .contains("SoliLiveObject"));
+
+        // router_live: the written wrangler.toml binds SoliLiveObject.
+        fs::write(
+            app.join("config/routes.sl"),
+            "get(\"/\", \"home#index\")\nrouter_live(\"counter\", \"live#counter\")\n",
+        )
+        .unwrap();
+        let live = tmp.path().join("live");
+        let summary = build(&options(&live)).unwrap();
+        let toml = fs::read_to_string(live.join("wrangler.toml")).unwrap();
+        assert!(toml.contains("class_name = \"SoliLiveObject\""), "{toml}");
+        assert!(
+            toml.contains("new_sqlite_classes = [\"SoliLiveObject\"]"),
+            "{toml}"
+        );
+        assert!(summary.warnings.is_empty(), "{:?}", summary.warnings);
+
+        // An existing wrangler.toml without it: a warning that says what to add.
+        let summary = build(&options(&plain)).unwrap();
+        assert!(
+            summary.warnings.iter().any(|w| w.contains("SOLI_LIVE")),
+            "{:?}",
+            summary.warnings
+        );
     }
 
     #[test]
