@@ -137,6 +137,10 @@ pub fn boot(folder: &Path) -> Result<(), RuntimeError> {
     );
     crate::interpreter::builtins::template::set_dev_mode(false);
     let mut interpreter = Interpreter::new_for_serve();
+    // `Mailer` / `Message` before the app's mailers subclass them, as in the
+    // hyper workers: only the boot interpreter had them, so every handler that
+    // mailed on the edge failed on `Mailer` being undefined.
+    crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
     app_loader::load_app_in_worker(
         0,

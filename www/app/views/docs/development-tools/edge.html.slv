@@ -339,6 +339,18 @@ crons = ["15 3 * * *"]</code></pre>
         <li><strong class="text-white">Locally</strong>, <code>npx wrangler dev --test-scheduled</code> and <code>curl "http://127.0.0.1:8787/__scheduled?cron=15+3+*+*+*"</code> fire a trigger. <a href="https://cf.solisoft.net/d1" class="text-amber-400 hover:underline">cf.solisoft.net/d1</a> shows the last run of an hourly job.</li>
     </ul>
 
+    <h2 id="mail" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Mail: over HTTP</h2>
+    <p class="text-gray-400 mb-4">
+        A Worker cannot open a connection to a mail server, so <code>delivery_method: "smtp"</code> raises there, saying so. Mail goes out over HTTP instead: the <a href="/docs/builtins/mailer#http" class="text-amber-400 hover:underline"><code>http</code> delivery method</a> POSTs each message to a provider&rsquo;s API &mdash; as JSON, or reshaped by a <a href="/docs/blog/mail-over-http-provider-classes" class="text-amber-400 hover:underline">provider class</a> (Brevo, Resend, Postmark, SendGrid, Mailgun) &mdash; through the Worker&rsquo;s <code>fetch</code>.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({"delivery_method": "http", "request": "BrevoMail",
+                  "api_key": getenv("BREVO_API_KEY"), "from": "Acme &lt;noreply@example.com&gt;"})</code></pre>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Keep the key a secret (<code>npx wrangler secret put BREVO_API_KEY</code>). Your mailers do not change: <code>deliver_now</code> sends from the request, and <code>deliver_later</code> becomes a <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a> message whose job sends it, retried like any job &mdash; without a <code>JOBS</code> binding it sends at once. Attachments travel base64 in the request, so keep them well under the ~20&nbsp;MB a request body allows.
+    </p>
+
     <h2 id="liveview" class="text-3xl font-bold text-white mb-4 scroll-mt-24">LiveView: sockets in Durable Objects</h2>
     <p class="text-gray-400 mb-4">
         A <a href="/docs/core-concepts/liveview" class="text-amber-400 hover:underline">LiveView</a> runs on the edge unchanged: the same template, the same <code>router_live</code> handler, the same <code>/live/client.js</code>. A Worker cannot keep a socket between requests, so each LiveView instance gets a <a href="https://developers.cloudflare.com/durable-objects/" class="text-amber-400 hover:underline">Durable Object</a>:
@@ -372,7 +384,7 @@ new_sqlite_classes = ["SoliLiveObject"]</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">routes, controllers, <code>before_action</code>, middleware; <a href="#liveview" class="text-amber-400 hover:underline">LiveView</a></td><td class="py-3 px-4">other WebSockets; LiveView <code>tick</code>, live queries, <code>live_update</code></td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">views, layouts, partials, components, helpers</td><td class="py-3 px-4">server-sent events, <code>stream</code>, blob streaming (answered <code>501</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded and multipart forms, JSON</td><td class="py-3 px-4">resumable (tus) and direct uploads, file writes</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code>; background jobs through Cloudflare Queues; <code>static cron</code> through <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a></td><td class="py-3 px-4"><code>Cron.schedule</code> and the cron table, sending mail</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code>; background jobs through Cloudflare Queues; <code>static cron</code> through <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a></td><td class="py-3 px-4"><code>Cron.schedule</code> and the cron table, SMTP (mail goes <a href="#mail" class="text-amber-400 hover:underline">over HTTP</a>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
                 <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, the <code>Image</code> class, <code>System.run</code></td></tr>

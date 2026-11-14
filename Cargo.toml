@@ -590,3 +590,6 @@ codegen-units = 1
 # Delete it, and the directory, as soon as calamine publishes on zip 9.
 [patch.crates-io]
 calamine = { path = "vendor/calamine" }
+# mail-builder reads the clock through std::time, which panics in a Worker:
+# vendor/mail-builder/VENDORED.md.
+mail-builder = { path = "vendor/mail-builder" }

@@ -334,8 +334,10 @@ with `SOLI_HTTP_ALLOW_HOSTS=127.0.0.1`. In tests, keep
 `delivery_method: "test"` and assert on `Mailer.deliveries()` as before: the
 hook only runs on the `http` road.
 
-## What's next
+## On Cloudflare Workers
 
 The same POST is what mail needs on Cloudflare Workers, where SMTP is not an
-option; checking the `http` road inside a Worker is the next step. The full
-reference is in [Mailer → Over HTTP](/docs/builtins/mailer#http).
+option: with the `http` method, a mailer sends from a Worker through `fetch`,
+and `deliver_later` rides Cloudflare Queues
+([Mail on the edge](/docs/development-tools/edge#mail)). The full reference is
+in [Mailer → Over HTTP](/docs/builtins/mailer#http).

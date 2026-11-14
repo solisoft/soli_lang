@@ -31,13 +31,9 @@
 //! implicit TLS (port 465). MIME construction uses the `mail-builder` crate.
 
 use std::cell::RefCell;
-use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpStream, ToSocketAddrs};
 use std::rc::Rc;
-use std::sync::{Arc, OnceLock};
 
 use crate::serve::tenant::TenantValue;
-use std::time::Duration;
 
 use base64::Engine;
 use mail_builder::headers::address::Address;
@@ -45,14 +41,10 @@ use mail_builder::headers::date::Date;
 use mail_builder::headers::raw::Raw;
 use mail_builder::mime::MimePart;
 use mail_builder::MessageBuilder;
-use rustls::pki_types::ServerName;
-use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
 use crate::interpreter::builtins::mail_outbox;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
-
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -505,222 +497,260 @@ fn capture_for_inbox(mail: &HashPairs, status: mail_outbox::Status) {
     });
 }
 
-// ---------------------------------------------------------------------------
-// SMTP transport (sync rustls; STARTTLS + implicit TLS + AUTH LOGIN)
-// ---------------------------------------------------------------------------
+/// The SMTP transport: TCP sockets and rustls, which a Worker (wasm32) has
+/// neither of — there the `smtp` method says to use `http`.
+#[cfg(not(target_arch = "wasm32"))]
+mod smtp {
+    use super::*;
+    use rustls::pki_types::ServerName;
+    use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::sync::{Arc, OnceLock};
+    use std::time::Duration;
 
-/// Shared rustls client config (Mozilla roots), built once. Mirrors `pop3.rs`.
-fn tls_config() -> Result<Arc<ClientConfig>, String> {
-    static CONFIG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
-    if let Some(cfg) = CONFIG.get() {
-        return Ok(cfg.clone());
-    }
-    let mut roots = RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config =
-        ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .with_safe_default_protocol_versions()
-            .map_err(|e| format!("SMTP TLS init failed: {e}"))?
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-    let arc = Arc::new(config);
-    let _ = CONFIG.set(arc.clone());
-    Ok(arc)
-}
+    const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// A plaintext or TLS SMTP connection. Plain can be upgraded in place for
-/// STARTTLS; both variants buffer reads for line-oriented reply parsing.
-enum SmtpStream {
-    Plain(BufReader<TcpStream>),
-    Tls(Box<BufReader<StreamOwned<ClientConnection, TcpStream>>>),
-}
+    // ---------------------------------------------------------------------------
+    // SMTP transport (sync rustls; STARTTLS + implicit TLS + AUTH LOGIN)
+    // ---------------------------------------------------------------------------
 
-impl SmtpStream {
-    fn read_line(&mut self, buf: &mut String) -> std::io::Result<usize> {
-        match self {
-            SmtpStream::Plain(r) => r.read_line(buf),
-            SmtpStream::Tls(r) => r.read_line(buf),
+    /// Shared rustls client config (Mozilla roots), built once. Mirrors `pop3.rs`.
+    fn tls_config() -> Result<Arc<ClientConfig>, String> {
+        static CONFIG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+        if let Some(cfg) = CONFIG.get() {
+            return Ok(cfg.clone());
         }
+        let mut roots = RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let config =
+            ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+                .with_safe_default_protocol_versions()
+                .map_err(|e| format!("SMTP TLS init failed: {e}"))?
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+        let arc = Arc::new(config);
+        let _ = CONFIG.set(arc.clone());
+        Ok(arc)
     }
 
-    fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        match self {
-            SmtpStream::Plain(r) => r.get_mut().write_all(bytes),
-            SmtpStream::Tls(r) => r.get_mut().write_all(bytes),
-        }
+    /// A plaintext or TLS SMTP connection. Plain can be upgraded in place for
+    /// STARTTLS; both variants buffer reads for line-oriented reply parsing.
+    enum SmtpStream {
+        Plain(BufReader<TcpStream>),
+        Tls(Box<BufReader<StreamOwned<ClientConnection, TcpStream>>>),
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            SmtpStream::Plain(r) => r.get_mut().flush(),
-            SmtpStream::Tls(r) => r.get_mut().flush(),
-        }
-    }
-
-    /// Upgrade a plaintext connection to TLS (after the server's 220 to
-    /// STARTTLS). A TLS stream is returned unchanged.
-    fn upgrade(self, host: &str) -> Result<SmtpStream, String> {
-        match self {
-            SmtpStream::Plain(reader) => {
-                let tcp = reader.into_inner();
-                let config = tls_config()?;
-                let server_name = ServerName::try_from(host.to_string())
-                    .map_err(|_| format!("invalid TLS server name: {host}"))?;
-                let conn = ClientConnection::new(config, server_name)
-                    .map_err(|e| format!("TLS handshake setup failed: {e}"))?;
-                Ok(SmtpStream::Tls(Box::new(BufReader::new(StreamOwned::new(
-                    conn, tcp,
-                )))))
+    impl SmtpStream {
+        fn read_line(&mut self, buf: &mut String) -> std::io::Result<usize> {
+            match self {
+                SmtpStream::Plain(r) => r.read_line(buf),
+                SmtpStream::Tls(r) => r.read_line(buf),
             }
-            tls => Ok(tls),
+        }
+
+        fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+            match self {
+                SmtpStream::Plain(r) => r.get_mut().write_all(bytes),
+                SmtpStream::Tls(r) => r.get_mut().write_all(bytes),
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            match self {
+                SmtpStream::Plain(r) => r.get_mut().flush(),
+                SmtpStream::Tls(r) => r.get_mut().flush(),
+            }
+        }
+
+        /// Upgrade a plaintext connection to TLS (after the server's 220 to
+        /// STARTTLS). A TLS stream is returned unchanged.
+        fn upgrade(self, host: &str) -> Result<SmtpStream, String> {
+            match self {
+                SmtpStream::Plain(reader) => {
+                    let tcp = reader.into_inner();
+                    let config = tls_config()?;
+                    let server_name = ServerName::try_from(host.to_string())
+                        .map_err(|_| format!("invalid TLS server name: {host}"))?;
+                    let conn = ClientConnection::new(config, server_name)
+                        .map_err(|e| format!("TLS handshake setup failed: {e}"))?;
+                    Ok(SmtpStream::Tls(Box::new(BufReader::new(StreamOwned::new(
+                        conn, tcp,
+                    )))))
+                }
+                tls => Ok(tls),
+            }
         }
     }
-}
 
-/// Read one SMTP reply (handling `250-` multiline continuations) and return its
-/// status code.
-fn read_reply(stream: &mut SmtpStream) -> Result<u16, String> {
-    loop {
-        let mut line = String::new();
-        let n = stream
-            .read_line(&mut line)
-            .map_err(|e| format!("SMTP read error: {e}"))?;
-        if n == 0 {
-            return Err("SMTP connection closed by server".to_string());
-        }
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if trimmed.len() < 3 {
-            return Err(format!("malformed SMTP reply: {trimmed}"));
-        }
-        let code: u16 = trimmed[..3]
-            .parse()
-            .map_err(|_| format!("malformed SMTP reply: {trimmed}"))?;
-        // A space after the code marks the final line; '-' means more follow.
-        if trimmed.as_bytes().get(3) != Some(&b'-') {
-            return Ok(code);
+    /// Read one SMTP reply (handling `250-` multiline continuations) and return its
+    /// status code.
+    fn read_reply(stream: &mut SmtpStream) -> Result<u16, String> {
+        loop {
+            let mut line = String::new();
+            let n = stream
+                .read_line(&mut line)
+                .map_err(|e| format!("SMTP read error: {e}"))?;
+            if n == 0 {
+                return Err("SMTP connection closed by server".to_string());
+            }
+            let trimmed = line.trim_end_matches(['\r', '\n']);
+            if trimmed.len() < 3 {
+                return Err(format!("malformed SMTP reply: {trimmed}"));
+            }
+            let code: u16 = trimmed[..3]
+                .parse()
+                .map_err(|_| format!("malformed SMTP reply: {trimmed}"))?;
+            // A space after the code marks the final line; '-' means more follow.
+            if trimmed.as_bytes().get(3) != Some(&b'-') {
+                return Ok(code);
+            }
         }
     }
-}
 
-fn send_command(stream: &mut SmtpStream, command: &str) -> Result<u16, String> {
-    stream
-        .write_all(command.as_bytes())
-        .and_then(|_| stream.write_all(b"\r\n"))
-        .and_then(|_| stream.flush())
-        .map_err(|e| format!("SMTP write error: {e}"))?;
-    read_reply(stream)
-}
-
-/// Send a command and require the reply code to be in `expected`.
-fn expect_command(stream: &mut SmtpStream, command: &str, expected: &[u16]) -> Result<(), String> {
-    let code = send_command(stream, command)?;
-    if expected.contains(&code) {
-        Ok(())
-    } else {
-        Err(format!(
-            "SMTP command `{}` rejected with code {}",
-            command.split(' ').next().unwrap_or(command),
-            code
-        ))
+    fn send_command(stream: &mut SmtpStream, command: &str) -> Result<u16, String> {
+        stream
+            .write_all(command.as_bytes())
+            .and_then(|_| stream.write_all(b"\r\n"))
+            .and_then(|_| stream.flush())
+            .map_err(|e| format!("SMTP write error: {e}"))?;
+        read_reply(stream)
     }
-}
 
-fn b64(s: &str) -> String {
-    base64::engine::general_purpose::STANDARD.encode(s.as_bytes())
-}
+    /// Send a command and require the reply code to be in `expected`.
+    fn expect_command(
+        stream: &mut SmtpStream,
+        command: &str,
+        expected: &[u16],
+    ) -> Result<(), String> {
+        let code = send_command(stream, command)?;
+        if expected.contains(&code) {
+            Ok(())
+        } else {
+            Err(format!(
+                "SMTP command `{}` rejected with code {}",
+                command.split(' ').next().unwrap_or(command),
+                code
+            ))
+        }
+    }
 
-/// Connect, authenticate, and transmit one message. `rcpts` is the full
-/// envelope recipient set (to + cc + bcc).
-fn deliver_smtp(cfg: &MailerConfig, rcpts: &[String], data: &str) -> Result<(), String> {
-    if cfg.host.is_empty() {
-        return Err(
+    fn b64(s: &str) -> String {
+        base64::engine::general_purpose::STANDARD.encode(s.as_bytes())
+    }
+
+    /// Connect, authenticate, and transmit one message. `rcpts` is the full
+    /// envelope recipient set (to + cc + bcc).
+    pub(super) fn deliver_smtp(
+        cfg: &MailerConfig,
+        rcpts: &[String],
+        data: &str,
+    ) -> Result<(), String> {
+        if cfg.host.is_empty() {
+            return Err(
             "Mailer is not configured: set a host via Mailer.configure({...}) or SOLI_SMTP_HOST"
                 .to_string(),
         );
-    }
-    let addr = (cfg.host.as_str(), cfg.port)
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed for {}:{}: {e}", cfg.host, cfg.port))?
-        .next()
-        .ok_or_else(|| format!("no address found for {}:{}", cfg.host, cfg.port))?;
-    let tcp = TcpStream::connect_timeout(&addr, DEFAULT_TIMEOUT)
-        .map_err(|e| format!("connect to {}:{} failed: {e}", cfg.host, cfg.port))?;
-    let _ = tcp.set_read_timeout(Some(DEFAULT_TIMEOUT));
-    let _ = tcp.set_write_timeout(Some(DEFAULT_TIMEOUT));
+        }
+        let addr = (cfg.host.as_str(), cfg.port)
+            .to_socket_addrs()
+            .map_err(|e| format!("DNS resolution failed for {}:{}: {e}", cfg.host, cfg.port))?
+            .next()
+            .ok_or_else(|| format!("no address found for {}:{}", cfg.host, cfg.port))?;
+        let tcp = TcpStream::connect_timeout(&addr, DEFAULT_TIMEOUT)
+            .map_err(|e| format!("connect to {}:{} failed: {e}", cfg.host, cfg.port))?;
+        let _ = tcp.set_read_timeout(Some(DEFAULT_TIMEOUT));
+        let _ = tcp.set_write_timeout(Some(DEFAULT_TIMEOUT));
 
-    let mut stream = if cfg.implicit_tls() {
-        SmtpStream::Plain(BufReader::new(tcp)).upgrade(&cfg.host)?
-    } else {
-        SmtpStream::Plain(BufReader::new(tcp))
-    };
+        let mut stream = if cfg.implicit_tls() {
+            SmtpStream::Plain(BufReader::new(tcp)).upgrade(&cfg.host)?
+        } else {
+            SmtpStream::Plain(BufReader::new(tcp))
+        };
 
-    // Greeting.
-    let code = read_reply(&mut stream)?;
-    if code != 220 {
-        return Err(format!("unexpected SMTP greeting code {code}"));
-    }
+        // Greeting.
+        let code = read_reply(&mut stream)?;
+        if code != 220 {
+            return Err(format!("unexpected SMTP greeting code {code}"));
+        }
 
-    let ehlo = format!("EHLO {}", cfg.domain);
-    expect_command(&mut stream, &ehlo, &[250])?;
-
-    if !cfg.implicit_tls() && cfg.use_starttls() {
-        expect_command(&mut stream, "STARTTLS", &[220])?;
-        stream = stream.upgrade(&cfg.host)?;
+        let ehlo = format!("EHLO {}", cfg.domain);
         expect_command(&mut stream, &ehlo, &[250])?;
+
+        if !cfg.implicit_tls() && cfg.use_starttls() {
+            expect_command(&mut stream, "STARTTLS", &[220])?;
+            stream = stream.upgrade(&cfg.host)?;
+            expect_command(&mut stream, &ehlo, &[250])?;
+        }
+
+        if let (Some(user), Some(pass)) = (cfg.user.as_ref(), cfg.pass.as_ref()) {
+            expect_command(&mut stream, "AUTH LOGIN", &[334])?;
+            expect_command(&mut stream, &b64(user), &[334])?;
+            expect_command(&mut stream, &b64(pass), &[235])?;
+        }
+
+        let envelope_from = envelope_from_address(cfg, data);
+        // Defense in depth: the envelope (incl. bcc, which never appears in the MIME
+        // headers) must not carry CR/LF that would inject SMTP commands.
+        ensure_no_crlf("envelope from", &envelope_from)?;
+        expect_command(
+            &mut stream,
+            &format!("MAIL FROM:<{}>", envelope_from),
+            &[250],
+        )?;
+        for rcpt in rcpts {
+            ensure_no_crlf("recipient", rcpt)?;
+            expect_command(&mut stream, &format!("RCPT TO:<{}>", rcpt), &[250, 251])?;
+        }
+        expect_command(&mut stream, "DATA", &[354])?;
+
+        // Dot-stuff (RFC 5321 §4.5.2) and terminate with <CRLF>.<CRLF>.
+        let stuffed = data.replace("\r\n.", "\r\n..");
+        stream
+            .write_all(stuffed.as_bytes())
+            .and_then(|_| stream.write_all(b"\r\n.\r\n"))
+            .and_then(|_| stream.flush())
+            .map_err(|e| format!("SMTP DATA write error: {e}"))?;
+        let code = read_reply(&mut stream)?;
+        if code != 250 {
+            return Err(format!("SMTP server rejected message with code {code}"));
+        }
+
+        let _ = send_command(&mut stream, "QUIT");
+        Ok(())
     }
 
-    if let (Some(user), Some(pass)) = (cfg.user.as_ref(), cfg.pass.as_ref()) {
-        expect_command(&mut stream, "AUTH LOGIN", &[334])?;
-        expect_command(&mut stream, &b64(user), &[334])?;
-        expect_command(&mut stream, &b64(pass), &[235])?;
+    /// The envelope sender: the configured default `from` if set, else parse it
+    /// from the message's `From:` header.
+    fn envelope_from_address(cfg: &MailerConfig, data: &str) -> String {
+        if let Some(from) = &cfg.from {
+            return envelope_address(from);
+        }
+        for line in data.lines() {
+            if let Some(rest) = line.strip_prefix("From:") {
+                return envelope_address(rest);
+            }
+            if line.is_empty() {
+                break; // end of headers
+            }
+        }
+        String::new()
     }
-
-    let envelope_from = envelope_from_address(cfg, data);
-    // Defense in depth: the envelope (incl. bcc, which never appears in the MIME
-    // headers) must not carry CR/LF that would inject SMTP commands.
-    ensure_no_crlf("envelope from", &envelope_from)?;
-    expect_command(
-        &mut stream,
-        &format!("MAIL FROM:<{}>", envelope_from),
-        &[250],
-    )?;
-    for rcpt in rcpts {
-        ensure_no_crlf("recipient", rcpt)?;
-        expect_command(&mut stream, &format!("RCPT TO:<{}>", rcpt), &[250, 251])?;
-    }
-    expect_command(&mut stream, "DATA", &[354])?;
-
-    // Dot-stuff (RFC 5321 §4.5.2) and terminate with <CRLF>.<CRLF>.
-    let stuffed = data.replace("\r\n.", "\r\n..");
-    stream
-        .write_all(stuffed.as_bytes())
-        .and_then(|_| stream.write_all(b"\r\n.\r\n"))
-        .and_then(|_| stream.flush())
-        .map_err(|e| format!("SMTP DATA write error: {e}"))?;
-    let code = read_reply(&mut stream)?;
-    if code != 250 {
-        return Err(format!("SMTP server rejected message with code {code}"));
-    }
-
-    let _ = send_command(&mut stream, "QUIT");
-    Ok(())
 }
 
-/// The envelope sender: the configured default `from` if set, else parse it
-/// from the message's `From:` header.
-fn envelope_from_address(cfg: &MailerConfig, data: &str) -> String {
-    if let Some(from) = &cfg.from {
-        return envelope_address(from);
+#[cfg(target_arch = "wasm32")]
+mod smtp {
+    pub(super) fn deliver_smtp(
+        _cfg: &super::MailerConfig,
+        _rcpts: &[String],
+        _data: &str,
+    ) -> Result<(), String> {
+        Err(
+            "SMTP is not available on the edge (Cloudflare Workers) build: use \
+             delivery_method \"http\""
+                .to_string(),
+        )
     }
-    for line in data.lines() {
-        if let Some(rest) = line.strip_prefix("From:") {
-            return envelope_address(rest);
-        }
-        if line.is_empty() {
-            break; // end of headers
-        }
-    }
-    String::new()
 }
 
 // ---------------------------------------------------------------------------
@@ -884,6 +914,15 @@ fn deliver_mail(args: &[Value]) -> Result<Value, String> {
                 );
                 return Ok(Value::Bool(true));
             }
+            // A Worker has no TCP sockets: say what does work there.
+            if cfg!(target_arch = "wasm32") {
+                let e = "SMTP is not available on the edge (Cloudflare Workers) build: a Worker \
+                         cannot connect to a mail server. Use delivery_method \"http\" \
+                         (Mailer → Over HTTP)"
+                    .to_string();
+                capture_for_inbox(&mail, mail_outbox::Status::Failed(e.clone()));
+                return Err(e);
+            }
             let mut rcpts = as_address_list(mail.get(&HashKey::String("to".into())));
             rcpts.extend(as_address_list(mail.get(&HashKey::String("cc".into()))));
             rcpts.extend(as_address_list(mail.get(&HashKey::String("bcc".into()))));
@@ -895,7 +934,7 @@ fn deliver_mail(args: &[Value]) -> Result<Value, String> {
                     return Err(e);
                 }
             };
-            match deliver_smtp(&cfg, &rcpts, &data) {
+            match smtp::deliver_smtp(&cfg, &rcpts, &data) {
                 Ok(()) => {
                     capture_for_inbox(&mail, mail_outbox::Status::Sent);
                     Ok(Value::Bool(true))

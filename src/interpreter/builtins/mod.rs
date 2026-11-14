@@ -95,7 +95,7 @@ pub mod http_class;
 pub mod http_log;
 pub mod i18n;
 pub mod image;
-#[cfg(feature = "mail")]
+#[cfg(all(feature = "mail", not(target_arch = "wasm32")))]
 pub mod imap;
 pub mod job_log;
 pub mod jobs;
@@ -162,7 +162,7 @@ pub mod pdf;
 #[cfg(feature = "pdf")]
 pub mod pdf_markdown;
 pub mod permit;
-#[cfg(feature = "mail")]
+#[cfg(all(feature = "mail", not(target_arch = "wasm32")))]
 pub mod pop3;
 pub mod primitives;
 pub mod push;
@@ -577,11 +577,11 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     rsa_key::register_rsa_key_builtins(env);
 
     // Register Pop3 email-reading class
-    #[cfg(feature = "mail")]
+    #[cfg(all(feature = "mail", not(target_arch = "wasm32")))]
     pop3::register_pop3_class(env);
 
     // Register Imap email-reading class
-    #[cfg(feature = "mail")]
+    #[cfg(all(feature = "mail", not(target_arch = "wasm32")))]
     imap::register_imap_class(env);
 
     // Register outbound-email (Mailer) native builtins. The `Mailer`/`Message`

@@ -13,6 +13,17 @@ use solilang::serve::edge::{self, EdgeRequest};
 /// an upload back, to prove bytes cross the edge entry point intact both ways.
 const PROBE_CONTROLLER: &str = r##"
 class ProbeController < Controller
+  # GET /probe/mail — Mailer over HTTP, from a handler on the edge
+  def mail(req)
+    Mailer.configure({"delivery_method": "http", "url": params["url"], "api_key": "k-edge", "from": "desk@example.com"})
+    if params["later"] == "1"
+      Message.new({"data": {"to": "bo@example.com", "subject": "Later from the edge", "text": "hi"}}).deliver_later
+    else
+      Mailer.deliver({"to": "ana@example.com", "subject": "From the edge", "text": "hi"})
+    end
+    render_json({"sent": true})
+  end
+
   # POST /probe
   def create(req)
     file = find_uploaded_file(req, "file")
@@ -95,6 +106,40 @@ const CRON_JOBS: [(&str, &str); 3] = [
     ),
 ];
 
+/// A local server for one HTTP request: its port, and the request it got.
+fn accept_one() -> (u16, std::thread::JoinHandle<String>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let received = std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = vec![0u8; 65536];
+        let mut got = Vec::new();
+        loop {
+            let n = stream.read(&mut buf).unwrap();
+            got.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&got);
+            if let Some(head_end) = text.find("\r\n\r\n") {
+                let length = text[..head_end]
+                    .lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                if got.len() >= head_end + 4 + length {
+                    break;
+                }
+            }
+        }
+        let _ = stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+        String::from_utf8_lossy(&got).into_owned()
+    });
+    (port, received)
+}
+
 /// A LiveView, as an app declares one: a template, `router_live`, a handler.
 const TALLY_TEMPLATE: &str = r#"<div class="tally">
   <span id="count"><%= count || 0 %></span>
@@ -141,7 +186,7 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
     for (path, contents) in files.iter_mut() {
         if path == "/app/config/routes.sl" {
             contents.extend_from_slice(
-                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\n",
+                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\nget(\"/probe/mail\", \"probe#mail\")\n",
             );
         }
     }
@@ -220,6 +265,7 @@ fn boots_a_mounted_app_and_answers_requests() {
             solilang::platform::env::set(vec![
                 ("SOLI_RUNTIME".to_string(), "cloudflare-workers".to_string()),
                 ("SOLI_VERSION".to_string(), "test".to_string()),
+                ("SOLI_HTTP_ALLOW_HOSTS".to_string(), "127.0.0.1".to_string()),
             ]);
             edge::boot(Path::new("/app")).expect("boot");
 
@@ -421,6 +467,29 @@ fn boots_a_mounted_app_and_answers_requests() {
             });
             assert_eq!(again.status, 304);
             assert!(again.body.is_empty());
+
+            // Mail over HTTP from a handler: the request reaches the provider.
+            let (port, received) = accept_one();
+            let (status, body) = get("/probe/mail", &format!("url=http://127.0.0.1:{port}/send"));
+            assert_eq!(status, 200, "{body}");
+            let request = received.join().unwrap();
+            assert!(request.starts_with("POST /send"), "{request}");
+            assert!(request.contains("\"subject\":\"From the edge\""), "{request}");
+            assert!(request.to_ascii_lowercase().contains("authorization: bearer k-edge"), "{request}");
+
+            // deliver_later on the edge is a Cloudflare Queue message; the
+            // Worker's queue() handler then sends it, through the same road.
+            let queued = sent.0.lock().unwrap().len();
+            let (port, received) = accept_one();
+            let (status, body) =
+                get("/probe/mail", &format!("url=http://127.0.0.1:{port}/send&later=1"));
+            assert_eq!(status, 200, "{body}");
+            let job = sent.0.lock().unwrap()[queued].1.clone();
+            assert_eq!(job["handler"], "__MailDelivery", "{job}");
+            let report = edge::run_job(&job.to_string(), 1);
+            assert_eq!(report["status"], "done", "{report}");
+            let request = received.join().unwrap();
+            assert!(request.contains("Later from the edge"), "{request}");
 
             // The instant-navigation script every page links to.
             let (status, body) = get("/__soli/nav.js", "v=1");

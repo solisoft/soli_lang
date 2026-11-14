@@ -4,6 +4,22 @@
 
 ### Added
 
+- **Mail on Cloudflare Workers.** The edge build now has the mailer: the edge
+  crate enables the `mail` feature (it built without it, so `Mailer` did not
+  exist there), and the Worker's request interpreter loads the mailer prelude
+  (only the boot interpreter did). `delivery_method: "http"` sends through
+  `fetch`; `deliver_later` becomes a Cloudflare Queue message whose
+  `__MailDelivery` job sends it. SMTP is native-only — its transport, rustls
+  and TCP, moved into a `smtp` module gated off wasm, as are the POP3 and IMAP
+  readers — and on the edge it raises pointing at `http`. `mail-builder` is
+  vendored (`vendor/mail-builder`, `[patch.crates-io]` in both manifests) with
+  `web_time` instead of `std::time`, whose clock panics in a Worker, and with
+  `gethostname` native-only. The runtime grows by ~210 KB. Checked on workerd
+  (wrangler 4.149): a handler's mail and attachment reach the provider,
+  `deliver_later` without a queue sends at once, SMTP is refused; natively,
+  `tests/edge_test.rs` sends from a handler and through a queued
+  `__MailDelivery` job. Card #869.
+
 - **Mail over HTTP.** `Mailer.configure({"delivery_method": "http", "url",
   "api_key", "api_key_header"?, "request"?})` (or `SOLI_MAIL_DELIVERY_METHOD=
   http`, `SOLI_MAIL_URL`, `SOLI_MAIL_API_KEY`, `SOLI_MAIL_API_KEY_HEADER`,

@@ -27,7 +27,7 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
     <ul>
       <li>Other WebSockets, server-sent events and streamed bodies (answered with a 501);
           LiveView <code>tick</code>, live queries and <code>live_update</code></li>
-      <li><code>Cron.schedule</code> (a <code>static cron</code> runs on a Cron Trigger), mailers that send,
+      <li><code>Cron.schedule</code> (a <code>static cron</code> runs on a Cron Trigger), SMTP (mailers send over HTTP),
           jobs delayed past 12 hours</li>
       <li>Resumable and direct uploads, files over about 20 MB, anything that writes files</li>
       <li>MySQL, SQLite files and the native SoliDB driver; transactions on D1</li>

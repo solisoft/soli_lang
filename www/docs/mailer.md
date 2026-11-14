@@ -352,6 +352,9 @@ With a hook, `url` is optional — the class knows its provider's endpoint, and 
 configured `url` is only the base it is handed. `nil` removes any http setting
 (`"request": nil`, `"api_key_header": nil`…).
 
+On Cloudflare Workers, `http` is the only road — a Worker cannot reach an SMTP
+server ([Mail on the edge](edge.md#mail-over-http)).
+
 Ready-made classes for Brevo, Resend, Postmark, SendGrid and Mailgun, each
 tested against the shape its API documents, are in
 [Mail over HTTP: one class per provider](blog/mail-over-http-provider-classes.md)

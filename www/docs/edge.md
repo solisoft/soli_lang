@@ -508,6 +508,28 @@ crons = ["15 3 * * *"]
 - **Locally**, `npx wrangler dev --test-scheduled` and
   `curl "http://127.0.0.1:8787/__scheduled?cron=15+3+*+*+*"` fire a trigger.
 
+## Mail: over HTTP
+
+A Worker cannot open a connection to a mail server, so `delivery_method:
+"smtp"` raises there, saying so. Mail goes out over HTTP instead: the
+[`http` delivery method](mailer.md#over-http) POSTs each message to a
+provider's API — as JSON, or reshaped by a
+[provider class](blog/mail-over-http-provider-classes.md) (Brevo, Resend,
+Postmark, SendGrid, Mailgun) — through the Worker's `fetch`.
+
+```soli
+# config/application.sl
+Mailer.configure({"delivery_method": "http", "request": "BrevoMail",
+                  "api_key": getenv("BREVO_API_KEY"), "from": "Acme <noreply@example.com>"})
+```
+
+Keep the key a secret (`npx wrangler secret put BREVO_API_KEY`). Your mailers do
+not change: `deliver_now` sends from the request, and `deliver_later` becomes a
+[Cloudflare Queues](#background-jobs-cloudflare-queues) message whose job sends
+it, retried like any job — without a `JOBS` binding it sends at once.
+Attachments travel base64 in the request, so keep them well under the
+~20 MB a request body allows.
+
 ## LiveView: sockets in Durable Objects
 
 A [LiveView](liveview.md) runs on the edge unchanged: the same template, the
@@ -555,7 +577,7 @@ WebSocket routes and server-sent events still answer `501`.
 | routes, controllers, `before_action`, middleware; [LiveView](#liveview-sockets-in-durable-objects) | other WebSockets; LiveView `tick`, live queries, `live_update` |
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
-| i18n from `config/locales`; background jobs through Cloudflare Queues; `static cron` through Cron Triggers | `Cron.schedule` and the cron table, sending mail |
+| i18n from `config/locales`; background jobs through Cloudflare Queues; `static cron` through Cron Triggers | `Cron.schedule` and the cron table, SMTP (mail goes [over HTTP](#mail-over-http)) |
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, the `Image` class, `System.run` |
