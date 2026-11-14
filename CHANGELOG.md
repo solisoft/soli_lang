@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.36.2] - 2026-11-14
+
 ### Fixed
 
 - **On the edge, any error raised in a handler panicked the Worker.** The
