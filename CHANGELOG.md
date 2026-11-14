@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.36.1] - 2026-11-14
+
 ### Added
 
 - **Read replicas.** A Postgres or MySQL connection takes `replicas = [...]`
@@ -35,10 +37,6 @@
   before. Found by `tests/read_replica_test.rs`, which serves an app against
   Postgres with a second database standing in for the replica; the replica
   scenario now also runs against MySQL (`mysql::replica_integration_tests`).
-
-## [2.36.1] - 2026-11-14
-
-### Added
 
 - **`soli new` ships the solidb skill.** A new app gets
   `.claude/skills/solidb/` (SKILL.md, six references, the curl helper): SDBQL,
