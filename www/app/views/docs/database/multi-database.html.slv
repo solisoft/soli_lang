@@ -796,6 +796,9 @@ current_role()   # "reading" or "writing"</code></pre>
         <li><strong class="text-white">Within a request</strong>, the first write sends the request's later reads to the primary. A <code>GET</code> that writes (a view counter, a <code>last_seen_at</code>) reads the primary from then on.</li>
         <li><strong class="text-white">Across requests</strong>, a request that wrote sets a <code>soli_db_primary</code> cookie (<code>HttpOnly</code>, <code>SameSite=Lax</code>, lasting <code>replica_delay</code> seconds), and that client's <code>GET</code>s run under <code>writing</code> until it expires &mdash; so the page a <code>POST</code> redirects to shows what was just saved. The cookie is not signed: forging it only sends that client's own reads to the primary.</li>
     </ul>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">A record read from a replica is saved field by field.</strong> Once a request has read a replica, <code>save</code> and <code>update</code> on a record write only the fields that changed since it was loaded, plus the ones <code>update(…)</code> / <code>save(…)</code> was given &mdash; not the whole record, whose other fields may be older than the primary's. A <code>GET</code> that loads a post and bumps its view counter therefore leaves a title edited a second ago alone. An in-place change to a nested Hash or Array is not tracked: reassign the field (<code>post.meta = meta</code>) in such a request so it is written. Requests that read no replica write whole records, as before.
+    </p>
     <p class="text-gray-400 mb-6">
         An explicit <code>with_role("reading")</code> block reads a replica even after a write: you asked for it. Unlike Rails, a write under <code>reading</code> is not refused &mdash; it goes to the primary.
     </p>

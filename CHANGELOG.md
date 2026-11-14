@@ -26,6 +26,15 @@
   each query `replica` or `primary` (`LoggedQuery.replica`, stamped from
   `roles::on_replica`); `dev_queries()` and the dev agent API's request
   detail carry `replica` too. An app without replicas shows none of it.
+- **A record read from a replica is saved field by field.** A request that
+  read a replica (`roles::read_a_replica`) has `save` / `update` write only the
+  fields changed since the record was loaded plus the ones given to
+  `update(…)` / `save(…)` (`register_instance::narrow_after_replica_read`).
+  Writing the whole record put the replica's lagging values back on the
+  primary: a GET that bumped a view counter reverted a title edited a moment
+  before. Found by `tests/read_replica_test.rs`, which serves an app against
+  Postgres with a second database standing in for the replica; the replica
+  scenario now also runs against MySQL (`mysql::replica_integration_tests`).
 
 ## [2.36.1] - 2026-11-14
 

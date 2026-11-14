@@ -181,7 +181,8 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                     }
                 }
                 drop(inst_ref2);
-                match write_update(&class_name, &collection, &key_str, &instance, map) {
+                let given = given_keys(&class_name, args);
+                match write_update(&class_name, &collection, &key_str, &instance, map, &given) {
                     Ok(Persisted::Stale) => {
                         instance.borrow_mut().set("_errors", stale_errors());
                         Ok(Value::Bool(false))
@@ -377,7 +378,8 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
 
                 if let Some(ref key_str) = key_opt {
                     // Update existing document
-                    match write_update(&class_name, &collection, key_str, &instance, map) {
+                    let given = given_keys(&class_name, args);
+                    match write_update(&class_name, &collection, key_str, &instance, map, &given) {
                         Ok(Persisted::Stale) => {
                             instance.borrow_mut().set("_errors", stale_errors());
                             Ok(Value::Bool(false))
@@ -1005,8 +1007,10 @@ fn write_update(
     collection: &str,
     key: &str,
     instance: &Rc<RefCell<Instance>>,
-    map: serde_json::Map<String, serde_json::Value>,
+    mut map: serde_json::Map<String, serde_json::Value>,
+    given: &[String],
 ) -> Result<Persisted, String> {
+    narrow_after_replica_read(instance, &mut map, given);
     if !super::registry::is_optimistic_lock(class_name) {
         return exec_update(collection, key, serde_json::Value::Object(map), true)
             .map(Persisted::Written);
@@ -1026,6 +1030,50 @@ fn write_update(
         }
         super::crud::LockedWrite::Stale => Ok(Persisted::Stale),
     }
+}
+
+/// The attribute names `update(hash)` / `save(hash)` was given, past
+/// mass-assignment filtering.
+fn given_keys(class_name: &str, args: &[Value]) -> Vec<String> {
+    let Some(hash @ Value::Hash(_)) = args.get(1) else {
+        return Vec::new();
+    };
+    match filter_mass_assign(class_name, hash) {
+        Value::Hash(pairs) => pairs
+            .borrow()
+            .keys()
+            .filter_map(|key| match key {
+                HashKey::String(name) if !name.starts_with('_') => Some(name.to_string()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// After this request read a read replica (`db::roles`), a loaded record may
+/// hold values older than the primary's: writing it whole would put them
+/// back. Keep only the fields that changed since it was loaded and the ones
+/// `update` / `save` was given. A record with no baseline (never loaded) is
+/// written whole, as before; so is every record of a request that read no
+/// replica.
+fn narrow_after_replica_read(
+    instance: &Rc<RefCell<Instance>>,
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    given: &[String],
+) {
+    if !crate::db::roles::read_a_replica() {
+        return;
+    }
+    let inst = instance.borrow();
+    if inst.original_fields.is_none() {
+        return;
+    }
+    let changed: std::collections::HashSet<String> = super::dirty::compute_changes(&inst)
+        .into_iter()
+        .map(|(name, _, _)| name.to_string())
+        .collect();
+    map.retain(|name, _| changed.contains(name) || given.iter().any(|g| g == name));
 }
 
 /// A `lock_version` as a record or a form carries it: an Int, or its digits

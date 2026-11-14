@@ -92,6 +92,9 @@ crate::request_local! {
     /// Whether the read running now resolved to a replica: the query log
     /// marks its entry (see [`on_replica`]).
     static ON_REPLICA: Cell<bool> = const { Cell::new(false) };
+    /// Whether this request (or job) has read a replica at all: its record
+    /// writes then send only what changed (see [`read_a_replica`]).
+    static READ_REPLICA: Cell<bool> = const { Cell::new(false) };
     /// Which replica this request reads, before `% replicas.len()`.
     static PICK: Cell<usize> = const { Cell::new(0) };
 }
@@ -148,6 +151,21 @@ pub fn clear() {
     WROTE.set(false);
     IN_REQUEST.set(false);
     READ_OP.set(false);
+    READ_REPLICA.set(false);
+}
+
+fn mark_replica_read() {
+    ON_REPLICA.set(true);
+    READ_REPLICA.set(true);
+}
+
+/// Whether this request has read a replica. A record it loaded may then hold
+/// values older than the primary's, so `save` / `update` write only the
+/// fields that changed (and the ones `update` was given) instead of the
+/// whole record, which would put the replica's lagging values back on the
+/// primary.
+pub fn read_a_replica() -> bool {
+    READ_REPLICA.get()
 }
 
 /// Start a request: `reading` for a `GET` or `HEAD` from a client that has not
@@ -302,7 +320,7 @@ pub fn replica_for(spec: &ConnectionSpec) -> Result<Option<Arc<ConnectionSpec>>,
             .map(|(_, _, resolved)| resolved.clone())
     });
     if let Some(resolved) = cached {
-        ON_REPLICA.set(true);
+        mark_replica_read();
         return Ok(Some(resolved));
     }
     let mut replica = spec.clone();
@@ -312,7 +330,7 @@ pub fn replica_for(spec: &ConnectionSpec) -> Result<Option<Arc<ConnectionSpec>>,
     RESOLVED.with(|r| {
         *r.borrow_mut() = Some((spec.name.clone(), url.to_string(), replica.clone()));
     });
-    ON_REPLICA.set(true);
+    mark_replica_read();
     Ok(Some(replica))
 }
 
@@ -359,6 +377,7 @@ mod tests {
             on_replica()
         });
         assert!(marked, "the query log can tell a replica read");
+        assert!(read_a_replica(), "the request remembers it read a replica");
         assert!(!on_replica());
         assert_eq!(summary().as_deref(), Some("reading"));
 

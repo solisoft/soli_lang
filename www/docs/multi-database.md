@@ -650,6 +650,16 @@ than its own writes:
   redirects to shows what was just saved. The cookie is not signed: forging it
   only sends that client's own reads to the primary.
 
+**A record read from a replica is saved field by field.** Once a request has
+read a replica, `save` and `update` on a record write only the fields that
+changed since it was loaded, plus the ones `update(…)` / `save(…)` was given —
+not the whole record, whose other fields may be older than the primary's. A
+`GET` that loads a post and bumps its view counter therefore leaves a title
+edited a second ago alone. An in-place change to a nested Hash or Array is not
+tracked (see dirty tracking): reassign the field (`post.meta = meta`) in such a
+request so it is written. Requests that read no replica write whole records, as
+before.
+
 An explicit `with_role("reading")` block reads a replica even after a write:
 you asked for it. Unlike Rails, a write under `reading` is not refused — it
 goes to the primary.
