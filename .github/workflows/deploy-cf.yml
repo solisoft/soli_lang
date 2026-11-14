@@ -134,8 +134,16 @@ jobs:
         run: |
           if [ -z "$TOKEN" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_API_TOKEN is not set: the Worker was built and checked, not deployed."
-            echo "Add a token scoped to the solisoft account as the CLOUDFLARE_API_TOKEN secret."
+            # An annotation and a summary, not just a log line: a run that
+            # stays green while the site stays on an old release (it did, for
+            # weeks) has to say so where it is seen.
+            echo "::warning title=cf.solisoft.net not deployed::CLOUDFLARE_API_TOKEN is not set: the Worker was built and checked on workerd, not deployed. Add a token scoped to the solisoft account as the CLOUDFLARE_API_TOKEN secret."
+            {
+              echo "### cf.solisoft.net was not deployed"
+              echo
+              echo "The Worker built and answered on workerd, but the \`CLOUDFLARE_API_TOKEN\` secret is not set, so the deploy step was skipped."
+              echo "Create a token scoped to the solisoft account (Workers Scripts: Edit, Workers Routes: Edit on solisoft.net, D1: Edit) and add it with \`gh secret set CLOUDFLARE_API_TOKEN\`."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
@@ -159,7 +167,8 @@ jobs:
             echo "attempt $i: $info"
             if echo "$info" | grep -q "\"version\":\"$want\""; then
               code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$SITE/")"
-              [ "$code" = "200" ] && { echo "$SITE serves Soli $want"; exit 0; }
+              live="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "$SITE/live")"
+              [ "$code" = "200" ] && [ "$live" = "200" ] && { echo "$SITE serves Soli $want"; exit 0; }
             fi
             sleep 5
           done
