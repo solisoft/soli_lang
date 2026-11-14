@@ -231,6 +231,10 @@ Details and query-side usage: indexes-search.md.
   `SOLIDB_TX_LOCK_WAIT_MS` (500 ms; `0` = refuse at once); a deadlock is
   refused at once; then `409` ("… (waited 500 ms)" / "… (deadlock: …)").
   Writes at `repeatable_read` / `serializable` do not wait.
+  Through 2.10.1 a waiter could be overtaken by later arrivals until its
+  wait ran out (a 409 under a steady stream of writers to one document);
+  after 2.10.1, arrivals queue behind a transaction that has waited a
+  quarter of the wait.
   Write contended documents in one order (ascending key) in every
   transaction: then none deadlocks, each waits its turn, none gets a `409`.
 - **Driver (MessagePack) transactions** are per connection: a write is staged
