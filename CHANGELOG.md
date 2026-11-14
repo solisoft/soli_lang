@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Edge docs: the Workers size limit is 64 MiB uncompressed.** Cloudflare
+  dropped the 3 MB (free) / 10 MB (paid) compressed caps: every plan now
+  limits the uncompressed bundle to 64 MiB, and nothing compressed. The edge
+  runtime measures 11,694,895 bytes (3,570,325 gzipped) on `main`, up from
+  8,897,846 (2,930,319) on 2026-10-10 — grown gradually across releases, no
+  single jump. `edge.md`, its site page and the comparison page said "2.9 MB
+  compressed, inside the free plan's 3 MB"; they now give the real size and
+  the real limit, and name startup time (1 second) as the Workers limit
+  that still applies. MySQL stays off the edge, now for want of driver glue rather than
+  size (`edge_build::NO_MYSQL`, `db::hyperdrive`).
+
 ## [2.36.1] - 2026-11-14
 
 ### Added

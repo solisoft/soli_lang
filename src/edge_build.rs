@@ -29,14 +29,15 @@ const ALWAYS_COPIED: usize = 5;
 
 /// The SQL dialects a Worker can carry a JavaScript driver for: the dialect's
 /// name in `src/sql.js`, its driver module, and the npm package it imports.
-/// Only Postgres: MySQL's `mysql2` weighs 410 KB compressed, more than the
-/// room left under the free plan's 3 MB.
+/// Only Postgres: MySQL has no driver glue yet. The size argument that kept
+/// it out (`mysql2`, 410 KB compressed, past the free plan's former 3 MB
+/// compressed cap) no longer holds: Workers now limit the uncompressed bundle,
+/// to 64 MiB on every plan.
 const SQL_DRIVERS: [(&str, &str, &str, &str); 1] = [("postgres", "sql-pg.js", "pg", "^8.13.0")];
 
 /// Why an app on MySQL cannot run on the edge build.
-const NO_MYSQL: &str = "MySQL is not available on the edge build (its driver would take the \
-                        Worker past the free plan's 3 MB): use postgres through Hyperdrive, \
-                        d1 or solidb";
+const NO_MYSQL: &str = "MySQL is not available on the edge build yet: use postgres through \
+                        Hyperdrive, d1 or solidb";
 
 /// The app directories the Worker needs at boot; `public/` is served as assets.
 const SOURCE_DIRS: [&str; 3] = ["app", "config", "lib"];

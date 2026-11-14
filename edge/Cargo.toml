@@ -21,7 +21,9 @@ console_error_panic_hook = "0.1"
 serde_json = "1"
 
 [profile.release]
-# Size over speed: the Workers limit applies to the compressed upload.
+# Size over speed. Workers cap the uncompressed bundle at 64 MiB on every plan
+# (no compressed cap any more), far above this runtime; the limit that still
+# applies to it is Worker startup, 1 second.
 opt-level = "z"
 lto = "fat"
 codegen-units = 1

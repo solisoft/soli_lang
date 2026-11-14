@@ -16,8 +16,9 @@
 //! when the request ends, so every statement of a request — a transaction's
 //! included — runs on the same connection.
 //!
-//! MySQL is not offered on the edge: its driver alone weighs 410 KB compressed,
-//! more than the room left under the free plan's 3 MB.
+//! MySQL is not offered on the edge: it has no driver glue yet. (Its driver's
+//! 410 KB compressed once mattered against a 3 MB compressed cap; Workers now
+//! limit the uncompressed bundle, to 64 MiB on every plan.)
 //!
 //! Natively nothing routes here, unless a test installs a [`SqlExecutor`] and
 //! the connection's URL is a `hyperdrive://` one.

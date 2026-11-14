@@ -40,8 +40,8 @@ The usual application, set up to deploy as a Worker:
 ## How it works
 
 - **The edge runtime** is the Soli library built for `wasm32-unknown-unknown`
-  without its server, CLI and native-only builtins: about 9 MB of
-  WebAssembly, 2.9 MB compressed. `scripts/build-edge.sh` builds it from the
+  without its server, CLI and native-only builtins: about 11.7 MB of
+  WebAssembly, 3.6 MB gzipped. `scripts/build-edge.sh` builds it from the
   `edge/` crate.
 - **`soli edge build`** writes a plain Wrangler project: the runtime, a small
   JavaScript host (`src/worker.js`), your app's source as `src/app.json`, and
@@ -343,9 +343,8 @@ first query, closed (handed back to Hyperdrive's pool) when it ends. What stays
 with `soli serve`: cron, `db:create` / `db:drop` and schema dumps (jobs run
 through [Cloudflare Queues](#background-jobs-cloudflare-queues)).
 
-Not available on the edge: **MySQL** — its JavaScript driver alone weighs
-410 KB compressed, more than the room left under the free plan's 3 MB —
-SQLite and the native SoliDB driver. The edge build uses D1, PostgreSQL or
+Not available on the edge: **MySQL** (no driver glue yet), SQLite and the
+native SoliDB driver. The edge build uses D1, PostgreSQL or
 SoliDB over HTTP.
 
 ## Files: uploads, images and video
@@ -406,8 +405,8 @@ ignored there, and `blur`, `bright` and `contrast` are approximations of what
 `soli serve` computes. Images bills transformations beyond its free monthly
 allowance.
 
-The Worker itself carries no image codecs: they would cost 260 KB of its
-compressed size for work Cloudflare Images does better. On the edge the `Image`
+The Worker itself carries no image codecs: they would add 260 KB (gzipped)
+to it for work Cloudflare Images does better. On the edge the `Image`
 class raises, saying so, and an uploader's storage-time transform (`format`,
 `max_width`, `max_height`) is skipped: the original is stored, and URL
 transforms resize it on read.
@@ -484,8 +483,10 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 - **A Rust panic ends the isolate.** wasm is `panic = abort`: where `soli serve`
   answers a 500 and keeps the worker, the edge build loses the isolate, and the
   next request boots a fresh one.
-- **Size.** About 2.9 MB compressed: inside the free plan's 3 MB, just. The
-  Postgres driver adds about 40 KB.
+- **Size.** About 11.7 MB uncompressed (3.6 MB gzipped), against Workers'
+  64 MiB limit on the uncompressed bundle, the same on the free and paid
+  plans; there is no compressed limit any more. The Workers limit that still
+  applies is startup time: 1 second. The Postgres driver adds about 40 KB.
 - **Sessions.** The default in-memory store lives as long as an isolate; use
   the `cookie` driver (`SOLI_SESSION_DRIVER=cookie` and a 32+ character
   `SOLI_SESSION_SECRET` secret).
