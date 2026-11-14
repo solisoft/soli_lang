@@ -273,12 +273,14 @@ pub fn insert_new(
 }
 
 pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
-    route_sql!(
-        super::postgres::get(table, key),
-        super::mysql::get(table, key),
-        super::sqlite::get(table, key),
-        super::d1::get(table, key)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::get(table, key),
+            super::mysql::get(table, key),
+            super::sqlite::get(table, key),
+            super::d1::get(table, key)
+        )
+    })
 }
 
 pub fn update(
@@ -326,21 +328,25 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
 }
 
 pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
-    route_sql!(
-        super::postgres::select(q),
-        super::mysql::select(q),
-        super::sqlite::select(q),
-        super::d1::select(q)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::select(q),
+            super::mysql::select(q),
+            super::sqlite::select(q),
+            super::d1::select(q)
+        )
+    })
 }
 
 pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Value>, String> {
-    route_sql!(
-        super::postgres::select_by_keys(table, keys),
-        super::mysql::select_by_keys(table, keys),
-        super::sqlite::select_by_keys(table, keys),
-        super::d1::select_by_keys(table, keys)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::select_by_keys(table, keys),
+            super::mysql::select_by_keys(table, keys),
+            super::sqlite::select_by_keys(table, keys),
+            super::d1::select_by_keys(table, keys)
+        )
+    })
 }
 
 pub fn select_json_text_in(
@@ -348,12 +354,14 @@ pub fn select_json_text_in(
     field: &str,
     values: &[String],
 ) -> Result<Vec<serde_json::Value>, String> {
-    route_sql!(
-        super::postgres::select_json_text_in(table, field, values),
-        super::mysql::select_json_text_in(table, field, values),
-        super::sqlite::select_json_text_in(table, field, values),
-        super::d1::select_json_text_in(table, field, values)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::select_json_text_in(table, field, values),
+            super::mysql::select_json_text_in(table, field, values),
+            super::sqlite::select_json_text_in(table, field, values),
+            super::d1::select_json_text_in(table, field, values)
+        )
+    })
 }
 
 pub fn group_by(
@@ -361,39 +369,47 @@ pub fn group_by(
     group_fields: &[String],
     aggs: &[GroupAgg],
 ) -> Result<Vec<serde_json::Value>, String> {
-    route_sql!(
-        super::postgres::group_by(q, group_fields, aggs),
-        super::mysql::group_by(q, group_fields, aggs),
-        super::sqlite::group_by(q, group_fields, aggs),
-        super::d1::group_by(q, group_fields, aggs)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::group_by(q, group_fields, aggs),
+            super::mysql::group_by(q, group_fields, aggs),
+            super::sqlite::group_by(q, group_fields, aggs),
+            super::d1::group_by(q, group_fields, aggs)
+        )
+    })
 }
 
 pub fn count(q: &ListQuery) -> Result<i64, String> {
-    route_sql!(
-        super::postgres::count(q),
-        super::mysql::count(q),
-        super::sqlite::count(q),
-        super::d1::count(q)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::count(q),
+            super::mysql::count(q),
+            super::sqlite::count(q),
+            super::d1::count(q)
+        )
+    })
 }
 
 pub fn exists(q: &ListQuery) -> Result<bool, String> {
-    route_sql!(
-        super::postgres::exists(q),
-        super::mysql::exists(q),
-        super::sqlite::exists(q),
-        super::d1::exists(q)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::exists(q),
+            super::mysql::exists(q),
+            super::sqlite::exists(q),
+            super::d1::exists(q)
+        )
+    })
 }
 
 pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
-    route_sql!(
-        super::postgres::aggregate(q, func, field),
-        super::mysql::aggregate(q, func, field),
-        super::sqlite::aggregate(q, func, field),
-        super::d1::aggregate(q, func, field)
-    )
+    super::roles::read(|| {
+        route_sql!(
+            super::postgres::aggregate(q, func, field),
+            super::mysql::aggregate(q, func, field),
+            super::sqlite::aggregate(q, func, field),
+            super::d1::aggregate(q, func, field)
+        )
+    })
 }
 
 pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
@@ -518,12 +534,20 @@ pub fn query_raw(
     sql: &str,
     params: &[super::sql_compile::SqlBind],
 ) -> Result<Vec<serde_json::Value>, String> {
-    route_sql!(
-        super::postgres::query_raw(sql, params),
-        super::mysql::query_raw(sql, params),
-        super::sqlite::query_raw(sql, params),
-        super::d1::query_raw(sql, params)
-    )
+    let run = || -> Result<Vec<serde_json::Value>, String> {
+        route_sql!(
+            super::postgres::query_raw(sql, params),
+            super::mysql::query_raw(sql, params),
+            super::sqlite::query_raw(sql, params),
+            super::d1::query_raw(sql, params)
+        )
+    };
+    // A plain SELECT may read a replica; anything else stays on the primary.
+    if super::roles::is_plain_select(sql) {
+        super::roles::read(run)
+    } else {
+        run()
+    }
 }
 
 /// Create or drop the database the active SQL connection points at. Returns a

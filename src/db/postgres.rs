@@ -1994,6 +1994,8 @@ mod integration_tests {
                     solidb_password: None,
                     solidb_api_key: None,
                     pool_size: Some(5),
+                    replicas: Vec::new(),
+                    replica_delay: None,
                 },
             );
         }
@@ -2611,6 +2613,8 @@ mod column_integration_tests {
                 solidb_password: None,
                 solidb_api_key: None,
                 pool_size: Some(5),
+                replicas: Vec::new(),
+                replica_delay: None,
             },
         );
         set_registry_for_tests(ConnectionRegistry {
@@ -2943,5 +2947,162 @@ mod column_integration_tests {
                 crate::db::skip_unless_required(&format!("postgres pool: {e}"));
             }
         });
+    }
+}
+
+/// Read replicas (`db::roles`), with a second database on the same server
+/// standing in for the replica: the same key holds a different title in each,
+/// so every read says which database answered it.
+#[cfg(test)]
+mod replica_integration_tests {
+    use super::*;
+    use crate::db::registry::{
+        clear_registry_override, registry_test_lock, set_registry_for_tests, ConnectionRegistry,
+        ConnectionSpec,
+    };
+    use crate::db::roles::{self, Role};
+    use crate::db::sql;
+    use std::collections::HashMap;
+
+    const TABLE: &str = "soli_replica_docs";
+
+    fn spec(name: &str, url: &str, replicas: Vec<String>) -> ConnectionSpec {
+        ConnectionSpec {
+            name: name.to_string(),
+            adapter: crate::db::Adapter::Postgres,
+            url: Some(url.to_string()),
+            solidb_host: None,
+            solidb_database: None,
+            solidb_username: None,
+            solidb_password: None,
+            solidb_api_key: None,
+            pool_size: Some(2),
+            replicas,
+            replica_delay: None,
+        }
+    }
+
+    /// Who answered a read of the shared key.
+    fn answered() -> String {
+        sql::get(TABLE, "k1")
+            .expect("get")
+            .and_then(|doc| {
+                doc.get("title")
+                    .and_then(|t| t.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "nothing".to_string())
+    }
+
+    #[test]
+    fn reads_under_reading_go_to_the_replica_and_writes_pin_the_primary() {
+        let _g = registry_test_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let url = crate::platform::env::var("PG_DATABASE_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
+            .ok()
+            .filter(|u| u.starts_with("postgres"))
+            .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
+        if let Err(e) = connect_direct(&url, |e| e.to_string()) {
+            crate::db::skip_unless_required(&format!("postgres not reachable at {url}: {e}"));
+            return;
+        }
+        let (maintenance, database) = split_database(&url).expect("database name");
+        let replica_db = format!("{database}_replica");
+        let replica_url = url.replacen(&format!("/{database}"), &format!("/{replica_db}"), 1);
+        let mut admin = connect_direct(&maintenance, |e| e.to_string()).expect("maintenance");
+        let _ = admin.batch_execute(&format!("CREATE DATABASE \"{replica_db}\""));
+
+        let connections: HashMap<_, _> = [
+            (
+                "primary".to_string(),
+                spec("primary", &url, vec![replica_url.clone()]),
+            ),
+            (
+                "standin".to_string(),
+                spec("standin", &replica_url, Vec::new()),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        set_registry_for_tests(ConnectionRegistry {
+            default: "primary".to_string(),
+            connections,
+            from_file: false,
+        });
+        struct Cleanup;
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                roles::clear();
+                clear_registry_override();
+            }
+        }
+        let _cleanup = Cleanup;
+
+        roles::clear();
+        let _ = sql::delete(TABLE, "k1");
+        sql::insert(TABLE, Some("k1"), serde_json::json!({"title": "primary"})).expect("primary");
+        crate::db::with_connection("standin", || {
+            let _ = sql::delete(TABLE, "k1");
+            sql::insert(TABLE, Some("k1"), serde_json::json!({"title": "replica"}))
+                .expect("replica")
+        });
+
+        // Outside a request: writing, the primary.
+        roles::clear();
+        assert_eq!(answered(), "primary");
+
+        // A GET reads the replica; a write sends the rest of it to the primary
+        // and leaves the sticky cookie.
+        roles::begin_request("GET", None);
+        assert_eq!(roles::current(), Role::Reading);
+        // The dev bar's query log says where each read went.
+        use crate::interpreter::builtins::model::query_log;
+        let log_was_on = query_log::is_enabled();
+        query_log::set_enabled(true);
+        query_log::clear();
+        assert_eq!(answered(), "replica");
+        let marked: Vec<bool> = query_log::snapshot().iter().map(|q| q.replica).collect();
+        query_log::set_enabled(log_was_on);
+        assert!(
+            marked.contains(&true),
+            "the replica read is marked: {marked:?}"
+        );
+        assert_eq!(roles::summary().as_deref(), Some("reading"));
+        sql::update(TABLE, "k1", serde_json::json!({"seen": true}), true).expect("update");
+        assert_eq!(answered(), "primary", "a request reads what it wrote");
+        assert!(
+            crate::interpreter::builtins::session::peek_response_cookie(roles::STICKY_COOKIE)
+                .is_some(),
+            "the client's next GETs read the primary for replica_delay"
+        );
+        // An explicit reading block still reads the replica.
+        assert_eq!(roles::scoped(Role::Reading, answered), "replica");
+
+        // The next GET from that client stays on the primary.
+        let until = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 5;
+        roles::begin_request("GET", Some(&format!("{}={until}", roles::STICKY_COOKIE)));
+        assert_eq!(roles::current(), Role::Writing);
+        assert_eq!(answered(), "primary");
+
+        // A POST reads the primary; with_role("reading") opts in.
+        roles::begin_request("POST", None);
+        assert_eq!(answered(), "primary");
+        assert_eq!(roles::scoped(Role::Reading, answered), "replica");
+
+        // A transaction keeps every read on the primary.
+        roles::begin_request("GET", None);
+        sql::begin_transaction(None).expect("begin");
+        let in_tx = answered();
+        sql::rollback_transaction().expect("rollback");
+        assert_eq!(in_tx, "primary");
+        assert_eq!(answered(), "replica");
+
+        crate::interpreter::builtins::session::clear_response_cookies();
     }
 }

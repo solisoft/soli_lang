@@ -77,6 +77,9 @@ pub struct DevBarContext {
     /// panel's self-row then shows `—` for the route.
     pub route: Option<String>,
     pub queries: Vec<LoggedQuery>,
+    /// The request's database role (`db::roles::summary`): `None` when no
+    /// connection has read replicas, so the db panel says nothing about them.
+    pub db_role: Option<String>,
     pub http_requests: Vec<LoggedHttpRequest>,
     /// One entry per SoliKV / Cache command (`KV.*` / `Cache.*`) in the
     /// order they fired. Feeds the dev bar's "kv" panel.
@@ -377,9 +380,10 @@ fn render_bar(ctx: &DevBarContext) -> String {
             rows.push_str(&format!(
                 "<li style=\"display:flex;align-items:flex-start;gap:0.75rem;\">\
 <span class=\"__solidev_q_dur\" style=\"flex:0 0 auto;color:#b8e986;width:5rem;text-align:right;font-variant-numeric:tabular-nums;\">{}</span>\
-<pre style=\"flex:1;white-space:pre-wrap;word-break:break-all;margin:0;color:#e6e6e6;font-family:inherit;cursor:text;user-select:all;\">{}</pre>\
+{}<pre style=\"flex:1;white-space:pre-wrap;word-break:break-all;margin:0;color:#e6e6e6;font-family:inherit;cursor:text;user-select:all;\">{}</pre>\
 </li>",
                 html_escape(&dur),
+                target_badge(ctx.db_role.is_some(), q.replica),
                 html_escape(&text),
             ));
         }
@@ -462,7 +466,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
         let plural = if q_count == 1 { "Y" } else { "IES" };
         format!(
             "<div id=\"__solidev_queries\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;max-height:40vh;overflow-y:auto;padding:0.5rem 0.75rem;\">\
-<div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">SOLIDB · {} QUER{} · {}</div>\
+<div style=\"margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">SOLIDB · {} QUER{} · {}{role}</div>\
 {n1_block}\
 {ungrouped_block}\
 <ol style=\"list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.375rem;font-size:11px;\">{}</ol>\
@@ -473,6 +477,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
             rows,
             n1_block = n1_block,
             ungrouped_block = ungrouped_block,
+            role = role_label(ctx.db_role.as_deref()),
         )
     };
 
@@ -1391,6 +1396,29 @@ pub(crate) fn detect_n_plus_one(
     result
 }
 
+/// Where a query went, for an app with read replicas: a `replica` or
+/// `primary` tag before its text. Nothing for an app without replicas, whose
+/// queries all go to the one database anyway.
+fn target_badge(has_replicas: bool, replica: bool) -> &'static str {
+    match (has_replicas, replica) {
+        (false, _) => "",
+        (true, true) => "<span style=\"flex:0 0 auto;color:#8be9fd;font-size:10px;letter-spacing:0.04em;width:3.75rem;\" title=\"ran on a read replica\">replica</span>",
+        (true, false) => "<span style=\"flex:0 0 auto;color:#8b949e;font-size:10px;letter-spacing:0.04em;width:3.75rem;\" title=\"ran on the primary\">primary</span>",
+    }
+}
+
+/// The request's database role in the db panel's header (` · ROLE READING`),
+/// or nothing without read replicas.
+fn role_label(role: Option<&str>) -> String {
+    match role {
+        Some(role) => format!(
+            " · <span style=\"color:#8be9fd;\" title=\"database role: GET/HEAD read replicas, everything else and with_role(&quot;writing&quot;) the primary\">ROLE {}</span>",
+            html_escape(&role.to_uppercase())
+        ),
+        None => String::new(),
+    }
+}
+
 fn fmt_duration_us(us: u64) -> String {
     if us < 1_000 {
         format!("{}µs", us)
@@ -1524,6 +1552,7 @@ mod tests {
             request_id: "test-req-id".to_string(),
             route: Some("home#index".to_string()),
             queries: vec![],
+            db_role: None,
             http_requests: vec![],
             phases: vec![],
             middlewares: vec![],
@@ -1587,6 +1616,7 @@ mod tests {
             bind_vars: None,
             duration_ms: dur_ms,
             grouped: false,
+            replica: false,
         }
     }
 
@@ -1740,6 +1770,32 @@ mod tests {
         assert!(detect_n_plus_one(&queries, 3).is_empty());
         // Same data flagged at threshold 2
         assert_eq!(detect_n_plus_one(&queries, 2).len(), 1);
+    }
+
+    #[test]
+    fn shows_the_role_and_where_each_query_ran_only_with_replicas() {
+        let html = "<html><body></body></html>";
+        let mut c = ctx("GET", "/posts");
+        let mut on_replica = q("SELECT doc FROM posts", 0.4);
+        on_replica.replica = true;
+        c.queries.push(on_replica);
+        c.queries.push(q("UPDATE posts SET doc = $1", 0.2));
+
+        let plain = inject_dev_bar(html, &c);
+        assert!(
+            !plain.contains("ROLE "),
+            "no replicas, nothing to say: {plain}"
+        );
+        assert!(!plain.contains(">replica<") && !plain.contains(">primary<"));
+
+        c.db_role = Some("reading · primary after a write".into());
+        let out = inject_dev_bar(html, &c);
+        assert!(
+            out.contains("ROLE READING · PRIMARY AFTER A WRITE"),
+            "{out}"
+        );
+        assert!(out.contains(">replica</span>"));
+        assert!(out.contains(">primary</span>"));
     }
 
     #[test]

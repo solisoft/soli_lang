@@ -159,6 +159,9 @@ pub(super) fn install(data: &RequestData) -> Scope {
     // No tenant until this request chooses one (`switch_tenant`): the worker
     // may last have served another site, whose database must not answer here.
     crate::db::tenancy::clear();
+    // Reads go to a replica only on a `GET`/`HEAD` from a client that has not
+    // just written (`db::roles`); the previous request's role goes either way.
+    crate::db::roles::begin_request(data.method.as_ref(), header_str(&data.headers, "cookie"));
     // Nor events or `after_commit` blocks a previous request left waiting on a
     // commit that never came.
     crate::interpreter::events::discard_pending();

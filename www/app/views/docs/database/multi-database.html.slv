@@ -154,6 +154,16 @@ url = "sqlite://db/analytics.sqlite3"   # a path, not a server</code></pre>
                     <td class="py-3 px-4">postgres, mysql, sqlite</td>
                     <td class="py-3 px-4">Pool size (default 10; 5 on SQLite, 1 for <code>:memory:</code>)</td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">replicas</code> / <code class="text-amber-300">replica</code></td>
+                    <td class="py-3 px-4">postgres, mysql</td>
+                    <td class="py-3 px-4">Read replica URLs (an array, or one string) &mdash; see <a href="#replicas" class="text-amber-400 hover:underline">Read replicas</a></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">replica_delay</code></td>
+                    <td class="py-3 px-4">postgres, mysql</td>
+                    <td class="py-3 px-4">Seconds a client that wrote keeps reading the primary (default 2)</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -721,6 +731,82 @@ soli db:drop --tenant acme</code></pre>
         Migrations name their connection (<code>connection "site"</code> as their first line). A plain <code>soli db:migrate up</code> runs the main database's and reports the site ones it left for <code>--tenant</code>; <code>--tenant KEY</code> runs only the site ones, on that site's database, which keeps its own <code>_migrations</code> table. Migrating every site is a loop over the keys. <code>--tenant</code> is refused on a connection without <code>{tenant}</code>, so it cannot act on the main database by mistake.
     </p>
 
+    <h2 id="replicas" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Read replicas</h2>
+    <p class="text-gray-400 mb-4">
+        A Postgres or MySQL connection can name read replicas. Reads go to them under the <strong class="text-white"><code>reading</code></strong> role; writes always go to the primary.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-toml text-sm">[connections.primary]
+adapter = "postgres"
+url = "${DATABASE_URL}"
+replicas = ["${REPLICA_URL:-}"]   # or replica = "…"; several are spread across requests
+replica_delay = 2                 # seconds a client that wrote keeps reading the primary</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">
+        An entry that expands to an empty string is ignored, so <code>${REPLICA_URL:-}</code> turns replicas off in an environment that has none. <code>replicas</code> on a SQLite, D1 or SoliDB connection is refused at boot, and so is any replica on the edge (Cloudflare Workers) build.
+    </p>
+
+    <h3 id="replica-roles" class="text-xl font-bold text-white mb-4 scroll-mt-24">Which role a query runs under</h3>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Where</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-semibold">Role</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4">A <code>GET</code> or <code>HEAD</code> request</td><td class="py-3 px-4"><code>reading</code></td></tr>
+                <tr><td class="py-3 px-4">The same, from a client that wrote less than <code>replica_delay</code> seconds ago</td><td class="py-3 px-4"><code>writing</code></td></tr>
+                <tr><td class="py-3 px-4">Any other request (<code>POST</code>, <code>PATCH</code>, <code>DELETE</code>, …)</td><td class="py-3 px-4"><code>writing</code></td></tr>
+                <tr><td class="py-3 px-4">Jobs, socket events, the console, migrations, scripts</td><td class="py-3 px-4"><code>writing</code></td></tr>
+                <tr><td class="py-3 px-4">Inside <code>with_role("reading") do … end</code> / <code>with_role("writing") do … end</code></td><td class="py-3 px-4">the one named</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4">
+        Under <code>reading</code>, only the reads of a model or query go to a replica: <code>all</code>, <code>find</code>, <code>find_by</code>, <code>where</code>, <code>count</code>, <code>exists</code>, the aggregates, <code>group_by</code>, eager loads, and <code>find_by_sql</code> with a statement that starts with <code>SELECT</code>. Everything else stays on the primary whatever the role: writes, DDL, migrations, <code>db.execute</code>, a <code>find_by_sql</code> that starts with <code>WITH</code>, and every read inside a transaction.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># GET /reports/monthly — a GET reads a replica already
+def monthly(req)
+  @orders = Order.where({ month: params["month"] }).all
+end
+
+# Reads that must see the latest data, even on a GET
+with_role("writing") do
+  @balance = Account.find(id).balance
+end
+
+# A slow report from a POST or a job, kept off the primary
+with_role("reading") do
+  @rows = Event.where({ kind: "signup" }).count
+end
+
+current_role()   # "reading" or "writing"</code></pre>
+        </div>
+    </div>
+
+    <h3 id="replica-lag" class="text-xl font-bold text-white mb-4 scroll-mt-24">Reading what you wrote</h3>
+    <p class="text-gray-400 mb-4">A replica lags the primary, so two rules keep a client from reading data older than its own writes:</p>
+    <ul class="list-disc list-inside space-y-2 text-gray-400 mb-4">
+        <li><strong class="text-white">Within a request</strong>, the first write sends the request's later reads to the primary. A <code>GET</code> that writes (a view counter, a <code>last_seen_at</code>) reads the primary from then on.</li>
+        <li><strong class="text-white">Across requests</strong>, a request that wrote sets a <code>soli_db_primary</code> cookie (<code>HttpOnly</code>, <code>SameSite=Lax</code>, lasting <code>replica_delay</code> seconds), and that client's <code>GET</code>s run under <code>writing</code> until it expires &mdash; so the page a <code>POST</code> redirects to shows what was just saved. The cookie is not signed: forging it only sends that client's own reads to the primary.</li>
+    </ul>
+    <p class="text-gray-400 mb-6">
+        An explicit <code>with_role("reading")</code> block reads a replica even after a write: you asked for it. Unlike Rails, a write under <code>reading</code> is not refused &mdash; it goes to the primary.
+    </p>
+    <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
+        <li><strong class="text-white">Picking a replica.</strong> Each request reads one replica, taken in turn across requests. A replica that does not answer fails its reads; it is not taken out of rotation on its own (put a proxy such as PgBouncer or ProxySQL in front if you need failover).</li>
+        <li><strong class="text-white">Pools.</strong> Each replica gets its own pool, sized by the connection's <code>pool</code>.</li>
+        <li><strong class="text-white">One database per tenant.</strong> Replica URLs may hold <code>{tenant}</code> too (<code>replicas = ["postgres://app@replica/site_{tenant}"]</code>); a tenant switched to with its own <code>url</code> reads its primary.</li>
+        <li><strong class="text-white"><code>grouped</code> blocks</strong> keep their reads under the role they were made under: <code>with_role</code> runs a block's deferred reads before the role changes.</li>
+        <li><strong class="text-white">Seeing it.</strong> Under <code>--dev</code>, the dev bar's DB panel shows the request's role in its header and tags each query <code>replica</code> or <code>primary</code>; <code>dev_queries()</code> entries carry <code>replica: true/false</code>.</li>
+    </ul>
+
     <h2 id="migrations" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Migrations</h2>
     <p class="text-gray-400 mb-4">
         Default migrate target is the <strong class="text-white">default</strong> connection.
@@ -743,7 +829,7 @@ soli db:migrate up --tenant acme      # one database per tenant: see above</code
     <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
         <li>Per-connection SoliDB hosts: registry stores fields; prefer one SoliDB endpoint + SQL secondaries for now. A SoliDB connection with one database per tenant (<code>database = "site_{tenant}"</code>) is the exception: its database follows the tenant, on the <code>SOLIDB_HOST</code> server.</li>
         <li>A string-form <code>.includes("rel", "…")</code> filter is SoliDB-only; use a hash on SQL</li>
-        <li>Read-replica / request-scoped roles are not v1</li>
+        <li>Read replicas: no automatic failover or replication-lag measurement; sharding (several primaries for one connection) is not supported</li>
         <li>pgvector on document tables remains SoliDB-only</li>
     </ul>
 

@@ -24,6 +24,8 @@ fn sqlite(name: &str, url: String) -> (String, ConnectionSpec) {
             solidb_password: None,
             solidb_api_key: None,
             pool_size: None,
+            replicas: Vec::new(),
+            replica_delay: None,
         },
     )
 }
@@ -494,6 +496,8 @@ fn solidb_tenants_get_a_database_each() {
                 solidb_password: None,
                 solidb_api_key: None,
                 pool_size: None,
+                replicas: Vec::new(),
+                replica_delay: None,
             },
         )
     };

@@ -1639,7 +1639,8 @@ end</code></pre>
   @queries = dev_queries()
 end
 
-# dev_queries() returns Array&lt;Hash&gt; with keys: query, bind_vars, duration_ms.
+# dev_queries() returns Array&lt;Hash&gt; with keys: query, bind_vars, duration_ms
+# (and replica: true/false when a connection has read replicas).
 # In production it always returns [] with zero overhead.</code></pre>
         </div>
     </div>

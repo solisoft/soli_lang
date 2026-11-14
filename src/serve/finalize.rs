@@ -272,6 +272,7 @@ fn dev_snapshot(f: &Finalizer, method: &str, path: &str, resp: &mut ResponseData
         request_id: request_id.clone(),
         route: route.clone(),
         queries: crate::interpreter::builtins::model::query_log::snapshot(),
+        db_role: crate::db::roles::summary(),
         http_requests: crate::interpreter::builtins::http_log::snapshot(),
         kv_calls: crate::interpreter::builtins::kv_log::snapshot(),
         phases: phase_log::snapshot(),

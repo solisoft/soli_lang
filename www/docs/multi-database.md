@@ -83,6 +83,8 @@ url = "sqlite://db/analytics.sqlite3"   # a path, not a server
 | `api_key` | solidb | Optional API key |
 | `url` | postgres, mysql, sqlite | Connection string (`postgres://…`, `mysql://…`) or a SQLite path (`sqlite://db/app.sqlite3`) — **required** for SQL |
 | `pool` | postgres, mysql, sqlite | Pool size (default 10; 5 on SQLite, forced to 1 for `:memory:`) |
+| `replicas` / `replica` | postgres, mysql | Read replica URLs (an array, or one string) — see [Read replicas](#read-replicas) |
+| `replica_delay` | postgres, mysql | Seconds a client that wrote keeps reading the primary (default 2) |
 
 > **SoliDB connections and env**: SoliDB requests are always routed to the
 > env-configured `SOLIDB_HOST` / `SOLIDB_DATABASE`. A `solidb` connection's
@@ -580,6 +582,94 @@ done
 `--tenant` is refused on a connection without `{tenant}`, so it cannot act on
 the main database by mistake.
 
+## Read replicas
+
+A Postgres or MySQL connection can name read replicas. Reads go to them under
+the **`reading`** role; writes always go to the primary.
+
+```toml
+[connections.primary]
+adapter = "postgres"
+url = "${DATABASE_URL}"
+replicas = ["${REPLICA_URL:-}"]   # or replica = "…"; several are spread across requests
+replica_delay = 2                 # seconds a client that wrote keeps reading the primary
+```
+
+An entry that expands to an empty string is ignored, so `${REPLICA_URL:-}`
+turns replicas off in an environment that has none. `replicas` on a SQLite,
+D1 or SoliDB connection is refused at boot, and so is any replica on the edge
+(Cloudflare Workers) build.
+
+### Which role a query runs under
+
+| Where | Role |
+|-------|------|
+| A `GET` or `HEAD` request | `reading` |
+| The same, from a client that wrote less than `replica_delay` seconds ago | `writing` |
+| Any other request (`POST`, `PATCH`, `DELETE`, …) | `writing` |
+| Jobs, socket events, the console, migrations, scripts | `writing` |
+| Inside `with_role("reading") do … end` / `with_role("writing") do … end` | the one named |
+
+Under `reading`, only the reads of a model or query go to a replica: `all`,
+`find`, `find_by`, `where`, `count`, `exists`, the aggregates, `group_by`,
+eager loads, and `find_by_sql` with a statement that starts with `SELECT`.
+Everything else stays on the primary whatever the role: writes, DDL,
+migrations, `db.execute`, a `find_by_sql` that starts with `WITH`, and every
+read inside a transaction.
+
+```soli
+# GET /reports/monthly — a GET reads a replica already
+def monthly(req)
+  @orders = Order.where({ month: params["month"] }).all
+end
+
+# Reads that must see the latest data, even on a GET
+with_role("writing") do
+  @balance = Account.find(id).balance
+end
+
+# A slow report from a POST or a job, kept off the primary
+with_role("reading") do
+  @rows = Event.where({ kind: "signup" }).count
+end
+
+current_role()   # "reading" or "writing"
+```
+
+### Reading what you wrote
+
+A replica lags the primary, so two rules keep a client from reading data older
+than its own writes:
+
+- **Within a request**, the first write sends the request's later reads to the
+  primary. A `GET` that writes (a view counter, a `last_seen_at`) reads the
+  primary from then on.
+- **Across requests**, a request that wrote sets a `soli_db_primary` cookie
+  (`HttpOnly`, `SameSite=Lax`, lasting `replica_delay` seconds), and that
+  client's `GET`s run under `writing` until it expires — so the page a `POST`
+  redirects to shows what was just saved. The cookie is not signed: forging it
+  only sends that client's own reads to the primary.
+
+An explicit `with_role("reading")` block reads a replica even after a write:
+you asked for it. Unlike Rails, a write under `reading` is not refused — it
+goes to the primary.
+
+### What to know
+
+- **Picking a replica.** Each request reads one replica, taken in turn across
+  requests. A replica that does not answer fails its reads; it is not taken out
+  of rotation on its own (put a proxy such as PgBouncer or ProxySQL in front if
+  you need failover).
+- **Pools.** Each replica gets its own pool, sized by the connection's `pool`.
+- **One database per tenant.** Replica URLs may hold `{tenant}` too
+  (`replicas = ["postgres://app@replica/site_{tenant}"]`); a tenant switched to
+  with its own `url` reads its primary.
+- **`grouped` blocks** keep their reads under the role they were made under:
+  `with_role` runs a block's deferred reads before the role changes.
+- **Seeing it.** Under `--dev`, the dev bar's DB panel shows the request's
+  role in its header and tags each query `replica` or `primary`;
+  `dev_queries()` entries carry `replica: true/false`.
+
 ## Migrations and multi-DB
 
 - Default migrate target is the **default** connection (env / `database.toml` `default`).
@@ -602,7 +692,8 @@ soli db:migrate down --connection legacy
 - **Column-aware models:** composite primary keys are still refused at boot.
   `encrypts` (text columns) and STI (string `type` column) are supported —
   see [Column-aware models](#column-aware-models-existing-databases).
-- **Request-scoped roles** (read replica / `writing`/`reading`) — not v1.
+- **Read replicas:** no automatic failover or replication-lag measurement;
+  sharding (several primaries for one connection) is not supported.
 - **pgvector** on document tables — SoliDB-only (or a later design).
 
 ## Compile-time features

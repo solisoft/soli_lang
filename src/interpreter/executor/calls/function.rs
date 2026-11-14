@@ -439,6 +439,12 @@ impl Interpreter {
                     return Ok(result);
                 }
             }
+            // `with_role("reading") do … end`: the block's reads may use a replica.
+            if name == "with_role" {
+                if let Some(result) = self.try_evaluate_with_role(arguments, span)? {
+                    return Ok(result);
+                }
+            }
             // `assert_raises(...)` runs its block and judges the error, so it
             // needs `&mut Interpreter` like `with_transaction`.
             if name == "assert_raises" {
@@ -2102,6 +2108,46 @@ impl Interpreter {
                 .map_err(general)?;
         crate::interpreter::builtins::tenancy::with_tenant(
             tenant,
+            || self.call_value(block, Vec::new(), span),
+            general,
+        )
+        .map(Some)
+    }
+
+    /// `with_role(role) do … end`: the block under that database role, then the
+    /// role before it. `Ok(None)` without a block, so the call reaches the
+    /// native and its usage error.
+    fn try_evaluate_with_role(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        let Some((last, leading)) = arguments.split_last() else {
+            return Ok(None);
+        };
+        let block_expr = match last {
+            Argument::Block(e) | Argument::Positional(e) => e,
+            _ => return Ok(None),
+        };
+        let mut values = Vec::with_capacity(leading.len());
+        for argument in leading {
+            match argument {
+                Argument::Positional(e) => values.push(self.evaluate(e)?),
+                _ => return Ok(None),
+            }
+        }
+        let block = self.evaluate(block_expr)?;
+        if !matches!(
+            block,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        ) {
+            return Ok(None);
+        }
+        let general = |message: String| RuntimeError::General { message, span };
+        let role =
+            crate::interpreter::builtins::db_roles::role_from_args(&values).map_err(general)?;
+        crate::interpreter::builtins::db_roles::with_role(
+            role,
             || self.call_value(block, Vec::new(), span),
             general,
         )

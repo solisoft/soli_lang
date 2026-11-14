@@ -140,6 +140,7 @@ pub mod mailer {
         Err("this soli was built without the `mail` feature".to_string())
     }
 }
+pub mod db_roles;
 pub mod markdown;
 pub mod math;
 pub mod metrics;
@@ -496,6 +497,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // switch_tenant / with_tenant / current_tenant (one database per tenant)
     tenancy::register_tenancy_builtins(env);
+    db_roles::register_db_role_builtins(env);
 
     // Math functions (range, abs, min, max, sqrt, pow)
     math::register_math_builtins(env);

@@ -383,9 +383,13 @@ headers    # View HTTP headers</code></pre>
                     <tr><td class="py-2 px-4 text-cyan-400 font-mono">query</td><td class="py-2 px-4 text-gray-400">String</td><td class="py-2 px-4 text-gray-400">The AQL sent to SoliDB</td></tr>
                     <tr><td class="py-2 px-4 text-cyan-400 font-mono">bind_vars</td><td class="py-2 px-4 text-gray-400">Hash | null</td><td class="py-2 px-4 text-gray-400">Bind variables, or <code>null</code> if none</td></tr>
                     <tr><td class="py-2 px-4 text-cyan-400 font-mono">duration_ms</td><td class="py-2 px-4 text-gray-400">Float</td><td class="py-2 px-4 text-gray-400">Wall-clock time in milliseconds</td></tr>
+                    <tr><td class="py-2 px-4 text-cyan-400 font-mono">replica</td><td class="py-2 px-4 text-gray-400">Bool</td><td class="py-2 px-4 text-gray-400">Whether it ran on a read replica &mdash; only present when a connection has <a href="/docs/database/multi-database#replicas" class="text-amber-400 hover:underline">read replicas</a></td></tr>
                 </tbody>
             </table>
         </div>
+        <p class="text-gray-400 mb-6">
+            With read replicas configured, the DB panel&rsquo;s header also shows the request&rsquo;s role (<code>ROLE READING</code>, <code>ROLE WRITING</code>, or <code>ROLE READING · PRIMARY AFTER A WRITE</code> once a write pinned the request to the primary), and each query is tagged <code>replica</code> or <code>primary</code>. An app without replicas shows neither.
+        </p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Controller Example</h3>
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">

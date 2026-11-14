@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Read replicas.** A Postgres or MySQL connection takes `replicas = [...]`
+  (or `replica = "…"`) and `replica_delay` in `config/database.toml`; SQLite,
+  D1, SoliDB and the edge build refuse them at boot. Every query runs under a
+  role (`db::roles`): a `GET`/`HEAD` request under `reading`, everything else —
+  other verbs, jobs, socket events, scripts — under `writing`. Under
+  `reading`, the reads of the SQL facade (`sql::get/select/count/exists/
+  aggregate/group_by/select_by_keys/select_json_text_in`, their `columns`
+  twins, and `query_raw` on a plain `SELECT`) run inside `roles::read`, and
+  `registry::with_active_spec` resolves the connection to a replica — pools
+  and per-URL caches split on their own, as for tenants. Writes, DDL,
+  migrations and reads inside a transaction never see one. The first write
+  (`crud::mark_durable_write` → `roles::note_write`) pins the request's later
+  reads to the primary and sets a `soli_db_primary` cookie that keeps the
+  client's `GET`s on `writing` for `replica_delay` seconds (default 2).
+  `with_role(role) do … end` (intercepted by both engines, like
+  `with_tenant`) and `current_role()` choose and read it; an explicit
+  `reading` block reads a replica even after a write. Requests pick replicas
+  in turn; replica URLs may hold `{tenant}`. The dev bar's DB panel shows
+  the request's role (`roles::summary`, in `DevBarContext.db_role`) and tags
+  each query `replica` or `primary` (`LoggedQuery.replica`, stamped from
+  `roles::on_replica`); `dev_queries()` and the dev agent API's request
+  detail carry `replica` too. An app without replicas shows none of it.
+
 ## [2.36.1] - 2026-11-14
 
 ### Added

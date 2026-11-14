@@ -165,6 +165,10 @@ impl TypeEnvironment {
         for name in ["switch_tenant", "with_tenant", "current_tenant"] {
             self.functions.insert(name.to_string(), Type::Any);
         }
+        // with_role(role) { … } and current_role(): read replicas.
+        for name in ["with_role", "current_role"] {
+            self.functions.insert(name.to_string(), Type::Any);
+        }
 
         // Domain events and after-commit work: publish(event),
         // subscribe(EventClass, handler), after_commit { … }.

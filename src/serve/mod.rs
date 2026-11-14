@@ -3132,6 +3132,8 @@ fn handle_websocket_event(
     // Nor does it start under the tenant of whatever this worker ran before;
     // a handler that serves one site's data chooses it (`switch_tenant`).
     crate::db::tenancy::clear();
+    // Nor under the `reading` role a `GET` left on this worker.
+    crate::db::roles::clear();
 
     // Clone connection_id for use in async spawns
     let connection_id = data.connection_id;

@@ -7,6 +7,7 @@
 # Decided shared for the coroutine scheduler (see the plan): the worker's tenant binding, the DB reactor and client (replaced when SoliDB yields), declaration-time stacks, the view-helper env (rebound per request by the scheduler), stats slots
 src/db/hash_filter.rs BIND_GENERATION
 src/db/sqlite.rs WAITING_SINCE
+src/db/roles.rs RESOLVED
 src/db/tenancy.rs RESOLVED
 src/interpreter/builtins/http_class.rs WORKER_DB_CLIENT
 src/interpreter/builtins/http_class.rs WORKER_DB_RT

@@ -163,6 +163,9 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "switch_tenant",
     "with_tenant",
     "current_tenant",
+    // Read replicas
+    "with_role",
+    "current_role",
     // Domain events and after-commit work
     "publish",
     "subscribe",

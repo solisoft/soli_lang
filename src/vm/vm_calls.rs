@@ -1363,6 +1363,7 @@ impl Vm {
             NativeSpecial::WithTransaction => return self.call_with_transaction_block(args, span),
             NativeSpecial::AfterCommit => return self.call_after_commit_block(args, span),
             NativeSpecial::WithTenant => return self.call_with_tenant_block(args, span),
+            NativeSpecial::WithRole => return self.call_with_role_block(args, span),
             _ => {}
         }
         // `Xml.build(…) do |root| … end`, `node.add(…) do |child| … end`.
@@ -1536,6 +1537,31 @@ impl Vm {
             .map_err(general)?;
         let result = crate::interpreter::builtins::tenancy::with_tenant(
             tenant,
+            || self.invoke_callable(block.clone(), &[], span),
+            general,
+        )?;
+        self.push(result);
+        Ok(())
+    }
+
+    /// `with_role(role) do … end` — see the tree-walker's `try_evaluate_with_role`.
+    fn call_with_role_block(
+        &mut self,
+        mut args: Vec<Value>,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if !args.last().is_some_and(Self::is_callable_block) {
+            return Err(RuntimeError::new(
+                "with_role(role) expects \"reading\" or \"writing\" and a block: with_role(\"reading\") do … end",
+                span,
+            ));
+        }
+        let block = args.pop().expect("checked above");
+        let general = |message: String| RuntimeError::General { message, span };
+        let role =
+            crate::interpreter::builtins::db_roles::role_from_args(&args).map_err(general)?;
+        let result = crate::interpreter::builtins::db_roles::with_role(
+            role,
             || self.invoke_callable(block.clone(), &[], span),
             general,
         )?;
@@ -5196,6 +5222,7 @@ result = [a, out, b, len("xyz")]
             ("with_transaction", NativeSpecial::WithTransaction),
             ("after_commit", NativeSpecial::AfterCommit),
             ("with_tenant", NativeSpecial::WithTenant),
+            ("with_role", NativeSpecial::WithRole),
             ("render_json", NativeSpecial::RenderJson),
             ("assert_raises", NativeSpecial::AssertRaises),
             ("defined", NativeSpecial::Defined),

@@ -3578,6 +3578,7 @@ Returns an `Array<Hash>` of queries executed during the **current request**. The
 | `query` | `String` | The statement sent to the database (AQL on SoliDB, SQL on the SQL adapters) |
 | `bind_vars` | `Hash` or `null` | The bind variables, or `null` if the query had none |
 | `duration_ms` | `Float` | Wall-clock time the query took, in milliseconds |
+| `replica` | `Bool` | Whether it ran on a read replica — only present when a connection has [read replicas](multi-database.md#read-replicas) |
 
 In production (without `--dev`), `dev_queries()` always returns an empty array — the executor skips logging entirely, so there's no overhead.
 

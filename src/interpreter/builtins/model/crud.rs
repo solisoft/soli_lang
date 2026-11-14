@@ -300,6 +300,9 @@ pub fn had_durable_commit() -> bool {
 /// written — inserting it twice. That became reachable once model writes ran on
 /// the VM at all.
 pub(crate) fn mark_durable_write() {
+    // Every write of the SQL facade comes through here: the rest of the
+    // request reads the primary (`db::roles`), inside a transaction too.
+    crate::db::roles::note_write();
     if !has_active_tx() {
         DURABLE_COMMIT.with(|c| c.set(true));
     }

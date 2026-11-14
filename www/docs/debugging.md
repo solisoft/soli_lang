@@ -268,6 +268,12 @@ noted, so a large document cannot flood the panel.
 | `query` | `String` | the statement sent |
 | `bind_vars` | `Hash \| null` | bind variables, or null |
 | `duration_ms` | `Float` | wall-clock milliseconds |
+| `replica` | `Bool` | whether it ran on a read replica — only present when a connection has [read replicas](multi-database.md#read-replicas) |
+
+With read replicas configured, the DB panel's header also shows the request's
+role (`ROLE READING`, `ROLE WRITING`, or `ROLE READING · PRIMARY AFTER A WRITE`
+once a write pinned the request to the primary), and each query is tagged
+`replica` or `primary`. An app without replicas shows neither.
 
 ```soli
 def index

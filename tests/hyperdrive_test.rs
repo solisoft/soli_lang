@@ -131,6 +131,8 @@ fn registry(adapter: Adapter) -> ConnectionRegistry {
             solidb_password: None,
             solidb_api_key: None,
             pool_size: None,
+            replicas: Vec::new(),
+            replica_delay: None,
         },
     );
     ConnectionRegistry {

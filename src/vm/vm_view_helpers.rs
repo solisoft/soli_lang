@@ -43,6 +43,7 @@ const INTERCEPTED_CALLS: &[&str] = &[
     "with_transaction",
     "after_commit",
     "with_tenant",
+    "with_role",
     "assert_raises",
     "event",
     "Factory",

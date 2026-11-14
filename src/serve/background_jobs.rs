@@ -319,6 +319,8 @@ fn worker_recv_loop(
         // A job is a request as far as the per-request logs go: nothing else
         // empties them on a pool thread, so they grew for its whole life.
         super::request_scope::forget_request_logs(template::is_dev_mode());
+        // A job writes and reads the primary (`db::roles`).
+        crate::db::roles::clear();
         if let Some(record) = &job.record {
             crate::jobs::engine::mark_started(&record.key);
         }

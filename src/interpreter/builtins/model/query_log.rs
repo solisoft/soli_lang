@@ -20,6 +20,9 @@ pub struct LoggedQuery {
     /// the dev bar can tell reads the author already grouped from ones that are
     /// still paying a round-trip each. See `batch::in_block`.
     pub grouped: bool,
+    /// Whether this query ran on a read replica (`db::roles`). Always
+    /// `false` for an app without replicas.
+    pub replica: bool,
 }
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -67,6 +70,7 @@ pub fn record(
     // produce two db spans per query (one accurate, one back-dated).
 
     let grouped = super::batch::in_block();
+    let replica = crate::db::roles::on_replica();
     LOG.with(|l| {
         let mut log = l.borrow_mut();
         if log.len() >= MAX_LOGGED_PER_REQUEST {
@@ -78,6 +82,7 @@ pub fn record(
             bind_vars,
             duration_ms,
             grouped,
+            replica,
         })
     });
 }

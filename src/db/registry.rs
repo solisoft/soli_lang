@@ -25,6 +25,13 @@ pub struct ConnectionSpec {
     pub solidb_password: Option<String>,
     pub solidb_api_key: Option<String>,
     pub pool_size: Option<usize>,
+    /// Read replicas of this connection (`replicas = [...]` in
+    /// `database.toml`): the URLs its reads go to under the `reading` role.
+    /// Postgres and MySQL only. See [`super::roles`].
+    pub replicas: Vec<String>,
+    /// Seconds a client that wrote keeps reading the primary
+    /// (`replica_delay`, default [`super::roles::DEFAULT_DELAY_SECS`]).
+    pub replica_delay: Option<u64>,
 }
 
 impl ConnectionSpec {
@@ -99,6 +106,7 @@ static REGISTRY_OVERRIDE: TenantCell<Arc<ConnectionRegistry>> = TenantCell::new(
 /// Install a registry for tests (or reload).
 pub fn set_registry_for_tests(reg: ConnectionRegistry) {
     super::tenancy::note_registry(&reg);
+    super::roles::note_registry(&reg);
     REGISTRY_OVERRIDE.set(Arc::new(reg));
 }
 
@@ -128,6 +136,7 @@ pub fn registry() -> Arc<ConnectionRegistry> {
             env_only_primary().expect("solidb default always works")
         });
         super::tenancy::note_registry(&reg);
+        super::roles::note_registry(&reg);
         Arc::new(reg)
     })
 }
@@ -136,6 +145,7 @@ pub fn registry() -> Arc<ConnectionRegistry> {
 pub fn init_from_app_path(app: &Path) -> Result<ConnectionRegistry, DbError> {
     let reg = load_registry(Some(app))?;
     super::tenancy::note_registry(&reg);
+    super::roles::note_registry(&reg);
     // Prefer filling the empty slot; fall back to the override when something
     // already loaded a registry for this application (a test, or an early
     // access before boot).
@@ -193,6 +203,8 @@ fn env_only_primary() -> Result<ConnectionRegistry, DbError> {
         solidb_password: crate::platform::env::var("SOLIDB_PASSWORD").ok(),
         solidb_api_key: crate::platform::env::var("SOLIDB_API_KEY").ok(),
         pool_size: cfg.pool_size,
+        replicas: Vec::new(),
+        replica_delay: None,
     };
     if spec.adapter.is_sql() && spec.url.is_none() {
         return Err(DbError::MissingDatabaseUrl {
@@ -303,6 +315,24 @@ fn load_from_toml(path: &Path) -> Result<ConnectionRegistry, DbError> {
                 adapter.as_str()
             )));
         }
+        let replicas = parse_replicas(table, adapter).map_err(|e| {
+            DbError::Backend(format!("{}: connections.{name}: {e}", path.display()))
+        })?;
+        let replica_delay = match table.get("replica_delay") {
+            None => None,
+            Some(v) => Some(
+                v.as_integer()
+                    .filter(|n| *n >= 0)
+                    .map(|n| n as u64)
+                    .ok_or_else(|| {
+                        DbError::Backend(format!(
+                            "{}: connections.{name}: replica_delay must be a whole number of \
+                             seconds (0 or more)",
+                            path.display()
+                        ))
+                    })?,
+            ),
+        };
 
         connections.insert(
             name.clone(),
@@ -316,6 +346,8 @@ fn load_from_toml(path: &Path) -> Result<ConnectionRegistry, DbError> {
                 solidb_password,
                 solidb_api_key,
                 pool_size,
+                replicas,
+                replica_delay,
             },
         );
     }
@@ -339,6 +371,48 @@ fn load_from_toml(path: &Path) -> Result<ConnectionRegistry, DbError> {
         connections,
         from_file: true,
     })
+}
+
+/// `replica = "…"` or `replicas = ["…", …]`: the read replicas of a
+/// connection. Refused on the adapters that have none to offer — SQLite and D1
+/// are one file or one binding, SoliDB routes its own reads — and on the edge
+/// build, where they are untested.
+fn parse_replicas(table: &toml::value::Table, adapter: Adapter) -> Result<Vec<String>, String> {
+    let mut replicas = Vec::new();
+    if let Some(one) = table.get("replica") {
+        let url = one
+            .as_str()
+            .ok_or("replica must be a URL string (or use replicas = [\"…\"])")?;
+        replicas.push(url.trim().to_string());
+    }
+    if let Some(many) = table.get("replicas") {
+        let list = many
+            .as_array()
+            .ok_or("replicas must be an array of URL strings")?;
+        for item in list {
+            let url = item
+                .as_str()
+                .ok_or("replicas must be an array of URL strings")?;
+            replicas.push(url.trim().to_string());
+        }
+    }
+    // `${REPLICA_URL:-}` left empty means "no replica in this environment".
+    replicas.retain(|url| !url.is_empty());
+    if replicas.is_empty() {
+        return Ok(replicas);
+    }
+    if !matches!(adapter, Adapter::Postgres | Adapter::Mysql) {
+        return Err(format!(
+            "read replicas are supported on postgres and mysql connections, not {}",
+            adapter.as_str()
+        ));
+    }
+    if cfg!(target_arch = "wasm32") {
+        return Err(
+            "read replicas are not available on the edge (Cloudflare Workers) build".to_string(),
+        );
+    }
+    Ok(replicas)
 }
 
 /// Expand `${VAR}` and `${VAR:-default}` in config text.
@@ -425,6 +499,13 @@ pub fn with_active_spec<R>(f: impl FnOnce(&ConnectionSpec) -> R) -> Result<R, St
     // The thread-local borrow ends before `f` runs, so `f` may itself switch
     // connections with `with_connection`.
     let spec = ACTIVE.with(|c| reg.resolve(c.borrow().as_deref()))?;
+    // A read under the `reading` role goes to a replica (see `roles`); one
+    // `is_empty` test for every connection that has none.
+    if !spec.replicas.is_empty() {
+        if let Some(replica) = super::roles::replica_for(spec)? {
+            return Ok(f(&replica));
+        }
+    }
     if super::tenancy::is_template(spec) {
         let resolved = super::tenancy::resolve(spec)?;
         return Ok(f(&resolved));
@@ -514,6 +595,57 @@ adapter = "solidb"
         .unwrap();
         let err = load_from_toml(&path).unwrap_err();
         assert!(err.message().contains("default"), "{}", err.message());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replicas_parse_on_postgres_and_are_refused_on_sqlite() {
+        let dir = tempfile_dir();
+        let path = dir.join("database.toml");
+        std::fs::write(
+            &path,
+            r#"
+[connections.primary]
+adapter = "postgres"
+url = "postgres://u@primary/app"
+replicas = ["postgres://u@r1/app", "postgres://u@r2/app", ""]
+replica_delay = 5
+[connections.reports]
+adapter = "mysql"
+url = "mysql://u@primary/reports"
+replica = "mysql://u@replica/reports"
+"#,
+        )
+        .unwrap();
+        let reg = load_from_toml(&path).unwrap();
+        let primary = reg.get("primary").unwrap();
+        assert_eq!(
+            primary.replicas,
+            vec!["postgres://u@r1/app", "postgres://u@r2/app"],
+            "an empty entry (an unset ${{VAR:-}}) is no replica"
+        );
+        assert_eq!(primary.replica_delay, Some(5));
+        assert_eq!(
+            reg.get("reports").unwrap().replicas,
+            vec!["mysql://u@replica/reports"]
+        );
+
+        std::fs::write(
+            &path,
+            r#"
+[connections.primary]
+adapter = "sqlite"
+url = "sqlite://db/app.sqlite3"
+replicas = ["sqlite://db/copy.sqlite3"]
+"#,
+        )
+        .unwrap();
+        let err = load_from_toml(&path).unwrap_err();
+        assert!(
+            err.message().contains("postgres and mysql"),
+            "{}",
+            err.message()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

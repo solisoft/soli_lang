@@ -2089,6 +2089,13 @@ pub fn register_model_builtins(env: &mut Environment) {
                     HashKey::String("duration_ms".into()),
                     Value::Float(entry.duration_ms),
                 );
+                // Where it ran, when the app has read replicas (`db::roles`).
+                if crate::db::roles::any_replicas() {
+                    hash.insert(
+                        HashKey::String("replica".into()),
+                        Value::Bool(entry.replica),
+                    );
+                }
                 arr.push(Value::Hash(Rc::new(RefCell::new(hash))));
             }
             Ok(Value::Array(Rc::new(RefCell::new(arr))))

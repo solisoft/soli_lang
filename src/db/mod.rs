@@ -34,6 +34,7 @@ pub mod pool;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod registry;
+pub mod roles;
 pub mod schema_dump;
 pub mod sql;
 pub mod sql_columns_compile;
@@ -282,6 +283,8 @@ mod tests {
                 solidb_password: None,
                 solidb_api_key: None,
                 pool_size: None,
+                replicas: Vec::new(),
+                replica_delay: None,
             },
         );
         ConnectionRegistry {
@@ -332,6 +335,8 @@ mod tests {
                 solidb_password: None,
                 solidb_api_key: None,
                 pool_size: None,
+                replicas: Vec::new(),
+                replica_delay: None,
             },
         );
         with_registry(reg, || {
@@ -359,6 +364,8 @@ mod tests {
                 solidb_password: None,
                 solidb_api_key: None,
                 pool_size: None,
+                replicas: Vec::new(),
+                replica_delay: None,
             },
         );
         with_registry(
@@ -393,6 +400,8 @@ mod tests {
                 solidb_password: None,
                 solidb_api_key: None,
                 pool_size: None,
+                replicas: Vec::new(),
+                replica_delay: None,
             },
         );
         with_registry(

@@ -105,12 +105,14 @@ pub fn get_row(
     schema: &Arc<TableSchema>,
     pk: &serde_json::Value,
 ) -> Result<Option<serde_json::Value>, String> {
-    route_cols!(
-        super::postgres::col_get(schema, pk),
-        super::mysql::col_get(schema, pk),
-        super::sqlite::col_get(schema, pk),
-        super::d1::col_get(schema, pk)
-    )
+    super::roles::read(|| {
+        route_cols!(
+            super::postgres::col_get(schema, pk),
+            super::mysql::col_get(schema, pk),
+            super::sqlite::col_get(schema, pk),
+            super::d1::col_get(schema, pk)
+        )
+    })
 }
 
 /// Insert a row, returning it as stored (so generated keys and defaults are visible).
@@ -154,40 +156,48 @@ pub fn delete_row(schema: &Arc<TableSchema>, pk: &serde_json::Value) -> Result<(
 }
 
 pub fn select_rows(q: &ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
-    route_cols!(
-        super::postgres::col_select(q),
-        super::mysql::col_select(q),
-        super::sqlite::col_select(q),
-        super::d1::col_select(q)
-    )
+    super::roles::read(|| {
+        route_cols!(
+            super::postgres::col_select(q),
+            super::mysql::col_select(q),
+            super::sqlite::col_select(q),
+            super::d1::col_select(q)
+        )
+    })
 }
 
 pub fn count(q: &ColumnQuery) -> Result<i64, String> {
-    route_cols!(
-        super::postgres::col_count(q),
-        super::mysql::col_count(q),
-        super::sqlite::col_count(q),
-        super::d1::col_count(q)
-    )
+    super::roles::read(|| {
+        route_cols!(
+            super::postgres::col_count(q),
+            super::mysql::col_count(q),
+            super::sqlite::col_count(q),
+            super::d1::col_count(q)
+        )
+    })
 }
 
 pub fn exists(q: &ColumnQuery) -> Result<bool, String> {
-    route_cols!(
-        super::postgres::col_exists(q),
-        super::mysql::col_exists(q),
-        super::sqlite::col_exists(q),
-        super::d1::col_exists(q)
-    )
+    super::roles::read(|| {
+        route_cols!(
+            super::postgres::col_exists(q),
+            super::mysql::col_exists(q),
+            super::sqlite::col_exists(q),
+            super::d1::col_exists(q)
+        )
+    })
 }
 
 /// Scalar aggregate over a numeric column. Returns JSON null for an empty set.
 pub fn aggregate(q: &ColumnQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
-    route_cols!(
-        super::postgres::col_aggregate(q, func, field),
-        super::mysql::col_aggregate(q, func, field),
-        super::sqlite::col_aggregate(q, func, field),
-        super::d1::col_aggregate(q, func, field)
-    )
+    super::roles::read(|| {
+        route_cols!(
+            super::postgres::col_aggregate(q, func, field),
+            super::mysql::col_aggregate(q, func, field),
+            super::sqlite::col_aggregate(q, func, field),
+            super::d1::col_aggregate(q, func, field)
+        )
+    })
 }
 
 /// Add `delta` to a numeric column of one row, atomically, returning the new
@@ -213,12 +223,14 @@ pub fn group_by(
     group_fields: &[String],
     aggs: &[super::sql_compile::GroupAgg],
 ) -> Result<Vec<serde_json::Value>, String> {
-    route_cols!(
-        super::postgres::col_group_by(q, group_fields, aggs),
-        super::mysql::col_group_by(q, group_fields, aggs),
-        super::sqlite::col_group_by(q, group_fields, aggs),
-        super::d1::col_group_by(q, group_fields, aggs)
-    )
+    super::roles::read(|| {
+        route_cols!(
+            super::postgres::col_group_by(q, group_fields, aggs),
+            super::mysql::col_group_by(q, group_fields, aggs),
+            super::sqlite::col_group_by(q, group_fields, aggs),
+            super::d1::col_group_by(q, group_fields, aggs)
+        )
+    })
 }
 
 /// Bulk delete. Returns the number of rows removed.

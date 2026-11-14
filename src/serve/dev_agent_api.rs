@@ -50,6 +50,7 @@ pub(crate) fn request_detail(ctx: &DevBarContext) -> Value {
                 "binds": q.bind_vars,
                 "duration_ms": q.duration_ms,
                 "grouped": q.grouped,
+                "replica": q.replica,
             })
         })
         .collect();
@@ -217,6 +218,7 @@ mod tests {
             bind_vars: Some(binds),
             duration_ms: 1.5,
             grouped: false,
+            replica: false,
         }
     }
 
@@ -229,6 +231,7 @@ mod tests {
             request_id: "r_1".into(),
             route: Some("orders#index".into()),
             queries,
+            db_role: None,
             http_requests: vec![],
             kv_calls: vec![],
             phases: vec![("middleware".into(), 10), ("view".into(), 300)],
