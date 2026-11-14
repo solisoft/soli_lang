@@ -17,6 +17,15 @@
   it, and a class that does not exist says so. Every delivery path now goes
   through the prelude's `__mail_send`, `deliver_later`'s synchronous fallback
   included, so the hook always applies. Card #867.
+- **Provider classes for mail over HTTP.** `examples/mail_providers/` holds a
+  request hook class per provider — BrevoMail, ResendMail, PostmarkMail,
+  SendgridMail, MailgunMail (the last through `messages.mime`, Basic auth) —
+  each checked by `tests/mail_http_test.rs` against the shape its API
+  reference documents, and published in the blog post "Mail over HTTP: one
+  class per provider". With a hook, `url` is optional (the class knows its
+  endpoint; a configured one is the base it gets), and `nil` clears any http
+  setting (`url`, `api_key`, `api_key_header`, `request`). Card #868, which
+  chose these classes over adapters built into the binary.
 
 - **`static cron` on Cloudflare Workers.** A job class's `static cron` runs on
   a Cloudflare Cron Trigger: `edge::boot` keeps the declarations

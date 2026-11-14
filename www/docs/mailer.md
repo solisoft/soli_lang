@@ -348,7 +348,14 @@ Mailer.configure({"delivery_method": "http", "request": "MailRequest", "url": "h
 
 The hook is a class name, not a lambda: the configuration is made once and read
 by every worker, and a closure cannot leave the interpreter it was made in.
-`"request": nil` removes it. The URL goes through the same SSRF check as the
+With a hook, `url` is optional — the class knows its provider's endpoint, and a
+configured `url` is only the base it is handed. `nil` removes any http setting
+(`"request": nil`, `"api_key_header": nil`…).
+
+Ready-made classes for Brevo, Resend, Postmark, SendGrid and Mailgun, each
+tested against the shape its API documents, are in
+[Mail over HTTP: one class per provider](blog/mail-over-http-provider-classes.md)
+(and `examples/mail_providers/` in the repository). The URL goes through the same SSRF check as the
 `HTTP` class (`SOLI_HTTP_ALLOW_HOSTS` opens a private host).
 
 ## Testing

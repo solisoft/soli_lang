@@ -787,11 +787,20 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
             ensure_no_crlf("api_key_header", &header)?;
             cfg.api_key_header = Some(header);
         }
-        // `"request": nil` takes the hook away again.
-        if matches!(
-            opts.get(&HashKey::String("request".into())),
-            Some(Value::Null)
-        ) {
+        // `nil` takes an http setting away again (`"request": nil` drops the
+        // hook, `"api_key_header": nil` goes back to Authorization: Bearer).
+        let cleared =
+            |key: &str| matches!(opts.get(&HashKey::String(key.into())), Some(Value::Null));
+        if cleared("url") {
+            cfg.url = None;
+        }
+        if cleared("api_key") {
+            cfg.api_key = None;
+        }
+        if cleared("api_key_header") {
+            cfg.api_key_header = None;
+        }
+        if cleared("request") {
             cfg.request_hook = None;
         }
         if let Some(hook) = hash_get(&opts, "request").and_then(|v| as_string(&v)) {
@@ -1003,11 +1012,19 @@ type MailRequest = (String, Vec<(String, String)>, serde_json::Value);
 /// The request the `http` method makes without a hook: the envelope as JSON,
 /// POSTed to `url`, the key in `Authorization: Bearer` or `api_key_header`.
 fn standard_request(cfg: &MailerConfig, mail: &HashPairs) -> Result<MailRequest, String> {
-    let url = cfg.url.clone().ok_or_else(|| {
-        "Mailer is not configured: the http delivery method needs a url \
-         (Mailer.configure({\"url\": …}) or SOLI_MAIL_URL)"
-            .to_string()
-    })?;
+    // A hook may bring its own URL (a provider class knows its endpoint): the
+    // configured one, if any, is then only the base it is handed.
+    let url = match (&cfg.url, &cfg.request_hook) {
+        (Some(url), _) => url.clone(),
+        (None, Some(_)) => String::new(),
+        (None, None) => {
+            return Err(
+                "Mailer is not configured: the http delivery method needs a url \
+                 (Mailer.configure({\"url\": …}) or SOLI_MAIL_URL)"
+                    .to_string(),
+            )
+        }
+    };
     let mut headers = vec![
         ("Content-Type".to_string(), "application/json".to_string()),
         ("Accept".to_string(), "application/json".to_string()),
@@ -1122,6 +1139,7 @@ fn mailer_http_send(args: &[Value]) -> Result<Value, String> {
     let request = request.borrow();
     let url = hash_get(&request, "url")
         .and_then(|v| as_string(&v))
+        .filter(|url| !url.trim().is_empty())
         .ok_or("the mail request hook returned no url")?;
     let mut headers = Vec::new();
     if let Some(Value::Hash(h)) = request.get(&HashKey::String("headers".into())) {

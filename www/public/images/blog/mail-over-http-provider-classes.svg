@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="A Soli mailer hands one JSON envelope to a provider class, which reshapes it for Brevo, Resend, Postmark, SendGrid or Mailgun.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#22d3ee"/>
+    </marker>
+  </defs>
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="48" y="74" font-family="Inter, system-ui, sans-serif" font-size="40" font-weight="800" fill="#f3f4f6">Mail over HTTP</text>
+  <text x="48" y="112" font-family="Inter, system-ui, sans-serif" font-size="22" fill="#9ca3af">One envelope, one class per provider</text>
+
+  <!-- the mailer -->
+  <rect x="48" y="236" width="180" height="96" rx="12" fill="#111827" stroke="#334155"/>
+  <text x="138" y="276" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="700" fill="#f3f4f6">Mailer</text>
+  <text x="138" y="304" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="14" fill="#9ca3af">deliver_now</text>
+
+  <line x1="232" y1="284" x2="296" y2="284" stroke="#22d3ee" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- the envelope -->
+  <rect x="304" y="196" width="232" height="176" rx="12" fill="#0b1220" stroke="#22d3ee"/>
+  <text x="324" y="228" font-family="JetBrains Mono, monospace" font-size="15" fill="#22d3ee">POST {</text>
+  <text x="340" y="254" font-family="JetBrains Mono, monospace" font-size="14" fill="#cbd5e1">"from", "to", "cc",</text>
+  <text x="340" y="278" font-family="JetBrains Mono, monospace" font-size="14" fill="#cbd5e1">"subject", "text",</text>
+  <text x="340" y="302" font-family="JetBrains Mono, monospace" font-size="14" fill="#cbd5e1">"html", "headers",</text>
+  <text x="340" y="326" font-family="JetBrains Mono, monospace" font-size="14" fill="#cbd5e1">"attachments", "mime"</text>
+  <text x="324" y="352" font-family="JetBrains Mono, monospace" font-size="15" fill="#22d3ee">}</text>
+
+  <!-- the hook -->
+  <line x1="540" y1="284" x2="600" y2="284" stroke="#22d3ee" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="608" y="244" width="140" height="80" rx="12" fill="#111827" stroke="#f59e0b"/>
+  <text x="678" y="278" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="700" fill="#fbbf24">request</text>
+  <text x="678" y="302" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13" fill="#9ca3af">(mail, req)</text>
+
+  <!-- the providers -->
+  <g font-family="Inter, system-ui, sans-serif" font-size="17" font-weight="600" fill="#e5e7eb">
+    <line x1="752" y1="284" x2="800" y2="166" stroke="#475569" stroke-width="2"/>
+    <line x1="752" y1="284" x2="800" y2="226" stroke="#475569" stroke-width="2"/>
+    <line x1="752" y1="284" x2="800" y2="286" stroke="#475569" stroke-width="2"/>
+    <line x1="752" y1="284" x2="800" y2="346" stroke="#475569" stroke-width="2"/>
+    <line x1="752" y1="284" x2="800" y2="406" stroke="#475569" stroke-width="2"/>
+    <rect x="800" y="146" width="176" height="40" rx="20" fill="#0f172a" stroke="#334155"/><text x="888" y="172" text-anchor="middle">Brevo</text>
+    <rect x="800" y="206" width="176" height="40" rx="20" fill="#0f172a" stroke="#334155"/><text x="888" y="232" text-anchor="middle">Resend</text>
+    <rect x="800" y="266" width="176" height="40" rx="20" fill="#0f172a" stroke="#334155"/><text x="888" y="292" text-anchor="middle">Postmark</text>
+    <rect x="800" y="326" width="176" height="40" rx="20" fill="#0f172a" stroke="#334155"/><text x="888" y="352" text-anchor="middle">SendGrid</text>
+    <rect x="800" y="386" width="176" height="40" rx="20" fill="#0f172a" stroke="#334155"/><text x="888" y="412" text-anchor="middle">Mailgun</text>
+  </g>
+
+  <text x="48" y="520" font-family="JetBrains Mono, monospace" font-size="16" fill="#64748b">Mailer.configure({"delivery_method": "http", "request": "BrevoMail", "api_key": …})</text>
+</svg>

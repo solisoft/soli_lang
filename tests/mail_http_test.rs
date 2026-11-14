@@ -9,10 +9,15 @@ use std::net::TcpListener;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
+/// The mailer configuration is one per application, shared by every thread:
+/// the tests take turns.
+static CONFIG: Mutex<()> = Mutex::new(());
+
 struct Received {
     path: String,
     headers: Vec<(String, String)>,
     body: serde_json::Value,
+    raw: String,
 }
 
 impl Received {
@@ -66,6 +71,7 @@ fn serve(answers: Vec<(u16, &'static str)>) -> (u16, mpsc::Receiver<Received>) {
                 path,
                 headers,
                 body: serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null),
+                raw: String::from_utf8_lossy(&body).into_owned(),
             });
         }
     });
@@ -93,6 +99,7 @@ fn next(rx: &mpsc::Receiver<Received>) -> Received {
 
 #[test]
 fn mail_goes_out_over_http() {
+    let _turn = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var("SOLI_HTTP_ALLOW_HOSTS", "127.0.0.1");
     let (port, rx) = serve(vec![
         (200, "{}"),
@@ -106,7 +113,7 @@ fn mail_goes_out_over_http() {
     // 1. The standard envelope, the key as a bearer token.
     run(&format!(
         r#"
-Mailer.configure({{"delivery_method": "http", "url": "{url}", "api_key": "sk_live_secret", "from": "Desk <desk@example.com>"}})
+Mailer.configure({{"delivery_method": "http", "url": "{url}", "api_key": "sk_live_secret", "api_key_header": nil, "request": nil, "from": "Desk <desk@example.com>"}})
 Mailer.deliver({{
   "to": ["Ana <ana@example.com>"], "subject": "Hello", "text": "Hi Ana", "html": "<p>Hi Ana</p>",
   "headers": {{"X-Campaign": "welcome"}},
@@ -234,4 +241,163 @@ Mailer.deliver({{"to": "fay@example.com", "subject": "x", "text": "y"}})
     let got = next(&rx);
     assert_eq!(got.path, "/send/v3/smtp/email");
     assert_eq!(got.body["to"][0]["email"], "eve@example.com");
+}
+
+/// One rich mail through a provider class from examples/mail_providers.
+fn through_provider(class: &str, file: &str, rx: &mpsc::Receiver<Received>, port: u16) -> Received {
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples/mail_providers")
+            .join(file),
+    )
+    .unwrap();
+    run(&format!(
+        r#"{source}
+Mailer.configure({{"delivery_method": "http", "url": "http://127.0.0.1:{port}", "api_key": "key-{class}", "api_key_header": nil, "request": "{class}", "from": "Desk <desk@example.com>"}})
+Mailer.deliver({{
+  "to": ["Ana Vieira <ana@example.com>", "bo@example.com"], "cc": ["cy@example.com"], "bcc": ["dee@example.com"],
+  "reply_to": "Help <help@example.com>", "subject": "Your order", "text": "Plain", "html": "<p>Rich</p>",
+  "headers": {{"X-Order": "42"}},
+  "attachments": [{{"filename": "invoice.txt", "content": "hello", "content_type": "text/plain"}}]
+}})
+"#
+    ))
+    .unwrap_or_else(|e| panic!("{class}: {e}"));
+    next(rx)
+}
+
+#[test]
+fn the_provider_classes_speak_each_api() {
+    let _turn = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var("SOLI_HTTP_ALLOW_HOSTS", "127.0.0.1");
+    let (port, rx) = serve(vec![]);
+
+    // Brevo: objects for addresses, its own key header, `attachment` (singular).
+    let got = through_provider("BrevoMail", "brevo_mail.sl", &rx, port);
+    assert_eq!(got.path, "/v3/smtp/email");
+    assert_eq!(got.header("api-key"), Some("key-BrevoMail"));
+    let b = &got.body;
+    assert_eq!(
+        b["sender"],
+        serde_json::json!({"name": "Desk", "email": "desk@example.com"})
+    );
+    assert_eq!(
+        b["to"][0],
+        serde_json::json!({"name": "Ana Vieira", "email": "ana@example.com"})
+    );
+    assert_eq!(b["to"][1], serde_json::json!({"email": "bo@example.com"}));
+    assert_eq!(b["cc"][0]["email"], "cy@example.com");
+    assert_eq!(b["bcc"][0]["email"], "dee@example.com");
+    assert_eq!(
+        b["replyTo"],
+        serde_json::json!({"name": "Help", "email": "help@example.com"})
+    );
+    assert_eq!(
+        (&b["textContent"], &b["htmlContent"]),
+        (
+            &serde_json::json!("Plain"),
+            &serde_json::json!("<p>Rich</p>")
+        )
+    );
+    assert_eq!(b["headers"]["X-Order"], "42");
+    assert_eq!(
+        b["attachment"][0],
+        serde_json::json!({"name": "invoice.txt", "content": "aGVsbG8="})
+    );
+
+    // Resend: the envelope's own names, strings for addresses, Bearer.
+    let got = through_provider("ResendMail", "resend_mail.sl", &rx, port);
+    assert_eq!(got.path, "/emails");
+    assert_eq!(got.header("authorization"), Some("Bearer key-ResendMail"));
+    let b = &got.body;
+    assert_eq!(b["from"], "Desk <desk@example.com>");
+    assert_eq!(
+        b["to"],
+        serde_json::json!(["Ana Vieira <ana@example.com>", "bo@example.com"])
+    );
+    assert_eq!(b["reply_to"], "Help <help@example.com>");
+    assert_eq!(
+        b["attachments"][0],
+        serde_json::json!({"filename": "invoice.txt", "content": "aGVsbG8="})
+    );
+
+    // Postmark: PascalCase, comma-joined recipients, its token header.
+    let got = through_provider("PostmarkMail", "postmark_mail.sl", &rx, port);
+    assert_eq!(got.path, "/email");
+    assert_eq!(
+        got.header("x-postmark-server-token"),
+        Some("key-PostmarkMail")
+    );
+    let b = &got.body;
+    assert_eq!(b["To"], "Ana Vieira <ana@example.com>, bo@example.com");
+    assert_eq!(
+        (&b["Cc"], &b["Bcc"]),
+        (
+            &serde_json::json!("cy@example.com"),
+            &serde_json::json!("dee@example.com")
+        )
+    );
+    assert_eq!(b["TextBody"], "Plain");
+    assert_eq!(b["HtmlBody"], "<p>Rich</p>");
+    assert_eq!(
+        b["Headers"],
+        serde_json::json!([{"Name": "X-Order", "Value": "42"}])
+    );
+    assert_eq!(
+        b["Attachments"][0],
+        serde_json::json!({"Name": "invoice.txt", "Content": "aGVsbG8=", "ContentType": "text/plain"})
+    );
+
+    // SendGrid: personalizations, content parts plain then html.
+    let got = through_provider("SendgridMail", "sendgrid_mail.sl", &rx, port);
+    assert_eq!(got.path, "/v3/mail/send");
+    assert_eq!(got.header("authorization"), Some("Bearer key-SendgridMail"));
+    let b = &got.body;
+    assert_eq!(
+        b["personalizations"][0]["to"][0],
+        serde_json::json!({"name": "Ana Vieira", "email": "ana@example.com"})
+    );
+    assert_eq!(
+        b["personalizations"][0]["bcc"][0]["email"],
+        "dee@example.com"
+    );
+    assert_eq!(
+        b["from"],
+        serde_json::json!({"name": "Desk", "email": "desk@example.com"})
+    );
+    assert_eq!(
+        b["content"],
+        serde_json::json!([{"type": "text/plain", "value": "Plain"}, {"type": "text/html", "value": "<p>Rich</p>"}])
+    );
+    assert_eq!(b["attachments"][0]["type"], "text/plain");
+
+    // Mailgun: Basic auth, multipart with every recipient and the MIME.
+    std::env::set_var("MAILGUN_DOMAIN", "mg.example.com");
+    let got = through_provider("MailgunMail", "mailgun_mail.sl", &rx, port);
+    assert_eq!(got.path, "/v3/mg.example.com/messages.mime");
+    use base64::Engine;
+    let basic = base64::engine::general_purpose::STANDARD.encode("api:key-MailgunMail");
+    assert_eq!(
+        got.header("authorization"),
+        Some(format!("Basic {basic}").as_str())
+    );
+    assert!(got
+        .header("content-type")
+        .unwrap()
+        .starts_with("multipart/form-data; boundary="));
+    let raw = got.raw.as_str();
+    for rcpt in [
+        "Ana Vieira <ana@example.com>",
+        "bo@example.com",
+        "cy@example.com",
+        "dee@example.com",
+    ] {
+        assert!(
+            raw.contains(&format!("name=\"to\"\r\n\r\n{rcpt}\r\n")),
+            "{rcpt} in {raw}"
+        );
+    }
+    assert!(raw.contains("filename=\"message.mime\""), "{raw}");
+    assert!(raw.contains("Subject: Your order"), "{raw}");
+    assert!(raw.contains("invoice.txt"), "{raw}");
 }
