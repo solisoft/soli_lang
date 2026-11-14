@@ -120,7 +120,10 @@ jobs:
             done
             # The trigger wrangler.toml lists runs HourlyTallyJob; /d1 shows its run.
             curl -fs -m 20 -o /dev/null "http://127.0.0.1:8787/__scheduled?cron=0+*+*+*+*" || status=1
-            if curl -fs -m 10 http://127.0.0.1:8787/d1 | grep -q "Last hourly run"; then
+            # Read the page first: under pipefail, `curl | grep -q` fails when
+            # grep stops at its match and curl gets SIGPIPE.
+            d1="$(curl -fs -m 10 http://127.0.0.1:8787/d1 || true)"
+            if grep -q "Last hourly run" <<<"$d1"; then
               echo "cron 0 * * * * -> HourlyTallyJob ran"
             else
               echo "the Cron Trigger did not run HourlyTallyJob" >&2
