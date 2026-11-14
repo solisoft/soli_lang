@@ -213,9 +213,15 @@ Details and query-side usage: indexes-search.md.
   `/cursor` spelling) is dropped without an error, and an unbound variable in a
   `FILTER` matches nothing — a filtered `UPDATE` sent that way updates nothing
   and reports success (observed on 2.9.0). Send `bind_vars`, which every
-  version reads. Its writes are staged; its reads see committed data, not the
-  transaction's own writes — except, from 2.9.4, a document read by key
-  (`FILTER d._key == @k`, `DOCUMENT()`), which reads as staged.
+  version reads. Its writes are staged. Its reads: through 2.9.3,
+  committed data only; from 2.9.4 through 2.10.1, a document read by key
+  (`FILTER d._key == @k`, `DOCUMENT()`) reads as staged and nothing else
+  does (an `INSERT` then `FOR d IN c FILTER d.f == @x` misses the new
+  document); after 2.10.1, scans, indexed FILTERs, SORT/LIMIT, counts,
+  COLLECT, joins and subqueries see the transaction's writes too — and a
+  collection the transaction wrote to is scanned, not read by index, until
+  the commit. `FULLTEXT`, vector/geo searches, graph traversals and `AS OF`
+  still read committed data.
 - **Isolation levels** (`isolationLevel`: `read_committed` default,
   `repeatable_read`, `serializable`, `read_uncommitted`). Through 2.9.3 the
   level only decides whether the commit is fsynced. After 2.9.3,
