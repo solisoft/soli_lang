@@ -193,7 +193,7 @@ UserMailer.welcome(user).deliver_later</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">Configure delivery once in <code class="text-cyan-400">config/application.sl</code>:</p>
             <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({
-  "delivery_method": "smtp",       # "smtp" | "test" | "logger"
+  "delivery_method": "smtp",       # "smtp" | "http" | "test" | "logger"
   "host": getenv("SMTP_HOST"),
   "port": 587,                     # 465 = implicit TLS, 587 = STARTTLS
   "user": getenv("SMTP_USER"),
@@ -206,6 +206,7 @@ UserMailer.welcome(user).deliver_later</code></pre>
             <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">Delivery methods</h4>
             <div class="text-sm text-gray-400 space-y-1">
                 <div><code class="text-amber-400">smtp</code> &mdash; send over SMTP (default); under <code class="text-cyan-400">--dev</code> with no <code class="text-cyan-400">host</code>, the mail is captured in the <a href="#inbox" class="text-cyan-400 hover:text-white transition-colors">dev inbox</a> instead of failing</div>
+                <div><code class="text-amber-400">http</code> &mdash; POST the mail to a provider&rsquo;s API (<a href="#http" class="text-cyan-400 hover:text-white transition-colors">Over HTTP</a>); under <code class="text-cyan-400">--dev</code> with no <code class="text-cyan-400">url</code>, captured in the dev inbox</div>
                 <div><code class="text-amber-400">test</code> &mdash; capture mail in memory for assertions; never sends</div>
                 <div><code class="text-amber-400">logger</code> &mdash; print a one-line summary instead of sending</div>
             </div>
@@ -218,7 +219,55 @@ UserMailer.welcome(user).deliver_later</code></pre>
                 <div><code class="text-cyan-400">SOLI_SMTP_TLS</code> &mdash; tls mode</div>
                 <div><code class="text-cyan-400">SOLI_SMTP_FROM</code> &mdash; default From</div>
                 <div><code class="text-cyan-400">SOLI_SMTP_DOMAIN</code> &mdash; EHLO name / <code>Message-ID</code> host</div>
+                <div><code class="text-cyan-400">SOLI_MAIL_URL</code>, <code class="text-cyan-400">SOLI_MAIL_API_KEY</code>, <code class="text-cyan-400">SOLI_MAIL_API_KEY_HEADER</code>, <code class="text-cyan-400">SOLI_MAIL_REQUEST</code> &mdash; the http method&rsquo;s <code>url</code>, <code>api_key</code>, <code>api_key_header</code>, <code>request</code></div>
             </div>
+        </div>
+    </section>
+
+    <!-- Over HTTP -->
+    <section id="http" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Over HTTP</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3">Most providers (Brevo, Resend, Postmark, SendGrid, Mailgun&hellip;) take mail over an HTTP API, and a Cloudflare Worker cannot open an SMTP connection at all. With <code class="text-cyan-400">delivery_method: "http"</code>, every delivery &mdash; <code class="text-cyan-400">deliver_now</code>, <code class="text-cyan-400">deliver_later</code>, <code class="text-cyan-400">Mailer.deliver</code> &mdash; is a <code>POST</code> of one JSON shape to <code class="text-cyan-400">url</code>:</p>
+            <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({
+  "delivery_method": "http",
+  "url": "https://mail.example.com/send",
+  "api_key": getenv("MAIL_API_KEY"),   # sent as Authorization: Bearer &lt;key&gt;
+  "api_key_header": "api-key",         # optional: the bare key in this header instead
+  "from": "Acme &lt;noreply@example.com&gt;"
+})</code></pre>
+            <p class="text-gray-400 mt-4 mb-3">The body:</p>
+            <pre><code class="language-json text-sm">{
+  "from": "Acme &lt;noreply@example.com&gt;",
+  "to": ["Ana &lt;ana@example.com&gt;"], "cc": [], "bcc": [], "reply_to": null,
+  "subject": "Welcome", "text": "…", "html": "&lt;p&gt;…&lt;/p&gt;",
+  "headers": {"X-Campaign": "welcome"},
+  "attachments": [{"filename": "note.txt", "content_type": "text/plain", "content_base64": "aGVsbG8="}],
+  "message_id": "…@host",
+  "mime": "From: …\r\nTo: …"
+}</code></pre>
+            <p class="text-gray-400 mt-3"><code class="text-cyan-400">mime</code> is the complete message the SMTP method would send, for an API that takes raw MIME. A 2xx answer is a delivery; anything else raises an error with the status and the start of the provider&rsquo;s answer &mdash; never the key, and never the URL&rsquo;s query string. <code class="text-cyan-400">deliver_later</code> retries it like any job.</p>
+            <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">Adapting it to a provider</h4>
+            <p class="text-gray-400 mb-3">Name a class of your app in <code class="text-cyan-400">request</code>; its <code class="text-cyan-400">request(mail, req)</code> gets the standard request (<code>{"url", "headers", "body": &lt;the envelope&gt;}</code>) and returns the one to send &mdash; a hash or array body is sent as JSON, a string as is:</p>
+            <pre data-filename="app/mailers/mail_request.sl"><code class="language-soli text-sm">class MailRequest
+  static def request(mail, req)
+    envelope = req["body"]
+    req["url"] = "https://api.brevo.com/v3/smtp/email"
+    req["headers"] = {"api-key": getenv("BREVO_API_KEY"), "Content-Type": "application/json"}
+    req["body"] = {
+      "sender": {"email": envelope["from"]},
+      "to": envelope["to"].map { |a| {"email": a} },
+      "subject": envelope["subject"],
+      "htmlContent": envelope["html"],
+      "textContent": envelope["text"]
+    }
+    req
+  end
+end
+
+# config/application.sl
+Mailer.configure({"delivery_method": "http", "request": "MailRequest", "url": "https://api.brevo.com"})</code></pre>
+            <p class="text-gray-400 mt-3">The hook is a class name, not a lambda: the configuration is made once and read by every worker, and a closure cannot leave the interpreter it was made in. <code class="text-cyan-400">"request": nil</code> removes it. The URL goes through the same SSRF check as the <code class="text-cyan-400">HTTP</code> class (<code class="text-cyan-400">SOLI_HTTP_ALLOW_HOSTS</code> opens a private host).</p>
         </div>
     </section>
 

@@ -4,6 +4,20 @@
 
 ### Added
 
+- **Mail over HTTP.** `Mailer.configure({"delivery_method": "http", "url",
+  "api_key", "api_key_header"?, "request"?})` (or `SOLI_MAIL_DELIVERY_METHOD=
+  http`, `SOLI_MAIL_URL`, `SOLI_MAIL_API_KEY`, `SOLI_MAIL_API_KEY_HEADER`,
+  `SOLI_MAIL_REQUEST`) POSTs every delivery as one JSON envelope (from, to,
+  cc, bcc, reply_to, subject, text, html, headers, attachments in base64,
+  message_id, and the full MIME) on the user-facing HTTP client — SSRF-checked,
+  `fetch` on the edge build. A non-2xx answer raises with the status and the
+  start of the answer, never the key or the URL's query. `request` names an
+  app class whose `request(mail, req)` reshapes the request for a provider (a
+  class, since a closure cannot reach the workers); `"request": nil` removes
+  it, and a class that does not exist says so. Every delivery path now goes
+  through the prelude's `__mail_send`, `deliver_later`'s synchronous fallback
+  included, so the hook always applies. Card #867.
+
 - **`static cron` on Cloudflare Workers.** A job class's `static cron` runs on
   a Cloudflare Cron Trigger: `edge::boot` keeps the declarations
   (`jobs::edge_cron`, enabled by the boot instead of writing `_cron_jobs`), the
@@ -21,6 +35,10 @@
   on /d1; the deploy workflow fires the trigger on workerd before deploying.
 
 ### Fixed
+
+- **Operator mails were sent with no body.** `send_operator_mail` (the error
+  notifier) filled `text_body` / `html_body`, keys `build_mime` never reads;
+  it fills `text` / `html` now.
 
 - **A LiveView reached again by instant navigation stayed on its
   placeholder.** `/live/client.js` connected `[data-liveview-url]` mounts on

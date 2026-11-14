@@ -61,6 +61,9 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DeliveryMethod {
     Smtp,
+    /// A `POST` to a mail provider's API (`deliver_http`): what works where
+    /// SMTP cannot, a Cloudflare Worker first.
+    Http,
     Test,
     Logger,
 }
@@ -89,6 +92,19 @@ struct MailerConfig {
     from: Option<String>,
     /// EHLO name and the host part of generated `Message-ID`s.
     domain: String,
+    /// `http`: the endpoint the standard envelope is POSTed to.
+    url: Option<String>,
+    /// `http`: the provider's API key, sent in `api_key_header`.
+    api_key: Option<String>,
+    /// `http`: the header carrying `api_key` — `Authorization` (as
+    /// `Bearer <key>`) unless the provider wants another (`api-key`,
+    /// `X-Postmark-Server-Token`…), which gets the bare key.
+    api_key_header: Option<String>,
+    /// `http`: an app class whose `static def request(mail, request)` turns the
+    /// standard request into the provider's (`request` in `Mailer.configure`).
+    /// A class name, not a lambda: the configuration is made once per app and
+    /// read by every worker, and a closure cannot leave its interpreter.
+    request_hook: Option<String>,
 }
 
 impl MailerConfig {
@@ -97,6 +113,7 @@ impl MailerConfig {
         let delivery_method = match env("SOLI_MAIL_DELIVERY_METHOD").as_deref() {
             Some("test") => DeliveryMethod::Test,
             Some("logger") => DeliveryMethod::Logger,
+            Some("http") => DeliveryMethod::Http,
             _ => DeliveryMethod::Smtp,
         };
         let tls = match env("SOLI_SMTP_TLS").as_deref() {
@@ -116,6 +133,10 @@ impl MailerConfig {
             tls,
             from: env("SOLI_SMTP_FROM"),
             domain: env("SOLI_SMTP_DOMAIN").unwrap_or_else(|| "localhost".to_string()),
+            url: env("SOLI_MAIL_URL"),
+            api_key: env("SOLI_MAIL_API_KEY"),
+            api_key_header: env("SOLI_MAIL_API_KEY_HEADER"),
+            request_hook: env("SOLI_MAIL_REQUEST"),
         }
     }
 
@@ -718,7 +739,12 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
                 "test" => DeliveryMethod::Test,
                 "logger" => DeliveryMethod::Logger,
                 "smtp" => DeliveryMethod::Smtp,
-                other => return Err(format!("unknown delivery_method: {other}")),
+                "http" => DeliveryMethod::Http,
+                other => {
+                    return Err(format!(
+                        "unknown delivery_method: {other} (use smtp, http, test or logger)"
+                    ))
+                }
             };
         }
         if let Some(host) = hash_get(&opts, "host").and_then(|v| as_string(&v)) {
@@ -750,6 +776,35 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
         }
         if let Some(domain) = hash_get(&opts, "domain").and_then(|v| as_string(&v)) {
             cfg.domain = domain;
+        }
+        if let Some(url) = hash_get(&opts, "url").and_then(|v| as_string(&v)) {
+            cfg.url = Some(url);
+        }
+        if let Some(key) = hash_get(&opts, "api_key").and_then(|v| as_string(&v)) {
+            cfg.api_key = Some(key);
+        }
+        if let Some(header) = hash_get(&opts, "api_key_header").and_then(|v| as_string(&v)) {
+            ensure_no_crlf("api_key_header", &header)?;
+            cfg.api_key_header = Some(header);
+        }
+        // `"request": nil` takes the hook away again.
+        if matches!(
+            opts.get(&HashKey::String("request".into())),
+            Some(Value::Null)
+        ) {
+            cfg.request_hook = None;
+        }
+        if let Some(hook) = hash_get(&opts, "request").and_then(|v| as_string(&v)) {
+            if !hook
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+                || hook.is_empty()
+            {
+                return Err(format!(
+                    "Mailer.configure: request must name a class (\"MailRequest\"), got {hook:?}"
+                ));
+            }
+            cfg.request_hook = Some(hook);
         }
         Ok(Value::Null)
     })
@@ -792,6 +847,21 @@ fn deliver_mail(args: &[Value]) -> Result<Value, String> {
             eprintln!("[mailer] (logger) to={to} subject={subject:?}");
             Ok(Value::Bool(true))
         }
+        DeliveryMethod::Http => {
+            let mail = mail.borrow();
+            // As for SMTP: no endpoint on the dev box parks the mail in the dev
+            // inbox.
+            if cfg.url.is_none() && crate::interpreter::builtins::template::is_dev_mode() {
+                capture_for_inbox(&mail, mail_outbox::Status::Captured);
+                eprintln!(
+                    "[mailer] no mail URL configured; captured in the dev inbox at /__soli/inbox"
+                );
+                return Ok(Value::Bool(true));
+            }
+            let request = standard_request(&cfg, &mail)
+                .and_then(|(url, headers, body)| send_http(&url, &headers, body.to_string()));
+            finish_delivery(&mail, request)
+        }
         DeliveryMethod::Smtp => {
             let mail = mail.borrow();
             // No SMTP server on the dev box is the normal case, not a bug: park
@@ -830,6 +900,257 @@ fn deliver_mail(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+/// Record a delivery's outcome in the dev inbox and hand it back.
+fn finish_delivery(mail: &HashPairs, outcome: Result<(), String>) -> Result<Value, String> {
+    match outcome {
+        Ok(()) => {
+            capture_for_inbox(mail, mail_outbox::Status::Sent);
+            Ok(Value::Bool(true))
+        }
+        Err(e) => {
+            capture_for_inbox(mail, mail_outbox::Status::Failed(e.clone()));
+            Err(e)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP delivery: the standard envelope, POSTed to a provider's API
+// ---------------------------------------------------------------------------
+
+/// The mail as the `http` method sends it: one JSON shape for every provider,
+/// documented in `www/docs/mailer.md` ("Over HTTP"). `mime` is the message the
+/// SMTP path would send, for providers that take it as is.
+fn envelope(cfg: &MailerConfig, mail: &HashPairs) -> Result<serde_json::Value, String> {
+    let mut mail = mail.clone();
+    if hash_get(&mail, "from").is_none() {
+        if let Some(from) = &cfg.from {
+            mail.insert(
+                HashKey::String("from".into()),
+                Value::String(from.clone().into()),
+            );
+        }
+    }
+    let mime = build_mime(&mail)?;
+    let text = |key: &str| hash_get(&mail, key).and_then(|v| as_string(&v));
+    let list = |key: &str| as_address_list(mail.get(&HashKey::String(key.into())));
+    let headers: serde_json::Map<String, serde_json::Value> =
+        match mail.get(&HashKey::String("headers".into())) {
+            Some(Value::Hash(h)) => h
+                .borrow()
+                .iter()
+                .filter_map(|(k, v)| match k {
+                    HashKey::String(name) => {
+                        as_string(v).map(|v| (name.to_string(), serde_json::Value::String(v)))
+                    }
+                    _ => None,
+                })
+                .collect(),
+            _ => serde_json::Map::new(),
+        };
+    let attachments: Vec<serde_json::Value> = match mail.get(&HashKey::String("attachments".into())) {
+        Some(Value::Array(atts)) => atts
+            .borrow()
+            .iter()
+            .filter_map(|att| {
+                let Value::Hash(att) = att else { return None };
+                let att = att.borrow();
+                let content = match hash_get(&att, "base64").and_then(|v| as_string(&v)) {
+                    Some(b64) => b64.trim().to_string(),
+                    None => base64::engine::general_purpose::STANDARD.encode(
+                        hash_get(&att, "content")
+                            .and_then(|v| as_string(&v))
+                            .unwrap_or_default(),
+                    ),
+                };
+                Some(serde_json::json!({
+                    "filename": hash_get(&att, "filename").and_then(|v| as_string(&v)).unwrap_or_else(|| "attachment".to_string()),
+                    "content_type": hash_get(&att, "content_type").and_then(|v| as_string(&v)).unwrap_or_else(|| "application/octet-stream".to_string()),
+                    "content_base64": content,
+                }))
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let message_id = mime.lines().take_while(|l| !l.is_empty()).find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.eq_ignore_ascii_case("message-id").then(|| {
+            value
+                .trim()
+                .trim_matches(|c| c == '<' || c == '>')
+                .to_string()
+        })
+    });
+    Ok(serde_json::json!({
+        "from": text("from"),
+        "to": list("to"),
+        "cc": list("cc"),
+        "bcc": list("bcc"),
+        "reply_to": text("reply_to"),
+        "subject": text("subject").unwrap_or_default(),
+        "text": text("text"),
+        "html": text("html"),
+        "headers": headers,
+        "attachments": attachments,
+        "message_id": message_id,
+        "mime": mime,
+    }))
+}
+
+/// A request to a mail provider: URL, headers, JSON body.
+type MailRequest = (String, Vec<(String, String)>, serde_json::Value);
+
+/// The request the `http` method makes without a hook: the envelope as JSON,
+/// POSTed to `url`, the key in `Authorization: Bearer` or `api_key_header`.
+fn standard_request(cfg: &MailerConfig, mail: &HashPairs) -> Result<MailRequest, String> {
+    let url = cfg.url.clone().ok_or_else(|| {
+        "Mailer is not configured: the http delivery method needs a url \
+         (Mailer.configure({\"url\": …}) or SOLI_MAIL_URL)"
+            .to_string()
+    })?;
+    let mut headers = vec![
+        ("Content-Type".to_string(), "application/json".to_string()),
+        ("Accept".to_string(), "application/json".to_string()),
+    ];
+    if let Some(key) = &cfg.api_key {
+        match cfg.api_key_header.as_deref() {
+            None => headers.push(("Authorization".to_string(), format!("Bearer {key}"))),
+            Some(name) if name.eq_ignore_ascii_case("authorization") => {
+                headers.push((name.to_string(), format!("Bearer {key}")))
+            }
+            Some(name) => headers.push((name.to_string(), key.clone())),
+        }
+    }
+    Ok((url, headers, envelope(cfg, mail)?))
+}
+
+/// The provider's URL as an error may show it: scheme, host and path, never
+/// the query string, which some providers put a key in.
+fn shown_url(url: &str) -> String {
+    match reqwest::Url::parse(url) {
+        Ok(u) => format!(
+            "{}://{}{}",
+            u.scheme(),
+            u.host_str().unwrap_or(""),
+            u.path()
+        ),
+        Err(_) => "the mail URL".to_string(),
+    }
+}
+
+/// POST `body` to `url` on the user-facing HTTP client — the one `HTTP.*` uses:
+/// SSRF-screened (`SOLI_HTTP_ALLOW_HOSTS` opens a host), `fetch` on the edge.
+/// A non-2xx answer is an error naming the status and the start of the body;
+/// the request's headers, the key among them, are never in it.
+fn send_http(url: &str, headers: &[(String, String)], body: String) -> Result<(), String> {
+    use crate::interpreter::builtins::http_class;
+    let shown = shown_url(url);
+    http_class::validate_url_for_ssrf(url).map_err(|e| format!("mail POST {shown}: {e}"))?;
+    for (name, value) in headers {
+        ensure_no_crlf("header", name)?;
+        ensure_no_crlf("header", value)?;
+    }
+    let mut request = http_class::get_user_http_client().post(url);
+    for (name, value) in headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    let request = request.body(body);
+    let (status, text) = http_class::block_on_user_http_local(async move {
+        let response = request.send().await.map_err(|e| e.to_string())?;
+        let status = response.status().as_u16();
+        let text = response.text().await.unwrap_or_default();
+        Ok::<_, String>((status, text))
+    })
+    .map_err(|e| format!("mail POST {shown}: {e}"))?;
+    if (200..300).contains(&status) {
+        return Ok(());
+    }
+    let excerpt: String = text.chars().take(300).collect();
+    Err(format!(
+        "mail POST {shown} returned HTTP {status}: {excerpt}"
+    ))
+}
+
+/// `__mailer_request_hook()` — the class `request` names, when the `http`
+/// method is on; `nil` otherwise. The prelude's `__mail_send` asks first.
+fn mailer_request_hook(_args: &[Value]) -> Result<Value, String> {
+    Ok(MAILER_CONFIG
+        .read(|c| (c.delivery_method == DeliveryMethod::Http).then(|| c.request_hook.clone()))
+        .flatten()
+        .map(|hook| Value::String(hook.into()))
+        .unwrap_or(Value::Null))
+}
+
+/// `__mailer_http_request(mail)` — the standard request as a hash the hook can
+/// rewrite: `{"url", "headers": {…}, "body": <the envelope hash>}`.
+fn mailer_http_request(args: &[Value]) -> Result<Value, String> {
+    let Some(Value::Hash(mail)) = args.first() else {
+        return Err("__mailer_http_request expects the mail hash".to_string());
+    };
+    let cfg = MAILER_CONFIG.read(|c| c.clone());
+    let (url, headers, body) = standard_request(&cfg, &mail.borrow())?;
+    let mut header_pairs = HashPairs::default();
+    for (name, value) in headers {
+        header_pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
+    }
+    let mut request = HashPairs::default();
+    request.insert(HashKey::String("url".into()), Value::String(url.into()));
+    request.insert(
+        HashKey::String("headers".into()),
+        Value::Hash(Rc::new(RefCell::new(header_pairs))),
+    );
+    request.insert(
+        HashKey::String("body".into()),
+        crate::interpreter::builtins::model::crud::json_to_value(&body),
+    );
+    Ok(Value::Hash(Rc::new(RefCell::new(request))))
+}
+
+/// `__mailer_http_send(mail, request)` — send what the hook returned:
+/// `{"url", "headers"?, "body"}`, a hash or array body sent as JSON, a string
+/// as is. Recorded in the dev inbox like any delivery.
+fn mailer_http_send(args: &[Value]) -> Result<Value, String> {
+    let (Some(Value::Hash(mail)), Some(request)) = (args.first(), args.get(1)) else {
+        return Err("__mailer_http_send expects the mail and the request".to_string());
+    };
+    let Value::Hash(request) = request else {
+        return Err(format!(
+            "the mail request hook must return a hash {{\"url\", \"headers\", \"body\"}}, got {}",
+            request.type_name()
+        ));
+    };
+    let request = request.borrow();
+    let url = hash_get(&request, "url")
+        .and_then(|v| as_string(&v))
+        .ok_or("the mail request hook returned no url")?;
+    let mut headers = Vec::new();
+    if let Some(Value::Hash(h)) = request.get(&HashKey::String("headers".into())) {
+        for (k, v) in h.borrow().iter() {
+            if let (HashKey::String(name), Some(value)) = (k, as_string(v)) {
+                headers.push((name.to_string(), value));
+            }
+        }
+    }
+    let body = match request.get(&HashKey::String("body".into())) {
+        Some(Value::String(s)) => s.to_string(),
+        Some(other @ (Value::Hash(_) | Value::Array(_))) => {
+            crate::interpreter::value::value_to_json(other).map(|json| json.to_string())?
+        }
+        Some(Value::Null) | None => String::new(),
+        Some(other) => {
+            return Err(format!(
+                "the mail request body must be a hash or a string, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let delivered = finish_delivery(&mail.borrow(), send_http(&url, &headers, body));
+    if delivered.is_ok() {
+        crate::interpreter::builtins::model::crud::mark_durable_effect();
+    }
+    delivered
+}
+
 /// Send a plain operator mail from Rust (the notifier), through the same
 /// transport, delivery method and dev inbox as `Mailer.deliver`. `from` falls
 /// back to `SOLI_SMTP_FROM`.
@@ -856,8 +1177,10 @@ pub(crate) fn send_operator_mail(
         ))),
     );
     put("subject", Value::String(subject.into()));
-    put("text_body", Value::String(text_body.into()));
-    put("html_body", Value::String(html_body.into()));
+    // `text` / `html`, the keys `build_mime` reads: `text_body` / `html_body`
+    // were sent as nothing, and every operator mail went out with no body.
+    put("text", Value::String(text_body.into()));
+    put("html", Value::String(html_body.into()));
     // The framework's own mail (an error notification), not the handler's:
     // it does not arm the durable-write tripwire.
     deliver_mail(&[Value::Hash(Rc::new(RefCell::new(mail)))]).map(|_| ())
@@ -1008,9 +1331,12 @@ type MailerBuiltin = fn(&[Value]) -> Result<Value, String>;
 /// classes are defined by [`MAILER_PRELUDE`], loaded into top-level
 /// interpreters via [`ensure_prelude`].
 pub fn register_mailer_builtins(env: &mut Environment) {
-    let defs: [(&str, Option<usize>, MailerBuiltin); 7] = [
+    let defs: [(&str, Option<usize>, MailerBuiltin); 10] = [
         ("__mailer_configure", Some(1), mailer_configure),
         ("__mailer_deliver", Some(1), mailer_deliver),
+        ("__mailer_request_hook", Some(0), mailer_request_hook),
+        ("__mailer_http_request", Some(1), mailer_http_request),
+        ("__mailer_http_send", Some(2), mailer_http_send),
         ("__mailer_deliveries", Some(0), mailer_deliveries),
         (
             "__mailer_clear_deliveries",
@@ -1040,8 +1366,10 @@ pub(crate) fn mail_enqueue(args: &[Value]) -> Result<Value, String> {
     let mail = args.first().cloned().unwrap_or(Value::Null);
     let method = MAILER_CONFIG.read(|c| c.delivery_method);
 
+    // `nil` tells the prelude's `deliver_later` to send now, through
+    // `__mail_send` — so a `request` hook applies to that path too.
     if matches!(method, DeliveryMethod::Test | DeliveryMethod::Logger) {
-        return mailer_deliver(&[mail]);
+        return Ok(Value::Null);
     }
 
     let mut enqueue_args = vec![Value::String("__MailDelivery".into()), mail.clone()];
@@ -1054,7 +1382,7 @@ pub(crate) fn mail_enqueue(args: &[Value]) -> Result<Value, String> {
         Ok(id) => Ok(id),
         Err(e) => {
             eprintln!("[mailer] deliver_later: queue unavailable ({e}); sending synchronously");
-            mailer_deliver(&[mail])
+            Ok(Value::Null)
         }
     }
 }
@@ -1100,7 +1428,7 @@ pub(crate) fn mail_invoke(args: &[Value]) -> Result<Value, String> {
 pub const MAILER_PRELUDE: &str = r#"
 class Mailer {
   static def configure(opts) { return __mailer_configure(opts); }
-  static def deliver(mail) { return __mailer_deliver(mail); }
+  static def deliver(mail) { return __mail_send(mail); }
   static def deliveries() { return __mailer_deliveries(); }
   static def clear_deliveries() { return __mailer_clear_deliveries(); }
 
@@ -1124,8 +1452,12 @@ class Mailer {
 }
 
 class Message {
-  def deliver_now() { return __mailer_deliver(@data); }
-  def deliver_later(queue = null) { return __mail_enqueue(@data, queue); }
+  def deliver_now() { return __mail_send(@data); }
+  def deliver_later(queue = null) {
+    let id = __mail_enqueue(@data, queue);
+    if (id == null) { return __mail_send(@data); }
+    return id;
+  }
   def to_h() { return @data; }
 
   # Attach a text payload. Chainable: returns this.
@@ -1154,7 +1486,21 @@ class Message {
 # Background-delivery job target. `deliver_later` enqueues this class; the Job
 # queue worker POSTs back to /_jobs/run/__MailDelivery, which calls perform.
 class __MailDelivery {
-  static def perform(args) { return __mailer_deliver(args); }
+  static def perform(args) { return __mail_send(args); }
+}
+
+# Every delivery goes through here. With the http method and a `request` hook
+# (`Mailer.configure({"request": "MailRequest"})`), the app's class rewrites
+# the standard request for its provider before it is sent.
+def __mail_send(mail) {
+  let hook = __mailer_request_hook();
+  if (hook == null) { return __mailer_deliver(mail); }
+  let klass = const_get(hook);
+  if (klass == null) {
+    throw "Mailer: the request hook class " + hook + " is not defined (Mailer.configure request)";
+  }
+  let request = klass.request(mail, __mailer_http_request(mail));
+  return __mailer_http_send(mail, request);
 }
 "#;
 
@@ -1193,6 +1539,40 @@ pub fn ensure_prelude(interpreter: &mut crate::interpreter::Interpreter) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_operator_mail_carries_its_body() {
+        MAILER_CONFIG.write(|c| c.delivery_method = DeliveryMethod::Test);
+        DELIVERIES.with(|d| d.borrow_mut().clear());
+        send_operator_mail(
+            &["ops@example.com".to_string()],
+            Some("app@example.com"),
+            "Error in /checkout",
+            "the text",
+            "<p>the html</p>",
+        )
+        .unwrap();
+        let sent = DELIVERIES.with(|d| d.borrow().last().cloned()).unwrap();
+        let Value::Hash(mail) = sent else {
+            panic!("a hash")
+        };
+        let mail = mail.borrow();
+        assert_eq!(
+            hash_get(&mail, "text")
+                .and_then(|v| as_string(&v))
+                .as_deref(),
+            Some("the text")
+        );
+        assert_eq!(
+            hash_get(&mail, "html")
+                .and_then(|v| as_string(&v))
+                .as_deref(),
+            Some("<p>the html</p>")
+        );
+        let mime = build_mime(&mail).unwrap();
+        assert!(mime.contains("the text"), "{mime}");
+        MAILER_CONFIG.write(|c| c.delivery_method = DeliveryMethod::Smtp);
+    }
 
     #[test]
     fn parses_plain_and_display_addresses() {

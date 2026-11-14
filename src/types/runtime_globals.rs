@@ -341,7 +341,7 @@ const PRELUDE_NAMES: &[&[&str]] = &[
         "websocket",
         "uploads",
     ],
-    &["Mailer", "Message", "__MailDelivery"],
+    &["Mailer", "Message", "__MailDelivery", "__mail_send"],
     &[
         "_form_safe_url",
         "_safe_attr_name",

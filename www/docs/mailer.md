@@ -247,7 +247,7 @@ Configure delivery once in `config/application.sl`:
 
 ```soli
 Mailer.configure({
-  "delivery_method": "smtp",       # "smtp" | "test" | "logger"
+  "delivery_method": "smtp",       # "smtp" | "http" | "test" | "logger"
   "host": getenv("SMTP_HOST"),
   "port": 587,                     # 465 = implicit TLS, 587 = STARTTLS
   "user": getenv("SMTP_USER"),
@@ -265,6 +265,7 @@ Authentication (`AUTH LOGIN`) is used when `user`/`pass` are set.
 | Method   | Behavior |
 |----------|----------|
 | `smtp`   | Send over SMTP (default). Under `--dev` with no `host`, the mail is captured in the [dev inbox](#the-dev-inbox) instead of failing. |
+| `http`   | POST the mail to a provider's API ([Over HTTP](#over-http)). Under `--dev` with no `url`, captured in the dev inbox. |
 | `test`   | Capture mail in memory for assertions — never sends. |
 | `logger` | Print a one-line summary instead of sending. |
 
@@ -278,6 +279,77 @@ Authentication (`AUTH LOGIN`) is used when `user`/`pass` are set.
 | `SOLI_SMTP_TLS` | `tls` |
 | `SOLI_SMTP_FROM` | `from` |
 | `SOLI_SMTP_DOMAIN` | EHLO name / `Message-ID` host |
+| `SOLI_MAIL_URL` | `url` (http) |
+| `SOLI_MAIL_API_KEY` / `SOLI_MAIL_API_KEY_HEADER` | `api_key` / `api_key_header` (http) |
+| `SOLI_MAIL_REQUEST` | `request` (http) |
+
+### Over HTTP
+
+Most providers (Brevo, Resend, Postmark, SendGrid, Mailgun…) take mail over an
+HTTP API, and a Cloudflare Worker cannot open an SMTP connection at all. With
+`delivery_method: "http"`, every delivery — `deliver_now`, `deliver_later`,
+`Mailer.deliver` — is a `POST` of one JSON shape to `url`:
+
+```soli
+Mailer.configure({
+  "delivery_method": "http",
+  "url": "https://mail.example.com/send",
+  "api_key": getenv("MAIL_API_KEY"),   # sent as Authorization: Bearer <key>
+  "api_key_header": "api-key",         # optional: the bare key in this header instead
+  "from": "Acme <noreply@example.com>"
+})
+```
+
+The body:
+
+```json
+{
+  "from": "Acme <noreply@example.com>",
+  "to": ["Ana <ana@example.com>"], "cc": [], "bcc": [], "reply_to": null,
+  "subject": "Welcome", "text": "…", "html": "<p>…</p>",
+  "headers": {"X-Campaign": "welcome"},
+  "attachments": [{"filename": "note.txt", "content_type": "text/plain", "content_base64": "aGVsbG8="}],
+  "message_id": "…@host",
+  "mime": "From: …\r\nTo: …"
+}
+```
+
+`mime` is the complete message the SMTP method would send, for an API that
+takes raw MIME. A 2xx answer is a delivery; anything else raises an error with
+the status and the start of the provider's answer — never the key, and never
+the URL's query string. `deliver_later` retries it like any job.
+
+**Adapting it to a provider.** Name a class of your app in `request`; its
+`request(mail, req)` gets the standard request
+(`{"url", "headers", "body": <the envelope>}`) and returns the one to send —
+a hash or array body is sent as JSON, a string as is:
+
+```soli
+# app/mailers/mail_request.sl
+class MailRequest
+  static def request(mail, req)
+    envelope = req["body"]
+    req["url"] = "https://api.brevo.com/v3/smtp/email"
+    req["headers"] = {"api-key": getenv("BREVO_API_KEY"), "Content-Type": "application/json"}
+    req["body"] = {
+      "sender": {"email": envelope["from"]},
+      "to": envelope["to"].map { |a| {"email": a} },
+      "subject": envelope["subject"],
+      "htmlContent": envelope["html"],
+      "textContent": envelope["text"]
+    }
+    req
+  end
+end
+
+# config/application.sl
+Mailer.configure({"delivery_method": "http", "request": "MailRequest", "url": "https://api.brevo.com"})
+```
+
+The hook is a class name, not a lambda: the configuration is made once and read
+by every worker, and a closure cannot leave the interpreter it was made in.
+`"request": nil` removes it. The URL goes through the same SSRF check as the
+`HTTP` class (`SOLI_HTTP_ALLOW_HOSTS` opens a private host).
 
 ## Testing
 
