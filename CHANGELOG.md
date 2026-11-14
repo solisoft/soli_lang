@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`static cron` on Cloudflare Workers.** A job class's `static cron` runs on
+  a Cloudflare Cron Trigger: `edge::boot` keeps the declarations
+  (`jobs::edge_cron`, enabled by the boot instead of writing `_cron_jobs`), the
+  Worker's `scheduled()` handler calls the new `soli_run_cron` export, and
+  `edge::run_cron` runs every job whose expression, without its seconds field
+  (`edge_cron::trigger`), is the trigger's — in turn, no tenant, one failure
+  not stopping the others but failing the invocation. `soli edge build` reads
+  the declarations from `app/jobs/` source (`jobs::static_cron_from_source`:
+  string literals and `Cron.daily_at/hourly/every/weekly_at` with literals),
+  writes `[triggers] crons` into the wrangler.toml it generates, warns when an
+  existing one lacks some or when there are more than 5 (the Free plan's
+  per-account limit), warns about a computed schedule, and fails on one that
+  needs seconds. `Cron.schedule` and the cron table stay unavailable there.
+  cf.solisoft.net runs `HourlyTallyJob` on "0 * * * *" and shows its last run
+  on /d1; the deploy workflow fires the trigger on workerd before deploying.
+
 ### Fixed
 
 - **A LiveView reached again by instant navigation stayed on its

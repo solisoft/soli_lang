@@ -13,6 +13,15 @@ datacenter and the country it served you from — nothing that identifies you.</
   <% end %>
 </form>
 
+<p class="muted">
+  <% if @last_cron %>
+    Last hourly run of <code>HourlyTallyJob</code>, from a Cloudflare Cron Trigger:
+    <strong><%= @last_cron.at %></strong> (<%= @last_cron.check_ins %> check-ins then).
+  <% else %>
+    <code>HourlyTallyJob</code> has not run yet: a Cloudflare Cron Trigger fires it on the hour (UTC).
+  <% end %>
+</p>
+
 <div class="stats">
   <div><span><%= @total %></span> check-ins</div>
   <div><span><%= @colos %></span> datacenters</div>

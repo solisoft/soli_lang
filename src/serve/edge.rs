@@ -71,6 +71,8 @@ pub fn boot(folder: &Path) -> Result<(), RuntimeError> {
     }
 
     crate::serve::tenant::set_app_root(folder);
+    // `static cron` runs on Cron Triggers here, not from the job table.
+    crate::jobs::edge_cron::enable();
     crate::interpreter::builtins::model::init_db_config();
     // The app's named connections (`config/database.toml`), as `soli serve`
     // loads them: without this only the env-derived `primary` existed on the
@@ -300,37 +302,11 @@ pub fn run_job(message: &str, attempts: u32) -> serde_json::Value {
     };
     // Under the tenant the job was enqueued under, and none after it.
     let error = crate::db::tenancy::scoped(doc.tenant.clone(), || {
-        APP.with(|app| {
-            let mut app = app.borrow_mut();
-            let Some(app) = app.as_mut() else {
-                return Some("the Soli app has not booted".to_string());
-            };
+        if doc.handler == crate::jobs::WEBHOOK_HANDLER {
             let _handler_budget = crate::interpreter::deadline::enter_default();
-            if doc.handler == crate::jobs::WEBHOOK_HANDLER {
-                return crate::jobs::engine::deliver_webhook(&doc).err();
-            }
-            let Some(runner) = app
-                .interpreter
-                .environment
-                .borrow()
-                .get("__soli_run_job_bg")
-            else {
-                return Some("the job runner is not defined".to_string());
-            };
-            let args = match crate::interpreter::value::parse_json(&doc.args.to_string()) {
-                Ok(args) => args,
-                Err(e) => return Some(format!("invalid args JSON: {e}")),
-            };
-            let name = Value::String(doc.handler.clone().into());
-            match app
-                .interpreter
-                .call_value(runner, vec![name, args], Span::default())
-            {
-                Ok(Value::String(error)) => Some(error.to_string()),
-                Ok(_) => None,
-                Err(e) => Some(e.to_string()),
-            }
-        })
+            return crate::jobs::engine::deliver_webhook(&doc).err();
+        }
+        perform(&doc.handler, &doc.args)
     });
     let mut report = match crate::jobs::queues::outcome(&doc, attempts, error.clone()) {
         crate::jobs::queues::Outcome::Done => serde_json::json!({ "status": "done" }),
@@ -344,6 +320,61 @@ pub fn run_job(message: &str, attempts: u32) -> serde_json::Value {
         report["error"] = error.into();
     }
     report
+}
+
+/// Run one job class's `perform` with `args` through the pool's runner;
+/// `Some(error)` when it failed.
+fn perform(handler: &str, args: &serde_json::Value) -> Option<String> {
+    APP.with(|app| {
+        let mut app = app.borrow_mut();
+        let Some(app) = app.as_mut() else {
+            return Some("the Soli app has not booted".to_string());
+        };
+        let _handler_budget = crate::interpreter::deadline::enter_default();
+        let Some(runner) = app
+            .interpreter
+            .environment
+            .borrow()
+            .get("__soli_run_job_bg")
+        else {
+            return Some("the job runner is not defined".to_string());
+        };
+        let args = match crate::interpreter::value::parse_json(&args.to_string()) {
+            Ok(args) => args,
+            Err(e) => return Some(format!("invalid args JSON: {e}")),
+        };
+        let name = Value::String(handler.to_string().into());
+        match app
+            .interpreter
+            .call_value(runner, vec![name, args], Span::default())
+        {
+            Ok(Value::String(error)) => Some(error.to_string()),
+            Ok(_) => None,
+            Err(e) => Some(e.to_string()),
+        }
+    })
+}
+
+/// Run the jobs a Cloudflare Cron Trigger stands for: every `static cron`
+/// whose expression, without its seconds, is `cron` (`jobs::edge_cron`). Each
+/// runs in turn, with no tenant, as `perform_now` would; one failing does not
+/// stop the others. The report lists them:
+/// `{"cron", "ran": [{"job", "status": "done" | "failed", "error"?}]}`.
+pub fn run_cron(cron: &str) -> serde_json::Value {
+    let mut ran = Vec::new();
+    for entry in crate::jobs::edge_cron::matching(cron) {
+        let error =
+            crate::db::tenancy::scoped(None, || perform(&entry.class, &serde_json::json!({})));
+        let mut report = serde_json::json!({
+            "job": entry.class,
+            "status": if error.is_some() { "failed" } else { "done" },
+        });
+        if let Some(error) = error {
+            report["error"] = error.into();
+        }
+        ran.push(report);
+    }
+    serde_json::json!({ "cron": cron, "ran": ran })
 }
 
 /// Split a multipart body into form fields and files with the parser `soli

@@ -96,12 +96,14 @@ jobs:
         run: target/ci/soli edge build "$APP" --runtime target/edge
 
       # The gate: the packaged Worker boots on workerd and renders its pages,
-      # D1 page included (a local D1), before anything reaches Cloudflare.
+      # D1 page included (a local D1), and its Cron Trigger runs the hourly job
+      # (`--test-scheduled` exposes /__scheduled), before anything reaches
+      # Cloudflare.
       - name: The Worker answers on workerd
         working-directory: ${{ env.APP }}/dist/edge
         run: |
           set -euo pipefail
-          npx --yes "$WRANGLER" dev --local --ip 127.0.0.1 --port 8787 > /tmp/wrangler.log 2>&1 &
+          npx --yes "$WRANGLER" dev --local --test-scheduled --ip 127.0.0.1 --port 8787 > /tmp/wrangler.log 2>&1 &
           pid=$!
           ok=""
           for i in $(seq 1 60); do
@@ -116,6 +118,14 @@ jobs:
               echo "$path -> $code"
               [ "$code" = "200" ] || status=1
             done
+            # The trigger wrangler.toml lists runs HourlyTallyJob; /d1 shows its run.
+            curl -fs -m 20 -o /dev/null "http://127.0.0.1:8787/__scheduled?cron=0+*+*+*+*" || status=1
+            if curl -fs -m 10 http://127.0.0.1:8787/d1 | grep -q "Last hourly run"; then
+              echo "cron 0 * * * * -> HourlyTallyJob ran"
+            else
+              echo "the Cron Trigger did not run HourlyTallyJob" >&2
+              status=1
+            fi
           else
             echo "wrangler dev never answered" >&2
             status=1

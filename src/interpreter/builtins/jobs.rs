@@ -1017,6 +1017,46 @@ fn perform_now_inline(class: &Rc<Class>, args: &[Value]) -> Result<Value, String
     ))
 }
 
+/// The expression a `static cron` declaration's source text stands for, read
+/// without running the app: a string literal, or a `Cron.*` helper called with
+/// string literals (`Cron.daily_at("03:15")`, `Cron.every("5 minutes")`,
+/// `Cron.hourly()`, `Cron.weekly_at("monday", "09:00")`). `None` for anything
+/// else — a constant, a computed string — which only the running app knows.
+/// `soli edge build` writes Cloudflare Cron Triggers from it.
+pub fn static_cron_from_source(source: &str) -> Option<Result<String, String>> {
+    let source = source.trim().trim_end_matches(';').trim();
+    let literals = |text: &str| -> Option<Vec<String>> {
+        let mut out = Vec::new();
+        let mut rest = text.trim();
+        while !rest.is_empty() {
+            let quote = rest.chars().next()?;
+            if quote != '"' && quote != '\'' {
+                return None;
+            }
+            let end = rest[1..].find(quote)? + 1;
+            out.push(rest[1..end].to_string());
+            rest = rest[end + 1..].trim_start();
+            rest = rest.strip_prefix(',').unwrap_or(rest).trim_start();
+        }
+        Some(out)
+    };
+    if let Some(value) = literals(source).filter(|v| v.len() == 1) {
+        return Some(Ok(value.into_iter().next().unwrap_or_default()));
+    }
+    let call = source.strip_prefix("Cron.")?;
+    let (name, args) = match call.split_once('(') {
+        Some((name, rest)) => (name.trim(), literals(rest.strip_suffix(')')?)?),
+        None => (call.trim(), Vec::new()),
+    };
+    Some(match (name, args.as_slice()) {
+        ("hourly", []) => Ok(cron_hourly()),
+        ("daily_at", [time]) => cron_daily_at(time),
+        ("weekly_at", [day, time]) => cron_weekly_at(day, time),
+        ("every", [interval]) => cron_every(&Value::String(interval.as_str().into())),
+        _ => return None,
+    })
+}
+
 /// Read a `static cron` field from a class; returns the string if present.
 pub fn read_static_cron(class: &Class) -> Option<String> {
     let fields = class.static_fields.borrow();
@@ -1218,6 +1258,31 @@ mod cron_expr_tests {
         }
         assert!(cron_every(&Value::Int(0)).is_err());
         assert!(cron_every(&Value::String("-5 seconds".to_string().into())).is_err());
+    }
+
+    #[test]
+    fn static_cron_is_read_from_source_without_running_the_app() {
+        use super::static_cron_from_source as read;
+        assert_eq!(
+            read(r#"Cron.daily_at("03:15")"#).unwrap().unwrap(),
+            "0 15 3 * * *"
+        );
+        assert_eq!(read("Cron.hourly()").unwrap().unwrap(), "0 0 * * * *");
+        assert_eq!(read("Cron.hourly").unwrap().unwrap(), "0 0 * * * *");
+        assert_eq!(
+            read(r#"Cron.weekly_at("monday", "09:00")"#)
+                .unwrap()
+                .unwrap(),
+            "0 0 9 * * Mon"
+        );
+        assert_eq!(
+            read(r#"Cron.every("5 minutes")"#).unwrap().unwrap(),
+            "0 */5 * * * *"
+        );
+        assert_eq!(read(r#""0 0 4 * * *""#).unwrap().unwrap(), "0 0 4 * * *");
+        assert!(read(r#"Cron.daily_at("25:00")"#).unwrap().is_err());
+        assert!(read("NIGHTLY").is_none(), "a constant only the app knows");
+        assert!(read(r#"Cron.daily_at(time)"#).is_none());
     }
 
     #[test]

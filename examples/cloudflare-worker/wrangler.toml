@@ -46,3 +46,9 @@ class_name = "SoliLiveObject"
 [[migrations]]
 tag = "soli-live-v1"
 new_sqlite_classes = ["SoliLiveObject"]
+
+# Cron Triggers for the jobs' `static cron` (UTC, to the minute). `soli edge
+# build` writes them into a generated wrangler.toml; this one is the app's own,
+# so they are listed here (the build warns when one is missing).
+[triggers]
+crons = ["0 * * * *"]

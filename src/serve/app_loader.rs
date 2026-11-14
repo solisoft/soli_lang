@@ -374,13 +374,25 @@ fn sync_static_crons(worker_id: usize, crons: Vec<(String, String, String)>) {
         return;
     }
     // A Worker fires no cron from the job table (and has no thread to write
-    // them from): say so instead of failing to spawn.
-    if crate::jobs::queues::routes() {
-        let names: Vec<&str> = crons.iter().map(|(_, _, class)| class.as_str()).collect();
-        eprintln!(
-            "static cron on {} is not run on the edge (Cloudflare Workers) build: \
-             use a Cron Trigger",
-            names.join(", ")
+    // them from): Cloudflare Cron Triggers run them (`jobs::edge_cron`). One
+    // that needs seconds cannot be a trigger; say so at boot.
+    if crate::jobs::edge_cron::enabled() {
+        for (_, expr, class) in &crons {
+            if let Err(e) = crate::jobs::edge_cron::trigger(expr) {
+                eprintln!("static cron on {class} cannot run on the edge: {e}");
+            }
+        }
+        crate::jobs::edge_cron::set(
+            crons
+                .into_iter()
+                .map(
+                    |(name, expression, class)| crate::jobs::edge_cron::EdgeCron {
+                        name,
+                        class,
+                        expression,
+                    },
+                )
+                .collect(),
         );
         return;
     }

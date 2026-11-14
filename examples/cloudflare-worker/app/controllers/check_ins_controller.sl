@@ -15,6 +15,7 @@ class CheckInsController < Controller
     grouped(fn() {
       per_colo = CheckIn.group_by("colo").all
       @latest = CheckIn.order("at", "desc").limit(10).all
+      @last_cron = CronRun.order("at", "desc").first
     })
     per_colo = per_colo.sort_by { |row| -row["n"] }
     @total = per_colo.reduce(fn(sum, row) sum + row["n"], 0)

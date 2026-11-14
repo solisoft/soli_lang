@@ -137,7 +137,7 @@ max_retries = 100</code></pre>
       <ul>
         <li>A failure is retried with the server's backoff (5 s, 10 s, 20 s…, an hour at most) until its <code>max_retries</code>.</li>
         <li>At least once: keep <code>perform</code> idempotent.</li>
-        <li>Delays up to 12 hours. Cron becomes a Cron Trigger.</li>
+        <li>Delays up to 12 hours. A <code>static cron</code> becomes a Cron Trigger: see the hourly job on <a href="/d1">/d1</a>.</li>
       </ul>
     </article>
 

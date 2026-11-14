@@ -169,7 +169,7 @@ SOLI_DB_ADAPTER = "d1"</code></pre>
     <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-10">
         <li><strong class="text-white">Transactions.</strong> D1 runs batches, not interactive transactions: <code>Model.transaction</code> raises.</li>
         <li><strong class="text-white">Column-aware models</strong> (a model that declares its columns) raise: store them as documents.</li>
-        <li><strong class="text-white">The job table and cron</strong>: on the edge, jobs go through <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a> instead.</li>
+        <li><strong class="text-white">The job table and cron</strong>: on the edge, jobs go through <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a> and <code>static cron</code> through <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a> instead.</li>
     </ul>
     <p class="text-gray-400 mb-10">
         One D1 database per site: a connection <code>url = "d1://SITE_{tenant}"</code> sends each tenant's queries to its own binding (<code>switch_tenant("acme")</code> &rarr; <code>SITE_acme</code>), declared in <code>wrangler.toml</code> with one <code>[[d1_databases]]</code> block per site. Bindings are fixed at deploy, so a new site means a new binding and a redeploy &mdash; for many sites, use <a href="#durable-objects" class="text-amber-400 hover:underline">SQLite in Durable Objects</a> instead. See <a href="/docs/database/multi-database#tenants" class="text-amber-400 hover:underline">one database per tenant</a>.
@@ -236,7 +236,7 @@ SOLI_DB_ADAPTER = "postgres"</code></pre>
         <code class="text-amber-400">soli edge build</code> bundles the driver when the app's configuration names Postgres &mdash; <code>adapter = "postgres"</code> in <code>config/database.toml</code>, <code>SOLI_DB_ADAPTER</code> in <code>.env</code> or under <code>[vars]</code> &mdash; or when told with <code>--sql postgres</code> (<code>--sql none</code> bundles nothing). It copies the driver's glue, adds <code>pg</code> to <code>package.json</code>, runs <code>npm install</code>, and puts <code>nodejs_compat</code> in a new <code>wrangler.toml</code>; an existing one without it earns a warning.
     </p>
     <p class="text-gray-400 mb-6">
-        The models are the native adapter's: the same document tables and SQL, column-aware models (<code>table "orders"</code>) included, and <strong class="text-white">transactions</strong>, since every statement of a request runs on one connection &mdash; opened at the request's first query, closed (handed back to Hyperdrive's pool) when it ends. What stays with <code>soli serve</code>: cron, <code>db:create</code> / <code>db:drop</code> and schema dumps (jobs run through <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a>).
+        The models are the native adapter's: the same document tables and SQL, column-aware models (<code>table "orders"</code>) included, and <strong class="text-white">transactions</strong>, since every statement of a request runs on one connection &mdash; opened at the request's first query, closed (handed back to Hyperdrive's pool) when it ends. What stays with <code>soli serve</code>: <code>db:create</code> / <code>db:drop</code> and schema dumps (jobs run through <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a>, <code>static cron</code> through <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a>).
     </p>
     <p class="text-gray-400 mb-12">
         Not available on the edge: <strong class="text-white">MySQL</strong> (no driver glue yet), SQLite and the native SoliDB driver. The edge build uses D1, PostgreSQL or SoliDB over HTTP.
@@ -309,7 +309,34 @@ max_retries = 100        # Soli decides retries with each job's max_retries</cod
     <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
         <li><strong class="text-white">Delays past 12 hours</strong>, Cloudflare's limit: <code>perform_in("1 day", …)</code> raises.</li>
         <li><strong class="text-white">Row operations</strong> &mdash; <code>Job.list</code>, <code>Job.queues</code>, <code>Job.cancel</code>, <code>Job.retry</code> &mdash; raise: Cloudflare does not hand messages back. Its dashboard shows the queue.</li>
-        <li><strong class="text-white">Cron</strong> (<code>Cron.*</code>, <code>static cron</code>): use a <a href="https://developers.cloudflare.com/workers/configuration/cron-triggers/" class="text-amber-400 hover:underline">Cron Trigger</a>.</li>
+        <li><strong class="text-white">Cron</strong>: <code>static cron</code> runs on <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a>; <code>Cron.schedule</code> and the other <code>Cron.*</code> calls that write the cron table do not run.</li>
+    </ul>
+
+    <h2 id="cron" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Cron: Cloudflare Cron Triggers</h2>
+    <p class="text-gray-400 mb-6">
+        A job class&rsquo;s <code>static cron</code> runs on the edge with no change: Cloudflare calls the Worker&rsquo;s <code>scheduled()</code> handler at each time <a href="https://developers.cloudflare.com/workers/configuration/cron-triggers/" class="text-amber-400 hover:underline"><code>[triggers] crons</code></a> in <code>wrangler.toml</code> lists, and the Worker runs the jobs whose schedule it is.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob
+  static cron = Cron.daily_at("03:15")
+
+  static def perform(args)
+    Report.generate
+  end
+end</code></pre>
+    </div>
+    <p class="text-gray-400 mb-4"><code>soli edge build</code> reads the <code>static cron</code> declarations of <code>app/jobs/</code> and writes the triggers into the <code>wrangler.toml</code> it generates; an existing <code>wrangler.toml</code> gets a warning that lists the ones it lacks:</p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">[triggers]
+crons = ["15 3 * * *"]</code></pre>
+    </div>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
+        <li><strong class="text-white">Five fields, UTC, to the minute.</strong> Soli&rsquo;s expressions have a seconds field first (<code>0 15 3 * * *</code>); a trigger drops it. A schedule that needs seconds (<code>Cron.every("30 seconds")</code>, <code>"30 * * * * *"</code>) fails the build, naming its file.</li>
+        <li><strong class="text-white">Read from the source.</strong> A string literal or a <code>Cron.*</code> helper called with literals (<code>daily_at</code>, <code>hourly</code>, <code>every</code>, <code>weekly_at</code>). A schedule computed when the app runs (a constant) is a warning: add its trigger by hand.</li>
+        <li><strong class="text-white">Several jobs on one schedule share a trigger</strong> and all run, one after the other, with no tenant. One failing does not stop the others; it fails the invocation, so Cloudflare&rsquo;s dashboard shows it, and <code>npx wrangler tail</code> its error. There are no retries: a job that must not be lost can enqueue its work with <code>perform_later</code> (Cloudflare Queues retry).</li>
+        <li><strong class="text-white">Not available:</strong> <code>Cron.schedule</code> / <code>update</code> / <code>delete</code> and <code>Cron.list</code>, which write and read the cron table: a trigger is fixed when the Worker is deployed.</li>
+        <li><strong class="text-white">Count.</strong> Cloudflare allows 5 Cron Triggers per account on the Workers Free plan, 250 on Paid; the build warns past 5.</li>
+        <li><strong class="text-white">Locally</strong>, <code>npx wrangler dev --test-scheduled</code> and <code>curl "http://127.0.0.1:8787/__scheduled?cron=15+3+*+*+*"</code> fire a trigger. <a href="https://cf.solisoft.net/d1" class="text-amber-400 hover:underline">cf.solisoft.net/d1</a> shows the last run of an hourly job.</li>
     </ul>
 
     <h2 id="liveview" class="text-3xl font-bold text-white mb-4 scroll-mt-24">LiveView: sockets in Durable Objects</h2>
@@ -345,7 +372,7 @@ new_sqlite_classes = ["SoliLiveObject"]</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">routes, controllers, <code>before_action</code>, middleware; <a href="#liveview" class="text-amber-400 hover:underline">LiveView</a></td><td class="py-3 px-4">other WebSockets; LiveView <code>tick</code>, live queries, <code>live_update</code></td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">views, layouts, partials, components, helpers</td><td class="py-3 px-4">server-sent events, <code>stream</code>, blob streaming (answered <code>501</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded and multipart forms, JSON</td><td class="py-3 px-4">resumable (tus) and direct uploads, file writes</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code>; background jobs through Cloudflare Queues</td><td class="py-3 px-4">cron, sending mail</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code>; background jobs through Cloudflare Queues; <code>static cron</code> through <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a></td><td class="py-3 px-4"><code>Cron.schedule</code> and the cron table, sending mail</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
                 <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, the <code>Image</code> class, <code>System.run</code></td></tr>

@@ -79,6 +79,22 @@ url = "do://PROBE/{tenant}"
 
 const PROBE_MODEL: &str = "class ProbeNote < Model\n  connection \"probe\"\nend\n";
 
+/// `static cron` jobs: two on the same daily slot (one fails), one every half hour.
+const CRON_JOBS: [(&str, &str); 3] = [
+    (
+        "/app/app/jobs/nightly_probe_job.sl",
+        "class NightlyProbeJob\n  static cron = Cron.daily_at(\"03:00\")\n\n  static def perform(args)\n    \"swept\"\n  end\nend\n",
+    ),
+    (
+        "/app/app/jobs/grumpy_cron_job.sl",
+        "class GrumpyCronJob\n  static cron = \"0 0 3 * * *\"\n\n  static def perform(args)\n    throw \"not today\"\n  end\nend\n",
+    ),
+    (
+        "/app/app/jobs/hourly_probe_job.sl",
+        "class HourlyProbeJob\n  static cron = Cron.every(\"30 minutes\")\n\n  static def perform(args)\n    1\n  end\nend\n",
+    ),
+];
+
 /// A LiveView, as an app declares one: a template, `router_live`, a handler.
 const TALLY_TEMPLATE: &str = r#"<div class="tally">
   <span id="count"><%= count || 0 %></span>
@@ -149,6 +165,9 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
         "/app/app/models/probe_note.sl".to_string(),
         PROBE_MODEL.as_bytes().to_vec(),
     ));
+    for (path, source) in CRON_JOBS {
+        files.push((path.to_string(), source.as_bytes().to_vec()));
+    }
     files.push((
         "/app/app/views/live/probe_tally.html.slv".to_string(),
         TALLY_TEMPLATE.as_bytes().to_vec(),
@@ -356,6 +375,30 @@ fn boots_a_mounted_app_and_answers_requests() {
             }
             // Nothing stayed behind in the isolate.
             assert!(solilang::live::view::live_registry().get(instance["id"].as_str().unwrap()).is_none());
+
+            // Cron Triggers: the daily trigger runs both jobs declared on it, one
+            // failing does not stop the other; the half-hourly one runs alone.
+            let report = edge::run_cron("0 3 * * *");
+            let mut ran: Vec<(String, String)> = report["ran"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| (r["job"].as_str().unwrap().to_string(), r["status"].as_str().unwrap().to_string()))
+                .collect();
+            ran.sort();
+            assert_eq!(
+                ran,
+                [
+                    ("GrumpyCronJob".to_string(), "failed".to_string()),
+                    ("NightlyProbeJob".to_string(), "done".to_string())
+                ],
+                "{report}"
+            );
+            assert!(report.to_string().contains("not today"), "{report}");
+            let report = edge::run_cron("*/30 * * * *");
+            assert_eq!(report["ran"][0]["job"], "HourlyProbeJob", "{report}");
+            assert_eq!(report["ran"].as_array().unwrap().len(), 1, "{report}");
+            assert!(edge::run_cron("1 2 * * *")["ran"].as_array().unwrap().is_empty());
 
             // The LiveView client revalidates (no-cache + an ETag of its text),
             // so a fixed client reaches browsers at once.

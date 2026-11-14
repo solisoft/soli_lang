@@ -17,6 +17,7 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
           <a href="/#images">image transforms</a> on read</li>
       <li>Background jobs through <a href="/#queues">Cloudflare Queues</a></li>
       <li><a href="/live">LiveView</a>, each instance's socket held by a Durable Object</li>
+      <li><code>static cron</code> jobs, on Cloudflare Cron Triggers (<a href="/d1">/d1</a> shows an hourly one)</li>
       <li>The <code>HTTP</code> class, over the Worker's <code>fetch</code></li>
       <li>Static files from <code>public/</code>, served by Cloudflare</li>
     </ul>
@@ -26,7 +27,8 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
     <ul>
       <li>Other WebSockets, server-sent events and streamed bodies (answered with a 501);
           LiveView <code>tick</code>, live queries and <code>live_update</code></li>
-      <li>Cron (use a Cron Trigger), mailers that send, jobs delayed past 12 hours</li>
+      <li><code>Cron.schedule</code> (a <code>static cron</code> runs on a Cron Trigger), mailers that send,
+          jobs delayed past 12 hours</li>
       <li>Resumable and direct uploads, files over about 20 MB, anything that writes files</li>
       <li>MySQL, SQLite files and the native SoliDB driver; transactions on D1</li>
       <li><code>--dev</code>: hot reload, the dev bar, the REPL</li>

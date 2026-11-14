@@ -238,7 +238,8 @@ What D1 does not offer:
 - **Column-aware models** (a model that declares its columns) raise: store
   them as documents.
 - **The job table and cron**: on the edge, jobs go through
-  [Cloudflare Queues](#background-jobs-cloudflare-queues) instead.
+  [Cloudflare Queues](#background-jobs-cloudflare-queues) and `static cron`
+  through [Cron Triggers](#cron-cloudflare-cron-triggers) instead.
 
 One D1 database per site: a connection `url = "d1://SITE_{tenant}"` sends each
 tenant's queries to its own binding (`switch_tenant("acme")` → `SITE_acme`),
@@ -340,8 +341,9 @@ The models are the native adapter's: the same document tables and SQL,
 column-aware models (`table "orders"`) included, and **transactions**, since
 every statement of a request runs on one connection — opened at the request's
 first query, closed (handed back to Hyperdrive's pool) when it ends. What stays
-with `soli serve`: cron, `db:create` / `db:drop` and schema dumps (jobs run
-through [Cloudflare Queues](#background-jobs-cloudflare-queues)).
+with `soli serve`: `db:create` / `db:drop` and schema dumps (jobs run through
+[Cloudflare Queues](#background-jobs-cloudflare-queues), `static cron` through
+[Cron Triggers](#cron-cloudflare-cron-triggers)).
 
 Not available on the edge: **MySQL** (no driver glue yet), SQLite and the
 native SoliDB driver. The edge build uses D1, PostgreSQL or
@@ -456,8 +458,55 @@ What the edge cannot do with them:
 - **Delays past 12 hours**, Cloudflare's limit: `perform_in("1 day", …)` raises.
 - **Row operations** — `Job.list`, `Job.queues`, `Job.cancel`, `Job.retry` —
   raise: Cloudflare does not hand messages back. Its dashboard shows the queue.
-- **Cron** (`Cron.*`, `static cron`): use a
-  [Cron Trigger](https://developers.cloudflare.com/workers/configuration/cron-triggers/).
+- **Cron**: `static cron` runs on Cron Triggers (next section); `Cron.schedule`
+  and the other `Cron.*` calls that write the cron table do not run.
+
+## Cron: Cloudflare Cron Triggers
+
+A job class's `static cron` runs on the edge with no change: Cloudflare calls
+the Worker's `scheduled()` handler at each time
+[`[triggers] crons`](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
+in `wrangler.toml` lists, and the Worker runs the jobs whose schedule it is.
+
+```soli
+# app/jobs/nightly_report_job.sl
+class NightlyReportJob
+  static cron = Cron.daily_at("03:15")
+
+  static def perform(args)
+    Report.generate
+  end
+end
+```
+
+`soli edge build` reads the `static cron` declarations of `app/jobs/` and
+writes the triggers into the `wrangler.toml` it generates; an existing
+`wrangler.toml` gets a warning that lists the ones it lacks:
+
+```toml
+[triggers]
+crons = ["15 3 * * *"]
+```
+
+- **Five fields, UTC, to the minute.** Soli's expressions have a seconds field
+  first (`0 15 3 * * *`); a trigger drops it. A schedule that needs seconds
+  (`Cron.every("30 seconds")`, `"30 * * * * *"`) fails the build, naming its
+  file.
+- **Read from the source.** A string literal or a `Cron.*` helper called with
+  literals (`daily_at`, `hourly`, `every`, `weekly_at`). A schedule computed
+  when the app runs (a constant) is a warning: add its trigger by hand.
+- **Several jobs on one schedule share a trigger** and all run, one after the
+  other, with no tenant. One failing does not stop the others; it fails the
+  invocation, so Cloudflare's dashboard shows it, and `npx wrangler tail` its
+  error. There are no retries: a job that must not be lost can enqueue its
+  work with `perform_later` (Cloudflare Queues retry).
+- **Not available:** `Cron.schedule` / `update` / `delete` and `Cron.list`,
+  which write and read the cron table: a trigger is fixed when the Worker is
+  deployed.
+- **Count.** Cloudflare allows 5 Cron Triggers per account on the Workers Free
+  plan, 250 on Paid; the build warns past 5.
+- **Locally**, `npx wrangler dev --test-scheduled` and
+  `curl "http://127.0.0.1:8787/__scheduled?cron=15+3+*+*+*"` fire a trigger.
 
 ## LiveView: sockets in Durable Objects
 
@@ -506,7 +555,7 @@ WebSocket routes and server-sent events still answer `501`.
 | routes, controllers, `before_action`, middleware; [LiveView](#liveview-sockets-in-durable-objects) | other WebSockets; LiveView `tick`, live queries, `live_update` |
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
-| i18n from `config/locales`; background jobs through Cloudflare Queues | cron, sending mail |
+| i18n from `config/locales`; background jobs through Cloudflare Queues; `static cron` through Cron Triggers | `Cron.schedule` and the cron table, sending mail |
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, the `Image` class, `System.run` |

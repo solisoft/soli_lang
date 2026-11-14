@@ -15,6 +15,7 @@
 //!   and the done / retry / dead rule the Worker's `queue()` handler applies.
 
 pub mod claim;
+pub mod edge_cron;
 pub mod engine;
 pub mod push;
 pub mod queues;

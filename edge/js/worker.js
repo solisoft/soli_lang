@@ -19,6 +19,7 @@ let wasm = null;
 let handleRequest = null;
 let runJob = null;
 let runLive = null;
+let runCron = null;
 let bootError = null;
 // One request inside wasm at a time: a suspended stack still owns its part of
 // the shadow stack in linear memory, which a second request would overwrite.
@@ -38,6 +39,7 @@ function ensureBooted(env) {
     handleRequest = WebAssembly.promising(wasm.soli_handle);
     runJob = WebAssembly.promising(wasm.soli_run_job);
     runLive = WebAssembly.promising(wasm.soli_live);
+    runCron = WebAssembly.promising(wasm.soli_run_cron);
     // The D1 and R2 imports read and write wasm memory and look bindings up in env.
     setHost(wasm, env);
     set_env(JSON.stringify(Object.entries(env).filter(([, value]) => typeof value === "string")));
@@ -327,6 +329,34 @@ export default {
       status: result.status,
       headers: result.headers,
     });
+  },
+
+  // Cron Triggers (`[triggers] crons` in wrangler.toml, which `soli edge build`
+  // writes from the jobs' `static cron`): the jobs whose schedule this is run
+  // in turn, behind any request inside wasm. A failed one fails the
+  // invocation, so the dashboard shows it.
+  async scheduled(controller, env, ctx) {
+    ensureBooted(env);
+    if (bootError) throw new Error(`Soli failed to boot: ${bootError}`);
+    const job = queue
+      .then(async () => {
+        const bytes = encoder.encode(JSON.stringify({ cron: controller.cron }));
+        const ptr = wasm.soli_alloc(bytes.length);
+        new Uint8Array(wasm.memory.buffer, ptr, bytes.length).set(bytes);
+        const out = await runCron(ptr, bytes.length);
+        return JSON.parse(decoder.decode(new Uint8Array(wasm.memory.buffer, out, wasm.soli_response_len())));
+      })
+      .finally(() => endSql(ctx));
+    queue = job.catch(() => {});
+    const report = await job;
+    const ran = report.ran || [];
+    if (ran.length === 0) console.warn(`cron ${controller.cron}: no static cron declares it`);
+    for (const r of ran) {
+      if (r.status === "done") console.log(`cron ${controller.cron}: ${r.job} done`);
+      else console.error(`cron ${controller.cron}: ${r.job} failed: ${r.error}`);
+    }
+    const failed = ran.filter((r) => r.status !== "done");
+    if (failed.length) throw new Error(`${failed.map((r) => r.job).join(", ")} failed`);
   },
 
   // Jobs enqueued on the edge (`perform_later`, `Job.enqueue*`) arrive here as

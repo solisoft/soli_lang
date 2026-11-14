@@ -152,6 +152,24 @@ fn split_frame(mut input: Vec<u8>) -> Result<(serde_json::Value, Vec<u8>), Strin
     Ok((json, input))
 }
 
+/// Run the jobs of one Cloudflare Cron Trigger (see `edge::run_cron`): the JSON
+/// at `ptr` (from `soli_alloc`) is `{cron}`, the trigger's expression; the
+/// answer, `soli_response_len` bytes long, the JSON report. Entered through
+/// `WebAssembly.promising`: the jobs' queries suspend the stack.
+#[no_mangle]
+pub extern "C" fn soli_run_cron(ptr: *mut u8, len: usize) -> *const u8 {
+    // SAFETY: as in `soli_handle`.
+    let input = unsafe { Vec::from_raw_parts(ptr, len, len) };
+    let report = match serde_json::from_slice::<serde_json::Value>(&input) {
+        Ok(json) => edge::run_cron(json["cron"].as_str().unwrap_or_default()),
+        Err(e) => serde_json::json!({ "error": format!("Malformed cron call from the host: {e}") }),
+    };
+    RESPONSE.with(|cell| {
+        *cell.borrow_mut() = report.to_string().into_bytes();
+        cell.borrow().as_ptr()
+    })
+}
+
 /// One LiveView frame (see `edge::live_frame`): the JSON at `ptr` (from
 /// `soli_alloc`) is the frame's input, and the answer, `soli_response_len`
 /// bytes long and valid until the next call, its JSON output. The Durable

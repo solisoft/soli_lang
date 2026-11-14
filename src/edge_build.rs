@@ -174,8 +174,22 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
     }
     let wrote_wrangler_toml = !wrangler_toml_from_app && !wrangler_toml.exists();
     let live = uses_liveview(app_dir);
+    let crons = cron_triggers(app_dir, &mut warnings)?;
+    if crons.len() > FREE_PLAN_CRON_TRIGGERS {
+        warnings.push(format!(
+            "{} Cron Triggers: the Workers Free plan allows {FREE_PLAN_CRON_TRIGGERS} per account \
+             (Paid: 250)",
+            crons.len()
+        ));
+    }
     if wrote_wrangler_toml {
-        let config = wrangler_config(&worker_name(app_dir), asset_files > 0, &sql_drivers, live);
+        let config = wrangler_config(
+            &worker_name(app_dir),
+            asset_files > 0,
+            &sql_drivers,
+            live,
+            &crons,
+        );
         fs::write(&wrangler_toml, config).map_err(|e| format!("write wrangler.toml: {e}"))?;
     } else {
         let existing = fs::read_to_string(&wrangler_toml).unwrap_or_default();
@@ -185,6 +199,18 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
                  `compatibility_flags = [\"nodejs_compat\"]` to wrangler.toml, above its first table"
                     .to_string(),
             );
+        }
+        let missing: Vec<&String> = crons
+            .iter()
+            .filter(|cron| !existing.contains(&format!("\"{cron}\"")))
+            .collect();
+        if !missing.is_empty() {
+            let list: Vec<String> = missing.iter().map(|c| format!("\"{c}\"")).collect();
+            warnings.push(format!(
+                "the jobs' static cron needs Cron Triggers in wrangler.toml: \
+                 [triggers] crons = [{}]",
+                list.join(", ")
+            ));
         }
         if live && !existing.contains("SoliLiveObject") {
             warnings.push(format!(
@@ -430,6 +456,67 @@ tag = "soli-live-v1"
 new_sqlite_classes = ["SoliLiveObject"]
 "#;
 
+/// Cron Triggers a Workers Free account may have (Paid: 250).
+const FREE_PLAN_CRON_TRIGGERS: usize = 5;
+
+/// The Cloudflare Cron Triggers the app's jobs need: every `static cron` under
+/// `app/jobs/` (a `*_job.sl` file, subdirectories included), read from the
+/// source and converted to five fields (`jobs::edge_cron::trigger`), once each.
+/// A schedule on seconds cannot be a trigger: the build fails, naming the
+/// file. A declaration only the running app can evaluate (a constant) is a
+/// warning.
+fn cron_triggers(app_dir: &Path, warnings: &mut Vec<String>) -> Result<Vec<String>, String> {
+    let jobs = app_dir.join("app/jobs");
+    let mut triggers: Vec<String> = Vec::new();
+    if !jobs.is_dir() {
+        return Ok(triggers);
+    }
+    let mut files: Vec<PathBuf> = walkdir::WalkDir::new(&jobs)
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|e| e.into_path())
+        .filter(|p| p.to_string_lossy().ends_with("_job.sl"))
+        .collect();
+    files.sort();
+    for file in files {
+        let source =
+            fs::read_to_string(&file).map_err(|e| format!("read {}: {e}", file.display()))?;
+        let shown = file
+            .strip_prefix(app_dir)
+            .unwrap_or(&file)
+            .display()
+            .to_string();
+        for line in source.lines() {
+            let Some(declaration) = line.trim().strip_prefix("static cron") else {
+                continue;
+            };
+            let Some((_, expression)) = declaration.split_once('=') else {
+                continue;
+            };
+            let expression = expression.split(" #").next().unwrap_or(expression);
+            let cron = match crate::interpreter::builtins::jobs::static_cron_from_source(expression)
+            {
+                Some(Ok(cron)) => cron,
+                Some(Err(e)) => return Err(format!("{shown}: static cron: {e}")),
+                None => {
+                    warnings.push(format!(
+                        "{shown}: static cron = {} is computed when the app runs: add its Cron \
+                         Trigger to wrangler.toml by hand",
+                        expression.trim()
+                    ));
+                    continue;
+                }
+            };
+            let trigger = crate::jobs::edge_cron::trigger(&cron)
+                .map_err(|e| format!("{shown}: static cron: {e}"))?;
+            if !triggers.contains(&trigger) {
+                triggers.push(trigger);
+            }
+        }
+    }
+    Ok(triggers)
+}
+
 /// Whether the app declares a LiveView (`router_live` in `config/routes.sl`).
 fn uses_liveview(app_dir: &Path) -> bool {
     fs::read_to_string(app_dir.join("config/routes.sl")).is_ok_and(|routes| {
@@ -439,7 +526,13 @@ fn uses_liveview(app_dir: &Path) -> bool {
     })
 }
 
-fn wrangler_config(name: &str, assets: bool, sql_drivers: &[&str], live: bool) -> String {
+fn wrangler_config(
+    name: &str,
+    assets: bool,
+    sql_drivers: &[&str],
+    live: bool,
+    crons: &[String],
+) -> String {
     let today = chrono::Utc::now().format("%Y-%m-%d");
     // Top-level keys first: in TOML everything after a `[table]` header
     // belongs to that table, `routes` included.
@@ -533,6 +626,14 @@ directory = "./public"
         );
         config.push_str(LIVE_BINDING);
     }
+    if !crons.is_empty() {
+        let list: Vec<String> = crons.iter().map(|c| format!("\"{c}\"")).collect();
+        config.push_str(&format!(
+            "\n# Cron Triggers for the jobs' `static cron` (UTC, to the minute): the Worker\n\
+             # runs the jobs whose schedule each one is.\n[triggers]\ncrons = [{}]\n",
+            list.join(", ")
+        ));
+    }
     config
 }
 
@@ -560,6 +661,72 @@ mod tests {
         fs::write(dir.join("app/logo.bin"), [0xff, 0xfe, 0x00]).unwrap();
         fs::write(dir.join("public/css/site.css"), "body{}").unwrap();
         fs::write(dir.join(".env"), "SECRET=1").unwrap();
+    }
+
+    #[test]
+    fn static_cron_becomes_cron_triggers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (app, runtime) = (tmp.path().join("app"), tmp.path().join("rt"));
+        fake_app(&app);
+        fake_runtime(&runtime);
+        let jobs = app.join("app/jobs/maintenance");
+        fs::create_dir_all(&jobs).unwrap();
+        let job = |file: &str, cron: &str| {
+            fs::write(
+                jobs.join(file),
+                format!("class X\n  static cron = {cron}  # nightly\n\n  static def perform(args)\n  end\nend\n"),
+            )
+            .unwrap();
+        };
+        job("sweep_job.sl", r#"Cron.daily_at("03:15")"#);
+        job("also_job.sl", r#""0 15 3 * * *""#);
+        job("ping_job.sl", "Cron.hourly()");
+        job("computed_job.sl", "SCHEDULE");
+        let options = |out| Options {
+            app_dir: &app,
+            out_dir: out,
+            runtime_dir: Some(&runtime),
+            sql: None,
+            npm_install: false,
+        };
+
+        let out = tmp.path().join("out");
+        let summary = build(&options(&out)).unwrap();
+        let toml = fs::read_to_string(out.join("wrangler.toml")).unwrap();
+        assert!(
+            toml.contains("[triggers]\ncrons = [\"15 3 * * *\", \"0 * * * *\"]"),
+            "two jobs on one slot share a trigger: {toml}"
+        );
+        assert!(
+            summary
+                .warnings
+                .iter()
+                .any(|w| w.contains("computed_job.sl")),
+            "{:?}",
+            summary.warnings
+        );
+        let parsed: toml::Value = toml.parse().expect("valid TOML");
+        assert_eq!(parsed["triggers"]["crons"].as_array().unwrap().len(), 2);
+
+        // An existing wrangler.toml without them: a warning that lists them.
+        fs::write(out.join("wrangler.toml"), "name = \"x\"\n").unwrap();
+        let summary = build(&options(&out)).unwrap();
+        assert!(
+            summary
+                .warnings
+                .iter()
+                .any(|w| w.contains("\"15 3 * * *\"") && w.contains("[triggers]")),
+            "{:?}",
+            summary.warnings
+        );
+
+        // A schedule on seconds cannot be a trigger.
+        job("fast_job.sl", r#""30 * * * * *""#);
+        let err = build(&options(&tmp.path().join("again"))).unwrap_err();
+        assert!(
+            err.contains("fast_job.sl") && err.contains("on the minute"),
+            "{err}"
+        );
     }
 
     #[test]

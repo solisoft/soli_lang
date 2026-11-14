@@ -300,7 +300,10 @@ table and no poller: every enqueue (`perform_later`, `perform_in`,
 Cloudflare Queue (`[[queues.producers]] binding = "JOBS"`), and the Worker's
 `queue()` handler runs it with the same job classes. Retries follow the same
 rule and backoff. Delays stop at Cloudflare's 12 hours; `Job.list`,
-`Job.queues`, `Job.cancel`, `Job.retry` and cron are not available there.
+`Job.queues`, `Job.cancel` and `Job.retry` are not available there. A
+`static cron` runs on a Cloudflare Cron Trigger, which `soli edge build`
+writes from it ([Cron on the edge](edge.md#cron-cloudflare-cron-triggers));
+`Cron.schedule` and the cron table are not available.
 
 ## Testing Jobs
 
