@@ -52,6 +52,40 @@ pub fn app_root(target: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// The applications under `dir`, `dir` itself excluded: every directory below
+/// it holding `soli.toml` or `config/routes.sl`, sorted. A walk stops at an
+/// application (one inside another is part of it) and skips what
+/// [`files_with_extension`] skips. `soli check examples` needs them: each
+/// example is an application of its own, and its models are only known from
+/// its root.
+pub fn nested_app_roots(dir: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') || SKIPPED_DIRS.contains(&name.as_ref()) {
+                continue;
+            }
+            if path.join("soli.toml").is_file() || path.join("config/routes.sl").is_file() {
+                out.push(path);
+            } else {
+                walk(&path, out);
+            }
+        }
+    }
+    let mut roots = Vec::new();
+    walk(dir, &mut roots);
+    roots.sort();
+    roots
+}
+
 /// The files under `dir` with extension `ext`, recursively and sorted. Hidden
 /// directories and dependency or build trees (`node_modules`, `target`…) are
 /// skipped.
@@ -112,6 +146,22 @@ mod tests {
         let path = root.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn the_applications_under_a_directory_are_found_without_descending_into_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "shop/soli.toml", "");
+        write(root, "shop/plugins/inner/soli.toml", "");
+        write(root, "group/blog/config/routes.sl", "");
+        write(root, "group/blog/node_modules/x/soli.toml", "");
+        write(root, ".hidden/soli.toml", "");
+        write(root, "loose/script.sl", "");
+        assert_eq!(
+            nested_app_roots(root),
+            [root.join("group/blog"), root.join("shop")]
+        );
     }
 
     #[test]

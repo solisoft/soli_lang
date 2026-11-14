@@ -44,6 +44,17 @@ wasm-bindgen --target web --out-dir "$OUT" \
   "$TARGET_DIR/wasm32-unknown-unknown/release/soli_edge.wasm"
 cp "$ROOT/edge/js/jspi.js" "$ROOT/edge/js/worker.js" "$ROOT/edge/js/durable.js" "$ROOT/edge/js/sql-pg.js" "$OUT/"
 rm -f "$OUT"/*.d.ts
+# wasm-bindgen's glue keeps its instance and never makes another, even after a
+# trap (a Rust panic: `panic = "abort"`) left that instance's memory mid-call,
+# with borrows that never end. worker.js calls this to drop it, so the next
+# request instantiates the module again and boots the app on clean memory.
+cat >> "$OUT/soli_edge.js" <<'JS'
+
+// Added by scripts/build-edge.sh: forget the instance after a trap.
+export function __soli_reset() {
+    wasm = undefined;
+}
+JS
 
 wasm="$OUT/soli_edge_bg.wasm"
 printf 'edge runtime in %s: %s bytes, %s gzipped\n' "$OUT" \

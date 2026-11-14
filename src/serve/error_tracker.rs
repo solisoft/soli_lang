@@ -115,6 +115,11 @@ pub(crate) fn enabled() -> bool {
 /// or `on`/`1`/`true`/`yes`; unset or anything else means on, except under
 /// `APP_ENV=test`. Shared by the error tracker, slow queries and query stats.
 pub(crate) fn env_switch(var: &str) -> bool {
+    // The stores write from a thread of their own (`tenant_writer`), and a
+    // Worker has none to start: off on the edge build, whatever the setting.
+    if cfg!(target_arch = "wasm32") {
+        return false;
+    }
     let setting = crate::platform::env::var(var)
         .unwrap_or_default()
         .to_ascii_lowercase();

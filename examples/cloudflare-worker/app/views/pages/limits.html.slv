@@ -41,8 +41,8 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
 <ul>
   <li><strong>One request at a time per isolate.</strong> A request suspended on a query keeps
       its isolate; Cloudflare spreads load over more isolates.</li>
-  <li><strong>A Rust panic ends the isolate</strong>, where <code>soli serve</code> would answer
-      a 500 and carry on. The next request boots a fresh one.</li>
+  <li><strong>A handler that raises answers a 500</strong>, as under <code>soli serve</code>. A Rust
+      panic costs the instance: that request answers 500 and the next boots a fresh one.</li>
   <li><strong>Size.</strong> About 11.7 MB of WebAssembly (3.6 MB gzipped). Workers limit the
       uncompressed bundle to 64 MiB on every plan, free included, and no longer cap the
       compressed size. The limit that still applies is startup time: 1 second. The Postgres

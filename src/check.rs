@@ -162,7 +162,14 @@ pub fn project(targets: &[PathBuf]) -> Project {
             target.is_dir().then(|| target.clone()),
             crate::app_layout::app_root(target),
         ];
-        for root in candidates.into_iter().flatten() {
+        // A directory of applications (`soli check examples`): each one's
+        // models are declared under its own root, not the target's.
+        let nested = if target.is_dir() && crate::app_layout::app_root(target).is_none() {
+            crate::app_layout::nested_app_roots(target)
+        } else {
+            Vec::new()
+        };
+        for root in candidates.into_iter().flatten().chain(nested) {
             let key = root.canonicalize().unwrap_or_else(|_| root.clone());
             if seen_roots.insert(key) {
                 roots.push(root);

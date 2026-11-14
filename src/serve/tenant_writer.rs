@@ -58,8 +58,11 @@ impl Stats {
     }
 
     fn problem_now(&self) {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        // `web_time`, not `std::time`: on the edge build `std`'s clock panics,
+        // and an item is noted lost there on every error — the Worker has no
+        // thread to start a writer on — so a handler's error took the isolate.
+        let now = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
         self.last_problem_at.store(now, Ordering::Relaxed);

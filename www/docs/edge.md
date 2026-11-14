@@ -591,9 +591,17 @@ build ("… is not available on the edge (Cloudflare Workers) build").
   its isolate's wasm stack; `worker.js` queues the next one behind it.
   Cloudflare spreads load across isolates, but a slow query delays the
   requests queued in the same isolate.
-- **A Rust panic ends the isolate.** wasm is `panic = abort`: where `soli serve`
-  answers a 500 and keeps the worker, the edge build loses the isolate, and the
-  next request boots a fresh one.
+- **An error in a handler is a 500**, as under `soli serve`: the production
+  error page, and the next request is served by the same instance.
+- **A Rust panic costs the instance.** wasm is `panic = abort`, so a panic
+  traps: that request answers 500, the Worker drops the instance (its memory
+  was left mid-call), and the next request instantiates the module and boots
+  the app again — tens of milliseconds.
+- **No error tracker, slow-query log or query stats** (`/__soli/errors` and
+  friends): they write from a thread of their own, which a Worker does not
+  have. `npx wrangler tail` shows each request and its status; Soli's own
+  error log (the message and stack it prints under `soli serve`) does not
+  reach the Worker's console yet.
 - **Size.** About 11.7 MB uncompressed (3.6 MB gzipped), against Workers'
   64 MiB limit on the uncompressed bundle, the same on the free and paid
   plans; there is no compressed limit any more. The Workers limit that still

@@ -2,7 +2,29 @@
 
 ## [Unreleased]
 
-### Added
+### Fixed
+
+- **On the edge, any error raised in a handler panicked the Worker.** The
+  error path records the error for `/__soli/errors`; the tracker's writer
+  thread cannot start in a Worker, so the item was noted lost, and
+  `tenant_writer::Stats::problem_now` read `std::time::SystemTime::now()`,
+  which panics on wasm32 — `panic = "abort"` turned a 500 into a trap. It
+  reads `web_time` now, and the thread-writing stores (error tracker, slow
+  queries, query stats) are off on the edge build (`env_switch`). Workers also
+  recover from a trap: `scripts/build-edge.sh` appends `__soli_reset()` to the
+  wasm-bindgen glue, and worker.js drops the instance after one (fetch, queue,
+  scheduled, LiveView), so the next request boots a fresh one instead of every
+  request failing on a RefCell the trap left borrowed. Verified on workerd: a
+  raising handler answers the 500 page with no panic; with the old runtime,
+  the request after a panic answers 200. `tests/edge_test.rs` covers the 500
+  and the request after it. Card #870.
+- **`soli check <directory of apps>` did not see each app's models.** Checking
+  `examples/` took `examples/` as the only project root, so a job of
+  `examples/cloudflare-worker/` read `CronRun` as an undefined variable (jobs
+  are checked strictly; controllers are not), and CI's `check_corpus_test`
+  failed. A directory that is not itself inside an app now also contributes the
+  apps under it (`app_layout::nested_app_roots`); a name two apps both declare
+  stays ambient, as before.
 
 - **Mail on Cloudflare Workers.** The edge build now has the mailer: the edge
   crate enables the `mail` feature (it built without it, so `Mailer` did not

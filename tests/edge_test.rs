@@ -13,6 +13,11 @@ use solilang::serve::edge::{self, EdgeRequest};
 /// an upload back, to prove bytes cross the edge entry point intact both ways.
 const PROBE_CONTROLLER: &str = r##"
 class ProbeController < Controller
+  # GET /probe/boom — a handler that raises
+  def boom(req)
+    undefined_thing_here()
+  end
+
   # GET /probe/mail — Mailer over HTTP, from a handler on the edge
   def mail(req)
     Mailer.configure({"delivery_method": "http", "url": params["url"], "api_key": "k-edge", "from": "desk@example.com"})
@@ -186,7 +191,7 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
     for (path, contents) in files.iter_mut() {
         if path == "/app/config/routes.sl" {
             contents.extend_from_slice(
-                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\nget(\"/probe/mail\", \"probe#mail\")\n",
+                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\nget(\"/probe/mail\", \"probe#mail\")\nget(\"/probe/boom\", \"probe#boom\")\n",
             );
         }
     }
@@ -467,6 +472,14 @@ fn boots_a_mounted_app_and_answers_requests() {
             });
             assert_eq!(again.status, 304);
             assert!(again.body.is_empty());
+
+            // A handler that raises answers the production 500 page, and the next
+            // request is served as usual. On wasm the error path used to read
+            // std's clock (`tenant_writer::Stats::problem_now`) and panic.
+            let (status, body) = get("/probe/boom", "");
+            assert_eq!(status, 500);
+            assert!(body.contains("500 Internal Server Error"), "{body}");
+            assert_eq!(get("/api/info", "").0, 200);
 
             // Mail over HTTP from a handler: the request reaches the provider.
             let (port, received) = accept_one();

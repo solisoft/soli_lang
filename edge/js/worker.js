@@ -9,6 +9,7 @@
 import { DurableObject } from "cloudflare:workers";
 import wasmModule from "./soli_edge_bg.wasm";
 import { initSync, mount, set_env, boot } from "./soli_edge.js";
+import * as glue from "./soli_edge.js";
 import { setHost, endSql } from "./jspi.js";
 import appFiles from "./app.json";
 // The Durable Object a `do://BINDING/name` connection reaches (wrangler.toml
@@ -48,6 +49,23 @@ function ensureBooted(env) {
   } catch (error) {
     bootError = String(error);
   }
+}
+
+// A Rust panic is a trap (`panic = "abort"`): the instance's memory is left
+// mid-call, a RefCell still borrowed, so every later call into it fails. Drop
+// it — the next call instantiates the module again and boots the app (tens of
+// milliseconds) — and let the caller answer this one as an error.
+function isTrap(error) {
+  return error instanceof WebAssembly.RuntimeError;
+}
+
+function dropInstance(error) {
+  console.error(`Soli panicked (${error?.message ?? error}); the next request boots a fresh instance`);
+  glue.__soli_reset?.();
+  wasm = null;
+  handleRequest = runJob = runLive = runCron = null;
+  bootError = null;
+  queue = Promise.resolve();
 }
 
 // Both ways, a frame: a little-endian u32 length, that many bytes of JSON head,
@@ -176,7 +194,13 @@ export class SoliLiveObject extends DurableObject {
   // LiveView (or report an error to the one that sent the event).
   async frame(input, from) {
     const started = Date.now();
-    const result = await liveFrame(input, this.ctx);
+    let result;
+    try {
+      result = await liveFrame(input, this.ctx);
+    } catch (error) {
+      if (isTrap(error)) dropInstance(error);
+      throw error;
+    }
     if (result.instance) await this.ctx.storage.put("instance", result.instance);
     for (const socket of this.ctx.getWebSockets()) {
       for (const message of result.messages || []) socket.send(message);
@@ -320,7 +344,14 @@ export default {
       )
       .finally(() => endSql(ctx));
     queue = job.catch(() => {});
-    const result = await job;
+    let result;
+    try {
+      result = await job;
+    } catch (error) {
+      if (!isTrap(error)) throw error;
+      dropInstance(error);
+      return new Response("Internal Server Error", { status: 500 });
+    }
     const object = result.headers.find(([name]) => name.toLowerCase() === R2_OBJECT);
     if (object && result.status === 200) {
       return serveObject(request, env, result, JSON.parse(object[1]));
@@ -348,7 +379,13 @@ export default {
       })
       .finally(() => endSql(ctx));
     queue = job.catch(() => {});
-    const report = await job;
+    let report;
+    try {
+      report = await job;
+    } catch (error) {
+      if (isTrap(error)) dropInstance(error);
+      throw error;
+    }
     const ran = report.ran || [];
     if (ran.length === 0) console.warn(`cron ${controller.cron}: no static cron declares it`);
     for (const r of ran) {
@@ -377,6 +414,10 @@ export default {
       try {
         report = await job;
       } catch (error) {
+        if (isTrap(error)) {
+          dropInstance(error);
+          ensureBooted(env);
+        }
         report = { status: "retry", delay: 30, error: String(error) };
       }
       const name = report.job ? `${report.job.handler} ${report.job.id}` : "job";
