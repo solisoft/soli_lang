@@ -187,7 +187,11 @@ involved).
     removed. **Still row by row** (an error can leave earlier rows): any
     `OPTIONS` (`ignoreErrors` skips per row on purpose), `REPLACE`,
     `UPDATE … RETURN NEW`, `RETURN OLD` on UPDATE/REMOVE, `UPSERT`, sharded
-    collections. Use a transaction for those.
+    collections, and (up to 100 rows) a statement whose written value
+    reads stored data: `FOR i IN 1..3 INSERT {n: LENGTH(FOR d IN log
+    RETURN 1)} INTO log RETURN NEW.n` → `[0, 1, 2]`, each row sees the rows
+    before it (above 100 rows it is one batch and every row reads the same
+    count). Use a transaction for those.
 
 ## HTTP / server
 
