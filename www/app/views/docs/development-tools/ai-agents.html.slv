@@ -32,6 +32,7 @@
                 <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/soli-verify.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-verify</code> — lint + test + coverage</td></tr>
                 <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/soli-test.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-test [path]</code> — one spec or full suite</td></tr>
                 <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/commands/soli-resource.md</td><td class="px-6 py-4 text-gray-400"><code>/soli-resource &lt;name&gt;</code> — full RESTful resource</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">.claude/skills/solidb/</td><td class="px-6 py-4 text-gray-400">The <code>solidb</code> skill — SDBQL, the SoliDB HTTP API, index and search behaviour and the ORM &rarr; SDBQL mapping, each claim observed on a running server with its version. Claude Code loads it when the task is a query or a call to the database</td></tr>
             </tbody>
         </table>
     </div>

@@ -413,9 +413,21 @@ fn write_bundled_dir(dir: &include_dir::Dir, target_root: &Path) -> Result<(), S
     Ok(())
 }
 
-/// Create the .claude/ directory: permissions allowlist + project slash commands.
+/// Create the .claude/ directory: permissions allowlist, project slash
+/// commands and the solidb skill.
 /// Pre-allowing safe `soli` subcommands removes the per-prompt permission tax for agents.
 pub fn create_dot_claude(app_path: &Path) -> Result<(), String> {
+    // The whole tree, replaced: a file the skill dropped must not linger
+    // in an app that `soli update docs` refreshes.
+    let skill = app_path.join(agents::SOLIDB_SKILL_PATH);
+    if skill.exists() {
+        fs::remove_dir_all(&skill)
+            .map_err(|e| format!("Failed to replace '{}': {e}", skill.display()))?;
+    }
+    fs::create_dir_all(&skill)
+        .map_err(|e| format!("Failed to create '{}': {e}", skill.display()))?;
+    write_bundled_dir(&agents::SOLIDB_SKILL, &skill)?;
+
     write_file(
         &app_path.join(".claude/settings.json"),
         agents::CLAUDE_SETTINGS_TEMPLATE,
@@ -452,6 +464,7 @@ pub const PROJECT_DOC_AGENT_PATHS: &[&str] = &[
     ".claude/commands/soli-verify.md",
     ".claude/commands/soli-test.md",
     ".claude/commands/soli-resource.md",
+    ".claude/skills/solidb/SKILL.md",
 ];
 
 /// Whether `app_path` looks like a Soli MVC project (or at least a place
@@ -1053,7 +1066,7 @@ pub fn create_app(name: &str, template: Option<&str>, eui: bool, edge: bool) -> 
     println!("  \x1b[2m│\x1b[0m  \x1b[36m{}/\x1b[0m", name);
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m CLAUDE.md        \x1b[2m# AI agent guide (root + per-dir)\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m AGENTS.md        \x1b[2m# tool-agnostic agent stub\x1b[0m");
-    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m .claude/         \x1b[2m# permissions + /soli-verify, /soli-test, /soli-resource\x1b[0m");
+    println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m .claude/         \x1b[2m# permissions, /soli-verify /soli-test /soli-resource, the solidb skill\x1b[0m");
     println!("  \x1b[2m│\x1b[0m  \x1b[2m├──\x1b[0m app/");
     println!(
         "  \x1b[2m│\x1b[0m  \x1b[2m│   ├──\x1b[0m controllers/    \x1b[2m# Request handlers{}\x1b[0m",

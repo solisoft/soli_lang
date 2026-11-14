@@ -20,6 +20,7 @@ Every fresh `soli new myapp` project includes:
 | `.claude/commands/soli-verify.md` | `/soli-verify` slash command — lint + test + coverage |
 | `.claude/commands/soli-test.md` | `/soli-test [path]` — run one spec or full suite |
 | `.claude/commands/soli-resource.md` | `/soli-resource <name>` — scaffold a full RESTful resource |
+| `.claude/skills/solidb/` | The `solidb` skill: SDBQL, the SoliDB HTTP API, index and search behaviour and the ORM → SDBQL mapping, each claim observed on a running server with the version noted. Loaded by Claude Code when the task is a query or a call to the database |
 
 The per-directory `CLAUDE.md` files are picked up automatically by Claude Code as the agent works in that directory; you don't need to import them. Other agents read the root `CLAUDE.md` (and `AGENTS.md` as a fallback).
 

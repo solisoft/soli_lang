@@ -4,6 +4,15 @@
 
 ### Added
 
+- **`soli new` ships the solidb skill.** A new app gets
+  `.claude/skills/solidb/` (SKILL.md, six references, the curl helper): SDBQL,
+  the SoliDB HTTP API, index and search behaviour and the ORM → SDBQL
+  mapping, as observed on a running server. `soli update docs` writes it into
+  an existing app and replaces it whole. It was installed per user, in
+  `~/.claude/skills/`, so an agent in a fresh clone or on another machine had
+  only `docs/solidb-reference.md`. The binary embeds a copy, written by
+  `scripts/sync-solidb-skill.sh` (`--check` tells when it has drifted).
+
 - **The code graph knows the database.** `soli graph build` adds a
   `collection` node per model (`stored_in`; an STI subclass points at its
   root's collection, named by `class_name_to_collection_with_engine`) and

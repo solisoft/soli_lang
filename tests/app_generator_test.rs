@@ -476,6 +476,11 @@ fn create_new_app_markdown_tree_end_to_end() {
         ".claude/commands/soli-verify.md",
         ".claude/commands/soli-test.md",
         ".claude/commands/soli-resource.md",
+        ".claude/skills/solidb/SKILL.md",
+        ".claude/skills/solidb/references/sdbql.md",
+        ".claude/skills/solidb/references/traps.md",
+        ".claude/skills/solidb/references/http-api.md",
+        ".claude/skills/solidb/scripts/sdbql.sh",
         "docs/models.md",
         "docs/controllers.md",
         "docs/migrations.md",
@@ -520,6 +525,11 @@ fn update_project_docs_rewrites_stale_agent_and_language_docs() {
     .unwrap();
     fs::create_dir_all(tmp.path().join("docs")).unwrap();
     fs::write(tmp.path().join("docs/models.md"), "# stale models\n").unwrap();
+    // An older copy of the solidb skill, with a file the skill has dropped.
+    let skill = tmp.path().join(".claude/skills/solidb");
+    fs::create_dir_all(skill.join("references")).unwrap();
+    fs::write(skill.join("SKILL.md"), "# stale skill\n").unwrap();
+    fs::write(skill.join("references/gone.md"), "# dropped\n").unwrap();
 
     assert!(is_soli_project(tmp.path()));
     let written = update_project_docs(tmp.path()).expect("update_project_docs");
@@ -543,6 +553,18 @@ fn update_project_docs_rewrites_stale_agent_and_language_docs() {
     assert_ne!(models, "# stale models\n");
     assert!(!models.is_empty());
     assert!(!tmp.path().join("docs/CLAUDE.md").exists());
+
+    // The solidb skill is replaced whole: the stale file rewritten, the
+    // dropped one gone, the rest of the tree there.
+    let skill_md = fs::read_to_string(skill.join("SKILL.md")).unwrap();
+    assert!(
+        skill_md.starts_with("---\nname: solidb"),
+        "{}",
+        &skill_md[..40]
+    );
+    assert!(!skill.join("references/gone.md").exists());
+    assert!(skill.join("references/traps.md").is_file());
+    assert!(skill.join("scripts/sdbql.sh").is_file());
 
     // Root CLAUDE.md must match the shipped template (overwrite).
     let root = fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();

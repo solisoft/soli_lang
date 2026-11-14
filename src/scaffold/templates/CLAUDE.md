@@ -103,7 +103,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | Vector / fulltext / geo search | model search indexes | `docs/search.md` |
 | Analytics, columnar stores | SolidB analytics | `docs/analytics.md` |
 | Postgres / MySQL / SQLite, several DBs | adapters, named connections | `docs/database.md`, `docs/multi-database.md`, `docs/postgres.md`, `docs/mysql.md`, `docs/sqlite.md` |
-| Raw queries (SDBQL) | `@sdbql{}` | `docs/solidb-reference.md` |
+| Raw queries (SDBQL) | `@sdbql{}` | `docs/solidb-reference.md`; the `solidb` skill in `.claude/skills/solidb/` (traps, functions, HTTP API, as observed on a running server) |
 | AI: embeddings, LLM calls | `embed`, `embed_batch`, `llm_generate` | `docs/builtins.md` → AI Functions |
 | HTTP client, SOAP, JSON, Markdown, TOML/YAML | `HTTP.*`, `SOAP`, `JSON`, `Markdown`, `Toml`, `Yaml` | `docs/builtins.md` |
 | XML: parse, query (`find`, an XPath subset), build, stream large files | `Xml.parse`, `node.find` / `xpath`, `Xml.build`, `Xml.each` / `Xml.reader` | `docs/xml.md` |

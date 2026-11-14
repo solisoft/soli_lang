@@ -18,3 +18,13 @@ pub const CLAUDE_SETTINGS_TEMPLATE: &str = include_str!("claude_settings.json");
 pub const CMD_SOLI_VERIFY_TEMPLATE: &str = include_str!("cmd_soli_verify.md");
 pub const CMD_SOLI_TEST_TEMPLATE: &str = include_str!("cmd_soli_test.md");
 pub const CMD_SOLI_RESOURCE_TEMPLATE: &str = include_str!("cmd_soli_resource.md");
+
+/// The solidb skill, written to `.claude/skills/solidb/`: SDBQL and the
+/// SoliDB HTTP API as observed on a running server. A copy of
+/// `~/.claude/skills/solidb/`, written only by
+/// `scripts/sync-solidb-skill.sh`.
+pub static SOLIDB_SKILL: include_dir::Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/scaffold/templates/skills/solidb");
+
+/// Where an app keeps it.
+pub const SOLIDB_SKILL_PATH: &str = ".claude/skills/solidb";
