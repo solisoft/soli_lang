@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A LiveView reached again by instant navigation stayed on its
+  placeholder.** `/live/client.js` connected `[data-liveview-url]` mounts on
+  `DOMContentLoaded` only, and `nav.js` runs an external script once per
+  document: going to a LiveView page, away, and back left "Connecting…" until
+  a full reload. The client now auto-connects on `soli:load` too (each mount
+  once), closes the socket of a view whose mount left the page, and a
+  `disconnect()` it asked for no longer schedules a reconnect. Found on
+  cf.solisoft.net/live; checked in headless Chromium (link, away and back,
+  reload: one open socket) and with `live_view_spec` / `live_upload_resume_spec`.
+
 ### Added
 
 - **LiveView on Cloudflare Workers.** Each LiveView instance's socket is held

@@ -147,7 +147,7 @@ component's live markup and the right to drive it.
 <div data-live-root data-live-room="field-desk" data-liveview-url="/live/socket/desk"></div>
 ```
 
-To control connection timing yourself (e.g. after a client-side navigation that doesn't re-fire `DOMContentLoaded`), add `data-liveview-manual` to skip auto-connect and call `live()` by hand:
+Auto-connect also runs after each instant-navigation swap (the `soli:load` event of Soli's built-in navigation): a page reached by a link — again, or for the first time — connects its mounts, and a view whose mount left the page closes its socket. To control connection timing yourself (another client-side router, a mount added later), add `data-liveview-manual` to skip auto-connect and call `live()` by hand:
 
 ```html
 <div data-live-root data-liveview-manual data-liveview-url="/live/socket/counter"></div>

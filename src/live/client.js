@@ -610,6 +610,8 @@
             }
             this._childViews.clear();
             if (this.socket) {
+                // A close we asked for: no reconnect, whatever the close code.
+                this.socket.onclose = null;
                 this.socket.close();
                 this.socket = null;
             }
@@ -1739,21 +1741,36 @@
         return lv;
     };
 
-    // Auto-connect for elements with data-liveview-url attribute
-    if (typeof document !== 'undefined') {
-        document.addEventListener('DOMContentLoaded', function() {
-            const elements = document.querySelectorAll('[data-liveview-url]');
-            elements.forEach(function(el) {
-                if (el.hasAttribute('data-liveview-manual')) return;
-                let url = el.getAttribute('data-liveview-url');
-                // Build proper WebSocket URL if relative path
-                if (url.startsWith('/')) {
-                    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    url = protocol + '//' + location.host + url;
-                }
-                global.live(url, { rootElement: el });
-            });
+    // Auto-connect every `[data-liveview-url]` mount — on the first load, and
+    // after each instant-navigation swap (`soli:load` from /__soli/nav.js).
+    // nav.js runs an external script once per document, so a page reached by
+    // navigation a second time never ran this file again: its mount stayed on
+    // its placeholder. A view whose mount left the page closes its socket.
+    function autoConnect() {
+        const list = global.SoliLiveView.instances;
+        for (const lv of list.slice()) {
+            if (lv.rootElement && !document.contains(lv.rootElement)) {
+                try { lv.disconnect(); } catch (_) { /* ignore */ }
+                list.splice(list.indexOf(lv), 1);
+            }
+        }
+        document.querySelectorAll('[data-liveview-url]').forEach(function(el) {
+            if (el.hasAttribute('data-liveview-manual')) return;
+            if (global.SoliLiveView.instances.some((lv) => lv.rootElement === el)) return;
+            let url = el.getAttribute('data-liveview-url');
+            // Build proper WebSocket URL if relative path
+            if (url.startsWith('/')) {
+                const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                url = protocol + '//' + location.host + url;
+            }
+            global.live(url, { rootElement: el });
         });
+    }
+    // Once per document, even when a layout and a page both load this file.
+    if (typeof document !== 'undefined' && !global.__soliLiveAutoConnect) {
+        global.__soliLiveAutoConnect = true;
+        document.addEventListener('DOMContentLoaded', autoConnect);
+        document.addEventListener('soli:load', autoConnect);
     }
 
     // Global LiveView connector (for script tag usage)

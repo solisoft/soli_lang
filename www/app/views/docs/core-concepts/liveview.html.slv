@@ -260,7 +260,7 @@ live_rooms("desk", "board")   # or several</code></pre>
         </div>
     </div>
 
-    <p class="text-gray-400 mb-6">To control connection timing yourself (e.g. after a client-side navigation that doesn't re-fire <code>DOMContentLoaded</code>), add <code>data-liveview-manual</code> to skip auto-connect and call <code>live()</code> by hand:</p>
+    <p class="text-gray-400 mb-6">Auto-connect also runs after each instant-navigation swap (the <code>soli:load</code> event of Soli&rsquo;s built-in navigation): a page reached by a link &mdash; again, or for the first time &mdash; connects its mounts, and a view whose mount left the page closes its socket. To control connection timing yourself (another client-side router, a mount added later), add <code>data-liveview-manual</code> to skip auto-connect and call <code>live()</code> by hand:</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">HTML</label>
