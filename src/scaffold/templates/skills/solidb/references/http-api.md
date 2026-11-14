@@ -128,7 +128,7 @@ rows that survive it (and a COLLECT's groups); through 2.7.2 that was
 | `GET /_api/database/{db}/index/{coll}` | | `{"indexes":[{"name","fields","index_type","unique","unique_values","indexed_documents"}]}` |
 | `DELETE /_api/database/{db}/index/{coll}/{name}` | | `204` |
 | `PUT /_api/database/{db}/index/{coll}/rebuild` | | (unverified) |
-| `POST /_api/database/{db}/index/{coll}/check` | | after 2.10.0; read-only, needs Read. `{"documents":3,"consistent":true,"indexes":[{"name","index_type","fields","unique","entries":3,"missing":{"count":0,"sample":[]},"stale":{…},"duplicates":{…}}],"not_checked":[…geo, fulltext, ttl, vector names]}` (observed on a build of main, 2026-11-14). Driver command `check_indexes` |
+| `POST /_api/database/{db}/index/{coll}/check` | | since 2.10.1; read-only, needs Read. `{"documents":3,"consistent":true,"indexes":[{"name","index_type","fields","unique","entries":3,"missing":{"count":0,"sample":[]},"stale":{…},"duplicates":{…}}],"not_checked":[…geo, fulltext, ttl, vector names]}` (observed on a build of main, 2026-11-14). Driver command `check_indexes` |
 | `POST /_api/database/{db}/geo/{coll}` | `{"name":"geo_loc","field":"loc"}` | `{"name","field","type":"geo","status":"created"}` |
 | `GET /_api/database/{db}/geo/{coll}` | | `{"indexes":[{"name","field","precision":6,"indexed_documents"}]}` |
 | `POST /_api/database/{db}/geo/{coll}/{field}/near` | `{"lat":48.86,"lon":2.33,"limit":5}` | `{"results":[{"document":{…},"distance":559.97}]}` (meters, nearest first) |

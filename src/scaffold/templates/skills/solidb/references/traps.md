@@ -18,10 +18,10 @@ involved).
    ```
    When a filter "matches nothing", move the expression into `RETURN` to see
    the error.
-2. **`UPSERT` finds its document by `_key`/`_id`, or (after 2.10.0) by a
+2. **`UPSERT` finds its document by `_key`/`_id`, or (since 2.10.1) by a
    unique index.** Through 2.10.0, `UPSERT {email: @e} INSERT … UPDATE … IN
    users` inserts a new document on every run, and `OLD` inside the `UPDATE`
-   expression fails (`Variable 'OLD' not found`). After 2.10.0 (observed on
+   expression fails (`Variable 'OLD' not found`). Since 2.10.1 (observed on
    a build of main, 2026-11-14), with a unique hash or persistent index on
    exactly the searched fields:
    ```sdbql
@@ -180,7 +180,7 @@ involved).
     same for `UPDATE` / `REMOVE`. Above 100 rows it was already one batch,
     with looser rules: an `UPDATE` row breaking the schema or naming a
     missing document was skipped silently, a `REMOVE` of a missing key
-    ignored. After 2.10.0 (observed on a build of main, 2026-11-14): a
+    ignored. Since 2.10.1 (observed on a build of main, 2026-11-14): a
     plain `INSERT` / `UPDATE` / `REMOVE` after a `FOR` is one batch from
     two rows up and fails whole: the insert above leaves only `taken`;
     `FOR k IN ["taken","nope"] REMOVE k IN c` → `404 nope`, nothing
@@ -203,7 +203,7 @@ involved).
 24. **TTL needs epoch seconds or an RFC 3339 string.** Epoch milliseconds
     never expire (read as seconds, far in the future). Through 2.10.0 a
     float (e.g. from `FLOOR(DATE_NOW()/1000)` → `….0`) never expires either;
-    after 2.10.0 it expires like the integer it truncates to.
+    since 2.10.1 it expires like the integer it truncates to.
 25. **Wrong-dimension vectors are accepted** on insert without error.
 26. **Unknown collection `type` strings are accepted** at creation.
 27. **`solidb` reads `.env` from the working directory or a parent.** A Soli

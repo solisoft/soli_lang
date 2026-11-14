@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.36.1] - 2026-11-14
+
 ### Added
 
 - **`soli new` ships the solidb skill.** A new app gets

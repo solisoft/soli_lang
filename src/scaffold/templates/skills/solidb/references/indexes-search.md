@@ -253,7 +253,7 @@ sweeper that runs every 60 s. Observed:
 | integer epoch **seconds** in the past (`1792749600`) | yes, within a minute |
 | RFC 3339 string in the past (`"2020-01-01T00:00:00Z"`) | yes |
 | epoch **milliseconds** (`DATE_NOW() - 10000`) | no — read as seconds, i.e. far future |
-| float seconds (`FLOOR(DATE_NOW()/1000) - 10` → `1792749549.0`) | through 2.10.0: no, floats are ignored; after 2.10.0: yes, within a minute (truncated to the second; observed on a build of main, 2026-11-14) |
+| float seconds (`FLOOR(DATE_NOW()/1000) - 10` → `1792749549.0`) | through 2.10.0: no, floats are ignored; since 2.10.1: yes, within a minute (truncated to the second; observed on a build of main, 2026-11-14) |
 
 So from SDBQL write a string: `expires_at: DATE_ISO8601(DATE_NOW() + 3600 * 1000)`
 (verified: a past `DATE_ISO8601(…)` value was swept, a future one kept), or
