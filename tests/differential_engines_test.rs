@@ -871,6 +871,92 @@ end
 print(T2.new.each do |x| x end)"##,
     ),
     (
+        // `next` in a block skips one element: the iterator goes on. Since
+        // #651 the VM compiled it as the `break` it shares an exit with, so a
+        // `next if …` guard in a block ended the whole iteration — under
+        // `soli serve`, where handlers run on the VM. In `map`, the skipped
+        // element is nil.
+        "next_in_a_block_skips_one_element",
+        r##"kept = []
+[1, 2, 3, 4].each do |x|
+  next if x == 2
+  kept.push(x)
+end
+print(kept)
+print([1, 2, 3].map do |x|
+  next if x == 2
+  x * 10
+end)
+def pick(names)
+  out = []
+  names.each do |name|
+    next if name == "b"
+
+    out.push(name)
+  end
+  out
+end
+print(pick(["a", "b", "c", "d"]))
+class Picker
+  def run(names)
+    out = []
+    names.each { |name|
+      next if name == "b"
+
+      out.push(name)
+    }
+    out
+  end
+end
+print(Picker.new.run(["a", "b", "c"]))
+h = {"a": 1, "b": 2, "c": 3}
+seen = []
+h.each do |k, v|
+  next if v == 2
+  seen.push(k)
+end
+print(seen)
+logged = {}
+h.keys.each do |name|
+  if name == "a"
+    next
+  end
+  logged[name] = h[name]
+end
+print(logged)
+count = []
+4.times do |i|
+  next if i == 1
+  count.push(i)
+end
+print(count)
+pairs = []
+[1, 2].each do |a|
+  [10, 20, 30].each do |b|
+    next if b == 20
+    pairs.push(a * b)
+  end
+end
+print(pairs)
+mixed = []
+[1, 2, 3, 4, 5].each do |x|
+  next if x == 2
+  break if x == 4
+  mixed.push(x)
+end
+print(mixed)
+idx = []
+["a", "b", "c"].each_with_index do |v, i|
+  next if i == 1
+  idx.push(v)
+end
+print(idx)
+print([1, 2, 3, 4].select do |x|
+  next if x == 2
+  x > 1
+end)"##,
+    ),
+    (
         // #651: `break` in a block stops the iterator that called it, which
         // answers nil, as in Ruby; a `def` that called the block returns nil.
         // It acted like `next` on both engines (and `map` kept a nil on the

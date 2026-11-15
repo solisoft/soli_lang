@@ -812,7 +812,10 @@ impl Interpreter {
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => result.push(v),
                 ControlFlow::Normal(v) => result.push(v),
-                ControlFlow::Continue => {}
+                // `next` gives this element no value: nil, as the VM and
+                // every other mapping method here answer, not one element
+                // fewer.
+                ControlFlow::Continue => result.push(Value::Null),
                 ControlFlow::Break => return Err(RuntimeError::BlockBreak(span)),
                 ControlFlow::Throw(v) => {
                     // Carry the thrown value out of the callback.

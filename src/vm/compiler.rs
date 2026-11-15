@@ -1222,7 +1222,7 @@ impl Compiler {
     /// for the same reason `break` refuses one.
     pub fn emit_continue(&mut self, line: usize) -> bool {
         if self.loop_context.is_none() {
-            return self.emit_loopless_exit(line);
+            return self.emit_loopless_next(line);
         }
         let Some(ctx) = self.loop_context.as_ref() else {
             return false;
@@ -1257,7 +1257,25 @@ impl Compiler {
         }
     }
 
-    /// `break` or `next` with no enclosing loop *in this function*.
+    /// `next` with no enclosing loop *in this function*: the block is done
+    /// with this element, and the iterator that called it goes on to the
+    /// next one. So it is a return of `nil` from the block — never the
+    /// `BlockBreak` a `break` emits, which stops the iterator. From #651 until
+    /// this was split from `emit_loopless_exit`, a `next` in a block ended the
+    /// whole iteration on the VM.
+    ///
+    /// At script top level there is nothing to return from; see
+    /// `emit_loopless_exit`.
+    fn emit_loopless_next(&mut self, line: usize) -> bool {
+        if self.function_type == FunctionType::Script {
+            return true;
+        }
+        self.emit_default_return_value(line);
+        self.emit(Op::Return, line);
+        true
+    }
+
+    /// `break` with no enclosing loop *in this function*.
     ///
     /// The tree-walker absorbs both at the function boundary — `call_function`
     /// maps `ControlFlow::Break`/`Continue` to a null return — so inside a
@@ -1283,7 +1301,7 @@ impl Compiler {
             return true;
         }
         // In a block, `break` stops the iterator that called it (#651), not
-        // only the block: what `return nil` did, as `next` would.
+        // only the block: what `return nil` did, and what `next` does.
         if self.function_type == FunctionType::Lambda && !self.expr_wrapper {
             self.emit(Op::BlockBreak, line);
             return true;

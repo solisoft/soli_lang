@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.36.2.</p>
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">next</code> in a block skipped the rest of the loop.</strong> In 2.36.0 to 2.36.2, under <code class="text-cyan-400">soli serve</code>, a <code class="text-cyan-400">next if &hellip;</code> guard inside <code class="text-cyan-400">xs.each do |x| &hellip; end</code> ended the iteration at the first skipped element instead of moving on to the next one. Scripts were not affected, which is how it went unseen. If your app uses <code class="text-cyan-400">next</code> in a block, upgrade. In <code class="text-cyan-400">map</code>, a skipped element is now <code class="text-cyan-400">nil</code> on both engines.</li>
+        </ul>
         <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">SAML single sign-on.</strong> <code class="text-cyan-400">soli generate saml</code> signs users in through an organisation&rsquo;s identity provider &mdash; Okta, Entra ID, Google Workspace, Keycloak, ADFS. Underneath is a native <code class="text-cyan-400">Saml</code> class: it verifies the signed response against the certificate you configured and refuses signature wrapping, a wrong audience or recipient, an expired assertion and a response to another request. <code class="text-cyan-400">Saml.test_response</code> signs a response for your specs. One identity provider per app, RSA signatures, no encrypted assertions or single logout yet (<a href="/docs/security/saml" class="text-amber-400 hover:underline">SAML Single Sign-On</a>).</li>

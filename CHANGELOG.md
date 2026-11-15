@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`next` in a block ended the whole iteration on the VM** — so under
+  `soli serve`, where handlers run on the VM, a `next if …` guard in
+  `xs.each do |x| … end` stopped at the first skipped element
+  (`["a", "b", "c", "d"]` with `next if name == "b"` kept `["a"]`). Released
+  in 2.36.0, 2.36.1 and 2.36.2. #651 made `break` in a block stop the iterator
+  by emitting `Op::BlockBreak` from `emit_loopless_exit`, which `next` shared:
+  a `next` outside any loop of its own function now has its own exit
+  (`emit_loopless_next`: return nil from the block). Scripts hid it, because a
+  script that the VM does not take runs on the tree-walker; `soli --vm`
+  reproduced it. `tests/differential_engines_test.rs` gains
+  `next_in_a_block_skips_one_element` (each, map, select, times,
+  each_with_index, hash each, nested blocks, `next` beside `break`).
+- **`next` in `map` gave one element fewer on the tree-walker** and `nil` on
+  the VM. Both give `nil` now, as in Ruby and as every other mapping method
+  here did.
+
 ### Added
 
 - **SAML 2.0 single sign-on: a native `Saml` class and `soli generate saml`.**
