@@ -202,12 +202,21 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   call: a block is rewritten once per call. All three replicate.
 - No update of a row in place (delete and insert again), and columns cannot
   be added or removed afterwards.
-- **The schema is not checked.** A row `{"host":7,"cpu":"x","extra":true}`
-  into `host: string, cpu: float64` is accepted (`inserted: 1`), a row that
-  is not an object is skipped without an error (`{"rows":[1]}` →
-  `inserted: 0`), and an unknown type name (`"decimal"`) silently creates a
-  `string` column. Validate before inserting: a column holding values of
-  several kinds also leaves the fast path below.
+- **The schema is checked after 2.10.4** (observed on a build of `main`,
+  2026-11-15). An insert is refused whole with `400`, naming the row:
+  `row 0: unknown column 'extra'`, `row 1: column 'cpu' is not nullable and
+  has no value`, `row 1: must be an object, got an integer`, `… is float64,
+  got a string`. Columns are `nullable: false` unless declared
+  `"nullable": true`, so declare the optional ones. An integer in a
+  `float64` column is stored as a float (`3` comes back `3.0`); `timestamp`
+  takes a string or an integer; `json` anything. An unknown type name →
+  `400 "Unknown column type: decimal. Supported: int64, float64, string,
+  bool, timestamp, json"`. `"indexed": true` in a column definition is
+  ignored: use `POST …/index`.
+  Through 2.10.4 nothing is checked: `{"host":7,"cpu":"x","extra":true}`
+  into `host: string, cpu: float64` is accepted, a row that is not an
+  object is skipped without an error, and an unknown type name silently
+  creates a `string` column — validate before inserting there.
 - `/query` over HTTP takes one comparison and `limit` only: `{"and":[…]}` is
   refused (`missing field column`), `order_by` and `offset` are ignored
   without an error.
