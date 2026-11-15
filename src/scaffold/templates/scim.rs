@@ -3,6 +3,8 @@
 
 pub const SCIM_CONTROLLER: &str = include_str!("scim/scim_controller.sl");
 pub const SCIM_ACTIVE_MIDDLEWARE: &str = include_str!("scim/scim_active_middleware.sl");
+pub const SCIM_GROUPS_CONTROLLER: &str = include_str!("scim/scim_groups_controller.sl");
+pub const SCIM_GROUP_MODEL: &str = include_str!("scim/scim_group_model.sl");
 
 pub const ROUTES_MARKER: &str = "# --- soli generate scim ---";
 
@@ -19,6 +21,12 @@ get("/scim/v2/Users/:id", "scim#show")
 put("/scim/v2/Users/:id", "scim#replace")
 patch("/scim/v2/Users/:id", "scim#update")
 delete("/scim/v2/Users/:id", "scim#destroy")
+get("/scim/v2/Groups", "scim_groups#index")
+post("/scim/v2/Groups", "scim_groups#create")
+get("/scim/v2/Groups/:id", "scim_groups#show")
+put("/scim/v2/Groups/:id", "scim_groups#replace")
+patch("/scim/v2/Groups/:id", "scim_groups#update")
+delete("/scim/v2/Groups/:id", "scim_groups#destroy")
 # A directory is a server, authenticated by its bearer token: no browser, no
 # origin to check.
 skip_csrf("/scim/*")
@@ -32,10 +40,17 @@ pub fn users_migration() -> String {
 
 def up(db)
   db.create_index("users", "idx_users_scim_external_id", ["scim_external_id"], {})
+  db.create_collection("scim_groups")
+  db.create_index("scim_groups", "idx_scim_group_name", ["display_name"], {"unique": true})
+  db.create_collection("scim_memberships")
+  db.create_index("scim_memberships", "idx_scim_membership", ["group_id", "user_id"], {"unique": true})
+  db.create_index("scim_memberships", "idx_scim_membership_user", ["user_id"], {})
 end
 
 def down(db)
   db.drop_index("users", "idx_users_scim_external_id")
+  db.drop_collection("scim_memberships")
+  db.drop_collection("scim_groups")
 end
 "#
     .to_string()

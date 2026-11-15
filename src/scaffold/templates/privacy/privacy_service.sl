@@ -52,6 +52,10 @@ const PRIVACY_SCAFFOLD_MODELS = {
     "owner": "user_id",
     "erase": "delete",
     "export": false
+  },
+  "ScimMembership": {
+    "owner": "user_id",
+    "erase": "delete"
   }
 }
 

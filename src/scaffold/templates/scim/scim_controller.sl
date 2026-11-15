@@ -16,8 +16,9 @@
 # An account a directory creates is a member with no password: it signs in
 # through SAML, OAuth or a link, or sets a password with a reset link.
 #
-# Users only: no Groups, no bulk, no sorting, no ETags. The filter is
-# `userName eq "…"` or `externalId eq "…"`, which is what directories send.
+# Groups are in app/controllers/scim_groups_controller.sl. No bulk, no
+# sorting, no ETags. The filter is `userName eq "…"` or `externalId eq "…"`,
+# which is what directories send.
 
 const SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
 const SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
@@ -62,22 +63,24 @@ class ScimController < Controller
       "name": "User",
       "endpoint": "/Users",
       "schema": SCIM_USER_SCHEMA
-    }], 1, 1)
+    }, {
+      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:ResourceType"],
+      "id": "Group",
+      "name": "Group",
+      "endpoint": "/Groups",
+      "schema": "urn:ietf:params:scim:schemas:core:2.0:Group"
+    }], 2, 1)
   end
 
   # GET /scim/v2/Schemas
   def schemas
     return @_unauthorized if @_directory.nil?
 
-    attributes = ["userName", "externalId", "displayName", "name", "emails", "active"]
-    @_list([{
-      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Schema"],
-      "id": SCIM_USER_SCHEMA,
-      "name": "User",
-      "attributes": attributes.map(&{ |name|
-        {"name": name, "mutability": "readWrite"}
-      })
-    }], 1, 1)
+    described = {
+      "User": ["userName", "externalId", "displayName", "name", "emails", "active", "groups"],
+      "Group": ["displayName", "externalId", "members"]
+    }
+    @_list(described.keys.map { |name| @_schema(name, described[name]) }, 2, 1)
   end
 
   # GET /scim/v2/Users — list, or find by userName / externalId
@@ -187,6 +190,7 @@ class ScimController < Controller
 
     # The account goes. To keep what it owns, deactivate here instead:
     # `@_set_active(user, false)` then `user.save`.
+    ScimMembership.where({"user_id": user._key}).delete_all
     user.delete
     {"status": 204, "body": ""}
   end
@@ -219,6 +223,15 @@ class ScimController < Controller
       tokens[parts[0].trim] = parts[1].trim
     end
     tokens
+  end
+
+  def _schema(name, attributes)
+    {
+      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Schema"],
+      "id": "urn:ietf:params:scim:schemas:core:2.0:#{name}",
+      "name": name,
+      "attributes": attributes.map { |attribute| {"name": attribute, "mutability": "readWrite"} }
+    }
   end
 
   # The user a filter names, or nil.
@@ -299,6 +312,8 @@ class ScimController < Controller
       "name": {"givenName": user.scim_given_name, "familyName": user.scim_family_name},
       "emails": [{"value": user.email, "primary": true}],
       "active": user.deactivated_at.nil?,
+      # Read-only here: membership is changed on the group.
+      "groups": ScimGroup.for_user(user).map { |group| {"value": group._key, "display": group.display_name} },
       "meta": {"resourceType": "User", "location": "#{auth_base_url()}/scim/v2/Users/#{user._key}"}
     }
   end

@@ -40,6 +40,8 @@ fn scim_writes_its_files_and_requires_auth() {
     );
     for rel in [
         "app/controllers/scim_controller.sl",
+        "app/controllers/scim_groups_controller.sl",
+        "app/models/scim_group.sl",
         "app/middleware/scim_active.sl",
     ] {
         assert!(root.join(rel).exists(), "{rel} not created");
@@ -285,6 +287,28 @@ fn served_app() -> tempfile::TempDir {
     .unwrap();
     let mut routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
     routes.push_str("get(\"/whoami\", \"whoami#index\")\n");
+    fs::write(root.join("config/routes.sl"), routes).unwrap();
+    // What two of the directory's groups mean here — and one mapping the
+    // app must not honour.
+    let model = fs::read_to_string(root.join("app/models/scim_group.sl")).unwrap();
+    assert!(model.contains("const SCIM_GROUP_ROLES = {}"), "{model}");
+    fs::write(
+        root.join("app/models/scim_group.sl"),
+        model.replace(
+            "const SCIM_GROUP_ROLES = {}",
+            "const SCIM_GROUP_ROLES = {\"Finance\": \"accountant\", \"Support\": \"agent\", \"Owners\": \"admin\"}",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        root.join("app/controllers/roles_controller.sl"),
+        "class RolesController < Controller\n  # GET /roles — every account's role and groups\n  def index\n    \
+         rows = {}\n    User.all.each do |user|\n      rows[user.email] = [user.role] + ScimGroup.names_for(user).sort\n    end\n    \
+         render_json(rows)\n  end\nend\n",
+    )
+    .unwrap();
+    let mut routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
+    routes.push_str("get(\"/roles\", \"roles#index\")\n");
     fs::write(root.join("config/routes.sl"), routes).unwrap();
     let (ok, output) = soli(root, &["db:migrate", "up", "."]);
     assert!(ok, "db:migrate up:\n{output}");
@@ -571,4 +595,263 @@ fn a_deactivated_user_is_signed_out_and_kept_out() {
     assert_eq!(directory.whoami(), "guest");
     let personal = script.bearer.clone().unwrap();
     assert_eq!(scim(&server, "GET", "/Users", None, &personal).0, 401);
+}
+
+const GROUP_SCHEMA: &str = "urn:ietf:params:scim:schemas:core:2.0:Group";
+
+/// Every account's role followed by its groups, by email.
+fn roles(server: &Server) -> Json {
+    let text = ureq::get(&format!("http://127.0.0.1:{}/roles", server.1))
+        .call()
+        .unwrap()
+        .into_string()
+        .unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
+#[test]
+fn groups_give_roles_and_take_them_back_but_never_admin() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    let user = |name: &str| {
+        let body = json!({"userName": format!("{name}@example.com")});
+        let (status, created) = scim(&server, "POST", "/Users", Some(body), TOKEN);
+        assert_eq!(status, 201, "{created}");
+        created["id"].as_str().unwrap().to_string()
+    };
+    let (ada, grace, linus) = (user("ada"), user("grace"), user("linus"));
+
+    // The server says it has groups.
+    let (_, types) = scim(&server, "GET", "/ResourceTypes", None, TOKEN);
+    assert_eq!(types["totalResults"], json!(2));
+    assert_eq!(types["Resources"][1]["endpoint"], json!("/Groups"));
+    let (_, schemas) = scim(&server, "GET", "/Schemas", None, TOKEN);
+    assert_eq!(schemas["Resources"][1]["id"], json!(GROUP_SCHEMA));
+    assert_eq!(scim(&server, "GET", "/Groups", None, "").0, 401);
+
+    // A group created with a member; found by name; a duplicate refused.
+    let (status, finance) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(
+            json!({"schemas": [GROUP_SCHEMA], "displayName": "Finance", "externalId": "g-1",
+                    "members": [{"value": ada}]}),
+        ),
+        TOKEN,
+    );
+    assert_eq!(status, 201, "{finance}");
+    let finance_id = finance["id"].as_str().unwrap().to_string();
+    assert_eq!(finance["members"][0]["value"], json!(ada));
+    assert_eq!(finance["members"][0]["display"], json!("ada@example.com"));
+    let (status, error) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance"})),
+        TOKEN,
+    );
+    assert_eq!(
+        (status, error["scimType"].clone()),
+        (409, json!("uniqueness"))
+    );
+    let (_, found) = scim(
+        &server,
+        "GET",
+        &format!(
+            "/Groups?filter={}",
+            urlencoding::encode("displayName eq \"Finance\"")
+        ),
+        None,
+        TOKEN,
+    );
+    assert_eq!(found["Resources"][0]["id"], json!(finance_id));
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["accountant", "Finance"])
+    );
+    assert_eq!(roles(&server)["grace@example.com"], json!(["member"]));
+
+    // The user resource shows its groups.
+    let (_, shown) = scim(&server, "GET", &format!("/Users/{ada}"), None, TOKEN);
+    assert_eq!(shown["groups"][0]["display"], json!("Finance"));
+
+    // Members in and out, in the shapes directories send.
+    let patch = |id: &str, operations: Json| {
+        let (status, group) = scim(
+            &server,
+            "PATCH",
+            &format!("/Groups/{id}"),
+            Some(
+                json!({"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": operations}),
+            ),
+            TOKEN,
+        );
+        assert_eq!(status, 200, "{group}");
+        let mut members: Vec<String> = group["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                m["display"]
+                    .as_str()
+                    .unwrap()
+                    .split('@')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        members.sort();
+        members.join(",")
+    };
+    // Okta adds; adding twice changes nothing; an unknown user is skipped.
+    let added = patch(
+        &finance_id,
+        json!([{"op": "add", "path": "members", "value": [{"value": grace}, {"value": ada}, {"value": "nobody"}]}]),
+    );
+    assert_eq!(added, "ada,grace");
+    assert_eq!(
+        roles(&server)["grace@example.com"],
+        json!(["accountant", "Finance"])
+    );
+    // Entra removes one by a filtered path; Okta by value.
+    let removed = patch(
+        &finance_id,
+        json!([{"op": "Remove", "path": format!("members[value eq \"{ada}\"]")}]),
+    );
+    assert_eq!(removed, "grace");
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["member"]),
+        "the role stayed"
+    );
+    let removed = patch(
+        &finance_id,
+        json!([{"op": "remove", "path": "members", "value": [{"value": grace}]}]),
+    );
+    assert_eq!(removed, "");
+    assert_eq!(roles(&server)["grace@example.com"], json!(["member"]));
+    // Replace sets the whole list.
+    let replaced = patch(
+        &finance_id,
+        json!([{"op": "replace", "path": "members", "value": [{"value": ada}, {"value": linus}]}]),
+    );
+    assert_eq!(replaced, "ada,linus");
+
+    // A group mapped to `admin` makes nobody an administrator.
+    let (_, owners) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Owners", "members": [{"value": grace}]})),
+        TOKEN,
+    );
+    assert_eq!(
+        roles(&server)["grace@example.com"],
+        json!(["member", "Owners"])
+    );
+
+    // An administrator made in the app keeps the role whatever the groups say.
+    fs::write(
+        dir.path().join("promote.sl"),
+        "user = User.find_by(\"email\", \"linus@example.com\")\nuser.role = \"admin\"\nuser.save\n",
+    )
+    .unwrap();
+    drop(server);
+    let (ok, output) = soli(dir.path(), &["db:seed", ".", "promote.sl"]);
+    assert!(ok, "{output}");
+    let server = serve(dir.path());
+    let (_, support) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Support", "members": [{"value": linus}, {"value": ada}]})),
+        TOKEN,
+    );
+    let support_id = support["id"].as_str().unwrap().to_string();
+    let all = roles(&server);
+    assert_eq!(
+        all["linus@example.com"],
+        json!(["admin", "Finance", "Support"])
+    );
+    // Ada is in two mapped groups: the later one in the mapping wins.
+    assert_eq!(
+        all["ada@example.com"],
+        json!(["agent", "Finance", "Support"])
+    );
+
+    // Renaming a group changes what it gives (Okta: no path).
+    let (status, renamed) = scim(
+        &server,
+        "PATCH",
+        &format!("/Groups/{support_id}"),
+        Some(json!({"Operations": [{"op": "replace", "value": {"displayName": "Helpdesk"}}]})),
+        TOKEN,
+    );
+    assert_eq!(
+        (status, renamed["displayName"].clone()),
+        (200, json!("Helpdesk"))
+    );
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["accountant", "Finance", "Helpdesk"])
+    );
+
+    // A PUT replaces the group, members included.
+    let (status, put) = scim(
+        &server,
+        "PUT",
+        &format!("/Groups/{finance_id}"),
+        Some(json!({"displayName": "Finance", "members": [{"value": grace}]})),
+        TOKEN,
+    );
+    assert_eq!(status, 200, "{put}");
+    let all = roles(&server);
+    assert_eq!(all["ada@example.com"], json!(["member", "Helpdesk"]));
+    assert_eq!(
+        all["grace@example.com"],
+        json!(["accountant", "Finance", "Owners"])
+    );
+
+    // A deleted group takes what it gave with it, at once.
+    assert_eq!(
+        scim(
+            &server,
+            "DELETE",
+            &format!("/Groups/{finance_id}"),
+            None,
+            TOKEN
+        )
+        .0,
+        204
+    );
+    assert_eq!(
+        scim(
+            &server,
+            "GET",
+            &format!("/Groups/{finance_id}"),
+            None,
+            TOKEN
+        )
+        .0,
+        404
+    );
+    let all = roles(&server);
+    assert_eq!(all["grace@example.com"], json!(["member", "Owners"]));
+    assert_eq!(all["linus@example.com"], json!(["admin", "Helpdesk"]));
+
+    // A deleted user leaves its groups.
+    let owners_id = owners["id"].as_str().unwrap();
+    assert_eq!(
+        scim(&server, "DELETE", &format!("/Users/{grace}"), None, TOKEN).0,
+        204
+    );
+    let (_, owners) = scim(&server, "GET", &format!("/Groups/{owners_id}"), None, TOKEN);
+    assert_eq!(owners["members"], json!([]));
+    let (_, page) = scim(&server, "GET", "/Groups?startIndex=1&count=1", None, TOKEN);
+    assert_eq!(
+        (page["totalResults"].clone(), page["itemsPerPage"].clone()),
+        (json!(2), json!(1))
+    );
 }

@@ -15,9 +15,11 @@ soli db:migrate up
 
 | File | |
 |---|---|
-| `app/controllers/scim_controller.sl` | The SCIM server, under `/scim/v2` |
+| `app/controllers/scim_controller.sl` | The SCIM server, under `/scim/v2`: users |
+| `app/controllers/scim_groups_controller.sl` | Groups and their members |
+| `app/models/scim_group.sl` | `ScimGroup`, `ScimMembership`, and what a group gives (`SCIM_GROUP_ROLES`) |
 | `app/middleware/scim_active.sl` | Keeps deactivated accounts out (`# order: 8`) |
-| `db/migrations/…_add_scim_user_indexes.sl` | Index on the users' `scim_external_id` |
+| `db/migrations/…_add_scim_user_indexes.sl` | Index on the users' `scim_external_id`; the `scim_groups` and `scim_memberships` collections |
 | `config/routes.sl` | The routes, and `skip_csrf("/scim/*")` |
 
 No file of the auth scaffold is edited.
@@ -47,6 +49,8 @@ No file of the auth scaffold is edited.
 | `PUT /scim/v2/Users/:id` | Replace |
 | `PATCH /scim/v2/Users/:id` | Update — what directories use to deactivate |
 | `DELETE /scim/v2/Users/:id` | Remove the account |
+| `GET /scim/v2/Groups` | List, or find with `filter=displayName eq "…"` |
+| `POST /scim/v2/Groups`, `GET` / `PUT` / `PATCH` / `DELETE /scim/v2/Groups/:id` | Create, read, replace, change members or name, delete |
 
 Responses are `application/scim+json`; errors use SCIM's error schema.
 
@@ -82,12 +86,42 @@ restores the account; the sessions closed meanwhile stay closed.
 `DELETE` removes the account. To keep what it owns, change `destroy` in the
 controller to deactivate instead — the comment there says how.
 
+## Groups
+
+The directory creates groups and moves users in and out of them. A group gives
+nothing by itself; the app says what it means, two ways:
+
+```soli
+# In a policy or a controller: read them.
+ScimGroup.names_for(user).includes?("Finance")
+
+# Or map them to the account's role, in app/models/scim_group.sl:
+const SCIM_GROUP_ROLES = {"Finance": "accountant", "Support": "agent"}
+```
+
+With the mapping, a user's `role` follows their groups: in several mapped
+groups, the last one listed in the mapping wins; in none, `member`.
+
+- **A directory never makes an administrator.** `admin` is granted in the app:
+  a mapping to it is ignored, and an account that is an administrator keeps
+  its role whatever its groups say. A compromised or misconfigured directory
+  cannot hand out the app's administration.
+- **What a group gave is taken back at once** when a user leaves it, when it
+  is renamed, or when it is deleted: the role is recomputed on every change.
+- Member changes are understood in the three shapes directories send:
+  `add` / `remove` on `members` with a list of values, `remove` on
+  `members[value eq "<id>"]`, and `replace` on `members` for the whole list.
+  A user the app does not know is skipped.
+- A user resource lists its `groups`, read-only: membership is changed on the
+  group.
+
 ## Limits
 
-- **Users only.** No `Groups`: an account's role is not provisioned. Map a
-  SCIM attribute to it in `_assign` if your directory sends one.
-- **No bulk, sorting, ETags or password change**, and the filter is `userName
-  eq` / `externalId eq` — what directories send, not the whole filter grammar.
+- **No bulk, sorting, ETags or password change**, and the filters are
+  `userName eq` / `externalId eq` on users and `displayName eq` on groups —
+  what directories send, not the whole filter grammar.
+- **One role per account**, and groups do not nest: a group's members are
+  users.
 - **Tokens are static**, read from the environment; rotate by listing the new
   one beside the old in `SCIM_TOKENS`, then removing the old.
 - A directory's token only opens `/scim/v2`; it is not a user's

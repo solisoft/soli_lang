@@ -20,6 +20,7 @@ pub fn create_scim(folder: &str) -> Result<(), String> {
     for dir in [
         "app/controllers",
         "app/middleware",
+        "app/models",
         "config",
         "db/migrations",
     ] {
@@ -39,6 +40,12 @@ pub fn create_scim(folder: &str) -> Result<(), String> {
         "app/middleware/scim_active.sl",
         scim::SCIM_ACTIVE_MIDDLEWARE,
     )?;
+    write_if_absent(
+        app_path,
+        "app/controllers/scim_groups_controller.sl",
+        scim::SCIM_GROUPS_CONTROLLER,
+    )?;
+    write_if_absent(app_path, "app/models/scim_group.sl", scim::SCIM_GROUP_MODEL)?;
     write_migration_once(
         app_path,
         "add_scim_user_indexes",
@@ -64,8 +71,9 @@ pub fn print_scim_success_message() {
     println!("  3. In the directory: base URL \x1b[36mAPP_BASE_URL/scim/v2\x1b[0m, bearer token");
     println!("     authentication, `userName` mapped to the email.");
     println!();
-    println!("  Users only (no Groups). A deactivated user is signed out and kept out by");
-    println!("  app/middleware/scim_active.sl.");
+    println!("  A deactivated user is signed out and kept out by app/middleware/scim_active.sl.");
+    println!("  Groups: read them with \x1b[36mScimGroup.names_for(user)\x1b[0m, or map them to roles in");
+    println!("  \x1b[36mSCIM_GROUP_ROLES\x1b[0m (app/models/scim_group.sl). A directory never grants `admin`.");
     println!("  Docs: /docs/security/scim");
     println!();
 }

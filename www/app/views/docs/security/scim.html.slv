@@ -34,9 +34,11 @@ soli db:migrate up</code></pre>
                     <tr><th class="py-3 px-4 font-semibold">File</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/10 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>app/controllers/scim_controller.sl</code></td><td class="py-3 px-4">The SCIM server, under <code>/scim/v2</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/scim_controller.sl</code></td><td class="py-3 px-4">The SCIM server, under <code>/scim/v2</code>: users</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/scim_groups_controller.sl</code></td><td class="py-3 px-4">Groups and their members</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/models/scim_group.sl</code></td><td class="py-3 px-4"><code>ScimGroup</code>, <code>ScimMembership</code>, and what a group gives (<code>SCIM_GROUP_ROLES</code>)</td></tr>
                     <tr><td class="py-3 px-4"><code>app/middleware/scim_active.sl</code></td><td class="py-3 px-4">Keeps deactivated accounts out (<code># order: 8</code>)</td></tr>
-                    <tr><td class="py-3 px-4"><code>db/migrations/…_add_scim_user_indexes.sl</code></td><td class="py-3 px-4">Index on the users&rsquo; <code>scim_external_id</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_add_scim_user_indexes.sl</code></td><td class="py-3 px-4">Index on the users&rsquo; <code>scim_external_id</code>; the <code>scim_groups</code> and <code>scim_memberships</code> collections</td></tr>
                     <tr><td class="py-3 px-4"><code>config/routes.sl</code></td><td class="py-3 px-4">The routes, and <code>skip_csrf("/scim/*")</code></td></tr>
                 </tbody>
             </table>
@@ -73,6 +75,8 @@ SCIM_TOKENS=okta=&lt;token&gt;,entra=&lt;token&gt;   # several, each named</code
                     <tr><td class="py-3 px-4"><code>PUT /scim/v2/Users/:id</code></td><td class="py-3 px-4">Replace</td></tr>
                     <tr><td class="py-3 px-4"><code>PATCH /scim/v2/Users/:id</code></td><td class="py-3 px-4">Update &mdash; what directories use to deactivate</td></tr>
                     <tr><td class="py-3 px-4"><code>DELETE /scim/v2/Users/:id</code></td><td class="py-3 px-4">Remove the account</td></tr>
+                    <tr><td class="py-3 px-4"><code>GET /scim/v2/Groups</code></td><td class="py-3 px-4">List, or find with <code>filter=displayName eq "…"</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>POST /scim/v2/Groups</code>, <code>GET</code> / <code>PUT</code> / <code>PATCH</code> / <code>DELETE /scim/v2/Groups/:id</code></td><td class="py-3 px-4">Create, read, replace, change members or name, delete</td></tr>
                 </tbody>
             </table>
         </div>
@@ -114,13 +118,33 @@ SCIM_TOKENS=okta=&lt;token&gt;,entra=&lt;token&gt;   # several, each named</code
     </section>
 
     <section>
-        <h2 id="limits" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+        <h2 id="groups" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
             <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">6</span>
+            Groups
+        </h2>
+        <p class="text-gray-400 mb-4">The directory creates groups and moves users in and out of them. A group gives nothing by itself; the app says what it means, two ways:</p>
+        <pre data-filename="Soli"><code class="language-soli text-sm"># In a policy or a controller: read them.
+ScimGroup.names_for(user).includes?("Finance")
+
+# Or map them to the account's role, in app/models/scim_group.sl:
+const SCIM_GROUP_ROLES = {"Finance": "accountant", "Support": "agent"}</code></pre>
+        <p class="text-gray-400 my-4">With the mapping, a user&rsquo;s <code>role</code> follows their groups: in several mapped groups, the last one listed in the mapping wins; in none, <code>member</code>.</p>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400">
+            <li><strong class="text-white">A directory never makes an administrator.</strong> <code>admin</code> is granted in the app: a mapping to it is ignored, and an account that is an administrator keeps its role whatever its groups say. A compromised or misconfigured directory cannot hand out the app&rsquo;s administration.</li>
+            <li><strong class="text-white">What a group gave is taken back at once</strong> when a user leaves it, when it is renamed, or when it is deleted: the role is recomputed on every change.</li>
+            <li>Member changes are understood in the three shapes directories send: <code>add</code> / <code>remove</code> on <code>members</code> with a list of values, <code>remove</code> on <code>members[value eq "&lt;id&gt;"]</code>, and <code>replace</code> on <code>members</code> for the whole list. A user the app does not know is skipped.</li>
+            <li>A user resource lists its <code>groups</code>, read-only: membership is changed on the group.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 id="limits" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">7</span>
             Limits
         </h2>
         <ul class="list-disc pl-6 space-y-3 text-gray-400">
-            <li><strong class="text-white">Users only.</strong> No <code>Groups</code>: an account&rsquo;s role is not provisioned. Map a SCIM attribute to it in <code>_assign</code> if your directory sends one.</li>
-            <li><strong class="text-white">No bulk, sorting, ETags or password change</strong>, and the filter is <code>userName eq</code> / <code>externalId eq</code> &mdash; what directories send, not the whole filter grammar.</li>
+            <li><strong class="text-white">No bulk, sorting, ETags or password change</strong>, and the filters are <code>userName eq</code> / <code>externalId eq</code> on users and <code>displayName eq</code> on groups &mdash; what directories send, not the whole filter grammar.</li>
+            <li><strong class="text-white">One role per account</strong>, and groups do not nest: a group&rsquo;s members are users.</li>
             <li><strong class="text-white">Tokens are static</strong>, read from the environment; rotate by listing the new one beside the old in <code>SCIM_TOKENS</code>, then removing the old.</li>
             <li>A directory&rsquo;s token only opens <code>/scim/v2</code>; it is not a user&rsquo;s <a href="/docs/security/authentication#api-tokens" class="text-amber-400 hover:text-amber-300">API token</a>, and neither is it.</li>
         </ul>

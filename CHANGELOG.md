@@ -27,8 +27,16 @@
   token of its own (`SCIM_TOKEN`, or `SCIM_TOKENS=name=token,…`; under 32
   characters it is ignored). `active: false` closes the user's sessions, and a
   middleware (`# order: 8`) treats every later request of theirs as a
-  guest's, whatever signed them in. Users only. `tests/scim_generator_test.rs`
-  serves the scaffold. Card #879.
+  guest's, whatever signed them in. `tests/scim_generator_test.rs` serves the
+  scaffold. Card #879.
+- **SCIM groups.** `/scim/v2/Groups` (list, `displayName eq`, create, read,
+  replace, patch, delete), `ScimGroup` / `ScimMembership`, and `groups` on the
+  user resource. Member changes are taken in the three shapes directories
+  send. A group gives nothing by itself: the app reads
+  `ScimGroup.names_for(user)`, or maps groups to the account's role with
+  `SCIM_GROUP_ROLES`. A directory never grants `admin` — a mapping to it is
+  ignored and an administrator keeps the role — and what a group gave is taken
+  back at once when a user leaves it or it is renamed or deleted. Card #903.
 - **Three additions to `soli generate auth`**, each adding files of its own
   and editing none (card #880):
   - `--magic-link`: sign-in by a link sent by email. One use, fifteen
