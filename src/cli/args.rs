@@ -95,6 +95,11 @@ pub enum Command {
         folder: String,
         chained: bool,
     },
+    /// `soli generate privacy [folder]` — scaffold export and erasure of a
+    /// user's personal data (needs `generate auth`).
+    GeneratePrivacy {
+        folder: String,
+    },
     /// `soli generate scim [folder]` — scaffold a SCIM 2.0 server for a
     /// directory to provision users (needs `generate auth`).
     GenerateScim {
@@ -763,6 +768,7 @@ pub fn print_usage() {
     eprintln!("       soli generate oidc_provider [folder]");
     eprintln!("       soli generate saml [folder]");
     eprintln!("       soli generate scim [folder]");
+    eprintln!("       soli generate privacy [folder]");
     eprintln!("       soli generate audit [folder] [--chain]");
     eprintln!(
         "       soli generate oauth <apple|github|google|gitlab|discord|linkedin|microsoft> [folder]"
@@ -848,6 +854,7 @@ pub fn print_usage() {
         "  generate saml        SAML 2.0 single sign-on with an identity provider (needs auth)"
     );
     eprintln!("  generate scim        SCIM 2.0: a directory provisions users (needs auth)");
+    eprintln!("  generate privacy     Export and erasure of a user's personal data (needs auth)");
     eprintln!("  generate audit       Audit log: who changed what (--chain: tamper-evident)");
     eprintln!("  generate oauth       OAuth client: sign in with apple|github|google|gitlab|discord|linkedin|microsoft (needs auth)");
     eprintln!(
@@ -976,6 +983,7 @@ pub fn print_usage() {
     eprintln!("  soli generate oidc_provider   Scaffold an OpenID Connect provider");
     eprintln!("  soli generate saml            Sign in through a SAML identity provider");
     eprintln!("  soli generate scim            Let a directory (Okta, Entra ID) provision users");
+    eprintln!("  soli generate privacy         Export and erase a user's personal data");
     eprintln!(
         "  soli generate audit           Log who changed what on the models that include Audited"
     );
@@ -1250,6 +1258,16 @@ pub fn parse_args() -> Options {
                         };
                         return options;
                     }
+                    "privacy" => {
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GeneratePrivacy { folder };
+                        return options;
+                    }
                     "scim" => {
                         i += 1;
                         let folder = if i < args.len() && !args[i].starts_with('-') {
@@ -1480,7 +1498,7 @@ pub fn parse_args() -> Options {
                     }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, saml, scim, audit, oauth, mailer, component, devices, client, app_links, offline)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, saml, scim, privacy, audit, oauth, mailer, component, devices, client, app_links, offline)",
                             subcommand
                         );
                         print_usage();

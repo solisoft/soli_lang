@@ -19,6 +19,7 @@ pub mod oauth;
 pub mod offline;
 pub mod oidc;
 pub mod passkeys;
+pub mod privacy;
 pub mod saml;
 pub mod scim;
 pub mod two_factor;

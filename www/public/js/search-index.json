@@ -17811,6 +17811,56 @@
       ]
     },
     {
+      "title": "Personal Data: Export and Erasure",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/privacy",
+      "signature": "soli generate privacy",
+      "description": "Export and erase what the app holds about a user (GDPR): a register of models with a rule each, and a page to download or erase",
+      "keywords": [
+        "gdpr",
+        "rgpd",
+        "privacy",
+        "personal data",
+        "export",
+        "erasure",
+        "right to be forgotten",
+        "delete account",
+        "data portability",
+        "anonymize"
+      ]
+    },
+    {
+      "title": "Privacy.erase",
+      "type": "method",
+      "category": "Security",
+      "path": "/docs/security/privacy#erasure",
+      "signature": "Privacy.erase(user)",
+      "description": "Erase a user's data model by model (delete, anonymize or keep), then the account; returns a report of counts",
+      "keywords": [
+        "privacy",
+        "erase",
+        "gdpr",
+        "anonymize",
+        "delete account"
+      ]
+    },
+    {
+      "title": "Privacy.export_data",
+      "type": "method",
+      "category": "Security",
+      "path": "/docs/security/privacy#export",
+      "signature": "Privacy.export_data(user)",
+      "description": "Everything the app holds about a user as one hash, without credentials",
+      "keywords": [
+        "privacy",
+        "export",
+        "gdpr",
+        "data portability",
+        "download my data"
+      ]
+    },
+    {
       "title": "SCIM Provisioning",
       "type": "page",
       "category": "Security",

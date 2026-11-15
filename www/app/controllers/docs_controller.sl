@@ -294,6 +294,10 @@ def security_scim
   render_docs("docs/security/scim", "SCIM Provisioning", "security", "scim")
 end
 
+def security_privacy
+  render_docs("docs/security/privacy", "Personal Data: Export and Erasure", "security", "privacy")
+end
+
 def security_oauth_client
   render_docs("docs/security/oauth-client", "OAuth Client", "security", "oauth_client")
 end

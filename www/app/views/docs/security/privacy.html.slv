@@ -1,0 +1,123 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
+                Personal Data: Export and Erasure
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Answer the two requests privacy law gives a person &mdash; &ldquo;send me what you hold about me&rdquo; and
+            &ldquo;erase it&rdquo; (GDPR articles 15, 17 and 20) &mdash; without hunting through every table by hand.
+        </p>
+    </div>
+
+    <section>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth       # a person is the auth scaffold's User
+soli generate privacy</code></pre>
+    </section>
+
+    <section>
+        <h2 id="generates" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
+            What it generates
+        </h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">File</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>app/services/privacy.sl</code></td><td class="py-3 px-4">The <strong class="text-white">register</strong>: which models hold personal data, how each relates to a user, what an erasure does to it &mdash; and <code>Privacy.export_data</code> / <code>Privacy.erase</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/privacy_controller.sl</code></td><td class="py-3 px-4"><code>GET /privacy</code>, <code>POST /privacy/export</code>, <code>POST /privacy/erase</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/views/privacy/show.html.slv</code></td><td class="py-3 px-4">The page: download, erase</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">No file of the auth scaffold is edited, and there is no migration.</p>
+    </section>
+
+    <section>
+        <h2 id="register" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">2</span>
+            The register
+        </h2>
+        <p class="text-gray-400 mb-4">List every model of yours that holds personal data in <code class="text-amber-300">PRIVACY_MODELS</code>:</p>
+        <pre data-filename="app/services/privacy.sl"><code class="language-soli text-sm">const PRIVACY_MODELS = {
+  "Comment": {"owner": "author_id", "erase": "delete"},
+  "Order":   {"owner": "user_id", "erase": "anonymize", "fields": ["address", "phone"]},
+  "Invoice": {"owner": "user_id", "erase": "keep"}
+}</code></pre>
+        <div class="mt-4"></div>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Key</th><th class="py-3 px-4 font-semibold">What it means</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>owner</code></td><td class="py-3 px-4">The field holding the user&rsquo;s key</td></tr>
+                    <tr><td class="py-3 px-4"><code>erase</code></td><td class="py-3 px-4"><code>"delete"</code> the records; <code>"anonymize"</code> them (set <code>fields</code> to <code>nil</code>); <code>"keep"</code> them &mdash; what the law makes you retain, such as invoices</td></tr>
+                    <tr><td class="py-3 px-4"><code>fields</code></td><td class="py-3 px-4">What <code>"anonymize"</code> blanks</td></tr>
+                    <tr><td class="py-3 px-4"><code>omit</code></td><td class="py-3 px-4">Fields left out of an export</td></tr>
+                    <tr><td class="py-3 px-4"><code>export</code></td><td class="py-3 px-4"><code>false</code> to leave the model out of exports</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="callout callout-warning">
+            <p class="text-yellow-200/80 text-sm mb-0">
+                <strong>A model that is not listed is neither exported nor erased.</strong> A name that is not a model raises, so a typo
+                cannot leave data behind in silence. What the other generators store about a user &mdash; OAuth and SAML identities,
+                passkeys, two-factor, API tokens, magic links &mdash; is already listed (<code>PRIVACY_SCAFFOLD_MODELS</code>), deleted on
+                erasure, exported without its secrets.
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <h2 id="export" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">3</span>
+            Export
+        </h2>
+        <p class="text-gray-400 mb-4"><code>/privacy</code> &rarr; <em>Download</em> returns one JSON file: the account, then each model&rsquo;s records under its name. Credentials are left out (password digest, token digests, the two-factor secret).</p>
+        <pre data-filename="Soli"><code class="language-soli text-sm">Privacy.export_data(user)
+# {"exported_at": "…", "user": {…}, "Order": [{…}], "Comment": [{…}], …}</code></pre>
+    </section>
+
+    <section>
+        <h2 id="erasure" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">4</span>
+            Erasure
+        </h2>
+        <p class="text-gray-400 mb-4"><code>/privacy</code> &rarr; <em>Erase my account</em> asks for the account&rsquo;s email and, when it has one, its password. Then, model by model, by its rule; then the account.</p>
+        <pre data-filename="Soli"><code class="language-soli text-sm">report = Privacy.erase(user)
+# {"deleted": {"Comment": 3, "ApiToken": 1}, "anonymized": {"Order": 2}, "kept": {"Invoice": 5}}</code></pre>
+        <p class="text-gray-400 my-4">The account itself is kept as an empty shell (<code class="text-amber-300">PRIVACY_USER_ERASE = "anonymize"</code>): its email becomes <code>erased-&lt;key&gt;@erased.invalid</code>, its name and every credential are cleared, its sessions are closed and it can no longer sign in &mdash; but whatever references it still resolves. Set it to <code>"delete"</code> to remove the record instead.</p>
+        <p class="text-gray-400 mb-4">The report is logged (<code>privacy: erased user …</code>), with counts and no values. To answer a request made by mail, call the two methods from a script (<code>soli db:seed . erase.sl</code>); the page takes the person&rsquo;s own session, not an API token, and not an administrator acting as them.</p>
+    </section>
+
+    <section>
+        <h2 id="not-reached" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">5</span>
+            What erasure does not reach
+        </h2>
+        <p class="text-gray-400 mb-4">Erasing works in bulk (<code>update_all</code>, <code>delete_all</code>), which <strong class="text-white">skips callbacks on purpose</strong>: an <a href="/docs/database/models#audit-log" class="text-amber-400 hover:text-amber-300">audited</a> model would otherwise copy the very values being erased into its audit log. The consequences are yours to cover:</p>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400">
+            <li><strong class="text-white">Attachments</strong> of erased records are not purged, and <code>dependent:</code> cascades do not fire. List the dependent models in the register, and purge files in <code>Privacy.erase_model</code> if you store some.</li>
+            <li><strong class="text-white">The audit log</strong> keeps what it already recorded, old values included. A chained log cannot be edited without breaking the chain; decide a retention with <code>Audit.purge_before</code>, and withhold personal fields from it in the first place (<code>audit_redacted</code>).</li>
+            <li><strong class="text-white">Framework stores</strong> are not touched: grouped errors (<code>/__soli/errors</code>), slow-query samples, the dev mail inbox, search indexes, logs, backups. They can hold request parameters; give them a retention, or keep personal data out of them.</li>
+            <li><strong class="text-white">Other systems</strong> &mdash; a payment provider, a mailing tool &mdash; need their own erasure.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 id="limits" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">6</span>
+            Limits
+        </h2>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400">
+            <li>One file, written while the request waits: for accounts with a lot of data, build the export in a job and mail a link.</li>
+            <li>JSON only; attachments are named in their records, not bundled.</li>
+            <li>This is the mechanism, not the legal answer: what you must keep, and for how long, is yours to decide &mdash; the register is where it is written down.</li>
+        </ul>
+    </section>
+</div>

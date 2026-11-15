@@ -4,6 +4,20 @@
 
 ### Added
 
+- **`soli generate privacy`: export and erasure of a user's personal data.**
+  `app/services/privacy.sl` is the register — `PRIVACY_MODELS` lists each
+  model that holds personal data, its owner field and what an erasure does to
+  it (`delete`, `anonymize` with the fields to blank, or `keep`); the models
+  of the other generators (identities, passkeys, two-factor, API tokens, magic
+  links) are listed already. `Privacy.export_data(user)` returns the account
+  and each model's records without their secrets; `Privacy.erase(user)`
+  applies the rules, then turns the account into a shell that cannot sign in
+  (or deletes it), and returns a report of counts. `/privacy` gives a user
+  both, behind their email and password. Erasure works in bulk and skips
+  callbacks on purpose, so an audited model does not log the values being
+  erased; attachments, existing audit entries and the framework's own stores
+  are not reached, and the docs say so. `tests/privacy_generator_test.rs`
+  serves an app with three models under the three rules. Card #881.
 - **`soli generate scim`: a SCIM 2.0 server.** An organisation's directory
   (Okta, Microsoft Entra ID) creates, updates and deactivates users under
   `/scim/v2`: `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, and `Users`
