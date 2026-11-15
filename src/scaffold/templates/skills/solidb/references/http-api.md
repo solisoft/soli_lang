@@ -230,6 +230,23 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   and no index answer right. Create indexes after loading, drop and
   recreate after inserts, or do without.
 
+### Columnar collections after 2.10.4 (unreleased; observed on builds of `main`, 2026-11-15)
+
+Same endpoints, driver commands and results as before; what changed is
+underneath. Rows are stored in blocks of typed arrays instead of one key
+per cell, and a collection written by 2.10.4 or earlier is converted the
+first time it is loaded.
+
+- `FOR r IN c FILTER <column compared with a constant, AND …> COLLECT k = r.column … AGGREGATE COUNT() | SUM | AVG | MIN | MAX (r.column)`
+  is computed on the arrays (2.4 s → about 1 ms for a filtered sum over a
+  million rows). `!=`, `OR`, a function in a key or a `RETURN` of rows
+  still build every row first: same answers, slow on a large collection.
+- A float inserted a few rows at a time is read back exactly; through
+  2.10.4 some values lost their last digit (`93.33333333333333` came back
+  `93.33333333333331`).
+- The blocks are held in memory once read (about 140 bytes a row for six
+  columns), with no ceiling yet.
+
 ### Foreign keys (since 2.10.0; observed on builds of its branch, 2026-11-13)
 
 A child collection declares that a top-level field holds the `_key` of a
