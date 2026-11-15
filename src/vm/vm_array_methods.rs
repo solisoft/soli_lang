@@ -534,27 +534,12 @@ impl Vm {
                 let items = arr.borrow();
                 Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))))
             }
-            "order" => {
+            // Shared with the tree-walker so the two cannot order differently.
+            "order" | "reorder" => {
                 let items = arr.borrow();
-                if args.is_empty() {
-                    return Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))));
-                }
-                let field = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(RuntimeError::type_error(
-                            "order() expects a string field name",
-                            span,
-                        ))
-                    }
-                };
-                // Shared with the tree-walker so the two cannot order differently.
-                let ascending =
-                    crate::interpreter::executor::calls::array_ops::order_is_ascending(args.get(1));
-                let sorted = crate::interpreter::executor::calls::array_ops::order_by(
-                    &items, &field, ascending,
-                );
-                Ok(Value::Array(Rc::new(RefCell::new(sorted))))
+                crate::interpreter::executor::calls::array_ops::order_array(&items, args)
+                    .map(|sorted| Value::Array(Rc::new(RefCell::new(sorted))))
+                    .map_err(|e| RuntimeError::type_error(e, span))
             }
             "join" => {
                 if args.len() != 1 {

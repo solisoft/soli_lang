@@ -154,7 +154,7 @@ describe("Field-name validator — QueryBuilder.order chain (SEC-004b)") do
   test("accepts a well-formed field name in the chain form") do
     assert_eq(
       FieldGuardItem.order("name").order("created_at", "desc").to_query,
-      "FOR doc IN field_guard_items SORT doc.created_at DESC RETURN doc"
+      "FOR doc IN field_guard_items SORT doc.name ASC, doc.created_at DESC RETURN doc"
     )
   end
 end

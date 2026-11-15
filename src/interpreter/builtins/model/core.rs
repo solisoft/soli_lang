@@ -372,6 +372,7 @@ pub(super) fn sql_find_first_by(
         is_soft_delete_model: false,
         order_field: order_by_key.then(|| "_key".to_string()),
         order_desc: false,
+        order_more: Vec::new(),
         limit: Some(1),
         offset: None,
     };
@@ -716,6 +717,74 @@ pub fn validate_order_direction(direction: &str, method: &str) -> Result<(), Str
             method, direction
         )),
     }
+}
+
+/// The sort criteria an `order` / `reorder` call names, as `(field,
+/// direction)` in the order given: a field and an optional direction
+/// (`order("name", "desc")`), or a hash of them (`order({"status": "asc",
+/// "created_at": "desc"})`), whose pairs keep the order they were written in.
+/// Every field goes through [`validate_field_name`] and every direction
+/// through [`validate_order_direction`] — both land in a `SORT` clause.
+pub fn order_criteria_from_args(
+    args: &[Value],
+    method: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let name = |value: &Value| match value {
+        Value::String(text) | Value::Symbol(text) => Some(text.to_string()),
+        _ => None,
+    };
+    let criteria: Vec<(String, String)> = match args {
+        [Value::Hash(pairs)] => {
+            let pairs = pairs.borrow();
+            if pairs.is_empty() {
+                return Err(format!("{method}() was given an empty hash"));
+            }
+            let mut criteria = Vec::with_capacity(pairs.len());
+            for (key, value) in pairs.iter() {
+                let field = match key {
+                    crate::interpreter::value::HashKey::String(text)
+                    | crate::interpreter::value::HashKey::Symbol(text) => text.to_string(),
+                    _ => return Err(format!("{method}() expects field names as hash keys")),
+                };
+                let direction = name(value).ok_or_else(|| {
+                    format!(
+                        "{method}() expects \"asc\" or \"desc\" for {field:?}, got {}",
+                        value.type_name()
+                    )
+                })?;
+                criteria.push((field, direction));
+            }
+            criteria
+        }
+        [field] => vec![(
+            name(field).ok_or_else(|| {
+                format!(
+                    "{method}() expects a field name (string or symbol) or a hash, got {}",
+                    field.type_name()
+                )
+            })?,
+            "asc".to_string(),
+        )],
+        [field, direction] => vec![(
+            name(field).ok_or_else(|| {
+                format!(
+                    "{method}() expects a field name (string or symbol), got {}",
+                    field.type_name()
+                )
+            })?,
+            name(direction).ok_or_else(|| format!("{method}() expects a string direction"))?,
+        )],
+        _ => {
+            return Err(format!(
+                "{method}() expects a field and an optional direction, or one hash"
+            ))
+        }
+    };
+    for (field, direction) in &criteria {
+        validate_field_name(field, method)?;
+        validate_order_direction(direction, method)?;
+    }
+    Ok(criteria)
 }
 
 /// Build a safe `FILTER` clause from a `{field: value, ...}` Hash. Each

@@ -68,7 +68,8 @@ impl Interpreter {
         match method_name {
             "create" => self.qb_create(qb, arguments, span),
             "where" => self.qb_where(qb, arguments, span),
-            "order" => self.qb_order(qb, arguments, span),
+            "order" => self.qb_order(qb, arguments, span, false),
+            "reorder" => self.qb_order(qb, arguments, span, true),
             "limit" => self.qb_limit(qb, arguments, span),
             "offset" => self.qb_offset(qb, arguments, span),
             "timeout" => self.qb_timeout(qb, arguments, span),
@@ -345,54 +346,30 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 
+    /// `.order(field, direction?)` or `.order({field: direction, …})`: add
+    /// sort criteria after the ones the query already has. `.reorder(…)`
+    /// (`replace`) drops those first; with no argument it only drops them.
     fn qb_order(
         &mut self,
         qb: Rc<RefCell<crate::interpreter::builtins::model::QueryBuilder>>,
         arguments: Vec<Value>,
         span: Span,
+        replace: bool,
     ) -> RuntimeResult<Value> {
-        if arguments.is_empty() || arguments.len() > 2 {
-            return Err(RuntimeError::type_error(
-                "order() expects 1 or 2 arguments: field and optional direction",
-                span,
-            ));
-        }
-        let field = match &arguments[0] {
-            Value::String(s) => s.clone(),
-            _ => {
-                return Err(RuntimeError::type_error(
-                    "order() expects string field",
-                    span,
-                ))
-            }
-        };
-        // SEC-004b: chain form `Model.where(...).order(field, dir)` was the
-        // counterpart that escaped SEC-004's static-method gate. Same sink
-        // (`SORT doc.{field}`), same validator.
-        crate::interpreter::builtins::model::validate_field_name(&field, "order")
-            .map_err(|e| RuntimeError::type_error(e, span))?;
-        let direction = if arguments.len() == 2 {
-            match &arguments[1] {
-                Value::String(s) => s.clone(),
-                _ => {
-                    return Err(RuntimeError::type_error(
-                        "order() expects string direction",
-                        span,
-                    ))
-                }
-            }
+        let method = if replace { "reorder" } else { "order" };
+        let criteria = if replace && arguments.is_empty() {
+            Vec::new()
         } else {
-            "asc".into()
+            crate::interpreter::builtins::model::order_criteria_from_args(&arguments, method)
+                .map_err(|e| RuntimeError::type_error(e, span))?
         };
-        // Same direction whitelist as `Model.order(...)` (SEC-004a) — the
-        // QueryBuilder chain (`User.where(...).order(field, dir)`) lands
-        // on the identical SORT-clause builder, so the input must clear
-        // the same gate regardless of which entry point is used.
-        crate::interpreter::builtins::model::validate_order_direction(&direction, "order")
-            .map_err(|e| RuntimeError::type_error(e, span))?;
-
         let mut new_qb = qb.borrow().clone();
-        new_qb.set_order(field.to_string(), direction.to_string());
+        if replace {
+            new_qb.clear_order();
+        }
+        for (field, direction) in criteria {
+            new_qb.set_order(field, direction);
+        }
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
     }
 

@@ -2618,7 +2618,7 @@ impl Interpreter {
         }
         // Handle QueryBuilder methods for chaining
         match name {
-            "where" | "order" | "limit" | "offset" | "timeout" | "includes" | "includes_count" | "join" | "select" | "fields"
+            "where" | "order" | "reorder" | "limit" | "offset" | "timeout" | "includes" | "includes_count" | "join" | "select" | "fields"
             | "all" | "first" | "count" | "paginate" | "create" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by" | "time_bucket" | "similar"
             | "aggregate" | "having" | "median" | "stddev" | "variance" | "count_distinct"
@@ -3319,6 +3319,12 @@ pub fn new_with_attributes(
         start_declared_fields(class, &mut instance.borrow_mut());
     }
     assign_attributes(&instance, args);
+    if class.is_model_subclass() {
+        crate::interpreter::builtins::model::hydrate_value_fields(
+            &class.name,
+            &mut instance.borrow_mut(),
+        );
+    }
     Ok(Value::Instance(instance))
 }
 
@@ -3620,6 +3626,7 @@ pub(crate) fn is_array_method_name(name: &str) -> bool {
             | "all"
             | "includes"
             | "order"
+            | "reorder"
             | "delete"
             | "delete_at"
             | "shift"

@@ -70,6 +70,10 @@ pub fn compute_changes(inst: &Instance) -> Vec<(SoliStr, Value, Value)> {
 /// into `previous_changes`, reseed the baseline, and return the changes
 /// (counter caches consume the return value for FK reassignment).
 pub fn finalize_persist(inst: &mut Instance) -> Vec<(SoliStr, Value, Value)> {
+    // A `value_field` assigned as a hash (`order.update({"label": {…}})`) is
+    // a value object from here on, as it is on the record read back.
+    let class_name = inst.class.name.clone();
+    super::register_crud::hydrate_value_fields(&class_name, inst);
     let changes = compute_changes(inst);
     inst.previous_changes = Some(Box::new(changes.clone()));
     seed_snapshot(inst);

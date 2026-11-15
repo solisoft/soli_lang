@@ -4,6 +4,16 @@
 
 ### Added
 
+- **ORM: `.order` by several fields, and `.reorder` (#908).** A chained
+  `.order` adds a criterion — `Order.order("status").order("created_at",
+  "desc")` is `SORT doc.status ASC, doc.created_at DESC` — where it silently
+  replaced the previous one. `order({"status": "asc", "created_at": "desc"})`
+  gives several in one call, and `.reorder(...)` drops what a scope or relation
+  set (`.reorder` alone removes the sort). On SoliDB, PostgreSQL, MySQL and
+  SQLite, column-aware models and grouped queries; the hash form also sorts an
+  already-loaded array. **Behaviour change:** a scope that sorts, followed by
+  the caller's `.order`, now sorts by both, the scope's first.
+
 - **`soli generate privacy`: export and erasure of a user's personal data.**
   `app/services/privacy.sl` is the register — `PRIVACY_MODELS` lists each
   model that holds personal data, its owner field and what an erasure does to
@@ -69,6 +79,32 @@
 - **`jwt_sign` / `jwt_verify` take `ES256`** (a P-256 key in PEM form).
 
 ### Fixed
+
+- **ORM: `create` writes a field's literal default and builds value objects
+  (#909).** `Order.create(attrs)` left out the fields declared with a literal
+  default (`status: String = "draft"`): not validated, not stored, `nil` on
+  the instance — while `Order.new(attrs)` then `save` set them. `create`,
+  `create_many` and the record `find_or_create_by` creates now write them; a
+  value the caller gives wins. A `value_field` given as a hash is a value
+  object on the instance `new`, `create`, `update` and `save` hand back, as on
+  a record read from the database — it stayed a hash, so `order.label.text`
+  needed a re-read.
+- **ORM: a relation finds its class and its collection for words in `s`
+  (#907).** `has_many("order_remises")` resolved to `OrderRemis` and its
+  cascade failed with "model class OrderRemis is not defined": when the naive
+  singular names no model and the same name with an `e` does (`OrderRemise`,
+  `Cache`, `House`), the relation means that one. And `has_many("buses")` /
+  `has_many("addresses")` read a `buses` / `addresses` collection while `Bus`
+  / `Address` write to `bus` / `address`, so the relation was empty and its
+  cascade deleted nothing; it reads the model's own collection. Collection
+  names themselves are unchanged.
+- **ORM: a `dependent: "delete"` cascade no longer aborts on a child that is
+  already gone (#906)** — deleted earlier in the same transaction, or by
+  another request. Other failures still abort, and the error now carries what
+  the database answered instead of "callback veto or DB error". On SoliDB
+  before 2.10.2 a transaction's queries read committed data, so a cascade
+  inside `Model.transaction` misses children the transaction created:
+  documented, with the minimum version.
 
 - **`soli new --edge` and `soli edge build` wrote today's date as
   `compatibility_date`.** Wrangler refuses a date newer than the workerd it

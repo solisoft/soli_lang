@@ -2163,6 +2163,7 @@ mod integration_tests {
                 is_soft_delete_model: false,
                 order_field: None,
                 order_desc: false,
+                order_more: Vec::new(),
                 limit: Some(10),
                 offset: None,
             };
@@ -2217,6 +2218,7 @@ mod integration_tests {
                 is_soft_delete_model: false,
                 order_field: None,
                 order_desc: false,
+                order_more: Vec::new(),
                 limit: None,
                 offset: None,
             };
@@ -2343,6 +2345,7 @@ mod integration_tests {
                 is_soft_delete_model: false,
                 order_field: None,
                 order_desc: false,
+                order_more: Vec::new(),
                 limit: None,
                 offset: None,
             };
@@ -2380,6 +2383,7 @@ mod integration_tests {
                     is_soft_delete_model: false,
                     order_field: Some(field.into()),
                     order_desc: desc,
+                    order_more: Vec::new(),
                     limit: None,
                     offset: None,
                 };
@@ -2556,6 +2560,7 @@ mod integration_tests {
                 is_soft_delete_model: false,
                 order_field: Some("country".into()),
                 order_desc: false,
+                order_more: Vec::new(),
                 limit: None,
                 offset: None,
             };

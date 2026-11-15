@@ -164,25 +164,26 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 // model declared `attr_accessible(...)`, drop any
                 // non-whitelisted keys from the defaults hash before
                 // they reach the insert.
-                let defaults = match args.get(3) {
-                    Some(hash_val @ Value::Hash(_)) => {
-                        let filtered = filter_mass_assign(&class_name, hash_val);
-                        let pairs = match &filtered {
-                            Value::Hash(p) => p,
-                            _ => unreachable!(),
-                        };
-                        let mut map = serde_json::Map::new();
-                        for (k, v) in pairs.borrow().iter() {
-                            if let crate::interpreter::value::HashKey::String(key) = k {
-                                if let Ok(jv) = super::value_to_json(v) {
-                                    map.insert(key.clone().to_string(), jv);
-                                }
+                // The model's literal field defaults sit under the caller's,
+                // as `create` writes them.
+                let given = match args.get(3) {
+                    Some(hash_val @ Value::Hash(_)) => filter_mass_assign(&class_name, hash_val),
+                    _ => Value::Hash(Rc::new(RefCell::new(
+                        crate::interpreter::value::HashPairs::default(),
+                    ))),
+                };
+                let mut defaults = serde_json::Map::new();
+                if let Value::Hash(pairs) =
+                    super::register_crud::with_literal_defaults(&class, given)
+                {
+                    for (k, v) in pairs.borrow().iter() {
+                        if let crate::interpreter::value::HashKey::String(key) = k {
+                            if let Ok(jv) = super::value_to_json(v) {
+                                defaults.insert(key.clone().to_string(), jv);
                             }
                         }
-                        map
                     }
-                    _ => serde_json::Map::new(),
-                };
+                }
                 let mut doc = defaults;
                 doc.insert(field.clone().to_string(), json_val.clone());
                 if super::registry::is_sti_subclass(&class_name) {
@@ -313,7 +314,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
     native_static_methods.insert(
         "create_many".to_string(),
         Rc::new(NativeFunction::new("Model.create_many", Some(2), |args| {
-            let _class = get_class_rc_from_args(args)?;
+            let class = get_class_rc_from_args(args)?;
             let class_name = match &args[0] {
                 Value::Class(c) => c.name.clone(),
                 _ => return Err("Expected class".to_string()),
@@ -353,6 +354,9 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                         // `create_many` writes any attribute on every
                         // document at once).
                         let filtered = filter_mass_assign(&class_name, hash_val);
+                        // Literal field defaults, as `create` writes them.
+                        let filtered =
+                            super::register_crud::with_literal_defaults(&class, filtered);
                         let pairs = match &filtered {
                             Value::Hash(p) => p,
                             _ => unreachable!(),

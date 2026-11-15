@@ -191,6 +191,17 @@ fn load_cascade_children(
     })
 }
 
+/// Whether a child's delete failed only because the row is no longer there.
+fn child_already_gone(result: &Value) -> bool {
+    match result {
+        Value::String(error) if error.starts_with("Error:") => {
+            let error = error.to_lowercase();
+            error.contains("not found") || error.contains("documentnotfound")
+        }
+        _ => false,
+    }
+}
+
 /// Run every `dependent:` strategy. `delete_child` is the instance-delete
 /// path (callbacks, nested cascades) used by both engines.
 pub(crate) fn run_dependent_cascades_with(
@@ -265,6 +276,14 @@ pub(crate) fn run_dependent_cascades_with(
                 let children = load_cascade_children(&rel, &owner_key, span)?;
                 for child in &children {
                     let result = delete_child(child, span)?;
+                    // Already gone is what the cascade wants. It happens inside
+                    // a transaction on a SoliDB up to 2.10.1, whose queries
+                    // read committed data: a child the transaction deleted a
+                    // moment ago is still listed, and deleting it again
+                    // answers "not found".
+                    if child_already_gone(&result) {
+                        continue;
+                    }
                     let failed = matches!(&result, Value::String(s) if s.starts_with("Error:"))
                         || matches!(&result, Value::Bool(false));
                     if failed {
@@ -281,8 +300,13 @@ pub(crate) fn run_dependent_cascades_with(
                         };
                         return Err(RuntimeError::new(
                             format!(
-                                "dependent: \"delete\" aborted: child {}/{} could not be deleted (callback veto or DB error)",
-                                rel.collection, child_key
+                                "dependent: \"delete\" aborted: child {}/{} could not be deleted ({})",
+                                rel.collection,
+                                child_key,
+                                match &result {
+                                    Value::String(reason) => reason.to_string(),
+                                    _ => "a before_delete callback vetoed it".to_string(),
+                                }
                             ),
                             span,
                         ));
@@ -344,5 +368,27 @@ impl Interpreter {
         }
         let callee = self.evaluate_member_on_value(instance_value.clone(), "save", span)?;
         self.call_value(callee, Vec::new(), span)
+    }
+}
+
+#[cfg(test)]
+mod gone_tests {
+    use super::*;
+
+    #[test]
+    fn a_child_that_is_no_longer_there_is_not_a_failed_cascade() {
+        for gone in [
+            "Error: Document 'lines/abc' not found",
+            "Error: HTTP 404: DocumentNotFound",
+        ] {
+            assert!(child_already_gone(&Value::String(gone.into())), "{gone}");
+        }
+        // A veto, a success and any other error are not "already gone".
+        assert!(!child_already_gone(&Value::Bool(false)));
+        assert!(!child_already_gone(&Value::Bool(true)));
+        assert!(!child_already_gone(&Value::String(
+            "Error: unique constraint violated".into()
+        )));
+        assert!(!child_already_gone(&Value::String("not found".into())));
     }
 }

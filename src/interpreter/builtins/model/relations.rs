@@ -574,24 +574,61 @@ pub fn register_relation(class_name: &str, relation: RelationDef) {
 
 /// Get all relations for a model class.
 pub fn get_relations(class_name: &str) -> Vec<RelationDef> {
-    MODEL_REGISTRY.read(|registry| {
+    let relations: Vec<RelationDef> = MODEL_REGISTRY.read(|registry| {
         registry
             .get(class_name)
             .map(|m| m.relations.clone())
             .unwrap_or_default()
-    })
+    });
+    relations.into_iter().map(settle_class_name).collect()
+}
+
+/// A relation whose derived class does not exist, pointed at the class its
+/// name most likely means. Taking the `s` off a plural cannot tell `buses`
+/// (bus) from `remises` (remise), `caches` (cache) or `houses` (house): the
+/// singular comes out as `Remis`, `Cach`, `Hous`. When no model has that name
+/// and one has it with the `e` back, that one is the target — so
+/// `has_many("order_remises")` reaches `OrderRemise` without a `class_name:`.
+/// A relation declared before its target class loads is settled on a later
+/// read, which is why this runs on the way out of the registry and not in
+/// `build_relation`.
+fn settle_class_name(mut relation: RelationDef) -> RelationDef {
+    if relation.relation_type == RelationType::Polymorphic {
+        return relation;
+    }
+    if super::registry::get_model_class(&relation.class_name).is_some() {
+        // A class whose name ends in `s` keeps it as its collection (`Bus`
+        // → `bus`, `Address` → `address`), while the relation was named with
+        // the English plural: `has_many("buses")` read a `buses` collection
+        // nothing writes to. The model's own collection is the one to read.
+        let own = super::core::class_name_to_collection(&relation.class_name);
+        if own.ends_with('s') && relation.collection == format!("{own}es") {
+            relation.collection = own;
+        }
+        return relation;
+    }
+    let with_e = format!("{}e", relation.class_name);
+    if super::registry::get_model_class(&with_e).is_some() {
+        if with_e.contains("::") {
+            relation.collection = super::core::class_name_to_collection(&with_e);
+        }
+        relation.class_name = with_e;
+    }
+    relation
 }
 
 /// Get a specific relation by name for a model class.
 pub fn get_relation(class_name: &str, relation_name: &str) -> Option<RelationDef> {
-    MODEL_REGISTRY.read(|registry| {
-        registry.get(class_name).and_then(|m| {
-            m.relations
-                .iter()
-                .find(|r| r.name == relation_name)
-                .cloned()
+    MODEL_REGISTRY
+        .read(|registry| {
+            registry.get(class_name).and_then(|m| {
+                m.relations
+                    .iter()
+                    .find(|r| r.name == relation_name)
+                    .cloned()
+            })
         })
-    })
+        .map(settle_class_name)
 }
 
 // ---------------------------------------------------------------------------

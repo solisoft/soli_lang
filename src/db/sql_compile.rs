@@ -55,8 +55,20 @@ pub struct ListQuery {
     pub is_soft_delete_model: bool,
     pub order_field: Option<String>,
     pub order_desc: bool,
+    /// The criteria after the first, in order: `(field, descending)`.
+    pub order_more: Vec<(String, bool)>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+impl ListQuery {
+    /// Every sort criterion as `(field, descending)`, the first one first.
+    pub fn order_criteria(&self) -> impl Iterator<Item = (&String, bool)> {
+        self.order_field
+            .iter()
+            .map(|field| (field, self.order_desc))
+            .chain(self.order_more.iter().map(|(field, desc)| (field, *desc)))
+    }
 }
 
 /// Inputs for [`list_query_from_parts`] (dialect-agnostic; lives here so SQL
@@ -77,6 +89,8 @@ pub struct ListQueryParts {
     pub is_soft_delete_model: bool,
     pub order_field: Option<String>,
     pub order_desc: bool,
+    /// The criteria after the first, in order: `(field, descending)`.
+    pub order_more: Vec<(String, bool)>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -124,6 +138,7 @@ pub fn list_query_from_parts(parts: ListQueryParts, dialect: Dialect) -> Result<
         is_soft_delete_model: parts.is_soft_delete_model,
         order_field: parts.order_field,
         order_desc: parts.order_desc,
+        order_more: parts.order_more,
         limit: parts.limit,
         offset: parts.offset,
     };
@@ -356,14 +371,18 @@ pub fn compile_select_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String
         sql.push_str(" WHERE ");
         sql.push_str(&where_sql);
     }
-    if let Some(field) = &q.order_field {
+    let mut order: Vec<String> = Vec::new();
+    for (field, desc) in q.order_criteria() {
         validate_field(field)?;
-        let dir = if q.order_desc { "DESC" } else { "ASC" };
+        let dir = if desc { "DESC" } else { "ASC" };
         if field == "_key" || field == "id" {
-            sql.push_str(&format!(" ORDER BY _key {dir}"));
+            order.push(format!("_key {dir}"));
         } else {
-            sql.push_str(&format!(" ORDER BY {}", d.json_order(field, dir)));
+            order.push(d.json_order(field, dir));
         }
+    }
+    if !order.is_empty() {
+        sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     append_limit_offset(d, &mut sql, &mut params, q.limit, q.offset);
     Ok(CompiledSql { sql, params })
@@ -388,6 +407,7 @@ pub fn compile_exists_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String
     q.limit = Some(1);
     q.offset = None;
     q.order_field = None;
+    q.order_more.clear();
     let mut compiled = compile_select_d(d, &q)?;
     compiled.sql = compiled.sql.replacen("SELECT doc FROM", "SELECT 1 FROM", 1);
     Ok(compiled)
@@ -637,13 +657,14 @@ pub fn compile_group_by_d(
         sql.push_str(&compile_having(d, having, group_fields, aggs)?);
     }
     // Optional ORDER BY first group field for stable output.
-    if let Some(field) = &q.order_field {
+    let mut order: Vec<String> = Vec::new();
+    for (field, desc) in q.order_criteria() {
         validate_field(field)?;
         if group_fields.iter().any(|g| g == field)
             || aggs.iter().any(|a| a.alias == *field)
             || (aggs.is_empty() && field == "n")
         {
-            let dir = if q.order_desc { "DESC" } else { "ASC" };
+            let dir = if desc { "DESC" } else { "ASC" };
             let ord = if field == "_key" || field == "id" {
                 "_key".to_string()
             } else if group_fields.iter().any(|g| g == field) {
@@ -651,8 +672,11 @@ pub fn compile_group_by_d(
             } else {
                 d.quote_ident(field)?
             };
-            sql.push_str(&format!(" ORDER BY {ord} {dir}"));
+            order.push(format!("{ord} {dir}"));
         }
+    }
+    if !order.is_empty() {
+        sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     append_limit_offset(d, &mut sql, &mut params, q.limit, q.offset);
     Ok(CompiledSql { sql, params })
@@ -982,6 +1006,7 @@ mod tests {
             is_soft_delete_model: false,
             order_field: Some("name".into()),
             order_desc: false,
+            order_more: Vec::new(),
             limit: Some(10),
             offset: Some(5),
         }
@@ -1017,6 +1042,7 @@ mod tests {
             is_soft_delete_model: false,
             order_field: None,
             order_desc: false,
+            order_more: Vec::new(),
             limit: None,
             offset: None,
         };
@@ -1053,6 +1079,7 @@ mod tests {
             is_soft_delete_model: false,
             order_field: None,
             order_desc: false,
+            order_more: Vec::new(),
             limit: None,
             offset: None,
         };
@@ -1073,6 +1100,7 @@ mod tests {
             is_soft_delete_model: false,
             order_field: None,
             order_desc: false,
+            order_more: Vec::new(),
             limit: None,
             offset: None,
         };
@@ -1329,6 +1357,7 @@ mod tests {
             is_soft_delete_model: false,
             order_field: Some("_key".into()),
             order_desc: true,
+            order_more: Vec::new(),
             limit: Some(5),
             offset: None,
         };

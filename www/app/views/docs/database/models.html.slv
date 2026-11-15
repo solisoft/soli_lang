@@ -212,6 +212,14 @@ end
 user = User.new({"name": "Ann"})
 user.to_h        # {name => Ann, views => 0} — no `age`
 user.save        # writes name and views; the column default fills age</code></pre>
+            <p class="text-gray-300 my-3">
+                <code>User.create(attrs)</code> writes the same thing in one step: the literal defaults are
+                validated, stored and on the instance it returns &mdash; as they are for
+                <code>create_many</code> and for the record <code>find_or_create_by</code> creates. A value
+                the caller gives wins over the default. A <code>value_field</code> given as a hash is a
+                value object on the instance <code>new</code>, <code>create</code>, <code>update</code> and
+                <code>save</code> hand back, as it is on a record read from the database.
+            </p>
         </div>
 
         <div id="choosing-the-key">
@@ -559,7 +567,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.order(field, direction)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Start a query chain sorted by field ("asc"/"desc")</td>
+                    <td class="py-3 px-4 text-gray-400">Start a query chain sorted by field ("asc"/"desc"). <code>Model.order({field: direction, …})</code> gives several criteria; chained <code>.order</code> calls add up and <code>.reorder</code> starts over.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.limit(n)</code></td>

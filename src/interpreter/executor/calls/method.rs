@@ -731,24 +731,10 @@ impl Interpreter {
             // preloaded array rather than error.
             "all" => Ok(Value::Array(Rc::new(RefCell::new(items.to_vec())))),
             "includes" => Ok(Value::Array(Rc::new(RefCell::new(items.to_vec())))),
-            "order" => {
-                if arguments.is_empty() {
-                    return Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))));
-                }
-                let field = match &arguments[0] {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(RuntimeError::type_error(
-                            "order() expects a string field name",
-                            span,
-                        ))
-                    }
-                };
-                // Shared with the VM so the two cannot order differently.
-                let ascending = super::array_ops::order_is_ascending(arguments.get(1));
-                let sorted = super::array_ops::order_by(items, &field, ascending);
-                Ok(Value::Array(Rc::new(RefCell::new(sorted))))
-            }
+            // Shared with the VM so the two cannot order differently.
+            "order" | "reorder" => super::array_ops::order_array(items, &arguments)
+                .map(|sorted| Value::Array(Rc::new(RefCell::new(sorted))))
+                .map_err(|e| RuntimeError::type_error(e, span)),
             "is_a?" => {
                 if arguments.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, arguments.len(), span));

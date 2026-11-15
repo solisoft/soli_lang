@@ -325,6 +325,7 @@ fn is_direct_array_method(name: &str) -> bool {
             | "all"
             | "includes"
             | "order"
+            | "reorder"
             | "is_a?"
     )
 }

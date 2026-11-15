@@ -25,6 +25,53 @@ use super::query::QueryBuilder;
 use crate::interpreter::value::HashKey;
 use crate::interpreter::value::{NativeFunction, Value};
 
+/// `data` with the model's literal field defaults under it: a declared field
+/// the hash does not name gets its default, one it names keeps its value.
+pub(super) fn with_literal_defaults(
+    class: &Rc<crate::interpreter::value::Class>,
+    data: Value,
+) -> Value {
+    let Value::Hash(given) = &data else {
+        return data;
+    };
+    let mut scratch = crate::interpreter::value::Instance::new(class.clone());
+    crate::interpreter::executor::access::member::start_literal_defaults(class, &mut scratch);
+    let mut names: Vec<_> = scratch
+        .fields
+        .iter()
+        .filter(|(name, value)| !name.starts_with('_') && !matches!(value, Value::Null))
+        .collect();
+    if names.is_empty() {
+        return data;
+    }
+    // The field map has no order; a sorted one keeps the document's keys
+    // the same from one run to the next.
+    names.sort_by(|a, b| a.0.cmp(b.0));
+    let mut merged = crate::interpreter::value::HashPairs::default();
+    for (name, value) in names {
+        merged.insert(HashKey::String(name.clone()), value.clone());
+    }
+    for (key, value) in given.borrow().iter() {
+        merged.insert(key.clone(), value.clone());
+    }
+    Value::Hash(Rc::new(RefCell::new(merged)))
+}
+
+/// Turn the stored shape of each `value_field` on `instance` (a hash, or an
+/// array of them) into its value object, as the read path does.
+pub(crate) fn hydrate_value_fields(
+    class_name: &str,
+    instance: &mut crate::interpreter::value::Instance,
+) {
+    for (field, spec) in super::registry::get_value_fields(class_name) {
+        if let Some(stored @ (Value::Hash(_) | Value::Array(_))) = instance.get(&field) {
+            if let Some(value) = crate::interpreter::domain::hydrate_field(&spec, &stored) {
+                instance.set(field, value);
+            }
+        }
+    }
+}
+
 pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunction>>) {
     // CRUD Methods
     // ====================================================================
@@ -103,6 +150,13 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 None => data,
             };
 
+            // The fields declared with a literal default (`status: String =
+            // "draft"`) that the attributes do not name start at it, as
+            // `Model.new(attrs)` then `save` has them: validated, written,
+            // and on the instance handed back. `create` used to leave them
+            // out of all three.
+            let data = with_literal_defaults(&class, data);
+
             // Build a base instance from the (filtered) attributes so
             // the returned object carries the data we'd actually
             // persist, even on failure.
@@ -110,6 +164,9 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 class.clone(),
             )));
             apply_hash_to_instance(&instance, &data)?;
+            // `value_field`s as value objects, as a record read back has
+            // them — not the hash the caller passed.
+            hydrate_value_fields(&class_name, &mut instance.borrow_mut());
             // apply_hash_to_instance skips `_`-prefixed keys; the edge
             // payload is the exception the caller should see.
             if let Some((ref from_ref, ref to_ref)) = edge_refs {
@@ -686,26 +743,11 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let class_name = class.name.clone();
             let collection = class_name_to_collection(&class_name);
 
-            let field = match args.get(1) {
-                Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-                Some(other) => {
-                    return Err(format!(
-                        "Model.order() expects a field name (string or symbol), got {}",
-                        other.type_name()
-                    ))
-                }
-                None => return Err("Model.order() requires a field name".to_string()),
-            };
-            validate_field_name(&field, "order")?;
-
-            let direction = match args.get(2) {
-                Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-                _ => "asc".into(),
-            };
-            validate_order_direction(&direction, "order")?;
-
+            let criteria = order_criteria_from_args(&args[1..], "order")?;
             let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
-            qb.set_order(field.to_string(), direction.to_string());
+            for (field, direction) in criteria {
+                qb.set_order(field, direction);
+            }
 
             Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
         })),

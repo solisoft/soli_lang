@@ -804,7 +804,7 @@ pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     }
 }
 
-/// ActiveRecord-style `order(field[, "desc"])` over a materialized array.
+/// ActiveRecord-style `order` over a materialized array.
 ///
 /// `has_many`/`has_one` accessors hand back a plain array, and a controller
 /// written with Rails habits chains `org.contacts.order("name").all()` onto it.
@@ -812,27 +812,54 @@ pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 /// tree-walker had its own copy of the field lookup and the comparator, and
 /// the VM had neither, so the chain worked under `soli test` and raised
 /// "Cannot access property 'order' on Array" in production.
-pub(crate) fn order_by(items: &[Value], field: &str, ascending: bool) -> Vec<Value> {
-    let key = Value::String(field.into());
+///
+/// `order(field[, direction])` or `order({field: direction, …})` over a
+/// materialized array, for both engines: the hash form sorts by its first
+/// field and breaks ties with the next ones, as it does on a query. No
+/// argument hands the array back as it is.
+pub(crate) fn order_array(items: &[Value], arguments: &[Value]) -> Result<Vec<Value>, String> {
+    let criteria: Vec<(Value, bool)> = match arguments {
+        [] => return Ok(items.to_vec()),
+        [Value::Hash(pairs)] => pairs
+            .borrow()
+            .iter()
+            .map(|(field, direction)| {
+                let field = match field {
+                    crate::interpreter::value::HashKey::String(name)
+                    | crate::interpreter::value::HashKey::Symbol(name) => {
+                        Value::String(name.clone())
+                    }
+                    _ => return Err("order() expects field names as hash keys".to_string()),
+                };
+                Ok((field, order_is_ascending(Some(direction))))
+            })
+            .collect::<Result<_, String>>()?,
+        [Value::String(field) | Value::Symbol(field), ..] => vec![(
+            Value::String(field.clone()),
+            order_is_ascending(arguments.get(1)),
+        )],
+        _ => return Err("order() expects a string field name or a hash".to_string()),
+    };
     let mut sorted = items.to_vec();
-    // Not std's sort: `compare_sort_values` is no total order (mixed types and
-    // NaN compare Equal), and std's sort panics on such a comparator.
+    // Not std's sort, for the reason `order_by` gives.
     stable_sort_by(&mut sorted, |a, b| {
-        let ord = compare_sort_values(&field_of(a, &key), &field_of(b, &key));
-        if ascending {
-            ord
-        } else {
-            ord.reverse()
+        for (key, ascending) in &criteria {
+            let ord = compare_sort_values(&field_of(a, key), &field_of(b, key));
+            let ord = if *ascending { ord } else { ord.reverse() };
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
         }
+        std::cmp::Ordering::Equal
     });
-    sorted
+    Ok(sorted)
 }
 
 /// Read the optional direction argument of `order(field, dir)`.
 /// Anything that is not "desc"/"descending" means ascending.
 pub(crate) fn order_is_ascending(direction: Option<&Value>) -> bool {
     match direction {
-        Some(Value::String(d)) => {
+        Some(Value::String(d) | Value::Symbol(d)) => {
             let d = d.to_lowercase();
             !(d == "desc" || d == "descending")
         }

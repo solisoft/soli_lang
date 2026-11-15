@@ -115,6 +115,9 @@ pub struct QueryBuilder {
     /// request parameter (`Post.order(params["sort"])`), and every distinct
     /// string interned into the process-wide symbol table stays there for good.
     pub order_by: Option<(String, String)>,
+    /// The criteria after the first, in the order `.order` added them: ties
+    /// on `order_by` are broken by these.
+    pub order_more: Vec<(String, String)>,
     pub limit_val: Option<usize>,
     pub offset_val: Option<usize>,
     pub includes: Vec<IncludeClause>,
@@ -221,6 +224,7 @@ impl QueryBuilder {
             has_raw_where: false,
             bind_vars: HashMap::new(),
             order_by: None,
+            order_more: Vec::new(),
             limit_val: None,
             offset_val: None,
             includes: Vec::new(),
@@ -268,6 +272,7 @@ impl QueryBuilder {
             has_raw_where: false,
             bind_vars: HashMap::new(),
             order_by: None,
+            order_more: Vec::new(),
             limit_val: None,
             offset_val: None,
             includes: Vec::new(),
@@ -382,8 +387,25 @@ impl QueryBuilder {
         }
     }
 
+    /// Add a sort criterion after the ones already set: `.order("a")
+    /// .order("b")` sorts by `a`, then by `b`. It used to keep `b` alone.
     pub fn set_order(&mut self, field: String, direction: String) {
-        self.order_by = Some((field, direction));
+        if self.order_by.is_none() {
+            self.order_by = Some((field, direction));
+        } else {
+            self.order_more.push((field, direction));
+        }
+    }
+
+    /// Drop every sort criterion (`.reorder`).
+    pub fn clear_order(&mut self) {
+        self.order_by = None;
+        self.order_more.clear();
+    }
+
+    /// Every sort criterion, the first one first.
+    pub fn order_criteria(&self) -> impl Iterator<Item = &(String, String)> {
+        self.order_by.iter().chain(self.order_more.iter())
     }
 
     pub fn set_limit(&mut self, limit: usize) {
@@ -589,12 +611,12 @@ impl QueryBuilder {
             query.push_str(&Self::build_include_count_subquery(inc));
         }
 
-        if let Some((field_str, dir_str)) = &self.order_by {
-            let dir = match dir_str.to_lowercase().as_str() {
-                "desc" | "descending" => "DESC",
-                _ => "ASC",
-            };
-            query.push_str(&format!(" SORT doc.{} {}", field_str, dir));
+        let sort: Vec<String> = self
+            .order_criteria()
+            .map(|(field, dir)| format!("doc.{} {}", field, sort_keyword(dir)))
+            .collect();
+        if !sort.is_empty() {
+            query.push_str(&format!(" SORT {}", sort.join(", ")));
         }
 
         if let Some(limit) = self.limit_val {
@@ -1974,6 +1996,14 @@ fn execute_sql_aggregate(
     }
 }
 
+/// `ASC` or `DESC` for a direction `validate_order_direction` let through.
+pub(crate) fn sort_keyword(direction: &str) -> &'static str {
+    match direction.to_lowercase().as_str() {
+        "desc" | "descending" => "DESC",
+        _ => "ASC",
+    }
+}
+
 fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::ListQuery, String> {
     let bind_vars: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
     let (order_field, order_desc) = match &qb.order_by {
@@ -2000,6 +2030,11 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
         is_soft_delete_model: qb.is_soft_delete_model,
         order_field,
         order_desc,
+        order_more: qb
+            .order_more
+            .iter()
+            .map(|(field, dir)| (field.clone(), sort_keyword(dir) == "DESC"))
+            .collect(),
         limit: qb.limit_val,
         offset: qb.offset_val,
     })?;
@@ -3406,8 +3441,9 @@ impl QueryBuilder {
             query.push_str(&format!(" FILTER {}", having));
         }
 
-        // SORT — bare group key or aggregate alias only.
-        if let Some((field_str, dir_str)) = &self.order_by {
+        // SORT — bare group keys or aggregate aliases only.
+        let mut sort: Vec<String> = Vec::new();
+        for (field_str, dir_str) in self.order_criteria() {
             let known = self.group_fields.iter().any(|f| f == field_str)
                 || specs.iter().any(|s| &s.alias == field_str);
             if !known {
@@ -3423,11 +3459,10 @@ impl QueryBuilder {
                         .join(", ")
                 ));
             }
-            let dir = match dir_str.to_lowercase().as_str() {
-                "desc" | "descending" => "DESC",
-                _ => "ASC",
-            };
-            query.push_str(&format!(" SORT {} {}", field_str, dir));
+            sort.push(format!("{} {}", field_str, sort_keyword(dir_str)));
+        }
+        if !sort.is_empty() {
+            query.push_str(&format!(" SORT {}", sort.join(", ")));
         }
 
         if let Some(limit) = self.limit_val {

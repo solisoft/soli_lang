@@ -148,6 +148,12 @@ end</code></pre>
         </table>
     </div>
 
+    <p class="text-gray-400 mb-4">Two cases the plain rule gets wrong are settled by looking at the classes that exist:</p>
+    <ul class="list-disc list-inside space-y-2 text-gray-400 mb-12">
+        <li><strong class="text-white">A singular that ends in <code>e</code>.</strong> Taking the <code>s</code> off cannot tell <code>buses</code> (bus) from <code>remises</code> (remise) or <code>caches</code> (cache). When no model is named <code>OrderRemis</code> and one is named <code>OrderRemise</code>, <code>has_many("order_remises")</code> means that one &mdash; reads, <code>includes</code> and <code>dependent:</code> cascades alike.</li>
+        <li><strong class="text-white">A class whose name ends in <code>s</code>.</strong> <code>Bus</code> and <code>Address</code> keep their name as their collection (<code>bus</code>, <code>address</code>), so <code>has_many("buses")</code> and <code>has_many("addresses")</code> read that collection.</li>
+    </ul>
+
     <h2 class="text-2xl font-bold text-white mb-6">Custom Foreign Keys</h2>
     <p class="text-gray-400 mb-4">Override the default naming conventions with an options hash:</p>
 
@@ -551,6 +557,8 @@ end</code></pre>
             <li><strong class="text-white">Soft-delete owners never cascade</strong> &mdash; a soft <code>delete()</code> keeps children, so <code>restore()</code> has nothing to un-do.</li>
             <li><strong class="text-white"><code>Model.delete(id)</code> cascades too</strong> on classes that declare <code>dependent:</code> (routing through the instance flow, so delete callbacks fire as a side effect). Bulk writes (<code>delete_all</code>, <code>update_all</code>, <code>prune</code>) <strong>never</strong> cascade, matching Rails.</li>
             <li><strong class="text-white">Cycles terminate</strong>: an in-flight document is skipped and recursion caps at 32 levels. No per-operation rollback &mdash; wrap in <code>Model.transaction</code> for atomicity.</li>
+            <li><strong class="text-white">A child already gone is skipped</strong> &mdash; deleted earlier in the same transaction, or by another request &mdash; rather than aborting the cascade. Any other failure aborts it, and the error names what the database answered.</li>
+            <li><strong class="text-white">Inside <code>Model.transaction</code> on SoliDB, use SoliDB 2.10.2 or later.</strong> Older servers answer a transaction&rsquo;s queries from committed data: a cascade does not find children the same transaction created, and leaves them behind without an error. The SQL adapters are not affected.</li>
         </ul>
     </div>
 

@@ -235,6 +235,7 @@ fn list_query(
         is_soft_delete_model: false,
         order_field: order_field.map(str::to_string),
         order_desc: desc,
+        order_more: Vec::new(),
         limit,
         offset: None,
     }

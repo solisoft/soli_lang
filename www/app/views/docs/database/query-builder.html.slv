@@ -80,7 +80,15 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.order(field, direction)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set sort order ("asc"/"desc")</td>
+                    <td class="py-3 px-4 text-gray-400">Add a sort criterion ("asc"/"desc"). Chained calls add up: <code>.order("status").order("created_at", "desc")</code> sorts by status, then by date. Through 2.36.3 a second <code>.order</code> replaced the first.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">.order({field: direction, …})</code></td>
+                    <td class="py-3 px-4 text-gray-400">Several criteria in one call, in the order written. Also works on an already-loaded array, where chained <code>.order</code> calls sort again instead of adding up.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-amber-300">.reorder(...)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Replace every criterion set so far &mdash; for a scope or relation that already sorts. Takes what <code>.order</code> takes; <code>.reorder</code> alone removes the sort.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.limit(n)</code></td>

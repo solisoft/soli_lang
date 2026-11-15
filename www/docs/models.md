@@ -170,6 +170,20 @@ user.to_h        # {name => Ann, views => 0} — no `age`
 user.save        # writes name and views; the column default fills age
 ```
 
+`User.create(attrs)` writes the same thing in one step: the literal defaults
+are validated, stored and on the instance it returns — as they are for
+`create_many` and for the record `find_or_create_by` creates. A value the
+caller gives wins over the default.
+
+A [`value_field`](#value-fields-and-invariants) given as a hash is a value object on the
+instance `new`, `create`, `update` and `save` hand back, as it is on a
+record read from the database:
+
+```soli
+order = Order.create({"label": {"fr": "bonjour", "en": "hello"}})
+order.label.text     # the value object's method — no need to re-read the record
+```
+
 #### Choosing the key
 
 The attributes hash never chooses the document key: `create` drops every
@@ -424,7 +438,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.select(field, ...)` | Select specific fields (returns QueryBuilder) |
 | `Model.fields(field, ...)` | Alias for `select()` (returns QueryBuilder) |
 | `Model.join(rel, filter?, binds?)` | Filter by related existence (returns QueryBuilder) |
-| `Model.order(field, dir?)` | Order results (returns QueryBuilder) |
+| `Model.order(field, dir?)` | Order results (returns QueryBuilder). Also `Model.order({field: dir, …})` |
 | `Model.limit(n)` | Limit results (returns QueryBuilder) |
 | `Model.offset(n)` | Offset results (returns QueryBuilder) |
 | `Model.timeout(secs)` | Raise this query's request timeout (returns QueryBuilder). See [Query timeouts](#query-timeouts). |
@@ -527,7 +541,9 @@ Migrations can create the same thing with a `doc.` prefix —
 | Method | Description |
 |--------|-------------|
 | `.where(filter, bind_vars)` | Add filter condition (ANDed with existing) |
-| `.order(field, direction)` | Set sort order ("asc" or "desc") |
+| `.order(field, direction)` | Add a sort criterion ("asc" or "desc"). Chained calls add up: `.order("status").order("created_at", "desc")` sorts by status, then by date |
+| `.order({field: direction, …})` | Several criteria in one call, in the order written |
+| `.reorder(...)` | Replace every criterion set so far (takes what `.order` takes); `.reorder` alone removes the sort |
 | `.limit(n)` | Limit results to n documents |
 | `.offset(n)` | Skip first n documents |
 | `.timeout(secs)` | Allow this one query `secs` seconds instead of the 10s default. See [Query timeouts](#query-timeouts). |
@@ -548,7 +564,28 @@ let sorted = org.contacts.order("name").all()
 
 On an array, `.order(field, dir?)` sorts in memory, and `.all()` / `.includes(...)` return it
 unchanged so the chain reads the same whether it ran in the database or not. Rows missing the
-ordered field sort first.
+ordered field sort first. For several criteria on an array use the hash form —
+`contacts.order({"city": "asc", "name": "asc"})` — since each `.order` there sorts again
+rather than adding to the last one.
+
+### Ordering by several fields
+
+```soli
+# status first, newest first within a status
+Order.order("status").order("created_at", "desc").all
+Order.order({"status": "asc", "created_at": "desc"}).all      # the same query
+
+# a scope that sorts, and a caller that wants another order
+Order.recent.reorder("total", "desc").all
+```
+
+`.order` **adds** a criterion; through 2.36.3 a second `.order` silently replaced the
+first. A scope or relation that already sorts therefore keeps its order as the primary
+one when the caller chains `.order` — use `.reorder` to start over. Field names and
+directions go through the same checks in every form, so a request parameter cannot
+reach the `SORT` clause. Supported on SoliDB, PostgreSQL, MySQL and SQLite, on
+column-aware models, and in grouped queries (where each criterion must be a group
+field or an aggregate alias).
 
 | `.select(field, ...)` | Select specific fields on the main collection |
 | `.fields(field, ...)` | Alias for `.select()` |
@@ -1699,6 +1736,19 @@ The DSL applies Rails-style naming conventions automatically:
 | `belongs_to("user")` | `User` | `users` | `user_id` (name + `_id`) |
 | `has_and_belongs_to_many("tags")` | `Tag` | `tags` | join table `posts_tags`, FKs `post_id` / `tag_id` |
 
+Two cases the plain rule gets wrong are settled by looking at the classes that
+exist:
+
+- **A singular that ends in `e`.** Taking the `s` off cannot tell `buses` (bus)
+  from `remises` (remise) or `caches` (cache). When no model is named
+  `OrderRemis` and one is named `OrderRemise`, `has_many("order_remises")`
+  means that one — reads, `includes` and `dependent:` cascades alike.
+- **A class whose name ends in `s`.** `Bus` and `Address` keep their name as
+  their collection (`bus`, `address`), so `has_many("buses")` and
+  `has_many("addresses")` read that collection, not `buses` / `addresses`.
+
+`class_name:` still names any other class.
+
 Override defaults with an options hash:
 
 ```soli
@@ -1963,6 +2013,13 @@ Semantics:
   `update_all`, `prune`) **never** cascade, matching Rails.
 - Cycles terminate: a document already being deleted higher up the chain is
   skipped, and recursion is capped at 32 levels.
+- A child that is already gone — deleted earlier in the same transaction, or
+  by another request — is skipped rather than aborting the cascade. Any other
+  failure aborts it, and the error names what the database answered.
+- **Inside `Model.transaction` on SoliDB, use SoliDB 2.10.2 or later.** Older
+  servers answer a transaction's queries from committed data: a cascade does
+  not find children the same transaction created, and leaves them behind
+  without an error. The SQL adapters are not affected.
 - There is no per-operation rollback; wrap the delete in `Model.transaction`
   when the cascade must be atomic (every document write inside participates).
 
@@ -3468,6 +3525,7 @@ Under the hood, Model methods generate SDBQL (SoliDB Query Language) queries:
 | `User.all` | `FOR doc IN users RETURN doc` |
 | `User.where("age >= @age", {"age": 18})` | `FOR doc IN users FILTER doc.age >= @age RETURN doc` |
 | `.order("name", "asc")` | `... SORT doc.name ASC RETURN doc` |
+| `.order("status").order("name", "desc")` | `... SORT doc.status ASC, doc.name DESC RETURN doc` |
 | `.limit(10).offset(20)` | `... LIMIT 20, 10 RETURN doc` |
 | `User.count` | `RETURN COLLECTION_COUNT("users")` |
 | `User.includes("posts")` | `FOR doc IN users LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel) RETURN MERGE(doc, {posts: _rel_posts})` |

@@ -43,6 +43,7 @@ set and `class Post < Model end` works — handy for testing mappings.
 | `Article.find_by("title", "One")` | `FOR doc IN articles FILTER doc.title == @val LIMIT 1 RETURN doc` → `nil` on miss |
 | `Article.first_by("title", "One")` | `… FILTER doc.title == @val SORT doc._key ASC LIMIT 1 RETURN doc` |
 | `Article.order("views", "desc").limit(2).offset(1)` | `FOR doc IN articles SORT doc.views DESC LIMIT 1, 2 RETURN doc` |
+| `Article.order("views").order("title", "desc")`, or `Article.order({"views": "asc", "title": "desc"})` | `FOR doc IN articles SORT doc.views ASC, doc.title DESC RETURN doc` — a chained `.order` adds a criterion; `.reorder(...)` replaces them |
 | `Article.select("title", "views")` | `RETURN {title: doc.title, views: doc.views, _key: doc._key}` |
 | `Article.pluck("title")` | `RETURN doc.title` — returns a QueryBuilder; finish with `.all` |
 | `Article.where({...}).exists` | `… LIMIT 1 RETURN true` — a QueryBuilder; `.exists.first` → `true`/`false` |

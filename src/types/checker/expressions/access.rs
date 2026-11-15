@@ -294,7 +294,7 @@ impl TypeChecker {
             // array, so `org.contacts.order("name").all()` type-checks the way
             // it already ran. Rejecting them made a working chain unreachable
             // from checked code, which is the default.
-            | "all" | "order" => Ok(Type::Function {
+            | "all" | "order" | "reorder" => Ok(Type::Function {
                 params: vec![Type::Any],
                 return_type: Box::new(Type::Array(Box::new(inner_type.clone()))),
             }),

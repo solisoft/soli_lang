@@ -51,11 +51,21 @@ pub struct ColumnQuery {
     pub not_null_filters: Vec<String>,
     pub order_field: Option<String>,
     pub order_desc: bool,
+    /// The criteria after the first, in order: `(field, descending)`.
+    pub order_more: Vec<(String, bool)>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
 
 impl ColumnQuery {
+    /// Every sort criterion as `(field, descending)`, the first one first.
+    pub fn order_criteria(&self) -> impl Iterator<Item = (&String, bool)> {
+        self.order_field
+            .iter()
+            .map(|field| (field, self.order_desc))
+            .chain(self.order_more.iter().map(|(field, desc)| (field, *desc)))
+    }
+
     pub fn new(schema: Arc<TableSchema>) -> Self {
         Self {
             schema,
@@ -68,6 +78,7 @@ impl ColumnQuery {
             not_null_filters: Vec::new(),
             order_field: None,
             order_desc: false,
+            order_more: Vec::new(),
             limit: None,
             offset: None,
         }
@@ -428,11 +439,15 @@ fn append_order_limit(
     params: &mut Vec<SqlBind>,
     q: &ColumnQuery,
 ) -> Result<(), String> {
-    if let Some(field) = &q.order_field {
+    let mut order: Vec<String> = Vec::new();
+    for (field, desc) in q.order_criteria() {
         let col = resolve_col(&q.schema, field)?;
         let quoted = d.quote_ident(&col.name)?;
-        let dir = if q.order_desc { "DESC" } else { "ASC" };
-        sql.push_str(&format!(" ORDER BY {quoted} {dir}"));
+        let dir = if desc { "DESC" } else { "ASC" };
+        order.push(format!("{quoted} {dir}"));
+    }
+    if !order.is_empty() {
+        sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     append_limit_offset_cols(d, sql, params, q)
 }
@@ -574,14 +589,15 @@ pub fn compile_group_by_cols(
     // `ORDER BY "n"` would sort those texts lexicographically and rank a count
     // of 9 above 100. A table-qualified column and a spelled-out aggregate
     // both bind to the input instead, and sort numerically.
-    if let Some(field) = &q.order_field {
-        let dir = if q.order_desc { "DESC" } else { "ASC" };
+    let mut order: Vec<String> = Vec::new();
+    for (field, desc) in q.order_criteria() {
+        let dir = if desc { "DESC" } else { "ASC" };
         if let Some(group_field) = group_fields.iter().find(|g| *g == field) {
             let col = resolve_col(&q.schema, group_field)?;
             let quoted = d.quote_ident(&col.name)?;
-            sql.push_str(&format!(" ORDER BY {table}.{quoted} {dir}"));
+            order.push(format!("{table}.{quoted} {dir}"));
         } else if let Some((_, expr)) = agg_exprs.iter().find(|(alias, _)| alias == field) {
-            sql.push_str(&format!(" ORDER BY {expr} {dir}"));
+            order.push(format!("{expr} {dir}"));
         } else {
             return Err(format!(
                 "`.order({field:?})` on a grouped query must name one of this query's \
@@ -594,6 +610,9 @@ pub fn compile_group_by_cols(
                     .join(", ")
             ));
         }
+    }
+    if !order.is_empty() {
+        sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     append_limit_offset_cols(d, &mut sql, &mut params, q)?;
     Ok(CompiledSql { sql, params })

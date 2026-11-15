@@ -296,6 +296,11 @@ pub fn column_query_from_qb(
         q.order_desc = matches!(dir.as_str(), "desc" | "descending");
         q.order_field = Some(field);
     }
+    q.order_more = qb
+        .order_more
+        .iter()
+        .map(|(field, dir)| (field.clone(), super::query::sort_keyword(dir) == "DESC"))
+        .collect();
     q.limit = qb.limit_val;
     q.offset = qb.offset_val;
     Ok(q)
