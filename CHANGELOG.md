@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.36.3] - 2026-11-15
+
 ### Fixed
 
 - **`next` in a block ended the whole iteration on the VM** — so under
