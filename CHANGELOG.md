@@ -15,6 +15,20 @@
     written out, their neighbours the key signature's, and an `\arpeggio`
     chord comes in from its lowest note.
 
+### Fixed
+
+- **`soli dap`: `stopped` could arrive before the answer to
+  `configurationDone`.** The adapter started the program, then answered; a
+  program that reached a breakpoint in between sent its event first. It
+  answers first now (main's b85b4d19, card #904): `tests/dap_test.rs`'s
+  `the_vm_stops_where_the_tree_walker_does` timed out in CI now and then.
+
+### Security
+
+- **libz-sys 1.1.33 and zip 9.0.5** (RUSTSEC-2026-0544, a heap buffer
+  overflow; RUSTSEC-2026-0548, `ZipStreamReader` entry names); chrono and
+  chrono-tz, unmaintained, waived in `.cargo/audit.toml` (main's 1250bf47).
+
   The code is that of 2.36.4 otherwise.
 
 ## [2.36.4] - 2026-11-16

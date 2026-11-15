@@ -30,6 +30,11 @@ struct Client {
     messages: Receiver<Value>,
     seq: i64,
     output: String,
+    /// Events read while a response was awaited, oldest first. An adapter may
+    /// send an event before the response to the request that caused it;
+    /// dropping it there made `wait_event` wait for one that had come and
+    /// gone (the VM reaches its breakpoint fast enough to do this).
+    pending: std::collections::VecDeque<Value>,
 }
 
 fn reader(stdout: ChildStdout) -> Receiver<Value> {
@@ -78,6 +83,7 @@ impl Client {
             messages,
             seq: 0,
             output: String::new(),
+            pending: std::collections::VecDeque::new(),
         }
     }
 
@@ -107,12 +113,18 @@ impl Client {
                 assert_eq!(message["success"], true, "{command}: {message}");
                 return message["body"].clone();
             }
+            if message["type"] == "event" {
+                self.pending.push_back(message);
+            }
         }
     }
 
     fn wait_event(&mut self, event: &str) -> Value {
         loop {
-            let message = self.next_message();
+            let message = match self.pending.pop_front() {
+                Some(message) => message,
+                None => self.next_message(),
+            };
             if message["type"] == "event" && message["event"] == event {
                 return message["body"].clone();
             }
