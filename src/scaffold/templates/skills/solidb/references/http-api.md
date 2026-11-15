@@ -223,12 +223,18 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   never had the collection. Upgrade every node before creating a columnar
   index. A node that joins receives each columnar collection whole in the
   full sync, when both nodes run this build.
-- **Indexes go stale** (observed with a test on this build; the code is the
-  same in 2.10.4): an index holds the rows present when it was created.
-  With a `sorted`, `hash`, `bitmap` or `bloom` index on `s`, `/query` and
-  `/aggregate` filtered on `s` miss every row inserted afterwards; `minmax`
-  and no index answer right. Create indexes after loading, drop and
-  recreate after inserts, or do without.
+- **An index covers the rows present when it was created.** Through 2.10.4
+  that made answers wrong: with a `sorted`, `hash`, `bitmap` or `bloom`
+  index on `s`, `/query` and `/aggregate` filtered on `s` missed every row
+  inserted afterwards (`minmax` and no index answered right). After 2.10.4
+  (observed on a build of `main`, 2026-11-15, all five types: insert two
+  rows, index, insert two more, both `s == "a"` rows and the new `s == "c"`
+  row come back) the rows after those the index holds are compared
+  directly, so the answer is the unindexed one. The index still only speeds
+  up the rows it holds: create it after loading, and drop and recreate it
+  after a large load. One made by 2.10.4 or earlier is not used until
+  recreated. On 2.10.4 or earlier: recreate the index after every insert,
+  or do without. Dropping an index now clears the column's `index_type`.
 
 ### Columnar collections after 2.10.4 (unreleased; observed on builds of `main`, 2026-11-15)
 
