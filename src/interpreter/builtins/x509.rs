@@ -68,7 +68,7 @@ fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
 /// Decode a certificate argument to raw DER bytes. Handles PEM, bare base64
 /// (possibly with embedded whitespace, as in SAML metadata), hex, or a raw
 /// DER byte array.
-fn to_der(value: &Value) -> Result<Vec<u8>, String> {
+pub(crate) fn to_der(value: &Value) -> Result<Vec<u8>, String> {
     match value {
         Value::Array(arr) => arr
             .borrow()
@@ -127,7 +127,7 @@ fn iso_utc(unix: i64) -> String {
         .unwrap_or_default()
 }
 
-fn parse_certificate(der: &[u8]) -> Result<Certificate, String> {
+pub(crate) fn parse_certificate(der: &[u8]) -> Result<Certificate, String> {
     Certificate::from_der(der).map_err(|e| format!("invalid certificate: {}", e))
 }
 
@@ -135,13 +135,13 @@ const RSA_ENCRYPTION: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.1
 const SUBJECT_ALT_NAME: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.17");
 
 /// Why a certificate's RSA key could not be read.
-enum RsaKeyError {
+pub(crate) enum RsaKeyError {
     NotRsa,
     Malformed(String),
 }
 
 /// The RSA modulus and public exponent, as unsigned big-endian bytes.
-fn rsa_public_key(cert: &Certificate) -> Result<(Vec<u8>, Vec<u8>), RsaKeyError> {
+pub(crate) fn rsa_public_key(cert: &Certificate) -> Result<(Vec<u8>, Vec<u8>), RsaKeyError> {
     let spki = &cert.tbs_certificate.subject_public_key_info;
     if spki.algorithm.oid != RSA_ENCRYPTION {
         return Err(RsaKeyError::NotRsa);
@@ -293,7 +293,7 @@ fn attribute_value(tag: Tag, content: &[u8]) -> Option<String> {
 }
 
 /// DER → PEM, 64 columns, the way `openssl x509` writes it.
-fn der_to_pem(der: &[u8]) -> String {
+pub(crate) fn der_to_pem(der: &[u8]) -> String {
     let body = base64::engine::general_purpose::STANDARD.encode(der);
     let mut out = String::from("-----BEGIN CERTIFICATE-----\n");
     for chunk in body.as_bytes().chunks(64) {

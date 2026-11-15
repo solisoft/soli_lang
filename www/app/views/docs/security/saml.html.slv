@@ -1,0 +1,222 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
+                SAML Single Sign-On
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Sign users in through their organisation&rsquo;s identity provider &mdash; Okta, Microsoft Entra ID,
+            Google Workspace, Keycloak, ADFS &mdash; over SAML 2.0.
+        </p>
+    </div>
+
+    <section>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth    # SAML signs a User in
+soli generate saml</code></pre>
+        <p class="text-gray-400 mt-4 leading-relaxed">
+            The application is the <strong class="text-white">service provider</strong> (SP): it sends the browser to the
+            identity provider (IdP) with a request, and the IdP posts a signed response back. The cryptography and the
+            protocol checks are the native <code class="text-amber-300">Saml</code> class; the generated files are the application&rsquo;s part,
+            and yours to edit.
+        </p>
+    </section>
+
+    <section>
+        <h2 id="generates" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
+            What it generates
+        </h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">File</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>app/services/saml_sso.sl</code></td><td class="py-3 px-4"><code>SamlSso</code>: where the identity provider is, the request in flight, which account an assertion maps to</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/saml_controller.sl</code></td><td class="py-3 px-4"><code>GET /saml/login</code>, <code>POST /saml/acs</code>, <code>GET /saml/metadata</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/models/saml_identity.sl</code></td><td class="py-3 px-4"><code>SamlIdentity</code>: the link between a <code>User</code> and <code>(issuer, NameID)</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_create_saml_identities.sl</code></td><td class="py-3 px-4">Unique index on <code>(issuer, name_id)</code>, index on <code>user_id</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>config/routes.sl</code></td><td class="py-3 px-4">The three routes, and <code>skip_csrf("/saml/acs")</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">Nothing existing is overwritten. Add the link to your sign-in view:</p>
+        <pre data-filename="app/views/sessions/new.html.slv"><code class="language-erb text-sm">&lt;a href="/saml/login"&gt;Sign in with SSO&lt;/a&gt;</code></pre>
+    </section>
+
+    <section>
+        <h2 id="setup" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">2</span>
+            Setup
+        </h2>
+        <ol class="list-decimal pl-6 space-y-3 text-gray-400 mb-4">
+            <li><code>soli db:migrate up</code></li>
+            <li>Set <code class="text-amber-300">APP_BASE_URL</code> to the <code>https://</code> origin the identity provider reaches the application at, and <code class="text-amber-300">SOLI_SESSION_SECRET</code> (32+ characters).</li>
+            <li>Give the identity provider&rsquo;s administrator <code>https://your.app/saml/metadata</code>. It states the two values every IdP asks for: the <strong class="text-white">entity ID</strong> (audience), <code>APP_BASE_URL/saml/metadata</code> unless <code class="text-amber-300">SAML_SP_ENTITY_ID</code> overrides it, and the <strong class="text-white">ACS URL</strong> (reply URL), <code>APP_BASE_URL/saml/acs</code>.</li>
+            <li>Point the application at the identity provider, either way:</li>
+        </ol>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Variable</th><th class="py-3 px-4 font-semibold">What it holds</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SAML_IDP_METADATA_FILE</code></td><td class="py-3 px-4">Path to the IdP&rsquo;s metadata XML</td></tr>
+                    <tr><td class="py-3 px-4"><code>SAML_IDP_ENTITY_ID</code>, <code>SAML_IDP_SSO_URL</code>, <code>SAML_IDP_CERTIFICATE</code></td><td class="py-3 px-4">Or its three values: entity id, single sign-on URL (HTTP-Redirect binding), signing certificate (PEM; <code>\n</code> for newlines)</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            The IdP must sign the assertion or the response (or both) with RSA-SHA256, and send an email address &mdash; as the
+            NameID, or in an attribute named <code>email</code>, <code>mail</code>, <code>emailaddress</code>, or the usual claim URIs.
+        </p>
+    </section>
+
+    <section>
+        <h2 id="flow" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">3</span>
+            How a sign-in runs
+        </h2>
+        <ol class="list-decimal pl-6 space-y-3 text-gray-400 mb-4">
+            <li><code>/saml/login</code> builds the request (<code class="text-amber-300">Saml.auth_request</code>) and redirects to the IdP. The request id and the <code>return_to</code> path go in an encrypted cookie.</li>
+            <li>The user authenticates at the IdP, which posts <code>SAMLResponse</code> to <code>/saml/acs</code>.</li>
+            <li><code>SamlSso.finish</code> takes the request id out of the cookie &mdash; once &mdash; and <code class="text-amber-300">Saml.verify_response</code> checks the response against it.</li>
+            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else the one with that email, linked from now on; else a new one. A new account is a <code>member</code> with no password &mdash; it signs in through the IdP only. <code class="text-amber-300">SAML_PROVISION=off</code> refuses anyone with no account.</li>
+            <li>A new session is opened and the browser goes to <code>return_to</code> (a path on this site, or <code>/</code>).</li>
+        </ol>
+        <p class="text-gray-400 mb-4">
+            A refused response renders the sign-in page with a generic message and a 401; the reason goes to the log
+            (<code>SAML sign-in refused: …</code>).
+        </p>
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">Why a cookie and not the session.</strong> The response is a cross-site POST, and a
+            <code>SameSite=Lax</code> session cookie does not accompany one. The request cookie is
+            <code>SameSite=None; Secure; HttpOnly</code>, scoped to <code>/saml</code>, encrypted, and lives ten minutes. For
+            the same reason <code>/saml/acs</code> is exempt from the CSRF origin gate: what authenticates that request is the
+            signature.
+        </p>
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">With two-factor.</strong> A user who turned on
+            <a href="/docs/security/authentication#two-factor" class="text-amber-400 hover:text-amber-300">two-factor</a> is asked for their code after a SAML sign-in
+            too. If the identity provider already enforces it, mark the session in <code>SamlController#acs</code>:
+            <code>session_set("two_factor", "ok:#{user._key}")</code>.
+        </p>
+    </section>
+
+    <section>
+        <h2 id="verified" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">4</span>
+            What is verified
+        </h2>
+        <p class="text-gray-400 mb-4"><code class="text-amber-300">Saml.verify_response</code> raises unless all of this holds:</p>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
+            <li><strong class="text-white">Signature.</strong> The assertion, the response, or both are signed, and every signature present verifies with a certificate you configured &mdash; never with the one the message carries.</li>
+            <li><strong class="text-white">No signature wrapping.</strong> A signature is only looked for as a direct child of the response or of its one assertion, it must reference that parent&rsquo;s <code>ID</code>, and the claims are read from the very node the digest was computed over. A second assertion, a duplicated <code>ID</code>, or a signature that points elsewhere is refused.</li>
+            <li><strong class="text-white">For this application.</strong> <code>Audience</code> is your entity id; <code>Recipient</code> and <code>Destination</code> are your ACS URL; <code>Issuer</code> is the configured IdP.</li>
+            <li><strong class="text-white">For this request.</strong> <code>InResponseTo</code> is the id of the request this browser started. A response nobody asked for (IdP-initiated) is refused unless you pass <code>allow_unsolicited: true</code>.</li>
+            <li><strong class="text-white">Now.</strong> <code>NotBefore</code> / <code>NotOnOrAfter</code> on the conditions and on the subject confirmation, with 120 seconds of clock skew (<code>clock_skew</code>, up to 600).</li>
+            <li><strong class="text-white">Successful.</strong> The status is <code>Success</code>; otherwise the error names the status.</li>
+        </ul>
+        <p class="text-gray-400 mb-4">
+            Comments inside a value do not split it: <code>user@example.com&lt;!----&gt;.evil.com</code> reads as the whole
+            signed text.
+        </p>
+    </section>
+
+    <section>
+        <h2 id="class" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">5</span>
+            The Saml class
+        </h2>
+        <p class="text-gray-400 mb-4">
+            Stateless, like <a href="/docs/builtins/webauthn" class="text-amber-400 hover:text-amber-300"><code>WebAuthn</code></a>. Every failed check raises.
+        </p>
+
+        <h3 id="auth-request" class="text-xl font-semibold text-white mt-8 mb-3">Saml.auth_request(options)</h3>
+        <pre data-filename="Soli"><code class="language-soli text-sm">request = Saml.auth_request({
+  "idp_sso_url": "https://idp.example.com/sso",
+  "sp_entity_id": "https://app.example.com/saml/metadata",
+  "acs_url": "https://app.example.com/saml/acs"
+})
+request["id"]    # "_3f1c…" — keep it; the response must answer it
+request["url"]   # redirect the browser here (HTTP-Redirect binding)
+request["xml"]   # the &lt;samlp:AuthnRequest&gt;</code></pre>
+        <p class="text-gray-400 my-4">Options: <code>relay_state</code> (up to 80 bytes, returned by the IdP as <code>RelayState</code>), <code>force_authn: true</code>, <code>name_id_format</code>.</p>
+
+        <h3 id="verify-response" class="text-xl font-semibold text-white mt-8 mb-3">Saml.verify_response(saml_response, expected)</h3>
+        <p class="text-gray-400 mb-4"><code>saml_response</code> is the <code>SAMLResponse</code> form field as posted (base64).</p>
+        <pre data-filename="Soli"><code class="language-soli text-sm">assertion = Saml.verify_response(params["SAMLResponse"], {
+  "certificates": [idp_certificate],          # PEM or bare base64; or "certificate"
+  "idp_entity_id": "https://idp.example.com/metadata",
+  "audience": "https://app.example.com/saml/metadata",
+  "acs_url": "https://app.example.com/saml/acs",
+  "request_id": request_id
+})</code></pre>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Key</th><th class="py-3 px-4 font-semibold">What it holds</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>name_id</code>, <code>name_id_format</code></td><td class="py-3 px-4">The subject</td></tr>
+                    <tr><td class="py-3 px-4"><code>attributes</code></td><td class="py-3 px-4"><code>{name: [values]}</code> &mdash; always arrays</td></tr>
+                    <tr><td class="py-3 px-4"><code>issuer</code></td><td class="py-3 px-4">The identity provider&rsquo;s entity id</td></tr>
+                    <tr><td class="py-3 px-4"><code>session_index</code>, <code>session_expires_at</code></td><td class="py-3 px-4">The IdP session (<code>nil</code> when not stated; times are Unix seconds)</td></tr>
+                    <tr><td class="py-3 px-4"><code>authn_context</code></td><td class="py-3 px-4">The <code>AuthnContextClassRef</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>assertion_id</code>, <code>response_id</code>, <code>in_response_to</code></td><td class="py-3 px-4">Ids</td></tr>
+                    <tr><td class="py-3 px-4"><code>expires_at</code></td><td class="py-3 px-4">The conditions&rsquo; <code>NotOnOrAfter</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>signed</code></td><td class="py-3 px-4"><code>"assertion"</code>, <code>"response"</code> or <code>"both"</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Other <code>expected</code> keys: <code>allow_unsolicited</code>, <code>clock_skew</code>, <code>allow_sha1</code>
+            (SHA-1 signatures are refused otherwise), <code>now</code> (Unix seconds, for specs). Listing several certificates
+            accepts any of them &mdash; that is how an IdP&rsquo;s certificate is rotated without downtime.
+        </p>
+
+        <h3 id="metadata" class="text-xl font-semibold text-white mt-8 mb-3">Saml.metadata(options)</h3>
+        <p class="text-gray-400 mb-4">The service provider&rsquo;s metadata XML, from <code>sp_entity_id</code> and <code>acs_url</code> (<code>name_id_format</code> defaults to <code>emailAddress</code>).</p>
+
+        <h3 id="parse-metadata" class="text-xl font-semibold text-white mt-8 mb-3">Saml.parse_metadata(xml)</h3>
+        <pre data-filename="Soli"><code class="language-soli text-sm">idp = Saml.parse_metadata(File.read("idp-metadata.xml"))
+idp["entity_id"]      # "https://idp.example.com/metadata"
+idp["sso_url"]        # the HTTP-Redirect SingleSignOnService
+idp["certificates"]   # signing certificates, PEM</code></pre>
+        <p class="text-gray-400 my-4">The metadata&rsquo;s own signature is not checked: read it from a file you were given or an <code>https://</code> URL you trust.</p>
+
+        <h3 id="test-response" class="text-xl font-semibold text-white mt-8 mb-3">Saml.test_response(options)</h3>
+        <p class="text-gray-400 mb-4">
+            A signed response, as an identity provider would post it &mdash; the stand-in a spec signs in with. It signs what
+            it is told with a key you supply
+            (<code>openssl req -x509 -newkey rsa:2048 -nodes -keyout idp.key -out idp.crt -days 3650 -subj "/CN=test"</code>).
+        </p>
+        <pre data-filename="Soli"><code class="language-soli text-sm">response = Saml.test_response({
+  "private_key": File.read("tests/fixtures/idp.key"),
+  "issuer": "https://idp.test/metadata",
+  "acs_url": "https://app.test/saml/acs",
+  "audience": "https://app.test/saml/metadata",
+  "name_id": "ada@example.com",
+  "request_id": request_id,
+  "attributes": {"groups": ["admin", "staff"]}
+})</code></pre>
+        <p class="text-gray-400 my-4">Options: <code>sign</code> (<code>"assertion"</code> by default, <code>"response"</code>, <code>"both"</code>, <code>"none"</code>), <code>name_id_format</code>, <code>session_index</code>, <code>status</code>, <code>now</code>, <code>lifetime</code> (seconds, 300), <code>response_id</code>, <code>assertion_id</code>.</p>
+    </section>
+
+    <section>
+        <h2 id="limits" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">6</span>
+            Limits
+        </h2>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400">
+            <li><strong class="text-white">One identity provider per application.</strong> For one per customer, make <code>SamlSso.identity_provider</code> read it from the tenant instead of the environment.</li>
+            <li><strong class="text-white">Not supported, and refused by name:</strong> encrypted assertions and <code>EncryptedID</code> (turn assertion encryption off at the IdP), ECDSA and RSA-PSS signatures, SHA-384, inclusive canonicalization.</li>
+            <li><strong class="text-white">Requests are not signed</strong>, and the HTTP-POST binding is not offered for them. Most identity providers accept unsigned requests.</li>
+            <li><strong class="text-white">No single logout.</strong> Signing out of the application does not sign out of the identity provider, and the reverse.</li>
+            <li><strong class="text-white">No account deprovisioning.</strong> A user removed at the IdP can no longer sign in, but their account and open sessions remain &mdash; that is what SCIM is for.</li>
+            <li><strong class="text-white">Attributes are not mapped to roles.</strong> <code>assertion["attributes"]</code> is there in <code>SamlSso.user_for</code> if you want to.</li>
+        </ul>
+    </section>
+</div>

@@ -963,6 +963,16 @@ pub fn run_generate_oidc_provider(folder: &str) {
     }
 }
 
+pub fn run_generate_saml(folder: &str) {
+    match solilang::scaffold::create_saml(folder) {
+        Ok(()) => solilang::scaffold::print_saml_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_generate_oauth(provider: &str, folder: &str) {
     match solilang::scaffold::create_oauth(folder, provider) {
         Ok(()) => {}

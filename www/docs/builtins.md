@@ -2831,6 +2831,11 @@ sig_b64   = Base64.encode(Hex.decode(Crypto.modexp(em, key["d"], key["n"])))
 
 #### Putting it together: verifying a SAML signature
 
+> For SAML sign-in, use [`Saml.verify_response`](/docs/security/saml#verify-response)
+> instead: it does this and the checks a hand-rolled verification usually
+> misses (signature wrapping, audience, recipient, validity window, the
+> request answered). The steps below are for other XML-DSig documents.
+
 ```soli
 # 1. Verify the Reference digest (enveloped transform + by-id exclusive c14n)
 canonical = Xml.c14n_exclusive(saml, {"id": assertion_id, "enveloped_signature": true})

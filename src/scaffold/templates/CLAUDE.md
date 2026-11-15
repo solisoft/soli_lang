@@ -75,9 +75,10 @@ may still exist under another name — try a synonym before writing it by hand.
 | Login / signup, sessions, `current_user` | `soli generate auth` | `docs/sessions.md`, `docs/authorization.md` |
 | Policies (who may do what) | Pundit-style policies, `authorize` | `docs/authorization.md` |
 | Passkeys (WebAuthn sign-in, no password typed) | `soli generate auth --passkeys`; `WebAuthn.*` to hand-roll | `docs/authentication.md` → Passkeys, `docs/builtins.md` → WebAuthn |
-| Two-factor auth (TOTP, authenticator apps) | `Crypto.totp_generate` / `totp_verify` / `totp_uri` | `docs/builtins.md` → TOTP |
+| Two-factor auth (TOTP, authenticator apps) | `soli generate auth --two-factor`; `Crypto.totp_secret` / `totp_step` / `totp_uri`, `qr_svg` to hand-roll | `docs/authentication.md` → Two-factor, `docs/builtins.md` → TOTP |
 | Password hashing | `password_hash` / `password_verify` (Argon2id) | `docs/builtins.md` → Password Hashing |
 | Sign in with GitHub / Google | `soli generate oauth github\|google` | `docs/oauth-client.md` |
+| Sign in through a SAML identity provider (Okta, Entra ID…) | `soli generate saml` — never hand-roll the XML signature check: `Saml.verify_response` | `docs/saml.md` |
 | Be an OpenID Connect provider | `soli generate oidc_provider` | `docs/oidc-provider.md` |
 | API tokens | `jwt_sign` / `jwt_verify`, `Paseto.*` | `docs/authentication.md`, `docs/builtins.md` → JWT, PASETO |
 | Hashes, HMAC, random tokens, signatures, hash chains | `Crypto.*` (SHA, HMAC, `random_token`, Ed25519, X25519, Merkle) | `docs/builtins.md` → Cryptography |

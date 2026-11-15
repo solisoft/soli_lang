@@ -286,6 +286,10 @@ def security_oidc_provider
   render_docs("docs/security/oidc-provider", "OpenID Connect Provider", "security", "oidc_provider")
 end
 
+def security_saml
+  render_docs("docs/security/saml", "SAML Single Sign-On", "security", "saml")
+end
+
 def security_oauth_client
   render_docs("docs/security/oauth-client", "OAuth Client", "security", "oauth_client")
 end

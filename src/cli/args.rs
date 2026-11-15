@@ -82,6 +82,11 @@ pub enum Command {
         passkeys: bool,
         two_factor: bool,
     },
+    /// `soli generate saml [folder]` — scaffold SAML 2.0 single sign-on with
+    /// an identity provider (needs `generate auth`).
+    GenerateSaml {
+        folder: String,
+    },
     /// `soli generate oidc_provider [folder]` — scaffold an OpenID Connect
     /// provider (Authorization Code + PKCE).
     GenerateOidcProvider {
@@ -738,6 +743,7 @@ pub fn print_usage() {
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli generate auth [folder] [--passkeys] [--two-factor]");
     eprintln!("       soli generate oidc_provider [folder]");
+    eprintln!("       soli generate saml [folder]");
     eprintln!(
         "       soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]"
     );
@@ -813,6 +819,9 @@ pub fn print_usage() {
         "                       --two-factor adds an authenticator app (TOTP) as second factor"
     );
     eprintln!("  generate oidc_provider  Scaffold an OpenID Connect provider (code + PKCE)");
+    eprintln!(
+        "  generate saml        SAML 2.0 single sign-on with an identity provider (needs auth)"
+    );
     eprintln!("  generate oauth       OAuth client: sign in with github|google|gitlab|discord|linkedin|microsoft (needs auth)");
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
@@ -938,6 +947,7 @@ pub fn print_usage() {
         "  soli generate auth --two-factor  ... plus an authenticator app (TOTP) as second factor"
     );
     eprintln!("  soli generate oidc_provider   Scaffold an OpenID Connect provider");
+    eprintln!("  soli generate saml            Sign in through a SAML identity provider");
     eprintln!("  soli generate oauth github    Sign in with GitHub (OAuth client)");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
     eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
@@ -1175,6 +1185,16 @@ pub fn parse_args() -> Options {
                         };
                         return options;
                     }
+                    "saml" => {
+                        i += 1;
+                        let folder = if i < args.len() && !args[i].starts_with('-') {
+                            args[i].clone()
+                        } else {
+                            ".".to_string()
+                        };
+                        options.command = Command::GenerateSaml { folder };
+                        return options;
+                    }
                     "oidc_provider" | "oidc" => {
                         i += 1;
                         let folder = if i < args.len() && !args[i].starts_with('-') {
@@ -1385,7 +1405,7 @@ pub fn parse_args() -> Options {
                     }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, oauth, mailer, component, devices, client, app_links, offline)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, saml, oauth, mailer, component, devices, client, app_links, offline)",
                             subcommand
                         );
                         print_usage();

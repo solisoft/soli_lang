@@ -113,6 +113,14 @@ fn scaffolds(out: &mut BTreeMap<String, Vec<String>>) -> Vec<tempfile::TempDir> 
 
     let app = tempfile::tempdir().unwrap();
     new_app(app.path(), false);
+    solilang::scaffold::create_auth(app.path().to_str().unwrap())
+        .and_then(|()| solilang::scaffold::create_saml(app.path().to_str().unwrap()))
+        .expect("generate saml");
+    check_corpus("saml", app.path(), out);
+    dirs.push(app);
+
+    let app = tempfile::tempdir().unwrap();
+    new_app(app.path(), false);
     solilang::scaffold::create_scaffold_with_fields(
         app.path().to_str().unwrap(),
         "post",

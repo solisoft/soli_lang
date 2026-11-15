@@ -2494,6 +2494,32 @@ impl TypeEnvironment {
             self.classes.insert("WebAuthn".to_string(), webauthn_class);
         }
 
+        // Saml class — SAML 2.0 single sign-on, service-provider side. Hashes
+        // in, a Hash or a String out: `Any`, as for WebAuthn.
+        {
+            let mut saml_class = ClassType::new("Saml".to_string());
+            for name in [
+                "auth_request",
+                "verify_response",
+                "metadata",
+                "parse_metadata",
+                "test_response",
+            ] {
+                saml_class.methods.insert(
+                    name.to_string(),
+                    MethodInfo {
+                        name: name.to_string(),
+                        params: vec![("args".to_string(), Type::Any)],
+                        return_type: Type::Any,
+                        is_private: false,
+                        is_protected: false,
+                        is_static: true,
+                    },
+                );
+            }
+            self.classes.insert("Saml".to_string(), saml_class);
+        }
+
         // Base64 class — `encode` returns a String; `decode` returns a String when
         // the bytes are valid UTF-8 and an Array of byte ints otherwise, so it is
         // typed `Any`. Both accept a String or a byte array, hence the `Any` param.

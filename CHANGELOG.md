@@ -4,6 +4,29 @@
 
 ### Added
 
+- **SAML 2.0 single sign-on: a native `Saml` class and `soli generate saml`.**
+  `Saml.auth_request`, `Saml.verify_response`, `Saml.metadata`,
+  `Saml.parse_metadata` and `Saml.test_response` (a signed response for
+  specs), in `src/interpreter/builtins/saml.rs`. `verify_response` checks the
+  XML signature (RSA-SHA256/512 over exclusive c14n, against the configured
+  certificates only), audience, recipient, destination, issuer, the validity
+  window and the request answered, and is built so signature wrapping cannot
+  work: a signature is only taken as a direct child of the response or of its
+  one assertion, must reference that parent's `ID`, and the claims are read
+  from the node the digest covered; duplicate ids are refused. Encrypted
+  assertions, ECDSA/PSS, SHA-384 and SHA-1 (unless `allow_sha1`) are refused
+  by name. The generator writes `SamlSso` (service), `SamlController`
+  (`/saml/login`, `/saml/acs`, `/saml/metadata`), `SamlIdentity` and a
+  migration; the request in flight travels in an encrypted `SameSite=None`
+  cookie because the response is a cross-site POST, and `/saml/acs` is the one
+  route exempt from the CSRF gate. A first sign-in links by email or creates a
+  member account (`SAML_PROVISION=off` to refuse). Unit tests cover six
+  wrapping attacks; `tests/saml_generator_test.rs` serves the generated app.
+  The exclusive canonicalizer gained an identity-based skip
+  (`canonicalize(..., skip)`): the enveloped-signature transform as the spec
+  words it, needed when a signed response carries a signed assertion —
+  `Xml.c14n_exclusive`'s own `enveloped_signature` option is unchanged.
+  Card #875.
 - **`soli generate auth --two-factor`: an authenticator app (TOTP) as second
   factor.** It adds a `TwoFactor` model (secret under `encrypts`, backup-code
   digests, last accepted time step, wrong-code counter), a middleware, a

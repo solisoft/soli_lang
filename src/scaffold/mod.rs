@@ -17,6 +17,7 @@ pub mod oauth_generator;
 pub mod offline_generator;
 pub mod oidc_generator;
 pub mod passkeys_generator;
+pub mod saml_generator;
 pub mod seed_generator;
 pub mod templates;
 pub mod two_factor_generator;
@@ -236,6 +237,7 @@ pub use oauth_generator::create_oauth;
 pub use offline_generator::{create_offline, print_offline_success_message};
 pub use oidc_generator::{create_oidc_provider, print_oidc_success_message};
 pub use passkeys_generator::{create_passkeys, print_passkeys_success_message};
+pub use saml_generator::{create_saml, print_saml_success_message};
 pub use two_factor_generator::{create_two_factor, print_two_factor_success_message};
 
 #[cfg(test)]

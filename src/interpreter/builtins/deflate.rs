@@ -65,7 +65,7 @@ fn bytes_to_text_value(bytes: Vec<u8>) -> Value {
     }
 }
 
-fn do_deflate(data: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn do_deflate(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
     encoder
         .write_all(data)
@@ -93,7 +93,7 @@ fn inflate_max_bytes() -> u64 {
         .unwrap_or(DEFAULT_INFLATE_MAX_BYTES)
 }
 
-fn do_inflate(data: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn do_inflate(data: &[u8]) -> Result<Vec<u8>, String> {
     let max = inflate_max_bytes();
     // Read at most `max + 1` bytes so we can distinguish "exactly at the limit"
     // from "the stream wanted to keep going" and reject the latter.

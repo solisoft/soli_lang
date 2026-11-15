@@ -158,6 +158,16 @@
         The generated flow uses state CSRF and PKCE <code>S256</code>, and status-checks every provider response.
         Ceiling: GitHub, Google, GitLab, Discord, LinkedIn and Microsoft (single tenant) &mdash; no Apple, not a full OmniAuth catalog.
     </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">SAML single sign-on</strong> is built in too:
+        <code class="text-cyan-400">soli generate saml</code> signs users in through an organisation&rsquo;s identity provider
+        (Okta, Entra ID, Google Workspace, Keycloak, ADFS), over a native
+        <a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300"><code>Saml</code></a> class that verifies the
+        signature and refuses signature wrapping, a wrong audience or recipient, an expired assertion and a response to another
+        request. Rails, Laravel and Django reach for a gem or package here (ruby-saml, laravel-saml2, python3-saml).
+        Ceiling: one identity provider per app out of the box, RSA signatures only, no encrypted assertions, no single logout,
+        no SCIM provisioning.
+    </p>
     <p class="text-gray-400 mb-8">
         <code>soli generate auth</code> is a <strong class="text-white">one-command, Devise-style suite</strong>: login/signup plus password reset (hashed one-time tokens, 2h expiry, no account enumeration), email confirmation with resend, remember-me (HttpOnly + Secure persistent cookie, digest-stored token, revoked on password reset), per-IP throttling on all three credential endpoints, a 12-character minimum enforced from one place by both sign-up and reset, and account lockout with auto-unlock &mdash; all as readable scaffolded code you own, with the thresholds as constants at the top of the generated User model. Sign-in is enumeration-resistant on <em>both</em> channels: same message and same Argon2id cost whether or not the address exists, with the &ldquo;locked&rdquo; message held back until the password verifies. <code>--two-factor</code> adds an authenticator-app second factor that gates every way a session opens, without editing a file you already have. What's still assembled by hand: unlock emails, a change-email flow, and SMS or email codes.
     </p>

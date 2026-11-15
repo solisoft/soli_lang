@@ -17,6 +17,8 @@ SoliLang includes a scaffold generator that quickly creates a complete MVC resou
 |---------|---------|
 | `soli generate auth` | User model, sign-in/sign-up/reset/confirmation flows, policies — [docs](/docs/security/authorization) |
 | `soli generate auth --passkeys` | The same plus passkey (WebAuthn) registration and sign-in; on an app that already has auth, only the passkey files — [docs](/docs/security/authentication#passkeys) |
+| `soli generate auth --two-factor` | The same plus an authenticator-app second factor (TOTP, backup codes); on an app that already has auth, only the two-factor files — [docs](/docs/security/authentication#two-factor) |
+| `soli generate saml` | SAML 2.0 single sign-on with an identity provider (Okta, Entra ID…) — [docs](/docs/security/saml) |
 | `soli generate oauth <provider>` | Sign in with GitHub, Google… — [docs](/docs/security/oauth-client) |
 | `soli generate oidc_provider` | An OpenID Connect provider — [docs](/docs/security/oidc-provider) |
 

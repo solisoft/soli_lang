@@ -180,6 +180,7 @@ pub mod rsa_key;
 pub mod s3;
 #[cfg(feature = "cloud")]
 pub(crate) mod s3_client;
+pub mod saml;
 pub mod secure_cookies;
 pub mod security_headers;
 pub mod server;
@@ -711,6 +712,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register the WebAuthn class (server-side passkey ceremonies)
     webauthn::register_webauthn_builtins(env);
+    saml::register_saml_builtins(env);
 
     // Register PDF / Factur-X builtins
     #[cfg(feature = "pdf")]

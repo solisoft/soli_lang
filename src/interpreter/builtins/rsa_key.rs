@@ -58,7 +58,7 @@ type RsaComponents = (Vec<u8>, Vec<u8>, Vec<u8>);
 
 /// Parse a PEM RSA private key (PKCS#8 or PKCS#1) and return `(n, e, d)` as
 /// big-endian octets.
-fn parse_components(pem: &str) -> Result<RsaComponents, String> {
+pub(crate) fn parse_components(pem: &str) -> Result<RsaComponents, String> {
     let (label, der) = pem_to_der(pem)?;
 
     // PKCS#8 wraps the PKCS#1 RSAPrivateKey in a PrivateKeyInfo; unwrap it.
@@ -112,7 +112,7 @@ fn parse_public_components(pem: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
 
 /// DER `DigestInfo` prefix for each digest accepted by `RsaKey.verify`
 /// (RFC 8017 section 9.2, note 1), and the digest of `message`.
-fn digest_info(algorithm: &str, message: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn digest_info(algorithm: &str, message: &[u8]) -> Result<Vec<u8>, String> {
     use sha1::Sha1;
     use sha2::{Digest, Sha256, Sha512};
     let (prefix, digest): (&[u8], Vec<u8>) = match algorithm {

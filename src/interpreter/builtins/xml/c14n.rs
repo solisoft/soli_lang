@@ -100,27 +100,27 @@ const XMLDSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
 const MAX_DEPTH: usize = 256;
 
 /// A regular (non-`xmlns`) attribute.
-struct Attr {
-    qname: String,
-    prefix: String,
-    local: String,
-    value: String,
+pub(crate) struct Attr {
+    pub(crate) qname: String,
+    pub(crate) prefix: String,
+    pub(crate) local: String,
+    pub(crate) value: String,
 }
 
 /// A parsed element with its namespace declarations, attributes and children.
-struct Element {
-    qname: String,
-    prefix: String,
-    local: String,
-    ns_decls: Vec<(String, String)>, // (prefix or "" for default, uri)
-    attrs: Vec<Attr>,
-    children: Vec<Node>,
+pub(crate) struct Element {
+    pub(crate) qname: String,
+    pub(crate) prefix: String,
+    pub(crate) local: String,
+    pub(crate) ns_decls: Vec<(String, String)>, // (prefix or "" for default, uri)
+    pub(crate) attrs: Vec<Attr>,
+    pub(crate) children: Vec<Node>,
     /// Value of an `Id`/`ID`/`id` attribute, if any — used to resolve
     /// XML-DSig `Reference URI="#..."` selections.
-    id: Option<String>,
+    pub(crate) id: Option<String>,
 }
 
-enum Node {
+pub(crate) enum Node {
     Element(Element),
     Text(String),
     Pi(String), // already-formatted "target content"
@@ -227,7 +227,7 @@ fn build_element(e: &BytesStart) -> Result<Element, String> {
 /// `Element`, built exactly as the old quick-xml loop built it. The old loop
 /// is kept as `tests::legacy_parse_document`, the oracle the adapter is
 /// checked against.
-fn parse_document(xml: &str) -> Result<Element, String> {
+pub(crate) fn parse_document(xml: &str) -> Result<Element, String> {
     use crate::xml::{Kind, NodeId, ParsePolicy, XmlError, XmlErrorKind, XmlTree};
 
     /// The old loop's error strings, for the errors it could give.
@@ -337,7 +337,7 @@ fn attr_ns_uri(a: &Attr, in_scope: &BTreeMap<String, String>) -> String {
 
 /// Resolve an element's namespace URI, honouring its own declarations first
 /// then the inherited in-scope context.
-fn element_ns_uri(el: &Element, in_scope: &BTreeMap<String, String>) -> String {
+pub(crate) fn element_ns_uri(el: &Element, in_scope: &BTreeMap<String, String>) -> String {
     for (p, uri) in &el.ns_decls {
         if *p == el.prefix {
             return uri.clone();
@@ -361,12 +361,18 @@ fn is_enveloped_signature(el: &Element, in_scope: &BTreeMap<String, String>) -> 
 /// is the *output* namespace context already emitted by ancestors — the heart
 /// of the "exclusive" rule: a declaration is emitted only when visibly
 /// utilized and not already in the output context.
-fn canonicalize(
+///
+/// `enveloped` drops every descendant `<ds:Signature>`; `skip` drops exactly
+/// one element, by identity — the enveloped-signature transform as the spec
+/// words it, which a signed assertion inside a signed response needs (the
+/// outer digest covers the inner signature).
+pub(crate) fn canonicalize(
     el: &Element,
     in_scope_parent: &BTreeMap<String, String>,
     rendered_parent: &BTreeMap<String, String>,
     prefix_list: &BTreeSet<String>,
     enveloped: bool,
+    skip: Option<*const Element>,
     out: &mut String,
 ) {
     let mut in_scope = in_scope_parent.clone();
@@ -462,7 +468,10 @@ fn canonicalize(
                 if enveloped && is_enveloped_signature(c, &in_scope) {
                     continue;
                 }
-                canonicalize(c, &in_scope, &rendered, prefix_list, enveloped, out);
+                if skip == Some(c as *const Element) {
+                    continue;
+                }
+                canonicalize(c, &in_scope, &rendered, prefix_list, enveloped, skip, out);
             }
         }
     }
@@ -520,7 +529,7 @@ fn collect_by_local<'a>(
     }
 }
 
-fn root_in_scope() -> BTreeMap<String, String> {
+pub(crate) fn root_in_scope() -> BTreeMap<String, String> {
     let mut in_scope = BTreeMap::new();
     in_scope.insert("xml".to_string(), XML_NS.to_string());
     in_scope
@@ -554,6 +563,7 @@ fn canonicalize_exclusive_opts(
         &rendered,
         prefix_list,
         enveloped,
+        None,
         &mut out,
     );
     Ok(out)
