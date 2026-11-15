@@ -217,9 +217,13 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   into `host: string, cpu: float64` is accepted, a row that is not an
   object is skipped without an error, and an unknown type name silently
   creates a `string` column — validate before inserting there.
-- `/query` over HTTP takes one comparison and `limit` only: `{"and":[…]}` is
-  refused (`missing field column`), `order_by` and `offset` are ignored
-  without an error.
+- `/query` after 2.10.4 (the router's own test on a build of `main`,
+  2026-11-15): `{"columns":["v"], "filter": <comparison | {"and":[…]} |
+  {"or":[…]}>, "order_by":"v DESC", "offset":3, "limit":3}`; `columns` left
+  out = all; `order_by` on a column that is not returned → `400`. Through
+  2.10.4 it takes one comparison and `limit` only: `{"and":[…]}` is refused
+  (`missing field column`), `order_by` and `offset` are ignored without an
+  error.
 - **SDBQL reads it and, after 2.10.4, inserts into it** (observed on a
   build of `main`, 2026-11-15). `FOR r IN m …` works as on a document
   collection. `INSERT {host: "a", v: 1} INTO m` and
