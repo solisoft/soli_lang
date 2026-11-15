@@ -526,6 +526,23 @@ fn uses_liveview(app_dir: &Path) -> bool {
     })
 }
 
+/// The `compatibility_date` Soli writes into a new `wrangler.toml`: the
+/// Workers runtime behaviour the edge build is tested against (it is the
+/// date of the deployed demo, `examples/cloudflare-worker`).
+///
+/// A fixed date, not today's. Wrangler refuses a date newer than the workerd
+/// it ships with, so "today" made a fresh app fail on any wrangler older than
+/// the day it was generated — including the version CI pins. Raise it when
+/// the runtime needs something newer, together with that wrangler pin.
+pub const COMPATIBILITY_DATE: &str = "2026-10-09";
+
+/// The config `soli edge build` writes for a bare app, for the scaffold's
+/// test to compare dates with.
+#[cfg(test)]
+pub(crate) fn tests_only_wrangler_config() -> String {
+    wrangler_config("app", false, &[], false, &[])
+}
+
 fn wrangler_config(
     name: &str,
     assets: bool,
@@ -533,7 +550,7 @@ fn wrangler_config(
     live: bool,
     crons: &[String],
 ) -> String {
-    let today = chrono::Utc::now().format("%Y-%m-%d");
+    let today = COMPATIBILITY_DATE;
     // Top-level keys first: in TOML everything after a `[table]` header
     // belongs to that table, `routes` included.
     let mut config = format!(

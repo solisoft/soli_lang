@@ -950,10 +950,9 @@ pub fn create_edge(app_path: &Path, name: &str) -> Result<(), String> {
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     write_file(
         &app_path.join("wrangler.toml"),
-        &templates::edge::wrangler_toml(worker, &db_name, &today),
+        &templates::edge::wrangler_toml(worker, &db_name, crate::edge_build::COMPATIBILITY_DATE),
     )?;
     write_file(
         &app_path.join(".env"),
@@ -1387,6 +1386,22 @@ mod tests {
         assert!(toml.contains("SOLI_SESSION_DRIVER = \"cookie\""), "{toml}");
         // A top-level key after a table would belong to that table.
         assert!(toml.find("compatibility_date").unwrap() < toml.find("[assets]").unwrap());
+        // A fixed date — the deployed demo's — not today's, which a wrangler
+        // older than the day the app was generated refuses.
+        let demo = include_str!("../../examples/cloudflare-worker/wrangler.toml");
+        let date = format!(
+            "compatibility_date = \"{}\"",
+            crate::edge_build::COMPATIBILITY_DATE
+        );
+        assert!(toml.contains(&date), "{toml}");
+        assert!(
+            demo.contains(&date),
+            "the demo and COMPATIBILITY_DATE differ"
+        );
+        assert!(
+            crate::edge_build::tests_only_wrangler_config().contains(&date),
+            "soli edge build writes another date"
+        );
 
         let env = fs::read_to_string(app.join(".env")).unwrap();
         let dev_vars = fs::read_to_string(app.join(".dev.vars")).unwrap();

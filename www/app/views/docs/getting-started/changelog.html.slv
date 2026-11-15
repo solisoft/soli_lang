@@ -33,6 +33,8 @@
         </ul>
         <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A new edge app runs on an older wrangler.</strong> <code class="text-cyan-400">soli new --edge</code> and <code class="text-cyan-400">soli edge build</code> wrote today&rsquo;s date as <code class="text-cyan-400">compatibility_date</code>, which a wrangler released before that day refuses. They write a fixed, tested date now; a <code class="text-cyan-400">wrangler.toml</code> you already have is left alone.</li>
+            <li><strong class="text-white">The debugger no longer races its own answer.</strong> <code class="text-cyan-400">soli dap</code> could send the <code class="text-cyan-400">stopped</code> event before the answer to <code class="text-cyan-400">configurationDone</code> when a breakpoint was reached at once.</li>
             <li><strong class="text-white">Accounts created by an OAuth sign-in.</strong> They are now confirmed and password-less, created only when <code class="text-cyan-400">AUTH_SIGNUP</code> allows it, and their session survives a later password reset. Before, the scaffold stored a random password in a plaintext field, ignored the sign-up policy, and opened sessions that were refused after any password reset on the account. An unconfirmed account is cleared of its password and sessions before a provider links to it. Apps that already ran <code class="text-cyan-400">soli generate oauth</code> keep their files: delete <code class="text-cyan-400">oauth_controller.sl</code> and <code class="text-cyan-400">oauth_client.sl</code> and re-run it.</li>
         </ul>
     </section>

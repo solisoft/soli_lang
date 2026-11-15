@@ -62,6 +62,12 @@
 
 ### Fixed
 
+- **`soli new --edge` and `soli edge build` wrote today's date as
+  `compatibility_date`.** Wrangler refuses a date newer than the workerd it
+  ships with, so a fresh app failed on any wrangler older than the day it was
+  generated (4.149.0, the version CI pins, stops at 2026-10-13). Both write
+  `edge_build::COMPATIBILITY_DATE` now, the date of the deployed demo. An
+  existing `wrangler.toml` is not rewritten. Card #905.
 - **`soli dap`: `stopped` could arrive before the answer to
   `configurationDone`.** The adapter started the program, then answered; a
   program that reached a breakpoint in between sent its event first. It
