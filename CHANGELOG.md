@@ -62,6 +62,14 @@
 
 ### Fixed
 
+- **`soli dap`: `stopped` could arrive before the answer to
+  `configurationDone`.** The adapter started the program, then answered; a
+  program that reached a breakpoint in between sent its event first. It
+  answers first now. A client reading strictly in order waited for an event
+  that had already passed — which is what `tests/dap_test.rs` did (it dropped
+  events read while awaiting a response) and why
+  `the_vm_stops_where_the_tree_walker_does` timed out in CI now and then:
+  1 run in 960 under load, 0 in 2,880 since. Card #904.
 - **The API-token middleware answered 401 to any bearer token it did not
   know**, including another scheme's (a SCIM directory's). It only judges
   `soli_pat_` tokens now.

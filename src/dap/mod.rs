@@ -177,10 +177,16 @@ impl Adapter {
             "setBreakpoints" => Ok(set_breakpoints(args)),
             "setExceptionBreakpoints" => Ok(json!({"breakpoints": []})),
             "configurationDone" => {
+                // Answer first, then start: the program can reach a
+                // breakpoint before this function returns, and its `stopped`
+                // event would otherwise overtake the response. An event may
+                // legally come first, but a client that reads strictly in
+                // order waits for a response it believes is still due.
+                self.wire.respond(request, Ok(json!({})));
                 if self.inspector_token.is_none() {
                     self.start();
                 }
-                Ok(json!({}))
+                return None;
             }
             "threads" => Ok(json!({"threads": [{"id": THREAD_ID, "name": "main"}]})),
             "stackTrace" => self.inspect(|_| Ok(debugger::stack_trace())),
