@@ -145,6 +145,21 @@ FOR v IN SHORTEST_PATH "emp/ann" TO "emp/dee" OUTBOUND knows RETURN v._key
 -- ["dee"]   (direction comes AFTER the target; AQL's `OUTBOUND SHORTEST_PATH` is a parse error)
 ```
 
+From 2.10.4 (observed on servers built from its code, 2026-11-14):
+- `SHORTEST_PATH` without `OPTIONS { weight }` searches from both ends and
+  returns *a* shortest path; when several have the same length it is not
+  necessarily the one earlier versions returned. Do not assert on which.
+- An edge collection carries four indexes: `_edge_from_idx` (`_from`),
+  `_edge_to_idx` (`_to`), `_edge_out_idx` (`[_from, _to]`) and
+  `_edge_in_idx` (`[_to, _from]`), created with it (or at the first
+  traversal of an older one). Do not drop them: a traversal reads where
+  edges lead from the two-field ones.
+- A traversal reads from memory what it read before; a write drops what
+  was kept of the documents it touches (a batch: of the whole collection)
+  (`SOLIDB_GRAPH_CACHE_MB` per map, default 256, `0` off).
+  Results are the same either way; only timings differ between a first and
+  a later run.
+
 ## Operators and semantics
 
 | Operator | Verified behavior |

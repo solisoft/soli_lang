@@ -139,6 +139,37 @@ rows that survive it (and a COLLECT's groups); through 2.7.2 that was
 | `POST /_api/database/{db}/ttl/{coll}` | `{"name":"ttl_exp","field":"expires_at","expire_after_seconds":0}` | `{"name","field","expire_after_seconds","type":"ttl","status":"created"}` |
 | `GET /_api/database/{db}/ttl/{coll}` | | `{"indexes":[…]}` |
 
+### Column blocks of a time series collection (unreleased after 2.10.4; observed on a build of `bench/timeseries`, 2026-11-15)
+
+A `timeseries` collection can keep the fields its aggregations read as
+arrays, beside its documents. Not on 2.10.4 or earlier: the routes do not
+exist there.
+
+| Method & path | Body | Response |
+|---|---|---|
+| `PUT /_api/database/{db}/collection/{name}/blocks` | `{"time":"ts","fields":["host","cpu"]}` — `time` holds integer milliseconds; fields are top-level, strings or numbers | `{"time","fields","blocks":0,"opaque_blocks":0,"sealed_documents":0,"documents":0}`. A collection that is not `timeseries` → `400 BadRequest "… is not a timeseries collection"`; the time among the fields, a dotted or `_` field → `400` |
+| `GET …/blocks` | | the same status; no definition → `400 "'m' keeps no column blocks"` |
+| `POST …/blocks/seal` | | `{"sealed":1, …status}`: seals every document not in a block, the newest included. After a bulk load, a restart or a large delete |
+| `DELETE …/blocks` | | `204`; the documents are untouched |
+
+- Sealing happens by itself as documents arrive (1,024 at a time, the
+  newest 512 left for later), so right after 3,000 inserts the status shows
+  `"sealed_documents":2488`; `…/blocks/seal` brings it to 3,000.
+- A query is answered from the blocks only in this shape:
+  `FOR p IN c FILTER <time compared with numbers, AND declared fields == strings> COLLECT [k = p.field | k = TIME_BUCKET(p.time, "5m")] AGGREGATE <fn>(p.field) | COUNT()`.
+  EXPLAIN then warns `COLLECT folded from the column blocks of 'm'`. Any
+  other FILTER (`p.cpu > 3`, `OR`, `!=`), a `TIME_BUCKET` with options or a
+  week/month interval, an `INTO`, a SORT/LIMIT before the COLLECT: the
+  ordinary path, same answers. Results are identical either way
+  (`AVG` 12.25 over mixed `12` / `12.5` values observed on both).
+- `opaque_blocks` counts ranges where a declared field is missing or null
+  or the time is not an integer: read as documents. Integers and floats in
+  one field are fine.
+- A delete or a point with an old key throws away the block it falls in;
+  until the next insert or `…/blocks/seal` the query runs the ordinary way.
+- Node-local: neither the definition nor the blocks are replicated or
+  dumped.
+
 ### Foreign keys (since 2.10.0; observed on builds of its branch, 2026-11-13)
 
 A child collection declares that a top-level field holds the `_key` of a
