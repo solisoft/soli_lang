@@ -220,9 +220,16 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 - `/query` over HTTP takes one comparison and `limit` only: `{"and":[…]}` is
   refused (`missing field column`), `order_by` and `offset` are ignored
   without an error.
-- **SDBQL reads it, and cannot write it.** `FOR r IN m …` works as on a
-  document collection; `INSERT … INTO m` → `404 CollectionNotFound`.
-  `LENGTH(m)` → `Variable 'm' not found`.
+- **SDBQL reads it and, after 2.10.4, inserts into it** (observed on a
+  build of `main`, 2026-11-15). `FOR r IN m …` works as on a document
+  collection. `INSERT {host: "a", v: 1} INTO m` and
+  `FOR e IN events INSERT {host: e.host, v: e.ms} INTO m` insert every row
+  of the query in one call (`"inserted": 6000` in the response; schema
+  errors as above). No `OPTIONS`, no `RETURN NEW`, not in a transaction:
+  each `501 OperationNotSupported`. `UPDATE` / `UPSERT` / `REMOVE` → `501
+  "'m' is a columnar collection: SDBQL can INSERT into it, but not …"`.
+  Through 2.10.4 every SDBQL write → `404 CollectionNotFound`: use
+  `POST …/insert`. `LENGTH(m)` → `Variable 'm' not found`.
 - **Only one shape is fast**: `FOR r IN c [FILTER …] COLLECT [k = r.col]
   AGGREGATE <COUNT|SUM|AVG|MIN|MAX>(r.col) …`, the FILTERs being `==` with a
   string, number or boolean and `<` `<=` `>` `>=` with a number, joined by
