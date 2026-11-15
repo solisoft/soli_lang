@@ -687,7 +687,7 @@ code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
                 </a>
                 <p class="text-gray-400 mb-3">Verify a TOTP code against a secret. Accepts the current code and the previous/next code (&plusmn;1 step window) to handle clock drift.</p>
                 <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 mb-3 text-sm text-gray-300">
-                    <strong class="text-amber-400">No replay protection.</strong> The function is stateless: the same code verifies again within its window. Your app must remember the <strong class="text-white">last accepted time step per user</strong> and refuse a code at or before it, and must <strong class="text-white">rate-limit</strong> attempts &mdash; six digits are only 10<sup>6</sup> guesses.
+                    <strong class="text-amber-400">No replay protection.</strong> The function is stateless: the same code verifies again within its window. Use <a href="#def-totp-step" class="text-amber-400 hover:underline">Crypto.totp_step</a> to learn which step a code belongs to, and <strong class="text-white">rate-limit</strong> attempts &mdash; six digits are only 10<sup>6</sup> guesses.
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
@@ -708,6 +708,52 @@ if Crypto.totp_verify(secret, user_code)
 else
   println("Invalid code")
 end</code></pre>
+            </div>
+        </section>
+
+        <section id="def-totp-step" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-totp-step" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.totp_step(secret, code, time?, period?)</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">The time step (<code class="text-amber-400">time / period</code>) a code is valid for, among the current step and its two neighbours. Store the step you last accepted and refuse one at or before it: that is the replay protection <code class="text-amber-400">totp_verify</code> does not give. A code that is not six digits returns <code class="text-amber-400">nil</code> instead of raising.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">secret</code> : <code class="text-orange-400">String</code> - Base32-encoded secret key</div>
+                    <div><code class="text-amber-400">code</code> : <code class="text-orange-400">String</code> - the code to check</div>
+                    <div><code class="text-amber-400">time</code> : <code class="text-orange-400">Int?</code> - Optional Unix timestamp (defaults to current time)</div>
+                    <div><code class="text-amber-400">period</code> : <code class="text-orange-400">Int?</code> - Optional time window in seconds (defaults to 30)</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">Int</code> - the matching time step, or <code class="text-orange-400">nil</code>
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">step = Crypto.totp_step(record.secret, params["code"])
+if !step.nil? && step > (record.last_step ?? 0)
+  record.update({"last_step": step})
+  # signed in
+end</code></pre>
+                <p class="text-gray-400 text-sm mt-3"><code class="text-amber-400">soli generate auth --two-factor</code> scaffolds enrolment, backup codes, the sign-in challenge and lockout around it &mdash; see <a href="/docs/security/authentication#two-factor" class="text-amber-400 hover:underline">Authentication &rarr; Two-factor</a>.</p>
+            </div>
+        </section>
+
+        <section id="def-totp-secret" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-totp-secret" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.totp_secret()</code>
+                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </a>
+                <p class="text-gray-400 mb-3">A fresh secret: 160 random bits (the size RFC 4226 recommends) as 32 Base32 characters. Store it encrypted at rest (<code class="text-amber-400">encrypts(:secret)</code> on the model), and switch two-factor on only once the user typed back one valid code.</p>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400">
+                    <code class="text-orange-400">String</code> - 32 Base32 characters
+                </div>
+                <pre data-filename="Example"><code class="language-soli text-sm">secret = Crypto.totp_secret   # "K5QW4ZLSMFZGK3DJNZTSA5DIMUQHG2LU"</code></pre>
             </div>
         </section>
 
@@ -736,12 +782,9 @@ uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
 
 # Returns: otpauth://totp/MyApp:user%40example.com?secret=...&algorithm=SHA1&digits=6&period=30
 
-# No QR builtin: render the URI as a QR code client-side,
-# and show the raw secret for manual entry
-
-# Generating a Base32 secret (32 chars = 160 bits)
-alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-secret = Crypto.random_bytes(32).map(fn(b) alphabet[b % 32]).join("")</code></pre>
+# In a view, as a QR code rendered on the server (and show the raw
+# secret for manual entry):
+#   &lt;%- qr_svg(uri, 220) %&gt;</code></pre>
             </div>
         </section>
     </section>

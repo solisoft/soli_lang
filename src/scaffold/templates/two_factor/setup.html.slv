@@ -1,0 +1,33 @@
+<div class="max-w-2xl mx-auto px-4 py-10">
+  <h1 class="text-2xl font-bold mb-2">Set up two-factor authentication</h1>
+  <p class="mb-6 text-sm text-slate-400">
+    Scan this code with an authenticator app (1Password, Google Authenticator, Authy…),
+    then type the six digits it shows.
+  </p>
+
+  <% if error.present? %>
+    <div class="mb-4 rounded-md bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-300">
+      <%= error %>
+    </div>
+  <% end %>
+
+  <div class="mb-6 inline-block rounded-xl bg-white p-3">
+    <%- qr_svg(uri, 220) %>
+  </div>
+  <p class="mb-6 text-sm text-slate-400">
+    No camera? Enter this key by hand:
+    <code class="ml-1 break-all text-white" data-two-factor-secret><%= secret %></code>
+  </p>
+
+  <form action="/two_factor/confirm" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+    <%- csrf_field() %>
+    <label class="block text-sm font-medium text-slate-400 mb-1" for="code">Code</label>
+    <input id="code" name="code" type="text" required autofocus inputmode="numeric" pattern="[0-9 ]*"
+           maxlength="7" autocomplete="one-time-code"
+           class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+    <button type="submit"
+            class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+      Turn on two-factor authentication
+    </button>
+  </form>
+</div>

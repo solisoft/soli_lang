@@ -1,0 +1,31 @@
+<div class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md">
+    <h1 class="text-2xl font-bold mb-6 text-center">Two-factor authentication</h1>
+
+    <% if error.present? %>
+      <div class="mb-4 rounded-md bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-300">
+        <%= error %>
+      </div>
+    <% end %>
+
+    <form action="/two_factor/challenge" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <%- csrf_field() %>
+      <div>
+        <label class="block text-sm font-medium text-slate-400 mb-1" for="code">Code from your authenticator app</label>
+        <input id="code" name="code" type="text" required autofocus autocomplete="one-time-code"
+               class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+        <p class="mt-2 text-xs text-slate-400">Lost your device? Type one of your backup codes instead.</p>
+      </div>
+      <button type="submit"
+              class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+        Continue
+      </button>
+    </form>
+
+    <div class="mt-4 text-center text-sm">
+      <%- button_to("Sign in with another account", "/logout", {
+        "method": "delete", "class": "text-indigo-400 hover:text-indigo-300", "form_class": "inline"
+      }) %>
+    </div>
+  </div>
+</div>

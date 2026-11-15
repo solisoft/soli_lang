@@ -225,6 +225,16 @@ Removes dangerous HTML tags and attributes while preserving safe content.
 <%= sanitize_html(user_content) %>
 ```
 
+#### qr_svg(text, size?)
+
+A QR code as inline SVG, rendered on the server — no JavaScript, no image
+request. `size` is in pixels (default 200). Output it raw; it is black on
+white, so keep a light box around it on a dark page.
+
+```erb
+<%- qr_svg("https://example.com/invite/42", 220) %>
+```
+
 #### substring(string, start, end)
 
 Extracts a portion of a string (useful for truncating content).

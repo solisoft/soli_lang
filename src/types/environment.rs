@@ -872,6 +872,16 @@ impl TypeEnvironment {
             },
         );
 
+        // qr_svg(text, size?) -> String (inline SVG). One Any param: the
+        // size is optional.
+        self.functions.insert(
+            "qr_svg".to_string(),
+            Type::Function {
+                params: vec![Type::Any],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // file_exists(path) -> Bool
         self.functions.insert(
             "file_exists".to_string(),
@@ -2378,6 +2388,7 @@ impl TypeEnvironment {
             "pkcs1_pad",
             "pkcs1_unpad",
             "totp_generate",
+            "totp_secret",
             "totp_uri",
             "x25519_public_key",
             "x25519_shared_secret",
@@ -2390,7 +2401,12 @@ impl TypeEnvironment {
             "password_verify",
             "totp_verify",
         ];
-        let crypto_any_methods = ["ed25519_keypair", "x25519_keypair", "random_bytes"];
+        let crypto_any_methods = [
+            "ed25519_keypair",
+            "x25519_keypair",
+            "random_bytes",
+            "totp_step",
+        ];
         for (names, ret) in [
             (&crypto_string_methods[..], Type::String),
             (&crypto_bool_methods[..], Type::Bool),

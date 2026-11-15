@@ -425,6 +425,10 @@
 &lt;!-- Unescape HTML entities --&gt
 &lt;%= html_unescape("&amp;lt;p&amp;gt;") %&gt
 
+&lt;!-- A QR code as inline SVG, rendered on the server (size in px, default 200).
+     Black on white: keep a light box around it on a dark page --&gt
+&lt;%- qr_svg("https://example.com/invite/42", 220) %&gt
+
 &lt;!-- Substring (useful for truncating) --&gt
 &lt;%= substring(post["content"], 0, 100) %&gt;...</code></pre>
         </div>

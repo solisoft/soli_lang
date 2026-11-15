@@ -1,0 +1,56 @@
+<div class="max-w-2xl mx-auto px-4 py-10">
+  <h1 class="text-2xl font-bold mb-2">Two-factor authentication</h1>
+  <p class="mb-6 text-sm text-slate-400">
+    A code from an authenticator app, asked for after your password.
+  </p>
+
+  <% if error.present? %>
+    <div class="mb-4 rounded-md bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-300">
+      <%= error %>
+    </div>
+  <% end %>
+
+  <% if enabled %>
+    <p class="mb-6 rounded-md bg-emerald-500/10 border border-emerald-500/30 px-4 py-3 text-sm text-emerald-300">
+      Two-factor authentication is on. <%= codes_left %> backup codes left.
+    </p>
+
+    <form action="/two_factor/backup_codes" method="POST" class="mb-6 space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <%- csrf_field() %>
+      <h2 class="font-semibold text-white">New backup codes</h2>
+      <p class="text-sm text-slate-400">The codes you have now stop working.</p>
+      <% if has_password %>
+        <input name="password" type="password" required placeholder="Password" autocomplete="current-password"
+               class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+      <% end %>
+      <button type="submit"
+              class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+        Generate new codes
+      </button>
+    </form>
+
+    <form action="/two_factor" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <%- csrf_field() %>
+      <input type="hidden" name="_method" value="delete">
+      <h2 class="font-semibold text-white">Turn it off</h2>
+      <% if has_password %>
+        <input name="password" type="password" required placeholder="Password" autocomplete="current-password"
+               class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+      <% end %>
+      <input name="code" type="text" required placeholder="Code from your app, or a backup code" autocomplete="one-time-code"
+             class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+      <button type="submit"
+              class="rounded-md bg-red-600 hover:bg-red-700 px-4 py-2 font-medium text-white transition-colors">
+        Turn off two-factor authentication
+      </button>
+    </form>
+  <% else %>
+    <form action="/two_factor/setup" method="POST">
+      <%- csrf_field() %>
+      <button type="submit"
+              class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+        Set up an authenticator app
+      </button>
+    </form>
+  <% end %>
+</div>

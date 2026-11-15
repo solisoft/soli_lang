@@ -643,6 +643,19 @@ Unescapes HTML entities.
 html_unescape("&lt;p&gt;")  # "<p>"
 ```
 
+#### qr_svg(text, size?)
+
+A QR code for `text` as inline SVG, rendered on the server: no JavaScript, no
+image request. `size` is the width and height in pixels (default 200, 16 to
+4096). The markup is yours, so output it raw. It is black on white with the
+quiet zone the spec asks for; on a dark page, keep a light box around it.
+
+```erb
+<div class="inline-block bg-white p-3"><%- qr_svg(Crypto.totp_uri(secret, user.email, "MyApp"), 220) %></div>
+```
+
+Raises when `text` is too long for a QR code (about 2,300 bytes).
+
 #### sanitize_html(string)
 
 Removes potentially dangerous HTML tags and attributes.
@@ -2380,40 +2393,52 @@ code and the previous/next step (±1 step, so a code stays valid for up to ~90 s
 at the default 30 s period) to tolerate clock drift.
 
 > **No replay protection.** The function is stateless: the same code verifies
-> again and again within its window. Your app must remember the **last accepted
-> time step per user** and refuse a code at or before it, and must **rate-limit**
-> attempts — six digits are only 10⁶ guesses.
+> again and again within its window. Use [`Crypto.totp_step`](#cryptototp_stepsecret-code-time-period)
+> to learn which step a code belongs to, and **rate-limit** attempts — six
+> digits are only 10⁶ guesses.
+
+#### Crypto.totp_step(secret, code, time?, period?)
+
+The time step (`time / period`) `code` is valid for, among the current step
+and its two neighbours, or `nil` when it matches none — or is not six digits,
+which `totp_verify` raises on. Store the step you last accepted and refuse one
+at or before it: that is the replay protection.
 
 ```soli
-if Crypto.totp_verify(user.totp_secret, params["code"])
-  # compare the step against user.totp_last_step before accepting
+step = Crypto.totp_step(record.secret, params["code"])
+if !step.nil? && step > (record.last_step ?? 0)
+  record.update({"last_step": step})
+  # signed in
 end
 ```
+
+`soli generate auth --two-factor` scaffolds all of this — enrolment, backup
+codes, the sign-in challenge, lockout. See
+[Authentication → Two-factor](/docs/security/authentication#two-factor).
 
 #### Crypto.totp_uri(secret, account_name?, issuer?, period?)
 
 Builds the `otpauth://totp/...` URI an authenticator app enrolls from. Show it
-as a QR code (render it client-side — there is no QR-encoding builtin) and as
-the raw secret for manual entry.
+as a QR code — `<%- qr_svg(uri) %>` in a view — and as the raw secret for
+manual entry.
 
 ```soli
 Crypto.totp_uri(secret, "ada@example.com", "MyApp")
 # otpauth://totp/MyApp:ada%40example.com?secret=...&algorithm=SHA1&digits=6&period=30&issuer=MyApp
 ```
 
-#### Generating a secret
+#### Crypto.totp_secret()
 
-There is no Base32 encoder builtin; map random bytes onto the Base32 alphabet
-(256 is a multiple of 32, so `b % 32` stays uniform). 32 characters = 160 bits,
-the size RFC 4226 recommends.
+A fresh secret: 160 random bits (the size RFC 4226 recommends) as 32 Base32
+characters.
 
 ```soli
-alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-secret = Crypto.random_bytes(32).map(fn(b) alphabet[b % 32]).join("")
+secret = Crypto.totp_secret   # "K5QW4ZLSMFZGK3DJNZTSA5DIMUQHG2LU"
 ```
 
-Store the secret encrypted at rest, and only switch 2FA on once the user has
-typed back one valid code from the freshly enrolled app.
+Store the secret encrypted at rest (`encrypts(:secret)` on the model), and only
+switch 2FA on once the user has typed back one valid code from the freshly
+enrolled app.
 
 ### X25519 Key Exchange
 

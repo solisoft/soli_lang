@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`soli generate auth --two-factor`: an authenticator app (TOTP) as second
+  factor.** It adds a `TwoFactor` model (secret under `encrypts`, backup-code
+  digests, last accepted time step, wrong-code counter), a middleware, a
+  controller, four views, a migration and routes — and edits no existing file,
+  so it runs the same on a fresh app and on one that customized its auth
+  scaffold. The gate is the middleware (`# order: 6`, after
+  `load_current_user`): a session that passed one factor only continues as a
+  guest and its `GET`s are redirected to `/two_factor/challenge`, which covers
+  password, password-reset, remember-me and OAuth sign-ins with one check. A
+  code is accepted once (replay refused by time step), backup codes work once,
+  ten wrong codes lock the second factor (the counter is on the record, since
+  the password step clears the user's), enabling signs other sessions out,
+  disabling asks for password and code. A passkey sign-in that verified its
+  user marks the session itself (`passkey_sessions_controller.sl` template);
+  for an older passkey scaffold the generator prints the line to add.
+  `tests/two_factor_generator_test.rs` serves the generated app and drives it
+  with a software authenticator. Card #876.
+- **`Crypto.totp_secret()`** — a fresh 160-bit Base32 secret — and
+  **`Crypto.totp_step(secret, code, time?, period?)`** — the time step a code
+  is valid for, or `nil` — which is what replay protection needs and
+  `totp_verify` (a Bool) could not give.
+- **`qr_svg(text, size?)`** — a QR code as inline SVG, rendered on the server
+  (the encoder `/__soli/mobile` already used). Views, controllers and scripts.
+
 ## [2.36.2] - 2026-11-14
 
 ### Fixed

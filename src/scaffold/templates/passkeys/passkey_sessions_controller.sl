@@ -55,6 +55,10 @@ class PasskeySessionsController < Controller
     session_set("user_id", user._key)
     # Stamped so a later password reset can invalidate this session.
     session_set("session_version", user.current_session_version)
+    # A passkey that verified its user (screen lock, PIN, biometrics) already
+    # is two factors: with `soli generate auth --two-factor`, this sign-in
+    # skips the code challenge.
+    session_set("two_factor", "ok:#{user._key}") if result["user_verified"]
     render_json({"redirect": "/"})
   end
 

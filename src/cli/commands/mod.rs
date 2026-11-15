@@ -928,12 +928,22 @@ pub fn run_generate(scaffold_name: &str, fields: &[String], folder: &str) {
     }
 }
 
-pub fn run_generate_auth(folder: &str, passkeys: bool) {
-    match solilang::scaffold::create_auth_with(folder, passkeys) {
+pub fn run_generate_auth(folder: &str, passkeys: bool, two_factor: bool) {
+    let generated = solilang::scaffold::create_auth_with(folder, passkeys).and_then(|()| {
+        if two_factor {
+            solilang::scaffold::create_two_factor(folder)
+        } else {
+            Ok(())
+        }
+    });
+    match generated {
         Ok(()) => {
             solilang::scaffold::print_auth_success_message();
             if passkeys {
                 solilang::scaffold::print_passkeys_success_message(folder);
+            }
+            if two_factor {
+                solilang::scaffold::print_two_factor_success_message(folder);
             }
         }
         Err(e) => {

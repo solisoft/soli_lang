@@ -308,6 +308,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "html_unescape",
     "strip_html",
     "sanitize_html",
+    "qr_svg",
     "url_encode",
     "url_decode",
     // Filesystem

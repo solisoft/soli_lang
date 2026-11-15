@@ -422,6 +422,52 @@ fn base32_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
+fn base32_encode(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len().div_ceil(5) * 8);
+    let mut buffer: u64 = 0;
+    let mut bits_in_buffer = 0;
+    for byte in bytes {
+        buffer = (buffer << 8) | u64::from(*byte);
+        bits_in_buffer += 8;
+        while bits_in_buffer >= 5 {
+            bits_in_buffer -= 5;
+            output.push(BASE32_ALPHABET[((buffer >> bits_in_buffer) & 31) as usize] as char);
+            buffer &= (1 << bits_in_buffer) - 1;
+        }
+    }
+    if bits_in_buffer > 0 {
+        output.push(BASE32_ALPHABET[((buffer << (5 - bits_in_buffer)) & 31) as usize] as char);
+    }
+    output
+}
+
+/// A fresh TOTP secret: 160 random bits (the size RFC 4226 recommends) as 32
+/// Base32 characters.
+fn do_totp_secret() -> String {
+    let mut bytes = [0u8; 20];
+    OsRng.fill_bytes(&mut bytes);
+    base32_encode(&bytes)
+}
+
+/// The time step `code` is valid for, among the current one and its two
+/// neighbours, or `None`. A caller that stores the step it last accepted and
+/// refuses one at or before it has replay protection.
+fn do_totp_step(secret: &str, code: &str, time: u64, period: u64) -> Result<Option<u64>, String> {
+    let code_str = code.trim();
+    if code_str.len() != 6 || !code_str.chars().all(|c| c.is_ascii_digit()) {
+        return Ok(None);
+    }
+    let mut found = None;
+    // No early exit: every window costs the same whichever one matches.
+    for window_time in [time.saturating_sub(period), time, time + period] {
+        let expected = do_totp_generate(secret, window_time, period)?;
+        if do_secure_compare(&expected, code_str) && found.is_none() {
+            found = Some(window_time / period);
+        }
+    }
+    Ok(found)
+}
+
 fn do_totp_generate(secret: &str, time: u64, period: u64) -> Result<String, String> {
     let secret_bytes = base32_decode(secret)?;
     if secret_bytes.is_empty() {
@@ -1414,6 +1460,65 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         })),
     );
 
+    // Crypto.totp_secret() -> String
+    crypto_static_methods.insert(
+        "totp_secret".to_string(),
+        Rc::new(NativeFunction::new("Crypto.totp_secret", Some(0), |_| {
+            Ok(Value::String(do_totp_secret().into()))
+        })),
+    );
+
+    // Crypto.totp_step(secret, code, time?, period?) -> Int | nil
+    crypto_static_methods.insert(
+        "totp_step".to_string(),
+        Rc::new(NativeFunction::new("Crypto.totp_step", None, |args| {
+            if args.len() < 2 || args.len() > 4 {
+                return Err(format!(
+                    "Crypto.totp_step() expects 2-4 arguments (secret, code, time?, period?), got {}",
+                    args.len()
+                ));
+            }
+            let secret = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Crypto.totp_step() expects string secret, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            // Whatever a form sent: a code that is not a string is no code.
+            let code = match &args[1] {
+                Value::String(s) => s.clone(),
+                _ => return Ok(Value::Null),
+            };
+            let time = match args.get(2) {
+                Some(Value::Int(t)) if *t >= 0 => *t as u64,
+                Some(other) => {
+                    return Err(format!(
+                        "Crypto.totp_step() expects optional non-negative Int time, got {}",
+                        other.type_name()
+                    ))
+                }
+                None => web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?
+                    .as_secs(),
+            };
+            let period = match args.get(3) {
+                Some(Value::Int(p)) if *p > 0 => *p as u64,
+                Some(_) => {
+                    return Err("Crypto.totp_step() period must be a positive Int".to_string())
+                }
+                None => 30,
+            };
+            Ok(match do_totp_step(&secret, &code, time, period)? {
+                Some(step) => Value::Int(step as i64),
+                None => Value::Null,
+            })
+        })),
+    );
+
     // Crypto.totp_uri(secret, account_name?, issuer?, period?) -> String
     crypto_static_methods.insert(
         "totp_uri".to_string(),
@@ -2252,6 +2357,38 @@ mod tests {
         };
         let valid = (ver.func)(&[secret, Value::String(code), time]).unwrap();
         assert!(matches!(valid, Value::Bool(true)));
+    }
+
+    #[test]
+    fn totp_secret_is_160_random_bits_of_base32() {
+        let secret = do_totp_secret();
+        assert_eq!(secret.len(), 32);
+        assert_eq!(base32_decode(&secret).unwrap().len(), 20);
+        assert_ne!(secret, do_totp_secret());
+        // RFC 4648 test vector.
+        assert_eq!(base32_encode(b"foobar"), "MZXW6YTBOI");
+    }
+
+    #[test]
+    fn totp_step_names_the_step_a_code_is_valid_for() {
+        let secret = "JBSWY3DPEHPK3PXP";
+        let now = 1_700_000_000u64;
+        let code = do_totp_generate(secret, now, 30).unwrap();
+        assert_eq!(
+            do_totp_step(secret, &code, now, 30).unwrap(),
+            Some(now / 30)
+        );
+        // The previous step's code is still accepted, and says it is older.
+        let earlier = do_totp_generate(secret, now - 30, 30).unwrap();
+        assert_eq!(
+            do_totp_step(secret, &earlier, now, 30).unwrap(),
+            Some(now / 30 - 1)
+        );
+        // Two steps back is outside the window; a malformed code is no code.
+        let stale = do_totp_generate(secret, now - 90, 30).unwrap();
+        assert_eq!(do_totp_step(secret, &stale, now, 30).unwrap(), None);
+        assert_eq!(do_totp_step(secret, "12345", now, 30).unwrap(), None);
+        assert_eq!(do_totp_step(secret, "abcdef", now, 30).unwrap(), None);
     }
 
     // ---- RSA primitives: modexp + PKCS#1 v1.5 ----

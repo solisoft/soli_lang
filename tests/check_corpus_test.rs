@@ -105,6 +105,14 @@ fn scaffolds(out: &mut BTreeMap<String, Vec<String>>) -> Vec<tempfile::TempDir> 
 
     let app = tempfile::tempdir().unwrap();
     new_app(app.path(), false);
+    solilang::scaffold::create_auth_with(app.path().to_str().unwrap(), true)
+        .and_then(|()| solilang::scaffold::create_two_factor(app.path().to_str().unwrap()))
+        .expect("generate auth --passkeys --two-factor");
+    check_corpus("auth-two-factor", app.path(), out);
+    dirs.push(app);
+
+    let app = tempfile::tempdir().unwrap();
+    new_app(app.path(), false);
     solilang::scaffold::create_scaffold_with_fields(
         app.path().to_str().unwrap(),
         "post",

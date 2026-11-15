@@ -26,6 +26,37 @@ pub fn register_html_builtins(env: &mut Environment) {
         )),
     );
 
+    // qr_svg(text, size?) - A QR code as inline SVG, rendered on the server.
+    env.define(
+        "qr_svg".to_string(),
+        Value::NativeFunction(NativeFunction::new("qr_svg", None, |args| {
+            let text = match args.first() {
+                Some(Value::String(s)) => s.clone(),
+                Some(other) => {
+                    return Err(format!(
+                        "qr_svg() expects a string, got {}",
+                        other.type_name()
+                    ))
+                }
+                None => return Err("qr_svg() expects (text, size?)".to_string()),
+            };
+            let size = match args.get(1) {
+                None | Some(Value::Null) => 200,
+                Some(Value::Int(n)) if (16..=4096).contains(n) => *n as u32,
+                Some(_) => {
+                    return Err("qr_svg() size must be an Int between 16 and 4096".to_string())
+                }
+            };
+            if args.len() > 2 {
+                return Err(format!(
+                    "qr_svg() expects (text, size?), got {} arguments",
+                    args.len()
+                ));
+            }
+            crate::mobile::qr::svg(&text, size).map(|svg| Value::String(svg.into()))
+        })),
+    );
+
     // html_unescape(string) - Unescape HTML entities
     env.define(
         "html_unescape".to_string(),

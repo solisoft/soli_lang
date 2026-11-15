@@ -139,6 +139,87 @@ The legacy `jwt_decode(token)` was removed in SEC-029 because it returned the sa
 4. **Validate all claims** before trusting token data
 5. **Consider refresh tokens** for long-lived sessions
 
+## Two-factor
+
+A second factor for password sign-in: the six-digit code of an authenticator
+app (TOTP, RFC 6238 — 1Password, Google Authenticator, Authy…), with backup
+codes for a lost device.
+
+### Generate it
+
+```bash
+soli generate auth --two-factor
+```
+
+On a new app this writes session auth and two-factor together; on an app that
+already ran `soli generate auth` it adds only the two-factor files. It combines
+with `--passkeys`. **It edits no existing file** — everything below is new, and
+nothing is overwritten:
+
+| File | |
+|---|---|
+| `app/models/two_factor.sl` | `TwoFactor`, one record per user: the secret (encrypted), the last accepted time step, the backup-code digests, the wrong-code counter |
+| `app/middleware/two_factor.sl` | the gate: a session that passed one factor only is a guest, and its page loads go to the challenge |
+| `app/controllers/two_factor_controller.sl` | `GET /two_factor`, `POST /two_factor/setup`, `POST /two_factor/confirm`, `POST /two_factor/backup_codes`, `DELETE /two_factor`, `GET` and `POST /two_factor/challenge` |
+| `app/views/two_factor/*.html.slv` | settings, enrolment (QR code and key), backup codes, challenge |
+| `db/migrations/…_create_two_factors.sl` | unique index on `user_id` |
+
+Run `soli db:migrate up`, set `SOLI_ENCRYPTION_KEY` (the secret is stored with
+[`encrypts`](/docs/database/models#encrypted-attributes); `Crypto.random_hex(32)`
+makes one), and link to `/two_factor` from your account page.
+`TWO_FACTOR_ISSUER` is the name authenticator apps show next to the account.
+
+### How it works
+
+- **Enrolling.** `/two_factor` → *Set up* shows the secret as a QR code
+  (`qr_svg`, rendered on the server) and as text. Two-factor turns on only once
+  the user typed back a first code, and the page then shows ten backup codes,
+  once. Turning it on signs every other session of the account out.
+- **Signing in.** The password step is unchanged. The middleware runs after
+  `load_current_user`: if the user has two-factor on and this session has not
+  passed the challenge, the request continues as a guest (`current_user()` is
+  `nil`), and a `GET` is redirected to `/two_factor/challenge`. Because the
+  gate is on the session rather than in the sign-in action, it covers every way
+  a session opens — password, password reset, the remember-me cookie, OAuth —
+  and a path you add later.
+- **Codes.** A code is accepted once: the record keeps the time step of the
+  last accepted code and refuses that step and earlier ones
+  ([`Crypto.totp_step`](/docs/builtins/crypto#def-totp-step)). A backup code
+  works once, typed with or without its dash. Codes may be typed with spaces.
+- **Wrong codes.** The endpoints share the sign-in form's per-IP throttle.
+  `AUTH_MAX_FAILED_ATTEMPTS` wrong codes in a row lock the second factor for
+  `AUTH_LOCKOUT_SECONDS`; while locked, a right code is answered like a wrong
+  one. The counter lives on the `TwoFactor` record, not the user: the password
+  step clears the user's own counter, so anyone holding the password could
+  otherwise reset it between guesses.
+- **Turning it off, new backup codes.** Both ask for the password (an account
+  created through OAuth has none, and is not asked); turning it off also asks
+  for a code.
+
+### With remember-me, passkeys and OAuth
+
+| Sign-in | Second factor |
+|---|---|
+| Password | asked |
+| Password reset link | asked — a mailbox alone is one factor |
+| Remember-me cookie | asked when the session it restores is new: the cookie replaces the password, not the code |
+| OAuth (`soli generate oauth`) | asked |
+| Passkey (`--passkeys`) | skipped when the passkey verified its user (screen lock, PIN, biometrics): that is already two factors |
+
+A passkey scaffold generated before `--two-factor` existed does not mark its
+session, so its sign-in is followed by the challenge; the generator prints the
+one line to add to `passkey_sessions#create`:
+
+```soli
+session_set("two_factor", "ok:#{user._key}") if result["user_verified"]
+```
+
+**Limits.** Authenticator apps only: no SMS or email codes, and no "trust this
+device for 30 days". There is no admin screen to reset a user who lost both
+device and backup codes — delete their `TwoFactor` record. A session open on
+another device when a user turns two-factor *off* keeps its state until it
+ends.
+
 ## Passkeys
 
 Passkeys (WebAuthn) replace the password with a key pair the user's device

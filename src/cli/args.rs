@@ -73,12 +73,14 @@ pub enum Command {
         fields: Vec<String>,
         folder: String,
     },
-    /// `soli generate auth [folder] [--passkeys]` — scaffold session-based
-    /// authentication (User model + login/signup/logout) and a Pundit-style
-    /// Policy layer; `--passkeys` adds passkey (WebAuthn) sign-in.
+    /// `soli generate auth [folder] [--passkeys] [--two-factor]` — scaffold
+    /// session-based authentication (User model + login/signup/logout) and a
+    /// Pundit-style Policy layer; `--passkeys` adds passkey (WebAuthn)
+    /// sign-in, `--two-factor` an authenticator app (TOTP) as second factor.
     GenerateAuth {
         folder: String,
         passkeys: bool,
+        two_factor: bool,
     },
     /// `soli generate oidc_provider [folder]` — scaffold an OpenID Connect
     /// provider (Authorization Code + PKCE).
@@ -734,7 +736,7 @@ pub fn print_usage() {
     eprintln!("       soli login [--registry URL] [--token TOKEN]");
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
-    eprintln!("       soli generate auth [folder] [--passkeys]");
+    eprintln!("       soli generate auth [folder] [--passkeys] [--two-factor]");
     eprintln!("       soli generate oidc_provider [folder]");
     eprintln!(
         "       soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]"
@@ -807,6 +809,9 @@ pub fn print_usage() {
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
     eprintln!("                       --passkeys adds passkey (WebAuthn) sign-in");
+    eprintln!(
+        "                       --two-factor adds an authenticator app (TOTP) as second factor"
+    );
     eprintln!("  generate oidc_provider  Scaffold an OpenID Connect provider (code + PKCE)");
     eprintln!("  generate oauth       OAuth client: sign in with github|google|gitlab|discord|linkedin|microsoft (needs auth)");
     eprintln!(
@@ -929,6 +934,9 @@ pub fn print_usage() {
     eprintln!("  soli generate scaffold users name:string email:email  Generate with fields");
     eprintln!("  soli generate auth            Scaffold authentication + policy layer");
     eprintln!("  soli generate auth --passkeys  ... plus passkey (WebAuthn) sign-in");
+    eprintln!(
+        "  soli generate auth --two-factor  ... plus an authenticator app (TOTP) as second factor"
+    );
     eprintln!("  soli generate oidc_provider   Scaffold an OpenID Connect provider");
     eprintln!("  soli generate oauth github    Sign in with GitHub (OAuth client)");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
@@ -1139,12 +1147,14 @@ pub fn parse_args() -> Options {
                         return options;
                     }
                     "auth" => {
-                        // `--passkeys` before or after the folder.
+                        // `--passkeys` / `--two-factor` before or after the folder.
                         let mut folder: Option<String> = None;
                         let mut passkeys = false;
+                        let mut two_factor = false;
                         for arg in &args[i + 1..] {
                             match arg.as_str() {
                                 "--passkeys" => passkeys = true,
+                                "--two-factor" => two_factor = true,
                                 flag if flag.starts_with('-') => {
                                     eprintln!("generate auth: unknown option {flag}");
                                     print_usage();
@@ -1161,6 +1171,7 @@ pub fn parse_args() -> Options {
                         options.command = Command::GenerateAuth {
                             folder: folder.unwrap_or_else(|| ".".to_string()),
                             passkeys,
+                            two_factor,
                         };
                         return options;
                     }

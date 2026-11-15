@@ -53,9 +53,11 @@ pub fn run() {
             fields,
             folder,
         } => commands::run_generate(scaffold_name, fields, folder),
-        Command::GenerateAuth { folder, passkeys } => {
-            commands::run_generate_auth(folder, *passkeys)
-        }
+        Command::GenerateAuth {
+            folder,
+            passkeys,
+            two_factor,
+        } => commands::run_generate_auth(folder, *passkeys, *two_factor),
         Command::GenerateOidcProvider { folder } => commands::run_generate_oidc_provider(folder),
         Command::GenerateOauth { provider, folder } => {
             commands::run_generate_oauth(provider, folder)

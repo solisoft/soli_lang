@@ -8,7 +8,7 @@
             <span class="text-white">with JWT and Passkeys</span>
         </h1>
         <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
-            Implement secure, stateless authentication for your APIs and web applications using JSON Web Tokens, and phishing-resistant sign-in with <a href="#passkeys" class="text-amber-400 hover:text-amber-300">passkeys</a>.
+            Implement secure, stateless authentication for your APIs and web applications using JSON Web Tokens, a second factor with <a href="#two-factor" class="text-amber-400 hover:text-amber-300">authenticator apps</a>, and phishing-resistant sign-in with <a href="#passkeys" class="text-amber-400 hover:text-amber-300">passkeys</a>.
         </p>
     </div>
 
@@ -117,10 +117,90 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
         </p>
     </div>
 
+    <!-- Two-factor -->
+    <section id="two-factor" class="scroll-mt-20 mb-12">
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">3</span>
+            Two-factor
+        </h2>
+        <p class="text-gray-400 mb-4">
+            A second factor for password sign-in: the six-digit code of an authenticator app (TOTP, RFC 6238 &mdash;
+            1Password, Google Authenticator, Authy&hellip;), with backup codes for a lost device.
+        </p>
+
+        <h3 id="two-factor-generate" class="text-xl font-semibold text-white mt-8 mb-3">Generate it</h3>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth --two-factor</code></pre>
+        <p class="text-gray-400 my-4">
+            On a new app this writes session auth and two-factor together; on an app that already ran
+            <code class="text-amber-300">soli generate auth</code> it adds only the two-factor files. It combines with
+            <code class="text-amber-300">--passkeys</code>. <strong class="text-white">It edits no existing file</strong>: everything
+            below is new, and nothing is overwritten.
+        </p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">File</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>app/models/two_factor.sl</code></td><td class="py-3 px-4"><code>TwoFactor</code>, one record per user: the secret (encrypted), the last accepted time step, the backup-code digests, the wrong-code counter</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/middleware/two_factor.sl</code></td><td class="py-3 px-4">The gate: a session that passed one factor only is a guest, and its page loads go to the challenge</td></tr>
+                    <tr><td class="py-3 px-4"><code>app/controllers/two_factor_controller.sl</code></td><td class="py-3 px-4"><code>GET /two_factor</code>, <code>POST /two_factor/setup</code>, <code>POST /two_factor/confirm</code>, <code>POST /two_factor/backup_codes</code>, <code>DELETE /two_factor</code>, <code>GET</code> and <code>POST /two_factor/challenge</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/views/two_factor/*.html.slv</code></td><td class="py-3 px-4">Settings, enrolment (QR code and key), backup codes, challenge</td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_create_two_factors.sl</code></td><td class="py-3 px-4">Unique index on <code>user_id</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            Run <code>soli db:migrate up</code>, set <code class="text-amber-300">SOLI_ENCRYPTION_KEY</code> (the secret is stored with
+            <a href="/docs/database/models#encrypted-attributes" class="text-amber-400 hover:text-amber-300">encrypts</a>;
+            <code>Crypto.random_hex(32)</code> makes one), and link to <code>/two_factor</code> from your account page.
+            <code class="text-amber-300">TWO_FACTOR_ISSUER</code> is the name authenticator apps show next to the account.
+        </p>
+
+        <h3 id="two-factor-how" class="text-xl font-semibold text-white mt-8 mb-3">How it works</h3>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
+            <li><strong class="text-white">Enrolling.</strong> <code>/two_factor</code> &rarr; <em>Set up</em> shows the secret as a QR code (<code class="text-amber-300">qr_svg</code>, rendered on the server) and as text. Two-factor turns on only once the user typed back a first code, and the page then shows ten backup codes, once. Turning it on signs every other session of the account out.</li>
+            <li><strong class="text-white">Signing in.</strong> The password step is unchanged. The middleware runs after <code>load_current_user</code>: if the user has two-factor on and this session has not passed the challenge, the request continues as a guest (<code>current_user()</code> is <code>nil</code>), and a <code>GET</code> is redirected to <code>/two_factor/challenge</code>. Because the gate is on the session rather than in the sign-in action, it covers every way a session opens &mdash; password, password reset, the remember-me cookie, OAuth &mdash; and a path you add later.</li>
+            <li><strong class="text-white">Codes.</strong> A code is accepted once: the record keeps the time step of the last accepted code and refuses that step and earlier ones (<a href="/docs/builtins/crypto#def-totp-step" class="text-amber-400 hover:text-amber-300">Crypto.totp_step</a>). A backup code works once, typed with or without its dash. Codes may be typed with spaces.</li>
+            <li><strong class="text-white">Wrong codes.</strong> The endpoints share the sign-in form&rsquo;s per-IP throttle. <code class="text-amber-300">AUTH_MAX_FAILED_ATTEMPTS</code> wrong codes in a row lock the second factor for <code class="text-amber-300">AUTH_LOCKOUT_SECONDS</code>; while locked, a right code is answered like a wrong one. The counter lives on the <code>TwoFactor</code> record, not the user: the password step clears the user&rsquo;s own counter, so anyone holding the password could otherwise reset it between guesses.</li>
+            <li><strong class="text-white">Turning it off, new backup codes.</strong> Both ask for the password (an account created through OAuth has none, and is not asked); turning it off also asks for a code.</li>
+        </ul>
+
+        <h3 id="two-factor-others" class="text-xl font-semibold text-white mt-8 mb-3">With remember-me, passkeys and OAuth</h3>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Sign-in</th><th class="py-3 px-4 font-semibold">Second factor</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4">Password</td><td class="py-3 px-4">Asked</td></tr>
+                    <tr><td class="py-3 px-4">Password reset link</td><td class="py-3 px-4">Asked &mdash; a mailbox alone is one factor</td></tr>
+                    <tr><td class="py-3 px-4">Remember-me cookie</td><td class="py-3 px-4">Asked when the session it restores is new: the cookie replaces the password, not the code</td></tr>
+                    <tr><td class="py-3 px-4">OAuth (<code>soli generate oauth</code>)</td><td class="py-3 px-4">Asked</td></tr>
+                    <tr><td class="py-3 px-4">Passkey (<code>--passkeys</code>)</td><td class="py-3 px-4">Skipped when the passkey verified its user (screen lock, PIN, biometrics): that is already two factors</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            A passkey scaffold generated before <code class="text-amber-300">--two-factor</code> existed does not mark its session, so its
+            sign-in is followed by the challenge; the generator prints the one line to add to
+            <code>passkey_sessions#create</code>:
+        </p>
+        <pre data-filename="app/controllers/passkey_sessions_controller.sl"><code class="language-soli text-sm">session_set("two_factor", "ok:#{user._key}") if result["user_verified"]</code></pre>
+        <div class="callout callout-warning mt-4">
+            <p class="text-yellow-200/80 text-sm mb-0">
+                <strong>Limits.</strong> Authenticator apps only: no SMS or email codes, and no &ldquo;trust this device for 30 days&rdquo;.
+                There is no admin screen to reset a user who lost both device and backup codes &mdash; delete their
+                <code>TwoFactor</code> record. A session open on another device when a user turns two-factor <em>off</em>
+                keeps its state until it ends.
+            </p>
+        </div>
+    </section>
+
     <!-- Passkeys -->
     <section id="passkeys" class="scroll-mt-20">
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">3</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">4</span>
             Passkeys
         </h2>
         <p class="text-gray-400 mb-4">
