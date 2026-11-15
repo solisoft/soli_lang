@@ -17761,6 +17761,190 @@
       ]
     },
     {
+      "title": "SAML Single Sign-On",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/saml",
+      "signature": "soli generate saml",
+      "description": "Sign users in through an organisation's identity provider (Okta, Entra ID, Google Workspace, Keycloak, ADFS) over SAML 2.0",
+      "keywords": [
+        "saml",
+        "saml2",
+        "sso",
+        "single sign-on",
+        "identity provider",
+        "idp",
+        "service provider",
+        "okta",
+        "entra",
+        "azure ad",
+        "adfs",
+        "keycloak",
+        "assertion",
+        "acs",
+        "metadata",
+        "enterprise login"
+      ]
+    },
+    {
+      "title": "soli generate saml",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/saml#generates",
+      "signature": "soli generate saml [folder]",
+      "description": "Generate SAML sign-in: SamlSso service, SamlController (/saml/login, /saml/acs, /saml/metadata), SamlIdentity and a migration",
+      "keywords": [
+        "generate",
+        "scaffold",
+        "saml",
+        "sso",
+        "cli"
+      ]
+    },
+    {
+      "title": "Saml.verify_response",
+      "type": "method",
+      "category": "SAML",
+      "path": "/docs/security/saml#verify-response",
+      "signature": "Saml.verify_response(saml_response, expected)",
+      "description": "Verify a signed SAML response (signature, audience, recipient, validity, request) and return its assertion; raises on any failed check",
+      "keywords": [
+        "saml",
+        "verify",
+        "signature",
+        "assertion",
+        "xml-dsig",
+        "signature wrapping",
+        "xsw",
+        "name_id",
+        "attributes"
+      ]
+    },
+    {
+      "title": "Saml.auth_request",
+      "type": "method",
+      "category": "SAML",
+      "path": "/docs/security/saml#auth-request",
+      "signature": "Saml.auth_request(options)",
+      "description": "Build the AuthnRequest that sends the browser to the identity provider (HTTP-Redirect binding); returns id, url and xml",
+      "keywords": [
+        "saml",
+        "authnrequest",
+        "redirect",
+        "relay_state",
+        "sso"
+      ]
+    },
+    {
+      "title": "Saml.metadata",
+      "type": "method",
+      "category": "SAML",
+      "path": "/docs/security/saml#metadata",
+      "signature": "Saml.metadata(options)",
+      "description": "The service provider's metadata XML (entity id and ACS URL) to hand to the identity provider",
+      "keywords": [
+        "saml",
+        "metadata",
+        "entity id",
+        "acs"
+      ]
+    },
+    {
+      "title": "Saml.parse_metadata",
+      "type": "method",
+      "category": "SAML",
+      "path": "/docs/security/saml#parse-metadata",
+      "signature": "Saml.parse_metadata(xml)",
+      "description": "Read an identity provider's metadata: entity id, single sign-on URL and signing certificates",
+      "keywords": [
+        "saml",
+        "metadata",
+        "idp",
+        "certificate",
+        "sso url"
+      ]
+    },
+    {
+      "title": "Saml.test_response",
+      "type": "method",
+      "category": "SAML",
+      "path": "/docs/security/saml#test-response",
+      "signature": "Saml.test_response(options)",
+      "description": "A signed SAML response for specs: a stand-in identity provider that signs with a key you supply",
+      "keywords": [
+        "saml",
+        "test",
+        "spec",
+        "fake idp",
+        "signed response"
+      ]
+    },
+    {
+      "title": "Two-factor authentication",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/authentication#two-factor",
+      "signature": "soli generate auth --two-factor",
+      "description": "An authenticator app (TOTP) as second factor: enrolment by QR code, backup codes, a challenge after sign-in, replay protection and lockout",
+      "keywords": [
+        "two-factor",
+        "2fa",
+        "mfa",
+        "totp",
+        "authenticator",
+        "backup codes",
+        "otp",
+        "second factor",
+        "generate auth"
+      ]
+    },
+    {
+      "title": "Crypto.totp_step",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-step",
+      "signature": "Crypto.totp_step(secret, code, time?, period?)",
+      "description": "The time step a TOTP code is valid for, or nil: store the last accepted step to refuse a replayed code",
+      "keywords": [
+        "totp",
+        "2fa",
+        "replay",
+        "otp",
+        "two-factor"
+      ]
+    },
+    {
+      "title": "Crypto.totp_secret",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-totp-secret",
+      "signature": "Crypto.totp_secret()",
+      "description": "A fresh 160-bit TOTP secret as 32 Base32 characters",
+      "keywords": [
+        "totp",
+        "secret",
+        "base32",
+        "2fa",
+        "two-factor"
+      ]
+    },
+    {
+      "title": "qr_svg",
+      "type": "function",
+      "category": "Views",
+      "path": "/docs/core-concepts/views",
+      "signature": "qr_svg(text, size?)",
+      "description": "A QR code as inline SVG, rendered on the server",
+      "keywords": [
+        "qr",
+        "qr code",
+        "qrcode",
+        "svg",
+        "barcode",
+        "otpauth"
+      ]
+    },
+    {
       "title": "Production security defaults",
       "type": "page",
       "category": "Security",
