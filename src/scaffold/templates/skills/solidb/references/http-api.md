@@ -190,10 +190,18 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 | `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `minmax`, `bloom` | `{"status":"created","column","index_type"}`; already indexed → `400` |
 | `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` · `{"status":"deleted","column"}` |
 
-- **Append-only through the API.** There is no route to update a row, delete
-  a row or truncate (`DELETE …/row/{id}` and `PUT …/truncate` are not
-  routes); to remove rows, drop the collection. Columns cannot be added or
-  removed afterwards.
+- **Deleting rows** (after 2.10.4; observed on a build of `main`,
+  2026-11-15; through 2.10.4 these routes do not exist and the only way to
+  remove a row is to drop the collection):
+  `DELETE …/columnar/{c}/row/{id}` → `{"status":"deleted","id"}`, absent →
+  `404 DocumentNotFound`; `POST …/columnar/{c}/delete` with `{"ids":[…]}`
+  or `{"filter": …}` (one comparison, or `{"and":[…]}` / `{"or":[…]}` of
+  them; not both, not neither → `400`) → `{"status":"ok","deleted":1}`,
+  unknown ids passed over; `PUT …/columnar/{c}/truncate` (Admin) →
+  `{"status":"truncated","name"}`, columns kept. Delete many rows in one
+  call: a block is rewritten once per call. All three replicate.
+- No update of a row in place (delete and insert again), and columns cannot
+  be added or removed afterwards.
 - **The schema is not checked.** A row `{"host":7,"cpu":"x","extra":true}`
   into `host: string, cpu: float64` is accepted (`inserted: 1`), a row that
   is not an object is skipped without an error (`{"rows":[1]}` →
