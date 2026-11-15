@@ -1,0 +1,71 @@
+//! `soli generate scim` — a SCIM 2.0 server, so an organisation's directory
+//! (Okta, Microsoft Entra ID) creates, updates and deactivates the app's
+//! users. A controller, a middleware that keeps deactivated accounts out, a
+//! migration and routes; no file of the auth scaffold is edited.
+
+use std::fs;
+use std::path::Path;
+
+use crate::scaffold::app_generator::{append_routes_once, write_if_absent, write_migration_once};
+use crate::scaffold::templates::scim;
+
+/// Generate the SCIM files into an app that has the auth scaffold.
+pub fn create_scim(folder: &str) -> Result<(), String> {
+    let app_path = Path::new(folder);
+    if !app_path.join("app/models/user.sl").exists() {
+        return Err(
+            "SCIM requires `soli generate auth` first (missing app/models/user.sl).".into(),
+        );
+    }
+    for dir in [
+        "app/controllers",
+        "app/middleware",
+        "config",
+        "db/migrations",
+    ] {
+        let path = app_path.join(dir);
+        if !path.exists() {
+            fs::create_dir_all(&path)
+                .map_err(|e| format!("Failed to create directory '{}': {}", path.display(), e))?;
+        }
+    }
+    write_if_absent(
+        app_path,
+        "app/controllers/scim_controller.sl",
+        scim::SCIM_CONTROLLER,
+    )?;
+    write_if_absent(
+        app_path,
+        "app/middleware/scim_active.sl",
+        scim::SCIM_ACTIVE_MIDDLEWARE,
+    )?;
+    write_migration_once(
+        app_path,
+        "add_scim_user_indexes",
+        0,
+        &scim::users_migration(),
+    )?;
+    append_routes_once(
+        app_path,
+        scim::ROUTES_MARKER,
+        &scim::routes_snippet(),
+        "scim",
+    )
+}
+
+/// Next steps after `soli generate scim`.
+pub fn print_scim_success_message() {
+    println!();
+    println!("  \x1b[32m\x1b[1mSCIM 2.0:\x1b[0m the directory provisions users at \x1b[36m/scim/v2\x1b[0m.");
+    println!();
+    println!("  1. \x1b[36msoli db:migrate up\x1b[0m");
+    println!("  2. Give the directory a token of its own, 32+ characters:");
+    println!("       \x1b[36mSCIM_TOKEN=…\x1b[0m   or   \x1b[36mSCIM_TOKENS=okta=…,entra=…\x1b[0m");
+    println!("  3. In the directory: base URL \x1b[36mAPP_BASE_URL/scim/v2\x1b[0m, bearer token");
+    println!("     authentication, `userName` mapped to the email.");
+    println!();
+    println!("  Users only (no Groups). A deactivated user is signed out and kept out by");
+    println!("  app/middleware/scim_active.sl.");
+    println!("  Docs: /docs/security/scim");
+    println!();
+}

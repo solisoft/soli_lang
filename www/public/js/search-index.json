@@ -17811,6 +17811,40 @@
       ]
     },
     {
+      "title": "SCIM Provisioning",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/scim",
+      "signature": "soli generate scim",
+      "description": "A SCIM 2.0 server: an organisation's directory (Okta, Entra ID) creates, updates and deactivates users",
+      "keywords": [
+        "scim",
+        "provisioning",
+        "deprovisioning",
+        "directory",
+        "okta",
+        "entra",
+        "azure ad",
+        "user sync",
+        "deactivate",
+        "enterprise"
+      ]
+    },
+    {
+      "title": "soli generate scim",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/scim#generates",
+      "signature": "soli generate scim [folder]",
+      "description": "Generate the SCIM server (/scim/v2), the middleware that keeps deactivated accounts out, a migration and routes",
+      "keywords": [
+        "generate",
+        "scaffold",
+        "scim",
+        "cli"
+      ]
+    },
+    {
       "title": "SAML Single Sign-On",
       "type": "page",
       "category": "Security",

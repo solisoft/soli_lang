@@ -995,6 +995,16 @@ pub fn run_generate_audit(folder: &str, chained: bool) {
     }
 }
 
+pub fn run_generate_scim(folder: &str) {
+    match solilang::scaffold::create_scim(folder) {
+        Ok(()) => solilang::scaffold::print_scim_success_message(),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_generate_saml(folder: &str) {
     match solilang::scaffold::create_saml(folder) {
         Ok(()) => solilang::scaffold::print_saml_success_message(),

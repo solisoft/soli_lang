@@ -2,8 +2,8 @@
 #
 # A request with `Authorization: Bearer soli_pat_…` runs as the token's user:
 # `current_user()` is that user and `req["api_token"]` the token, for
-# `api_scope?`. A token that is unknown or expired is a 401, never a fall
-# back to the session: a script must not turn into its owner's browser.
+# `api_scope?`. A `soli_pat_` token that is unknown or expired is a 401, never
+# a fall back to the session: a script must not turn into its owner's browser.
 #
 # Order 7: after the session's user is loaded (5) and after the two-factor
 # gate (6), which is about sessions — a token is its own credential.
@@ -14,7 +14,12 @@ def authenticate_api_token(req)
   header = req["headers"]["authorization"].to_s
   return req unless header.starts_with?("Bearer ")
 
-  token = ApiToken.authenticate(header.substring(7, header.length).trim)
+  # Another kind of bearer token (a SCIM directory's, an OAuth access token
+  # of yours) is not this middleware's to judge.
+  bearer = header.substring(7, header.length).trim
+  return req unless bearer.starts_with?(API_TOKEN_PREFIX)
+
+  token = ApiToken.authenticate(bearer)
   if token.nil?
     return {
       "status": 401,

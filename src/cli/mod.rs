@@ -68,6 +68,7 @@ pub fn run() {
         ),
         Command::GenerateOidcProvider { folder } => commands::run_generate_oidc_provider(folder),
         Command::GenerateSaml { folder } => commands::run_generate_saml(folder),
+        Command::GenerateScim { folder } => commands::run_generate_scim(folder),
         Command::GenerateAudit { folder, chained } => {
             commands::run_generate_audit(folder, *chained)
         }

@@ -215,7 +215,7 @@ idp["certificates"]   # signing certificates, PEM</code></pre>
             <li><strong class="text-white">Not supported, and refused by name:</strong> encrypted assertions and <code>EncryptedID</code> (turn assertion encryption off at the IdP), ECDSA and RSA-PSS signatures, SHA-384, inclusive canonicalization.</li>
             <li><strong class="text-white">Requests are not signed</strong>, and the HTTP-POST binding is not offered for them. Most identity providers accept unsigned requests.</li>
             <li><strong class="text-white">No single logout.</strong> Signing out of the application does not sign out of the identity provider, and the reverse.</li>
-            <li><strong class="text-white">No account deprovisioning.</strong> A user removed at the IdP can no longer sign in, but their account and open sessions remain &mdash; that is what SCIM is for.</li>
+            <li><strong class="text-white">No account deprovisioning.</strong> A user removed at the IdP can no longer sign in, but their account and open sessions remain &mdash; that is what <a href="/docs/security/scim" class="text-amber-400 hover:text-amber-300">SCIM</a> is for.</li>
             <li><strong class="text-white">Attributes are not mapped to roles.</strong> <code>assertion["attributes"]</code> is there in <code>SamlSso.user_for</code> if you want to.</li>
         </ul>
     </section>

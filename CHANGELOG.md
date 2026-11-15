@@ -4,6 +4,17 @@
 
 ### Added
 
+- **`soli generate scim`: a SCIM 2.0 server.** An organisation's directory
+  (Okta, Microsoft Entra ID) creates, updates and deactivates users under
+  `/scim/v2`: `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, and `Users`
+  with list, `userName eq` / `externalId eq` filters, create, read, replace,
+  patch — Okta's path-less shape and Entra's (`"False"` as a string, `emails[type
+  eq "work"].value`) — and delete. A directory authenticates with a bearer
+  token of its own (`SCIM_TOKEN`, or `SCIM_TOKENS=name=token,…`; under 32
+  characters it is ignored). `active: false` closes the user's sessions, and a
+  middleware (`# order: 8`) treats every later request of theirs as a
+  guest's, whatever signed them in. Users only. `tests/scim_generator_test.rs`
+  serves the scaffold. Card #879.
 - **Three additions to `soli generate auth`**, each adding files of its own
   and editing none (card #880):
   - `--magic-link`: sign-in by a link sent by email. One use, fifteen
@@ -37,6 +48,9 @@
 
 ### Fixed
 
+- **The API-token middleware answered 401 to any bearer token it did not
+  know**, including another scheme's (a SCIM directory's). It only judges
+  `soli_pat_` tokens now.
 - **The OAuth scaffold's accounts.** `OauthClient.find_or_create_user` stored
   a random password in a plaintext `password` field and an `email_confirmed_at`
   the auth scaffold never reads, so the account was neither usable with a

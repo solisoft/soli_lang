@@ -290,6 +290,10 @@ def security_saml
   render_docs("docs/security/saml", "SAML Single Sign-On", "security", "saml")
 end
 
+def security_scim
+  render_docs("docs/security/scim", "SCIM Provisioning", "security", "scim")
+end
+
 def security_oauth_client
   render_docs("docs/security/oauth-client", "OAuth Client", "security", "oauth_client")
 end

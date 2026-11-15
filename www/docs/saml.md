@@ -209,7 +209,8 @@ Options: `sign` (`"assertion"` by default, `"response"`, `"both"`, `"none"`),
 - **No single logout.** Signing out of the application does not sign out of
   the identity provider, and the reverse.
 - **No account deprovisioning.** A user removed at the IdP can no longer sign
-  in, but their account and open sessions remain — that is what SCIM is for.
+  in, but their account and open sessions remain — that is what
+  [SCIM](/docs/security/scim) is for.
 - **Attributes are not mapped to roles.** `assertion["attributes"]` is there
   in `SamlSso.user_for` if you want to.
 

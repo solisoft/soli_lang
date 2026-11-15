@@ -92,6 +92,7 @@ def docs_nav_sections()
         { "path": "/docs/security/oidc-provider", "label": "OIDC Provider" },
         { "path": "/docs/security/oauth-client", "label": "OAuth Client" },
         { "path": "/docs/security/saml", "label": "SAML SSO" },
+        { "path": "/docs/security/scim", "label": "SCIM Provisioning" },
         { "path": "/docs/security/sessions", "label": "Sessions" },
         { "path": "/docs/security/defaults", "label": "Production defaults" },
         { "path": "/docs/security/spam", "label": "Spam on forms" },

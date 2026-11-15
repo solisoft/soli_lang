@@ -22,6 +22,7 @@ SoliLang includes a scaffold generator that quickly creates a complete MVC resou
 | `soli generate auth --api-tokens` | Personal access tokens (`Authorization: Bearer`), with scopes and expiry — [docs](/docs/security/authentication#api-tokens) |
 | `soli generate auth --impersonation` | An administrator acts as a user, under a banner, logged — [docs](/docs/security/authentication#impersonation) |
 | `soli generate saml` | SAML 2.0 single sign-on with an identity provider (Okta, Entra ID…) — [docs](/docs/security/saml) |
+| `soli generate scim` | A SCIM 2.0 server: the organisation's directory creates, updates and deactivates users — [docs](/docs/security/scim) |
 | `soli generate audit [--chain]` | An audit log: the `Audited` concern and the `Audit` model; `--chain` makes it tamper-evident — [docs](/docs/database/models#audit-log) |
 | `soli generate oauth <provider>` | Sign in with Apple, GitHub, Google, GitLab, Discord, LinkedIn or Microsoft, and a connected-accounts page — [docs](/docs/security/oauth-client) |
 | `soli generate oidc_provider` | An OpenID Connect provider — [docs](/docs/security/oidc-provider) |

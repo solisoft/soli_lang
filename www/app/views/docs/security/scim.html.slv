@@ -1,0 +1,128 @@
+<div class="space-y-12">
+    <!-- Header -->
+    <div class="border-b border-white/10 pb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-x">
+                SCIM Provisioning
+            </span>
+        </h1>
+        <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
+            Let an organisation&rsquo;s directory &mdash; Okta, Microsoft Entra ID, OneLogin &mdash; create, update and
+            deactivate your app&rsquo;s users.
+        </p>
+    </div>
+
+    <section>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth    # SCIM provisions the auth scaffold's User
+soli generate scim
+soli db:migrate up</code></pre>
+        <p class="text-gray-400 mt-4 leading-relaxed">
+            SCIM 2.0 is the protocol directories speak for that. It completes
+            <a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a> or <a href="/docs/security/oauth-client" class="text-amber-400 hover:text-amber-300">OAuth</a> sign-in,
+            which only cover signing in.
+        </p>
+    </section>
+
+    <section>
+        <h2 id="generates" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">1</span>
+            What it generates
+        </h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">File</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>app/controllers/scim_controller.sl</code></td><td class="py-3 px-4">The SCIM server, under <code>/scim/v2</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/middleware/scim_active.sl</code></td><td class="py-3 px-4">Keeps deactivated accounts out (<code># order: 8</code>)</td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_add_scim_user_indexes.sl</code></td><td class="py-3 px-4">Index on the users&rsquo; <code>scim_external_id</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>config/routes.sl</code></td><td class="py-3 px-4">The routes, and <code>skip_csrf("/scim/*")</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">No file of the auth scaffold is edited.</p>
+    </section>
+
+    <section>
+        <h2 id="setup" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">2</span>
+            Setup
+        </h2>
+        <p class="text-gray-400 mb-4">Give the directory a bearer token of its own, 32 characters or more:</p>
+        <pre data-filename=".env"><code class="language-bash text-sm">SCIM_TOKEN=&lt;token&gt;                       # one directory
+SCIM_TOKENS=okta=&lt;token&gt;,entra=&lt;token&gt;   # several, each named</code></pre>
+        <p class="text-gray-400 my-4">A shorter token is ignored, so a placeholder left in <code>.env</code> opens nothing. Then, in the directory&rsquo;s provisioning settings: base URL <code class="text-amber-300">APP_BASE_URL/scim/v2</code>, authentication by bearer token (&ldquo;HTTP Header&rdquo; in Okta, &ldquo;Secret Token&rdquo; in Entra), and <code>userName</code> mapped to the user&rsquo;s email.</p>
+    </section>
+
+    <section>
+        <h2 id="endpoints" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">3</span>
+            Endpoints
+        </h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Route</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>GET /scim/v2/ServiceProviderConfig</code>, <code>/ResourceTypes</code>, <code>/Schemas</code></td><td class="py-3 px-4">What the server supports</td></tr>
+                    <tr><td class="py-3 px-4"><code>GET /scim/v2/Users</code></td><td class="py-3 px-4">List (<code>startIndex</code>, <code>count</code>, up to 100 a page), or find with <code>filter=userName eq "…"</code> / <code>externalId eq "…"</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>POST /scim/v2/Users</code></td><td class="py-3 px-4">Create &mdash; <code>409</code> (<code>uniqueness</code>) when the <code>userName</code> exists</td></tr>
+                    <tr><td class="py-3 px-4"><code>GET /scim/v2/Users/:id</code></td><td class="py-3 px-4">Read</td></tr>
+                    <tr><td class="py-3 px-4"><code>PUT /scim/v2/Users/:id</code></td><td class="py-3 px-4">Replace</td></tr>
+                    <tr><td class="py-3 px-4"><code>PATCH /scim/v2/Users/:id</code></td><td class="py-3 px-4">Update &mdash; what directories use to deactivate</td></tr>
+                    <tr><td class="py-3 px-4"><code>DELETE /scim/v2/Users/:id</code></td><td class="py-3 px-4">Remove the account</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">Responses are <code>application/scim+json</code>; errors use SCIM&rsquo;s error schema.</p>
+    </section>
+
+    <section>
+        <h2 id="mapping" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">4</span>
+            How a directory&rsquo;s user maps to an account
+        </h2>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">SCIM</th><th class="py-3 px-4 font-semibold">Account</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>userName</code> (else the first of <code>emails</code>)</td><td class="py-3 px-4"><code>email</code>, lowercased</td></tr>
+                    <tr><td class="py-3 px-4"><code>active</code></td><td class="py-3 px-4"><code>deactivated_at</code> &mdash; <code>nil</code> while active</td></tr>
+                    <tr><td class="py-3 px-4"><code>externalId</code></td><td class="py-3 px-4"><code>scim_external_id</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>displayName</code>, <code>name.formatted</code></td><td class="py-3 px-4"><code>name</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>name.givenName</code>, <code>name.familyName</code></td><td class="py-3 px-4"><code>scim_given_name</code>, <code>scim_family_name</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">An account a directory creates is a <code>member</code>, confirmed, with no password: it signs in through SAML, OAuth or a magic link, or sets a password with a reset link.</p>
+        <p class="text-gray-400 mb-4">Both shapes of <code>PATCH</code> are understood: Okta&rsquo;s, with no path and the attributes in the value, and Entra&rsquo;s, with a path and &mdash; for <code>active</code> &mdash; the string <code>"False"</code>, including <code>emails[type eq "work"].value</code>.</p>
+        <pre data-filename="PATCH /scim/v2/Users/:id"><code class="language-json text-sm">{"Operations": [{"op": "replace", "value": {"active": false}}]}                 // Okta
+{"Operations": [{"op": "Replace", "path": "active", "value": "False"}]}          // Entra</code></pre>
+    </section>
+
+    <section>
+        <h2 id="deactivation" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">5</span>
+            Deactivation
+        </h2>
+        <p class="text-gray-400 mb-4"><code>active: false</code> closes the user&rsquo;s sessions (their session version is bumped, their remember-me cookie forgotten), and from then on <code class="text-amber-300">app/middleware/scim_active.sl</code> treats any request of theirs as a guest&rsquo;s &mdash; whatever signed them in: a password, a provider, a link, an API token. Checking there rather than in each sign-in action covers them all. <code>active: true</code> restores the account; the sessions closed meanwhile stay closed.</p>
+        <p class="text-gray-400 mb-4"><code>DELETE</code> removes the account. To keep what it owns, change <code>destroy</code> in the controller to deactivate instead &mdash; the comment there says how.</p>
+    </section>
+
+    <section>
+        <h2 id="limits" class="flex items-center gap-3 text-2xl font-bold text-white mb-6 scroll-mt-20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 text-sm border border-amber-500/30">6</span>
+            Limits
+        </h2>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400">
+            <li><strong class="text-white">Users only.</strong> No <code>Groups</code>: an account&rsquo;s role is not provisioned. Map a SCIM attribute to it in <code>_assign</code> if your directory sends one.</li>
+            <li><strong class="text-white">No bulk, sorting, ETags or password change</strong>, and the filter is <code>userName eq</code> / <code>externalId eq</code> &mdash; what directories send, not the whole filter grammar.</li>
+            <li><strong class="text-white">Tokens are static</strong>, read from the environment; rotate by listing the new one beside the old in <code>SCIM_TOKENS</code>, then removing the old.</li>
+            <li>A directory&rsquo;s token only opens <code>/scim/v2</code>; it is not a user&rsquo;s <a href="/docs/security/authentication#api-tokens" class="text-amber-400 hover:text-amber-300">API token</a>, and neither is it.</li>
+        </ul>
+    </section>
+</div>

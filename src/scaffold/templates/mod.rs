@@ -20,5 +20,6 @@ pub mod offline;
 pub mod oidc;
 pub mod passkeys;
 pub mod saml;
+pub mod scim;
 pub mod two_factor;
 pub mod view;
