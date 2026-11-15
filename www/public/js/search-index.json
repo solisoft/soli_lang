@@ -17761,6 +17761,56 @@
       ]
     },
     {
+      "title": "Sign in with Apple",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/oauth-client",
+      "signature": "soli generate oauth apple",
+      "description": "Sign in with Apple: an ES256 client secret minted from your .p8 key, the posted answer handed to a normal callback",
+      "keywords": [
+        "apple",
+        "sign in with apple",
+        "oauth",
+        "es256",
+        "p8",
+        "form_post",
+        "services id"
+      ]
+    },
+    {
+      "title": "Connected accounts",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/oauth-client#identities",
+      "signature": "/oauth/identities",
+      "description": "Link and unlink OAuth providers on the signed-in account",
+      "keywords": [
+        "account linking",
+        "connected accounts",
+        "identities",
+        "link",
+        "unlink",
+        "oauth"
+      ]
+    },
+    {
+      "title": "Microsoft multi-tenant sign-in",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/oauth-client",
+      "signature": "MICROSOFT_TENANT=organizations",
+      "description": "Sign in users of several Entra ID tenants, limited to the tenant ids you list in MICROSOFT_ALLOWED_TENANTS",
+      "keywords": [
+        "microsoft",
+        "entra",
+        "azure ad",
+        "multi-tenant",
+        "tenant",
+        "organizations",
+        "noauth"
+      ]
+    },
+    {
       "title": "SAML Single Sign-On",
       "type": "page",
       "category": "Security",

@@ -439,6 +439,15 @@ fn marked(html: &str, marker: &str) -> Vec<String> {
         .collect()
 }
 
+/// Everything SQLite has on disk for the app: the database and, since recent
+/// writes sit there until a checkpoint, its write-ahead log.
+fn database_bytes(root: &Path) -> String {
+    let mut bytes = fs::read(root.join("app.sqlite3")).unwrap_or_default();
+    bytes.extend(fs::read(root.join("app.sqlite3-wal")).unwrap_or_default());
+    assert!(!bytes.is_empty(), "no database on disk");
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 fn served_app() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     make_app_skeleton(dir.path());
@@ -499,9 +508,13 @@ fn served_app_enrols_challenges_and_refuses_replays() {
     assert!(early.signed_in());
 
     // The secret is encrypted at rest.
-    let database = fs::read(dir.path().join("app.sqlite3")).unwrap();
+    let database = database_bytes(dir.path());
     assert!(
-        !String::from_utf8_lossy(&database).contains(&secret),
+        database.contains("ada@example.com"),
+        "the data is not where this looks"
+    );
+    assert!(
+        !database.contains(&secret),
         "the TOTP secret is stored in plaintext"
     );
 

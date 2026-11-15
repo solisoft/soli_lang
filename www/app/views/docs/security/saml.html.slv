@@ -63,7 +63,7 @@ soli generate saml</code></pre>
                     <tr><th class="py-3 px-4 font-semibold">Variable</th><th class="py-3 px-4 font-semibold">What it holds</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/10 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SAML_IDP_METADATA_FILE</code></td><td class="py-3 px-4">Path to the IdP&rsquo;s metadata XML</td></tr>
+                    <tr><td class="py-3 px-4"><code>SAML_IDP_METADATA_FILE</code></td><td class="py-3 px-4">Path to the IdP&rsquo;s metadata XML, inside the app (the server reads no file outside it)</td></tr>
                     <tr><td class="py-3 px-4"><code>SAML_IDP_ENTITY_ID</code>, <code>SAML_IDP_SSO_URL</code>, <code>SAML_IDP_CERTIFICATE</code></td><td class="py-3 px-4">Or its three values: entity id, single sign-on URL (HTTP-Redirect binding), signing certificate (PEM; <code>\n</code> for newlines)</td></tr>
                 </tbody>
             </table>

@@ -159,6 +159,15 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
+/// Everything SQLite has on disk for the app: the database and, since recent
+/// writes sit there until a checkpoint, its write-ahead log.
+fn database_bytes(root: &Path) -> String {
+    let mut bytes = fs::read(root.join("app.sqlite3")).unwrap_or_default();
+    bytes.extend(fs::read(root.join("app.sqlite3-wal")).unwrap_or_default());
+    assert!(!bytes.is_empty(), "no database on disk");
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 /// The fixture app with the audit scaffold generated into it and migrated.
 fn audited_app(chained: bool) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -326,14 +335,17 @@ fn served_app_logs_who_changed_what_and_notices_an_edited_entry() {
     assert_eq!(deleted["actor_key"], Json::Null);
     assert_eq!(deleted["seq"], json!(3));
 
-    // Neither secret reached the log.
-    let stored =
-        String::from_utf8_lossy(&fs::read(dir.path().join("app.sqlite3")).unwrap()).into_owned();
+    // The secrets are not in the log, and the encrypted field is nowhere on
+    // disk in plaintext. (`secret_note` is only withheld from the log: the
+    // model stores it as it is.)
+    let logged = serde_json::to_string(audits).unwrap();
     for secret in ["FR76-SECRET", "FR76-OTHER", "shh"] {
-        assert!(
-            !stored.contains(secret),
-            "{secret} is in the database in plaintext"
-        );
+        assert!(!logged.contains(secret), "{secret} is in the log");
+    }
+    let stored = database_bytes(dir.path());
+    assert!(stored.contains("F-1"), "the data is not where this looks");
+    for secret in ["FR76-SECRET", "FR76-OTHER"] {
+        assert!(!stored.contains(secret), "{secret} is on disk in plaintext");
     }
 
     // Reading by actor and by period.

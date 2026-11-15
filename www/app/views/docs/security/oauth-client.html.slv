@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-red-400 via-amber-400 to-orange-400 bg-clip-text text-transparent">OAuth Client</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Sign in with GitHub, Google, GitLab, Discord, LinkedIn or Microsoft. Scaffolded by
+            Sign in with Apple, GitHub, Google, GitLab, Discord, LinkedIn or Microsoft. Scaffolded by
             <code class="text-cyan-400">soli generate oauth</code>
             &mdash; the opposite of
             <a href="/docs/security/oidc-provider" class="text-amber-400 hover:underline">OIDC provider</a>
@@ -16,7 +16,7 @@
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">soli generate auth          # User + sessions (required)
-soli generate oauth github  # and/or google, gitlab, discord, linkedin, microsoft
+soli generate oauth github  # and/or apple, google, gitlab, discord, linkedin, microsoft
 soli db:migrate up</code></pre>
         </div>
     </div>
@@ -32,11 +32,12 @@ soli db:migrate up</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/models/oauth_identity.sl</code></td><td class="py-3 px-4">Links User &harr; provider + uid</td></tr>
-                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/oauth_client.sl</code></td><td class="py-3 px-4">State CSRF, PKCE, find-or-create user</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/oauth_client.sl</code></td><td class="py-3 px-4">State CSRF, PKCE, and which account an identity signs in</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/github_oauth.sl</code></td><td class="py-3 px-4">GitHub authorize / token / profile</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/google_oauth.sl</code></td><td class="py-3 px-4">Google OIDC code + PKCE</td></tr>
-                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/{gitlab,discord,linkedin,microsoft}_oauth.sl</code></td><td class="py-3 px-4">One per provider you generate</td></tr>
-                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/controllers/oauth_controller.sl</code></td><td class="py-3 px-4"><code>/auth/:provider</code> + callback</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/{apple,gitlab,discord,linkedin,microsoft}_oauth.sl</code></td><td class="py-3 px-4">One per provider you generate</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/controllers/oauth_controller.sl</code></td><td class="py-3 px-4"><code>/auth/:provider</code> + callback, <code>/oauth/identities</code></td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/views/oauth/identities.html.slv</code></td><td class="py-3 px-4">The connected-accounts page</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">db/migrations/*_create_oauth_identities.sl</code></td><td class="py-3 px-4">Unique index on (provider, uid)</td></tr>
             </tbody>
         </table>
@@ -61,7 +62,40 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback</code></pre>
     </div>
 
     <p class="text-gray-400 mb-2"><strong class="text-white">GitLab, Discord, LinkedIn, Microsoft</strong></p>
-    <p class="text-gray-400 mb-4">Each takes <code class="text-cyan-400">&lt;NAME&gt;_CLIENT_ID</code>, <code class="text-cyan-400">&lt;NAME&gt;_CLIENT_SECRET</code> and <code class="text-cyan-400">&lt;NAME&gt;_REDIRECT_URI</code> (<code class="text-cyan-400">http://localhost:3000/auth/&lt;name&gt;/callback</code>). GitLab also reads <code class="text-cyan-400">GITLAB_BASE_URL</code> for a self-hosted instance. <strong class="text-white">Microsoft requires <code class="text-cyan-400">MICROSOFT_TENANT</code></strong> (a tenant id or domain): Microsoft does not verify the <code>email</code> claim, so the service refuses <code>common</code>, <code>organizations</code> and <code>consumers</code> and limits sign-in to the tenant whose directory you control.</p>
+    <p class="text-gray-400 mb-4">Each takes <code class="text-cyan-400">&lt;NAME&gt;_CLIENT_ID</code>, <code class="text-cyan-400">&lt;NAME&gt;_CLIENT_SECRET</code> and <code class="text-cyan-400">&lt;NAME&gt;_REDIRECT_URI</code> (<code class="text-cyan-400">http://localhost:3000/auth/&lt;name&gt;/callback</code>). GitLab also reads <code class="text-cyan-400">GITLAB_BASE_URL</code> for a self-hosted instance. <strong class="text-white">Microsoft requires <code class="text-cyan-400">MICROSOFT_TENANT</code></strong> (a tenant id or domain), or the list of tenants below.</p>
+
+    <p class="text-gray-400 mb-2"><strong class="text-white">Microsoft, several tenants</strong></p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">MICROSOFT_TENANT=organizations
+MICROSOFT_ALLOWED_TENANTS=&lt;tenant id&gt;,&lt;tenant id&gt;</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-8">Microsoft does not verify the <code class="text-cyan-400">email</code> claim, and a multi-tenant app can be handed someone else&rsquo;s address by a foreign tenant (the &ldquo;nOAuth&rdquo; takeover). So an address is only ever taken from a tenant you named: your own (<code class="text-cyan-400">MICROSOFT_TENANT=&lt;id or domain&gt;</code>), or the ones in <code class="text-cyan-400">MICROSOFT_ALLOWED_TENANTS</code>, each of which you trust as you trust your own. The tenant is read from the id_token (<code>tid</code>), whose issuer must be that tenant&rsquo;s. <code>common</code> and <code>consumers</code> are refused, and so is <code>organizations</code> without a list.</p>
+
+    <p class="text-gray-400 mb-2"><strong class="text-white">Apple</strong></p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">APPLE_CLIENT_ID=com.example.app.web     # the Services ID
+APPLE_TEAM_ID=…
+APPLE_KEY_ID=…
+APPLE_PRIVATE_KEY_FILE=config/AuthKey.p8   # inside the app; or APPLE_PRIVATE_KEY with its contents
+APPLE_REDIRECT_URI=https://your.app/auth/apple/callback</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">Apple has no client secret to copy: it is a short-lived JWT the service signs with your key (ES256) for each exchange. Apple posts its answer (<code>response_mode=form_post</code>) from its own site, so the session cookie does not come with it; the callback turns that POST into a GET of the same URL &mdash; which the cookie does come with &mdash; and only then checks the state. <code>config/routes.sl</code> exempts <code class="text-cyan-400">/auth/apple/callback</code> from the CSRF gate for that one hop. The name arrives once, with the first sign-in; the email is in the id_token every time, and may be a private relay address. Apple accepts <code>https://</code> return URLs only, on a domain you verified with it.</p>
+
+    <h2 id="accounts" class="text-2xl font-bold text-white mb-4">Which account a sign-in opens</h2>
+    <ol class="list-decimal list-inside text-gray-400 space-y-2 mb-4">
+        <li>The account already linked to this <code>(provider, uid)</code>.</li>
+        <li>While a signed-in user is connecting a provider, that user &mdash; refused when the identity belongs to someone else.</li>
+        <li>The account with the provider&rsquo;s verified email, linked from now on.</li>
+        <li>A new one, when sign-up is open: <code class="text-cyan-400">AUTH_SIGNUP</code> applies as it does to <code>/signup</code> (<code>first_user</code> by default &mdash; the first account becomes the admin, then sign-up closes; <code>open</code>; <code>closed</code>). The account is confirmed and has no password; its owner can set one with a reset link.</li>
+    </ol>
+    <p class="text-gray-400 mb-12">Rule 3 hands an existing account to whoever proves the address at the provider. If that account never confirmed its email, someone else may have created it in wait, with a password they know: its password and sessions are dropped before it is linked.</p>
+
+    <h2 id="identities" class="text-2xl font-bold text-white mb-4">Connected accounts</h2>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">/oauth/identities</code> lists the providers linked to the signed-in account, with a button to connect each provider the app has a service for and one to disconnect. Connecting is the same flow as signing in, started while signed in. The last way into an account cannot be removed: with no password, one provider stays.</p>
 
     <h2 class="text-2xl font-bold text-white mb-4">How a provider is found</h2>
     <p class="text-gray-400 mb-12"><code class="text-cyan-400">/auth/:provider</code> looks up the <code class="text-cyan-400">&lt;Name&gt;Oauth</code> class by name after checking the segment against <code>^[a-z][a-z0-9]{1,19}$</code>, so adding a provider never means editing the controller. Each service exposes <code class="text-cyan-400">authorize_url(state, code_challenge)</code> and <code class="text-cyan-400">complete!(code)</code>, and the callback insists the provider matches the one this session started with. An app generated earlier has a controller with a fixed list; the generator says so, and deleting <code>oauth_controller.sl</code> then re-running it swaps in the new one.</p>
@@ -88,15 +122,17 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback</code></pre>
             for <code>timeout</code> alone and return the body as a String, so a <code>"headers"</code> key there is silently
             dropped &mdash; which is why the generated flow used to 401. Provider responses are status-checked, so a 401
             reports as a 401 rather than a JSON parse error on the provider's error page.</li>
-        <li>Google, GitLab and LinkedIn require <code class="text-cyan-400">email_verified</code>; Discord requires <code class="text-cyan-400">verified</code>; Microsoft is limited to your tenant</li>
+        <li>Google, GitLab, LinkedIn and Apple require <code class="text-cyan-400">email_verified</code>; Discord requires <code class="text-cyan-400">verified</code>; Microsoft is limited to the tenants you name</li>
         <li>The start redirect uses <code class="text-cyan-400">redirect_external</code>: plain <code>redirect</code> only accepts local paths, and the first generated controller failed with a 500 for that reason</li>
-        <li>OAuth-created accounts get a random password and confirmed email</li>
+        <li>OAuth-created accounts are confirmed and have no password, and the session carries the account&rsquo;s session version, like a password sign-in. Earlier cuts stored a random password in a plaintext <code>password</code> field, created accounts whatever <code class="text-cyan-400">AUTH_SIGNUP</code> said, and opened sessions that the first password reset on the account then refused</li>
+        <li>Apple&rsquo;s and Microsoft&rsquo;s id_token is read without checking its signature: it comes from the provider&rsquo;s token endpoint over TLS, in answer to the server&rsquo;s own request (OpenID Connect Core &sect;3.1.3.7). Issuer, audience, expiry &mdash; and for Microsoft the tenant &mdash; are checked</li>
+        <li>With <a href="/docs/security/authentication#two-factor" class="text-amber-400 hover:underline">two-factor</a> on, a provider sign-in is followed by the code challenge</li>
         <li>Use HTTPS redirect URIs in production</li>
     </ul>
 
     <h2 class="text-2xl font-bold text-white mb-4">Ceiling</h2>
     <p class="text-gray-400 mb-4">
-        Six providers: <strong class="text-white">GitHub, Google, GitLab, Discord, LinkedIn</strong> and <strong class="text-white">Microsoft</strong> (one tenant). No Apple sign-in (its client secret is a signed JWT), no multi-tenant Microsoft, no account-linking UI.
+        Seven providers: <strong class="text-white">Apple, GitHub, Google, GitLab, Discord, LinkedIn</strong> and <strong class="text-white">Microsoft</strong>. No OmniAuth-style catalog. Microsoft personal accounts (<code>consumers</code>) are not supported, and neither is an open multi-tenant app (any directory). Apple&rsquo;s &ldquo;hide my email&rdquo; relay address is taken as the account&rsquo;s email as it is. An app generated before account linking keeps its controller and service: delete <code>oauth_controller.sl</code> and <code>oauth_client.sl</code>, then re-run the generator.
         Longer walkthroughs:
         <a href="/docs/blog/github-oauth" class="text-amber-400 hover:underline">GitHub</a>,
         <a href="/docs/blog/google-oauth" class="text-amber-400 hover:underline">Google</a>.

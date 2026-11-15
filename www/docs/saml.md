@@ -46,7 +46,7 @@ Nothing existing is overwritten. Add the link to your sign-in view:
 
    | Variable | |
    |---|---|
-   | `SAML_IDP_METADATA_FILE` | path to the IdP's metadata XML |
+   | `SAML_IDP_METADATA_FILE` | path to the IdP's metadata XML, inside the app (the server reads no file outside it) |
    | `SAML_IDP_ENTITY_ID`, `SAML_IDP_SSO_URL`, `SAML_IDP_CERTIFICATE` | or its three values: entity id, single sign-on URL (HTTP-Redirect binding), signing certificate (PEM; `\n` for newlines) |
 
 The IdP must sign the assertion or the response (or both) with RSA-SHA256, and

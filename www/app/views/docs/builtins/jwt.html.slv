@@ -45,8 +45,8 @@
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">expires_in</code> : <code class="text-orange-400">Int</code> - Token lifetime in seconds from now</div>
-                    <div><code class="text-amber-400">algorithm</code> : <code class="text-orange-400">String</code> - HS256, HS384, HS512, RS256, or EdDSA (default: HS256)</div>
-                    <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - PEM-encoded private key for RS256/EdDSA algorithms</div>
+                    <div><code class="text-amber-400">algorithm</code> : <code class="text-orange-400">String</code> - HS256, HS384, HS512, RS256, ES256, or EdDSA (default: HS256)</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - PEM-encoded private key for RS256/ES256/EdDSA algorithms (ES256: a P-256 key in PKCS#8 form, as Apple&rsquo;s <code>.p8</code>)</div>
                     <div><code class="text-amber-400">kid</code> : <code class="text-orange-400">String</code> - Key ID, written to the JWT <strong>header</strong>. Lets a verifier pick the right key out of a JWKS &mdash; this is what makes key rotation possible.</div>
                     <div><code class="text-amber-400">typ</code> : <code class="text-orange-400">String</code> - Overrides the header <code>typ</code> (default <code>"JWT"</code>). Use <code>"at+jwt"</code> for RFC 9068 access tokens.</div>
                     <div><code class="text-amber-400">exp</code> : <code class="text-orange-400">Int</code> - Expiration as an <strong>absolute</strong> Unix timestamp. Mutually exclusive with <code>expires_in</code>; supplying both raises, since they are different units.</div>
@@ -105,8 +105,8 @@ id_token = jwt_sign(
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Options</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">algorithm</code> : <code class="text-orange-400">String</code> - Pin verification to a specific algorithm (<code>HS256</code>, <code>HS384</code>, <code>HS512</code>, <code>RS256</code>, <code>EdDSA</code>). The token's header <code>alg</code> must match exactly or the call rejects.</div>
-                    <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - PEM-encoded public key for RS256/EdDSA algorithms. When <code>key</code> is provided without an explicit <code>algorithm</code>, the allowed set is <code>RS256</code>&nbsp;/&nbsp;<code>EdDSA</code> only &mdash; HMAC tokens are rejected (the algorithm-confusion attack vector).</div>
+                    <div><code class="text-amber-400">algorithm</code> : <code class="text-orange-400">String</code> - Pin verification to a specific algorithm (<code>HS256</code>, <code>HS384</code>, <code>HS512</code>, <code>RS256</code>, <code>ES256</code>, <code>EdDSA</code>). The token's header <code>alg</code> must match exactly or the call rejects.</div>
+                    <div><code class="text-amber-400">key</code> : <code class="text-orange-400">String</code> - PEM-encoded public key for RS256/ES256/EdDSA algorithms. When <code>key</code> is provided without an explicit <code>algorithm</code>, the allowed set is <code>RS256</code>&nbsp;/&nbsp;<code>ES256</code>&nbsp;/&nbsp;<code>EdDSA</code> only &mdash; HMAC tokens are rejected (the algorithm-confusion attack vector).</div>
                     <div><code class="text-amber-400">audience</code> : <code class="text-orange-400">String | Array</code> - Expected <code>aud</code>. Setting it makes <code>aud</code> a <strong>required</strong> claim, so a token without one cannot slip through a check you believed was enforced.</div>
                     <div><code class="text-amber-400">issuer</code> : <code class="text-orange-400">String | Array</code> - Expected <code>iss</code>, likewise required once set.</div>
                     <div><code class="text-amber-400">subject</code> : <code class="text-orange-400">String</code> - Expected <code>sub</code></div>

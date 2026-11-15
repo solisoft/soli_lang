@@ -221,7 +221,14 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   create, insert, drop and indexes are logged for the peers from this build
   on, over HTTP and the driver; before it only HTTP inserts were, so a peer
   never had the collection. Upgrade every node before creating a columnar
-  index. A full sync does not carry columnar collections.
+  index. A node that joins receives each columnar collection whole in the
+  full sync, when both nodes run this build.
+- **Indexes go stale** (observed with a test on this build; the code is the
+  same in 2.10.4): an index holds the rows present when it was created.
+  With a `sorted`, `hash`, `bitmap` or `bloom` index on `s`, `/query` and
+  `/aggregate` filtered on `s` miss every row inserted afterwards; `minmax`
+  and no index answer right. Create indexes after loading, drop and
+  recreate after inserts, or do without.
 
 ### Foreign keys (since 2.10.0; observed on builds of its branch, 2026-11-13)
 

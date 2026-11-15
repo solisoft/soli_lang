@@ -103,8 +103,8 @@ jwt_sign(payload, secret, options)
 | `options.expires_in` | Int | Expiration in seconds from now (optional) |
 | `options.exp` | Int | Expiration as an absolute Unix timestamp (optional, not with `expires_in`) |
 | `options.iat` | Int | Issued-at as an absolute Unix timestamp (optional, default: now) |
-| `options.algorithm` | String | Algorithm: "HS256", "HS384", "HS512", "RS256", "EdDSA" (optional) |
-| `options.key` | String | PEM-encoded private key for RS256/EdDSA (optional) |
+| `options.algorithm` | String | Algorithm: "HS256", "HS384", "HS512", "RS256", "ES256", "EdDSA" (optional) |
+| `options.key` | String | PEM-encoded private key for RS256/ES256/EdDSA (optional; ES256 takes a P-256 key in PKCS#8 form, as Apple's `.p8`) |
 
 ### jwt_verify
 
@@ -116,8 +116,8 @@ jwt_verify(token, secret, options)
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `token` | String | The JWT token |
-| `secret` | String | Secret key for HMAC, or public key material for RS256/EdDSA |
-| `options.key` | String | PEM-encoded public key for RS256/EdDSA (optional) |
+| `secret` | String | Secret key for HMAC, or public key material for RS256/ES256/EdDSA |
+| `options.key` | String | PEM-encoded public key for RS256/ES256/EdDSA (optional) |
 
 Returns a hash with claims if valid, or `{"error": true, "message": "..."}` if invalid.
 

@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`soli generate oauth apple`.** Sign in with Apple: the client secret is an
+  ES256 JWT the service mints from your `.p8` key for each exchange, the
+  posted answer (`form_post`) is turned into a GET of the same URL so the
+  session cookie comes with it, and the id_token's issuer, audience and expiry
+  are checked. Card #878.
+- **Microsoft, several tenants.** `MICROSOFT_TENANT=organizations` with
+  `MICROSOFT_ALLOWED_TENANTS` (tenant ids): the tenant is read from the
+  id_token and its issuer must be that tenant's. `common`, `consumers` and an
+  `organizations` with no list stay refused — Microsoft does not verify the
+  email claim.
+- **Connected accounts.** `/oauth/identities` lists the providers linked to
+  the signed-in account, connects another (the sign-in flow, started while
+  signed in) and disconnects one — never the last way into the account.
+- **`jwt_sign` / `jwt_verify` take `ES256`** (a P-256 key in PEM form).
+
+### Fixed
+
+- **The OAuth scaffold's accounts.** `OauthClient.find_or_create_user` stored
+  a random password in a plaintext `password` field and an `email_confirmed_at`
+  the auth scaffold never reads, so the account was neither usable with a
+  password nor confirmed; it created accounts whatever `AUTH_SIGNUP` said
+  (`first_user`, the default, closes sign-up after the first account); and
+  `sign_in` did not stamp the session version, so a session opened after any
+  password reset on the account was refused on its next request. Accounts are
+  now confirmed, password-less, created only when sign-up is open, and the
+  session is stamped. An existing account that never confirmed its email has
+  its password and sessions dropped before a provider links to it: someone
+  else may have created it in wait. `tests/oauth_generator_test.rs` serves the
+  scaffold against stand-in providers — its first end-to-end test.
+
 ## [2.36.3] - 2026-11-15
 
 ### Fixed

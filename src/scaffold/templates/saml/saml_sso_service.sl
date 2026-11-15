@@ -9,7 +9,8 @@
 #
 # The identity provider, either way:
 #
-#   SAML_IDP_METADATA_FILE   path to its metadata XML
+#   SAML_IDP_METADATA_FILE   path to its metadata XML, inside the app
+#                            (the server reads no file outside it)
 #
 #   SAML_IDP_ENTITY_ID       or its three values: the entity id,
 #   SAML_IDP_SSO_URL         the single sign-on URL (HTTP-Redirect binding),

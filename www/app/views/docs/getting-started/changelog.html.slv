@@ -21,6 +21,17 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.36.3.</p>
+        <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Sign in with Apple.</strong> <code class="text-cyan-400">soli generate oauth apple</code>: the client secret Apple wants is a JWT signed with your key, minted for each exchange, and the answer Apple posts from its own site is handed to a normal callback (<a href="/docs/security/oauth-client" class="text-amber-400 hover:underline">OAuth Client</a>).</li>
+            <li><strong class="text-white">Microsoft, several tenants.</strong> <code class="text-cyan-400">MICROSOFT_TENANT=organizations</code> with <code class="text-cyan-400">MICROSOFT_ALLOWED_TENANTS</code> signs in users of the directories you list, and only those: Microsoft does not verify the email a tenant asserts.</li>
+            <li><strong class="text-white">Connected accounts.</strong> <code class="text-cyan-400">/oauth/identities</code> lets a signed-in user link another provider or unlink one, never the last way in.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">jwt_sign</code> and <code class="text-cyan-400">jwt_verify</code> take ES256.</strong></li>
+        </ul>
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Accounts created by an OAuth sign-in.</strong> They are now confirmed and password-less, created only when <code class="text-cyan-400">AUTH_SIGNUP</code> allows it, and their session survives a later password reset. Before, the scaffold stored a random password in a plaintext field, ignored the sign-up policy, and opened sessions that were refused after any password reset on the account. An unconfirmed account is cleared of its password and sessions before a provider links to it. Apps that already ran <code class="text-cyan-400">soli generate oauth</code> keep their files: delete <code class="text-cyan-400">oauth_controller.sl</code> and <code class="text-cyan-400">oauth_client.sl</code> and re-run it.</li>
+        </ul>
     </section>
 
     <section id="v2-36-3" class="mb-16 scroll-mt-24">

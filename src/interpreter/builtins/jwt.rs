@@ -129,6 +129,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                             "HS384" => Algorithm::HS384,
                                             "HS512" => Algorithm::HS512,
                                             "RS256" => Algorithm::RS256,
+                                            "ES256" => Algorithm::ES256,
                                             "EdDSA" => Algorithm::EdDSA,
                                             _ => {
                                                 return Err(format!(
@@ -218,7 +219,10 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 
             // SEC-054: enforce minimum secret length for HMAC algorithms.
             // Asymmetric algorithms (RS256, EdDSA) use PEM keys and are exempt.
-            let is_asymmetric = matches!(algorithm, Algorithm::RS256 | Algorithm::EdDSA);
+            let is_asymmetric = matches!(
+                algorithm,
+                Algorithm::RS256 | Algorithm::ES256 | Algorithm::EdDSA
+            );
             if !is_asymmetric && secret.len() < MIN_SECRET_BYTES {
                 return Err(format!(
                     "jwt_sign() secret must be at least {} bytes for security (got {}); \
@@ -382,6 +386,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                             "HS384" => Algorithm::HS384,
                                             "HS512" => Algorithm::HS512,
                                             "RS256" => Algorithm::RS256,
+                                            "ES256" => Algorithm::ES256,
                                             "EdDSA" => Algorithm::EdDSA,
                                             _ => {
                                                 return Err(format!(
@@ -410,7 +415,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             //   for the common `jwt_verify(token, secret)` callers).
             let allowed_algorithms: Vec<Algorithm> = match (expected_algorithm, &pem_key) {
                 (Some(alg), _) => vec![alg],
-                (None, Some(_)) => vec![Algorithm::RS256, Algorithm::EdDSA],
+                (None, Some(_)) => vec![Algorithm::RS256, Algorithm::ES256, Algorithm::EdDSA],
                 (None, None) => {
                     vec![Algorithm::HS256, Algorithm::HS384, Algorithm::HS512]
                 }
@@ -418,7 +423,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 
             let header_carries_hmac = |algs: &[Algorithm]| {
                 algs.iter()
-                    .any(|a| !matches!(a, Algorithm::RS256 | Algorithm::EdDSA))
+                    .any(|a| !matches!(a, Algorithm::RS256 | Algorithm::ES256 | Algorithm::EdDSA))
             };
 
             // Key material passed where a shared secret belongs is refused.
@@ -676,6 +681,15 @@ fn build_encoding_key(
             EncodingKey::from_rsa_pem(pem.as_bytes())
                 .map_err(|e| format!("RS256 requires a valid RSA private key in PEM form: {}", e))
         }
+        Algorithm::ES256 => {
+            let pem = pem_key.unwrap_or(secret);
+            EncodingKey::from_ec_pem(pem.as_bytes()).map_err(|e| {
+                format!(
+                    "ES256 requires a valid P-256 private key in PKCS#8 PEM form: {}",
+                    e
+                )
+            })
+        }
         Algorithm::EdDSA => {
             let pem = pem_key.unwrap_or(secret);
             EncodingKey::from_ed_pem(pem.as_bytes()).map_err(|e| {
@@ -700,6 +714,11 @@ fn build_decoding_key(
             let pem = pem_key.unwrap_or(secret);
             DecodingKey::from_rsa_pem(pem.as_bytes())
                 .map_err(|e| format!("RS256 requires a valid RSA public key in PEM form: {}", e))
+        }
+        Algorithm::ES256 => {
+            let pem = pem_key.unwrap_or(secret);
+            DecodingKey::from_ec_pem(pem.as_bytes())
+                .map_err(|e| format!("ES256 requires a valid P-256 public key in PEM form: {}", e))
         }
         Algorithm::EdDSA => {
             let pem = pem_key.unwrap_or(secret);

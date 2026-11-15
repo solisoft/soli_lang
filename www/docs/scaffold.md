@@ -20,7 +20,7 @@ SoliLang includes a scaffold generator that quickly creates a complete MVC resou
 | `soli generate auth --two-factor` | The same plus an authenticator-app second factor (TOTP, backup codes); on an app that already has auth, only the two-factor files — [docs](/docs/security/authentication#two-factor) |
 | `soli generate saml` | SAML 2.0 single sign-on with an identity provider (Okta, Entra ID…) — [docs](/docs/security/saml) |
 | `soli generate audit [--chain]` | An audit log: the `Audited` concern and the `Audit` model; `--chain` makes it tamper-evident — [docs](/docs/database/models#audit-log) |
-| `soli generate oauth <provider>` | Sign in with GitHub, Google… — [docs](/docs/security/oauth-client) |
+| `soli generate oauth <provider>` | Sign in with Apple, GitHub, Google, GitLab, Discord, LinkedIn or Microsoft, and a connected-accounts page — [docs](/docs/security/oauth-client) |
 | `soli generate oidc_provider` | An OpenID Connect provider — [docs](/docs/security/oidc-provider) |
 
 Also: `mailer`, `component`, and `soli desktop build` for local desktop products.

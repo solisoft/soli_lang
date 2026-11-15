@@ -121,6 +121,16 @@ fn scaffolds(out: &mut BTreeMap<String, Vec<String>>) -> Vec<tempfile::TempDir> 
 
     let app = tempfile::tempdir().unwrap();
     new_app(app.path(), false);
+    solilang::scaffold::create_auth(app.path().to_str().unwrap()).expect("generate auth");
+    for provider in solilang::scaffold::oauth_generator::PROVIDERS {
+        solilang::scaffold::create_oauth(app.path().to_str().unwrap(), provider)
+            .expect("generate oauth");
+    }
+    check_corpus("oauth", app.path(), out);
+    dirs.push(app);
+
+    let app = tempfile::tempdir().unwrap();
+    new_app(app.path(), false);
     solilang::scaffold::create_audit(app.path().to_str().unwrap(), true).expect("generate audit");
     check_corpus("audit", app.path(), out);
     dirs.push(app);

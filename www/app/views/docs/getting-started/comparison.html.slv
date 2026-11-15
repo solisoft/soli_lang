@@ -156,7 +156,7 @@
         (requires auth first). See
         <a href="/docs/security/oauth-client" class="text-amber-400 hover:text-amber-300">OAuth Client</a>.
         The generated flow uses state CSRF and PKCE <code>S256</code>, and status-checks every provider response.
-        Ceiling: GitHub, Google, GitLab, Discord, LinkedIn and Microsoft (single tenant) &mdash; no Apple, not a full OmniAuth catalog.
+        Seven providers &mdash; Apple, GitHub, Google, GitLab, Discord, LinkedIn and Microsoft (your tenant, or a list of tenants) &mdash; and a connected-accounts page to link and unlink them. Ceiling: not a full OmniAuth catalog.
     </p>
     <p class="text-gray-400 mb-4">
         <strong class="text-white">SAML single sign-on</strong> is built in too:

@@ -185,6 +185,38 @@ describe("JWT") do
     end
   end
 
+  context("ES256, with a P-256 key") do
+    test("a token signed with the private key verifies with the public one") do
+      private_key = File.read("tests/fixtures/oauth/apple_test_key.p8")
+      public_key = File.read("tests/fixtures/oauth/apple_test_key.pub")
+      token = jwt_sign({"sub": "com.example.app"}, "", {
+        "algorithm": "ES256",
+        "key": private_key,
+        "kid": "ABC123",
+        "expires_in": 600,
+        "iss": "TEAMID"
+      })
+      header = Base64.urlsafe_decode(token.split(".")[0])
+      assert(header.includes?("\"alg\":\"ES256\""))
+      assert(header.includes?("\"kid\":\"ABC123\""))
+
+      claims = jwt_verify(token, "", {"algorithm": "ES256", "key": public_key})
+      assert_eq(claims["sub"], "com.example.app")
+      assert_eq(claims["iss"], "TEAMID")
+    end
+
+    test("another algorithm, or a key that is not P-256, is refused") do
+      private_key = File.read("tests/fixtures/oauth/apple_test_key.p8")
+      public_key = File.read("tests/fixtures/oauth/apple_test_key.pub")
+      token = jwt_sign({"sub": "x"}, "", {"algorithm": "ES256", "key": private_key, "expires_in": 600})
+      refused = jwt_verify(token, "", {"algorithm": "RS256", "key": public_key}) rescue {"error": true}
+      assert_eq(refused["error"], true)
+      assert_raises("ES256 requires a valid P-256 private key") do
+        jwt_sign({"sub": "x"}, "", {"algorithm": "ES256", "key": "not a key", "expires_in": 600})
+      end
+    end
+  end
+
   context("decoding without verification") do
     test("jwt_decode_unsafe wraps the claims and flags them unverified") do
       result = jwt_decode_unsafe(jwt_sign({"sub": "alice"}, SECRET, {"expires_in": 3600}))

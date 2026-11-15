@@ -2963,11 +2963,11 @@ Creates a signed JWT token.
 
 **Parameters:**
 - `payload` (Hash) - Claims to include in the token
-- `secret` (String) - Secret key for signing. Must be at least **32 bytes** for HMAC algorithms (SEC-054). Asymmetric algorithms (RS256, EdDSA) use PEM keys via the `key` option instead. Load a high-entropy value from `.env`, e.g. generate it once with `openssl rand -hex 32` and reference it as `getenv("JWT_SECRET")`. Never commit the secret to source.
+- `secret` (String) - Secret key for signing. Must be at least **32 bytes** for HMAC algorithms (SEC-054). Asymmetric algorithms (RS256, ES256, EdDSA) use PEM keys via the `key` option instead. Load a high-entropy value from `.env`, e.g. generate it once with `openssl rand -hex 32` and reference it as `getenv("JWT_SECRET")`. Never commit the secret to source.
 - `options` (Hash, optional) - Token options
   - `expires_in` (Int) - Expiration, in seconds from now
-  - `algorithm` (String) - "HS256", "HS384", "HS512", "RS256", or "EdDSA"
-  - `key` (String) - PEM-encoded private key for RS256/EdDSA algorithms
+  - `algorithm` (String) - "HS256", "HS384", "HS512", "RS256", "ES256", or "EdDSA"
+  - `key` (String) - PEM-encoded private key for RS256/ES256/EdDSA algorithms (ES256: a P-256 key in PKCS#8 form, as Apple's `.p8`)
   - `kid` (String) - Key ID, written to the JWT **header**. Lets a verifier pick the right key out of a JWKS, which is what makes key rotation possible.
   - `typ` (String) - Overrides the header `typ` (default `"JWT"`). Set `"at+jwt"` for RFC 9068 access tokens.
   - `exp` (Int) - Expiration as an **absolute** Unix timestamp. Mutually exclusive with `expires_in` — supplying both raises, since they are different units and silently picking one would produce a token expiring at a time you never meant.

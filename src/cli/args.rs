@@ -99,7 +99,7 @@ pub enum Command {
     GenerateOidcProvider {
         folder: String,
     },
-    /// `soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]` — OAuth *client*
+    /// `soli generate oauth <apple|github|google|gitlab|discord|linkedin|microsoft> [folder]` — OAuth *client*
     /// (sign in with a provider). Requires `soli generate auth` first.
     GenerateOauth {
         provider: String,
@@ -753,7 +753,7 @@ pub fn print_usage() {
     eprintln!("       soli generate saml [folder]");
     eprintln!("       soli generate audit [folder] [--chain]");
     eprintln!(
-        "       soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]"
+        "       soli generate oauth <apple|github|google|gitlab|discord|linkedin|microsoft> [folder]"
     );
     eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli generate devices [folder]");
@@ -831,7 +831,7 @@ pub fn print_usage() {
         "  generate saml        SAML 2.0 single sign-on with an identity provider (needs auth)"
     );
     eprintln!("  generate audit       Audit log: who changed what (--chain: tamper-evident)");
-    eprintln!("  generate oauth       OAuth client: sign in with github|google|gitlab|discord|linkedin|microsoft (needs auth)");
+    eprintln!("  generate oauth       OAuth client: sign in with apple|github|google|gitlab|discord|linkedin|microsoft (needs auth)");
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
     );
@@ -1245,7 +1245,7 @@ pub fn parse_args() -> Options {
                     "oauth" => {
                         i += 1;
                         if i >= args.len() {
-                            eprintln!("generate oauth requires a provider (github|google|gitlab|discord|linkedin|microsoft)");
+                            eprintln!("generate oauth requires a provider (apple|github|google|gitlab|discord|linkedin|microsoft)");
                             print_usage();
                             process::exit(64);
                         }

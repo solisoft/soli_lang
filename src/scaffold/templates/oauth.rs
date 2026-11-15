@@ -9,6 +9,8 @@ pub const DISCORD_OAUTH_SERVICE: &str = include_str!("oauth/discord_oauth_servic
 pub const LINKEDIN_OAUTH_SERVICE: &str = include_str!("oauth/linkedin_oauth_service.sl");
 pub const MICROSOFT_OAUTH_SERVICE: &str = include_str!("oauth/microsoft_oauth_service.sl");
 pub const OAUTH_CONTROLLER: &str = include_str!("oauth/oauth_controller.sl");
+pub const APPLE_OAUTH_SERVICE: &str = include_str!("oauth/apple_oauth_service.sl");
+pub const IDENTITIES_VIEW: &str = include_str!("oauth/identities.html.slv");
 
 pub const ROUTES_MARKER: &str = "# --- soli generate oauth ---";
 
@@ -18,6 +20,25 @@ pub fn routes_snippet() -> String {
 {ROUTES_MARKER}
 get("/auth/:provider", "oauth#start")
 get("/auth/:provider/callback", "oauth#callback")
+"#
+    )
+}
+
+/// Marker of the routes added with account linking and Apple's posted answer.
+pub const LINKING_ROUTES_MARKER: &str = "# --- soli generate oauth: linking ---";
+
+/// Routes of the actions a controller written before them does not have, so
+/// they are appended only next to a controller that does.
+pub fn linking_routes_snippet() -> String {
+    format!(
+        r#"
+{LINKING_ROUTES_MARKER}
+# Apple posts its answer from its own site; the action only turns that POST
+# into a GET of the same URL, so the origin gate has nothing to protect here.
+post("/auth/:provider/callback", "oauth#callback")
+skip_csrf("/auth/apple/callback")
+get("/oauth/identities", "oauth#identities")
+delete("/oauth/identities/:id", "oauth#unlink")
 "#
     )
 }
