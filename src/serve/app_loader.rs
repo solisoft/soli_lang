@@ -437,10 +437,11 @@ pub(crate) fn load_models(
 /// `models/base_model.sl` is defined before a `models/admin/user.sl` that
 /// extends it; keep cross-file superclasses at an equal-or-shallower depth.
 ///
-/// One exception: files that declare a value object (a domain event is one)
-/// or an enum load first, wherever they sit — `value_field :price, Price` in
-/// `invoice.sl` names a class that `price.sl` (or `values/price.sl`) would
-/// only define later.
+/// One exception: files that declare a value object (a domain event is one),
+/// an enum or a mixin module load first, wherever they sit — `value_field
+/// :price, Price` in `invoice.sl` names a class that `price.sl` (or
+/// `values/price.sl`) would only define later, and `include Publishable` in
+/// `post.sl` names the module of `concerns/publishable.sl`, a subdirectory.
 fn load_sl_dir_recursive(interpreter: &mut Interpreter, dir: &Path) -> Result<(), RuntimeError> {
     for path in ordered_sl_files(dir)? {
         execute_file(interpreter, &path)?;
@@ -481,8 +482,8 @@ pub fn controller_load_order(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Whether a file's source declares a value object or an enum — a textual
-/// look, before anything is parsed. A protected bundle's serialized AST is
+/// Whether a file's source declares a value object, an enum or a mixin
+/// module — a textual look, before anything is parsed. A protected bundle's serialized AST is
 /// never matched: it loads in plain order.
 fn declares_values(source: &[u8]) -> bool {
     if crate::bundle::is_ast_blob(source) {
@@ -491,6 +492,7 @@ fn declares_values(source: &[u8]) -> bool {
     String::from_utf8_lossy(source).lines().any(|line| {
         let line = line.trim_start();
         line.starts_with("enum ")
+            || line.starts_with("module ")
             || (line.starts_with("class ")
                 && line.split_once('<').is_some_and(|(_, parent)| {
                     matches!(parent.trim(), "ValueObject" | "DomainEvent")

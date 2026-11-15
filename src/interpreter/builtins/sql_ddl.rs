@@ -110,6 +110,20 @@ fn option_string(args: &[Value], index: usize, key: &str) -> Option<String> {
     None
 }
 
+/// Whether `columns` name fields of a DOCUMENT table (`_key` + `doc`) rather
+/// than columns of `table`: it has both of those, and none of the names. A
+/// table that cannot be read (it does not exist yet) is taken at its word.
+fn names_document_fields(table: &str, columns: &[String]) -> bool {
+    // The table may have been created a statement ago, in this migration.
+    crate::db::introspect::invalidate_schema(table);
+    let Ok(schema) = crate::db::introspect::get_schema(table) else {
+        return false;
+    };
+    schema.has_column("_key")
+        && schema.has_column("doc")
+        && columns.iter().all(|column| !schema.has_column(column))
+}
+
 pub fn register_sql_ddl_builtins(env: &mut Environment) {
     // create_table(name, columns) — a real column table.
     env.define(
@@ -213,10 +227,20 @@ pub fn register_sql_ddl_builtins(env: &mut Environment) {
             // A `doc.` prefix indexes a JSON field of a DOCUMENT table
             // (`_key` + `doc`) rather than a real column. Mixing the two in one
             // index cannot work — they live in different places.
-            let doc_fields: Vec<String> = columns
+            let mut doc_fields: Vec<String> = columns
                 .iter()
                 .filter_map(|c| c.strip_prefix("doc.").map(str::to_string))
                 .collect();
+            // On a DOCUMENT table a bare name that is not one of its columns
+            // is a field of `doc` too — which is what a migration shared with
+            // SoliDB writes (`db.create_index("users", "idx", ["email"])`).
+            // Indexing it as a column was wrong on every engine: Postgres and
+            // MySQL refuse the missing column, and SQLite reads the quoted
+            // name as a string constant, so a UNIQUE index refused the
+            // table's second row whatever it held.
+            if doc_fields.is_empty() && names_document_fields(&table, &columns) {
+                doc_fields = columns.clone();
+            }
             if !doc_fields.is_empty() {
                 // Every sibling helper guards through `ddl::add_index_sql`; this
                 // branch never reaches it, so the engine's own tables have to be
@@ -224,6 +248,7 @@ pub fn register_sql_ddl_builtins(env: &mut Environment) {
                 // job engine indexes `_jobs` through it on purpose.
                 ddl::assert_user_table(&table)?;
                 if doc_fields.len() != columns.len() {
+                    // (Unreachable for bare names: those are all fields or none.)
                     return Err(format!(
                         "{op}: mix of document fields (\"doc.status\") and real columns \
                          (\"status\") in one index. A document table keeps its fields inside \
@@ -239,6 +264,42 @@ pub fn register_sql_ddl_builtins(env: &mut Environment) {
             crate::db::sql::execute_ddl(&sql)?;
             Ok(Value::Bool(true))
         })),
+    );
+
+    // `db.list_indexes(table)` on SQL, in SoliDB's shape (`[{"name": …}]`),
+    // so the `down` a shared migration writes — drop every index, then the
+    // collection — runs here too. The primary key's own index is left out:
+    // it is not one a migration created, and dropping it is refused.
+    env.define(
+        "__soli_sql_list_indexes".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_sql_list_indexes",
+            Some(1),
+            |args| {
+                let op = "list_indexes(table)";
+                require_sql(op)?;
+                let table = arg_string(args, 0, op, "the table name")?;
+                ddl::assert_user_table(&table)?;
+                let primary = format!("{table}_pkey");
+                let indexes = crate::db::sql::list_index_names(&table)?
+                    .into_iter()
+                    .filter(|name| {
+                        name != "PRIMARY"
+                            && name != &primary
+                            && !name.starts_with("sqlite_autoindex_")
+                    })
+                    .map(|name| {
+                        crate::interpreter::value::hash_from_pairs([(
+                            "name",
+                            Value::String(name.into()),
+                        )])
+                    })
+                    .collect();
+                Ok(Value::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    indexes,
+                ))))
+            },
+        )),
     );
 
     env.define(

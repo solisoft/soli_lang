@@ -83,7 +83,10 @@ pub(crate) fn write_if_absent(app_path: &Path, rel: &str, contents: &str) -> Res
 
 /// Write `db/migrations/<now + offset>_<name>.sl` unless a migration whose
 /// file name contains `name` is already there. `offset` orders migrations a
-/// generator writes within the same second.
+/// generator writes within the same second. A version another migration
+/// already has is skipped: two generators run in the same second (`soli
+/// generate auth && soli generate saml`) used to write two files with one
+/// version, and the runner applied only one of them.
 pub(crate) fn write_migration_once(
     app_path: &Path,
     name: &str,
@@ -103,11 +106,25 @@ pub(crate) fn write_migration_once(
         }
     }
 
-    let timestamp = SystemTime::now()
+    let mut timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("Failed to get timestamp: {}", e))?
         .as_secs()
         + offset;
+    let taken: Vec<String> = fs::read_dir(&migrations_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    while taken
+        .iter()
+        .any(|file| file.starts_with(&format!("{timestamp}_")))
+    {
+        timestamp += 1;
+    }
     let filename = format!("{}_{}.sl", timestamp, name);
     write_file(&migrations_dir.join(&filename), contents)?;
     println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
@@ -1245,6 +1262,41 @@ mod tests {
         set_view_helper_env_for_test(None);
         reset_builtins_rc();
         Ok(())
+    }
+
+    /// Two generators run in the same second each get a version of their
+    /// own: the runner identifies a migration by it, and applied only one of
+    /// two files that shared one.
+    #[test]
+    fn a_generated_migration_never_takes_a_version_already_in_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let migrations = dir.path().join("db/migrations");
+        fs::create_dir_all(&migrations).unwrap();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        // Whatever second the call below lands in, it is taken.
+        for second in now..now + 5 {
+            fs::write(migrations.join(format!("{second}_create_users.sl")), "").unwrap();
+        }
+        write_migration_once(dir.path(), "create_audits", 0, "def up(db)\nend\n").unwrap();
+
+        let mut versions: Vec<String> = fs::read_dir(&migrations)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .map(|name| name.split('_').next().unwrap_or_default().to_string())
+            .collect();
+        let files = versions.len();
+        versions.sort();
+        versions.dedup();
+        assert_eq!(files, 6);
+        assert_eq!(versions.len(), 6, "a version was reused");
+
+        // And a migration of that name is still written only once.
+        write_migration_once(dir.path(), "create_audits", 0, "def up(db)\nend\n").unwrap();
+        assert_eq!(fs::read_dir(&migrations).unwrap().count(), 6);
     }
 
     /// Every bundled doc must be reachable from the generated root CLAUDE.md,

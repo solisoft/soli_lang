@@ -82,6 +82,13 @@ pub enum Command {
         passkeys: bool,
         two_factor: bool,
     },
+    /// `soli generate audit [folder] [--chain]` — scaffold an audit log (the
+    /// `Audited` concern and the `Audit` model); `--chain` links the entries
+    /// by hash.
+    GenerateAudit {
+        folder: String,
+        chained: bool,
+    },
     /// `soli generate saml [folder]` — scaffold SAML 2.0 single sign-on with
     /// an identity provider (needs `generate auth`).
     GenerateSaml {
@@ -744,6 +751,7 @@ pub fn print_usage() {
     eprintln!("       soli generate auth [folder] [--passkeys] [--two-factor]");
     eprintln!("       soli generate oidc_provider [folder]");
     eprintln!("       soli generate saml [folder]");
+    eprintln!("       soli generate audit [folder] [--chain]");
     eprintln!(
         "       soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]"
     );
@@ -822,6 +830,7 @@ pub fn print_usage() {
     eprintln!(
         "  generate saml        SAML 2.0 single sign-on with an identity provider (needs auth)"
     );
+    eprintln!("  generate audit       Audit log: who changed what (--chain: tamper-evident)");
     eprintln!("  generate oauth       OAuth client: sign in with github|google|gitlab|discord|linkedin|microsoft (needs auth)");
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
@@ -948,6 +957,9 @@ pub fn print_usage() {
     );
     eprintln!("  soli generate oidc_provider   Scaffold an OpenID Connect provider");
     eprintln!("  soli generate saml            Sign in through a SAML identity provider");
+    eprintln!(
+        "  soli generate audit           Log who changed what on the models that include Audited"
+    );
     eprintln!("  soli generate oauth github    Sign in with GitHub (OAuth client)");
     eprintln!("  soli build my_app             Bundle app into my_app.soli");
     eprintln!("  soli build my_app -o release.soli  Custom bundle output path");
@@ -1185,6 +1197,31 @@ pub fn parse_args() -> Options {
                         };
                         return options;
                     }
+                    "audit" => {
+                        let mut folder: Option<String> = None;
+                        let mut chained = false;
+                        for arg in &args[i + 1..] {
+                            match arg.as_str() {
+                                "--chain" => chained = true,
+                                flag if flag.starts_with('-') => {
+                                    eprintln!("generate audit: unknown option {flag}");
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                                value if folder.is_none() => folder = Some(value.to_string()),
+                                extra => {
+                                    eprintln!("generate audit: unexpected argument {extra}");
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                            }
+                        }
+                        options.command = Command::GenerateAudit {
+                            folder: folder.unwrap_or_else(|| ".".to_string()),
+                            chained,
+                        };
+                        return options;
+                    }
                     "saml" => {
                         i += 1;
                         let folder = if i < args.len() && !args[i].starts_with('-') {
@@ -1405,7 +1442,7 @@ pub fn parse_args() -> Options {
                     }
                     _ => {
                         eprintln!(
-                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, saml, oauth, mailer, component, devices, client, app_links, offline)",
+                            "Unknown generate subcommand: {} (try: scaffold, auth, oidc_provider, saml, audit, oauth, mailer, component, devices, client, app_links, offline)",
                             subcommand
                         );
                         print_usage();

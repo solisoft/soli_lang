@@ -2889,6 +2889,101 @@ as-is on load rather than erroring. Low-level/transaction writes that bypass
 `Crypto.decrypt(ciphertext, key?)` builtins, which you can also use on their
 own (key defaults to `SOLI_ENCRYPTION_KEY`).
 
+## Audit Log
+
+Who changed what, and when — as a concern a model includes.
+
+```bash
+soli generate audit           # app/models/concerns/audited.sl, app/models/audit.sl, a migration
+soli generate audit --chain   # the same, with the entries chained by hash
+soli db:migrate up
+```
+
+```soli
+class Invoice < Model
+  include Audited
+end
+
+invoice.update({"total": 120})
+invoice.audits.last.changes     # {"total": [100, 120]}
+```
+
+Every create, update and delete of the model writes an `Audit` entry:
+
+| Field | |
+|---|---|
+| `action` | `"create"`, `"update"` or `"delete"` |
+| `record_type`, `record_key` | the model's class name and the record's key |
+| `changes` | `{field: [old, new]}` — on a create every field as `[nil, value]`, on a delete every field as `[value, nil]` |
+| `at` | Unix seconds |
+| `actor_type`, `actor_key`, `actor_label` | the signed-in user of the request (`req["current_user"]`: its class, key and email), or `"system"` outside a request — a job, a script, a migration |
+| `request_id`, `ip` | the request's `X-Request-Id` header and remote address, when there is a request |
+
+Reading:
+
+```soli
+invoice.audits                       # this record's history, oldest first
+Audit.by_actor(user)                 # what someone did, newest first
+Audit.between(from_unix, to_unix)    # a period, oldest first
+Audit.purge_before(unix)             # retention, when you decide on one; returns how many
+```
+
+Both files are plain Soli over callbacks, dirty tracking and concerns, and
+yours to edit — what an entry holds is `Audit.record`, who the actor is
+`Audit.actor`.
+
+### Secrets stay out
+
+Fields declared with [`encrypts`](#encrypted-attributes) and `password_digest`
+are logged as changed with their values withheld
+(`{"iban": ["[redacted]", "[redacted]"]}`). Add your own per model, or leave
+fields out of the log altogether:
+
+```soli
+class Invoice < Model
+  include Audited
+  encrypts(:iban)
+
+  static def audit_redacted
+    ["secret_note"]
+  end
+
+  static def audit_ignored
+    ["views"]              # a change to these alone writes no entry
+  end
+end
+```
+
+`Model.encrypted_attributes` is the list of a model's `encrypts` fields.
+
+### A tamper-evident log
+
+With `--chain`, each entry carries a sequence number and a hash over its
+content and the previous entry's hash (`Crypto.ledger_hash`), so editing,
+removing or inserting an entry breaks every hash after it:
+
+```soli
+Audit.verify    # nil while the log is intact, else the seq of the first broken entry
+```
+
+It costs a read per entry, and writers queue on the tail of the log: two
+requests that read the same tail ask for the same `seq`, the unique index
+refuses one, and that one retries (up to eight times, then raises). Choose it
+for a log you must be able to defend, not for a busy table. Someone who can
+rewrite the whole table can rewrite the whole chain — publish or store the
+latest `entry_hash` elsewhere if that is your threat. `purge_before` removes
+the head of the chain; archive before you purge.
+
+### What is not logged
+
+- Writes that skip callbacks: `update_all`, `delete_all`, `increment` /
+  `decrement`, `insert_all`, raw queries.
+- A change made by mutating a nested Hash or Array in place — reassign the
+  attribute (see [Dirty tracking](#dirty-tracking)).
+- The entry is written after the change, in its own write: if it fails, the
+  change stands and the error is raised. Wrap both in `Model.transaction` on a
+  SQL database if they must succeed or fail together.
+
 ## Relationship Accessors
 
 Access related records directly from instances:

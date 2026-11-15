@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod app;
 pub mod app_links_gen;
+pub mod audit;
 pub mod auth;
 pub mod bundled_docs;
 pub mod clients;

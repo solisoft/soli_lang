@@ -17945,6 +17945,56 @@
       ]
     },
     {
+      "title": "Audit Log",
+      "type": "command",
+      "category": "Models",
+      "path": "/docs/database/models#audit-log",
+      "signature": "soli generate audit [--chain]",
+      "description": "Log who changed what: the Audited concern and the Audit model, with secret values withheld and an optional hash chain",
+      "keywords": [
+        "audit",
+        "audit log",
+        "audit trail",
+        "history",
+        "changes",
+        "who changed",
+        "versioning",
+        "tamper-evident",
+        "compliance",
+        "audited",
+        "paper trail"
+      ]
+    },
+    {
+      "title": "Audit.verify",
+      "type": "method",
+      "category": "Models",
+      "path": "/docs/database/models#audit-chain",
+      "signature": "Audit.verify",
+      "description": "Check a chained audit log: nil while intact, else the seq of the first entry edited, removed or inserted",
+      "keywords": [
+        "audit",
+        "verify",
+        "hash chain",
+        "tamper",
+        "ledger"
+      ]
+    },
+    {
+      "title": "Model.encrypted_attributes",
+      "type": "method",
+      "category": "Models",
+      "path": "/docs/database/models#audit-secrets",
+      "signature": "Model.encrypted_attributes",
+      "description": "The fields a model declared with encrypts",
+      "keywords": [
+        "encrypts",
+        "encrypted",
+        "attributes",
+        "fields"
+      ]
+    },
+    {
       "title": "Production security defaults",
       "type": "page",
       "category": "Security",

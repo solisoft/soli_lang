@@ -963,6 +963,16 @@ pub fn run_generate_oidc_provider(folder: &str) {
     }
 }
 
+pub fn run_generate_audit(folder: &str, chained: bool) {
+    match solilang::scaffold::create_audit(folder, chained) {
+        Ok(()) => solilang::scaffold::print_audit_success_message(chained),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
 pub fn run_generate_saml(folder: &str) {
     match solilang::scaffold::create_saml(folder) {
         Ok(()) => solilang::scaffold::print_saml_success_message(),
@@ -3334,24 +3344,18 @@ pub fn run_db_indexes(folder: &str) {
 
     let models_dir = app_path.join("app").join("models");
     if models_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&models_dir) {
-            let mut sorted: Vec<_> = entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|ext| ext == "sl"))
-                .collect();
-            sorted.sort();
-            for path in sorted {
-                let Ok(source) = fs::read_to_string(&path) else {
-                    continue;
-                };
-                if let Err(e) = solilang::run_with_options(&source, false) {
-                    eprintln!(
-                        "  \x1b[33mWarning:\x1b[0m {} failed to load: {}",
-                        path.display(),
-                        e
-                    );
-                }
+        // The server's order, subfolders included: a model that includes a
+        // concern of app/models/concerns/ loads here too.
+        for path in solilang::serve::sl_load_order(&models_dir) {
+            let Ok(source) = fs::read_to_string(&path) else {
+                continue;
+            };
+            if let Err(e) = solilang::run_with_options(&source, false) {
+                eprintln!(
+                    "  \x1b[33mWarning:\x1b[0m {} failed to load: {}",
+                    path.display(),
+                    e
+                );
             }
         }
     } else {

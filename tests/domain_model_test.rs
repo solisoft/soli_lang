@@ -941,9 +941,11 @@ fn a_served_app_loads_and_saves_an_event_sourced_aggregate() {
 }
 
 /// `soli test` preloads app/models and app/services for the spec process in
-/// the order `soli serve` loads them: value objects and events first, then
-/// each folder's files, then its subfolders — so a bounded context's model
-/// (`app/models/billing/invoice.sl`) exists in a spec, as it does in the app.
+/// the order `soli serve` loads them: value objects, events and mixin modules
+/// first, then each folder's files, then its subfolders — so a bounded
+/// context's model (`app/models/billing/invoice.sl`) exists in a spec, as it
+/// does in the app, and a model can include a concern of
+/// `app/models/concerns/`.
 #[test]
 fn the_test_runner_preloads_contexts_in_the_servers_order() {
     let dir = tempfile::tempdir().unwrap();
@@ -952,6 +954,16 @@ fn the_test_runner_preloads_contexts_in_the_servers_order() {
     write(root, "app/models/billing/invoice.sl", INVOICE);
     write(root, "app/models/zebra.sl", "class Zebra < Model\nend\n");
     write(root, "app/models/values/price.sl", PRICE);
+    write(
+        root,
+        "app/models/concerns/publishable.sl",
+        "# A concern.\nmodule Publishable\nend\n",
+    );
+    write(
+        root,
+        "app/models/article.sl",
+        "class Article < Model\n  include Publishable\nend\n",
+    );
 
     let order: Vec<String> = solilang::serve::sl_load_order(&root.join("app/models"))
         .iter()
@@ -965,8 +977,10 @@ fn the_test_runner_preloads_contexts_in_the_servers_order() {
     assert_eq!(
         order,
         vec![
-            "values/price.sl",
             "_base.sl",
+            "concerns/publishable.sl",
+            "values/price.sl",
+            "article.sl",
             "zebra.sl",
             "billing/invoice.sl"
         ]

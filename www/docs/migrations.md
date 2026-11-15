@@ -74,6 +74,10 @@ end
 soli db:migrate generate create_users_table
 ```
 
+Two migrations cannot share a version: the runner refuses to start and names
+both files (it used to apply one and skip the other). The generators never
+write one that is taken.
+
 This creates a timestamped migration file:
 ```
 db/migrations/20260122143052_create_users_table.sl
@@ -514,7 +518,8 @@ MySQL parses an inline `REFERENCES` and then ignores it.
 | `db.add_index(table, columns, options?)` | `{ "unique": true, "name": "…" }`; the name defaults to `idx_<table>_<columns>` |
 | `db.add_index(table, ["doc.status"])` | A `doc.` prefix indexes a **JSON field of a document table** (expression index; a generated column on MySQL) |
 | `db.drop_index(table, name)` | |
-| `db.create_index(table, name, fields, options?)` | The SoliDB-shaped call, so a shared migration keeps working |
+| `db.create_index(table, name, fields, options?)` | The SoliDB-shaped call, so a shared migration keeps working. On a document table the fields are fields of `doc` (`["email"]` indexes `doc.email`, as `add_index(table, ["doc.email"])` does); on a column table they are columns |
+| `db.list_indexes(table)` | `[{"name": …}]`, the primary key's own index left out — so `db.list_indexes(t).each { \|idx\| db.drop_index(t, idx["name"]) }` in a `down` works on SQL as on SoliDB |
 | `db.execute(sql)` | Escape hatch — engine-specific by definition. Migration-only (not callable from controllers, jobs, or templates). Runs on a dedicated connection so `SET` / `ATTACH` / `PRAGMA` cannot leak into the request pool. |
 | `db.create_collection(name)` / `db.drop_collection(name)` | Aliases for document tables |
 | `db.create_collection(name, "edge"/"timeseries"/…)` | ✗ raises — typed collections are SoliDB-only |

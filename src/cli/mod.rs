@@ -60,6 +60,9 @@ pub fn run() {
         } => commands::run_generate_auth(folder, *passkeys, *two_factor),
         Command::GenerateOidcProvider { folder } => commands::run_generate_oidc_provider(folder),
         Command::GenerateSaml { folder } => commands::run_generate_saml(folder),
+        Command::GenerateAudit { folder, chained } => {
+            commands::run_generate_audit(folder, *chained)
+        }
         Command::GenerateOauth { provider, folder } => {
             commands::run_generate_oauth(provider, folder)
         }

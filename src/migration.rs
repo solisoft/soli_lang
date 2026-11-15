@@ -290,54 +290,21 @@ pub fn strip_connection_declaration(source: &str) -> String {
 /// Collect `.sl` files under `app/models` and `app/services` for use as
 /// interpreter preambles when running migrations (or seeds).
 ///
-/// Walk is recursive and top-down: within each directory, files load in
-/// alphabetical order *before* subdirectories, matching `soli serve` so a
-/// base class at an equal-or-shallower depth is defined first.
+/// In the order `soli serve` loads them ([`crate::serve::sl_load_order`]):
+/// value objects, enums and mixin modules first, then each directory's files
+/// before its subdirectories — so a model that includes a concern of
+/// `app/models/concerns/` loads here as it does in the server.
 pub fn collect_model_preamble_files(app_path: &Path) -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
     for sub in ["models", "services"] {
-        collect_sl_dir_recursive(&app_path.join("app").join(sub), &mut out);
+        for path in crate::serve::sl_load_order(&app_path.join("app").join(sub)) {
+            if let Ok(content) = fs::read_to_string(&path) {
+                let absolute = path.canonicalize().unwrap_or(path);
+                out.push((absolute, content));
+            }
+        }
     }
     out
-}
-
-fn collect_sl_dir_recursive(dir: &Path, out: &mut Vec<(PathBuf, String)>) {
-    if !dir.is_dir() {
-        return;
-    }
-
-    let mut files: Vec<PathBuf> = Vec::new();
-    let mut subdirs: Vec<PathBuf> = Vec::new();
-
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        // Prefer `file_type()` over `is_dir()` so symlinked directories are not
-        // followed into a possible cycle (same rule as the serve auto-loader).
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_dir() {
-            subdirs.push(path);
-        } else if path.extension().is_some_and(|ext| ext == "sl") {
-            files.push(path);
-        }
-    }
-
-    files.sort();
-    subdirs.sort();
-
-    for path in files {
-        if let Ok(content) = fs::read_to_string(&path) {
-            let absolute = path.canonicalize().unwrap_or(path);
-            out.push((absolute, content));
-        }
-    }
-    for subdir in subdirs {
-        collect_sl_dir_recursive(&subdir, out);
-    }
 }
 
 /// Migration runner that handles up/down/status operations
@@ -524,6 +491,20 @@ impl MigrationRunner {
         }
 
         migrations.sort_by(|a, b| a.version.cmp(&b.version));
+
+        // A version identifies a migration in the applied list: two files
+        // with the same one on the same connection would run as one, and the
+        // other be skipped without a word.
+        for pair in migrations.windows(2) {
+            if pair[0].version == pair[1].version && pair[0].connection == pair[1].connection {
+                return Err(format!(
+                    "two migrations share the version {}: {} and {}. Rename one of them (a later number keeps the order).",
+                    pair[0].version,
+                    pair[0].path.display(),
+                    pair[1].path.display()
+                ));
+            }
+        }
 
         Ok(migrations)
     }
@@ -842,6 +823,12 @@ class MigrationDb {{
 
     fn drop_index(table: String, name: String) -> Any {{
         return __soli_sql_drop_index(table, name);
+    }}
+
+    # The indexes of a table, as [{{"name": …}}] — SoliDB's shape, so the
+    # `down` of a shared migration keeps working on SQL.
+    fn list_indexes(table: String) -> Any {{
+        return __soli_sql_list_indexes(table);
     }}
 
     # SoliDB-shaped index call, so a shared migration keeps working on SQL.
@@ -1178,8 +1165,26 @@ pub fn generate_migration(app_path: &Path, name: &str) -> Result<PathBuf, String
     fs::create_dir_all(&migrations_path)
         .map_err(|e| format!("Failed to create migrations directory: {}", e))?;
 
-    // Generate timestamp
-    let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S");
+    // The version: now, or the first later second no migration has. Two
+    // generated in the same second would share one, and a version identifies
+    // a migration.
+    let taken: Vec<String> = fs::read_dir(&migrations_path)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut moment = chrono::Local::now();
+    let mut timestamp = moment.format("%Y%m%d%H%M%S").to_string();
+    while taken
+        .iter()
+        .any(|file| file.starts_with(&format!("{timestamp}_")))
+    {
+        moment += chrono::Duration::seconds(1);
+        timestamp = moment.format("%Y%m%d%H%M%S").to_string();
+    }
 
     // Sanitize name
     let safe_name: String = name
@@ -1657,6 +1662,68 @@ end
             );
             let err = runner(app).get_migrations().unwrap_err();
             assert!(err.contains("only once"), "{err}");
+        });
+    }
+
+    #[test]
+    fn two_migrations_with_one_version_fail_discovery() {
+        with_sqlite_app(&["twins"], |app| {
+            write_migration(app, "20260813000005_create_users.sl", "def up(db)\nend\n");
+            write_migration(app, "20260813000005_create_posts.sl", "def up(db)\nend\n");
+            let err = runner(app).get_migrations().unwrap_err();
+            assert!(err.contains("share the version 20260813000005"), "{err}");
+            assert!(
+                err.contains("create_users") && err.contains("create_posts"),
+                "{err}"
+            );
+        });
+    }
+
+    /// The migration every scaffold writes — SoliDB's shape — on a SQL
+    /// database: the index is on the document's field, not on a column of
+    /// that name (which SQLite read as a string constant, so a UNIQUE index
+    /// refused the table's second row), and `down` can list what to drop.
+    #[test]
+    fn a_shared_migration_indexes_document_fields_and_rolls_back() {
+        with_sqlite_app(&["shared"], |app| {
+            write_migration(
+                app,
+                "20260813000006_create_members.sl",
+                r#"
+def up(db)
+  db.create_collection("members")
+  db.create_index("members", "idx_members_email", ["email"], { "unique": true })
+  db.create_index("members", "idx_members_team_role", ["team", "role"], {})
+end
+
+def down(db)
+  db.list_indexes("members").each do |idx|
+    db.drop_index("members", idx["name"])
+  end
+  db.drop_collection("members")
+end
+"#,
+            );
+            runner(app).migrate_up().expect("up");
+
+            let mut names = crate::db::sql::list_index_names("members").expect("indexes");
+            names.retain(|name| !name.starts_with("sqlite_autoindex_"));
+            names.sort();
+            assert_eq!(names, ["idx_members_email", "idx_members_team_role"]);
+
+            let insert = |key: &str, email: &str| {
+                crate::db::sql::execute_raw(&format!(
+                    "INSERT INTO members (_key, doc) VALUES ('{key}', '{{\"email\":\"{email}\"}}')"
+                ))
+            };
+            insert("a", "ada@example.com").expect("first row");
+            insert("b", "grace@example.com").expect("a second row with another email");
+            let duplicate = insert("c", "ada@example.com").unwrap_err();
+            assert!(duplicate.to_lowercase().contains("unique"), "{duplicate}");
+
+            runner(app).migrate_down().expect("down");
+            crate::db::introspect::clear_schema_cache();
+            assert!(crate::db::introspect::get_schema("members").is_err());
         });
     }
 

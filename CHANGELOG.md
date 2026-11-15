@@ -19,9 +19,51 @@
 - **`next` in `map` gave one element fewer on the tree-walker** and `nil` on
   the VM. Both give `nil` now, as in Ruby and as every other mapping method
   here did.
+- **`db.create_index` on a SQL document table indexed the wrong thing.** The
+  SoliDB-shaped call every scaffold migration uses
+  (`db.create_index("users", "idx_users_email", ["email"], {"unique": true})`)
+  was run as an index on a *column* `email`, which a document table (`_key` +
+  `doc`) does not have. Postgres and MySQL refused the migration; SQLite read
+  the quoted name as a string constant, so the index covered nothing and a
+  UNIQUE one refused the table's second row whatever it held. A bare name that
+  is not a column of a document table is now a field of `doc`
+  (`__soli_sql_add_index`), as `add_index(table, ["doc.email"])` always was.
+  A SQLite database migrated before this keeps its constant indexes: drop
+  them (`db.drop_index`) and re-create them in a new migration.
+- **The `down` of every scaffold migration failed on SQL**: it calls
+  `db.list_indexes`, which the SQL migration DSL did not have.
+- **Two migrations with the same version ran as one.** The runner identifies
+  a migration by its version, so the second file was skipped without a word;
+  it now refuses to start and names both files. The generators wrote such
+  pairs when two of them ran in the same second (`soli generate auth && soli
+  generate saml`): `write_migration_once` skips a version another migration
+  has.
+- **A concern in `app/models/concerns/` — where the docs and `soli new` put
+  them — stopped the app from booting**: files load before subdirectories, so
+  the model that includes it was read first (`Undefined variable
+  'Publishable'`). A file that declares a `module` now loads first, as value
+  objects and enums do, and `db:migrate`, `db:seed` and `db:indexes` load
+  models in the server's order (`serve::sl_load_order`) instead of their own.
 
 ### Added
 
+- **An audit log: `soli generate audit [--chain]`.** It writes the `Audited`
+  concern (`app/models/concerns/audited.sl`), the `Audit` model and a
+  migration. A model that `include Audited` logs every create, update and
+  delete: the fields that changed as `[old, new]`, the actor (the request's
+  `current_user`, or `system`), the time, the request id and the address.
+  Values of `encrypts` fields and of `password_digest` are withheld, and a
+  model adds its own with `audit_redacted` / `audit_ignored`. `--chain` links
+  the entries by hash (`Crypto.ledger_hash`, a unique index on `seq`, a retry
+  when two writers ask for the same one) and `Audit.verify` names the first
+  entry that was edited, removed or inserted. Reading: `record.audits`,
+  `Audit.by_actor`, `Audit.between`; retention: `Audit.purge_before`. Not
+  logged: `update_all`, `delete_all`, `increment`/`decrement`, raw queries.
+  `tests/audit_generator_test.rs` serves an audited app on SQLite. Card #877.
+- **`Model.encrypted_attributes`** — the fields a model declared with
+  `encrypts`.
+- **`db.list_indexes(table)` in SQL migrations**, in SoliDB's shape
+  (`[{"name": …}]`, the primary key's index left out).
 - **SAML 2.0 single sign-on: a native `Saml` class and `soli generate saml`.**
   `Saml.auth_request`, `Saml.verify_response`, `Saml.metadata`,
   `Saml.parse_metadata` and `Saml.test_response` (a signed response for

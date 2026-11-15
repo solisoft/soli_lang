@@ -369,6 +369,23 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
         )),
     );
 
+    // Model.encrypted_attributes - the fields declared with `encrypts`.
+    native_static_methods.insert(
+        "encrypted_attributes".to_string(),
+        Rc::new(NativeFunction::new_auto_invocable(
+            "Model.encrypted_attributes",
+            Some(1),
+            |args| {
+                let class_name = get_class_name_from_class(args)?;
+                let fields = super::registry::get_encrypted_fields(&class_name)
+                    .into_iter()
+                    .map(|field| Value::String(field.into()))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(fields))))
+            },
+        )),
+    );
+
     // Model.count() - Count documents
     use super::crud::exec_query;
     native_static_methods.insert(

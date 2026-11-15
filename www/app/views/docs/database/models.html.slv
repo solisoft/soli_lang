@@ -1360,6 +1360,70 @@ end</code></pre>
         <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone. On a column-aware model, each <code>encrypts</code> field must be a string/text column; boot fails if it is missing or not text.</p>
     </div>
 
+    <h2 id="audit-log" class="text-2xl font-bold text-white mb-6">Audit Log</h2>
+
+    <p class="text-gray-400 mb-4">Who changed what, and when &mdash; as a concern a model includes.</p>
+    <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate audit           # app/models/concerns/audited.sl, app/models/audit.sl, a migration
+soli generate audit --chain   # the same, with the entries chained by hash
+soli db:migrate up</code></pre>
+    <pre data-filename="app/models/invoice.sl" class="mt-4"><code class="language-soli text-sm">class Invoice &lt; Model
+  include Audited
+end
+
+invoice.update({"total": 120})
+invoice.audits.last.changes     # {"total": [100, 120]}</code></pre>
+    <p class="text-gray-400 my-4">Every create, update and delete of the model writes an <code class="text-amber-300">Audit</code> entry:</p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+        <table class="w-full text-sm text-left">
+            <thead class="bg-white/5 text-gray-300">
+                <tr><th class="py-3 px-4 font-semibold">Field</th><th class="py-3 px-4 font-semibold">What it holds</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/10 text-gray-400">
+                <tr><td class="py-3 px-4"><code>action</code></td><td class="py-3 px-4"><code>"create"</code>, <code>"update"</code> or <code>"delete"</code></td></tr>
+                <tr><td class="py-3 px-4"><code>record_type</code>, <code>record_key</code></td><td class="py-3 px-4">The model&rsquo;s class name and the record&rsquo;s key</td></tr>
+                <tr><td class="py-3 px-4"><code>changes</code></td><td class="py-3 px-4"><code>{field: [old, new]}</code> &mdash; on a create every field as <code>[nil, value]</code>, on a delete every field as <code>[value, nil]</code></td></tr>
+                <tr><td class="py-3 px-4"><code>at</code></td><td class="py-3 px-4">Unix seconds</td></tr>
+                <tr><td class="py-3 px-4"><code>actor_type</code>, <code>actor_key</code>, <code>actor_label</code></td><td class="py-3 px-4">The signed-in user of the request (<code>req["current_user"]</code>: its class, key and email), or <code>"system"</code> outside a request &mdash; a job, a script, a migration</td></tr>
+                <tr><td class="py-3 px-4"><code>request_id</code>, <code>ip</code></td><td class="py-3 px-4">The request&rsquo;s <code>X-Request-Id</code> header and remote address, when there is a request</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <pre data-filename="Reading"><code class="language-soli text-sm">invoice.audits                       # this record's history, oldest first
+Audit.by_actor(user)                 # what someone did, newest first
+Audit.between(from_unix, to_unix)    # a period, oldest first
+Audit.purge_before(unix)             # retention, when you decide on one; returns how many</code></pre>
+    <p class="text-gray-400 my-4">Both files are plain Soli over callbacks, dirty tracking and concerns, and yours to edit &mdash; what an entry holds is <code>Audit.record</code>, who the actor is <code>Audit.actor</code>.</p>
+
+    <h3 id="audit-secrets" class="text-xl font-semibold text-white mt-8 mb-3">Secrets stay out</h3>
+    <p class="text-gray-400 mb-4">Fields declared with <a href="#encrypted-attributes" class="text-amber-400 hover:underline">encrypts</a> and <code>password_digest</code> are logged as changed with their values withheld (<code>{"iban": ["[redacted]", "[redacted]"]}</code>). Add your own per model, or leave fields out of the log altogether:</p>
+    <pre data-filename="app/models/invoice.sl"><code class="language-soli text-sm">class Invoice &lt; Model
+  include Audited
+  encrypts(:iban)
+
+  static def audit_redacted
+    ["secret_note"]
+  end
+
+  static def audit_ignored
+    ["views"]              # a change to these alone writes no entry
+  end
+end</code></pre>
+    <p class="text-gray-400 my-4"><code class="text-amber-300">Model.encrypted_attributes</code> is the list of a model&rsquo;s <code>encrypts</code> fields.</p>
+
+    <h3 id="audit-chain" class="text-xl font-semibold text-white mt-8 mb-3">A tamper-evident log</h3>
+    <p class="text-gray-400 mb-4">With <code class="text-amber-300">--chain</code>, each entry carries a sequence number and a hash over its content and the previous entry&rsquo;s hash (<code>Crypto.ledger_hash</code>), so editing, removing or inserting an entry breaks every hash after it:</p>
+    <pre data-filename="Soli"><code class="language-soli text-sm">Audit.verify    # nil while the log is intact, else the seq of the first broken entry</code></pre>
+    <p class="text-gray-400 my-4">It costs a read per entry, and writers queue on the tail of the log: two requests that read the same tail ask for the same <code>seq</code>, the unique index refuses one, and that one retries (up to eight times, then raises). Choose it for a log you must be able to defend, not for a busy table. Someone who can rewrite the whole table can rewrite the whole chain &mdash; publish or store the latest <code>entry_hash</code> elsewhere if that is your threat. <code>purge_before</code> removes the head of the chain; archive before you purge.</p>
+
+    <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-12">
+        <p class="text-sm text-amber-200 mb-2"><strong>What is not logged.</strong></p>
+        <ul class="list-disc pl-5 space-y-1 text-sm text-amber-200">
+            <li>Writes that skip callbacks: <code>update_all</code>, <code>delete_all</code>, <code>increment</code> / <code>decrement</code>, <code>insert_all</code>, raw queries.</li>
+            <li>A change made by mutating a nested Hash or Array in place &mdash; reassign the attribute.</li>
+            <li>The entry is written after the change, in its own write: if it fails, the change stands and the error is raised. Wrap both in <code>Model.transaction</code> on a SQL database if they must succeed or fail together.</li>
+        </ul>
+    </div>
+
     <h2 id="graph-models" class="text-2xl font-bold text-white mb-6">Graph Models (Edges &amp; Traversal)</h2>
     <p class="text-gray-400 mb-4">
         SoliDB is multi-model: alongside document collections it supports native <strong class="text-white">edge collections</strong>. Declare an edge model with the <code>edge</code> DSL and the Model API gains graph creation, traversal, and shortest-path queries:
