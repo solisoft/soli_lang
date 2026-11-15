@@ -952,7 +952,7 @@ pub fn create_edge(app_path: &Path, name: &str) -> Result<(), String> {
     );
     write_file(
         &app_path.join("wrangler.toml"),
-        &templates::edge::wrangler_toml(worker, &db_name, crate::edge_build::COMPATIBILITY_DATE),
+        &templates::edge::wrangler_toml(worker, &db_name, templates::edge::COMPATIBILITY_DATE),
     )?;
     write_file(
         &app_path.join(".env"),
@@ -1391,7 +1391,7 @@ mod tests {
         let demo = include_str!("../../examples/cloudflare-worker/wrangler.toml");
         let date = format!(
             "compatibility_date = \"{}\"",
-            crate::edge_build::COMPATIBILITY_DATE
+            templates::edge::COMPATIBILITY_DATE
         );
         assert!(toml.contains(&date), "{toml}");
         assert!(

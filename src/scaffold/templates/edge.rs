@@ -3,6 +3,16 @@
 //! copies it into the Worker on every build and the deploy config is
 //! committed with the code.
 
+/// The `compatibility_date` Soli writes into a new `wrangler.toml`: the
+/// Workers runtime behaviour the edge build is tested against (it is the
+/// date of the deployed demo, `examples/cloudflare-worker`).
+///
+/// A fixed date, not today's. Wrangler refuses a date newer than the workerd
+/// it ships with, so "today" made a fresh app fail on any wrangler older than
+/// the day it was generated — including the version CI pins. Raise it when
+/// the runtime needs something newer, together with that wrangler pin.
+pub const COMPATIBILITY_DATE: &str = "2026-10-09";
+
 /// `wrangler.toml`: the Worker, its static assets, models on D1, sessions in
 /// the cookie driver, and the other bindings commented out.
 pub fn wrangler_toml(worker: &str, db_name: &str, today: &str) -> String {
