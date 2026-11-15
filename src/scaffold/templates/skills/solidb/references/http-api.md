@@ -170,6 +170,59 @@ exist there.
 - Node-local: neither the definition nor the blocks are replicated or
   dumped.
 
+### Columnar collections (observed on a build of `main` after 2.10.4, commit `eeec4093`, 2026-11-15)
+
+A table with a fixed list of columns, stored as arrays, for aggregations
+over many rows. Not a document collection: it has its own routes, no `_key`
+(a row has a UUIDv7 id the insert returns), and the document routes answer
+`404 CollectionNotFound` for its name. It shows in the collection list as
+`_columnar_<name>`.
+
+| Method & path | Body | Response |
+|---|---|---|
+| `POST /_api/database/{db}/columnar` | `{"name":"m","columns":[{"name":"host","type":"string"},{"name":"cpu","type":"float64"}],"compression":"lz4"}` — types `int64`, `float64`, `string`, `bool`, `timestamp`, `json`; compression `lz4` (default) or `none` | `{"status":"created","name":"m","columns":2}`; the name taken → `409 CollectionAlreadyExists` |
+| `GET /_api/database/{db}/columnar` | | `{"collections":[{name, columns, compression, row_count, created_at}], "count"}` |
+| `GET …/columnar/{c}` | | `{name, columns, compression, row_count, created_at, last_updated_at, stats}` |
+| `DELETE …/columnar/{c}` | | `{"status":"deleted","name"}`; absent → `404` |
+| `POST …/columnar/{c}/insert` | `{"rows":[{"host":"a","cpu":1.5}, …]}` | `{"status":"ok","inserted":3,"ids":[…]}` |
+| `POST …/columnar/{c}/aggregate` | `{"column":"cpu","operation":"SUM","group_by":["host"]}` — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `COUNT_DISTINCT` | `{"result":7.0}`; with `group_by`: `{"result":null,"groups":[{"host":"a","_agg":4.0}, …]}` |
+| `POST …/columnar/{c}/query` | `{"columns":["host","cpu"],"filter":{"column":"host","op":"EQ","value":"a"},"limit":10}` — one comparison: `EQ NE GT GTE LT LTE IN` or the symbols | `{"result":[{"cpu":1.5,"host":"a"}],"count":1}`; an unknown column → `400` |
+| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `minmax`, `bloom` | `{"status":"created","column","index_type"}`; already indexed → `400` |
+| `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` · `{"status":"deleted","column"}` |
+
+- **Append-only through the API.** There is no route to update a row, delete
+  a row or truncate (`DELETE …/row/{id}` and `PUT …/truncate` are not
+  routes); to remove rows, drop the collection. Columns cannot be added or
+  removed afterwards.
+- **The schema is not checked.** A row `{"host":7,"cpu":"x","extra":true}`
+  into `host: string, cpu: float64` is accepted (`inserted: 1`), a row that
+  is not an object is skipped without an error (`{"rows":[1]}` →
+  `inserted: 0`), and an unknown type name (`"decimal"`) silently creates a
+  `string` column. Validate before inserting: a column holding values of
+  several kinds also leaves the fast path below.
+- `/query` over HTTP takes one comparison and `limit` only: `{"and":[…]}` is
+  refused (`missing field column`), `order_by` and `offset` are ignored
+  without an error.
+- **SDBQL reads it, and cannot write it.** `FOR r IN m …` works as on a
+  document collection; `INSERT … INTO m` → `404 CollectionNotFound`.
+  `LENGTH(m)` → `Variable 'm' not found`.
+- **Only one shape is fast**: `FOR r IN c [FILTER …] COLLECT [k = r.col]
+  AGGREGATE <COUNT|SUM|AVG|MIN|MAX>(r.col) …`, the FILTERs being `==` with a
+  string, number or boolean and `<` `<=` `>` `>=` with a number, joined by
+  `AND`. On 200,000 rows: a filtered group-by 1.6 ms, a whole-column `SUM`
+  1.6 ms. Anything else builds every row with all its columns first: the
+  same group-by with an `OR` in its FILTER 164 ms, and
+  `FOR r IN c FILTER r.host == "h7" LIMIT 3 RETURN r.n` 145 ms. Results are
+  the same either way, and EXPLAIN does not say which ran (`full_scan`
+  both). Columnar indexes serve `/query` and `/aggregate`, not SDBQL.
+- **Transactions**: read refused at `repeatable_read` / `serializable`
+  (`501 OperationNotSupported "… use read_committed"`).
+- **Replication** (from the code and its tests, not observed on a cluster):
+  create, insert, drop and indexes are logged for the peers from this build
+  on, over HTTP and the driver; before it only HTTP inserts were, so a peer
+  never had the collection. Upgrade every node before creating a columnar
+  index. A full sync does not carry columnar collections.
+
 ### Foreign keys (since 2.10.0; observed on builds of its branch, 2026-11-13)
 
 A child collection declares that a top-level field holds the `_key` of a
@@ -302,6 +355,5 @@ Details and query-side usage: indexes-search.md.
 
 Blobs (`/_api/blob/{db}/{coll}` upload/download, chunked uploads), cluster
 (`/_api/cluster/*`), triggers, Lua scripts and services (`/api/{db}/{service}`,
-off with `--no-lua`), SQL (`POST /_api/database/{db}/sql`), columnar stores
-(`/_api/database/{db}/columnar…`), graph RAG, AI agents, sync, changefeed
+off with `--no-lua`), SQL (`POST /_api/database/{db}/sql`), graph RAG, AI agents, sync, changefeed
 websocket (`/_api/ws/changefeed`), `GET /metrics`.
