@@ -57,7 +57,15 @@ pub fn run() {
             folder,
             passkeys,
             two_factor,
-        } => commands::run_generate_auth(folder, *passkeys, *two_factor),
+            magic_link,
+            api_tokens,
+            impersonation,
+        } => commands::run_generate_auth(
+            folder,
+            *passkeys,
+            *two_factor,
+            [*magic_link, *api_tokens, *impersonation],
+        ),
         Command::GenerateOidcProvider { folder } => commands::run_generate_oidc_provider(folder),
         Command::GenerateSaml { folder } => commands::run_generate_saml(folder),
         Command::GenerateAudit { folder, chained } => {

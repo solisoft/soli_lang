@@ -220,6 +220,97 @@ device and backup codes — delete their `TwoFactor` record. A session open on
 another device when a user turns two-factor *off* keeps its state until it
 ends.
 
+## Magic link
+
+Sign in with a link sent by email, no password typed.
+
+```bash
+soli generate auth --magic-link
+soli db:migrate up
+```
+
+It adds `MagicLink` (model), `MagicLinksController` (`GET` and `POST
+/login/link`, `GET /login/link/:token`), `MagicLinkMailer` and its view, and
+edits nothing: link to `/login/link` from your sign-in view.
+
+- **One use, fifteen minutes** (`MAGIC_LINK_TTL`), and only the newest link of
+  an account works.
+- **Only in the browser that asked.** Asking sets a cookie; the link needs it.
+  A link opened by a mail scanner, forwarded, or opened on another device
+  signs nobody in — and is not used up by the attempt.
+- **No account probing.** The answer, cookie included, is the same whether or
+  not the address has an account. A locked account gets no link.
+- It shares the sign-in form's per-IP throttle, and only digests are stored.
+- Opening the link confirms the address. With
+  [two-factor](#two-factor) on, the code challenge follows.
+
+## API tokens
+
+Personal access tokens: a user's credential for scripts and other services.
+
+```bash
+soli generate auth --api-tokens
+soli db:migrate up
+```
+
+```bash
+curl -H "Authorization: Bearer soli_pat_…" https://app.example.com/invoices
+```
+
+It adds `ApiToken` (model), a middleware that authenticates the header
+(`# order: 7`), and `ApiTokensController` with its page at `/api_tokens`:
+create (name, scopes, lifetime), list, revoke.
+
+- **Shown once.** Only the token's SHA-256 digest is stored; the list shows
+  its first characters, its scopes, its expiry and when it was last used
+  (noted at most once a minute).
+- **A request with a token runs as its user**: `current_user()` is them, and
+  `req["api_token"]` is the token. An unknown or expired token is a `401`,
+  never a fall back to the session.
+- **Scopes are yours.** `API_TOKEN_SCOPES` in `app/models/api_token.sl` lists
+  them (`read`, `write` to start with); guard an action with `api_scope?`. A
+  request signed in with the session is not limited by scopes.
+
+  ```soli
+  # POST /invoices
+  def create
+    return render_json({"error": "scope"}, 403) unless api_scope?("write")
+    …
+  end
+  ```
+- **Managing tokens takes a person in a browser**: a request made with a
+  token cannot list, create or revoke tokens.
+- A token is its own credential: the two-factor challenge does not apply to
+  it. Give it the narrowest scopes and a lifetime.
+
+## Impersonation
+
+An administrator acts as a user, to see what they see.
+
+```bash
+soli generate auth --impersonation
+```
+
+It adds `ImpersonationsController` (`POST /impersonate/:id`, `DELETE
+/impersonate`), two view helpers (`impersonating?()`, `impersonator()`) and a
+banner partial to render in your layout:
+
+```erb
+<%- partial("impersonations/banner") %>
+```
+
+- **Who may**: an administrator, on an account that is not one, and not from
+  inside an impersonation — `_may_impersonate` in the controller is the rule
+  to change. Anything else is a `403`.
+- While it lasts the session is the user's (`current_user()` is them) under a
+  new session id, and the banner shows on every page with a button back.
+- **Every start and stop is logged**, and written to the
+  [audit log](/docs/database/models#audit-log) when the app has one
+  (`action`: `impersonate` / `stop_impersonating`).
+- The user's API tokens cannot be managed while impersonating. Other
+  sensitive pages of yours (password, two-factor) are yours to guard with
+  `impersonating?()`.
+
 ## Passkeys
 
 Passkeys (WebAuthn) replace the password with a key pair the user's device

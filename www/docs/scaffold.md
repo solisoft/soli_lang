@@ -18,6 +18,9 @@ SoliLang includes a scaffold generator that quickly creates a complete MVC resou
 | `soli generate auth` | User model, sign-in/sign-up/reset/confirmation flows, policies — [docs](/docs/security/authorization) |
 | `soli generate auth --passkeys` | The same plus passkey (WebAuthn) registration and sign-in; on an app that already has auth, only the passkey files — [docs](/docs/security/authentication#passkeys) |
 | `soli generate auth --two-factor` | The same plus an authenticator-app second factor (TOTP, backup codes); on an app that already has auth, only the two-factor files — [docs](/docs/security/authentication#two-factor) |
+| `soli generate auth --magic-link` | Sign-in by a link sent by email: one use, fifteen minutes, only in the browser that asked — [docs](/docs/security/authentication#magic-link) |
+| `soli generate auth --api-tokens` | Personal access tokens (`Authorization: Bearer`), with scopes and expiry — [docs](/docs/security/authentication#api-tokens) |
+| `soli generate auth --impersonation` | An administrator acts as a user, under a banner, logged — [docs](/docs/security/authentication#impersonation) |
 | `soli generate saml` | SAML 2.0 single sign-on with an identity provider (Okta, Entra ID…) — [docs](/docs/security/saml) |
 | `soli generate audit [--chain]` | An audit log: the `Audited` concern and the `Audit` model; `--chain` makes it tamper-evident — [docs](/docs/database/models#audit-log) |
 | `soli generate oauth <provider>` | Sign in with Apple, GitHub, Google, GitLab, Discord, LinkedIn or Microsoft, and a connected-accounts page — [docs](/docs/security/oauth-client) |

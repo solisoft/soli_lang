@@ -17949,6 +17949,54 @@
       ]
     },
     {
+      "title": "Magic link sign-in",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/authentication#magic-link",
+      "signature": "soli generate auth --magic-link",
+      "description": "Sign in with a link sent by email: one use, fifteen minutes, only in the browser that asked",
+      "keywords": [
+        "magic link",
+        "passwordless",
+        "email link",
+        "sign in",
+        "login link"
+      ]
+    },
+    {
+      "title": "API tokens",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/authentication#api-tokens",
+      "signature": "soli generate auth --api-tokens",
+      "description": "Personal access tokens with scopes and expiry, sent as Authorization: Bearer; api_scope? guards an action",
+      "keywords": [
+        "api token",
+        "personal access token",
+        "pat",
+        "bearer",
+        "authorization",
+        "scopes",
+        "api_scope"
+      ]
+    },
+    {
+      "title": "Impersonation",
+      "type": "command",
+      "category": "Security",
+      "path": "/docs/security/authentication#impersonation",
+      "signature": "soli generate auth --impersonation",
+      "description": "An administrator acts as a user, under a banner, with every use logged",
+      "keywords": [
+        "impersonate",
+        "impersonation",
+        "act as",
+        "login as",
+        "support",
+        "admin"
+      ]
+    },
+    {
       "title": "Crypto.totp_step",
       "type": "method",
       "category": "Crypto",

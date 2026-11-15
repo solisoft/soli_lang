@@ -1,0 +1,67 @@
+<div class="max-w-2xl mx-auto px-4 py-10">
+  <h1 class="text-2xl font-bold mb-2">API tokens</h1>
+  <p class="mb-6 text-sm text-slate-400">
+    A token signs a script in as you: <code>Authorization: Bearer …</code>. Treat it like a password.
+  </p>
+
+  <% if error.present? %>
+    <div class="mb-4 rounded-md bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-300">
+      <%= error %>
+    </div>
+  <% end %>
+
+  <% unless new_token.nil? %>
+    <div class="mb-6 rounded-md bg-emerald-500/10 border border-emerald-500/30 px-4 py-3 text-sm text-emerald-300">
+      <p class="mb-2">Copy this token now. It is not shown again.</p>
+      <code class="break-all text-white" data-new-token><%= new_token %></code>
+    </div>
+  <% end %>
+
+  <% if tokens.length > 0 %>
+    <ul class="mb-6 divide-y divide-slate-800 rounded-xl border border-slate-800 bg-slate-900">
+      <% tokens.each do |token| %>
+        <li class="flex items-center justify-between px-4 py-3">
+          <div>
+            <p class="font-medium text-white"><%= token.name %> <code class="ml-2 text-xs text-slate-400"><%= token.prefix %>…</code></p>
+            <p class="text-xs text-slate-400">
+              <%= token.scopes_label %> · <%= token.expiry_label %> · <%= token.last_used_label %>
+            </p>
+          </div>
+          <%- button_to("Revoke", "/api_tokens/" + token._key.to_s, {
+            "method": "delete", "confirm": "Revoke this token?",
+            "class": "text-sm text-red-400 hover:text-red-300", "form_class": "inline"
+          }) %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="mb-6 text-sm text-slate-400">No token yet.</p>
+  <% end %>
+
+  <form action="/api_tokens" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+    <%- csrf_field() %>
+    <h2 class="font-semibold text-white">New token</h2>
+    <input name="name" type="text" required maxlength="60" placeholder="What it is for (e.g. nightly export)"
+           class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+    <div class="flex flex-wrap gap-4 text-sm text-slate-400">
+      <% scopes.each do |scope| %>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="scope_<%= scope %>" value="1"> <%= scope %>
+        </label>
+      <% end %>
+    </div>
+    <label class="block text-sm text-slate-400">
+      Expires after
+      <select name="days" class="ml-2 rounded-md bg-slate-950 border border-slate-700 px-2 py-1 text-white">
+        <option value="30">30 days</option>
+        <option value="90" selected>90 days</option>
+        <option value="365">a year</option>
+        <option value="0">never</option>
+      </select>
+    </label>
+    <button type="submit"
+            class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+      Create token
+    </button>
+  </form>
+</div>

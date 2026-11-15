@@ -81,6 +81,12 @@ pub enum Command {
         folder: String,
         passkeys: bool,
         two_factor: bool,
+        /// `--magic-link`: sign in with a link sent by email.
+        magic_link: bool,
+        /// `--api-tokens`: personal access tokens (`Authorization: Bearer`).
+        api_tokens: bool,
+        /// `--impersonation`: an administrator acts as a user.
+        impersonation: bool,
     },
     /// `soli generate audit [folder] [--chain]` — scaffold an audit log (the
     /// `Audited` concern and the `Audit` model); `--chain` links the entries
@@ -748,7 +754,7 @@ pub fn print_usage() {
     eprintln!("       soli login [--registry URL] [--token TOKEN]");
     eprintln!("       soli publish [--registry URL]");
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
-    eprintln!("       soli generate auth [folder] [--passkeys] [--two-factor]");
+    eprintln!("       soli generate auth [folder] [--passkeys] [--two-factor] [--magic-link] [--api-tokens] [--impersonation]");
     eprintln!("       soli generate oidc_provider [folder]");
     eprintln!("       soli generate saml [folder]");
     eprintln!("       soli generate audit [folder] [--chain]");
@@ -826,6 +832,11 @@ pub fn print_usage() {
     eprintln!(
         "                       --two-factor adds an authenticator app (TOTP) as second factor"
     );
+    eprintln!("                       --magic-link adds sign-in by a link sent by email");
+    eprintln!(
+        "                       --api-tokens adds personal access tokens (Authorization: Bearer)"
+    );
+    eprintln!("                       --impersonation lets an administrator act as a user");
     eprintln!("  generate oidc_provider  Scaffold an OpenID Connect provider (code + PKCE)");
     eprintln!(
         "  generate saml        SAML 2.0 single sign-on with an identity provider (needs auth)"
@@ -1173,10 +1184,16 @@ pub fn parse_args() -> Options {
                         let mut folder: Option<String> = None;
                         let mut passkeys = false;
                         let mut two_factor = false;
+                        let mut magic_link = false;
+                        let mut api_tokens = false;
+                        let mut impersonation = false;
                         for arg in &args[i + 1..] {
                             match arg.as_str() {
                                 "--passkeys" => passkeys = true,
                                 "--two-factor" => two_factor = true,
+                                "--magic-link" => magic_link = true,
+                                "--api-tokens" => api_tokens = true,
+                                "--impersonation" => impersonation = true,
                                 flag if flag.starts_with('-') => {
                                     eprintln!("generate auth: unknown option {flag}");
                                     print_usage();
@@ -1194,6 +1211,9 @@ pub fn parse_args() -> Options {
                             folder: folder.unwrap_or_else(|| ".".to_string()),
                             passkeys,
                             two_factor,
+                            magic_link,
+                            api_tokens,
+                            impersonation,
                         };
                         return options;
                     }

@@ -1,0 +1,8 @@
+<% if impersonating?() %>
+  <div class="flex items-center justify-center gap-4 bg-amber-500 px-4 py-2 text-sm font-medium text-black" data-impersonation-banner>
+    <span>You are acting as <strong><%= current_user().email %></strong>.</span>
+    <%- button_to("Back to my account", "/impersonate", {
+      "method": "delete", "class": "underline", "form_class": "inline"
+    }) %>
+  </div>
+<% end %>

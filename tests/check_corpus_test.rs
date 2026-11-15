@@ -113,6 +113,17 @@ fn scaffolds(out: &mut BTreeMap<String, Vec<String>>) -> Vec<tempfile::TempDir> 
 
     let app = tempfile::tempdir().unwrap();
     new_app(app.path(), false);
+    let folder = app.path().to_str().unwrap();
+    solilang::scaffold::create_auth(folder)
+        .and_then(|()| solilang::scaffold::create_magic_link(folder))
+        .and_then(|()| solilang::scaffold::create_api_tokens(folder))
+        .and_then(|()| solilang::scaffold::create_impersonation(folder))
+        .expect("generate auth --magic-link --api-tokens --impersonation");
+    check_corpus("auth-extras", app.path(), out);
+    dirs.push(app);
+
+    let app = tempfile::tempdir().unwrap();
+    new_app(app.path(), false);
     solilang::scaffold::create_auth(app.path().to_str().unwrap())
         .and_then(|()| solilang::scaffold::create_saml(app.path().to_str().unwrap()))
         .expect("generate saml");

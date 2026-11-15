@@ -197,10 +197,70 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
         </div>
     </section>
 
+    <section id="magic-link" class="scroll-mt-20 mb-12">
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">4</span>
+            Magic link
+        </h2>
+        <p class="text-gray-400 mb-4">Sign in with a link sent by email, no password typed.</p>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth --magic-link
+soli db:migrate up</code></pre>
+        <p class="text-gray-400 my-4">It adds <code class="text-amber-300">MagicLink</code> (model), <code class="text-amber-300">MagicLinksController</code> (<code>GET</code> and <code>POST /login/link</code>, <code>GET /login/link/:token</code>), <code class="text-amber-300">MagicLinkMailer</code> and its view, and edits nothing: link to <code>/login/link</code> from your sign-in view.</p>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
+            <li><strong class="text-white">One use, fifteen minutes</strong> (<code>MAGIC_LINK_TTL</code>), and only the newest link of an account works.</li>
+            <li><strong class="text-white">Only in the browser that asked.</strong> Asking sets a cookie; the link needs it. A link opened by a mail scanner, forwarded, or opened on another device signs nobody in &mdash; and is not used up by the attempt.</li>
+            <li><strong class="text-white">No account probing.</strong> The answer, cookie included, is the same whether or not the address has an account. A locked account gets no link.</li>
+            <li>It shares the sign-in form&rsquo;s per-IP throttle, and only digests are stored.</li>
+            <li>Opening the link confirms the address. With <a href="#two-factor" class="text-amber-400 hover:text-amber-300">two-factor</a> on, the code challenge follows.</li>
+        </ul>
+    </section>
+
+    <section id="api-tokens" class="scroll-mt-20 mb-12">
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">5</span>
+            API tokens
+        </h2>
+        <p class="text-gray-400 mb-4">Personal access tokens: a user&rsquo;s credential for scripts and other services.</p>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth --api-tokens
+soli db:migrate up
+
+curl -H "Authorization: Bearer soli_pat_…" https://app.example.com/invoices</code></pre>
+        <p class="text-gray-400 my-4">It adds <code class="text-amber-300">ApiToken</code> (model), a middleware that authenticates the header (<code># order: 7</code>), and <code class="text-amber-300">ApiTokensController</code> with its page at <code>/api_tokens</code>: create (name, scopes, lifetime), list, revoke.</p>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
+            <li><strong class="text-white">Shown once.</strong> Only the token&rsquo;s SHA-256 digest is stored; the list shows its first characters, its scopes, its expiry and when it was last used (noted at most once a minute).</li>
+            <li><strong class="text-white">A request with a token runs as its user</strong>: <code>current_user()</code> is them, and <code>req["api_token"]</code> is the token. An unknown or expired token is a <code>401</code>, never a fall back to the session.</li>
+            <li><strong class="text-white">Scopes are yours.</strong> <code class="text-amber-300">API_TOKEN_SCOPES</code> in <code>app/models/api_token.sl</code> lists them (<code>read</code>, <code>write</code> to start with); guard an action with <code class="text-amber-300">api_scope?</code>. A request signed in with the session is not limited by scopes.</li>
+            <li><strong class="text-white">Managing tokens takes a person in a browser</strong>: a request made with a token cannot list, create or revoke tokens.</li>
+            <li>A token is its own credential: the two-factor challenge does not apply to it. Give it the narrowest scopes and a lifetime.</li>
+        </ul>
+        <pre data-filename="app/controllers/invoices_controller.sl"><code class="language-soli text-sm"># POST /invoices
+def create
+  return render_json({"error": "scope"}, 403) unless api_scope?("write")
+  # …
+end</code></pre>
+    </section>
+
+    <section id="impersonation" class="scroll-mt-20 mb-12">
+        <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">6</span>
+            Impersonation
+        </h2>
+        <p class="text-gray-400 mb-4">An administrator acts as a user, to see what they see.</p>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth --impersonation</code></pre>
+        <p class="text-gray-400 my-4">It adds <code class="text-amber-300">ImpersonationsController</code> (<code>POST /impersonate/:id</code>, <code>DELETE /impersonate</code>), two view helpers (<code>impersonating?()</code>, <code>impersonator()</code>) and a banner partial to render in your layout:</p>
+        <pre data-filename="app/views/layouts/application.html.slv"><code class="language-erb text-sm">&lt;%- partial("impersonations/banner") %&gt;</code></pre>
+        <ul class="list-disc pl-6 space-y-3 text-gray-400 mt-4">
+            <li><strong class="text-white">Who may</strong>: an administrator, on an account that is not one, and not from inside an impersonation &mdash; <code>_may_impersonate</code> in the controller is the rule to change. Anything else is a <code>403</code>.</li>
+            <li>While it lasts the session is the user&rsquo;s (<code>current_user()</code> is them) under a new session id, and the banner shows on every page with a button back.</li>
+            <li><strong class="text-white">Every start and stop is logged</strong>, and written to the <a href="/docs/database/models#audit-log" class="text-amber-400 hover:text-amber-300">audit log</a> when the app has one (<code>action</code>: <code>impersonate</code> / <code>stop_impersonating</code>).</li>
+            <li>The user&rsquo;s API tokens cannot be managed while impersonating. Other sensitive pages of yours (password, two-factor) are yours to guard with <code>impersonating?()</code>.</li>
+        </ul>
+    </section>
+
     <!-- Passkeys -->
     <section id="passkeys" class="scroll-mt-20">
         <h2 class="flex items-center gap-3 text-2xl font-bold text-white mb-6">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">4</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30">7</span>
             Passkeys
         </h2>
         <p class="text-gray-400 mb-4">

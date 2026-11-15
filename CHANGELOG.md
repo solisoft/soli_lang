@@ -4,6 +4,22 @@
 
 ### Added
 
+- **Three additions to `soli generate auth`**, each adding files of its own
+  and editing none (card #880):
+  - `--magic-link`: sign-in by a link sent by email. One use, fifteen
+    minutes, only the newest link, and only in the browser that asked (a
+    cookie set when asking, its digest stored with the link), so a link opened
+    by a mail scanner signs nobody in and is not used up. The answer is the
+    same whether or not the address has an account.
+  - `--api-tokens`: personal access tokens. Shown once, stored as a SHA-256
+    digest, with scopes, an expiry, a last-used time and revocation; a
+    middleware (`# order: 7`) authenticates `Authorization: Bearer`, an
+    unknown token is a 401 and never falls back to the session, and
+    `api_scope?("write")` guards an action.
+  - `--impersonation`: an administrator acts as a user who is not one, under
+    a new session id and a banner partial, every start and stop logged and
+    written to the audit log when the app has one.
+  `tests/auth_extras_generator_test.rs` serves an app with the three.
 - **`soli generate oauth apple`.** Sign in with Apple: the client secret is an
   ES256 JWT the service mints from your `.p8` key for each exchange, the
   posted answer (`form_post`) is turned into a GET of the same URL so the

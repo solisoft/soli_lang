@@ -78,6 +78,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | Two-factor auth (TOTP, authenticator apps) | `soli generate auth --two-factor`; `Crypto.totp_secret` / `totp_step` / `totp_uri`, `qr_svg` to hand-roll | `docs/authentication.md` → Two-factor, `docs/builtins.md` → TOTP |
 | Password hashing | `password_hash` / `password_verify` (Argon2id) | `docs/builtins.md` → Password Hashing |
 | Sign in with GitHub / Google | `soli generate oauth github\|google` | `docs/oauth-client.md` |
+| Magic-link sign-in, personal API tokens, impersonation | `soli generate auth --magic-link` / `--api-tokens` / `--impersonation` | `docs/authentication.md` → Magic link, API tokens, Impersonation |
 | Audit log (who changed what) | `soli generate audit [--chain]`, then `include Audited` in the model | `docs/models.md` → Audit Log |
 | Sign in through a SAML identity provider (Okta, Entra ID…) | `soli generate saml` — never hand-roll the XML signature check: `Saml.verify_response` | `docs/saml.md` |
 | Be an OpenID Connect provider | `soli generate oidc_provider` | `docs/oidc-provider.md` |

@@ -5,6 +5,7 @@
 pub mod app_generator;
 pub mod app_links_generator;
 pub mod audit_generator;
+pub mod auth_extras_generator;
 pub mod auth_generator;
 pub mod client_generator;
 pub mod component_generator;
@@ -227,6 +228,9 @@ fn scaffold_generated_paths(model_file: &str, resource: &str) -> Vec<String> {
 pub use app_generator::create_app;
 pub use app_links_generator::{create_app_links, print_app_links_success_message, AppLinksOptions};
 pub use audit_generator::{create_audit, print_audit_success_message};
+pub use auth_extras_generator::{
+    create_api_tokens, create_impersonation, create_magic_link, print_auth_extras_success_message,
+};
 pub use auth_generator::{create_auth, create_auth_with, print_auth_success_message};
 pub use client_generator::{
     create_client, print_client_success_message, ClientFlags, ClientOptions,
