@@ -261,6 +261,17 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   2.10.4 it takes one comparison and `limit` only: `{"and":[…]}` is refused
   (`missing field column`), `order_by` and `offset` are ignored without an
   error.
+- **A `FOR` that is not a `COLLECT` is slow through 2.11.0**: every row
+  and every column is built before the FILTER or LIMIT (about 1 s per
+  query on a million rows of six columns, whatever it asks). After 2.11.0
+  (observed on a build of `main`, 2026-11-16, same data): only the columns
+  read are built; `FILTER r.col == const` / `< <= > >=` on an integer
+  column, `==` on a string or boolean column, with literals or bind
+  variables, joined by AND / OR, are answered from the column or its index
+  (`LIMIT 10` 0.6 ms, one row by value 0.07 s, a range of 100 rows
+  0.20 s). Still row by row: a float column, a string range, `!=`, a
+  constant of another kind than the column (`r.int_col == 5.0`), a filter
+  naming an outer `FOR`'s variable, `SORT … LIMIT`.
 - **SDBQL reads it and, from 2.11.0, inserts into it** (observed on a
   build of `main`, 2026-11-15). `FOR r IN m …` works as on a document
   collection. `INSERT {host: "a", v: 1} INTO m` and
@@ -271,15 +282,18 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   "'m' is a columnar collection: SDBQL can INSERT into it, but not …"`.
   Through 2.10.4 every SDBQL write → `404 CollectionNotFound`: use
   `POST …/insert`. `LENGTH(m)` → `Variable 'm' not found`.
-- **Only one shape is fast**: `FOR r IN c [FILTER …] COLLECT [k = r.col]
+- **The aggregate shape is folded from the arrays** (fastest; through
+  2.11.0 the only fast one): `FOR r IN c [FILTER …] COLLECT [k = r.col]
   AGGREGATE <COUNT|SUM|AVG|MIN|MAX>(r.col) …`, the FILTERs being `==` with a
   string, number or boolean and `<` `<=` `>` `>=` with a number, joined by
   `AND`. On 200,000 rows: a filtered group-by 1.6 ms, a whole-column `SUM`
-  1.6 ms. Anything else builds every row with all its columns first: the
-  same group-by with an `OR` in its FILTER 164 ms, and
-  `FOR r IN c FILTER r.host == "h7" LIMIT 3 RETURN r.n` 145 ms. Results are
+  1.6 ms. An aggregate outside that shape (an `OR` in its FILTER: 164 ms on
+  2.11.0) is computed from rows, read as the entry above says. Results are
   the same either way, and EXPLAIN does not say which ran (`full_scan`
-  both). Columnar indexes serve `/query` and `/aggregate`, not SDBQL.
+  both). Through 2.11.0 columnar indexes serve `/query` and `/aggregate`
+  only; after it a pushed-down SDBQL FILTER uses them too (a sorted index
+  made a range of 100 rows slower than no index on a million rows: 0.5 s
+  against 0.2 s).
 - **Transactions**: read refused at `repeatable_read` / `serializable`
   (`501 OperationNotSupported "… use read_committed"`).
 - **Replication** (from the code and its tests, not observed on a cluster):
