@@ -10,7 +10,8 @@ SoliDB is a document database (RocksDB storage, Rust) that speaks HTTP/JSON
 written in **SDBQL**, an ArangoDB-AQL-style language: `FOR … FILTER … SORT …
 LIMIT … RETURN`. The Soli framework's `Model` ORM compiles to SDBQL.
 
-Everything below was checked against `solidb 2.4.0` and Soli 2.28.2. Where a
+Everything below was checked against `solidb 2.4.0` and Soli 2.28.2 (Soli-side
+statements reviewed against Soli 2.36.3's changelog, not re-run). Where a
 claim could not be checked it says **(unverified)**.
 
 ## Core concepts

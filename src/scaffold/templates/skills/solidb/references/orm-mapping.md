@@ -135,7 +135,7 @@ docs, unverified here.)
 
 | Soli | HTTP |
 |------|------|
-| `Model.transaction do … end` | `POST /transaction/begin {"database":…,"isolationLevel":"read_committed"}`, each write `POST /transaction/tx:…/document/{coll}`, then `/commit` — or `/rollback` if the block raises (verified: row not persisted, exception re-raised). Queries in the block (`where`, `update_all`, `delete_all`, `@sdbql{}`) go to `POST /transaction/tx:…/query` with `bind_vars` after Soli 2.34; **in 2.34 and earlier they went to `/cursor` or the native driver, outside the transaction: an `update_all` or an `@sdbql` write applied at once and survived the rollback** (verified, Soli 2.34.0 against SoliDB 2.9.0) |
+| `Model.transaction do … end` | `POST /transaction/begin {"database":…,"isolationLevel":"read_committed"}`, each write `POST /transaction/tx:…/document/{coll}`, then `/commit` — or `/rollback` if the block raises (verified: row not persisted, exception re-raised). Queries in the block (`where`, `update_all`, `delete_all`, `@sdbql{}`) go to `POST /transaction/tx:…/query` with `bind_vars` since Soli 2.35.0; **in 2.34 and earlier they went to `/cursor` or the native driver, outside the transaction: an `update_all` or an `@sdbql` write applied at once and survived the rollback** (verified, Soli 2.34.0 against SoliDB 2.9.0) |
 | `Model.transaction("FOR … REMOVE …")` | a plain `POST /cursor` with the statement (a single statement is atomic anyway) |
 
 ## Raw SDBQL from Soli

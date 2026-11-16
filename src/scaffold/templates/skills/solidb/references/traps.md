@@ -224,7 +224,8 @@ involved).
     failed: …"` **String**; an unknown function in a `where` string gives `[]`.
 30. **`.sum/.avg/.min/.max(field)` return `nil`** — they generate
     `RETURN SUM(doc.field)` per row. Use
-    `.aggregate({"total": ["sum", "field"]}).first`.
+    `.aggregate({"total": ["sum", "field"]}).first`. (On Soli 2.36.3 with the
+    SQLite adapter `.sum("f").first` returned the total; SoliDB not rechecked.)
 31. **`.exists` and `.pluck` return QueryBuilders** — `.exists.first`,
     `.pluck("f").all`.
 32. **`record.id` is `nil` on loaded records** — use `record._key`. On an
@@ -251,6 +252,6 @@ involved).
   (`{"@coll": "users"}`) — SoliDB rejects them; says `.exists` returns a
   Boolean and `.pluck` an Array, and lists `.sum/avg/min/max` as numeric
   aggregates — they return QueryBuilders, and the sums are `nil`.
-- Soli `www/docs/models.md`: says SoliDB `ilike` is "also LIKE — no separate
-  case-folding"; it compiles to `LIKE(x, p, true)`, which is
-  case-insensitive (`{"ilike": "t%"}` matched "Two"/"Three", `like` did not).
+- Soli `www/docs/models.md` up to some 2.3x said SoliDB `ilike` is "also
+  LIKE — no separate case-folding"; it compiles to `LIKE(x, p, true)`, which
+  is case-insensitive. The 2.36.3 docs have it right.
