@@ -387,7 +387,12 @@ or earlier: the routes answer 404.
   `start`, or set `next` afterwards. Documents without the field are left
   alone.
 - An import in upsert mode / a merge by key keeps the number of a document
-  it merges into and numbers one it creates; neither may carry the field.
+  it merges into and numbers one it creates; neither may carry the field
+  (`POST …/collection/{c}/import?mode=upsert` with `-F file=@docs.jsonl` →
+  `{"status":"imported","count":3,"failed":0}`; a refused document →
+  `"failed":1,"error":"… the database assigns it, leave it out"`. Through
+  2.11.0 the answer has no `error`, and the last line of a file with no
+  final newline is dropped without being counted).
 - Cluster: one node numbers (`node`, the one that got the declaration; it
   must run with `--node-id`). Elsewhere an insert → `409 "The counter
   'number' of 'invoices' is numbered by node 'n1': insert there"`. Hand it
