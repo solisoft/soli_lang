@@ -625,6 +625,15 @@ pub fn run_test(
 
     solilang::interpreter::builtins::model::init_db_config();
 
+    // The named connections of `config/database.toml`, as `soli serve` loads
+    // them: without them a spec's own model calls ignored `connection "…"`,
+    // and a `with_tenant` block wrote to the base test database while the
+    // same code in the test server reached the tenant's.
+    if let Err(e) = solilang::db::init_from_app_path(&app_dir) {
+        eprintln!("Error: {}", e.message());
+        solilang::debug::session::exit(1);
+    }
+
     // Specs call services, and services send mail: a mailer renders
     // `app/views/<mailer>/<action>.html.slv`, which needs the template system
     // the server initialises at boot. Without it a preloaded mailer failed
@@ -841,6 +850,8 @@ pub fn run_test(
     // leaves `{stem}_w{N}` databases nothing will ever reuse. The post-suite
     // drop cannot catch those — it only knows the names of the run it ends.
     sweep_orphaned_worker_databases(&worker_databases);
+    // An interrupted run left its tenant databases behind: start without them.
+    drop_tenant_test_databases(&worker_databases);
     ensure_test_databases(&worker_databases, &app_dir);
 
     #[derive(Clone)]
@@ -1745,6 +1756,9 @@ pub fn run_test(
     } else {
         drop_test_databases(&worker_databases);
     }
+    // Tenant databases are created on a first write and hold rows of this
+    // run only: dropped whether or not the workers' are kept.
+    drop_tenant_test_databases(&worker_databases);
 
     println!();
 
@@ -2445,6 +2459,54 @@ fn list_databases(host: &str, auth_header: &Option<String>) -> Option<Vec<String
             .filter_map(|name| name.as_str().map(str::to_owned))
             .collect(),
     )
+}
+
+/// The tenant databases the run's workers created: with a template such as
+/// `${SOLIDB_DATABASE}_site_{tenant}`, worker `app_w1_test` writes tenant
+/// `acme` to `app_w1_test_site_acme` (see `db_config::tenant_database`).
+/// Only names under a `_test` / `_spec` worker database qualify — this feeds
+/// an irreversible delete.
+fn tenant_test_databases(all: &[String], workers: &[String]) -> Vec<String> {
+    let prefixes: Vec<String> = workers
+        .iter()
+        .filter(|w| w.ends_with("_test") || w.ends_with("_spec"))
+        .map(|w| format!("{w}_"))
+        .collect();
+    all.iter()
+        .filter(|name| {
+            prefixes
+                .iter()
+                .any(|p| name.len() > p.len() && name.starts_with(p.as_str()))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Drop the run's tenant databases ([`tenant_test_databases`]), so a tenant
+/// does not carry rows into the next run.
+fn drop_tenant_test_databases(workers: &[String]) {
+    let host = test_db_host();
+    let auth_header = test_db_auth_header();
+    let Some(all) = list_databases(&host, &auth_header) else {
+        return;
+    };
+    let tenants = tenant_test_databases(&all, workers);
+    if tenants.is_empty() {
+        return;
+    }
+    let errors: Vec<String> = tenants
+        .iter()
+        .filter_map(|database| drop_database(&host, &auth_header, database).err())
+        .collect();
+    if let Some(first) = errors.iter().find(|err| !is_missing_credentials(err)) {
+        println!(
+            "⚠ tenant database drop had {} error(s); first: {}",
+            errors.len(),
+            first
+        );
+    } else if errors.is_empty() {
+        println!("Dropped {} tenant test database(s)", tenants.len());
+    }
 }
 
 /// Drop this app's stranded worker databases from earlier runs.
@@ -3170,6 +3232,31 @@ mod tests {
         let all = vec!["myapp_w1_test".to_string()];
         assert!(orphaned_worker_databases(&all, &["myapp".to_string()]).is_empty());
         assert!(orphaned_worker_databases(&all, &[]).is_empty());
+    }
+
+    #[test]
+    fn tenant_test_databases_are_the_ones_under_a_worker_database() {
+        let all: Vec<String> = [
+            "app_test",
+            "app_test_site_acme",
+            "app_w1_test_site_acme",
+            "app_site_acme",
+            "app_test_",
+            "other_test_site_acme",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let workers = vec!["app_test".to_string(), "app_w1_test".to_string()];
+        assert_eq!(
+            tenant_test_databases(&all, &workers),
+            vec![
+                "app_test_site_acme".to_string(),
+                "app_w1_test_site_acme".to_string()
+            ]
+        );
+        // A worker name without the test suffix never qualifies.
+        assert!(tenant_test_databases(&all, &["app".to_string()]).is_empty());
     }
 
     #[test]
