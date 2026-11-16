@@ -353,7 +353,7 @@ or earlier: the routes answer 404.
 | `POST /_api/database/{db}/collection/{coll}/counters` | `{"field":"number","start":41,"reset":"day"\|"week"\|"month"\|"year","timezone":"Europe/Paris","prefix":"INV-{YYYY}-{MM}-","suffix":"","padding":4,"durable":true}` (only `field` is required; `start` 1, `timezone` UTC, `durable` true) | `201 {"field":"number","start":41,…,"node":null,"index":"counter_number","state":{"epoch":…,"date":null,"next":41}}` |
 | `GET …/counters` | | `{"collection","counters":[{…,"state":{"epoch","date":"2026-11-16","next":1289}}]}` |
 | `PUT …/counters/{field}/next` | `{"next":1288}` | the record; a number a document already holds → `409` |
-| `PUT …/counters/{field}/node` | `{"node":"n2"}` | the record; asked of the node that numbers |
+| `PUT …/counters/{field}/node` | `{"node":"n2"}`, or `{"force":true}` | the record. A handover is asked of the node that numbers; `force` is asked of the node that takes the counter when the numbering node is lost, and goes on after the highest number that node holds (a number given to a document not yet replicated is given again) |
 | `DELETE …/counters/{field}` | | `204`; the field and its unique index stay |
 
 - Listing is Read; every change is **Admin**.
