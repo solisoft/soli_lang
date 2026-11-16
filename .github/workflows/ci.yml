@@ -576,12 +576,17 @@ jobs:
     strategy:
       matrix:
         include:
+          # Linux binaries are built on Ubuntu 24.04, not `ubuntu-latest`: a
+          # binary links against the build host's glibc, and `ubuntu-latest`
+          # moved to 26.04 (glibc 2.43), so 2.36.1–2.36.3 refused to start on
+          # 24.04 hosts ("GLIBC_2.43 not found"). The oldest supported LTS
+          # sets the floor; raise it deliberately, never by a runner update.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             artifact: soli-linux-amd64
             pdf_artifact: render-pdf-linux-amd64
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             artifact: soli-linux-arm64
             pdf_artifact: render-pdf-linux-arm64
           - target: aarch64-apple-darwin
