@@ -192,10 +192,11 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 | `GET …/columnar/{c}` | | `{name, columns, compression, row_count, created_at, last_updated_at, stats}` |
 | `DELETE …/columnar/{c}` | | `{"status":"deleted","name"}`; absent → `404` |
 | `POST …/columnar/{c}/insert` | `{"rows":[{"host":"a","cpu":1.5}, …]}` | `{"status":"ok","inserted":3,"ids":[…]}` |
-| `POST …/columnar/{c}/aggregate` | `{"column":"cpu","operation":"SUM","group_by":["host"]}` — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `COUNT_DISTINCT` | `{"result":7.0}`; with `group_by`: `{"result":null,"groups":[{"host":"a","_agg":4.0}, …]}` |
+| `POST …/columnar/{c}/aggregate` | `{"column":"cpu","operation":"SUM","group_by":["host"],"filter":{"column":"day","op":"GTE","value":1764547200000}}` — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `COUNT_DISTINCT`; `group_by` and `filter` optional. `filter` is the one `/query` takes, **from 2.12.1 only: through 2.12.0 the field is ignored without an error and every row is aggregated** — use SDBQL `FILTER … COLLECT` there. Also through 2.12.0 `group_by` reads row by row (2 minutes for 3.65 M rows; 0.3 s from 2.12.1) | `{"result":7.0}`; with `group_by`: `{"result":null,"groups":[{"host":"a","_agg":4.0}, …]}` — a group key that reads as a number comes back a float (`"metric_id":42.0`) |
 | `POST …/columnar/{c}/query` | `{"columns":["host","cpu"],"filter":{"column":"host","op":"EQ","value":"a"},"limit":10}` — one comparison: `EQ NE GT GTE LT LTE IN` or the symbols | `{"result":[{"cpu":1.5,"host":"a"}],"count":1}`; an unknown column → `400` |
-| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `bloom` (`minmax` existed through 2.11.0; from 2.12.0 → `400 "The minmax index type was removed…"`, and a stored one is dropped when its collection is loaded) | `{"status":"created","column","index_type"}`; already indexed → `400` |
-| `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` · `{"status":"deleted","column"}` |
+| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `bloom` (`minmax` existed through 2.11.0; from 2.12.0 → `400 "The minmax index type was removed…"`, and a stored one is dropped when its collection is loaded) | `{"status":"created","column","index_type"}` once built; already indexed → `400`. From 2.12.1 (observed on a build of it, 2026-11-16): `?wait=false` → `202 {"status":"building","job","column","index_type","rows_done","rows_total","started_at"}`, built on a server thread and resumed after a restart; `?rebuild=true` builds it again over the rows as they are (200, or 202 with `wait=false`) |
+| `GET …/columnar/{c}/index/{column}` (from 2.12.1) | | while building: the `202` body with `rows_done` moving (`status` `building`, or `failed` + `error`); then `{"status":"created","column","index_type","created_at","rows","size_bytes"}` (+ `job` if built in the background by this process); neither → `404` |
+| `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` — from 2.12.1 each index also has `rows` (how many rows it answers for) and `size_bytes`, and the body a `builds` array of unfinished background builds · `{"status":"deleted","column"}` (from 2.12.1 also calls off a running build) |
 
 - **Deleting rows** (from 2.11.0; observed on a build of `main`,
   2026-11-15; through 2.10.4 these routes do not exist and the only way to
@@ -206,7 +207,17 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   them; not both, not neither → `400`) → `{"status":"ok","deleted":1}`,
   unknown ids passed over; `PUT …/columnar/{c}/truncate` (Admin) →
   `{"status":"truncated","name"}`, columns kept. Delete many rows in one
-  call: a block is rewritten once per call. All three replicate.
+  call: a block is rewritten once per call. All three replicate. A delete
+  by filter of 1.81 M rows out of 3.65 M: 9.5 s on 2.12.0, 0.15 s from
+  2.12.1.
+- **What a columnar index buys** (observed 2026-11-16, 3.65 M rows):
+  little. 7,300 rows of one value of an int column: 6.6 ms with a sorted
+  index, 8.3 ms without; an index on a column that follows insertion
+  order (a day, a sequence) brings nothing, block bounds already skip. An
+  index covers the rows present when it was built (`rows` in
+  `GET …/indexes`); later rows are compared in the arrays, a delete in
+  the middle cuts it to the rows before. From 2.12.1 two sorted indexes
+  on those rows take 7.6 MB (56 MB on 2.12.0) and build in 1.2 s.
 - **Retention** (from 2.12.0; observed on a build of `main`,
   2026-11-16): `PUT …/columnar/{c}/retention` with `{"seconds":2592000}`
   (Admin; `{"seconds":null}` keeps every row; `0` → `400`) →
@@ -215,8 +226,10 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   minute; `POST …/columnar/{c}/prune` does it now →
   `{"status":"ok","deleted":6000}`. `GET …/columnar/{c}` shows
   `retention_secs`. Whole blocks go without being rewritten. Replicated as
-  a setting; each node removes its own rows. An index on a column is not
-  used after a removal until recreated (filters still answer right).
+  a setting; each node removes its own rows. On 2.12.0 an index on a
+  column is not used after a removal until recreated (filters still
+  answer right); from 2.12.1 it goes on answering, as after a
+  `POST …/delete` that removes exactly the oldest rows.
   Through 2.11.0 the routes do not exist.
 - **Compacting** (from 2.12.0; observed on a build of `main`,
   2026-11-16): `POST …/columnar/{c}/compact` →
@@ -304,7 +317,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   go row by row (about a second per million): `NOT`, `NOT IN`, a
   comparison of two columns, a key or aggregate that is another
   expression (`SUM(r.a * r.b)`), `COUNT_DISTINCT`, `TIME_BUCKET` of
-  weeks or months or of a string column. Unreleased after 2.12.0
+  weeks or months or of a string column. From 2.12.1
   (observed 2026-11-16 on a build of `main`, a million rows, same
   answers as 2.12.0): all of those are answered from the arrays too —
   `SUM(r.price * r.qty)` by host 1,269 ms → 6 ms, `NOT IN` 2.3 ms, two
