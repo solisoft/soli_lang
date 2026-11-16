@@ -207,6 +207,17 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   unknown ids passed over; `PUT …/columnar/{c}/truncate` (Admin) →
   `{"status":"truncated","name"}`, columns kept. Delete many rows in one
   call: a block is rewritten once per call. All three replicate.
+- **Retention** (unreleased after 2.11.0; observed on a build of `main`,
+  2026-11-16): `PUT …/columnar/{c}/retention` with `{"seconds":2592000}`
+  (Admin; `{"seconds":null}` keeps every row; `0` → `400`) →
+  `{"name":"m","retention_secs":2592000}`. Rows older than that, counted
+  from when each was inserted, are removed by a background pass once a
+  minute; `POST …/columnar/{c}/prune` does it now →
+  `{"status":"ok","deleted":6000}`. `GET …/columnar/{c}` shows
+  `retention_secs`. Whole blocks go without being rewritten. Replicated as
+  a setting; each node removes its own rows. An index on a column is not
+  used after a removal until recreated (filters still answer right).
+  Through 2.11.0 the routes do not exist.
 - No update of a row in place (delete and insert again), and columns cannot
   be added or removed afterwards.
 - **The schema is checked from 2.11.0** (observed on a build of `main`,
