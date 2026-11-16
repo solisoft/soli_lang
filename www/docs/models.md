@@ -3436,26 +3436,29 @@ inside undoes every write in the whole nest.
 > `@sdbql{}` `INSERT`, `UPDATE`, `REMOVE` or `UPSERT`. In 2.34 and earlier these
 > ran outside the transaction: they applied at once and survived a rollback.
 
-> **Reads inside a transaction see committed data.** Query-builder reads
-> (`where`, `all`, `first`, `count`, `find_by`, `first_by`), aggregations and
-> `@sdbql{}` reads run inside the transaction but on the state committed before
-> it: they do not observe the block's own writes. To read a row you wrote
-> earlier in the same transaction, use `find` (a key lookup).
->
-> That matters for read-modify-write:
+> **Reads inside a transaction see its own writes, on SoliDB 2.10.2 and
+> later.** Query-builder reads (`where`, `all`, `first`, `count`, `find_by`,
+> `first_by`), aggregations and `@sdbql{}` reads run inside the transaction
+> and see what the block wrote before them:
 >
 > ```soli
 > Account.transaction do
 >   Account.create({ "owner": owner_id, "balance": 0 })
->   # Reads the committed state — the row above is not counted yet.
+>   # Counts the row above.
 >   existing = Account.where({ "owner": owner_id }).count
 > end
 > ```
 >
-> Uniqueness validations run this kind of read, so two records that violate a
-> uniqueness rule can both pass validation inside one block and both commit.
-> Where it matters, do the check with `find` / `find_by` on the key, or enforce
-> it with a unique index rather than a validation.
+> A uniqueness validation runs this kind of read, so the second of two
+> records that break a uniqueness rule in one block fails its validation.
+> Full-text, vector and geo searches and graph traversals still read
+> committed data.
+>
+> **On a SoliDB older than 2.10.2** those reads are answered from the state
+> committed before the transaction: the count above leaves the new row out,
+> and two records that break a uniqueness rule can both pass validation and
+> both commit. There, read a row written earlier in the block with `find` (a
+> key lookup), and enforce uniqueness with a unique index.
 
 > **`find` inside a SoliDB transaction** reads through the transaction, so it
 > sees the transaction's own inserts, updates and deletes, on SoliDB servers

@@ -5355,7 +5355,7 @@ with_transaction(fn() {
 assert_eq(User.count, 0)
 ```
 
-Only the writes join the transaction: a query inside the block (`User.count`, `find`) reads committed data and does not see the block's own inserts, so assert on the returned records instead.
+A query inside the block (`User.count`, `find`) sees the block's own inserts on SoliDB 2.10.2 and later; on an older SoliDB it reads committed data, so assert on the returned records when the suite has to run on both.
 
 ### freeze_time(timestamp) / travel_to(timestamp) / unfreeze_time()
 

@@ -2,9 +2,9 @@
 # back (re-raising) when it throws; a string runs one SDBQL statement in a
 # transaction; Model.transaction() hands back a handle for manual control.
 #
-# Query-builder reads (`where`, `all`, `count`) run inside the transaction but
-# on committed data: they do not see the block's own writes, which is what
-# these specs use to check the outcome. Query writes (`update_all`,
+# Reads inside the block (`where`, `all`, `count`, `find_by`) run in the
+# transaction and see its own writes, on SoliDB 2.10.2 and later; an older
+# server answers them from committed data. Query writes (`update_all`,
 # `delete_all`, an `@sdbql{}` INSERT/UPDATE/REMOVE) are staged on it and
 # commit or roll back with the block.
 
@@ -136,29 +136,27 @@ describe("Model.transaction") do
       assert_eq(TxAccount.find_by("name", "existing").balance, 20)
     end
 
-    test("a query write is not visible outside the block before it commits") do
-      outside = TxAccount.transaction do
+    test("a read inside the block sees a query write of the block") do
+      inside = TxAccount.transaction do
         TxAccount.where({"name": "existing"}).update_all({"balance": 30})
-        # A read in the block runs on committed data, like one outside it.
         TxAccount.find_by("name", "existing").balance
       end
 
-      assert_eq(outside, 10)
+      assert_eq(inside, 30)
       assert_eq(TxAccount.find_by("name", "existing").balance, 30)
     end
 
-    test("a query-builder read inside the block sees the pre-transaction state") do
+    test("a count inside the block counts the records the block created") do
       inside_count = TxAccount.transaction do
         TxAccount.create({"name": "erin", "balance": 3})
         TxAccount.count
       end
 
-      assert_eq(inside_count, 1)
+      assert_eq(inside_count, 2)
       assert_eq(TxAccount.count, 2)
     end
 
     test("find inside the block sees the transaction's own writes") do
-      pending("bug: find inside a transaction raises RecordNotFound (no tx document GET route)")
       found_balance = TxAccount.transaction do
         record = TxAccount.create({"name": "frank", "balance": 4})
         TxAccount.find(record._key).balance

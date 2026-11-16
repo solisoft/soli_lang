@@ -40,8 +40,8 @@ describe("with_transaction") do
     assert_null(inserted._errors)
     assert_eq(inserted.email, "tx@test.com")
     assert_eq(inserted._key.length, 36)
-    # Query-builder reads inside the block see only committed state.
-    assert_eq(inside_emails, ["existing@test.com"])
+    # Reads inside the block see what it wrote (SoliDB 2.10.2 and later).
+    assert_eq(inside_emails, ["existing@test.com", "tx@test.com"])
     # The block finished normally, and still nothing was committed.
     assert_eq(user_emails(), ["existing@test.com"])
   end

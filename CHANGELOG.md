@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs and specs: reads inside a transaction see its own writes on SoliDB
+  2.10.2 and later.** The model, testing and builtins pages said that a query
+  inside `Model.transaction` or `with_transaction` reads committed data and
+  that two records breaking a uniqueness rule in one block both commit. That
+  is what a SoliDB older than 2.10.2 does. On 2.10.2 and later `count`,
+  `where`, `find_by` and the read of a uniqueness validation see what the
+  block wrote, and the pages now say which server does what. Three specs
+  that asserted the older behaviour are updated; they fail on an older
+  SoliDB.
+
 ### Added
 
 - **SoliDB counter fields: `db.create_counter` in a migration.** SoliDB (after

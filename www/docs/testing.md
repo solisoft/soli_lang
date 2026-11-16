@@ -363,10 +363,10 @@ describe("User model") do
 end
 ```
 
-Assert on the records the block creates, not on reads: only the writes join
-the transaction. A query inside the block (`User.count`, `User.all`,
-`find`) reads committed data and does not see the block's own inserts —
-`User.count` there is still `0`.
+A query inside the block (`User.count`, `User.all`, `find`) sees the block's
+own inserts on SoliDB 2.10.2 and later: `User.count` there is `1`. On an
+older SoliDB it reads committed data and is still `0`, so assert on the
+records the block creates when the suite has to run on both.
 
 Unlike `Model.transaction { }`, which commits on success, `with_transaction` is test-only and never commits.
 
