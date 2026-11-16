@@ -194,7 +194,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 | `POST …/columnar/{c}/insert` | `{"rows":[{"host":"a","cpu":1.5}, …]}` | `{"status":"ok","inserted":3,"ids":[…]}` |
 | `POST …/columnar/{c}/aggregate` | `{"column":"cpu","operation":"SUM","group_by":["host"]}` — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `COUNT_DISTINCT` | `{"result":7.0}`; with `group_by`: `{"result":null,"groups":[{"host":"a","_agg":4.0}, …]}` |
 | `POST …/columnar/{c}/query` | `{"columns":["host","cpu"],"filter":{"column":"host","op":"EQ","value":"a"},"limit":10}` — one comparison: `EQ NE GT GTE LT LTE IN` or the symbols | `{"result":[{"cpu":1.5,"host":"a"}],"count":1}`; an unknown column → `400` |
-| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `bloom` (`minmax` existed through 2.11.0; after it → `400 "The minmax index type was removed…"`, and a stored one is dropped when its collection is loaded) | `{"status":"created","column","index_type"}`; already indexed → `400` |
+| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `bloom` (`minmax` existed through 2.11.0; from 2.12.0 → `400 "The minmax index type was removed…"`, and a stored one is dropped when its collection is loaded) | `{"status":"created","column","index_type"}`; already indexed → `400` |
 | `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` · `{"status":"deleted","column"}` |
 
 - **Deleting rows** (from 2.11.0; observed on a build of `main`,
@@ -207,7 +207,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   unknown ids passed over; `PUT …/columnar/{c}/truncate` (Admin) →
   `{"status":"truncated","name"}`, columns kept. Delete many rows in one
   call: a block is rewritten once per call. All three replicate.
-- **Retention** (unreleased after 2.11.0; observed on a build of `main`,
+- **Retention** (from 2.12.0; observed on a build of `main`,
   2026-11-16): `PUT …/columnar/{c}/retention` with `{"seconds":2592000}`
   (Admin; `{"seconds":null}` keeps every row; `0` → `400`) →
   `{"name":"m","retention_secs":2592000}`. Rows older than that, counted
@@ -218,7 +218,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   a setting; each node removes its own rows. An index on a column is not
   used after a removal until recreated (filters still answer right).
   Through 2.11.0 the routes do not exist.
-- **Compacting** (unreleased after 2.11.0; observed on a build of `main`,
+- **Compacting** (from 2.12.0; observed on a build of `main`,
   2026-11-16): `POST …/columnar/{c}/compact` →
   `{"status":"ok","blocks_before":200,"blocks_after":16}` (a million rows
   loaded 5,000 at a time, one second). Merges neighbouring small blocks
@@ -226,7 +226,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   65,536). Rows, order, query answers and indexes unchanged; on demand
   only; not replicated. Worth running after a load in small batches or a
   large delete.
-- **Columns change after creation** (unreleased after 2.11.0; observed on a
+- **Columns change after creation** (from 2.12.0; observed on a
   build of `main`, 2026-11-16, 200,000 rows; all Admin, all replicated):
   `POST …/columnar/{c}/columns` with `{"name":"region","type":"string"}` →
   `201 {"status":"added","column":"region"}` (existing rows read `null`
@@ -263,12 +263,12 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   error.
 - **A `FOR` that is not a `COLLECT` is slow through 2.11.0**: every row
   and every column is built before the FILTER or LIMIT (about 1 s per
-  query on a million rows of six columns, whatever it asks). After 2.11.0
+  query on a million rows of six columns, whatever it asks). From 2.12.0
   (observed on a build of `main`, 2026-11-16, same data): only the columns
   read are built; `FILTER r.col == const` / `< <= > >=` on an integer
   column, `==` on a string or boolean column, with literals or bind
   variables, joined by AND / OR, are answered from the column or its index
-  (`LIMIT 10` 0.6 ms). From the build after that (observed 2026-11-16,
+  (`LIMIT 10` 0.6 ms). Also from 2.12.0 (observed 2026-11-16,
   card #893) the comparison runs in the arrays of the blocks and a block
   of integers its min/max rule out is skipped, no index needed: one row
   by value 0.6 ms, 100 rows of a range (`r.v >= a AND r.v < b`) 0.8 ms,
@@ -295,7 +295,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   AGGREGATE <COUNT|SUM|AVG|MIN|MAX>(r.col) …`. Through 2.11.0 the FILTERs
   had to be `==` with a string, number or boolean and `<` `<=` `>` `>=`
   with a number, joined by `AND`, and a block holding a null went row by
-  row. After it (observed 2026-11-16, card #892, a million rows) the
+  row. From 2.12.0 (observed 2026-11-16, card #892, a million rows) the
   arrays also take `!=`, `IN [..]`, `OR`, string and boolean ranges,
   `== null` / `!= null`, the constant on the left, columns with nulls,
   and a key `TIME_BUCKET(r.ts, "1h")` (fixed interval, integer column):
@@ -306,7 +306,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `COUNT_DISTINCT`, `TIME_BUCKET` of weeks or months or of a string
   column. Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
-  `/aggregate` only; after it a pushed-down SDBQL FILTER uses a hash,
+  `/aggregate` only; from 2.12.0 a pushed-down SDBQL FILTER uses a hash,
   sorted, bitmap or bloom index for `==` / `IN`. A range against a number
   never uses an index (a sorted one is not consulted for it: the
   blocks' own bounds do better, 0.8 ms against 485 ms with a sorted index
@@ -328,7 +328,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   full sync, when both nodes run this build.
 - **Creating an index is slow through 2.11.0**: quadratic in the rows
   (0.8 s for 20,000, 11.7 s for 80,000, over a minute for 200,000, the
-  collection's writes waiting meanwhile). After 2.11.0 (observed on a
+  collection's writes waiting meanwhile). From 2.12.0 (observed on a
   build of `main`, 2026-11-16): 17 ms for 80,000 rows, 0.2 s for a hash
   index on a million rows of five values, 2.1 s for a sorted index on a
   million distinct values.
@@ -415,7 +415,7 @@ The HTTP and SDBQL answers below were seen on a live server; `set_null`,
 The `DELETE …/{name}` forms exist for geo, vector and ttl indexes too.
 Details and query-side usage: indexes-search.md.
 
-### Counter fields (unreleased after 2.11.0; observed on a build of `main`, 2026-11-16, one node and two nodes)
+### Counter fields (from 2.12.0; observed on a build of `main`, 2026-11-16, one node and two nodes)
 
 A `document` or `edge` collection declares that a field is numbered by the database:
 every insert gets the next number, never twice the same and with no gap (a

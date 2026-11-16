@@ -174,7 +174,7 @@ Check an `@sdbql` result with `type(result) == "string"` before using it.
 | `Place.within(48.86, 2.33, 1000)` | `POST /geo/places/loc/within {"lat","lon","radius"}` |
 | `Doc.similar([1,0,0], "emb", 2)` | `POST /vector/docs/idx_emb/search {"limit":2,"vector":[…]}` — index must be named `idx_<field>` |
 
-## Counter fields from Soli (unreleased after Soli 2.36.3 / SoliDB 2.11.0; observed 2026-11-16)
+## Counter fields from Soli (SoliDB 2.12.0; unreleased in Soli after 2.36.3; observed 2026-11-16)
 
 A SoliDB counter (`POST …/collection/{c}/counters`, see `http-api.md`) is
 declared from a Soli migration and needs nothing on the model:
