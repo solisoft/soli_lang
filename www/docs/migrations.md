@@ -406,12 +406,59 @@ number). SoliDB creates a unique index on the field. On a collection that
 already holds numbers, give `start` (or call `set_counter_next`): the
 declaration is refused when a stored document already holds the first number.
 
+More formats, an existing numbering, and listing:
+
+```soli
+# A number per year: 2026/1, 2026/2, … then 2027/1
+db.create_counter("orders", "reference", {
+  "reset": "year", "prefix": "{YYYY}/"
+})
+
+# A ticket number per day, in Paris time: T-20261116-001
+db.create_counter("tickets", "code", {
+  "reset": "day", "timezone": "Europe/Paris",
+  "prefix": "T-{YYYY}{MM}{DD}-", "padding": 3
+})
+
+# A suffix: 0001/A
+db.create_counter("quotes", "number", { "padding": 4, "suffix": "/A" })
+
+# A collection that already holds invoices up to 1287: go on at 1288
+db.create_counter("invoices", "number", {
+  "start": 1288, "prefix": "INV-", "padding": 4
+})
+
+# Or, on a counter that exists, set the next number
+db.set_counter_next("invoices", "number", 1288)
+
+# Where each counter stands
+db.list_counters("invoices").each do |counter|
+  print(counter["field"] + " -> " + str(counter["state"]["next"]))
+end
+```
+
 The model needs no declaration. `Invoice.create({...})` and `invoice.save`
 leave the field out and take the number from SoliDB's answer:
 
 ```soli
+# create and save set the number
 invoice = Invoice.create({ "total": 120 })
-invoice.number   # "INV-2026-11-0041"
+invoice.number                       # "INV-2026-11-0041"
+
+draft = Invoice.new({ "total": 80 })
+draft.save
+draft.number                         # "INV-2026-11-0042"
+
+# Find a record by its number: the field has a unique index
+Invoice.find_by("number", "INV-2026-11-0041")
+
+# In a transaction the number is given at commit: read the record back
+key = nil
+Invoice.transaction do
+  invoice = Invoice.create({ "total": 60 })
+  key = invoice._key                 # invoice.number is still nil here
+end
+Invoice.find(key).number             # "INV-2026-11-0043"
 ```
 
 Do not set the field yourself: SoliDB refuses an insert that gives it a value,

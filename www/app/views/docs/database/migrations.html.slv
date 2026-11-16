@@ -260,14 +260,6 @@ end</code></pre>
             <code class="text-cyan-300 font-bold">db.list_indexes(collection)</code>
             <p class="text-sm text-gray-400 mt-1">List all indexes for a collection.</p>
         </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-cyan-300 font-bold">db.create_counter(collection, field, options?)</code>
-            <p class="text-sm text-gray-400 mt-1">Have SoliDB number <code>field</code> on insert: 1, 2, 3&hellip;, never the same number twice and with no gap. <code>options</code>: <code>start</code>, <code>reset</code> (<code>"day"</code>, <code>"week"</code>, <code>"month"</code>, <code>"year"</code>), <code>timezone</code>, <code>prefix</code> and <code>suffix</code> (which may hold <code>{YYYY}</code> <code>{YY}</code> <code>{MM}</code> <code>{DD}</code> <code>{WW}</code>), <code>padding</code>, <code>durable</code>. The model needs no declaration: <code>create</code> and <code>save</code> leave the field out and take the number from the answer. In a transaction the number is given at commit, so read the record back after the block. SoliDB only, after 2.11.0.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-cyan-300 font-bold">db.set_counter_next(collection, field, next)</code>
-            <p class="text-sm text-gray-400 mt-1">Make <code>next</code> the number the next insert gets, for a collection that already holds numbers. <code>db.drop_counter(collection, field)</code> stops the numbering and keeps the stored values; <code>db.list_counters(collection)</code> lists the counters with where each stands.</p>
-        </div>
     </div>
 
     <div class="my-6 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-8">
@@ -302,6 +294,159 @@ def down(db: Any)
   db.drop_index("users", "idx_email")
 end</code></pre>
         </div>
+    </div>
+
+    <h2 id="counters" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Counter Helpers</h2>
+    <p class="text-gray-400 mb-6">
+        A counter is a field SoliDB numbers itself when a document is inserted: 1, 2, 3&hellip;, never the same number twice and with no gap. It suits an invoice or ticket number. Counters are SoliDB only (the SQL adapters raise <code>create_counter is SoliDB-only.</code>) and need a SoliDB newer than 2.11.0.
+    </p>
+
+    <div class="space-y-4 mb-8">
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.create_counter(collection, field, options?)</code>
+            <p class="text-sm text-gray-400 mt-1">Have SoliDB number <code>field</code> on insert. The collection must exist. Returns the counter as SoliDB stored it, with its <code>state</code> (<code>next</code> is the next number). SoliDB creates a unique index on the field.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.set_counter_next(collection, field, next)</code>
+            <p class="text-sm text-gray-400 mt-1">Make <code>next</code> the number the next insert gets, for a collection that already holds numbers. A number a document already holds is refused.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.drop_counter(collection, field)</code>
+            <p class="text-sm text-gray-400 mt-1">Stop numbering the field. The stored numbers and their unique index stay.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.list_counters(collection)</code>
+            <p class="text-sm text-gray-400 mt-1">The counters of a collection, each with where it stands: <code>[{ "field": "number", &hellip;, "state": { "next": 1289 } }]</code>.</p>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Counter Examples</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def up(db: Any)
+  db.create_collection("tickets")
+  db.create_collection("invoices")
+
+  # 1, 2, 3…
+  db.create_counter("tickets", "seq")
+
+  # INV-2026-11-0041, INV-2026-11-0042, …
+  # and 0001 again on the first of each month
+  db.create_counter("invoices", "number", {
+    "start": 41,
+    "reset": "month",
+    "timezone": "Europe/Paris",
+    "prefix": "INV-{YYYY}-{MM}-",
+    "padding": 4
+  })
+end
+
+def down(db: Any)
+  db.drop_counter("invoices", "number")
+  db.drop_collection("invoices")
+  db.drop_counter("tickets", "seq")
+  db.drop_collection("tickets")
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">More formats, an existing numbering, listing</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># A number per year: 2026/1, 2026/2, … then 2027/1
+db.create_counter("orders", "reference", {
+  "reset": "year", "prefix": "{YYYY}/"
+})
+
+# A ticket number per day, in Paris time: T-20261116-001
+db.create_counter("tickets", "code", {
+  "reset": "day", "timezone": "Europe/Paris",
+  "prefix": "T-{YYYY}{MM}{DD}-", "padding": 3
+})
+
+# A suffix: 0001/A
+db.create_counter("quotes", "number", { "padding": 4, "suffix": "/A" })
+
+# A collection that already holds invoices up to 1287: go on at 1288
+db.create_counter("invoices", "number", {
+  "start": 1288, "prefix": "INV-", "padding": 4
+})
+
+# Or, on a counter that exists, set the next number
+db.set_counter_next("invoices", "number", 1288)
+
+# Where each counter stands
+db.list_counters("invoices").each do |counter|
+  print(counter["field"] + " -&gt; " + str(counter["state"]["next"]))
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-400 border-b border-white/10">
+                <tr><th class="py-3 px-4">Option</th><th class="py-3 px-4">Meaning</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">start</code></td>
+                    <td class="py-3 px-4 text-gray-400">The first number, 1 by default. Used once: after a reset the count starts at 1.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">reset</code></td>
+                    <td class="py-3 px-4 text-gray-400"><code>"day"</code>, <code>"week"</code>, <code>"month"</code> or <code>"year"</code>. Left out, the counter never starts again.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">timezone</code></td>
+                    <td class="py-3 px-4 text-gray-400">The IANA timezone the date is read in, <code>"UTC"</code> by default.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">prefix, suffix</code></td>
+                    <td class="py-3 px-4 text-gray-400">Text around the number. They may hold <code>{YYYY}</code>, <code>{YY}</code>, <code>{MM}</code>, <code>{DD}</code> and <code>{WW}</code>. With <code>reset</code> they must name the period, or SoliDB refuses the counter.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">padding</code></td>
+                    <td class="py-3 px-4 text-gray-400">Left-pad the number with zeros to this many digits.</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">durable</code></td>
+                    <td class="py-3 px-4 text-gray-400"><code>true</code> by default: the insert waits for its write to be on disk.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-4">
+        The model needs no declaration. <code>create</code> and <code>save</code> leave the field out and take the number from SoliDB's answer:
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">On the model</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># create and save set the number
+invoice = Invoice.create({ "total": 120 })
+invoice.number                       # "INV-2026-11-0041"
+
+draft = Invoice.new({ "total": 80 })
+draft.save
+draft.number                         # "INV-2026-11-0042"
+
+# Find a record by its number: the field has a unique index
+Invoice.find_by("number", "INV-2026-11-0041")
+
+# In a transaction the number is given at commit: read the record back
+key = nil
+Invoice.transaction do
+  invoice = Invoice.create({ "total": 60 })
+  key = invoice._key                 # invoice.number is still nil here
+end
+Invoice.find(key).number             # "INV-2026-11-0043"</code></pre>
+        </div>
+    </div>
+
+    <div class="my-6 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-12">
+        <p class="text-blue-200/80 text-sm">
+            Do not set the field yourself: SoliDB refuses an insert that gives it a value, and an update that changes it. <strong>In a transaction the number is given when the transaction commits</strong>: a record created inside <code>Model.transaction do &hellip; end</code> has no number until it is read back after the block. On a collection that already holds numbers, give <code>start</code> or call <code>set_counter_next</code>: SoliDB refuses a counter whose first number a stored document already holds.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Raw Queries</h2>
