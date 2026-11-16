@@ -280,7 +280,7 @@ PageView.count</code></pre>
 
     <h3 class="text-lg font-semibold text-white mb-3">Column indexes</h3>
     <p class="text-gray-400 mb-4">
-        Kinds: <code>sorted</code> (the default) | <code>hash</code> | <code>bitmap</code> | <code>minmax</code> | <code>bloom</code>. Rule of thumb: <code>sorted</code> for ranges and equality, <code>hash</code> for pure equality, <code>bitmap</code> for low-cardinality columns (country, status), <code>minmax</code> for block pruning on range scans, <code>bloom</code> for fast negative membership tests.
+        Kinds: <code>sorted</code> (the default) | <code>hash</code> | <code>bitmap</code> | <code>bloom</code>. Rule of thumb: <code>sorted</code> or <code>hash</code> for equality, <code>bitmap</code> for low-cardinality columns (country, status), <code>bloom</code> for fast negative membership tests. A range needs no index: each block keeps the bounds of its numeric columns, and a range skips the blocks they rule out (the <code>minmax</code> kind was removed after SoliDB 2.11).
     </p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">

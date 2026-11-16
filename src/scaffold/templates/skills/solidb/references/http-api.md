@@ -194,7 +194,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 | `POST …/columnar/{c}/insert` | `{"rows":[{"host":"a","cpu":1.5}, …]}` | `{"status":"ok","inserted":3,"ids":[…]}` |
 | `POST …/columnar/{c}/aggregate` | `{"column":"cpu","operation":"SUM","group_by":["host"]}` — `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `COUNT_DISTINCT` | `{"result":7.0}`; with `group_by`: `{"result":null,"groups":[{"host":"a","_agg":4.0}, …]}` |
 | `POST …/columnar/{c}/query` | `{"columns":["host","cpu"],"filter":{"column":"host","op":"EQ","value":"a"},"limit":10}` — one comparison: `EQ NE GT GTE LT LTE IN` or the symbols | `{"result":[{"cpu":1.5,"host":"a"}],"count":1}`; an unknown column → `400` |
-| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `minmax`, `bloom` | `{"status":"created","column","index_type"}`; already indexed → `400` |
+| `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `bloom` (`minmax` existed through 2.11.0; after it → `400 "The minmax index type was removed…"`, and a stored one is dropped when its collection is loaded) | `{"status":"created","column","index_type"}`; already indexed → `400` |
 | `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` · `{"status":"deleted","column"}` |
 
 - **Deleting rows** (from 2.11.0; observed on a build of `main`,
@@ -300,7 +300,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; after it a pushed-down SDBQL FILTER uses a hash,
   sorted, bitmap or bloom index for `==` / `IN`. A range against a number
-  never uses an index (sorted and minmax are not consulted for it: the
+  never uses an index (a sorted one is not consulted for it: the
   blocks' own bounds do better, 0.8 ms against 485 ms with a sorted index
   before). EXPLAIN of a row-returning `FOR` over a columnar collection
   (observed 2026-11-16): `"access_type": "columnar_scan"`, `"index_used":

@@ -257,7 +257,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
         );
 
         // Model.add_column_index(column[, type]) — sorted (default),
-        // hash, bitmap, minmax, or bloom.
+        // hash, bitmap, or bloom.
         native_static_methods.insert(
             "add_column_index".to_string(),
             Rc::new(NativeFunction::new(

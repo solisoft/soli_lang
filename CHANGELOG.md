@@ -4,6 +4,12 @@
 
 ### Changed
 
+- **`Model.add_column_index(field, "minmax")` is refused.** SoliDB removed
+  the `minmax` columnar index kind after 2.11: each block keeps the bounds
+  of its numeric columns and a range skips the blocks they rule out, with no
+  index. The kinds are now `sorted` (the default), `hash`, `bitmap` and
+  `bloom`; the analytics and models pages say that a range needs no index.
+
 - **Docs and specs: reads inside a transaction see its own writes on SoliDB
   2.10.2 and later.** The model, testing and builtins pages said that a query
   inside `Model.transaction` or `with_transaction` reads committed data and

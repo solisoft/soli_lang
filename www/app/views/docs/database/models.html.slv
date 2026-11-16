@@ -703,7 +703,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.add_column_index(field, kind?)</code> / <code class="text-amber-300">column_indexes</code> / <code class="text-amber-300">drop_column_index(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Columnar models only: manage column indexes (<code>sorted</code> default, <code>hash</code>, <code>bitmap</code>, <code>minmax</code>, <code>bloom</code>)</td>
+                    <td class="py-3 px-4 text-gray-400">Columnar models only: manage column indexes (<code>sorted</code> default, <code>hash</code>, <code>bitmap</code>, <code>bloom</code>)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.columnar_stats</code></td>

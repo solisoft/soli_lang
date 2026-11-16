@@ -257,10 +257,10 @@ PageView.drop_column_index("country")
 PageView.columnar_stats
 ```
 
-Index kinds: `sorted` (the default) | `hash` | `bitmap` | `minmax` | `bloom`.
-As a rule of thumb: `sorted` for ranges and equality, `hash` for pure
-equality, `bitmap` for low-cardinality columns (country, status), `minmax`
-for block pruning on range scans, `bloom` for fast negative membership tests.
+Index kinds: `sorted` (the default) | `hash` | `bitmap` | `bloom`.
+As a rule of thumb: `sorted` or `hash` for equality, `bitmap` for low-cardinality columns (country, status), `bloom` for fast
+negative membership tests. A range scan needs no index: each block keeps the
+bounds of its numeric columns (the `minmax` kind was removed after SoliDB 2.11).
 
 `columnar_stats` returns store-level statistics (row counts, on-disk layout).
 

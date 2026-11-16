@@ -51,8 +51,10 @@ pub const COLUMN_TYPES: &[&str] = &[
     "array",
 ];
 
-/// Column index types (`ColumnarIndexType`).
-pub const COLUMN_INDEX_TYPES: &[&str] = &["sorted", "hash", "bitmap", "minmax", "bloom"];
+/// Column index types (`ColumnarIndexType`). `minmax` was one through
+/// SoliDB 2.11: the server removed it, a range being answered from the
+/// bounds each block keeps.
+pub const COLUMN_INDEX_TYPES: &[&str] = &["sorted", "hash", "bitmap", "bloom"];
 
 /// Filter operators of the columnar query endpoint.
 pub const COLUMN_FILTER_OPS: &[&str] = &["eq", "ne", "gt", "gte", "lt", "lte", "in"];

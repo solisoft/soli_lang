@@ -455,7 +455,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | `Model.insert_rows(rows)` | Columnar models only: batch append, returns `{ "inserted": n, "ids": [...] }`. See [Analytics](analytics.md#columnar-models). |
 | `Model.aggregate(field, op, opts?)` | Columnar models only: scalar aggregate, or per-group rows with `{ "group_by": [...] }` |
 | `Model.query(spec)` | Columnar models only: fetch rows (`columns` / one `filter` / `limit`) |
-| `Model.add_column_index(field, kind?)` / `column_indexes` / `drop_column_index(field)` | Columnar models only: manage column indexes (`sorted` default, `hash`, `bitmap`, `minmax`, `bloom`) |
+| `Model.add_column_index(field, kind?)` / `column_indexes` / `drop_column_index(field)` | Columnar models only: manage column indexes (`sorted` default, `hash`, `bitmap`, `bloom`) |
 | `Model.columnar_stats` | Columnar models only: store-level statistics |
 
 ## Relationship DSL
