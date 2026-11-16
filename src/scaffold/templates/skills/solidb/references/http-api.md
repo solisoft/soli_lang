@@ -218,8 +218,19 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   a setting; each node removes its own rows. An index on a column is not
   used after a removal until recreated (filters still answer right).
   Through 2.11.0 the routes do not exist.
-- No update of a row in place (delete and insert again), and columns cannot
-  be added or removed afterwards.
+- **Columns change after creation** (unreleased after 2.11.0; observed on a
+  build of `main`, 2026-11-16, 200,000 rows; all Admin, all replicated):
+  `POST …/columnar/{c}/columns` with `{"name":"region","type":"string"}` →
+  `201 {"status":"added","column":"region"}` (existing rows read `null`
+  in it; always nullable; an existing name → `409`);
+  `PUT …/columnar/{c}/columns/{column}` with `{"name":"value"}` →
+  `{"status":"renamed","column":"value","was":"v"}` (values kept; a row
+  naming the old column → `400 unknown column`);
+  `DELETE …/columnar/{c}/columns/{column}` → `{"status":"dropped",…}`
+  (values gone for good; unknown → `400`; the last column → `400`). A
+  column with an index → `409 "… drop the index first"`. Through 2.11.0
+  the columns are fixed at creation.
+- No update of a row in place (delete and insert again).
 - **The schema is checked from 2.11.0** (observed on a build of `main`,
   2026-11-15). An insert is refused whole with `400`, naming the row:
   `row 0: unknown column 'extra'`, `row 1: column 'cpu' is not nullable and
