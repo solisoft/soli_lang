@@ -268,10 +268,14 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   read are built; `FILTER r.col == const` / `< <= > >=` on an integer
   column, `==` on a string or boolean column, with literals or bind
   variables, joined by AND / OR, are answered from the column or its index
-  (`LIMIT 10` 0.6 ms, one row by value 0.07 s, a range of 100 rows
-  0.20 s). Still row by row: a float column, a string range, `!=`, a
-  constant of another kind than the column (`r.int_col == 5.0`), a filter
-  naming an outer `FOR`'s variable, `SORT … LIMIT`.
+  (`LIMIT 10` 0.6 ms). From the build after that (observed 2026-11-16,
+  card #893) the comparison runs in the arrays of the blocks and a block
+  of integers its min/max rule out is skipped, no index needed: one row
+  by value 0.6 ms, 100 rows of a range (`r.v >= a AND r.v < b`) 0.8 ms,
+  a float range (`r.ms >= 1000 AND r.ms < 1010`, also pushed now) 5.6 ms,
+  on a million rows. Still row by row: a float `==`, a string range,
+  `!=`, a constant of another kind than the column (`r.int_col == 5.0`),
+  a filter naming an outer `FOR`'s variable, `SORT … LIMIT`.
 - **SDBQL reads it and, from 2.11.0, inserts into it** (observed on a
   build of `main`, 2026-11-15). `FOR r IN m …` works as on a document
   collection. `INSERT {host: "a", v: 1} INTO m` and
@@ -289,11 +293,17 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `AND`. On 200,000 rows: a filtered group-by 1.6 ms, a whole-column `SUM`
   1.6 ms. An aggregate outside that shape (an `OR` in its FILTER: 164 ms on
   2.11.0) is computed from rows, read as the entry above says. Results are
-  the same either way, and EXPLAIN does not say which ran (`full_scan`
-  both). Through 2.11.0 columnar indexes serve `/query` and `/aggregate`
-  only; after it a pushed-down SDBQL FILTER uses them too (a sorted index
-  made a range of 100 rows slower than no index on a million rows: 0.5 s
-  against 0.2 s).
+  the same either way. Through 2.11.0 columnar indexes serve `/query` and
+  `/aggregate` only; after it a pushed-down SDBQL FILTER uses a hash,
+  sorted, bitmap or bloom index for `==` / `IN`. A range against a number
+  never uses an index (sorted and minmax are not consulted for it: the
+  blocks' own bounds do better, 0.8 ms against 485 ms with a sorted index
+  before). EXPLAIN of a row-returning `FOR` over a columnar collection
+  (observed 2026-11-16): `"access_type": "columnar_scan"`, `"index_used":
+  "host (hash)"` when an equality used one, and a warning ``"`m` is
+  columnar: 3 of its 6 columns are built, for the rows its FILTER on
+  `host`, `v` keeps, found in the column arrays and the index on host
+  (hash)"``. The folded aggregate shape still reports `full_scan`.
 - **Transactions**: read refused at `repeatable_read` / `serializable`
   (`501 OperationNotSupported "… use read_committed"`).
 - **Replication** (from the code and its tests, not observed on a cluster):
