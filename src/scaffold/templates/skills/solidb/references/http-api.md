@@ -343,7 +343,7 @@ Details and query-side usage: indexes-search.md.
 
 ### Counter fields (unreleased after 2.11.0; observed on a build of `main`, 2026-11-16, one node and two nodes)
 
-A `document` collection declares that a field is numbered by the database:
+A `document` or `edge` collection declares that a field is numbered by the database:
 every insert gets the next number, never twice the same and with no gap (a
 refused insert, a rollback or a refused commit takes none). Not on 2.11.0
 or earlier: the routes answer 404.
