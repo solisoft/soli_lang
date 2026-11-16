@@ -279,12 +279,14 @@ solidb_collection_stats
 solidb_connected
 solidb_create_collection
 solidb_create_columnar
+solidb_create_counter
 solidb_create_index
 solidb_create_vector_index
 solidb_delete
 solidb_delete_blob
 solidb_drop_collection
 solidb_drop_columnar
+solidb_drop_counter
 solidb_drop_index
 solidb_drop_vector_index
 solidb_explain
@@ -295,8 +297,10 @@ solidb_insert
 solidb_list
 solidb_list_collections
 solidb_list_columnar
+solidb_list_counters
 solidb_list_indexes
 solidb_prune_collection
+solidb_set_counter_next
 solidb_store_blob
 solidb_timeout
 solidb_update

@@ -721,6 +721,18 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
         </table>
     </div>
 
+    <h2 id="assigned-fields" class="text-2xl font-bold text-white mb-6">Fields the database assigns</h2>
+    <p class="text-gray-400 mb-4">
+        SoliDB answers an insert with the document as it stored it. <code>create</code> and <code>save</code> take from that answer any field the record does not hold, so a field the database fills in is on the record without a second read. That is how a counter field (a number SoliDB gives on insert, declared with <code>db.create_counter</code> in a <a href="/docs/database/migrations" class="text-amber-400 hover:underline">migration</a>) reaches the model:
+    </p>
+    <div class="bg-[#161b22] rounded-xl border border-white/10 overflow-hidden mb-4">
+        <pre class="p-6 text-sm"><code class="language-ruby">invoice = Invoice.create({ "total": 120 })
+invoice.number   # "INV-2026-11-0041"</code></pre>
+    </div>
+    <p class="text-gray-400 mb-10">
+        A field the application set is never replaced. A record created inside <code>Model.transaction do &hellip; end</code> has no number until the transaction commits: read it back after the block.
+    </p>
+
     <h2 id="storage-index-dsl" class="text-2xl font-bold text-white mb-6">Storage &amp; Index DSL</h2>
     <p class="text-gray-400 mb-6">
         Class-body declarations for the multi-model and search features. Index declarations are metadata-only at load: dev ensures them at server boot; in production run <code>soli db:indexes</code> or create them in migrations. See <a href="/docs/database/search#index-sync" class="text-amber-400 hover:underline">Search &mdash; sync strategy</a>.

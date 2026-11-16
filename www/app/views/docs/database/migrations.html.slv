@@ -260,6 +260,14 @@ end</code></pre>
             <code class="text-cyan-300 font-bold">db.list_indexes(collection)</code>
             <p class="text-sm text-gray-400 mt-1">List all indexes for a collection.</p>
         </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.create_counter(collection, field, options?)</code>
+            <p class="text-sm text-gray-400 mt-1">Have SoliDB number <code>field</code> on insert: 1, 2, 3&hellip;, never the same number twice and with no gap. <code>options</code>: <code>start</code>, <code>reset</code> (<code>"day"</code>, <code>"week"</code>, <code>"month"</code>, <code>"year"</code>), <code>timezone</code>, <code>prefix</code> and <code>suffix</code> (which may hold <code>{YYYY}</code> <code>{YY}</code> <code>{MM}</code> <code>{DD}</code> <code>{WW}</code>), <code>padding</code>, <code>durable</code>. The model needs no declaration: <code>create</code> and <code>save</code> leave the field out and take the number from the answer. In a transaction the number is given at commit, so read the record back after the block. SoliDB only, after 2.11.0.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-cyan-300 font-bold">db.set_counter_next(collection, field, next)</code>
+            <p class="text-sm text-gray-400 mt-1">Make <code>next</code> the number the next insert gets, for a collection that already holds numbers. <code>db.drop_counter(collection, field)</code> stops the numbering and keeps the stored values; <code>db.list_counters(collection)</code> lists the counters with where each stands.</p>
+        </div>
     </div>
 
     <div class="my-6 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-8">
@@ -676,6 +684,22 @@ SOLIDB_PASSWORD=secret</code></pre>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.list_indexes(collection)</code></td>
                     <td class="py-3 px-4 text-gray-400">List indexes for a collection</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.create_counter(collection, field, options?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Have SoliDB number a field on insert, with no gap (SoliDB only)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.set_counter_next(collection, field, next)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Set the next number a counter gives</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.drop_counter(collection, field)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Stop numbering a field; the stored numbers stay</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.list_counters(collection)</code></td>
+                    <td class="py-3 px-4 text-gray-400">List a collection's counters and their next number</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql, bind_vars?, options?)</code></td>

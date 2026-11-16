@@ -711,6 +711,23 @@ class MigrationDb {{
     fn list_indexes(collection: String) -> Any {{
         return solidb_list_indexes(_db, _engine_prefix(collection));
     }}
+
+    // Counter fields: the database numbers a field on insert
+    fn create_counter(collection: String, field: String, options: Any = null) -> Any {{
+        return solidb_create_counter(_db, _engine_prefix(collection), field, options);
+    }}
+
+    fn drop_counter(collection: String, field: String) -> Any {{
+        return solidb_drop_counter(_db, _engine_prefix(collection), field);
+    }}
+
+    fn list_counters(collection: String) -> Any {{
+        return solidb_list_counters(_db, _engine_prefix(collection));
+    }}
+
+    fn set_counter_next(collection: String, field: String, next: Int) -> Any {{
+        return solidb_set_counter_next(_db, _engine_prefix(collection), field, next);
+    }}
 }}
 
 let db = MigrationDb();

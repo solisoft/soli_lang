@@ -741,6 +741,23 @@ class MigrationDb {{
         return solidb_list_indexes(_db, collection);
     }}
 
+    // Counter fields: the database numbers a field on insert
+    fn create_counter(collection: String, field: String, options: Any = null) -> Any {{
+        return solidb_create_counter(_db, collection, field, options);
+    }}
+
+    fn drop_counter(collection: String, field: String) -> Any {{
+        return solidb_drop_counter(_db, collection, field);
+    }}
+
+    fn list_counters(collection: String) -> Any {{
+        return solidb_list_counters(_db, collection);
+    }}
+
+    fn set_counter_next(collection: String, field: String, next: Int) -> Any {{
+        return solidb_set_counter_next(_db, collection, field, next);
+    }}
+
     // Vector index management
     fn create_vector_index(collection: String, name: String, field: String, dimension: Int, options: Any = "cosine") -> Any {{
         return solidb_create_vector_index(_db, collection, name, field, dimension, options);
@@ -867,6 +884,22 @@ class MigrationDb {{
 
     fn create_vector_index(collection: String, name: String, field: String, dimension: Int, options: Any = "cosine") -> Any {{
         throw "create_vector_index is SoliDB-only.";
+    }}
+
+    fn create_counter(collection: String, field: String, options: Any = null) -> Any {{
+        throw "create_counter is SoliDB-only.";
+    }}
+
+    fn drop_counter(collection: String, field: String) -> Any {{
+        throw "drop_counter is SoliDB-only.";
+    }}
+
+    fn list_counters(collection: String) -> Any {{
+        throw "list_counters is SoliDB-only.";
+    }}
+
+    fn set_counter_next(collection: String, field: String, next: Int) -> Any {{
+        throw "set_counter_next is SoliDB-only.";
     }}
 }}
 

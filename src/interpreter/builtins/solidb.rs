@@ -32,6 +32,20 @@ where
     }
 }
 
+/// Argument `at` of `solidb_<method>()` as a string.
+fn string_arg(args: &[Value], at: usize, method: &str, what: &str) -> Result<String, String> {
+    match args.get(at) {
+        Some(Value::String(s)) => Ok(s.to_string()),
+        Some(other) => Err(format!(
+            "{}() expects string {}, got {}",
+            method,
+            what,
+            other.type_name()
+        )),
+        None => Err(format!("{}() expects a {}", method, what)),
+    }
+}
+
 /// Execute DB operation that returns serde_json::Value directly.
 /// This skips the double JSON conversion (Value -> String -> Value).
 /// Errors propagate as Soli runtime exceptions (see exec_db_sync).
@@ -510,6 +524,10 @@ fn register_solidb_class(env: &mut Environment) {
         ("drop_index", 2),
         ("drop_vector_index", 2),
         ("list_indexes", 1),
+        ("create_counter", 2),
+        ("drop_counter", 2),
+        ("list_counters", 1),
+        ("set_counter_next", 3),
         ("store_blob", 4),
         ("get_blob", 2),
         ("get_blob_metadata", 2),
@@ -525,7 +543,7 @@ fn register_solidb_class(env: &mut Environment) {
         // register variadic and validate arg counts inside the dispatch arm.
         let variadic = matches!(
             method_name,
-            "create_collection" | "query" | "create_columnar" | "blob_response"
+            "create_collection" | "query" | "create_columnar" | "blob_response" | "create_counter"
         );
         let registered_arity = if variadic { None } else { Some(arity) };
         // User-facing arity (without the implicit instance arg) for the
@@ -1324,6 +1342,80 @@ fn register_solidb_class(env: &mut Environment) {
                                 .list_indexes(&collection)
                                 .map_err(|e| format!("List indexes failed: {}", e))?;
                             Ok(serde_json::Value::Array(indexes))
+                        })
+                    }
+                    "create_counter" => {
+                        let collection = string_arg(args, 1, "create_counter", "collection")?;
+                        let field = string_arg(args, 2, "create_counter", "field")?;
+                        let options = match args.get(3) {
+                            None | Some(Value::Null) => serde_json::json!({}),
+                            Some(opts @ Value::Hash(_)) => {
+                                crate::interpreter::value::value_to_json(opts)?
+                            }
+                            Some(other) => {
+                                return Err(format!(
+                                    "create_counter() expects an options hash, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .create_counter(&collection, &field, &options)
+                                .map_err(|e| format!("Create counter failed: {}", e))
+                        })
+                    }
+                    "drop_counter" => {
+                        let collection = string_arg(args, 1, "drop_counter", "collection")?;
+                        let field = string_arg(args, 2, "drop_counter", "field")?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .drop_counter(&collection, &field)
+                                .map_err(|e| format!("Drop counter failed: {}", e))?;
+                            Ok(format!("Dropped counter: {} from {}", field, collection))
+                        })
+                    }
+                    "list_counters" => {
+                        let collection = string_arg(args, 1, "list_counters", "collection")?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            let counters = client
+                                .list_counters(&collection)
+                                .map_err(|e| format!("List counters failed: {}", e))?;
+                            Ok(serde_json::Value::Array(counters))
+                        })
+                    }
+                    "set_counter_next" => {
+                        let collection = string_arg(args, 1, "set_counter_next", "collection")?;
+                        let field = string_arg(args, 2, "set_counter_next", "field")?;
+                        let next = match &args[3] {
+                            Value::Int(n) if *n >= 1 => *n as u64,
+                            other => {
+                                return Err(format!(
+                                    "set_counter_next() expects a number of 1 or more, got {}",
+                                    other
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .set_counter_next(&collection, &field, next)
+                                .map_err(|e| format!("Set counter next failed: {}", e))
                         })
                     }
                     "store_blob" => {

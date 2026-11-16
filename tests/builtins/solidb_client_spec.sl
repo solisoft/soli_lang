@@ -379,6 +379,31 @@ describe("Solidb client against a server") do
       assert_eq(client.list_indexes(name), [])
     end
 
+    test("create_counter, list_counters, set_counter_next and drop_counter") do
+      name = collection("client_spec_counter")
+      client = raw_db()
+      declared = client.create_counter(name, "number", {"start": 7, "prefix": "N-", "padding": 3})
+      assert_eq(declared["field"], "number")
+      assert_eq(declared["state"]["next"], 7)
+      assert_eq(client.insert(name, "a", {"label": "first"})["number"], "N-007")
+      assert_eq(client.list_counters(name)[0]["state"]["next"], 8)
+      assert_eq(client.set_counter_next(name, "number", 40)["state"]["next"], 40)
+      assert_eq(client.insert(name, "b", {"label": "second"})["number"], "N-040")
+      assert_raises("the database assigns it") do
+        client.insert(name, "c", {"number": "N-001"})
+      end
+      assert_eq(client.drop_counter(name, "number"), "Dropped counter: number from client_spec_counter")
+      assert_eq(client.list_counters(name), [])
+    end
+
+    test("create_counter without options counts from one") do
+      name = collection("client_spec_counter_plain")
+      client = raw_db()
+      client.create_counter(name, "n")
+      assert_eq(client.insert(name, "a", {})["n"], 1)
+      assert_eq(client.insert(name, "b", {})["n"], 2)
+    end
+
     test("a unique index refuses a duplicate value") do
       name = collection("client_spec_unique")
       client = raw_db()

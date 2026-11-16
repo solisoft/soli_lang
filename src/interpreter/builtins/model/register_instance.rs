@@ -438,6 +438,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                                     }
                                 }
                             }
+                            super::crud::adopt_assigned_fields(&mut inst_mut, &result);
                             inst_mut.set("_errors", Value::Array(Rc::new(RefCell::new(vec![]))));
                             super::dirty::finalize_persist(&mut inst_mut);
                             super::counter_cache::bump_for_instance(&inst_mut, 1);

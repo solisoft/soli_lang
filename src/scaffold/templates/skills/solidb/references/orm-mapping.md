@@ -173,3 +173,23 @@ Check an `@sdbql` result with `type(result) == "string"` before using it.
 | `Place.near(48.86, 2.33, {"limit": 1})` | `POST /geo/places/loc/near {"lat","lon","limit"}` |
 | `Place.within(48.86, 2.33, 1000)` | `POST /geo/places/loc/within {"lat","lon","radius"}` |
 | `Doc.similar([1,0,0], "emb", 2)` | `POST /vector/docs/idx_emb/search {"limit":2,"vector":[…]}` — index must be named `idx_<field>` |
+
+## Counter fields from Soli (unreleased after Soli 2.36.3 / SoliDB 2.11.0; observed 2026-11-16)
+
+A SoliDB counter (`POST …/collection/{c}/counters`, see `http-api.md`) is
+declared from a Soli migration and needs nothing on the model:
+
+```soli
+def up(db)
+  db.create_collection("invoices")
+  db.create_counter("invoices", "number", {"prefix": "INV-{YYYY}-{MM}-", "reset": "month", "padding": 4})
+end
+```
+
+- `Invoice.create({...}).number` and `invoice.save` on a new record hold the
+  number: the ORM takes from the insert's answer the fields the record does
+  not hold. Never send the field (`400`).
+- Inside `Model.transaction do … end` the record has no number (SoliDB gives
+  it at commit): `Invoice.find(key)` after the block.
+- Also on the client: `db.create_counter`, `db.set_counter_next(coll, field,
+  n)`, `db.drop_counter`, `db.list_counters`.

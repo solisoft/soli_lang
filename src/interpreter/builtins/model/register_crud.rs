@@ -255,6 +255,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                             }
                         }
                     }
+                    super::crud::adopt_assigned_fields(&mut inst_mut, &id);
                     // A column-aware insert answers with the stored row, so
                     // adopt it: column defaults and the stamped
                     // created_at/updated_at are otherwise invisible until

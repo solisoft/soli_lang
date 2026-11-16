@@ -85,6 +85,9 @@ The `db` handle exposes:
 | `db.create_index(coll, name, fields, options)`              | Create an index. `fields` is an array; `options` is a hash.  |
 | `db.drop_index(coll, name)`                                 | Drop an index by name.                                       |
 | `db.list_indexes(coll)`                                     | Array of `{ "name": "...", "fields": [...], ... }` hashes.   |
+| `db.create_counter(coll, field, options?)`                  | SoliDB numbers `field` on insert, with no gap (`start`, `reset`, `prefix`, `padding`, …). The model leaves the field out and reads it after `create` / `save`; in a transaction, after the commit. |
+| `db.set_counter_next(coll, field, next)`                    | Set the next number a counter gives.                         |
+| `db.drop_counter(coll, field)` / `db.list_counters(coll)`   | Stop numbering a field; list a collection's counters.        |
 | `db.create_vector_index(coll, name, field, dim, opts?)`     | Vector index for similarity search.                           |
 | `db.query("SDBQL ...")`                                     | Run a raw SDBQL query string (for data migrations).          |
 

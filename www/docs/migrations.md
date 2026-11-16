@@ -358,6 +358,83 @@ def up(db: Any)    indexes = db.list_indexes("users")
 end
 ```
 
+## Counter Helpers
+
+A counter is a field SoliDB numbers itself on insert: 1, 2, 3…, never the same
+number twice and with no gap. SoliDB only (the SQL adapters raise
+`create_counter is SoliDB-only.`), and it needs a SoliDB that has counter
+fields (after 2.11.0).
+
+### create_counter
+
+```soli
+def up(db)
+  db.create_collection("invoices")
+
+  # 1, 2, 3…
+  db.create_counter("tickets", "seq")
+
+  # INV-2026-11-0041, INV-2026-11-0042, … starting again at 0001 each month
+  db.create_counter("invoices", "number", {
+    "start": 41,
+    "reset": "month",
+    "timezone": "Europe/Paris",
+    "prefix": "INV-{YYYY}-{MM}-",
+    "padding": 4
+  })
+end
+
+def down(db)
+  db.drop_counter("invoices", "number")
+  db.drop_collection("invoices")
+end
+```
+
+**Parameters:**
+- `collection` - The collection name; it must exist
+- `field` - The top-level field that receives the number
+- `options` - Optional hash:
+  - `start` - The first number (default 1). Used once: after a reset the count starts at 1
+  - `reset` - `"day"`, `"week"`, `"month"` or `"year"`; left out, the counter never starts again
+  - `timezone` - The IANA timezone the date is read in (default `"UTC"`)
+  - `prefix`, `suffix` - Text around the number; may hold `{YYYY}`, `{YY}`, `{MM}`, `{DD}`, `{WW}`. With `reset` they must name the period
+  - `padding` - Left-pad the number with zeros to this many digits
+  - `durable` - `true` by default: the insert waits for its write to be on disk
+
+It returns the counter as SoliDB stored it, with its `state` (`next`, the next
+number). SoliDB creates a unique index on the field. On a collection that
+already holds numbers, give `start` (or call `set_counter_next`): the
+declaration is refused when a stored document already holds the first number.
+
+The model needs no declaration. `Invoice.create({...})` and `invoice.save`
+leave the field out and take the number from SoliDB's answer:
+
+```soli
+invoice = Invoice.create({ "total": 120 })
+invoice.number   # "INV-2026-11-0041"
+```
+
+Do not set the field yourself: SoliDB refuses an insert that gives it a value,
+and an update that changes it. **In a transaction the number is given when
+the transaction commits**: a record created inside `Model.transaction do … end`
+has no number until it is read back after the block.
+
+### set_counter_next
+
+```soli
+def up(db)
+  # The next invoice is number 1288.
+  db.set_counter_next("invoices", "number", 1288)
+end
+```
+
+### drop_counter / list_counters
+
+```soli
+db.drop_counter("invoices", "number")   # the stored numbers and their index stay
+db.list_counters("invoices")            # [{ "field": "number", …, "state": { "next": 1289 } }]
+```
+
 ## Raw Queries
 
 For operations not covered by helpers, use raw SDBQL queries:

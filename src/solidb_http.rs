@@ -748,6 +748,70 @@ impl SoliDBClient {
             .unwrap_or_default())
     }
 
+    fn counters_path(&self, collection: &str) -> Result<String, SoliDBError> {
+        let db = self.get_db()?;
+        Ok(format!(
+            "/_api/database/{}/collection/{}/counters",
+            seg(db)?,
+            seg(collection)?
+        ))
+    }
+
+    /// Declare that SoliDB numbers `field` of `collection` on insert.
+    /// `options` holds what the server's `POST …/counters` takes besides
+    /// the field (`start`, `reset`, `timezone`, `prefix`, `suffix`,
+    /// `padding`, `durable`, `node`). Returns the counter with its state.
+    pub fn create_counter(
+        &self,
+        collection: &str,
+        field: &str,
+        options: &Value,
+    ) -> Result<Value, SoliDBError> {
+        let mut body = match options {
+            Value::Object(_) => options.clone(),
+            _ => serde_json::json!({}),
+        };
+        body["field"] = Value::String(field.to_string());
+        self.request(
+            reqwest::Method::POST,
+            &self.counters_path(collection)?,
+            Some(&body),
+        )
+    }
+
+    /// The counters of `collection`, each with where it stands.
+    pub fn list_counters(&self, collection: &str) -> Result<Vec<Value>, SoliDBError> {
+        let response: Value =
+            self.request(reqwest::Method::GET, &self.counters_path(collection)?, None)?;
+        Ok(response
+            .get("counters")
+            .and_then(|c| c.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Stop numbering `field`. The stored values and their unique index stay.
+    pub fn drop_counter(&self, collection: &str, field: &str) -> Result<(), SoliDBError> {
+        let path = format!("{}/{}", self.counters_path(collection)?, seg(field)?);
+        self.request(reqwest::Method::DELETE, &path, None)?;
+        Ok(())
+    }
+
+    /// Make `next` the number the next insert gets.
+    pub fn set_counter_next(
+        &self,
+        collection: &str,
+        field: &str,
+        next: u64,
+    ) -> Result<Value, SoliDBError> {
+        let path = format!("{}/{}/next", self.counters_path(collection)?, seg(field)?);
+        self.request(
+            reqwest::Method::PUT,
+            &path,
+            Some(&serde_json::json!({ "next": next })),
+        )
+    }
+
     pub fn collection_stats(&self, collection: &str) -> Result<Value, SoliDBError> {
         let db = self.get_db()?;
         let path = format!(

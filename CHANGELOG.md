@@ -4,6 +4,18 @@
 
 ### Added
 
+- **SoliDB counter fields: `db.create_counter` in a migration.** SoliDB (after
+  2.11.0) can number a field on insert, 1, 2, 3…, never the same number twice
+  and with no gap. A migration declares it with `db.create_counter(collection,
+  field, options?)` (`start`, `reset` per day, week, month or year, `timezone`,
+  `prefix` / `suffix` with `{YYYY}` `{MM}` …, `padding`, `durable`), and
+  `db.set_counter_next`, `db.drop_counter` and `db.list_counters` complete it;
+  the same four are methods of the `Solidb` client. The model needs no
+  declaration: `create` and `save` now take from SoliDB's answer the fields
+  the record does not hold, so `invoice.number` is set after the insert. A
+  record created in a transaction is numbered when it commits and has to be
+  read back. SoliDB only: the SQL adapters raise.
+
 - **ORM: `.order` by several fields, and `.reorder` (#908).** A chained
   `.order` adds a criterion — `Order.order("status").order("created_at",
   "desc")` is `SORT doc.status ASC, doc.created_at DESC` — where it silently

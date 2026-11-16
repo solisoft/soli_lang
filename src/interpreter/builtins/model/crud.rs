@@ -1987,6 +1987,31 @@ fn insert_many_via_aql(collection: &str, documents: &[serde_json::Value]) -> Res
     Ok(documents.len())
 }
 
+/// After an insert: take the fields the database gave the document and the
+/// record does not hold. SoliDB answers an insert with the stored document,
+/// and a counter field (`db.create_counter` in a migration) is numbered by
+/// the server: without this the record would show no number until it was
+/// read back. Only a field that is absent or null on the record is taken,
+/// so nothing the application set is replaced. An insert staged in a
+/// transaction is numbered when it commits, and its answer holds no number:
+/// read the record back after the commit.
+pub fn adopt_assigned_fields(
+    inst: &mut crate::interpreter::value::Instance,
+    stored: &serde_json::Value,
+) {
+    let Some(map) = stored.as_object() else {
+        return;
+    };
+    for (key, value) in map {
+        if key.starts_with('_') || value.is_null() {
+            continue;
+        }
+        if matches!(inst.get(key), None | Some(Value::Null)) {
+            inst.set(key.clone(), json_to_value_owned(value.clone()));
+        }
+    }
+}
+
 /// Execute an insert with automatic collection creation.
 /// Insert a document, arming the durable-write tripwire on success.
 pub fn exec_insert(

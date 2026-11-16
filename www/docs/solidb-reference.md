@@ -396,6 +396,10 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 | `db.create_index(coll, name, fields, options)` | `options` is required — pass `{}` for the defaults: `{ "unique": true }`, `{ "type": "persistent"\|"hash"\|"fulltext"\|"bloom"\|"cuckoo" }`. |
 | `db.drop_index(coll, name)` | Drop an index by name. |
 | `db.list_indexes(coll)` | All indexes on `coll` (including the primary index). |
+| `db.create_counter(coll, field, options?)` | Have SoliDB number `field` on insert: 1, 2, 3…, with no gap. `options`: `start`, `reset` (`"day"`\|`"week"`\|`"month"`\|`"year"`), `timezone`, `prefix`, `suffix`, `padding`, `durable`. Returns the counter with its `state`. An insert must leave the field out and reads it from the answer. SoliDB after 2.11.0. |
+| `db.set_counter_next(coll, field, next)` | Make `next` the number the next insert gets. |
+| `db.drop_counter(coll, field)` | Stop numbering; the stored values and their unique index stay. |
+| `db.list_counters(coll)` | The counters of `coll`, each with its `state` (`next`). |
 | `db.create_vector_index(coll, name, field, dimension, options)` | HNSW vector index; `options` (required) is a metric string (`"cosine"`) or `{metric, quantization}` hash. |
 | `db.drop_vector_index(coll, name)` | Drop a vector index. |
 

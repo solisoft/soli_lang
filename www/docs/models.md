@@ -481,6 +481,23 @@ class load with an actionable message):
 | `polymorphic:` | belongs_to | The record belongs to any of several models: stores `{name}_id` + `{name}_type`, resolved at runtime. See [Polymorphic Relations](#polymorphic-relations). |
 | `as:` | has_many, has_one | Declare the inverse of a polymorphic belongs_to (`has_many "comments", as: "commentable"`) — queries are type-guarded to this class. |
 
+## Fields the database assigns
+
+SoliDB answers an insert with the document as it stored it. `create` and
+`save` take from that answer any field the record does not hold, so a field
+the database fills in is on the record without a second read. That is how a
+[counter field](migrations.md#counter-helpers) (an invoice number SoliDB gives
+on insert, declared with `db.create_counter` in a migration) reaches the model:
+
+```soli
+invoice = Invoice.create({ "total": 120 })
+invoice.number   # "INV-2026-11-0041"
+```
+
+A field the application set is never replaced. A record created inside
+`Model.transaction do … end` has no number until the transaction commits: read
+it back after the block.
+
 ## Storage & Index DSL
 
 Class-body declarations for the multi-model and search features:

@@ -243,9 +243,17 @@ db.delete("users", "1")</code></pre>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.drop_index(coll, name)</code></td>
                             <td class="py-3">Drop an index by name.</td>
                         </tr>
-                        <tr>
+                        <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.list_indexes(coll)</code></td>
                             <td class="py-3">All indexes attached to <code class="text-emerald-400">coll</code>, including the implicit primary index.</td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">db.create_counter(coll, field, options?)</code></td>
+                            <td class="py-3">Have SoliDB number <code class="text-orange-400">field</code> on insert, with no gap. <code class="text-orange-400">options</code>: <code class="text-orange-400">start</code>, <code class="text-orange-400">reset</code>, <code class="text-orange-400">timezone</code>, <code class="text-orange-400">prefix</code>, <code class="text-orange-400">suffix</code>, <code class="text-orange-400">padding</code>, <code class="text-orange-400">durable</code>. Returns the counter with its <code class="text-orange-400">state</code>. SoliDB after 2.11.0.</td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-emerald-400">db.set_counter_next(coll, field, next)</code> / <code class="text-emerald-400">db.drop_counter(coll, field)</code> / <code class="text-emerald-400">db.list_counters(coll)</code></td>
+                            <td class="py-3">Set the next number, stop the numbering (the stored values stay), list the counters with where each stands.</td>
                         </tr>
                     </tbody>
                 </table>
