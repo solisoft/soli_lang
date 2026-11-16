@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [2.36.4] - 2026-11-16
+
+### Fixed
+
+- **The Linux binaries of 2.36.1, 2.36.2 and 2.36.3 needed glibc 2.43** and
+  refused to start on Ubuntu 24.04 and other glibc 2.39 hosts (`GLIBC_2.43
+  not found`): `ubuntu-latest`, which built them, had moved to Ubuntu 26.04.
+  The Linux release builds now run on `ubuntu-24.04`. The code is that of
+  2.36.3.
+
 ## [2.36.3] - 2026-11-15
 
 ### Fixed
