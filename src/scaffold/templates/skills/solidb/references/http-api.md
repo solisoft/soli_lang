@@ -300,11 +300,20 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `== null` / `!= null`, the constant on the left, columns with nulls,
   and a key `TIME_BUCKET(r.ts, "1h")` (fixed interval, integer column):
   `FILTER r.status IN [404, 500] COLLECT h = r.host …` 1,118 ms → 3 ms,
-  an hourly `TIME_BUCKET` 1,067 ms → 10 ms. Still from rows (about a
-  second per million): `NOT`, `NOT IN`, a comparison of two columns, a
-  key or aggregate that is another expression (`SUM(r.a * r.b)`),
-  `COUNT_DISTINCT`, `TIME_BUCKET` of weeks or months or of a string
-  column. Results are
+  an hourly `TIME_BUCKET` 1,067 ms → 10 ms. Through 2.12.0 these still
+  go row by row (about a second per million): `NOT`, `NOT IN`, a
+  comparison of two columns, a key or aggregate that is another
+  expression (`SUM(r.a * r.b)`), `COUNT_DISTINCT`, `TIME_BUCKET` of
+  weeks or months or of a string column. Unreleased after 2.12.0
+  (observed 2026-11-16 on a build of `main`, a million rows, same
+  answers as 2.12.0): all of those are answered from the arrays too —
+  `SUM(r.price * r.qty)` by host 1,269 ms → 6 ms, `NOT IN` 2.3 ms, two
+  columns compared 3.1 ms, `COUNT_DISTINCT(r.user)` by status 11 ms,
+  `COLLECT k = UPPER(r.host)` 27 ms, `DATE_TRUNC(r.ts, 'hour')` 136 ms,
+  monthly `TIME_BUCKET` 264 ms. Still from rows there: a key or argument
+  that is a `json` column of mixed kinds, a key mixing integers and
+  floats (`r.bytes / 100`), a non-pure function (`RAND()`), aggregates
+  other than COUNT/SUM/AVG/MIN/MAX/COUNT_DISTINCT. Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; from 2.12.0 a pushed-down SDBQL FILTER uses a hash,
   sorted, bitmap or bloom index for `==` / `IN`. A range against a number
