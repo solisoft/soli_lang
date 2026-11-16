@@ -292,11 +292,19 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `POST …/insert`. `LENGTH(m)` → `Variable 'm' not found`.
 - **The aggregate shape is folded from the arrays** (fastest; through
   2.11.0 the only fast one): `FOR r IN c [FILTER …] COLLECT [k = r.col]
-  AGGREGATE <COUNT|SUM|AVG|MIN|MAX>(r.col) …`, the FILTERs being `==` with a
-  string, number or boolean and `<` `<=` `>` `>=` with a number, joined by
-  `AND`. On 200,000 rows: a filtered group-by 1.6 ms, a whole-column `SUM`
-  1.6 ms. An aggregate outside that shape (an `OR` in its FILTER: 164 ms on
-  2.11.0) is computed from rows, read as the entry above says. Results are
+  AGGREGATE <COUNT|SUM|AVG|MIN|MAX>(r.col) …`. Through 2.11.0 the FILTERs
+  had to be `==` with a string, number or boolean and `<` `<=` `>` `>=`
+  with a number, joined by `AND`, and a block holding a null went row by
+  row. After it (observed 2026-11-16, card #892, a million rows) the
+  arrays also take `!=`, `IN [..]`, `OR`, string and boolean ranges,
+  `== null` / `!= null`, the constant on the left, columns with nulls,
+  and a key `TIME_BUCKET(r.ts, "1h")` (fixed interval, integer column):
+  `FILTER r.status IN [404, 500] COLLECT h = r.host …` 1,118 ms → 3 ms,
+  an hourly `TIME_BUCKET` 1,067 ms → 10 ms. Still from rows (about a
+  second per million): `NOT`, `NOT IN`, a comparison of two columns, a
+  key or aggregate that is another expression (`SUM(r.a * r.b)`),
+  `COUNT_DISTINCT`, `TIME_BUCKET` of weeks or months or of a string
+  column. Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; after it a pushed-down SDBQL FILTER uses a hash,
   sorted, bitmap or bloom index for `==` / `IN`. A range against a number
