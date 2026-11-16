@@ -139,7 +139,7 @@ rows that survive it (and a COLLECT's groups); through 2.7.2 that was
 | `POST /_api/database/{db}/ttl/{coll}` | `{"name":"ttl_exp","field":"expires_at","expire_after_seconds":0}` | `{"name","field","expire_after_seconds","type":"ttl","status":"created"}` |
 | `GET /_api/database/{db}/ttl/{coll}` | | `{"indexes":[…]}` |
 
-### Column blocks of a time series collection (unreleased after 2.10.4; observed on a build of `bench/timeseries`, 2026-11-15)
+### Column blocks of a time series collection (from 2.11.0; observed on a build of `bench/timeseries`, 2026-11-15)
 
 A `timeseries` collection can keep the fields its aggregations read as
 arrays, beside its documents. Not on 2.10.4 or earlier: the routes do not
@@ -162,6 +162,13 @@ exist there.
   week/month interval, an `INTO`, a SORT/LIMIT before the COLLECT: the
   ordinary path, same answers. Results are identical either way
   (`AVG` 12.25 over mixed `12` / `12.5` values observed on both).
+- One more shape, over the driver only (observed on a build of `main`,
+  2026-11-16): `FOR p IN c FILTER p.series == @s SORT p.<time> DESC LIMIT 1
+  RETURN <only declared fields and the time>` reads the newest row of the
+  series from the blocks — when `sealed_documents == documents`, `series`
+  is the only string field declared, and no other point of the series has
+  that instant. Otherwise the `[series, time]` index answers, same result;
+  that index is still required (the planner starts from it).
 - `opaque_blocks` counts ranges where a declared field is missing or null
   or the time is not an integer: read as documents. Integers and floats in
   one field are fine.
@@ -170,7 +177,7 @@ exist there.
 - Node-local: neither the definition nor the blocks are replicated or
   dumped.
 
-### Columnar collections (observed on a build of `main` after 2.10.4, commit `eeec4093`, 2026-11-15)
+### Columnar collections (from 2.11.0 unless said otherwise; observed on a build of `main` after 2.10.4, commit `eeec4093`, 2026-11-15)
 
 A table with a fixed list of columns, stored as arrays, for aggregations
 over many rows. Not a document collection: it has its own routes, no `_key`
@@ -190,7 +197,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 | `POST …/columnar/{c}/index` | `{"column":"host","index_type":"bitmap"}` — `sorted` (default), `hash`, `bitmap`, `minmax`, `bloom` | `{"status":"created","column","index_type"}`; already indexed → `400` |
 | `GET …/columnar/{c}/indexes` · `DELETE …/columnar/{c}/index/{column}` | | `{"indexes":[{column, index_type, created_at}],"count"}` · `{"status":"deleted","column"}` |
 
-- **Deleting rows** (after 2.10.4; observed on a build of `main`,
+- **Deleting rows** (from 2.11.0; observed on a build of `main`,
   2026-11-15; through 2.10.4 these routes do not exist and the only way to
   remove a row is to drop the collection):
   `DELETE …/columnar/{c}/row/{id}` → `{"status":"deleted","id"}`, absent →
@@ -202,7 +209,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   call: a block is rewritten once per call. All three replicate.
 - No update of a row in place (delete and insert again), and columns cannot
   be added or removed afterwards.
-- **The schema is checked after 2.10.4** (observed on a build of `main`,
+- **The schema is checked from 2.11.0** (observed on a build of `main`,
   2026-11-15). An insert is refused whole with `400`, naming the row:
   `row 0: unknown column 'extra'`, `row 1: column 'cpu' is not nullable and
   has no value`, `row 1: must be an object, got an integer`, `… is float64,
@@ -217,14 +224,14 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   into `host: string, cpu: float64` is accepted, a row that is not an
   object is skipped without an error, and an unknown type name silently
   creates a `string` column — validate before inserting there.
-- `/query` after 2.10.4 (the router's own test on a build of `main`,
+- `/query` from 2.11.0 (the router's own test on a build of `main`,
   2026-11-15): `{"columns":["v"], "filter": <comparison | {"and":[…]} |
   {"or":[…]}>, "order_by":"v DESC", "offset":3, "limit":3}`; `columns` left
   out = all; `order_by` on a column that is not returned → `400`. Through
   2.10.4 it takes one comparison and `limit` only: `{"and":[…]}` is refused
   (`missing field column`), `order_by` and `offset` are ignored without an
   error.
-- **SDBQL reads it and, after 2.10.4, inserts into it** (observed on a
+- **SDBQL reads it and, from 2.11.0, inserts into it** (observed on a
   build of `main`, 2026-11-15). `FOR r IN m …` works as on a document
   collection. `INSERT {host: "a", v: 1} INTO m` and
   `FOR e IN events INSERT {host: e.host, v: e.ms} INTO m` insert every row
@@ -254,7 +261,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 - **An index covers the rows present when it was created.** Through 2.10.4
   that made answers wrong: with a `sorted`, `hash`, `bitmap` or `bloom`
   index on `s`, `/query` and `/aggregate` filtered on `s` missed every row
-  inserted afterwards (`minmax` and no index answered right). After 2.10.4
+  inserted afterwards (`minmax` and no index answered right). From 2.11.0
   (observed on a build of `main`, 2026-11-15, all five types: insert two
   rows, index, insert two more, both `s == "a"` rows and the new `s == "c"`
   row come back) the rows after those the index holds are compared
@@ -264,7 +271,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   recreated. On 2.10.4 or earlier: recreate the index after every insert,
   or do without. Dropping an index now clears the column's `index_type`.
 
-### Columnar collections after 2.10.4 (unreleased; observed on builds of `main`, 2026-11-15)
+### Columnar collections from 2.11.0 (observed on builds of `main`, 2026-11-15)
 
 Same endpoints, driver commands and results as before; what changed is
 underneath. Rows are stored in blocks of typed arrays instead of one key
