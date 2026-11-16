@@ -218,6 +218,14 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   a setting; each node removes its own rows. An index on a column is not
   used after a removal until recreated (filters still answer right).
   Through 2.11.0 the routes do not exist.
+- **Compacting** (unreleased after 2.11.0; observed on a build of `main`,
+  2026-11-16): `POST …/columnar/{c}/compact` →
+  `{"status":"ok","blocks_before":200,"blocks_after":16}` (a million rows
+  loaded 5,000 at a time, one second). Merges neighbouring small blocks
+  (each insert of ≥ 4,096 rows is its own block; a block holds up to
+  65,536). Rows, order, query answers and indexes unchanged; on demand
+  only; not replicated. Worth running after a load in small batches or a
+  large delete.
 - **Columns change after creation** (unreleased after 2.11.0; observed on a
   build of `main`, 2026-11-16, 200,000 rows; all Admin, all replicated):
   `POST …/columnar/{c}/columns` with `{"name":"region","type":"string"}` →
