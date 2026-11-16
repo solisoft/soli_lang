@@ -272,8 +272,12 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   card #893) the comparison runs in the arrays of the blocks and a block
   of integers its min/max rule out is skipped, no index needed: one row
   by value 0.6 ms, 100 rows of a range (`r.v >= a AND r.v < b`) 0.8 ms,
-  a float range (`r.ms >= 1000 AND r.ms < 1010`, also pushed now) 5.6 ms,
-  on a million rows. Still row by row: a float `==`, a string range,
+  a float range (`r.ms >= 1000 AND r.ms < 1010`, also pushed now) 0.6 ms,
+  on a million rows. A count whose whole FILTER is such comparisons
+  (`FOR r IN m FILTER r.v >= a AND r.v < b COLLECT WITH COUNT INTO n
+  RETURN n`, `RETURN LENGTH(FOR r IN m FILTER … RETURN 1)`) builds no
+  row: 500,000 rows counted in 1.2 ms (726 ms the build before); EXPLAIN says
+  `columnar_count`. Still row by row: a float `==`, a string range,
   `!=`, a constant of another kind than the column (`r.int_col == 5.0`),
   a filter naming an outer `FOR`'s variable, `SORT … LIMIT`.
 - **SDBQL reads it and, from 2.11.0, inserts into it** (observed on a
@@ -303,7 +307,9 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   "host (hash)"` when an equality used one, and a warning ``"`m` is
   columnar: 3 of its 6 columns are built, for the rows its FILTER on
   `host`, `v` keeps, found in the column arrays and the index on host
-  (hash)"``. The folded aggregate shape still reports `full_scan`.
+  (hash)"``. The folded aggregate shape reports `columnar_scan` too,
+  with `"optimizer: COLLECT folded from the blocks of the columnar
+  collection …"`.
 - **Transactions**: read refused at `repeatable_read` / `serializable`
   (`501 OperationNotSupported "… use read_committed"`).
 - **Replication** (from the code and its tests, not observed on a cluster):
