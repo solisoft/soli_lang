@@ -341,6 +341,57 @@ The HTTP and SDBQL answers below were seen on a live server; `set_null`,
 The `DELETE …/{name}` forms exist for geo, vector and ttl indexes too.
 Details and query-side usage: indexes-search.md.
 
+### Counter fields (unreleased after 2.11.0; observed on a build of `main`, 2026-11-16, one node and two nodes)
+
+A `document` collection declares that a field is numbered by the database:
+every insert gets the next number, never twice the same and with no gap (a
+refused insert, a rollback or a refused commit takes none). Not on 2.11.0
+or earlier: the routes answer 404.
+
+| Request | Body | Response |
+|---|---|---|
+| `POST /_api/database/{db}/collection/{coll}/counters` | `{"field":"number","start":41,"reset":"day"\|"week"\|"month"\|"year","timezone":"Europe/Paris","prefix":"INV-{YYYY}-{MM}-","suffix":"","padding":4,"durable":true}` (only `field` is required; `start` 1, `timezone` UTC, `durable` true) | `201 {"field":"number","start":41,…,"node":null,"index":"counter_number","state":{"epoch":…,"date":null,"next":41}}` |
+| `GET …/counters` | | `{"collection","counters":[{…,"state":{"epoch","date":"2026-11-16","next":1289}}]}` |
+| `PUT …/counters/{field}/next` | `{"next":1288}` | the record; a number a document already holds → `409` |
+| `PUT …/counters/{field}/node` | `{"node":"n2"}` | the record; asked of the node that numbers |
+| `DELETE …/counters/{field}` | | `204`; the field and its unique index stay |
+
+- Listing is Read; every change is **Admin**.
+- Value: an integer with no prefix, suffix or padding (`41`), else a string
+  (`"INV-2026-11-0041"`). Placeholders: `{YYYY}` `{YY}` `{MM}` `{DD}`
+  `{WW}`. With `reset`, prefix/suffix must name the period, else `400 "A
+  counter that restarts needs its period in the prefix or suffix ({YYYY}
+  and {MM}): its numbers would repeat otherwise"`. After a reset the count
+  starts at 1; `start` is used once.
+- `INSERT {…} INTO c RETURN NEW.number` and `FOR i IN 1..3 INSERT … RETURN
+  NEW.number` return the numbers (`["INV-2026-11-0042",…]`); the document
+  API's response holds the field; the driver's `insert` / `bulk_insert`
+  are numbered too.
+- The client does not set it: an insert with the field → `400 "'number' is
+  a counter of 'invoices': the database assigns it, leave it out"` (null is
+  the same as absent); an update that changes it → `400 "… it cannot be
+  changed"`. A replace that leaves it out keeps the number.
+- **In a transaction the number is given at commit**: `RETURN NEW` and the
+  transaction's own reads show the document without the field. Read it
+  back after the commit.
+- Inserts into such a collection are stored one at a time, and with
+  `durable` (the default) each write is fsynced: batch (`FOR … INSERT`,
+  bulk insert, one transaction) when loading many.
+- Declaring on a collection that already holds numbers: refused `409` when
+  two documents hold the same value or one holds the first number; give
+  `start`, or set `next` afterwards. Documents without the field are left
+  alone.
+- An import in upsert mode / a merge by key cannot create a document there
+  (`501`): insert.
+- Cluster: one node numbers (`node`, the one that got the declaration; it
+  must run with `--node-id`). Elsewhere an insert → `409 "The counter
+  'number' of 'invoices' is numbered by node 'n1': insert there"`. Hand it
+  over with `PUT …/node` on the node that numbers. Not on sharded
+  collections.
+- Driver: `list_counters`, `create_counter {counter: {…}}`,
+  `delete_counter`, `set_counter_next`, `move_counter`.
+- `solidb-dump` / `solidb-restore` carry the counter and where it stands.
+
 ## Transactions
 
 | Method & path | Body | Response |
