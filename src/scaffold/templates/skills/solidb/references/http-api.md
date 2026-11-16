@@ -280,6 +280,12 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   never had the collection. Upgrade every node before creating a columnar
   index. A node that joins receives each columnar collection whole in the
   full sync, when both nodes run this build.
+- **Creating an index is slow through 2.11.0**: quadratic in the rows
+  (0.8 s for 20,000, 11.7 s for 80,000, over a minute for 200,000, the
+  collection's writes waiting meanwhile). After 2.11.0 (observed on a
+  build of `main`, 2026-11-16): 17 ms for 80,000 rows, 0.2 s for a hash
+  index on a million rows of five values, 2.1 s for a sorted index on a
+  million distinct values.
 - **An index covers the rows present when it was created.** Through 2.10.4
   that made answers wrong: with a `sorted`, `hash`, `bitmap` or `bloom`
   index on `s`, `/query` and `/aggregate` filtered on `s` missed every row
