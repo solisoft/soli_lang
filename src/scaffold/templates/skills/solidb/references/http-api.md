@@ -375,14 +375,17 @@ or earlier: the routes answer 404.
   transaction's own reads show the document without the field. Read it
   back after the commit.
 - Inserts into such a collection are stored one at a time, and with
-  `durable` (the default) each write is fsynced: batch (`FOR … INSERT`,
-  bulk insert, one transaction) when loading many.
+  `durable` (the default) each write is fsynced: measured over HTTP on a
+  workstation (RocksDB, NVMe), single inserts ran at ~420/s from 1 client
+  and ~450/s from 8, against ~6,500/s and ~10,000/s with `durable:false`.
+  Batch (`FOR … INSERT`, bulk insert, one transaction) when loading many:
+  one write, one fsync.
 - Declaring on a collection that already holds numbers: refused `409` when
   two documents hold the same value or one holds the first number; give
   `start`, or set `next` afterwards. Documents without the field are left
   alone.
-- An import in upsert mode / a merge by key cannot create a document there
-  (`501`): insert.
+- An import in upsert mode / a merge by key keeps the number of a document
+  it merges into and numbers one it creates; neither may carry the field.
 - Cluster: one node numbers (`node`, the one that got the declaration; it
   must run with `--node-id`). Elsewhere an insert → `409 "The counter
   'number' of 'invoices' is numbered by node 'n1': insert there"`. Hand it
