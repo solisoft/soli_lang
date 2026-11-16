@@ -375,9 +375,10 @@ or earlier: the routes answer 404.
   transaction's own reads show the document without the field. Read it
   back after the commit.
 - Inserts into such a collection are stored one at a time, and with
-  `durable` (the default) each write is fsynced: measured over HTTP on a
-  workstation (RocksDB, NVMe), single inserts ran at ~420/s from 1 client
-  and ~450/s from 8, against ~6,500/s and ~10,000/s with `durable:false`.
+  `durable` (the default) each waits for an fsync, shared by the inserts
+  waiting together (RocksDB engine): measured over HTTP on a workstation
+  (NVMe), single inserts ran at ~410/s from 1 client, ~1,700/s from 8 and
+  ~3,500/s from 32, against ~6,500/s and ~10,000/s with `durable:false`.
   Batch (`FOR … INSERT`, bulk insert, one transaction) when loading many:
   one write, one fsync.
 - Declaring on a collection that already holds numbers: refused `409` when
