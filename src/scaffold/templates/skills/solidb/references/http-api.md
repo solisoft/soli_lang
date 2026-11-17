@@ -97,10 +97,19 @@ admin. `POST …/document/_jobs`, by caller:
 | admin of another database | `403 "…insufficient permissions for Write on other"` |
 | `editor` | `403 "Access denied: '_jobs' is executed by the server and is writable only with an Admin credential"` |
 
-- **Not through SDBQL over HTTP**: `INSERT {…} INTO _jobs` on `/cursor`
-  as an admin of that one database is still `403` with the same message
-  (observed 2026-11-17); only a global admin's query writes `_jobs`. Use
-  the document endpoint.
+- **Through SDBQL too, on a build after commit `3c851677`** (observed
+  2026-11-17 on the working tree that fixes card #928): as an admin of
+  that one database, `INSERT {…} INTO _jobs` and `UPDATE … IN _jobs` on
+  `/cursor`, `INSERT INTO _jobs …` on `/sql` and a query inside a
+  transaction (`…/transaction/{id}/query`) all write. On `3c851677`
+  itself and through 2.12.1 they are `403` with the editor's message and
+  only a global admin's query writes `_jobs`: use the document endpoint
+  there. An editor's query stays `403`.
+- That is all such an admin gains in a query: `ROW_POLICY("c", "…")` is
+  still `403 "…changes a row policy and requires admin"` for anyone but a
+  global admin.
+- SDBQL does not create `_jobs`: a query on a database that has none is
+  `404`; the document endpoint creates it.
 - `_env` and the other credential collections stay `403` for every
   caller, `_scripts` and the like stay unwritable by name
   (`"…is managed by the server and is not writable through this API"`).
