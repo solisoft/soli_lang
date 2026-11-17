@@ -772,6 +772,34 @@ or earlier: the routes answer 404.
   vec![TransactionStep::query(…).require_rows(), …])`. Refused while a
   `begin_transaction` is open on the same client.
 
+## Backups and point-in-time restore
+
+Observed 2026-11-17 on a build of `main` after 2.13.0 (throwaway server,
+solistore). The checkpoint (`POST /_api/backup`) exists since 2.x; the log
+position, the log archive and the replay are after 2.13.0 (card #852).
+
+| Method & path | Body | Response |
+|---------------|------|----------|
+| `POST /_api/backup` (global Admin) | `{"path":"cp"}` — relative to `SOLIDB_BACKUP_ROOT` (default `<data-dir>/backups`), must not exist | `{"status":"created","path":"/…/backups/cp","scope":"instance","log_position":{"sequence":11,"node_id":"…","log_active":true,"taken_at_ms":1794946970927},"note":"…"}`; the checkpoint also holds a `SYNC_LOG_POSITION` file with that object |
+| `POST /_api/backup/log` (global Admin) | `{"path":"cp.log","after":11}` — entries after that sequence | `{"status":"created","path","after":11,"entries":10,"first_sequence":12,"last_sequence":21,"first_timestamp":…,"last_timestamp":…,"complete":true}`; `complete:false` when entries between `after` and the oldest one kept were pruned; an existing file → `400`; log not written (`SOLIDB_SYNC_LOG_KEEP_SECS` unset, no peer) → `400` |
+
+- Keep the history: start the server with `SOLIDB_SYNC_LOG_KEEP_SECS=604800`
+  (the log is then written from the start and kept that long; one more log
+  write per document write).
+- Restore to an instant: copy the checkpoint directory, then
+  `solidb --data-dir <copy> --replay-log <archive> --replay-until
+  2026-11-17T14:02:00Z --replay-only` (RFC 3339 or epoch milliseconds;
+  without `--replay-until` the whole archive; without `--replay-only` the
+  server then serves). Log line: `Point-in-time restore: 7 entries replayed
+  … (0 already in the checkpoint, 3 after the instant asked for)`. Observed:
+  an update, a delete and a collection created before the instant are there;
+  writes after it are not. The position file is renamed
+  `SYNC_LOG_POSITION.replayed`; a second `--replay-log` on that directory is
+  refused.
+- Not restored this way: sharded collections, writes made while the log was
+  not kept. Not observed: a restore on RocksDB, transactions, columnar rows
+  and blobs in the replay.
+
 ## Other route families (not exercised)
 
 Blobs (`/_api/blob/{db}/{coll}` upload/download, chunked uploads), cluster
