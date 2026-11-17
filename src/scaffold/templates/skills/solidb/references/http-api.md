@@ -492,7 +492,12 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   of one column in one COLLECT: 22 ms (its numbers are kept once).
   `BIT_AND` / `BIT_OR` / `BIT_XOR` come from the arrays too, one commit
   later. `UNIQUE`, `SORTED_UNIQUE`, `COLLECT_LIST` and `COLLECT … INTO`
-  still build rows (about 1.7 s there). Results are
+  still build rows (about 1.7 s there). Window functions build every
+  row too (`ROW_NUMBER() OVER (PARTITION BY r.country ORDER BY r.amount
+  DESC)`: 4.4 s on 2.13.0), except, after `ebbd4c01` (card #953,
+  observed 2026-11-17), the top-N shape written exactly `FOR r IN c LET
+  n = ROW_NUMBER() OVER (PARTITION BY <columns> ORDER BY <columns>)
+  FILTER n <= 3 …` (`<`, `== 1` too): 62 ms; `RANK()` stays at 4.4 s. Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; from 2.12.0 a pushed-down SDBQL FILTER uses a hash,
   sorted, bitmap or bloom index for `==` / `IN`. A range against a number
