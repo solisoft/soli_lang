@@ -39,7 +39,16 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
         ) {
             continue;
         }
-        if path.is_dir() {
+        // The entry's own type, not what it points at: a Crystal `shards`
+        // install links every `lib/<dep>/lib` back to `lib`, and following
+        // those turns ten dependencies into 10^40 paths.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
             walk(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("sl") {
             out.push(path);
