@@ -608,6 +608,14 @@ The HTTP and SDBQL answers below were seen on a live server; `set_null`,
   an edge to a missing vertex → `409 "Foreign key violation: '_to' in
   follows refers to 'zed', which is not a document of 'customers'"`.
   `set_null` is refused on `_from` / `_to`.
+- Import into a collection that has a key: checked document by document
+  (a child before its parent → the batch is refused, `"failed"` in the
+  answer). After 2.13.0 (from the test suite): `POST
+  …/collection/{c}/import?foreign_keys=defer` (Admin of the database)
+  stores the documents, then answers `{"status":"imported","count":2,
+  "failed":0,"orphans":[{"foreign_key":"fk_customer","field":"customer",
+  "references":"customers","count":2,"sample":[…]}]}`; nothing is taken
+  back. Combines with `mode=upsert`.
 - Both ends at once (build after 2.13.0): `POST …/foreign-keys/ends`
   `{"from":"people","to":"firms","on_delete":"cascade"}` → `201
   {"from":{…"fk_from"…},"to":{…"fk_to"…}}`; both or neither (checked by
