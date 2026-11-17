@@ -20,7 +20,15 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.37.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.37.1.</p>
+    </section>
+
+    <section id="v2-37-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.37.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-17</span></h2>
+        <h3 id="v2-37-1-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">An app with a bounded context next to a top-level <code class="text-cyan-400">const</code> boots again.</strong> Since 2.36.0 a file that declares a <code class="text-cyan-400">module</code> loads first, so that a concern of <code class="text-cyan-400">app/models/concerns/</code> exists before the model that includes it. A bounded context is a module too: <code class="text-cyan-400">app/models/care/entry.sl</code> (<code class="text-cyan-400">module Care</code> around <code class="text-cyan-400">class Entry &lt; Model</code>) loaded before <code class="text-cyan-400">app/models/_vocabulary.sl</code>, and a validation reading one of its constants stopped the boot with <code class="text-cyan-400">Undefined variable 'CARE_KINDS'</code>; behind soli-proxy every request got 421. A module whose file declares a class keeps the plain order again (the folder&rsquo;s files, then its subfolders); mixins, value objects, domain events and enums still load first.</li>
+        </ul>
     </section>
 
     <section id="v2-37-0" class="mb-16 scroll-mt-24">
