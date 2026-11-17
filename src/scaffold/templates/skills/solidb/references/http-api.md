@@ -468,7 +468,15 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   monthly `TIME_BUCKET` 264 ms. Still from rows there: a key or argument
   that is a `json` column of mixed kinds, a key mixing integers and
   floats (`r.bytes / 100`), a non-pure function (`RAND()`), aggregates
-  other than COUNT/SUM/AVG/MIN/MAX/COUNT_DISTINCT. Results are
+  other than COUNT/SUM/AVG/MIN/MAX/COUNT_DISTINCT. After 2.13.0
+  (observed 2026-11-17 on a build of `main`, 2,000,000 rows grouped by a
+  string column of 50 values, card #950) `STDDEV` / `VARIANCE`, `MEDIAN`,
+  `PERCENTILE(r.col, p)` and `APPROX_COUNT_DISTINCT(r.col)` are answered
+  from the arrays too: `STDDEV` 1,768 → 8 ms, `MEDIAN` 1,773 → 13 ms,
+  `PERCENTILE(r.amount, 95)` 12 ms, `APPROX_COUNT_DISTINCT(r.user)` 22 ms
+  (exact `COUNT_DISTINCT(r.user)`: 394 ms; prefer the approximate one for
+  a dashboard). `UNIQUE`, `COLLECT_LIST`, `BIT_*` and `COLLECT … INTO`
+  still build rows (about 1.7 s there). Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; from 2.12.0 a pushed-down SDBQL FILTER uses a hash,
   sorted, bitmap or bloom index for `==` / `IN`. A range against a number

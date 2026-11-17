@@ -65,7 +65,7 @@ Math and aggregate functions return JSON floats (`SUM([1,2,3])` → `6.0`,
 | `SUM([])`, `AVG([])`, `MAX([])` | `-0.0`, `null`, `null` (since 2.9.5 `SUM([])` → `0`) |
 | `SUM` of ten `0.1`, `AVG([0.1,0.2,0.3])` | `1.0`, `0.19999999999999998` after 2.7.3 (exact sum, rounded once; through 2.7.3 a running f64 sum: `0.9999999999999999`, `0.20000000000000004`). Also in `COLLECT … AGGREGATE`. `+` still rounds each step: `0.1 + 0.2` → `0.30000000000000004` |
 | `SUM(FOR … RETURN …)` over zero rows | `-0.0` (since 2.9.5: `0`) |
-| `PERCENTILE([1,2,3,4,5,6,7,8,9,10], 90)` | `9.0` (write the list or `1..10`; `[1..10]` is a nested array) |
+| `PERCENTILE([1,2,3,4,5,6,7,8,9,10], 90)` | `9.0` (write the list or `1..10`; `[1..10]` is a nested array). After 2.13.0 also a `COLLECT … AGGREGATE p = PERCENTILE(x, 90)`, as is `APPROX_COUNT_DISTINCT(x)` (sdbql.md, COLLECT) |
 | `STDDEV([3,1,2,2])` / `STDDEV_SAMP` / `VARIANCE` / `VAR_SAMP` | `0.707…` / `0.816…` / `0.5` / `0.666…` |
 | `COUNT_DISTINCT([3,1,2,2])`, `PRODUCT([3,1,2,2])` | `3`, `12.0` |
 | `COUNT([1,2])` / `LENGTH([1,2])` | `2` |

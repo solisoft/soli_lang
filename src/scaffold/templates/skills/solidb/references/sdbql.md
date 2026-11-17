@@ -83,6 +83,35 @@ FOR e IN emp FILTER e.salary > 60 COLLECT d = e.dept AGGREGATE s = SUM(e.salary)
 -- [{"d":"eng","s":180.0}]
 ```
 
+Aggregate functions: `COUNT()` `COUNT(x)` `LENGTH(x)` `SUM` `AVG` `MIN` `MAX`
+`COUNT_DISTINCT` `UNIQUE` `SORTED_UNIQUE` `COLLECT_LIST`/`PUSH` `VARIANCE`
+`VARIANCE_SAMPLE` `STDDEV` `STDDEV_SAMPLE` `MEDIAN` `BIT_AND` `BIT_OR`
+`BIT_XOR`. **After 2.13.0** (observed on a build of `main`, 2026-11-17) also
+`PERCENTILE(x, p)` / `QUANTILE(x, p)`, `PERCENTILE(x, p, "interpolation")`
+and `APPROX_COUNT_DISTINCT(x)`, with the results of the array functions of
+those names over the group's values:
+
+```sdbql
+FOR x IN 1..10 COLLECT AGGREGATE p = PERCENTILE(x, 90), a = APPROX_COUNT_DISTINCT(x % 3),
+  s = STDDEV(x), v = VAR_SAMP(x) RETURN [p, a, s, v]
+-- [[9.0, 3.0, 2.8722813232690143, 9.166666666666666]]
+```
+
+- `p` is a number, a string or a bind variable (`PERCENTILE(o.amount, @p)`);
+  an expression of the row → `400 ParseError "The aggregate PERCENTILE takes
+  a constant or a bind variable after its first argument"`. A rank outside
+  0–100, or no rank → `null`. `SUM(x, 2)` → `400 "The aggregate SUM takes
+  one argument"`.
+- **Through 2.13.0** `AGGREGATE p = PERCENTILE(x, 95)` is a parse error
+  (`Expected RightParen, got Comma`): use `COLLECT k = … INTO g = x RETURN
+  PERCENTILE(g, 95)`, which holds every value as a row.
+- `STDDEV` / `VARIANCE` after 2.13.0 are computed from exact sums: the same
+  number in any order; last digits may differ from 2.13.0 and earlier.
+- A `MEDIAN` / `PERCENTILE` keeps its numbers: through 2.13.0 each counts as
+  a row against `SOLIDB_MAX_INTERMEDIATE_ROWS` (a median over more than
+  5,000,000 values → `500 "Query exceeded the intermediate row limit"`);
+  after it, eight numbers count as one row.
+
 **A full-scan COLLECT streams** (after 2.7.2): `FOR x IN c [FILTER …|LET …]*
 COLLECT …` folds each document into its group as it is read and decodes only
 the fields the clauses use. Memory is the groups (plus what `INTO` and list
@@ -99,7 +128,8 @@ loop variable and each FILTER compares a field with a constant or a bind
 variable, they are read straight from the stored bytes (no document is
 decoded); a collection of 65,536 documents or more is also split into key
 ranges read in parallel at one snapshot, for aggregates that merge exactly
-(COUNT, SUM, AVG, MIN, MAX, COUNT_DISTINCT, BIT_*) — on RocksDB since 2.8.0,
+(COUNT, SUM, AVG, MIN, MAX, COUNT_DISTINCT, BIT_*; after 2.13.0 also the
+variance family, MEDIAN, PERCENTILE, APPROX_COUNT_DISTINCT) — on RocksDB since 2.8.0,
 and on solistore since 2.9.0 (2.8.0 splits only on RocksDB).
 Observed on 2.8.0 builds (RocksDB) and a 2.9.0 build (solistore), 70k orders:
 ```text
