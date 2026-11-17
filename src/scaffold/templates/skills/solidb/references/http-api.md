@@ -171,7 +171,11 @@ DELETE …/rules → 204
 - A rule that asks for nothing → `400 The rule on 'x' asks for nothing`; an
   unknown key in a rule → `422` (body does not deserialize).
 - Documents already stored are not checked; an update of one is.
-- Local to the node: not replicated, not dumped (as `/schema`).
+- Local to the node: not replicated (as `/schema`). `solidb-dump` writes
+  the rules and the schema; `solidb-restore` declares them after the data.
+- A JSON schema (`/schema`) is checked in a transaction and in an import
+  with `mode=upsert` from the same build on; before, both stored what a
+  plain insert refused.
 
 ## Documents
 
