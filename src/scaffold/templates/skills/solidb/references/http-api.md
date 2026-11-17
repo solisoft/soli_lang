@@ -772,6 +772,19 @@ or earlier: the routes answer 404.
   vec![TransactionStep::query(…).require_rows(), …])`. Refused while a
   `begin_transaction` is open on the same client.
 
+## Constraints on a cluster
+
+A unique index and a foreign key are checked by the node that takes the
+write; replication applies it elsewhere unchecked. Two nodes accepting
+conflicting writes at once leave a duplicate or an orphan on every node
+(by design, decided 2026-11-17). Find them with `POST
+/_api/database/{db}/index/{coll}/check` (`duplicates`) and `POST
+…/collection/{coll}/foreign-keys/check`. After 2.13.0 (from the test suite,
+not observed on a server): `SOLIDB_CONSTRAINT_CHECK_SECS=3600` runs both on
+a schedule and reports `solidb_fk_orphans{database,collection}` and
+`solidb_unique_duplicates{database,collection}` on `/metrics`, plus a
+warning in the log. Nothing is repaired.
+
 ## Backups and point-in-time restore
 
 Observed 2026-11-17 on a build of `main` after 2.13.0 (throwaway server,
