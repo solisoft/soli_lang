@@ -255,9 +255,10 @@ exist there.
   `p.series == @s`, read only the blocks that can hold such a point —
   1,453 ms → 15.5 ms for one instant, 1,491 → 45 ms for a series over an
   hour, 0.4 ms for a series that does not exist. Same rows, same order,
-  any other FILTER still applies. `FILTER p.series == @s` alone is NOT
+  any other FILTER still applies. EXPLAIN warns `read by its column
+  blocks` and counts only the documents read. `FILTER p.series == @s` alone is NOT
   helped (861 ms, every block holds the series): keep an index on the
-  series field for that. EXPLAIN still reports a full scan. Through
+  series field for that. Through
   2.13.0 every row query without an index reads the whole collection.
 - One more shape, over the driver only (observed on a build of `main`,
   2026-11-16): `FOR p IN c FILTER p.series == @s SORT p.<time> DESC LIMIT 1
