@@ -78,6 +78,12 @@ involved).
     2.13.0: `Expected field name in object`; `ZIP_OBJECT(keys, values)`
     works on every version).
 14. **No `DELETE` statement** — `REMOVE`.
+    **A document must be an object.** After 2.13.0, `INSERT 7 INTO c`,
+    `FOR i IN 1..5 INSERT i INTO c` and `POST …/document/c` with a number,
+    string or array body answer `400 "the document must be an object, got a
+    number"` (observed 2026-11-17 on a build after 2.13.0). Through 2.13.0
+    they answered success and stored a document with only its system
+    attributes: check `inserted` counts from older servers with that in mind.
 15. **`LENGTH(users)` (a bare collection name) is an error** —
     `Variable 'users' not found`. Use `COLLECTION_COUNT("users")` or
     `LENGTH(FOR u IN users RETURN 1)`.
