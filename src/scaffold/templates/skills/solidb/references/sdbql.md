@@ -113,6 +113,24 @@ FOR o IN orders FILTER o.amount > 5 COLLECT s = UPPER(o.status) WITH COUNT INTO 
 `SOLIDB_SCAN_THREADS` caps the threads (default: the CPUs the process may
 use; `1` turns parallel scans off). SUM/AVG are exact (functions.md).
 
+A FILTER that no index serves is still a scan of the collection, but since
+the build after 2.13.0 the leading FILTERs that compare fields of the loop
+variable with constants or bind variables (`==` `!=` `<` `<=` `>` `>=` `IN`,
+`AND` / `OR` / `NOT`) are checked on the stored bytes, and only the documents
+they keep are decoded. Observed on a build of `main` after 2.13.0
+(2026-11-17, solistore), 70k orders, no index on `customer`:
+```text
+FOR o IN orders FILTER o.customer == @c RETURN o.amount            -- 140 rows, 8.4 ms
+-- explain: access_type "full_scan", documents_scanned 70000, warning
+--   "optimizer: FILTER on 'orders' checked on the stored documents: only those it keeps are decoded"
+FOR o IN orders FILTER UPPER(o.customer) == UPPER(@c) RETURN o.amount   -- same rows, 48.7 ms, no warning
+```
+A function call, a comparison of two fields or a value read from another row
+keeps that FILTER, and every FILTER after it, on decoded rows: put the plain
+comparisons first. On a million documents the plain form took 121 ms where
+it took 808 before; with an index it is a few milliseconds, so index a field
+you filter on often.
+
 Since 2.13.0 (observed on its release build, RocksDB, 182,500 documents
 with a persistent index on `d`):
 - `FOR x IN c FILTER x.d >= @f COLLECT m = x.m AGGREGATE s = SUM(x.s) RETURN …`
