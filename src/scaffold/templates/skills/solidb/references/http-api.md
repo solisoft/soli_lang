@@ -385,6 +385,12 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   column with an index → `409 "… drop the index first"`. Through 2.11.0
   the columns are fixed at creation.
 - No update of a row in place (delete and insert again).
+- No row policies: whoever may read the database reads every row.
+  `ROW_POLICY("metrics", …)` (or on `_columnar_metrics`) is refused from the
+  build after 2.13.0 with `'metrics' is a columnar collection: row policies
+  do not apply to it…`; on 2.13.0 the first answers `404 CollectionNotFound`
+  and the second is stored and never applied (observed 2026-11-17).
+- No change events: a changefeed or live query does not see columnar writes.
 - **The schema is checked from 2.11.0** (observed on a build of `main`,
   2026-11-15). An insert is refused whole with `400`, naming the row:
   `row 0: unknown column 'extra'`, `row 1: column 'cpu' is not nullable and
