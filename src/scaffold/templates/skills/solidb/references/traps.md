@@ -152,8 +152,18 @@ involved).
     to `SOLIDB_TX_LOCK_WAIT_MS`, 500 ms) and the row is evaluated again on
     what it committed, as outside a transaction; a deadlock is still a
     `409`, at once.
+    **Sharded collections** were not covered until after 2.13.0
+    (card #799, observed 2026-11-17 on a build of it): eight writers
+    running `FOR d IN c FILTER d._key == "k" UPDATE d WITH {n: d.n + 1}`
+    25 times each left `n = 43`, not 200. After it the shard compares the
+    revision, the row is evaluated again, and a writer overtaken 16 times
+    in a row gets `409 … retry the query`. `UPSERT`, `REPLACE` and an
+    UPDATE with `OPTIONS` on a sharded collection are still unguarded.
     `UPDATE "literal-key" WITH …` is not guarded: it names no document the
-    query read. On 2.9.0 and earlier, guard a hot counter with an HTTP
+    query read. With `OPTIONS {mergeObjects: true}` or `{keepNull: false}`
+    the merge is computed by the statement from the stored document:
+    through 2.13.0 that read-then-write could lose a concurrent write to
+    the same document; after it, it runs under the key's lock. On 2.9.0 and earlier, guard a hot counter with an HTTP
     transaction over the document routes (`GET` then `PUT`, which lock the
     key; retry on 409). Through 2.9.3 the isolation level only decides
     whether the commit is fsynced.

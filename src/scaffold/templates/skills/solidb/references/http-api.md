@@ -153,7 +153,7 @@ Other collection routes exist (`/compact`, `/recount`, `/repair`, `/prune`,
 | `PUT /_api/database/{db}/document/{coll}/{key}` | **Merge** top-level fields (a `null` value stores `null`) | Updated doc; missing key → `404` |
 | `PUT …/{key}?replace=true` | Replace the whole document | Updated doc |
 | `PUT …/{key}?upsert=true` | Create when missing | Doc |
-| `PUT …/{key}` + `If-Match: <_rev>` | Optimistic CAS | Mismatch → `409 "Document 'k' has been modified. Expected revision …"` |
+| `PUT …/{key}` + `If-Match: <_rev>` | Optimistic CAS | Mismatch → `409 "Document 'k' has been modified. Expected revision …"`. On a sharded collection: honoured after 2.13.0 for an update (`400 "If-Match is not supported on sharded collections"` through 2.13.0), still `400` with `?replace=true` |
 | `DELETE /_api/database/{db}/document/{coll}/{key}` | | `204` |
 
 There is no `PATCH` route (`405`). `…/document/{coll}/_batch` is an internal
