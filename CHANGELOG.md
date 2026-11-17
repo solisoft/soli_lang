@@ -39,6 +39,13 @@
 
 ### Fixed
 
+- **A comment after `soli_version` no longer hides the pin.** In `soli.toml`,
+  `soli_version = "=2.35.1"  # why` kept the comment in the value, so the
+  pin was no version at all and was ignored without a word: `soli which`
+  said *no exact soli_version in soli.toml* and the project ran on whatever
+  `soli` was installed. A `#` outside quotes now ends the line, on every
+  key and on section headers.
+
 - **A foreign key violation is reported as one.** SoliDB answers it with a
   409, as it answers a duplicate, so `Order.create({"customer_id":
   "nobody"})` came back with `_errors` saying *has already been taken*, on

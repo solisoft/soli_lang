@@ -108,10 +108,10 @@ impl Package {
         let mut current_section: Option<&str> = None;
 
         for line in content.lines() {
-            let line = line.trim();
+            let line = strip_comment(line).trim();
 
             // Skip empty lines and comments
-            if line.is_empty() || line.starts_with('#') {
+            if line.is_empty() {
                 continue;
             }
 
@@ -189,6 +189,23 @@ impl Package {
             }
         }
     }
+}
+
+/// A line without its comment: everything from the first `#` that is not
+/// inside a quoted string. `soli_version = "=2.35.1"  # pinned for the audit`
+/// used to keep the comment in the value, which then was no version at all:
+/// the pin was silently ignored.
+fn strip_comment(line: &str) -> &str {
+    let mut quote: Option<char> = None;
+    for (at, c) in line.char_indices() {
+        match (quote, c) {
+            (None, '#') => return &line[..at],
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(open), _) if c == open => quote = None,
+            _ => {}
+        }
+    }
+    line
 }
 
 /// Parse a TOML string value (with or without quotes).
@@ -644,6 +661,23 @@ utils = { path = "../utils" }
             }
             _ => panic!("Expected git dependency"),
         }
+    }
+
+    #[test]
+    fn a_comment_after_a_value_is_not_part_of_it() {
+        let content = r#"
+[package] # the app
+name = "my-app" # its name
+version = "1.0.0"
+description = "tracks #hashtags"  # a `#` inside quotes stays
+soli_version = "=2.35.1" # pinned until the audit is done
+"#;
+
+        let pkg = Package::parse(content).unwrap();
+        assert_eq!(pkg.name, "my-app");
+        assert_eq!(pkg.description.as_deref(), Some("tracks #hashtags"));
+        assert_eq!(pkg.soli_version.as_deref(), Some("=2.35.1"));
+        assert_eq!(pkg.exact_pin(), Some("2.35.1"));
     }
 
     #[test]
