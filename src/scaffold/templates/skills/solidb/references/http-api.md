@@ -620,6 +620,13 @@ The HTTP and SDBQL answers below were seen on a live server; `set_null`,
   `{"from":"people","to":"firms","on_delete":"cascade"}` → `201
   {"from":{…"fk_from"…},"to":{…"fk_to"…}}`; both or neither (checked by
   tests, 2026-11-17).
+- An end over several vertex collections (after 2.13.0, from the test
+  suite): `POST …/foreign-keys` `{"field":"_to","references":["firms",
+  "people"],"on_delete":"cascade"}` → `201 {"foreign_keys":[{"name":
+  "fk_to_firms",…,"also":["people"]},{"name":"fk_to_people",…}]}`, all or
+  none; with `name`, or `"by":"key"` → `400`. An edge to another
+  collection → `409`. Any field holding an `_id` (`"by":"id"`) can take a
+  list.
 - Not on sharded collections (`501`). On a replicating node the key's
   definition and the cascaded writes are replicated; a replicated write is
   not checked again.
