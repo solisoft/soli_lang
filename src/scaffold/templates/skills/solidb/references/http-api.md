@@ -398,7 +398,12 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `POST …/columnar/{c}/query` and `…/aggregate` (and the driver's) answer
   `403 "a row policy is declared on the columnar collection …"` to a
   caller it binds. Not checked on `INSERT INTO`.
-- No change events: a changefeed or live query does not see columnar writes.
+- Change events: through 2.13.0 (and builds up to `ea48f8ea`) a changefeed
+  or a live query does not see columnar writes. After it (card #956; the
+  event from the test suite, the WebSocket path not observed): one event
+  per insert, delete or truncate, `{"type":"insert","key":"<first id>",
+  "data":{"rows":5000,"first":"<id>","last":"<id>"}}`, on the node that
+  took the write; it does not carry the rows.
 - No triggers, no foreign keys (on it or towards it): from the build after
   2.13.0 both answer `400 '<name>' is a columnar collection: …`; on 2.13.0
   they answer as if the collection did not exist.
