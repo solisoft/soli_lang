@@ -476,7 +476,9 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `PERCENTILE(r.amount, 95)` 12 ms, `APPROX_COUNT_DISTINCT(r.user)` 22 ms
   (exact `COUNT_DISTINCT(r.user)`: 394 ms on 2.13.0 and at commit
   `70fb3de3`, 49 ms after it, card #952). Three percentiles and a median
-  of one column in one COLLECT: 22 ms (its numbers are kept once). `UNIQUE`, `COLLECT_LIST`, `BIT_*` and `COLLECT … INTO`
+  of one column in one COLLECT: 22 ms (its numbers are kept once).
+  `BIT_AND` / `BIT_OR` / `BIT_XOR` come from the arrays too, one commit
+  later. `UNIQUE`, `SORTED_UNIQUE`, `COLLECT_LIST` and `COLLECT … INTO`
   still build rows (about 1.7 s there). Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; from 2.12.0 a pushed-down SDBQL FILTER uses a hash,
@@ -492,7 +494,23 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   with `"optimizer: COLLECT folded from the blocks of the columnar
   collection …"`.
 - **Transactions**: read refused at `repeatable_read` / `serializable`
-  (`501 OperationNotSupported "… use read_committed"`).
+  (`501 OperationNotSupported "… use read_committed"`). A columnar write
+  is never part of a transaction. Observed 2026-11-17 on a build of
+  `main` at `4a664066` (after 2.13.0): `…/transaction/{id}/query` with
+  `INSERT … INTO m` → `501`; `…/transaction/{id}/document/m` → `404
+  CollectionNotFound`; **`POST …/columnar/m/insert` with the header
+  `X-Transaction-ID` was carried out at once (row visible before the
+  commit, kept after a rollback), on that build and 2.13.0**. From the
+  next commit it, the row deletes and the truncate answer `501
+  "inserting into a columnar collection is not supported in a
+  transaction"` (from the test suite).
+- **Names**: through 2.13.0 and `4a664066` a document collection or a
+  materialized view could be created under a columnar collection's name,
+  and the reverse (`CREATE MATERIALIZED VIEW m AS FOR r IN m RETURN r` →
+  200; queries kept reading the columnar `m`). From the next commit:
+  `409 CollectionAlreadyExists` both ways (test suite). A view *over* a
+  columnar collection works (`CREATE MATERIALIZED VIEW mv AS FOR r IN m
+  COLLECT …`, `REFRESH` re-runs it; its rows are documents).
 - **Replication** (from the code and its tests, not observed on a cluster):
   create, insert, drop and indexes are logged for the peers from this build
   on, over HTTP and the driver; before it only HTTP inserts were, so a peer
