@@ -5,7 +5,9 @@ description: Use when working with SoliDB (the Soli framework's document databas
 
 # SoliDB and SDBQL
 
-SoliDB is a document database (RocksDB storage, Rust) that speaks HTTP/JSON
+SoliDB is a document database (Rust; a new data directory is stored on
+solistore since the release after 2.13.0, on RocksDB before, and an existing
+one keeps its engine) that speaks HTTP/JSON
 (plus a binary MessagePack driver protocol on the same port). Queries are
 written in **SDBQL**, an ArangoDB-AQL-style language: `FOR … FILTER … SORT …
 LIMIT … RETURN`. The Soli framework's `Model` ORM compiles to SDBQL.

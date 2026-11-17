@@ -12,7 +12,12 @@ Every example here was run against `solidb 2.4.0`; results are shown as the
 - Comments: `-- to end of line` only. `//`, `/* */` and `#` are parse errors.
 - Strings: `"double"` or `'single'`. Numbers, `true`/`false`/`null`.
 - Arrays `[1, 2]`, objects `{a: 1, "b-c": 2, name}` (shorthand `{name}` =
-  `{name: name}`). Computed keys `{[k]: v}` → `Expected field name in object`.
+  `{name: name}`). Computed keys `{[k]: v}`, beside plain ones
+  (`{id: 1, [u._key]: u.age}`): from commit `0e02365d`, after 2.13.0 (observed
+  2026-11-17 on a build of it); a key that is not a string is made one as
+  `TO_STRING` does (`{[1 + 1]: "two"}` → `{"2": "two"}`), a key written
+  twice keeps its last value. Through 2.13.0: `Expected field name in
+  object`; use `ZIP_OBJECT(keys, values)` there.
 - Identifiers in backticks are not supported.
 - Statement must start with `FOR`, `LET`, `RETURN`, `INSERT`, `UPDATE`,
   `REMOVE` (also `UPSERT`, `REPLACE`, `WITH` CTEs, `CREATE`/`REFRESH
@@ -195,7 +200,7 @@ From 2.10.4 (observed on servers built from its code, 2026-11-14):
 | `?.` | `DOCUMENT("emp/nobody")?.name` → `null` |
 | `+ - * / %` | `7 / 2` → `3.5`; `7 % 3` → `1`; `1 / 0` → `null`; `"a" + "b"` → `"ab"` |
 | `\|>` | `"hello" \|> UPPER() \|> REVERSE()` → `"OLLEH"` |
-| `[*]` | `(FOR e IN emp RETURN e)[*].name` → names |
+| `[*]` | `(FOR e IN emp RETURN e)[*].name` → names. A key that is not an identifier: `ds[*].v['1']` reads `'1'` in each element (after 2.13.0; through 2.13.0 it indexed the array of results → `null`, write `ds[* RETURN CURRENT.v['1']]` there). `ds[*].v[0]` still indexes the array of results |
 | `[i]` | `[10,20,30][1]` → `20`, `[-1]` → `30` |
 | `a..b` | inclusive: `1..3` → `[1,2,3]` (`[1..3]` is a nested array `[[1,2,3]]`) |
 | `CASE` | `CASE WHEN 1 > 2 THEN "a" ELSE "b" END` → `"b"` |

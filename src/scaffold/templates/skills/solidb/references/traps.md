@@ -74,7 +74,9 @@ involved).
 11. **`[1..10]` is `[[1,…,10]]`.** The range literal is `1..10` (inclusive).
 12. **Empty arrays are truthy** in `FILTER` (`FILTER u.tags` keeps `tags: []`).
     Test `LENGTH(u.tags) > 0`.
-13. **Computed object keys `{[k]: v}` are not supported.**
+13. **Computed object keys `{[k]: v}` need a build after 2.13.0** (through
+    2.13.0: `Expected field name in object`; `ZIP_OBJECT(keys, values)`
+    works on every version).
 14. **No `DELETE` statement** — `REMOVE`.
 15. **`LENGTH(users)` (a bare collection name) is an error** —
     `Variable 'users' not found`. Use `COLLECTION_COUNT("users")` or

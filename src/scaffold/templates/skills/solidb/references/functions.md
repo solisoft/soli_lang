@@ -11,6 +11,13 @@ An unknown name raises `Unknown function: X` in `RETURN`/`LET`. Inside a
 `FILTER` it silently matched nothing through 2.9.4; after it, the query fails
 there too. Function names are case-insensitive.
 
+A function that exists, called with arguments it has no form for, answers
+`NAME: not applicable to (kinds)` after 2.13.0 (`AVG(3)` → `AVG: not
+applicable to (number)`; `SUM(null)` likewise): it takes an array. Through
+2.13.0 the message was `Unknown function: AVG`, and a `FILTER` holding such
+a call failed the query; now it drops the row, like any other evaluation
+error.
+
 ## Verified examples
 
 ### Strings
@@ -101,6 +108,7 @@ Math and aggregate functions return JSON floats (`SUM([1,2,3])` → `6.0`,
 | Call | Result |
 |------|--------|
 | `MERGE({a:1}, {b:2})` | `{a:1, b:2}` |
+| `MERGE([{a:1}, {b:2}, {a:3}])` | `{a:3, b:2}` after 2.13.0 (one array = the objects to merge); through 2.13.0 `MERGE: all arguments must be objects` |
 | `MERGE({o:{a:1}}, {o:{b:2}})` | `{o:{b:2}}` (shallow) |
 | `MERGE_RECURSIVE({o:{a:1}}, {o:{b:2}})` | `{o:{a:1, b:2}}` |
 | `KEEP({a:1,b:2}, "a")`, `KEEP(doc, ["a","b"])` | `{a:1}` |
