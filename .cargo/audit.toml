@@ -101,4 +101,13 @@ ignore = [
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0372",
+
+    # chrono, chrono-tz — both declared unmaintained (informational, no
+    # vulnerability). Direct dependencies, used across the runtime for
+    # dates, times and time zones. There is no drop-in replacement; moving to `jiff` or `time` is a
+    # migration of its own. Remove once that migration lands, or if either
+    # crate finds a maintainer and the advisory is withdrawn. Waived
+    # 2026-11-17, when the advisories appeared, to cut v2.37.0.
+    "RUSTSEC-2026-0543",
+    "RUSTSEC-2026-0555",
 ]
