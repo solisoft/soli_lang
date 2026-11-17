@@ -600,7 +600,8 @@ end
 
 | Works | Does not |
 |-------|----------|
-| `pdf_render`, `pdf_response`, `pdf_from_markdown`, `pdf_layout_map` | `pdf_preview*`: the image encoder is not in the runtime |
+| `pdf_render`, `pdf_response`, `pdf_from_markdown`, `pdf_layout_map` | |
+| `pdf_preview`, `pdf_preview_from_markdown`, `pdf_preview_response` as PNG (the default) or `"format": "jpeg"` | `"format": "webp"`: its encoder is C; `out_dir` |
 | `pdf_facturx`, `pdf_facturx_from_invoice`, `pdfa`, `password` | `stationery`, `attachments` and images given as a path |
 | `pdf_merge`, `pdf_pages`, `pdf_stamp`, `pdf_text`, `pdf_attachments`, `pdf_extract_facturx` on base64 | the same on a path |
 | `pdf_sign`, `pdf_verify` and the `sign` option, with the certificate and key as PEM strings (Worker secrets) | PEM files |
@@ -613,7 +614,7 @@ end
 - **Templates.** `slurp` does not read files in a Worker: write the template
   as a hash in Soli and call `.to_json`, as above.
 - **Time.** A render counts against the Worker's CPU limit. The one-page
-  example takes about 30 ms on workerd.
+  example takes about 30 ms on workerd, a 480-pixel PNG of a page about 10.
 
 ## What runs on the edge
 
@@ -626,7 +627,7 @@ end
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/`; attachments on R2, with `Range` and image transforms | Office, the `Image` class, `System.run` |
-| [PDF](#pdf), with `--pdf`: `pdf_render`, `pdf_response`, `pdf_from_markdown`, Factur-X, signatures | PDF previews, your own font files |
+| [PDF](#pdf), with `--pdf`: `pdf_render`, `pdf_response`, `pdf_from_markdown`, Factur-X, signatures, PNG and JPEG previews | WebP previews, your own font files |
 
 A builtin that needs what a Worker lacks returns an error naming the edge
 build ("… is not available on the edge (Cloudflare Workers) build").

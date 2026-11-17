@@ -10,6 +10,11 @@ are inside the WebAssembly runtime.</p>
   <button class="button" type="submit">Open my pass from <%= @runtime["colo"] %></button>
 </form>
 
+<p class="muted">Below, the same page as an image: <code>pdf_preview_response</code> draws it
+to a PNG in the Worker too, for a thumbnail or a preview pane.</p>
+<img class="page-preview" src="<%= @preview_url %>" width="360" height="509" loading="lazy"
+     alt="The pass, drawn as a PNG by the Worker">
+
 <h2>The code</h2>
 <p>The same <code>pdf_response</code> as under <code>soli serve</code>: a layout template
 and its data, both JSON, returned straight from the action.</p>
@@ -40,5 +45,6 @@ end</code></pre>
       Latin scripts only.</li>
   <li>Images, letterheads and attachments read from the app's folders. An image comes
       from an <code>https</code> URL or a <code>data:</code> URI.</li>
-  <li>Page previews (<code>pdf_preview</code>): the image encoder is not in the runtime.</li>
+  <li>Previews as WebP: its encoder is C, which the runtime does not carry. PNG and
+      JPEG work.</li>
 </ul>

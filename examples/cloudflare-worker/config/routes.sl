@@ -11,6 +11,7 @@ get("/d1", "check_ins#index")
 post("/d1/check-in", "check_ins#create")
 get("/pdf", "documents#index")
 get("/pdf/pass.pdf", "documents#pass")
+get("/pdf/pass.png", "documents#preview")
 get("/api/info", "api#info")
 
 # A LiveView on the edge: its socket is a Cloudflare Durable Object that

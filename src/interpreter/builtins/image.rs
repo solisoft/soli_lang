@@ -145,7 +145,6 @@ pub(crate) fn safe_image_limits() -> image::Limits {
 }
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::rc::Rc;
 use std::thread;
 
@@ -218,38 +217,41 @@ where
     })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn encode_dynamic_image(
     img: &DynamicImage,
     quality: u8,
     format: ImageFormat,
 ) -> Result<Vec<u8>, String> {
     let mut buffer = Vec::new();
-    let cursor = Cursor::new(&mut buffer);
+    let cursor = std::io::Cursor::new(&mut buffer);
     if format == ImageFormat::Jpeg {
         let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(cursor, quality);
         img.write_with_encoder(encoder)
             .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
     } else if format == ImageFormat::WebP {
-        // The `image` crate only encodes *lossless* WebP, which bloats photos.
-        // Use libwebp (via the `webp` crate) for quality-controlled lossy output.
-        let rgba = img.to_rgba8();
-        let (w, h) = rgba.dimensions();
-        let encoded = webp::Encoder::from_rgba(&rgba, w, h).encode(quality as f32);
-        return Ok(encoded.to_vec());
+        return encode_lossy_webp(img, quality);
     } else {
         img.write_to(cursor, format)
             .map_err(|e| format!("Failed to encode image: {}", e))?;
     }
     Ok(buffer)
 }
+
+/// The `image` crate only encodes *lossless* WebP, which bloats photos.
+/// Use libwebp (via the `webp` crate) for quality-controlled lossy output.
+#[cfg(not(target_arch = "wasm32"))]
+fn encode_lossy_webp(img: &DynamicImage, quality: u8) -> Result<Vec<u8>, String> {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let encoded = webp::Encoder::from_rgba(&rgba, w, h).encode(quality as f32);
+    Ok(encoded.to_vec())
+}
+
+/// libwebp is C, and nothing in the edge build compiles C: PNG and JPEG, which
+/// the `image` crate encodes in Rust, are what a Worker can write.
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn encode_dynamic_image(
-    img: &DynamicImage,
-    quality: u8,
-    format: ImageFormat,
-) -> Result<Vec<u8>, String> {
-    Err(crate::platform::unsupported_on_edge("encode_dynamic_image"))
+fn encode_lossy_webp(_img: &DynamicImage, _quality: u8) -> Result<Vec<u8>, String> {
+    Err(crate::platform::unsupported_on_edge("WebP encoding"))
 }
 
 fn encode_image(data: &ImageData, format: ImageFormat) -> Result<Vec<u8>, String> {

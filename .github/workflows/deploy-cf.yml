@@ -128,6 +128,14 @@ jobs:
               echo "/pdf/pass.pdf is not a PDF" >&2
               status=1
             fi
+            # /pdf/pass.png is the same page drawn as an image.
+            curl -fs -m 20 -o /tmp/pass.png "http://127.0.0.1:8787/pdf/pass.png?name=CI" || status=1
+            if [ "$(head -c 4 /tmp/pass.png 2>/dev/null | tail -c 3)" = "PNG" ]; then
+              echo "/pdf/pass.png -> a PNG of $(wc -c < /tmp/pass.png) bytes"
+            else
+              echo "/pdf/pass.png is not a PNG" >&2
+              status=1
+            fi
             # The trigger wrangler.toml lists runs HourlyTallyJob; /d1 shows its run.
             curl -fs -m 20 -o /dev/null "http://127.0.0.1:8787/__scheduled?cron=0+*+*+*+*" || status=1
             # Read the page first: under pipefail, `curl | grep -q` fails when

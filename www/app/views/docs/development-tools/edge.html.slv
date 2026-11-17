@@ -404,7 +404,8 @@ end</code></pre>
         <table class="w-full text-sm text-left">
             <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Works</th><th class="py-3 px-4">Does not</th></tr></thead>
             <tbody class="text-gray-400">
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, <code>pdf_layout_map</code></td><td class="py-3 px-4"><code>pdf_preview*</code>: the image encoder is not in the runtime</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, <code>pdf_layout_map</code></td><td class="py-3 px-4"></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_preview</code>, <code>pdf_preview_from_markdown</code>, <code>pdf_preview_response</code> as PNG (the default) or <code>"format": "jpeg"</code></td><td class="py-3 px-4"><code>"format": "webp"</code>: its encoder is C; <code>out_dir</code></td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_facturx</code>, <code>pdf_facturx_from_invoice</code>, <code>pdfa</code>, <code>password</code></td><td class="py-3 px-4"><code>stationery</code>, <code>attachments</code> and images given as a path</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_merge</code>, <code>pdf_pages</code>, <code>pdf_stamp</code>, <code>pdf_text</code>, <code>pdf_attachments</code>, <code>pdf_extract_facturx</code> on base64</td><td class="py-3 px-4">the same on a path</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_sign</code>, <code>pdf_verify</code> and the <code>sign</code> option, with the certificate and key as PEM strings (Worker secrets)</td><td class="py-3 px-4">PEM files</td></tr>
@@ -415,7 +416,7 @@ end</code></pre>
     <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
         <li><strong class="text-white">Fonts.</strong> A Worker has no <code class="text-amber-400">font/</code> folder, so the runtime falls back to four Titillium Web faces compiled into it (Regular, Bold, Italic, BoldItalic, SIL Open Font License). <code>mono</code> text is drawn in the regular face, and a character the font lacks is dropped with a warning.</li>
         <li><strong class="text-white">Templates.</strong> <code class="text-amber-400">slurp</code> does not read files in a Worker: write the template as a hash in Soli and call <code>.to_json</code>, as above.</li>
-        <li><strong class="text-white">Time.</strong> A render counts against the Worker&rsquo;s CPU limit. The one-page example takes about 30&nbsp;ms on workerd.</li>
+        <li><strong class="text-white">Time.</strong> A render counts against the Worker&rsquo;s CPU limit. The one-page example takes about 30&nbsp;ms on workerd, a 480-pixel PNG of a page about 10.</li>
     </ul>
 
     <h2 id="scope" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What runs on the edge</h2>
@@ -430,7 +431,7 @@ end</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">Office, the <code>Image</code> class, <code>System.run</code></td></tr>
-                <tr><td class="py-3 px-4"><a href="#pdf" class="text-amber-400 hover:underline">PDF</a>, with <code>--pdf</code>: <code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, Factur-X, signatures</td><td class="py-3 px-4">PDF previews, your own font files</td></tr>
+                <tr><td class="py-3 px-4"><a href="#pdf" class="text-amber-400 hover:underline">PDF</a>, with <code>--pdf</code>: <code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, Factur-X, signatures, PNG and JPEG previews</td><td class="py-3 px-4">WebP previews, your own font files</td></tr>
             </tbody>
         </table>
     </div>

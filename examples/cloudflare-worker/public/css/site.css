@@ -179,6 +179,8 @@ main pre code.hljs { background: none; padding: 0; }
 .playground textarea { width: 100%; font: inherit; padding: .75rem; border-radius: .6rem;
                        border: 1px solid var(--rule); background: var(--code-bg); color: var(--text); }
 .playground button { margin-top: .6rem; }
+.page-preview { display: block; max-width: 100%; height: auto; margin: 1rem 0 1.5rem; background: #fff;
+  border: 1px solid var(--rule); border-radius: .4rem; }
 .stats { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); margin: 1.5rem 0; }
 .stats div { background: var(--deck); border: 1px solid var(--rule); border-radius: .8rem; padding: .8rem 1rem; color: var(--muted); }
 .stats span { display: block; font: 700 2rem/1.1 "Barlow Condensed", sans-serif; color: var(--text); }
