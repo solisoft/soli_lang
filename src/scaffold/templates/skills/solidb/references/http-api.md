@@ -97,8 +97,8 @@ admin. `POST …/document/_jobs`, by caller:
 | admin of another database | `403 "…insufficient permissions for Write on other"` |
 | `editor` | `403 "Access denied: '_jobs' is executed by the server and is writable only with an Admin credential"` |
 
-- **Through SDBQL too, on a build after commit `3c851677`** (observed
-  2026-11-17 on the working tree that fixes card #928): as an admin of
+- **Through SDBQL too, from commit `64791a78`** (unreleased; observed
+  2026-11-17 on a build of it): as an admin of
   that one database, `INSERT {…} INTO _jobs` and `UPDATE … IN _jobs` on
   `/cursor`, `INSERT INTO _jobs …` on `/sql` and a query inside a
   transaction (`…/transaction/{id}/query`) all write. On `3c851677`
