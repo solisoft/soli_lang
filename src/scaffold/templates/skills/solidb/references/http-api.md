@@ -685,6 +685,9 @@ or earlier: the routes answer 404.
   must not have been written at all since. Otherwise commit → `409`
   `TransactionConflict` ("Read conflict: …"), nothing written: roll back and
   retry. Re-reading a changed key fails that statement with `409` at once.
+  **On a cluster, through 2.13.0 the writes of a transaction are not
+  replicated** (stored on the node that took the commit only; fixed in the
+  build after, checked by tests 2026-11-17).
   Sharded collections cannot be read at these levels. A columnar
   collection can from the build after 2.13.0 (refused on 2.13.0): the
   commit answers `409` when any row of it was inserted or deleted since
