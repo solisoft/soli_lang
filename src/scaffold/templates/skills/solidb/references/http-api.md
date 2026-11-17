@@ -31,9 +31,79 @@ API keys and identity:
 | `GET /_api/auth/api-keys` | | `{"keys":[{id,name,created_at,roles,scoped_databases}]}` |
 | `DELETE /_api/auth/api-keys/{key_id}` | | `200` |
 | `GET /_api/auth/me` | | `{"username":"admin","roles":["admin"],"permissions":[…]}` |
-| `PUT /_api/auth/password` | `{"current_password","new_password"}` | (unverified) |
+| `PUT /_api/auth/password` | `{"current_password","new_password"}` — the caller's own | (unverified); an admin resetting someone else's: see *Users and roles* below |
 
 With an API key, `CURRENT_USER()` returns `"api-key:<id>"`.
+
+### Users and roles (observed on a build of `main` after 2.12.1, commit `3c851677`, 2026-11-17)
+
+Unreleased at that date: 2.12.1 has neither the `solidb user` command nor
+`PUT /_api/auth/users/{u}/password`.
+
+| Method & path | Body | Response |
+|---------------|------|----------|
+| `PUT /_api/auth/users/{username}/password` | `{"password":"…"}` — the new one; the caller needs Admin on every database (a global `admin`), and does not give the old one | `204`, empty. Under 12 characters → `400 "Password must be at least 12 characters"`; unknown user → `404 "User 'x' not found"`; an editor or an admin of one database → `403 "…insufficient permissions for Admin on global"`; the field named anything else → `422` |
+
+- After a reset the old password is refused at once (Basic and login); a
+  JWT issued before it keeps working until it expires.
+- A role may be limited to one database: `/_api/auth/me` then shows
+  `"roles":["admin@shop"]` and
+  `"permissions":[{"action":"admin","scope":"database","database":"shop"}]`.
+
+The `solidb user` command wraps those endpoints (no curl, no password in
+argv):
+
+```sh
+export SOLIDB_URL=http://localhost:6745 SOLIDB_PASSWORD=…   # the admin's; or --password-file F, or a prompt
+echo 'a-long-password' | solidb user create shop_app --role admin --database shop --password-stdin
+# User 'shop_app' created
+solidb user list            # USERNAME  ROLES  CREATED      (--json: {"users":[{username,roles,created_at}]})
+solidb user roles shop_app  # ROLE  DATABASE  ASSIGNED BY  ASSIGNED AT   (--json: [{id,role,database,username,assigned_by,assigned_at}])
+solidb user grant ed viewer --database other    # Role 'viewer' granted to 'ed' on database 'other'
+solidb user revoke ed viewer --database other
+echo 'another-password' | solidb user passwd shop_app --password-stdin   # Password of 'shop_app' changed
+solidb user delete ed       # also removes its roles
+```
+
+- Global options: `-s/--server` (default `http://localhost:6745`),
+  `-u/--username` to log in as (default `admin`), `--password-file`,
+  `-k/--api-key` (an `sk_…` key or a JWT, env `SOLIDB_API_KEY`). Without
+  `--password-stdin` the new password is prompted for, twice.
+  `passwd` with no username changes the caller's own.
+- `--role` without `--database` is for every database. Roles: `admin`,
+  `editor`, `viewer`, or a custom one. An unknown role is an error and the
+  user is not kept: `Error: User 'bad' was not kept: assigning role
+  'nosuchrole' failed: nosuchrole (HTTP 404)`.
+- Exit codes: `0`; `3` not found (user or role); `4` already exists
+  (`User 'shop_app' already exists (HTTP 409)`), so a provisioning script
+  can accept it; `5` login or permission refused; `1` anything else (a
+  password under 12 characters).
+- `solidb` loads a `.env` from the current directory: run from an
+  application's folder, `SOLIDB_PASSWORD` may be the application's, and
+  the error then says so (`Login as 'admin' with the password from
+  SOLIDB_PASSWORD failed: Invalid credentials (HTTP 401)`).
+- `solidb user roles nobody` prints `No roles assigned to 'nobody'` and
+  exits 0, whether or not the user exists.
+
+### Who may write `_jobs` (same build)
+
+`_jobs` (Soli's job store) is readable with Read and writable only by an
+admin. `POST …/document/_jobs`, by caller:
+
+| Caller | Result |
+|--------|--------|
+| global `admin` | `201`, any database |
+| admin of that database (`admin@shop` writing `shop`) | `201` — through 2.12.1 `403`; also inside a transaction (`…/transaction/{id}/document/_jobs`) and through import |
+| admin of another database | `403 "…insufficient permissions for Write on other"` |
+| `editor` | `403 "Access denied: '_jobs' is executed by the server and is writable only with an Admin credential"` |
+
+- **Not through SDBQL over HTTP**: `INSERT {…} INTO _jobs` on `/cursor`
+  as an admin of that one database is still `403` with the same message
+  (observed 2026-11-17); only a global admin's query writes `_jobs`. Use
+  the document endpoint.
+- `_env` and the other credential collections stay `403` for every
+  caller, `_scripts` and the like stay unwritable by name
+  (`"…is managed by the server and is not writable through this API"`).
 
 ## Databases
 

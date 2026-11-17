@@ -210,7 +210,7 @@ Class → collection: snake_case plural (`BlogPost` → `blog_posts`,
 |------|----------|
 | `references/sdbql.md` | Full syntax: clauses, operators, COLLECT, windows, JOIN, graph traversal, CTEs, write options, result shape |
 | `references/functions.md` | Every function name the server accepts (probed), grouped, with verified examples |
-| `references/http-api.md` | Endpoints with exact paths, bodies and responses: auth, databases, collections, documents, cursor, explain, indexes, column blocks, columnar collections, foreign keys, transactions, API keys |
+| `references/http-api.md` | Endpoints with exact paths, bodies and responses: auth, users and roles (`solidb user`), who may write `_jobs`, databases, collections, documents, cursor, explain, indexes, column blocks, columnar collections, foreign keys, transactions, API keys |
 | `references/indexes-search.md` | Persistent/hash/unique/fulltext, geo, vector, TTL indexes; FULLTEXT / NEAR / VECTOR_SEARCH; explain |
 | `references/orm-mapping.md` | What each Soli Model / QueryBuilder call sends to SoliDB (captured on the wire) |
 | `references/traps.md` | Every surprising behavior found, with repro and workaround; doc discrepancies |
