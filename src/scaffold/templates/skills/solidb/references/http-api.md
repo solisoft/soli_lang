@@ -391,6 +391,9 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   do not apply to it…`; on 2.13.0 the first answers `404 CollectionNotFound`
   and the second is stored and never applied (observed 2026-11-17).
 - No change events: a changefeed or live query does not see columnar writes.
+- No triggers, no foreign keys (on it or towards it): from the build after
+  2.13.0 both answer `400 '<name>' is a columnar collection: …`; on 2.13.0
+  they answer as if the collection did not exist.
 - **The schema is checked from 2.11.0** (observed on a build of `main`,
   2026-11-15). An insert is refused whole with `400`, naming the row:
   `row 0: unknown column 'extra'`, `row 1: column 'cpu' is not nullable and
