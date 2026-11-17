@@ -681,7 +681,10 @@ or earlier: the routes answer 404.
   must not have been written at all since. Otherwise commit → `409`
   `TransactionConflict` ("Read conflict: …"), nothing written: roll back and
   retry. Re-reading a changed key fails that statement with `409` at once.
-  Columnar and sharded collections cannot be read at these levels.
+  Sharded collections cannot be read at these levels. A columnar
+  collection can from the build after 2.13.0 (refused on 2.13.0): the
+  commit answers `409` when any row of it was inserted or deleted since
+  the read (checked by tests on a build of `main`, 2026-11-17).
 - **Locks.** Through 2.9.3 a document lock held by another transaction is
   refused at once with `409`. After 2.9.3 it is waited for, up to
   `SOLIDB_TX_LOCK_WAIT_MS` (500 ms; `0` = refuse at once); a deadlock is
