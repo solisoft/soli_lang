@@ -509,6 +509,10 @@ pub fn is_unique_violation(err: &str) -> bool {
     if let Some(constraint) = crate::db::error::Constraint::parse(err) {
         return constraint.kind == crate::db::error::ConstraintKind::Unique;
     }
+    // SoliDB answers a foreign key violation with a 409 too.
+    if solidb_foreign_key_error(err).is_some() {
+        return false;
+    }
     let lower = err.to_lowercase();
     if !lower.contains("http 409") {
         return false;
@@ -605,6 +609,35 @@ pub fn build_constraint_errors(err: &str) -> Option<Vec<ValidationError>> {
         &field,
         constraint.kind.message(),
     )])
+}
+
+/// What SoliDB's `409 … Foreign key violation: …` says, as a validation
+/// error: the field that names a parent which is not there, or `_base` for a
+/// record other records still refer to (a delete the key restricts).
+///
+/// The server's sentences start with the field in quotes
+/// (`'customer_id' in orders refers to 'c9', which is not a document of
+/// 'customers'`), except the restricted delete, which starts with the
+/// parent's key (`'c1' in 'customers' is still referred to by …`).
+pub fn solidb_foreign_key_error(err: &str) -> Option<ValidationError> {
+    const MARK: &str = "Foreign key violation: ";
+    let said = &err[err.find(MARK)? + MARK.len()..];
+    if said.contains("is still referred to by") {
+        return Some(ValidationError::new(
+            "_base",
+            "is still referenced by other records",
+        ));
+    }
+    let field = said
+        .strip_prefix('\'')
+        .and_then(|rest| rest.split_once('\''))
+        .map(|(field, _)| field)
+        .filter(|field| !field.is_empty())
+        .unwrap_or("_base");
+    Some(ValidationError::new(
+        field,
+        crate::db::error::ConstraintKind::ForeignKey.message(),
+    ))
 }
 
 /// Fields with `validates uniqueness: true` registered on `class_name`.
@@ -1104,6 +1137,33 @@ fn run_model_invariants(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_solidb_foreign_key_violation_names_its_field() {
+        let missing = "HTTP 409 Conflict http://x/_api/database/db/document/orders: \
+             {\"code\":409,\"error\":\"Foreign key violation: 'customer_id' in orders refers \
+             to 'c9', which is not a document of 'customers'\",\"type\":\"ConflictError\"}";
+        let error = solidb_foreign_key_error(missing).unwrap();
+        assert_eq!(
+            (error.field.as_str(), error.message.as_str()),
+            ("customer_id", "must reference an existing record")
+        );
+        // Not a duplicate, although it is a 409 that says "Conflict".
+        assert!(!is_unique_violation(missing));
+
+        let restricted = "HTTP 409 Conflict http://x/_api/database/db/document/customers/c1: \
+             {\"error\":\"Foreign key violation: 'c1' in 'customers' is still referred to by \
+             'o1' in 'orders' (orders.customer_id)\"}";
+        let error = solidb_foreign_key_error(restricted).unwrap();
+        assert_eq!(
+            (error.field.as_str(), error.message.as_str()),
+            ("_base", "is still referenced by other records")
+        );
+
+        assert!(
+            solidb_foreign_key_error("HTTP 409 Conflict: Unique constraint violated").is_none()
+        );
+    }
 
     #[test]
     fn unique_violation_detects_409_conflict() {

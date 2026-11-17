@@ -528,6 +528,9 @@ fn register_solidb_class(env: &mut Environment) {
         ("drop_counter", 2),
         ("list_counters", 1),
         ("set_counter_next", 3),
+        ("create_foreign_key", 3),
+        ("drop_foreign_key", 2),
+        ("list_foreign_keys", 1),
         ("store_blob", 4),
         ("get_blob", 2),
         ("get_blob_metadata", 2),
@@ -543,7 +546,12 @@ fn register_solidb_class(env: &mut Environment) {
         // register variadic and validate arg counts inside the dispatch arm.
         let variadic = matches!(
             method_name,
-            "create_collection" | "query" | "create_columnar" | "blob_response" | "create_counter"
+            "create_collection"
+                | "query"
+                | "create_columnar"
+                | "blob_response"
+                | "create_counter"
+                | "create_foreign_key"
         );
         let registered_arity = if variadic { None } else { Some(arity) };
         // User-facing arity (without the implicit instance arg) for the
@@ -1394,6 +1402,58 @@ fn register_solidb_class(env: &mut Environment) {
                                 .list_counters(&collection)
                                 .map_err(|e| format!("List counters failed: {}", e))?;
                             Ok(serde_json::Value::Array(counters))
+                        })
+                    }
+                    "create_foreign_key" => {
+                        let collection = string_arg(args, 1, "create_foreign_key", "collection")?;
+                        let field = string_arg(args, 2, "create_foreign_key", "field")?;
+                        let references = string_arg(args, 3, "create_foreign_key", "references")?;
+                        let options = match args.get(4) {
+                            None | Some(Value::Null) => serde_json::json!({}),
+                            Some(opts @ Value::Hash(_)) => {
+                                crate::interpreter::value::value_to_json(opts)?
+                            }
+                            Some(other) => {
+                                return Err(format!(
+                                    "create_foreign_key() expects an options hash, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .create_foreign_key(&collection, &field, &references, &options)
+                                .map_err(|e| format!("Create foreign key failed: {}", e))
+                        })
+                    }
+                    "drop_foreign_key" => {
+                        let collection = string_arg(args, 1, "drop_foreign_key", "collection")?;
+                        let name = string_arg(args, 2, "drop_foreign_key", "name")?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_sync(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .drop_foreign_key(&collection, &name)
+                                .map_err(|e| format!("Drop foreign key failed: {}", e))?;
+                            Ok(format!("Dropped foreign key: {} from {}", name, collection))
+                        })
+                    }
+                    "list_foreign_keys" => {
+                        let collection = string_arg(args, 1, "list_foreign_keys", "collection")?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .list_foreign_keys(&collection)
+                                .map_err(|e| format!("List foreign keys failed: {}", e))
                         })
                     }
                     "set_counter_next" => {

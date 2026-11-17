@@ -255,6 +255,10 @@ db.delete("users", "1")</code></pre>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.set_counter_next(coll, field, next)</code> / <code class="text-emerald-400">db.drop_counter(coll, field)</code> / <code class="text-emerald-400">db.list_counters(coll)</code></td>
                             <td class="py-3">Set the next number, stop the numbering (the stored values stay), list the counters with where each stands.</td>
                         </tr>
+                        <tr class="border-t border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">db.create_foreign_key(coll, field, references, options?)</code> / <code class="text-emerald-400">db.drop_foreign_key(coll, name)</code> / <code class="text-emerald-400">db.list_foreign_keys(coll)</code></td>
+                            <td class="py-3">Have SoliDB check that <code class="text-orange-400">field</code> holds the key of a document of <code class="text-orange-400">references</code> (<code class="text-orange-400">options</code>: <code class="text-orange-400">on_delete</code>, <code class="text-orange-400">name</code>, <code class="text-orange-400">by</code>), remove a key by name, list the keys of a collection and those that refer to it. In a migration: <code class="text-emerald-400">db.add_foreign_key</code> and <code class="text-emerald-400">db.remove_foreign_key</code>.</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>

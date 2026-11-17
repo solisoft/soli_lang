@@ -193,3 +193,29 @@ end
   it at commit): `Invoice.find(key)` after the block.
 - Also on the client: `db.create_counter`, `db.set_counter_next(coll, field,
   n)`, `db.drop_counter`, `db.list_counters`.
+
+## Foreign keys from Soli (unreleased in Soli after 2.37.0; observed 2026-11-17)
+
+A SoliDB foreign key (`POST …/collection/{c}/foreign-keys`) is declared from
+a Soli migration:
+
+```soli
+def up(db)
+  db.add_foreign_key("orders", "customer_id", "customers", {"on_delete": "cascade", "name": "fk_orders_customer"})
+end
+
+def down(db)
+  db.remove_foreign_key("orders", "fk_orders_customer")
+end
+```
+
+- The server's `409 Foreign key violation: …` reaches the model as
+  `_errors`: `{"field": "customer_id", "message": "must reference an existing
+  record"}` on `create` / `save`; `record.delete` → `false` with `_base`,
+  "is still referenced by other records", when the key restricts it.
+- A cascade or set_null is done by SoliDB in the parent's delete: the child
+  model's callbacks do not run. `dependent: "delete"` on the relation still
+  deletes the children first through the model.
+- On the client: `db.create_foreign_key(coll, field, references, options?)`,
+  `db.drop_foreign_key(coll, name)`, `db.list_foreign_keys(coll)` →
+  `{"foreign_keys": […], "referenced_by": […]}`.

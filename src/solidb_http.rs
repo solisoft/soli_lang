@@ -836,6 +836,58 @@ impl SoliDBClient {
         )
     }
 
+    fn foreign_keys_path(&self, collection: &str) -> Result<String, SoliDBError> {
+        let db = self.get_db()?;
+        Ok(format!(
+            "/_api/database/{}/collection/{}/foreign-keys",
+            seg(db)?,
+            seg(collection)?
+        ))
+    }
+
+    /// Declare that `field` of `collection` holds the `_key` of a document
+    /// of `references`, or null. `options` holds what the server's
+    /// `POST …/foreign-keys` takes besides those (`on_delete`: `restrict`,
+    /// `cascade` or `set_null`; `by`; `name`). Returns the key as stored.
+    /// Refused (409) when stored documents point to a parent that is not
+    /// there.
+    pub fn create_foreign_key(
+        &self,
+        collection: &str,
+        field: &str,
+        references: &str,
+        options: &Value,
+    ) -> Result<Value, SoliDBError> {
+        let mut body = match options {
+            Value::Object(_) => options.clone(),
+            _ => serde_json::json!({}),
+        };
+        body["field"] = Value::String(field.to_string());
+        body["references"] = Value::String(references.to_string());
+        self.request(
+            reqwest::Method::POST,
+            &self.foreign_keys_path(collection)?,
+            Some(&body),
+        )
+    }
+
+    /// The foreign keys of `collection` (`foreign_keys`) and those of other
+    /// collections that refer to it (`referenced_by`).
+    pub fn list_foreign_keys(&self, collection: &str) -> Result<Value, SoliDBError> {
+        self.request(
+            reqwest::Method::GET,
+            &self.foreign_keys_path(collection)?,
+            None,
+        )
+    }
+
+    /// Remove the foreign key `name` of `collection`. Its index stays.
+    pub fn drop_foreign_key(&self, collection: &str, name: &str) -> Result<(), SoliDBError> {
+        let path = format!("{}/{}", self.foreign_keys_path(collection)?, seg(name)?);
+        self.request(reqwest::Method::DELETE, &path, None)?;
+        Ok(())
+    }
+
     pub fn collection_stats(&self, collection: &str) -> Result<Value, SoliDBError> {
         let db = self.get_db()?;
         let path = format!(

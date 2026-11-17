@@ -728,6 +728,19 @@ class MigrationDb {{
     fn set_counter_next(collection: String, field: String, next: Int) -> Any {{
         return solidb_set_counter_next(_db, _engine_prefix(collection), field, next);
     }}
+
+    // Foreign keys: both collections are the engine's
+    fn add_foreign_key(collection: String, field: String, references: String, options: Any = null) -> Any {{
+        return solidb_create_foreign_key(_db, _engine_prefix(collection), field, _engine_prefix(references), options);
+    }}
+
+    fn remove_foreign_key(collection: String, name: String) -> Any {{
+        return solidb_drop_foreign_key(_db, _engine_prefix(collection), name);
+    }}
+
+    fn list_foreign_keys(collection: String) -> Any {{
+        return solidb_list_foreign_keys(_db, _engine_prefix(collection));
+    }}
 }}
 
 let db = MigrationDb();

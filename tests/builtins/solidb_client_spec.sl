@@ -396,6 +396,26 @@ describe("Solidb client against a server") do
       assert_eq(client.list_counters(name), [])
     end
 
+    test("create_foreign_key, list_foreign_keys and drop_foreign_key") do
+      parents = collection("client_spec_fk_parents")
+      children = collection("client_spec_fk_children")
+      client = raw_db()
+      client.insert(parents, "p1", {"name": "parent"})
+      declared = client.create_foreign_key(children, "parent", parents, {"on_delete": "cascade", "name": "fk_parent"})
+      assert_eq(declared["name"], "fk_parent")
+      assert_eq(declared["references"], parents)
+      listed = client.list_foreign_keys(children)
+      assert_eq(listed["foreign_keys"].length(), 1)
+      assert_eq(client.list_foreign_keys(parents)["referenced_by"].length(), 1)
+      client.insert(children, "c1", {"parent": "p1"})
+      assert_raises("Foreign key violation") do
+        client.insert(children, "c2", {"parent": "nobody"})
+      end
+      assert_eq(client.drop_foreign_key(children, "fk_parent"), "Dropped foreign key: fk_parent from client_spec_fk_children")
+      assert_eq(client.list_foreign_keys(children)["foreign_keys"], [])
+      client.insert(children, "c2", {"parent": "nobody"})
+    end
+
     test("create_counter without options counts from one") do
       name = collection("client_spec_counter_plain")
       client = raw_db()

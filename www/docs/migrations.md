@@ -482,6 +482,62 @@ db.drop_counter("invoices", "number")   # the stored numbers and their index sta
 db.list_counters("invoices")            # [{ "field": "number", …, "state": { "next": 1289 } }]
 ```
 
+## Foreign Key Helpers
+
+A foreign key says that a field of a collection holds the `_key` of a document
+of another collection, or nothing. SoliDB then refuses a document that points
+to a parent which is not there, and decides what a delete of the parent does
+to its children. SoliDB only (the SQL adapters raise `add_foreign_key is
+SoliDB-only.`; there, declare `"references"` on the column in `create_table`),
+and it needs a SoliDB that has foreign keys (2.10.0 or later).
+
+### add_foreign_key
+
+```soli
+def up(db: Any)
+  db.create_collection("customers")
+  db.create_collection("orders")
+  db.create_collection("notes")
+
+  # An order whose customer does not exist is refused, and a customer
+  # that has orders cannot be deleted.
+  db.add_foreign_key("orders", "customer_id", "customers")
+
+  # Deleting a customer deletes its notes, in the same write.
+  db.add_foreign_key("notes", "customer_id", "customers", {
+    "on_delete": "cascade",
+    "name": "fk_notes_customer"
+  })
+end
+
+def down(db: Any)
+  db.remove_foreign_key("notes", "fk_notes_customer")
+  db.drop_collection("notes")
+  db.drop_collection("orders")
+  db.drop_collection("customers")
+end
+```
+
+- `options`:
+  - `on_delete` - `"restrict"` (the default: the parent's delete is refused), `"cascade"` (the children are deleted with it) or `"set_null"` (their field is set to null)
+  - `name` - the key's name; left out, SoliDB makes one (`db.list_foreign_keys` shows it)
+  - `by` - `"key"` (the default) or `"id"` for a field that holds a whole `_id` (`customers/c1`)
+- The declaration is refused when stored documents already point to a parent
+  that is not there. SoliDB creates an index on the field if it has none.
+
+### remove_foreign_key / list_foreign_keys
+
+```soli
+db.remove_foreign_key("notes", "fk_notes_customer")   # the index on the field stays
+db.list_foreign_keys("orders")
+# { "collection": "orders",
+#   "foreign_keys": [{ "name": "…", "field": "customer_id", "references": "customers", "on_delete": "restrict", … }],
+#   "referenced_by": [] }
+```
+
+A model reports a refusal as a validation error, not an exception: see
+[Foreign keys](models.md#foreign-keys) on the models page.
+
 ## Raw Queries
 
 For operations not covered by helpers, use raw SDBQL queries:

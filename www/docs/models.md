@@ -494,6 +494,30 @@ invoice = Invoice.create({ "total": 120 })
 invoice.number   # "INV-2026-11-0041"
 ```
 
+### Foreign keys
+
+A [foreign key](migrations.md#foreign-key-helpers) declared in a migration
+(`db.add_foreign_key("orders", "customer_id", "customers")`) is enforced by
+SoliDB for every writer, the ORM or not. The model reports its refusals as
+validation errors:
+
+```soli
+order = Order.create({ "customer_id": "nobody" })
+order._key      # nil: nothing was saved
+order._errors   # [{ "field": "customer_id", "message": "must reference an existing record" }]
+
+customer.delete   # false when orders still refer to it (on_delete: "restrict")
+customer._errors  # [{ "field": "_base", "message": "is still referenced by other records" }]
+```
+
+`save` answers `false` the same way. With `on_delete: "cascade"` or
+`"set_null"` the parent's `delete` goes through and SoliDB deletes the
+children, or empties their field, in the same write: no callback of the
+child model runs for them. Keep `dependent: "delete"` on the relation when
+the children's callbacks have to run; it deletes them first, one by one, and
+works with any key. A key knows nothing of soft deletes: a parent that is
+soft-deleted is still there for it.
+
 A field the application set is never replaced. A record created inside
 `Model.transaction do … end` has no number until the transaction commits: read
 it back after the block.

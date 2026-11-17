@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Foreign keys, declared in a migration.** `db.add_foreign_key("orders",
+  "customer_id", "customers", {"on_delete": "cascade"})` has SoliDB (2.10.0
+  or later) refuse an order whose customer is not there and decide what the
+  customer's delete does to its orders; `db.remove_foreign_key(coll, name)`
+  and `db.list_foreign_keys(coll)` go with it, in an engine's migrations
+  too. The SQL adapters raise `add_foreign_key is SoliDB-only.` (declare
+  `"references"` on the column there). The `Solidb` client has
+  `create_foreign_key`, `drop_foreign_key` and `list_foreign_keys`.
+
+### Fixed
+
+- **A foreign key violation is reported as one.** SoliDB answers it with a
+  409, as it answers a duplicate, so `Order.create({"customer_id":
+  "nobody"})` came back with `_errors` saying *has already been taken*, on
+  the model's unique fields or on `_base`. The error is now on the field,
+  *must reference an existing record*. `record.delete` on a parent that a
+  restricting key protects answered the string `"Error: HTTP 409 …"`; it
+  answers `false` and sets `_errors` (`_base`, *is still referenced by other
+  records*).
+
 ## [2.37.0] - 2026-11-17
 
 ### Changed

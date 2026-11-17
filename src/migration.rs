@@ -758,6 +758,19 @@ class MigrationDb {{
         return solidb_set_counter_next(_db, collection, field, next);
     }}
 
+    // Foreign keys: a field holds the key of a document of another collection
+    fn add_foreign_key(collection: String, field: String, references: String, options: Any = null) -> Any {{
+        return solidb_create_foreign_key(_db, collection, field, references, options);
+    }}
+
+    fn remove_foreign_key(collection: String, name: String) -> Any {{
+        return solidb_drop_foreign_key(_db, collection, name);
+    }}
+
+    fn list_foreign_keys(collection: String) -> Any {{
+        return solidb_list_foreign_keys(_db, collection);
+    }}
+
     // Vector index management
     fn create_vector_index(collection: String, name: String, field: String, dimension: Int, options: Any = "cosine") -> Any {{
         return solidb_create_vector_index(_db, collection, name, field, dimension, options);
@@ -900,6 +913,18 @@ class MigrationDb {{
 
     fn set_counter_next(collection: String, field: String, next: Int) -> Any {{
         throw "set_counter_next is SoliDB-only.";
+    }}
+
+    fn add_foreign_key(collection: String, field: String, references: String, options: Any = null) -> Any {{
+        throw "add_foreign_key is SoliDB-only.";
+    }}
+
+    fn remove_foreign_key(collection: String, name: String) -> Any {{
+        throw "remove_foreign_key is SoliDB-only.";
+    }}
+
+    fn list_foreign_keys(collection: String) -> Any {{
+        throw "list_foreign_keys is SoliDB-only.";
     }}
 }}
 

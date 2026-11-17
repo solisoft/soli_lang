@@ -516,7 +516,20 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                         super::counter_cache::bump_for_instance(&instance.borrow(), -1);
                         Ok(json_to_value(&result))
                     }
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => {
+                        // A foreign key that restricts the delete: the
+                        // record stays, and says why, as a failed save does.
+                        match super::validation::solidb_foreign_key_error(&e) {
+                            Some(error) => {
+                                instance.borrow_mut().set(
+                                    "_errors",
+                                    Value::Array(Rc::new(RefCell::new(vec![error.to_value()]))),
+                                );
+                                Ok(Value::Bool(false))
+                            }
+                            None => Ok(Value::String(format!("Error: {}", e).into())),
+                        }
+                    }
                 }
             }
         })),

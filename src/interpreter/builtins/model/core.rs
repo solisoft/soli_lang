@@ -1762,6 +1762,11 @@ pub(super) fn apply_hash_to_instance(
 /// case identically to the SELECT-pre-flight case. Other errors are
 /// preserved verbatim as before.
 pub(super) fn build_persistence_errors(class_name: &str, err: String) -> Vec<Value> {
+    // SoliDB's foreign key violation is a 409 as a duplicate is: it used to
+    // be reported as "has already been taken".
+    if let Some(error) = super::validation::solidb_foreign_key_error(&err) {
+        return vec![error.to_value()];
+    }
     if super::validation::is_unique_violation(&err) {
         return super::validation::build_unique_violation_errors(class_name, &err)
             .iter()

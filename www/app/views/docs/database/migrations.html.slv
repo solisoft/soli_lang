@@ -585,6 +585,56 @@ print("Seeded users")</code></pre>
         </div>
     </div>
 
+    <h2 id="foreign-keys" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Foreign Key Helpers</h2>
+    <p class="text-gray-400 mb-6">
+        A foreign key says that a field of a collection holds the <code>_key</code> of a document of another collection, or nothing. SoliDB then refuses a document that points to a parent which is not there, and decides what a delete of the parent does to its children. SoliDB only (the SQL adapters raise <code>add_foreign_key is SoliDB-only.</code>; there, declare <code>"references"</code> on the column in <code>create_table</code>), on SoliDB 2.10.0 or later.
+    </p>
+    <div class="space-y-4 mb-8">
+        <div>
+            <code class="text-cyan-300 font-bold">db.add_foreign_key(collection, field, references, options?)</code>
+            <p class="text-sm text-gray-400 mt-1">Have SoliDB check <code>field</code>. <code>options</code>: <code>on_delete</code> (<code>"restrict"</code>, the default: the parent's delete is refused; <code>"cascade"</code>: the children are deleted with it; <code>"set_null"</code>: their field is emptied), <code>name</code>, <code>by</code> (<code>"id"</code> for a field that holds a whole <code>_id</code>). Refused when stored documents already point to a missing parent.</p>
+        </div>
+        <div>
+            <code class="text-cyan-300 font-bold">db.remove_foreign_key(collection, name)</code>
+            <p class="text-sm text-gray-400 mt-1">Remove the key. The index on its field stays.</p>
+        </div>
+        <div>
+            <code class="text-cyan-300 font-bold">db.list_foreign_keys(collection)</code>
+            <p class="text-sm text-gray-400 mt-1"><code>{ "foreign_keys": [&hellip;], "referenced_by": [&hellip;] }</code>: the keys of the collection and those of other collections that refer to it.</p>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Foreign Key Examples</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def up(db: Any)
+  db.create_collection("customers")
+  db.create_collection("orders")
+  db.create_collection("notes")
+
+  # An order whose customer does not exist is refused, and a customer
+  # that has orders cannot be deleted.
+  db.add_foreign_key("orders", "customer_id", "customers")
+
+  # Deleting a customer deletes its notes, in the same write.
+  db.add_foreign_key("notes", "customer_id", "customers", {
+    "on_delete": "cascade",
+    "name": "fk_notes_customer"
+  })
+end
+
+def down(db: Any)
+  db.remove_foreign_key("notes", "fk_notes_customer")
+  db.drop_collection("notes")
+  db.drop_collection("orders")
+  db.drop_collection("customers")
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        A model reports a refusal as a validation error: <code>Order.create({ "customer_id": "nobody" })</code> saves nothing and holds <code>_errors</code> on <code>customer_id</code> (<em>must reference an existing record</em>); <code>customer.delete</code> answers <code>false</code> with an error on <code>_base</code> when orders still refer to it.
+    </p>
+
     <h2 id="connection" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Targeting a connection</h2>
     <p class="text-gray-400 mb-6">
         A migration can name the database it belongs to, so <code class="text-cyan-400">soli db:migrate up</code>
