@@ -570,8 +570,10 @@ or earlier: the routes answer 404.
   back after the commit.
 - Inserts into such a collection are stored one at a time, and with
   `durable` (the default) each waits for an fsync, shared by the inserts
-  waiting together (both engines; not solistore with
-  `SOLIDB_DURABILITY=full`, ~450/s there): measured over HTTP on a workstation
+  waiting together (both engines; with `SOLIDB_DURABILITY=full` on
+  solistore every insert waits for it whatever `durable` says, ~430 / 1,600 /
+  3,500 a second from 1 / 8 / 32 clients on a build after 2.13.0, where 2.13.0
+  stayed at ~450/s): measured over HTTP on a workstation
   (NVMe), single inserts ran at ~410/s from 1 client, ~1,700/s from 8 and
   ~3,500/s from 32, against ~6,500/s and ~10,000/s with `durable:false`.
   Batch (`FOR … INSERT`, bulk insert, one transaction) when loading many:
