@@ -108,6 +108,25 @@ FOR o IN orders FILTER o.amount > 5 COLLECT s = UPPER(o.status) WITH COUNT INTO 
 `SOLIDB_SCAN_THREADS` caps the threads (default: the CPUs the process may
 use; `1` turns parallel scans off). SUM/AVG are exact (functions.md).
 
+Since 2.13.0 (observed on its release build, RocksDB, 182,500 documents
+with a persistent index on `d`):
+- `FOR x IN c FILTER x.d >= @f COLLECT m = x.m AGGREGATE s = SUM(x.s) RETURN …`
+  no longer builds a row per document the index names. Explain warning:
+  "optimizer: COLLECT folded into the index read of 'c': the documents the
+  index names are grouped as they are read, never held as rows (reading only
+  d, m, s from the stored bytes)". 1,066 ms → 34 ms for every document,
+  69 ms → 5 ms for 15,000. Only `>` / `>=` on a single-field index; rows
+  keep the index's order.
+- A subquery over an array in memory (`LET ds = DOCUMENT(…)` then
+  `AVG((FOR x IN ds FILTER x.v[p] != null RETURN x.v[p]))`) costs about a
+  microsecond a run instead of five: nesting such subqueries is fine.
+- A `LET` or `RETURN` holding a subquery or `DOCUMENT()` is evaluated for
+  256 rows or more on the scan threads, when it writes nothing and calls
+  only pure functions and reads (not `RAND`, `NOW`, `UUID`), outside a
+  transaction. Same rows, same order.
+- `FOR x IN c FILTER x.d < @c REMOVE x IN c` (nothing after the REMOVE, no
+  OPTIONS, no `OLD`): 90,500 documents removed in 0.30 s instead of 1.39 s.
+
 ### Window functions
 
 ```sdbql
