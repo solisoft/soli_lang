@@ -1,0 +1,27 @@
+<h1>Invoice <code><%= @invoice.number %></code></h1>
+<p class="lead">Edit anything: the totals and the page on the right follow. Share this page's
+link to edit it from another screen at the same time. Kept for a day.</p>
+
+<div class="invoice-actions">
+  <a class="button" href="/invoices/<%= @invoice._key %>/pdf" target="_blank">Download the Factur-X PDF</a>
+  <a class="button ghost" href="/invoices">All invoices</a>
+</div>
+
+<div data-live-root data-live-room="<%= @invoice._key %>" data-liveview-url="/live/socket/invoice_editor">
+  <p class="muted">Connecting…</p>
+</div>
+
+<script src="/live/client.js?v=2"></script>
+<script>
+  // The LiveView does not know which invoice it edits until the page tells it:
+  // the room is the invoice's key.
+  window.SoliLiveView = window.SoliLiveView || {};
+  SoliLiveView.hooks = {
+    InvoiceLoad: {
+      mounted() {
+        const root = this.el.closest("[data-live-room]");
+        this.pushEvent("load", { key: root.dataset.liveRoom });
+      }
+    }
+  };
+</script>

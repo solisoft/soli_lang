@@ -267,6 +267,22 @@ end</code></pre>
             </div>
         </section>
 
+        <section id="def-pdf-invoice-data" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_invoice_data(invoice)</code>
+                <p class="text-gray-400 mt-3 mb-3">The data <code>pdf_facturx_from_invoice</code> hands its template, as a Hash &mdash; <code>invoice.*</code>, <code>company.*</code>, <code>customer.*</code>, <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code>, <code>payment.*</code> &mdash; with the totals and VAT computed by the same code, to the cent. Show the totals in a page without computing them twice, or draw a preview that prints exactly what the Factur-X PDF will.</p>
+                <pre class="text-sm bg-black/30 rounded-lg p-3 overflow-x-auto"><code class="language-soli">data = pdf_invoice_data(invoice_json)
+print(data["total"]["due_amount"])                 # "€3126.28"
+pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div><code class="text-amber-400">invoice</code> : <code class="text-orange-400">String</code> &mdash; the typed invoice JSON. An invalid one raises <code>pdf_invoice_data() invalid invoice: &hellip;</code>.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; the render data. Amounts are formatted strings with the currency symbol; <code>payment.amount</code> is bare (<code>3126.28</code>).</div>
+            </div>
+        </section>
+
         <section id="def-pdf-from-markdown" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-lg font-mono text-amber-400">pdf_from_markdown(markdown, options?)</code>

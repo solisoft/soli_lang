@@ -1,0 +1,44 @@
+<h1>Live invoicing</h1>
+<p class="lead">An invoice you edit <strong>live</strong>: every keystroke goes over a
+WebSocket to a Soli LiveView held by a <strong>Durable Object</strong>, which stores the
+invoice in <strong>D1</strong>, recomputes the totals and redraws the page. The PDF is a
+<strong>Factur-X</strong> electronic invoice (PDF/A-3b with its EN&nbsp;16931 XML inside)
+with a scan-to-pay QR code, rendered by the Worker that answers you.</p>
+
+<form method="post" action="/invoices" class="check-in">
+  <button class="button" type="submit">Start an invoice in <%= @runtime["colo"] %></button>
+  <% if @busy %>
+    <span class="muted">Busy: many invoices were started in the last ten minutes. Try again in a moment.</span>
+  <% end %>
+</form>
+
+<div class="grid two">
+  <section>
+    <h2>What runs where</h2>
+    <ul>
+      <li>The editor is a <code>router_live</code> LiveView. Each invoice is a room, so open its
+          link on your phone too: both screens edit the same invoice.</li>
+      <li>Every change is written to D1 from inside the Durable Object, then the totals come
+          from <code>pdf_invoice_data</code>: the same code, to the cent, as the PDF.</li>
+      <li>The preview is <code>pdf_preview_response</code>, a PNG of page 1; the download is
+          <code>pdf_facturx_from_invoice</code>. Both run in the Worker, no other server.</li>
+      <li>An hourly Cron Trigger deletes invoices a day old.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Latest invoices</h2>
+    <% if @latest.length > 0 %>
+      <table class="list">
+        <% @latest.each do |invoice| %>
+          <tr>
+            <td><a href="/invoices/<%= invoice._key %>"><code><%= invoice.number %></code></a></td>
+            <td><%= invoice.buyer["name"] %></td>
+            <td class="muted"><%= invoice.created_at %></td>
+          </tr>
+        <% end %>
+      </table>
+    <% else %>
+      <p>None yet. Start the first one.</p>
+    <% end %>
+  </section>
+</div>

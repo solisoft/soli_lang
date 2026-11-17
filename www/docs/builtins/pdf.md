@@ -148,6 +148,20 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 
 **Returns:** String — base64-encoded PDF/A-3b bytes.
 
+### pdf_invoice_data(invoice)
+
+The data `pdf_facturx_from_invoice` hands its template, as a Hash: `invoice.*`, `company.*`, `customer.*`, `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text`, `payment.*`, with the totals and VAT computed by the same code, to the cent. Show the totals in a page without computing them twice, or draw a preview that prints exactly what the Factur-X PDF will:
+
+```soli
+data = pdf_invoice_data(invoice_json)
+print(data["total"]["due_amount"])                 # "€3126.28"
+pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})
+```
+
+**Parameters:** `invoice` (String) — the typed invoice JSON. An invalid one raises `pdf_invoice_data() invalid invoice: …`.
+
+**Returns:** Hash — the render data. Amounts are formatted strings with the currency symbol; `payment.amount` is bare (`3126.28`).
+
 ### pdf_layout_map(template, data, options?)
 
 Lay out a template and report **where every element landed**, without producing a PDF.

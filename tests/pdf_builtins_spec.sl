@@ -80,6 +80,22 @@ describe("PDF builtins") do
       assert(pdf_facturx_from_invoice(PDF_TEMPLATE, PDF_INVOICE).starts_with(PDF_MAGIC))
     end
 
+    test("pdf_invoice_data gives the totals the PDF prints") do
+      data = pdf_invoice_data(PDF_INVOICE)
+      assert_eq(data["invoice"]["type_label"], "Invoice")
+      assert(data["items"].length > 0)
+      assert(data["total"]["due_amount"].length > 0)
+      assert(data["total"]["vat"].length > 0)
+      preview = pdf_preview(PDF_TEMPLATE, {"data": data}.to_json)
+      assert(preview[0].starts_with(PNG_MAGIC))
+    end
+
+    test("pdf_invoice_data refuses an invalid invoice") do
+      assert_raises("pdf_invoice_data() invalid invoice") do
+        pdf_invoice_data("{\"number\": \"1\"}")
+      end
+    end
+
     test("rejects the pdfa option, which Factur-X already implies") do
       assert_raises("PDF/A is implied by Factur-X; drop the `pdfa` option") do
         pdf_facturx_from_invoice(PDF_TEMPLATE, PDF_INVOICE, {"pdfa": true})

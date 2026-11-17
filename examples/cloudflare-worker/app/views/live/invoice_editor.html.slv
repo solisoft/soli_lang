@@ -1,0 +1,72 @@
+<%# Before `load` the state has no invoice: read it through `locals`. %>
+<% if locals["doc"].nil? %>
+  <div soli-hook="InvoiceLoad">
+    <p class="muted"><%= locals["missing"] ? "This invoice no longer exists: they are kept for a day." : "Loading the invoice…" %></p>
+  </div>
+<% else %>
+<div class="invoice-editor">
+  <div class="invoice-form">
+    <fieldset>
+      <legend>Invoice</legend>
+      <label>Number
+        <input name="number" value="<%= doc["number"] %>" maxlength="30" soli-change="detail" soli-debounce="400">
+      </label>
+      <label>Payment terms
+        <input name="payment_terms" value="<%= doc["payment_terms"] %>" maxlength="60" soli-change="detail" soli-debounce="400">
+      </label>
+    </fieldset>
+
+    <div class="parties">
+      <% for side in ["seller", "buyer"] %>
+        <fieldset>
+          <legend><%= side == "seller" ? "From" : "Bill to" %></legend>
+          <% for field in party_fields %>
+            <% if side == "buyer" || field[0] != "vat_id" %>
+              <label><%= field[1] %>
+                <input name="<%= field[0] %>" value="<%= doc[side][field[0]] %>" soli-value-side="<%= side %>"
+                       soli-change="party" soli-debounce="400">
+              </label>
+            <% end %>
+          <% end %>
+        </fieldset>
+      <% end %>
+    </div>
+
+    <fieldset>
+      <legend>Lines</legend>
+      <table class="lines">
+        <tr><th>Description</th><th>Qty</th><th>Unit price</th><th>VAT %</th><th></th></tr>
+        <% (0..doc["lines"].length).each do |i| %>
+          <% line = doc["lines"][i] %>
+          <tr soli-key="line-<%= i %>">
+            <td><input name="name" value="<%= line["name"] %>" maxlength="80" soli-value-index="<%= i %>" soli-change="line" soli-debounce="400"></td>
+            <td><input name="quantity" value="<%= line["quantity"] %>" inputmode="decimal" class="num" soli-value-index="<%= i %>" soli-change="line" soli-debounce="400"></td>
+            <td><input name="unit_price" value="<%= line["unit_price"] %>" inputmode="decimal" class="num" soli-value-index="<%= i %>" soli-change="line" soli-debounce="400"></td>
+            <td>
+              <select name="vat_rate" soli-value-index="<%= i %>" soli-change="line">
+                <% for rate in vat_rates %>
+                  <option value="<%= rate %>"<%= rate == line["vat_rate"] ? " selected" : "" %>><%= rate %></option>
+                <% end %>
+              </select>
+            </td>
+            <td><button class="button ghost small" soli-click="remove_line" soli-value-index="<%= i %>" aria-label="Remove line">×</button></td>
+          </tr>
+        <% end %>
+      </table>
+      <button class="button ghost small" soli-click="add_line">+ Add a line</button>
+    </fieldset>
+
+    <div class="stats">
+      <div><span><%= total["taxable"] %></span> excl. VAT</div>
+      <div><span><%= total["vat"] %></span> VAT</div>
+      <div><span><%= total["due_amount"] %></span> due</div>
+    </div>
+  </div>
+
+  <figure class="invoice-preview">
+    <img class="page-preview" src="/invoices/<%= key %>/preview?rev=<%= rev %>" width="380" height="538"
+         alt="Page 1 of the invoice, drawn by the Worker">
+    <figcaption class="muted">Revision <%= rev %>, drawn by the Worker as a PNG.</figcaption>
+  </figure>
+</div>
+<% end %>

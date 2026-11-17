@@ -91,6 +91,7 @@ fn install_pdf_image_source_guards() {
 
 pub fn register_pdf_builtins(env: &mut Environment) {
     install_pdf_image_source_guards();
+    register_pdf_invoice_data(env);
     env.define(
         "pdf_render".to_string(),
         Value::NativeFunction(NativeFunction::new("pdf_render", None, |args| {
@@ -718,6 +719,25 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                 Ok(b64(pdf))
             },
         )),
+    );
+}
+
+/// `pdf_invoice_data(invoice)`: what `pdf_facturx_from_invoice` hands its
+/// template, as a hash — `invoice.*`, `company.*`, `customer.*`, `items[]`,
+/// `discounts[]`, `charges[]`, `total.*`, `infos.text`, `payment.*` — with the
+/// totals and VAT computed by the same code, to the cent. Show the totals in a
+/// page, or feed `{"data": …}` to `pdf_preview` with the same template, and
+/// they match the Factur-X PDF exactly.
+fn register_pdf_invoice_data(env: &mut Environment) {
+    env.define(
+        "pdf_invoice_data".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_invoice_data", Some(1), |args| {
+            let invoice_json = arg_string(&args[0], "pdf_invoice_data", "invoice")?;
+            let invoice = soli_pdf::Invoice::parse(invoice_json.as_bytes())
+                .map_err(|e| format!("pdf_invoice_data() invalid invoice: {e}"))?;
+            let mut data = invoice.to_render_data();
+            crate::interpreter::value_json::json_to_value(data["data"].take())
+        })),
     );
 }
 

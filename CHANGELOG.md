@@ -4,6 +4,19 @@
 
 ### Added
 
+- **`pdf_invoice_data(invoice)`.** The data `pdf_facturx_from_invoice` hands
+  its template, as a Hash, with the totals and VAT computed by the same code:
+  show them in a page, or feed `{"data": …}` to `pdf_preview` for a preview
+  that prints exactly what the Factur-X PDF will.
+
+- **Live invoicing on cf.solisoft.net.** <https://cf.solisoft.net/invoices>
+  (`examples/cloudflare-worker`): an invoice edited in a LiveView whose
+  socket is a Durable Object, one room per invoice so several screens edit
+  it together, stored in D1 at every change, with the engine's totals, a
+  PNG preview redrawn per revision and a Factur-X PDF/A-3b download with a
+  scan-to-pay QR code, all rendered in the Worker. An hourly Cron Trigger
+  deletes invoices a day old.
+
 - **PDF on Cloudflare Workers, as an option.** `scripts/build-edge.sh --pdf`
   also builds the edge runtime with the `pdf_*` builtins (in
   `target/edge/pdf`), and `soli edge build --pdf` / `soli edge dev --pdf`
@@ -39,6 +52,13 @@
   `create_foreign_key`, `drop_foreign_key` and `list_foreign_keys`.
 
 ### Fixed
+
+- **LiveView on the edge no longer drops an event sent close behind
+  another.** The Durable Object read the instance when a message arrived and
+  stored it when the frame ended, so two events in flight (a keystroke and a
+  click, two screens of one room) both started from the same state and the
+  second one's write undid the first. Mounts and events now run one at a
+  time, each on the instance the previous one stored.
 
 - **A comment after `soli_version` no longer hides the pin.** In `soli.toml`,
   `soli_version = "=2.35.1"  # why` kept the comment in the value, so the

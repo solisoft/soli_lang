@@ -1054,6 +1054,18 @@ impl TypeEnvironment {
             },
         );
 
+        // pdf_invoice_data(invoice_json) -> Hash (the typed invoice's render data)
+        self.functions.insert(
+            "pdf_invoice_data".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(Type::String),
+                    value_type: Box::new(Type::Any),
+                }),
+            },
+        );
+
         // pdf_from_markdown(markdown, options?) -> String (base64 PDF)
         self.functions.insert(
             "pdf_from_markdown".to_string(),

@@ -146,18 +146,35 @@ export class SoliLiveObject extends DurableObject {
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment(meta);
 
-    const stored = await this.ctx.storage.get("instance");
-    if (stored) {
-      // Already mounted (another tab, a reconnect, a room's next visitor):
-      // its current markup to this socket only.
-      server.send(JSON.stringify({ type: "Render", html: stored.last_html, liveview_id: stored.id }));
-    } else {
-      await this.frame({ op: "mount", ...meta }, null);
-    }
+    await this.inTurn(async () => {
+      const stored = await this.ctx.storage.get("instance");
+      if (stored) {
+        // Already mounted (another tab, a reconnect, a room's next visitor):
+        // its current markup to this socket only.
+        server.send(JSON.stringify({ type: "Render", html: stored.last_html, liveview_id: stored.id }));
+      } else {
+        await this.frame({ op: "mount", ...meta }, null);
+      }
+    });
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  async webSocketMessage(ws, data) {
+  // One mount or event at a time, each reading the instance the previous one
+  // stored. The object takes the next message while a frame awaits wasm, so
+  // two events sent close together (a keystroke and a click, two screens of
+  // one room) both read the same instance, and the second one's write lost
+  // the first one's change.
+  inTurn(work) {
+    const turn = (this.turn || Promise.resolve()).then(work);
+    this.turn = turn.catch(() => {});
+    return turn;
+  }
+
+  webSocketMessage(ws, data) {
+    return this.inTurn(() => this.message(ws, data));
+  }
+
+  async message(ws, data) {
     ensureBooted(this.env);
     let message;
     try {

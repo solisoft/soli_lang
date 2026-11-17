@@ -115,7 +115,7 @@ jobs:
           done
           status=0
           if [ -n "$ok" ]; then
-            for path in / /api/info /guide /limits /live /live/client.js /try /d1 /pdf; do
+            for path in / /api/info /guide /limits /live /live/client.js /try /d1 /pdf /invoices; do
               code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8787$path")"
               echo "$path -> $code"
               [ "$code" = "200" ] || status=1
@@ -136,6 +136,14 @@ jobs:
               echo "/pdf/pass.png is not a PNG" >&2
               status=1
             fi
+            # An invoice: created in D1, then its Factur-X PDF and its preview.
+            invoice="$(curl -s -m 20 -o /dev/null -w '%{redirect_url}' -X POST \
+              -H 'Origin: http://127.0.0.1:8787' http://127.0.0.1:8787/invoices)"
+            for suffix in "" /pdf /preview; do
+              code="$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$invoice$suffix")"
+              echo "invoice$suffix -> $code"
+              [ "$code" = "200" ] || status=1
+            done
             # The trigger wrangler.toml lists runs HourlyTallyJob; /d1 shows its run.
             curl -fs -m 20 -o /dev/null "http://127.0.0.1:8787/__scheduled?cron=0+*+*+*+*" || status=1
             # Read the page first: under pipefail, `curl | grep -q` fails when

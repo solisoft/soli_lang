@@ -45,6 +45,7 @@
       <a href="/live">LiveView</a>
       <a href="/try">Try it</a>
       <a href="/d1">D1</a>
+      <a href="/invoices">Invoices</a>
       <a href="/pdf">PDF</a>
       <a href="/api/info">API</a>
     </nav>

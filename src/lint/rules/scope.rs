@@ -221,6 +221,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "pdf_response",
     "pdf_facturx",
     "pdf_facturx_from_invoice",
+    "pdf_invoice_data",
     "pdf_from_markdown",
     "pdf_layout_map",
     "pdf_fill",
