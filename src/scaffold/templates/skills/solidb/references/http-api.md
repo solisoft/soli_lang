@@ -249,6 +249,16 @@ exist there.
   week/month interval, an `INTO`, a SORT/LIMIT before the COLLECT: the
   ordinary path, same answers. Results are identical either way
   (`AVG` 12.25 over mixed `12` / `12.5` values observed on both).
+- **Row queries read fewer documents** (after 2.13.0; observed 2026-11-17
+  on a build of it, a million points, 500 series): `FOR p IN c FILTER
+  p.<time> == @t RETURN p`, a span `>= @a AND < @b`, or either with
+  `p.series == @s`, read only the blocks that can hold such a point —
+  1,453 ms → 15.5 ms for one instant, 1,491 → 45 ms for a series over an
+  hour, 0.4 ms for a series that does not exist. Same rows, same order,
+  any other FILTER still applies. `FILTER p.series == @s` alone is NOT
+  helped (861 ms, every block holds the series): keep an index on the
+  series field for that. EXPLAIN still reports a full scan. Through
+  2.13.0 every row query without an index reads the whole collection.
 - One more shape, over the driver only (observed on a build of `main`,
   2026-11-16): `FOR p IN c FILTER p.series == @s SORT p.<time> DESC LIMIT 1
   RETURN <only declared fields and the time>` reads the newest row of the
