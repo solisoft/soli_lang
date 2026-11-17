@@ -758,6 +758,15 @@ class MigrationDb {{
         return solidb_set_counter_next(_db, collection, field, next);
     }}
 
+    // Field rules: what the collection asks of a field of its documents
+    fn set_field_rules(collection: String, rules: Any) -> Any {{
+        return solidb_set_field_rules(_db, collection, rules);
+    }}
+
+    fn list_field_rules(collection: String) -> Any {{
+        return solidb_list_field_rules(_db, collection);
+    }}
+
     // Foreign keys: a field holds the key of a document of another collection
     fn add_foreign_key(collection: String, field: String, references: String, options: Any = null) -> Any {{
         return solidb_create_foreign_key(_db, collection, field, references, options);
@@ -913,6 +922,14 @@ class MigrationDb {{
 
     fn set_counter_next(collection: String, field: String, next: Int) -> Any {{
         throw "set_counter_next is SoliDB-only.";
+    }}
+
+    fn set_field_rules(collection: String, rules: Any) -> Any {{
+        throw "set_field_rules is SoliDB-only.";
+    }}
+
+    fn list_field_rules(collection: String) -> Any {{
+        throw "list_field_rules is SoliDB-only.";
     }}
 
     fn add_foreign_key(collection: String, field: String, references: String, options: Any = null) -> Any {{

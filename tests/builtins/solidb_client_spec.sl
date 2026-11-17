@@ -396,6 +396,27 @@ describe("Solidb client against a server") do
       assert_eq(client.list_counters(name), [])
     end
 
+    test("set_field_rules and list_field_rules") do
+      name = collection("client_spec_rules")
+      client = raw_db()
+      assert_eq(client.list_field_rules(name), [])
+      declared = client.set_field_rules(name, [
+        {"field": "name", "required": true, "type": "string"},
+        {"field": "price", "min": 0}
+      ])
+      assert_eq(declared.length(), 2)
+      assert_eq(client.list_field_rules(name)[0]["field"], "name")
+      assert_raises("'name' is required") do
+        client.insert(name, "a", {"price": 1})
+      end
+      assert_raises("must be at least 0") do
+        client.insert(name, "a", {"name": "A", "price": -1})
+      end
+      client.insert(name, "a", {"name": "A", "price": 1})
+      assert_eq(client.set_field_rules(name, []), [])
+      client.insert(name, "b", {"price": -1})
+    end
+
     test("create_foreign_key, list_foreign_keys and drop_foreign_key") do
       parents = collection("client_spec_fk_parents")
       children = collection("client_spec_fk_children")

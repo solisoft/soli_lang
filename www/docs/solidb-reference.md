@@ -400,6 +400,8 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 | `db.set_counter_next(coll, field, next)` | Make `next` the number the next insert gets. |
 | `db.drop_counter(coll, field)` | Stop numbering; the stored values and their unique index stay. |
 | `db.list_counters(coll)` | The counters of `coll`, each with its `state` (`next`). |
+| `db.set_field_rules(coll, rules)` | Have SoliDB hold every write of `coll` to `rules`: `[{ "field", "required"?, "type"?, "min"?, "max"?, "in"? }]`. Replaces the rules it had; `[]` removes them. |
+| `db.list_field_rules(coll)` | The rules of `coll`. |
 | `db.add_foreign_key(coll, field, references, options?)` | Have SoliDB check that `field` holds the `_key` of a document of `references`, or nothing. `options`: `on_delete` (`"restrict"`\|`"cascade"`\|`"set_null"`), `name`, `by`. On the `Solidb` client: `create_foreign_key`. |
 | `db.remove_foreign_key(coll, name)` | Remove a foreign key; the index on its field stays. On the client: `drop_foreign_key`. |
 | `db.list_foreign_keys(coll)` | `{ "foreign_keys": […], "referenced_by": […] }`: the keys of `coll` and those that refer to it. |

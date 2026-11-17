@@ -88,6 +88,7 @@ The `db` handle exposes:
 | `db.create_counter(coll, field, options?)`                  | SoliDB numbers `field` on insert, with no gap (`start`, `reset`, `prefix`, `padding`, …). The model leaves the field out and reads it after `create` / `save`; in a transaction, after the commit. |
 | `db.set_counter_next(coll, field, next)`                    | Set the next number a counter gives.                         |
 | `db.drop_counter(coll, field)` / `db.list_counters(coll)`   | Stop numbering a field; list a collection's counters.        |
+| `db.set_field_rules(coll, rules)` / `db.list_field_rules(coll)` | SoliDB holds every write of `coll` to `rules` (`[{ "field", "required", "type", "min", "max", "in" }]`); `[]` removes them. |
 | `db.add_foreign_key(coll, field, references, options?)`     | SoliDB refuses a `field` that names a missing document of `references`; `options`: `on_delete` (`"restrict"`, `"cascade"`, `"set_null"`), `name`. A model then gets `_errors` instead of a saved record. |
 | `db.remove_foreign_key(coll, name)` / `db.list_foreign_keys(coll)` | Remove a foreign key by name; list a collection's keys. |
 | `db.create_vector_index(coll, name, field, dim, opts?)`     | Vector index for similarity search.                           |

@@ -482,6 +482,39 @@ db.drop_counter("invoices", "number")   # the stored numbers and their index sta
 db.list_counters("invoices")            # [{ "field": "number", …, "state": { "next": 1289 } }]
 ```
 
+## Field Rule Helpers
+
+A field rule says what a collection asks of a top-level field of its
+documents: that it is there, its type, its bounds, the values it may take.
+SoliDB checks every write against them, whatever writes: the model, a raw
+query, another application. SoliDB only (the SQL adapters raise
+`set_field_rules is SoliDB-only.`; there, a column's type and `"null": false`
+say the same), on a SoliDB that has field rules (after 2.13.0).
+
+```soli
+def up(db: Any)
+  db.set_field_rules("products", [
+    { "field": "name", "required": true, "type": "string" },
+    { "field": "price", "type": "number", "min": 0, "max": 1000 },
+    { "field": "status", "in": ["open", "paid"] }
+  ])
+end
+
+def down(db: Any)
+  db.set_field_rules("products", [])   # removes them
+end
+```
+
+- `set_field_rules` replaces the rules the collection had; `list_field_rules(collection)` reads them.
+- A rule: `field`, and any of `required` (present and not null), `type`
+  (`"string"`, `"number"`, `"integer"`, `"bool"`, `"object"`, `"array"`),
+  `min`, `max`, `in`. A field left out or `nil` passes everything but
+  `required`.
+- Documents already stored are not checked; their next update is.
+- A write that breaks a rule is refused by the server. Declare the same
+  thing with `validates` on the model to get `_errors` on the field; the
+  rule is what holds for the writers that do not go through the model.
+
 ## Foreign Key Helpers
 
 A foreign key says that a field of a collection holds the `_key` of a document

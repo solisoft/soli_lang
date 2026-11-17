@@ -528,6 +528,8 @@ fn register_solidb_class(env: &mut Environment) {
         ("drop_counter", 2),
         ("list_counters", 1),
         ("set_counter_next", 3),
+        ("set_field_rules", 2),
+        ("list_field_rules", 1),
         ("create_foreign_key", 3),
         ("drop_foreign_key", 2),
         ("list_foreign_keys", 1),
@@ -1402,6 +1404,44 @@ fn register_solidb_class(env: &mut Environment) {
                                 .list_counters(&collection)
                                 .map_err(|e| format!("List counters failed: {}", e))?;
                             Ok(serde_json::Value::Array(counters))
+                        })
+                    }
+                    "set_field_rules" => {
+                        let collection = string_arg(args, 1, "set_field_rules", "collection")?;
+                        let rules = match args.get(2) {
+                            Some(rules @ Value::Array(_)) => {
+                                crate::interpreter::value::value_to_json(rules)?
+                            }
+                            Some(other) => {
+                                return Err(format!(
+                                    "set_field_rules() expects an array of rules, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                            None => {
+                                return Err("set_field_rules() expects an array of rules".into())
+                            }
+                        };
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .set_field_rules(&collection, &rules)
+                                .map_err(|e| format!("Set field rules failed: {}", e))
+                        })
+                    }
+                    "list_field_rules" => {
+                        let collection = string_arg(args, 1, "list_field_rules", "collection")?;
+                        let auth_username = auth_username.clone();
+                        let auth_password = auth_password.clone();
+                        exec_db_json(move || {
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
+                            client
+                                .list_field_rules(&collection)
+                                .map_err(|e| format!("List field rules failed: {}", e))
                         })
                     }
                     "create_foreign_key" => {

@@ -836,6 +836,43 @@ impl SoliDBClient {
         )
     }
 
+    fn field_rules_path(&self, collection: &str) -> Result<String, SoliDBError> {
+        let db = self.get_db()?;
+        Ok(format!(
+            "/_api/database/{}/collection/{}/rules",
+            seg(db)?,
+            seg(collection)?
+        ))
+    }
+
+    /// Declare what `collection` asks of top-level fields of its documents
+    /// (`PUT …/rules`), in place of the rules it had; an empty list removes
+    /// them. Returns the rules as stored.
+    pub fn set_field_rules(&self, collection: &str, rules: &Value) -> Result<Value, SoliDBError> {
+        let response: Value = self.request(
+            reqwest::Method::PUT,
+            &self.field_rules_path(collection)?,
+            Some(&serde_json::json!({ "rules": rules })),
+        )?;
+        Ok(response
+            .get("rules")
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new())))
+    }
+
+    /// The field rules of `collection`, in the order they were declared.
+    pub fn list_field_rules(&self, collection: &str) -> Result<Value, SoliDBError> {
+        let response: Value = self.request(
+            reqwest::Method::GET,
+            &self.field_rules_path(collection)?,
+            None,
+        )?;
+        Ok(response
+            .get("rules")
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new())))
+    }
+
     fn foreign_keys_path(&self, collection: &str) -> Result<String, SoliDBError> {
         let db = self.get_db()?;
         Ok(format!(

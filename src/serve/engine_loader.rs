@@ -729,6 +729,15 @@ class MigrationDb {{
         return solidb_set_counter_next(_db, _engine_prefix(collection), field, next);
     }}
 
+    // Field rules: what the collection asks of a field of its documents
+    fn set_field_rules(collection: String, rules: Any) -> Any {{
+        return solidb_set_field_rules(_db, _engine_prefix(collection), rules);
+    }}
+
+    fn list_field_rules(collection: String) -> Any {{
+        return solidb_list_field_rules(_db, _engine_prefix(collection));
+    }}
+
     // Foreign keys: both collections are the engine's
     fn add_foreign_key(collection: String, field: String, references: String, options: Any = null) -> Any {{
         return solidb_create_foreign_key(_db, _engine_prefix(collection), field, _engine_prefix(references), options);

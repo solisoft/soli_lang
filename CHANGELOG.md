@@ -4,6 +4,13 @@
 
 ### Added
 
+- **Field rules, declared in a migration.** `db.set_field_rules("products",
+  [{"field": "name", "required": true, "type": "string"}, {"field": "price",
+  "min": 0}])` has SoliDB (after 2.13.0) hold every write of the collection
+  to them, whoever writes; `db.list_field_rules(coll)` reads them, and an
+  empty list removes them. In an engine's migrations too, and on the
+  `Solidb` client. The SQL adapters raise `set_field_rules is SoliDB-only.`
+
 - **Foreign keys, declared in a migration.** `db.add_foreign_key("orders",
   "customer_id", "customers", {"on_delete": "cascade"})` has SoliDB (2.10.0
   or later) refuse an order whose customer is not there and decide what the
