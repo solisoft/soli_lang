@@ -231,6 +231,12 @@ UPDATE "nope" WITH {n: 1} IN counters                        -- error "nope" (Do
 UPDATE "nope" WITH {n: 1} IN counters OPTIONS {ignoreErrors: true}   -- [] no error
 ```
 
+`INSERT … OPTIONS {overwrite: true}` (or `overwriteMode: "replace"`) over
+several rows, with no `RETURN OLD`/`NEW` and no other option, is written
+in two batches after 2.13.0: the new keys as one insert, the stored keys as
+one replacement, each all or none. Through 2.13.0 it went row by row and
+an error left the earlier rows written.
+
 Options per statement: `ignoreErrors`, `keepNull`, `mergeObjects`, and
 `overwriteMode` / legacy `overwrite: true` on INSERT. AQL no-ops
 (`waitForSync`, `ignoreRevs`, `exclusive`, …) are accepted and ignored.
