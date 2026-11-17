@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process;
 
-pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option<&str>) {
+pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option<&str>, pdf: bool) {
     let app_dir = Path::new(folder);
     let out_dir = out
         .map(Path::new)
@@ -14,6 +14,7 @@ pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option
         out_dir: &out_dir,
         runtime_dir: runtime.map(Path::new),
         sql,
+        pdf,
         npm_install: true,
     }) {
         Ok(summary) => summary,
@@ -30,7 +31,11 @@ pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option
         summary.asset_files,
         summary.out_dir.display()
     );
-    println!("Runtime: {:.1} MB of wasm", summary.wasm_bytes as f64 / 1e6);
+    println!(
+        "Runtime: {:.1} MB of wasm{}",
+        summary.wasm_bytes as f64 / 1e6,
+        if summary.pdf { ", with PDF" } else { "" }
+    );
     for skipped in &summary.skipped {
         println!(
             "  skipped {} (not UTF-8 text; binary files belong in public/)",
@@ -68,7 +73,7 @@ pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option
 /// Behind soli-proxy it is a site like any other:
 /// `start_script = "soli edge dev . --port $PORT"`. The proxy stops a site by
 /// signalling its process group, which takes `wrangler dev` along.
-pub fn dev(folder: &str, port: u16, runtime: Option<&str>, sql: Option<&str>) {
+pub fn dev(folder: &str, port: u16, runtime: Option<&str>, sql: Option<&str>, pdf: bool) {
     let app_dir = Path::new(folder);
     let out_dir = app_dir.join("dist").join("edge");
     let options = solilang::edge_build::Options {
@@ -76,6 +81,7 @@ pub fn dev(folder: &str, port: u16, runtime: Option<&str>, sql: Option<&str>) {
         out_dir: &out_dir,
         runtime_dir: runtime.map(Path::new),
         sql,
+        pdf,
         npm_install: true,
     };
     if let Err(e) = package_for_dev(&options, port) {
@@ -113,6 +119,7 @@ pub fn dev(folder: &str, port: u16, runtime: Option<&str>, sql: Option<&str>) {
             out_dir: &out,
             runtime_dir: runtime.as_deref(),
             sql: sql.as_deref(),
+            pdf,
             npm_install: true,
         };
         match package_for_dev(&options, port) {

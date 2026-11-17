@@ -1,0 +1,44 @@
+<h1>A PDF from the edge</h1>
+<p class="lead">Type a name and open the document. The Worker that answers builds the PDF
+on the spot, with the <strong>datacenter that served you</strong> and the time it did so
+printed on it. No other server takes part: the layout engine, the font and the PDF writer
+are inside the WebAssembly runtime.</p>
+
+<form method="get" action="/pdf/pass.pdf" class="check-in" target="_blank">
+  <input type="text" name="name" value="<%= @name %>" maxlength="40" placeholder="Your name"
+         aria-label="Your name">
+  <button class="button" type="submit">Open my pass from <%= @runtime["colo"] %></button>
+</form>
+
+<h2>The code</h2>
+<p>The same <code>pdf_response</code> as under <code>soli serve</code>: a layout template
+and its data, both JSON, returned straight from the action.</p>
+<pre><code># GET /pdf/pass.pdf
+def pass(req)
+  data = EdgePass.data(RuntimeInfo.of(req), params["name"])
+  pdf_response(EdgePass.template.to_json, data.to_json)
+end</code></pre>
+
+<h2>How it runs</h2>
+<ul>
+  <li>PDF is an <strong>option of the edge runtime</strong>: it adds about 6.5 MB of
+      WebAssembly, so a Worker carries it only when asked.
+      <code>scripts/build-edge.sh --pdf</code> builds that runtime and
+      <code>soli edge build --pdf</code> packages it.</li>
+  <li>A Worker has no disk to hold a <code>font/</code> folder, so the runtime falls back
+      to four <strong>Titillium Web</strong> faces compiled into it. No configuration.</li>
+  <li>The template is a hash written in Soli (<code>app/models/edge_pass.sl</code>) and
+      turned into JSON: <code>slurp</code> does not read files in a Worker.</li>
+  <li>Everything that works on bytes works here: Markdown to PDF, PDF/A, passwords,
+      merging, text extraction, Factur-X, and PAdES signatures with a key held in a
+      Worker secret.</li>
+</ul>
+
+<h2>Not on the edge yet</h2>
+<ul>
+  <li>Your own font files, a monospaced face, and CJK text: the compiled-in font covers
+      Latin scripts only.</li>
+  <li>Images, letterheads and attachments read from the app's folders. An image comes
+      from an <code>https</code> URL or a <code>data:</code> URI.</li>
+  <li>Page previews (<code>pdf_preview</code>): the image encoder is not in the runtime.</li>
+</ul>

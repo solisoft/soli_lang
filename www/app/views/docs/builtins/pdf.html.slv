@@ -820,7 +820,7 @@ let pdf = pdf_render(template.to_json(), "{}")</code></pre>
         </div>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Fonts</h3>
-        <p class="text-gray-400 mb-2">No fonts are embedded in the binary &mdash; place font files in a <code>font/</code> folder (the default <code>font_dirs</code>). The template's <code>fonts</code> field names the primary family; its Regular/Bold styles are resolved from the files, and any <em>other</em> loaded font becomes a fallback for characters the primary can't cover (e.g. a CJK font for <code>こんにちは</code>). Characters no loaded font covers are dropped with a warning, keeping the PDF valid.</p>
+        <p class="text-gray-400 mb-2">No fonts are embedded in the <code>soli</code> binary &mdash; place font files in a <code>font/</code> folder (the default <code>font_dirs</code>). On <a href="/docs/development-tools/edge#pdf" class="text-amber-400 hover:underline">Cloudflare Workers</a>, where there is no folder to read, the runtime falls back to four Titillium Web faces compiled into it. The template's <code>fonts</code> field names the primary family; its Regular/Bold styles are resolved from the files, and any <em>other</em> loaded font becomes a fallback for characters the primary can't cover (e.g. a CJK font for <code>こんにちは</code>). Characters no loaded font covers are dropped with a warning, keeping the PDF valid.</p>
         <pre data-filename="app/font/"><code class="language-bash text-sm">font/
   TitilliumWeb-Regular.ttf
   TitilliumWeb-Bold.ttf

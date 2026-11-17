@@ -32,7 +32,8 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
       <li>Resumable and direct uploads, files over about 20 MB, anything that writes files</li>
       <li>MySQL, SQLite files and the native SoliDB driver; transactions on D1</li>
       <li><code>--dev</code>: hot reload, the dev bar, the REPL</li>
-      <li>PDF, Office documents, the <code>Image</code> class, subprocesses</li>
+      <li>Office documents, the <code>Image</code> class, subprocesses; PDF without
+          <code>--pdf</code> (<a href="/pdf">this site has it</a>)</li>
     </ul>
   </article>
 </div>
@@ -43,7 +44,7 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
       its isolate; Cloudflare spreads load over more isolates.</li>
   <li><strong>A handler that raises answers a 500</strong>, as under <code>soli serve</code>. A Rust
       panic costs the instance: that request answers 500 and the next boots a fresh one.</li>
-  <li><strong>Size.</strong> About 11.7 MB of WebAssembly (3.6 MB gzipped). Workers limit the
+  <li><strong>Size.</strong> About 10.3 MB of WebAssembly (3.4 MB gzipped), 16.9 MB with PDF. Workers limit the
       uncompressed bundle to 64 MiB on every plan, free included, and no longer cap the
       compressed size. The limit that still applies is startup time: 1 second. The Postgres
       driver adds about 40 KB.</li>

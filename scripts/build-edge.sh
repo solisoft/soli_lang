@@ -10,6 +10,10 @@
 #   sql-pg.js           the Postgres driver's glue, copied into an app's Worker
 #                       when it uses Postgres
 #
+# With --pdf it also builds the runtime that carries the `pdf_*` builtins, into
+# $OUT/pdf (soli_edge_bg.wasm and soli_edge.js only: the host is the same).
+# About 6.5 MB more wasm, which `soli edge build --pdf` packages instead.
+#
 # `soli edge build` packages that directory with an app; point it there with
 # --runtime or SOLI_EDGE_RUNTIME.
 #
@@ -17,6 +21,14 @@
 # the wasm build compiles C), and the wasm-bindgen CLI at the version
 # edge/Cargo.toml pins:  cargo install wasm-bindgen-cli --version <it> --locked
 set -euo pipefail
+
+pdf=0
+for arg in "$@"; do
+  case "$arg" in
+    --pdf) pdf=1 ;;
+    *) echo "usage: scripts/build-edge.sh [--pdf]" >&2; exit 64 ;;
+  esac
+done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$ROOT/target/edge}"
@@ -34,28 +46,40 @@ rustup target list --installed 2>/dev/null | grep -qx wasm32-unknown-unknown || 
   exit 1
 }
 
-# getrandom 0.3 picks its JS backend from a cfg, not a feature.
-RUSTFLAGS="${RUSTFLAGS:-} --cfg getrandom_backend=\"wasm_js\"" \
-  cargo build --release --locked --target wasm32-unknown-unknown \
-  --manifest-path "$ROOT/edge/Cargo.toml" --target-dir "$TARGET_DIR"
+# build <out dir> [cargo args]: compile the runtime and write its wasm and
+# wasm-bindgen glue into <out dir>.
+build() {
+  local out="$1"
+  shift
+  # getrandom 0.3 picks its JS backend from a cfg, not a feature.
+  RUSTFLAGS="${RUSTFLAGS:-} --cfg getrandom_backend=\"wasm_js\"" \
+    cargo build --release --locked --target wasm32-unknown-unknown \
+    --manifest-path "$ROOT/edge/Cargo.toml" --target-dir "$TARGET_DIR" "$@"
 
-mkdir -p "$OUT"
-wasm-bindgen --target web --out-dir "$OUT" \
-  "$TARGET_DIR/wasm32-unknown-unknown/release/soli_edge.wasm"
-cp "$ROOT/edge/js/jspi.js" "$ROOT/edge/js/worker.js" "$ROOT/edge/js/durable.js" "$ROOT/edge/js/sql-pg.js" "$OUT/"
-rm -f "$OUT"/*.d.ts
-# wasm-bindgen's glue keeps its instance and never makes another, even after a
-# trap (a Rust panic: `panic = "abort"`) left that instance's memory mid-call,
-# with borrows that never end. worker.js calls this to drop it, so the next
-# request instantiates the module again and boots the app on clean memory.
-cat >> "$OUT/soli_edge.js" <<'JS'
+  mkdir -p "$out"
+  wasm-bindgen --target web --out-dir "$out" \
+    "$TARGET_DIR/wasm32-unknown-unknown/release/soli_edge.wasm"
+  rm -f "$out"/*.d.ts
+  # wasm-bindgen's glue keeps its instance and never makes another, even after a
+  # trap (a Rust panic: `panic = "abort"`) left that instance's memory mid-call,
+  # with borrows that never end. worker.js calls this to drop it, so the next
+  # request instantiates the module again and boots the app on clean memory.
+  cat >> "$out/soli_edge.js" <<'JS'
 
 // Added by scripts/build-edge.sh: forget the instance after a trap.
 export function __soli_reset() {
     wasm = undefined;
 }
 JS
+  printf 'edge runtime in %s: %s bytes, %s gzipped\n' "$out" \
+    "$(wc -c < "$out/soli_edge_bg.wasm")" "$(gzip -9 -c "$out/soli_edge_bg.wasm" | wc -c)"
+}
 
-wasm="$OUT/soli_edge_bg.wasm"
-printf 'edge runtime in %s: %s bytes, %s gzipped\n' "$OUT" \
-  "$(wc -c < "$wasm")" "$(gzip -9 -c "$wasm" | wc -c)"
+build "$OUT"
+cp "$ROOT/edge/js/jspi.js" "$ROOT/edge/js/worker.js" "$ROOT/edge/js/durable.js" "$ROOT/edge/js/sql-pg.js" "$OUT/"
+# A runtime built earlier with --pdf would be a different version from the
+# one just built: drop it unless it is rebuilt now.
+rm -rf "$OUT/pdf"
+if [[ "$pdf" == 1 ]]; then
+  build "$OUT/pdf" --features pdf
+fi

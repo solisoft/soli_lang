@@ -107,10 +107,10 @@ pub fn render_with_warnings(
 /// Document metadata for the standalone PDF/A pass, mirroring the Info-dict
 /// values the backend writes (`title` defaults to the historical `"invoice"`).
 /// `created` comes from the system clock via `SystemTime` (the `time` dep has
-/// no `clock` feature).
+/// no `clock` feature) — `web-time`'s, since std's panics on wasm32.
 fn pdfa_metadata(opts: &RenderOptions) -> FacturxMetadata {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let secs = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     FacturxMetadata {

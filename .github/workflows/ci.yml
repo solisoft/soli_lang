@@ -353,6 +353,15 @@ jobs:
           cargo check --locked --target wasm32-unknown-unknown
           --manifest-path edge/Cargo.toml --target-dir target
 
+      # The runtime `scripts/build-edge.sh --pdf` builds: the PDF crate and
+      # its dependencies compile for wasm32 only behind this feature.
+      - name: Check (wasm32, with PDF)
+        env:
+          RUSTFLAGS: --cfg getrandom_backend="wasm_js"
+        run: >-
+          cargo check --locked --target wasm32-unknown-unknown
+          --manifest-path edge/Cargo.toml --target-dir target --features pdf
+
   # A published advisory against a transitive dependency is the one class of
   # vulnerability no amount of reviewing *our* code will surface: nothing in
   # the diff changes, and the suite stays green. Soli pulls in a TLS stack, an

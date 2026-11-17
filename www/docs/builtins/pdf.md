@@ -923,7 +923,7 @@ When you use `pdf_facturx_from_invoice`, a ready-made `payment` block is exposed
 
 ### Fonts
 
-No fonts are embedded in the binary. Put font files in a `font/` folder (default `font_dirs`). The template's `fonts` field names the primary family; its Regular/Bold are resolved from the files, and any other loaded font becomes a fallback (e.g. a CJK font). Uncovered characters are dropped with a warning.
+No fonts are embedded in the `soli` binary. Put font files in a `font/` folder (default `font_dirs`). On [Cloudflare Workers](../edge.md#pdf), where there is no folder to read, the runtime falls back to four Titillium Web faces compiled into it. The template's `fonts` field names the primary family; its Regular/Bold are resolved from the files, and any other loaded font becomes a fallback (e.g. a CJK font). Uncovered characters are dropped with a warning.
 
 ```
 font/

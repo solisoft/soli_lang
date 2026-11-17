@@ -397,13 +397,21 @@ pub fn run() {
             out,
             runtime,
             sql,
-        } => commands::edge::build(folder, out.as_deref(), runtime.as_deref(), sql.as_deref()),
+            pdf,
+        } => commands::edge::build(
+            folder,
+            out.as_deref(),
+            runtime.as_deref(),
+            sql.as_deref(),
+            *pdf,
+        ),
         Command::EdgeDev {
             folder,
             port,
             runtime,
             sql,
-        } => commands::edge::dev(folder, *port, runtime.as_deref(), sql.as_deref()),
+            pdf,
+        } => commands::edge::dev(folder, *port, runtime.as_deref(), sql.as_deref(), *pdf),
         Command::MobileBuild {
             platform,
             folder,

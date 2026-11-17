@@ -27,6 +27,12 @@ pub const RUNTIME_FILES: [&str; 6] = [
 /// glue, copied only for an app that uses them.
 const ALWAYS_COPIED: usize = 5;
 
+/// Where `scripts/build-edge.sh --pdf` puts the runtime that carries the `pdf_*`
+/// builtins, inside the runtime directory, and the files it replaces: the wasm
+/// and its glue. The JavaScript host is the same for both.
+const PDF_RUNTIME_DIR: &str = "pdf";
+const PDF_RUNTIME_FILES: [&str; 2] = ["soli_edge_bg.wasm", "soli_edge.js"];
+
 /// The SQL dialects a Worker can carry a JavaScript driver for: the dialect's
 /// name in `src/sql.js`, its driver module, and the npm package it imports.
 /// Only Postgres: MySQL has no driver glue yet. The size argument that kept
@@ -50,6 +56,9 @@ pub struct Options<'a> {
     /// `--sql`: `postgres` to bundle its driver, or `none`; `None` detects it
     /// from the app's configuration.
     pub sql: Option<&'a str>,
+    /// `--pdf`: package the runtime that carries the `pdf_*` builtins (about
+    /// 6.5 MB more wasm), built by `scripts/build-edge.sh --pdf`.
+    pub pdf: bool,
     /// Run `npm install` when a driver is missing from `node_modules`.
     pub npm_install: bool,
 }
@@ -63,6 +72,8 @@ pub struct Summary {
     pub skipped: Vec<PathBuf>,
     pub asset_files: usize,
     pub wasm_bytes: u64,
+    /// Whether the Worker carries the `pdf_*` builtins.
+    pub pdf: bool,
     /// Whether this run wrote `wrangler.toml` (an existing one is kept).
     pub wrote_wrangler_toml: bool,
     /// Whether `wrangler.toml` came from the app's own folder.
@@ -84,6 +95,18 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
         ));
     }
     let runtime = find_runtime(opts.runtime_dir)?;
+    let pdf_runtime = runtime.join(PDF_RUNTIME_DIR);
+    if opts.pdf
+        && !PDF_RUNTIME_FILES
+            .iter()
+            .all(|f| pdf_runtime.join(f).is_file())
+    {
+        return Err(format!(
+            "--pdf: the edge runtime in {} was built without PDF. Build it with \
+             scripts/build-edge.sh --pdf in the Soli source tree",
+            runtime.display()
+        ));
+    }
     let out = opts.out_dir;
     let src = out.join("src");
     fs::create_dir_all(&src).map_err(|e| format!("create {}: {e}", src.display()))?;
@@ -110,7 +133,11 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
         }
     }
     for name in copied {
-        let from = runtime.join(name);
+        let from = if opts.pdf && PDF_RUNTIME_FILES.contains(&name) {
+            pdf_runtime.join(name)
+        } else {
+            runtime.join(name)
+        };
         fs::copy(&from, src.join(name)).map_err(|e| format!("copy {}: {e}", from.display()))?;
     }
     fs::write(src.join("sql.js"), sql_module(&sql_drivers))
@@ -123,6 +150,7 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
     let mut files: Vec<(String, String)> = Vec::new();
     let mut skipped = Vec::new();
     let mut source_bytes = 0;
+    let mut uses_pdf = false;
     for dir in SOURCE_DIRS {
         for path in walk(&app_dir.join(dir))? {
             let relative = path
@@ -132,6 +160,9 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
                 .replace('\\', "/");
             match fs::read(&path).map(String::from_utf8) {
                 Ok(Ok(text)) => {
+                    if !opts.pdf && !uses_pdf && relative.ends_with(".sl") {
+                        uses_pdf = mentions_pdf(&text);
+                    }
                     source_bytes += text.len();
                     files.push((format!("/app/{relative}"), text));
                 }
@@ -139,6 +170,13 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
                 Err(e) => return Err(format!("read {}: {e}", path.display())),
             }
         }
+    }
+    if uses_pdf {
+        warnings.push(
+            "the app renders PDFs, which this Worker cannot: package it with --pdf (and a \
+             runtime from scripts/build-edge.sh --pdf)"
+                .to_string(),
+        );
     }
     let json = serde_json::to_string(&files).map_err(|e| e.to_string())?;
     fs::write(src.join("app.json"), json).map_err(|e| format!("write app.json: {e}"))?;
@@ -255,11 +293,33 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
         skipped,
         asset_files,
         wasm_bytes,
+        pdf: opts.pdf,
         wrote_wrangler_toml,
         wrangler_toml_from_app,
         sql_drivers,
         npm,
         warnings,
+    })
+}
+
+/// Whether Soli source calls a `pdf_*` builtin (`pdf_render(…)`,
+/// `pdf_response(…)`), comments aside. A hint for a warning, not a parse: a
+/// string that says `pdf_render(` counts too.
+fn mentions_pdf(source: &str) -> bool {
+    source.lines().any(|line| {
+        let code = line.split(" #").next().unwrap_or(line);
+        if code.trim_start().starts_with('#') {
+            return false;
+        }
+        code.match_indices("pdf_").any(|(at, prefix)| {
+            let starts_a_name = !code[..at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
+            let rest = code[at + prefix.len()..]
+                .trim_start_matches(|c: char| c.is_alphanumeric() || c == '_');
+            starts_a_name && rest.starts_with('(')
+        })
     })
 }
 
@@ -696,6 +756,7 @@ mod tests {
             out_dir: out,
             runtime_dir: Some(&runtime),
             sql: None,
+            pdf: false,
             npm_install: false,
         };
 
@@ -749,6 +810,7 @@ mod tests {
             out_dir: out,
             runtime_dir: Some(&runtime),
             sql: None,
+            pdf: false,
             npm_install: false,
         };
 
@@ -800,6 +862,7 @@ mod tests {
             out_dir: &out,
             runtime_dir: Some(&runtime),
             sql: None,
+            pdf: false,
             npm_install: false,
         })
         .unwrap();
@@ -854,6 +917,7 @@ mod tests {
             out_dir: &out,
             runtime_dir: Some(&runtime),
             sql: None,
+            pdf: false,
             npm_install: false,
         };
 
@@ -895,6 +959,7 @@ mod tests {
             out_dir: &out,
             runtime_dir: Some(&runtime),
             sql: None,
+            pdf: false,
             npm_install: false,
         })
         .unwrap();
@@ -916,6 +981,7 @@ mod tests {
             out_dir: &tmp.path().join("out"),
             runtime_dir: Some(&runtime),
             sql: None,
+            pdf: false,
             npm_install: false,
         })
         .unwrap_err();
@@ -932,10 +998,87 @@ mod tests {
             out_dir: &tmp.path().join("out"),
             runtime_dir: Some(&tmp.path().join("none")),
             sql: None,
+            pdf: false,
             npm_install: false,
         })
         .unwrap_err();
         assert!(err.contains("scripts/build-edge.sh"), "{err}");
+    }
+
+    /// `--pdf` packages the wasm and glue from the runtime's `pdf/` folder and
+    /// keeps the shared host; without a PDF runtime it says how to build one.
+    /// An app that renders PDFs and is packaged without it earns a warning.
+    #[test]
+    fn packages_the_pdf_runtime_on_request() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (app, runtime, out) = (
+            tmp.path().join("app"),
+            tmp.path().join("rt"),
+            tmp.path().join("out"),
+        );
+        fake_app(&app);
+        fake_runtime(&runtime);
+        let options = |pdf| Options {
+            app_dir: &app,
+            out_dir: &out,
+            runtime_dir: Some(&runtime),
+            sql: None,
+            pdf,
+            npm_install: false,
+        };
+
+        let err = build(&options(true)).unwrap_err();
+        assert!(err.contains("scripts/build-edge.sh --pdf"), "{err}");
+
+        fs::create_dir_all(runtime.join("pdf")).unwrap();
+        for name in PDF_RUNTIME_FILES {
+            fs::write(runtime.join("pdf").join(name), format!("pdf {name}")).unwrap();
+        }
+        let summary = build(&options(true)).unwrap();
+        assert!(summary.pdf);
+        assert_eq!(
+            fs::read_to_string(out.join("src/soli_edge_bg.wasm")).unwrap(),
+            "pdf soli_edge_bg.wasm"
+        );
+        assert_eq!(
+            fs::read_to_string(out.join("src/soli_edge.js")).unwrap(),
+            "pdf soli_edge.js"
+        );
+        assert_eq!(
+            fs::read_to_string(out.join("src/worker.js")).unwrap(),
+            "worker.js"
+        );
+
+        // Without the flag the plain runtime comes back, silently for an app
+        // that renders nothing.
+        let summary = build(&options(false)).unwrap();
+        assert!(!summary.pdf);
+        assert_eq!(
+            fs::read_to_string(out.join("src/soli_edge_bg.wasm")).unwrap(),
+            "soli_edge_bg.wasm"
+        );
+        assert!(!summary.warnings.iter().any(|w| w.contains("--pdf")));
+
+        fs::write(
+            app.join("app/controllers/invoices_controller.sl"),
+            "class InvoicesController < Controller\n  # GET /invoices/:id\n  def show(req)\n    \
+             pdf_response(template(), data())\n  end\nend\n",
+        )
+        .unwrap();
+        let summary = build(&options(false)).unwrap();
+        assert!(summary.warnings.iter().any(|w| w.contains("--pdf")));
+        let summary = build(&options(true)).unwrap();
+        assert!(!summary.warnings.iter().any(|w| w.contains("--pdf")));
+    }
+
+    #[test]
+    fn spots_pdf_calls_in_source() {
+        assert!(mentions_pdf("body = pdf_render(template, data)"));
+        assert!(mentions_pdf("  pdf_from_markdown(text)"));
+        assert!(!mentions_pdf("# pdf_render(template, data) once it works"));
+        assert!(!mentions_pdf("x = 1 # then pdf_render(a, b)"));
+        assert!(!mentions_pdf("pdf_path = invoice_pdf_url(invoice)"));
+        assert!(!mentions_pdf("my_pdf_render(a)"));
     }
 
     /// An app on Postgres gets node-postgres: its glue, `src/sql.js` exporting
@@ -956,6 +1099,7 @@ mod tests {
             out_dir: &out,
             runtime_dir: Some(&runtime),
             sql,
+            pdf: false,
             npm_install: false,
         };
 

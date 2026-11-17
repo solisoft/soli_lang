@@ -226,31 +226,47 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
             return fetcher(src, timeout, MAX_REMOTE_IMAGE_BYTES)
                 .map_err(|e| PdfError::Image(format!("GET {src}: {e}")));
         }
-        let client = reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            // Each hop would need re-validating against the policy above, and
-            // this client has no hook for that, so refuse to follow any.
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|e| PdfError::Image(e.to_string()))?;
-        let resp = client
-            .get(src)
-            .send()
-            .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?
-            .error_for_status()
-            .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?;
-        if resp
-            .content_length()
-            .is_some_and(|len| len > MAX_REMOTE_IMAGE_BYTES as u64)
-        {
-            return Err(PdfError::Image(format!(
-                "GET {src}: image exceeds {MAX_REMOTE_IMAGE_BYTES} bytes"
-            )));
-        }
-        read_capped(resp, MAX_REMOTE_IMAGE_BYTES, src)
+        fetch_remote(src, timeout)
     } else {
         read_local_source(src)
     }
+}
+
+/// GET a remote image with this crate's own client: what a standalone caller
+/// (the `render_pdf` binary) gets when no host installed a fetcher.
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_remote(src: &str, timeout: Duration) -> Result<Vec<u8>> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        // Each hop would need re-validating against the policy above, and
+        // this client has no hook for that, so refuse to follow any.
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| PdfError::Image(e.to_string()))?;
+    let resp = client
+        .get(src)
+        .send()
+        .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?
+        .error_for_status()
+        .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?;
+    if resp
+        .content_length()
+        .is_some_and(|len| len > MAX_REMOTE_IMAGE_BYTES as u64)
+    {
+        return Err(PdfError::Image(format!(
+            "GET {src}: image exceeds {MAX_REMOTE_IMAGE_BYTES} bytes"
+        )));
+    }
+    read_capped(resp, MAX_REMOTE_IMAGE_BYTES, src)
+}
+
+/// wasm32 has no blocking client: a remote image needs the host's fetcher
+/// ([`set_image_fetcher`]), which the edge build installs.
+#[cfg(target_arch = "wasm32")]
+fn fetch_remote(src: &str, _timeout: Duration) -> Result<Vec<u8>> {
+    Err(PdfError::Image(format!(
+        "GET {src}: no image fetcher installed"
+    )))
 }
 
 /// Largest side, in pixels, of a raster image a PDF embeds. Far beyond any

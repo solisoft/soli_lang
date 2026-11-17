@@ -5347,6 +5347,7 @@ dependencies = [
  "time",
  "tiny-skia",
  "ttf-parser",
+ "web-time",
 ]
 
 [[package]]
@@ -5377,7 +5378,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "2.36.0"
+version = "2.37.0"
 dependencies = [
  "aes-gcm",
  "ahash 0.8.12",

@@ -9,6 +9,8 @@ get("/live", "pages#live")
 get("/try", "playground#show")
 get("/d1", "check_ins#index")
 post("/d1/check-in", "check_ins#create")
+get("/pdf", "documents#index")
+get("/pdf/pass.pdf", "documents#pass")
 get("/api/info", "api#info")
 
 # A LiveView on the edge: its socket is a Cloudflare Durable Object that

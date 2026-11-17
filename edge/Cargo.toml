@@ -21,6 +21,12 @@ wasm-bindgen = "=0.2.126"
 console_error_panic_hook = "0.1"
 serde_json = "1"
 
+[features]
+# The `pdf_*` builtins (rendering, Factur-X, signatures): `scripts/build-edge.sh --pdf`
+# builds the runtime with it, `soli edge build --pdf` packages that one. Off by
+# default: it adds about 6.5 MB of wasm to every Worker.
+pdf = ["solilang/pdf"]
+
 [profile.release]
 # Size over speed. Workers cap the uncompressed bundle at 64 MiB on every plan
 # (no compressed cap any more), far above this runtime; the limit that still

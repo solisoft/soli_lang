@@ -76,8 +76,10 @@ jobs:
         with:
           node-version: 22
 
+      # --pdf: the site's /pdf page renders one, so its Worker carries the
+      # runtime with the pdf_* builtins.
       - name: Build the edge runtime
-        run: OUT=target/edge scripts/build-edge.sh
+        run: OUT=target/edge scripts/build-edge.sh --pdf
 
       # `ci` profile: optimised, no LTO. This binary only packages the app.
       - name: Build soli
@@ -93,7 +95,7 @@ jobs:
           }
 
       - name: Package the Worker
-        run: target/ci/soli edge build "$APP" --runtime target/edge
+        run: target/ci/soli edge build "$APP" --runtime target/edge --pdf
 
       # The gate: the packaged Worker boots on workerd and renders its pages,
       # D1 page included (a local D1), and its Cron Trigger runs the hourly job
@@ -113,11 +115,19 @@ jobs:
           done
           status=0
           if [ -n "$ok" ]; then
-            for path in / /api/info /guide /limits /live /live/client.js /try /d1; do
+            for path in / /api/info /guide /limits /live /live/client.js /try /d1 /pdf; do
               code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8787$path")"
               echo "$path -> $code"
               [ "$code" = "200" ] || status=1
             done
+            # /pdf/pass.pdf is rendered by the Worker: a PDF, naming who asked.
+            curl -fs -m 20 -o /tmp/pass.pdf "http://127.0.0.1:8787/pdf/pass.pdf?name=CI" || status=1
+            if [ "$(head -c 5 /tmp/pass.pdf 2>/dev/null)" = "%PDF-" ]; then
+              echo "/pdf/pass.pdf -> a PDF of $(wc -c < /tmp/pass.pdf) bytes"
+            else
+              echo "/pdf/pass.pdf is not a PDF" >&2
+              status=1
+            fi
             # The trigger wrangler.toml lists runs HourlyTallyJob; /d1 shows its run.
             curl -fs -m 20 -o /dev/null "http://127.0.0.1:8787/__scheduled?cron=0+*+*+*+*" || status=1
             # Read the page first: under pipefail, `curl | grep -q` fails when

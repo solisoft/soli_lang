@@ -506,6 +506,7 @@ pub enum Command {
         out: Option<String>,
         runtime: Option<String>,
         sql: Option<String>,
+        pdf: bool,
     },
     /// `soli edge dev [folder]` — the app on workerd, repackaged on every change.
     EdgeDev {
@@ -513,6 +514,7 @@ pub enum Command {
         port: u16,
         runtime: Option<String>,
         sql: Option<String>,
+        pdf: bool,
     },
     /// `soli mobile build android|ios [folder]` — an installable, versioned
     /// APK or IPA from `clients/<platform>/`.
@@ -874,6 +876,7 @@ pub fn print_usage() {
     eprintln!("  edge build [folder]  Package the app as a Cloudflare Worker in dist/edge");
     eprintln!("  edge dev [folder]    Run it on workerd (wrangler dev), repackaged as you edit");
     eprintln!("                       --out DIR, --runtime DIR (or SOLI_EDGE_RUNTIME)");
+    eprintln!("                       --pdf  Package the runtime with the pdf_* builtins");
     eprintln!("  generate offline     Outbox sync endpoints + public/js/soli_outbox.js helper");
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
@@ -3184,8 +3187,9 @@ pub fn parse_args() -> Options {
             "edge" => {
                 i += 1;
                 let usage = "Usage: soli edge build [folder] [--out DIR] [--runtime DIR] \
-                             [--sql postgres|none]\n       \
-                             soli edge dev [folder] [--port N] [--runtime DIR] [--sql postgres|none]";
+                             [--sql postgres|none] [--pdf]\n       \
+                             soli edge dev [folder] [--port N] [--runtime DIR] [--sql postgres|none] \
+                             [--pdf]";
                 let sub = args.get(i).cloned().unwrap_or_default();
                 if sub != "build" && sub != "dev" {
                     eprintln!("{usage}");
@@ -3196,12 +3200,14 @@ pub fn parse_args() -> Options {
                 let mut out = None;
                 let mut runtime = None;
                 let mut sql = None;
+                let mut pdf = false;
                 let mut port: u16 = 8787;
                 while i < args.len() {
                     match args[i].as_str() {
                         // soli-proxy appends `--dev` to every `soli …` start
                         // script; `edge dev` is a dev server already.
                         "--dev" if sub == "dev" => {}
+                        "--pdf" => pdf = true,
                         "--port" | "-p" if sub == "dev" => {
                             i += 1;
                             port = match args.get(i).and_then(|p| p.parse().ok()) {
@@ -3247,6 +3253,7 @@ pub fn parse_args() -> Options {
                         port,
                         runtime,
                         sql,
+                        pdf,
                     };
                     return options;
                 }
@@ -3255,6 +3262,7 @@ pub fn parse_args() -> Options {
                     out,
                     runtime,
                     sql,
+                    pdf,
                 };
                 return options;
             }

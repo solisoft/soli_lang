@@ -4,6 +4,23 @@
 
 ### Added
 
+- **PDF on Cloudflare Workers, as an option.** `scripts/build-edge.sh --pdf`
+  also builds the edge runtime with the `pdf_*` builtins (in
+  `target/edge/pdf`), and `soli edge build --pdf` / `soli edge dev --pdf`
+  package it: 16.9 MB of wasm instead of 10.3 (6.0 MB gzipped instead of
+  3.4), which is why it is off by default. `pdf_render`, `pdf_response`,
+  `pdf_from_markdown`, Factur-X, PDF/A, passwords, merge/pages/stamp/text and
+  PAdES signatures (PEM strings) run in the Worker; remote images go through
+  `fetch`. A Worker has no `font/` folder, so the wasm32 build falls back to
+  four Titillium Web faces compiled into it (`pdf/fonts/OFL.txt`); the
+  native binary still embeds none. Not there: `pdf_preview*`, files given as
+  a path (`stationery`, `attachments`, local images, PEM files), your own
+  fonts, a monospaced face, CJK. Without `--pdf` the build warns when the
+  app calls a `pdf_*` builtin. The edge crate gains a `pdf` feature and CI
+  checks it for wasm32. <https://cf.solisoft.net/pdf>
+  (`examples/cloudflare-worker`) renders a PDF naming the datacenter that
+  served the request.
+
 - **Field rules, declared in a migration.** `db.set_field_rules("products",
   [{"field": "name", "required": true, "type": "string"}, {"field": "price",
   "min": 0}])` has SoliDB (after 2.13.0) hold every write of the collection

@@ -37,7 +37,7 @@ cd my_app && soli edge dev       # on workerd, http://localhost:8787</code></pre
 
     <h2 id="how-it-works" class="text-3xl font-bold text-white mb-4 scroll-mt-24">How it works</h2>
     <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
-        <li><strong class="text-white">The edge runtime</strong> is the Soli library built for <code class="text-amber-400">wasm32-unknown-unknown</code> without its server, CLI and native-only builtins: about 11.7&nbsp;MB of WebAssembly, 3.6&nbsp;MB gzipped. <code class="text-amber-400">scripts/build-edge.sh</code> builds it from the <code class="text-amber-400">edge/</code> crate.</li>
+        <li><strong class="text-white">The edge runtime</strong> is the Soli library built for <code class="text-amber-400">wasm32-unknown-unknown</code> without its server, CLI and native-only builtins: about 10.3&nbsp;MB of WebAssembly, 3.4&nbsp;MB gzipped (<a href="#pdf" class="text-amber-400 hover:underline">16.9&nbsp;MB with PDF</a>). <code class="text-amber-400">scripts/build-edge.sh</code> builds it from the <code class="text-amber-400">edge/</code> crate.</li>
         <li><strong class="text-white"><code class="text-amber-400">soli edge build</code></strong> writes a plain Wrangler project: the runtime, a small JavaScript host (<code class="text-amber-400">src/worker.js</code>), your app's source as <code class="text-amber-400">src/app.json</code>, and <code class="text-amber-400">public/</code> as the Worker's static assets.</li>
         <li><strong class="text-white">At the first request</strong> an isolate instantiates the runtime, mounts the app's files in memory (a Worker has no filesystem) and boots the app the way a <code class="text-amber-400">soli serve</code> worker does: a few tens of milliseconds, once per isolate. Later requests take a few milliseconds.</li>
         <li><strong class="text-white">Every request</strong> goes through <code class="text-amber-400">handle_request</code>, the function <code class="text-amber-400">soli serve</code>'s workers call: middleware, CSRF, routing, the action on the VM, the view and its layout.</li>
@@ -49,7 +49,7 @@ cd my_app && soli edge dev       # on workerd, http://localhost:8787</code></pre
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
         <pre data-filename="Terminal"><code class="language-bash text-sm">rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.126 --locked
-./scripts/build-edge.sh</code></pre>
+./scripts/build-edge.sh          # add --pdf for the runtime that renders PDFs</code></pre>
     </div>
     <p class="text-gray-400 mb-6">
         The wasm-bindgen CLI must match the version <code class="text-amber-400">edge/Cargo.toml</code> pins; the script checks and prints the install line when it does not. Nothing in the wasm build compiles C. The output, in <code class="text-amber-400">target/edge</code> (or <code class="text-amber-400">$OUT</code>):
@@ -61,14 +61,15 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">soli_edge_bg.wasm</code></td><td class="py-3 px-4">the interpreter (opt-level <code>z</code>, fat LTO)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">soli_edge.js</code></td><td class="py-3 px-4">wasm-bindgen glue</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">worker.js</code></td><td class="py-3 px-4">the Worker: boots the app, queues requests into wasm</td></tr>
-                <tr><td class="py-3 px-4"><code class="text-amber-400">jspi.js</code></td><td class="py-3 px-4">the one import the stack suspends on</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">jspi.js</code></td><td class="py-3 px-4">the one import the stack suspends on</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">pdf/</code></td><td class="py-3 px-4">with <code>--pdf</code> only: the wasm and glue of the runtime that <a href="#pdf" class="text-amber-400 hover:underline">renders PDFs</a></td></tr>
             </tbody>
         </table>
     </div>
 
     <h2 id="package" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Package an app: <code>soli edge build</code></h2>
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none]</code></pre>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none] [--pdf]</code></pre>
     </div>
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
         <table class="w-full text-sm text-left">
@@ -78,6 +79,7 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">--out</code>, <code class="text-amber-400">-o</code></td><td class="py-3 px-4"><code>&lt;folder&gt;/dist/edge</code> &mdash; the Wrangler project to write</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-amber-400">--runtime</code></td><td class="py-3 px-4"><code>$SOLI_EDGE_RUNTIME</code>, then <code>edge/</code> or <code>../share/soli/edge</code> next to the <code>soli</code> binary</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-amber-400">--sql</code></td><td class="py-3 px-4">detected &mdash; <code>postgres</code> to bundle its driver, <code>none</code> for nothing (see <a href="#hyperdrive" class="text-amber-400 hover:underline">PostgreSQL</a>)</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">--pdf</code></td><td class="py-3 px-4">off &mdash; package the runtime with the <code>pdf_*</code> builtins (see <a href="#pdf" class="text-amber-400 hover:underline">PDF</a>)</td></tr>
             </tbody>
         </table>
     </div>
@@ -91,7 +93,7 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
 
     <h2 id="dev" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Develop on workerd: <code>soli edge dev</code></h2>
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge dev [folder] [--port 8787] [--runtime DIR] [--sql postgres|none]</code></pre>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge dev [folder] [--port 8787] [--runtime DIR] [--sql postgres|none] [--pdf]</code></pre>
     </div>
     <p class="text-gray-400 mb-6">
         Packages the app into <code>dist/edge</code>, runs it with <code>wrangler dev --local</code> &mdash; the runtime Cloudflare runs, with local D1, R2, KV and Queues stored under <code>dist/edge/.wrangler/state</code> &mdash; and repackages on every change under <code>app/</code>, <code>config/</code>, <code>lib/</code>, <code>public/</code> or to <code>wrangler.toml</code>; wrangler reloads the Worker and the open page. The app's <code>.dev.vars</code> (wrangler's local-only variables) is copied in.
@@ -376,6 +378,46 @@ new_sqlite_classes = ["SoliLiveObject"]</code></pre>
         Not carried on the edge yet: <code>tick</code> intervals, live queries (<code>Model.live_where</code>), <code>live_update</code> from a controller or a job &mdash; they need a process that stays up &mdash; LiveView uploads (<code>soli-upload</code>), and EUI. Other WebSocket routes and server-sent events still answer <code>501</code>.
     </p>
 
+    <h2 id="pdf" class="text-3xl font-bold text-white mb-4 scroll-mt-24">PDF</h2>
+    <p class="text-gray-400 mb-6">
+        The <code class="text-amber-400">pdf_*</code> builtins are an option of the edge runtime: they add about 6.6&nbsp;MB of WebAssembly (16.9&nbsp;MB instead of 10.3, 6.0&nbsp;MB gzipped instead of 3.4), so a Worker carries them only when asked.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">./scripts/build-edge.sh --pdf                      # also builds target/edge/pdf
+soli edge build . --runtime target/edge --pdf      # packages that runtime
+soli edge dev . --runtime target/edge --pdf</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        Without <code class="text-amber-400">--pdf</code>, <code class="text-amber-400">soli edge build</code> warns when the app calls a <code>pdf_*</code> builtin, and the call fails in the Worker. With <code class="text-amber-400">--pdf</code> and a runtime built without it, the build stops and says so.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="app/controllers/invoices_controller.sl"><code class="language-soli text-sm"># GET /invoices/:id.pdf
+def show(req)
+  invoice = Invoice.find(params["id"])
+  pdf_response(InvoiceDocument.template.to_json, invoice.to_json)
+end</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        <a href="https://cf.solisoft.net/pdf" class="text-amber-400 hover:underline">cf.solisoft.net/pdf</a> renders one this way.
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Works</th><th class="py-3 px-4">Does not</th></tr></thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, <code>pdf_layout_map</code></td><td class="py-3 px-4"><code>pdf_preview*</code>: the image encoder is not in the runtime</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_facturx</code>, <code>pdf_facturx_from_invoice</code>, <code>pdfa</code>, <code>password</code></td><td class="py-3 px-4"><code>stationery</code>, <code>attachments</code> and images given as a path</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_merge</code>, <code>pdf_pages</code>, <code>pdf_stamp</code>, <code>pdf_text</code>, <code>pdf_attachments</code>, <code>pdf_extract_facturx</code> on base64</td><td class="py-3 px-4">the same on a path</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_sign</code>, <code>pdf_verify</code> and the <code>sign</code> option, with the certificate and key as PEM strings (Worker secrets)</td><td class="py-3 px-4">PEM files</td></tr>
+                <tr><td class="py-3 px-4">images from an <code>https</code> URL (through <code>fetch</code>, SSRF-checked) or a <code>data:</code> URI</td><td class="py-3 px-4">your own fonts, a monospaced face, CJK text</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
+        <li><strong class="text-white">Fonts.</strong> A Worker has no <code class="text-amber-400">font/</code> folder, so the runtime falls back to four Titillium Web faces compiled into it (Regular, Bold, Italic, BoldItalic, SIL Open Font License). <code>mono</code> text is drawn in the regular face, and a character the font lacks is dropped with a warning.</li>
+        <li><strong class="text-white">Templates.</strong> <code class="text-amber-400">slurp</code> does not read files in a Worker: write the template as a hash in Soli and call <code>.to_json</code>, as above.</li>
+        <li><strong class="text-white">Time.</strong> A render counts against the Worker&rsquo;s CPU limit. The one-page example takes about 30&nbsp;ms on workerd.</li>
+    </ul>
+
     <h2 id="scope" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What runs on the edge</h2>
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
         <table class="w-full text-sm text-left">
@@ -387,7 +429,8 @@ new_sqlite_classes = ["SoliLiveObject"]</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code>; background jobs through Cloudflare Queues; <code>static cron</code> through <a href="#cron" class="text-amber-400 hover:underline">Cron Triggers</a></td><td class="py-3 px-4"><code>Cron.schedule</code> and the cron table, SMTP (mail goes <a href="#mail" class="text-amber-400 hover:underline">over HTTP</a>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
-                <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, the <code>Image</code> class, <code>System.run</code></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">Office, the <code>Image</code> class, <code>System.run</code></td></tr>
+                <tr><td class="py-3 px-4"><a href="#pdf" class="text-amber-400 hover:underline">PDF</a>, with <code>--pdf</code>: <code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, Factur-X, signatures</td><td class="py-3 px-4">PDF previews, your own font files</td></tr>
             </tbody>
         </table>
     </div>
@@ -399,7 +442,7 @@ new_sqlite_classes = ["SoliLiveObject"]</code></pre>
         <li><strong class="text-white">An error in a handler is a 500</strong>, as under <code>soli serve</code>: the production error page, and the next request is served by the same instance.</li>
         <li><strong class="text-white">A Rust panic costs the instance.</strong> wasm is <code>panic = abort</code>, so a panic traps: that request answers 500, the Worker drops the instance (its memory was left mid-call), and the next request instantiates the module and boots the app again &mdash; tens of milliseconds.</li>
         <li><strong class="text-white">No error tracker, slow-query log or query stats</strong> (<code>/__soli/errors</code> and friends): they write from a thread of their own, which a Worker does not have. <code>npx wrangler tail</code> shows each request and its status; Soli&rsquo;s own error log (the message and stack it prints under <code>soli serve</code>) does not reach the Worker&rsquo;s console yet.</li>
-        <li><strong class="text-white">Size.</strong> About 11.7&nbsp;MB uncompressed (3.6&nbsp;MB gzipped), against Workers&rsquo; 64&nbsp;MiB limit on the uncompressed bundle, the same on the free and paid plans; there is no compressed limit any more. The Workers limit that still applies is startup time: 1&nbsp;second. The Postgres driver adds about 40&nbsp;KB.</li>
+        <li><strong class="text-white">Size.</strong> About 10.3&nbsp;MB uncompressed (3.4&nbsp;MB gzipped), 16.9&nbsp;MB with <a href="#pdf" class="text-amber-400 hover:underline">PDF</a>, against Workers&rsquo; 64&nbsp;MiB limit on the uncompressed bundle, the same on the free and paid plans; there is no compressed limit any more. The Workers limit that still applies is startup time: 1&nbsp;second. The Postgres driver adds about 40&nbsp;KB.</li>
         <li><strong class="text-white">Sessions.</strong> The default in-memory store lives as long as an isolate; use the <code>cookie</code> driver (<code>SOLI_SESSION_DRIVER=cookie</code> and a 32+ character <code>SOLI_SESSION_SECRET</code> secret).</li>
         <li><strong class="text-white">Redirects</strong> of the <code>HTTP</code> class are followed by <code>fetch</code>; the SSRF check still screens every URL you pass it.</li>
     </ul>
@@ -412,6 +455,8 @@ new_sqlite_classes = ["SoliLiveObject"]</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>Soli failed to boot: …</code> (500 on every request)</td><td class="py-3 px-4">the app did not load; the message is the boot error (syntax error, missing <code>app/controllers</code>…)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>501 Streaming responses are not available…</code></td><td class="py-3 px-4">the action streams (SSE, <code>stream</code>, <code>solidb_blob_response</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not available on the edge (Cloudflare Workers) build</code></td><td class="py-3 px-4">a builtin that needs a socket, a thread, a subprocess or a disk</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>--pdf: the edge runtime in &hellip; was built without PDF</code></td><td class="py-3 px-4">build it with <code>scripts/build-edge.sh --pdf</code></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>Undefined variable 'pdf_render'</code> in the Worker</td><td class="py-3 px-4">the app was packaged without <code>--pdf</code></td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no edge runtime found</code> from <code>soli edge build</code></td><td class="py-3 px-4">pass <code>--runtime</code> or set <code>SOLI_EDGE_RUNTIME</code> to the directory <code>build-edge.sh</code> wrote</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">a model call hangs, then the request fails</td><td class="py-3 px-4"><code>SOLIDB_HOST</code> is not reachable from Cloudflare (a LAN address, <code>localhost</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no D1 binding named DB</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[d1_databases]]</code> block whose <code>binding</code> the D1 url names</td></tr>

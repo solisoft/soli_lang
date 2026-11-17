@@ -40,8 +40,8 @@ The usual application, set up to deploy as a Worker:
 ## How it works
 
 - **The edge runtime** is the Soli library built for `wasm32-unknown-unknown`
-  without its server, CLI and native-only builtins: about 11.7 MB of
-  WebAssembly, 3.6 MB gzipped. `scripts/build-edge.sh` builds it from the
+  without its server, CLI and native-only builtins: about 10.3 MB of
+  WebAssembly, 3.4 MB gzipped ([16.9 MB with PDF](#pdf)). `scripts/build-edge.sh` builds it from the
   `edge/` crate.
 - **`soli edge build`** writes a plain Wrangler project: the runtime, a small
   JavaScript host (`src/worker.js`), your app's source as `src/app.json`, and
@@ -68,7 +68,7 @@ Once per Soli version, in the Soli source tree:
 ```bash
 rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.126 --locked
-./scripts/build-edge.sh
+./scripts/build-edge.sh          # add --pdf for the runtime that renders PDFs
 ```
 
 The wasm-bindgen CLI must match the version `edge/Cargo.toml` pins; the script
@@ -82,11 +82,12 @@ compiles C, so no C toolchain is needed. The output, in `target/edge` (or
 | `soli_edge.js` | wasm-bindgen glue |
 | `worker.js` | the Worker: boots the app, queues requests into wasm |
 | `jspi.js` | the one import the stack suspends on |
+| `pdf/` | with `--pdf` only: the wasm and glue of the runtime that [renders PDFs](#pdf) |
 
 ## Package an app: `soli edge build`
 
 ```bash
-soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none]
+soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none] [--pdf]
 ```
 
 | Option | Default | |
@@ -95,6 +96,7 @@ soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none]
 | `--out`, `-o` | `<folder>/dist/edge` | the Wrangler project to write |
 | `--runtime` | `$SOLI_EDGE_RUNTIME`, then `edge/` or `../share/soli/edge` next to the `soli` binary | where `build-edge.sh` put the runtime |
 | `--sql` | detected | `postgres` to bundle its driver, `none` for nothing (see [PostgreSQL](#postgresql-hyperdrive)) |
+| `--pdf` | off | package the runtime with the `pdf_*` builtins (see [PDF](#pdf)) |
 
 What goes where:
 
@@ -117,7 +119,7 @@ Add `dist/` to the app's `.gitignore`.
 ## Develop on workerd: `soli edge dev`
 
 ```bash
-soli edge dev [folder] [--port 8787] [--runtime DIR] [--sql postgres|none]
+soli edge dev [folder] [--port 8787] [--runtime DIR] [--sql postgres|none] [--pdf]
 ```
 
 Packages the app into `dist/edge`, runs it with `wrangler dev --local` — the
@@ -570,6 +572,49 @@ Not carried on the edge yet: `tick` intervals, live queries
 process that stays up — LiveView uploads (`soli-upload`), and EUI. Other
 WebSocket routes and server-sent events still answer `501`.
 
+## PDF
+
+The `pdf_*` builtins are an option of the edge runtime: they add about 6.6 MB
+of WebAssembly (16.9 MB instead of 10.3, 6.0 MB gzipped instead of 3.4), so a
+Worker carries them only when asked.
+
+```bash
+./scripts/build-edge.sh --pdf                      # also builds target/edge/pdf
+soli edge build . --runtime target/edge --pdf      # packages that runtime
+soli edge dev . --runtime target/edge --pdf
+```
+
+Without `--pdf`, `soli edge build` warns when the app calls a `pdf_*` builtin,
+and the call fails in the Worker. With `--pdf` and a runtime built without it,
+the build stops and says so.
+
+```soli
+# GET /invoices/:id.pdf
+def show(req)
+  invoice = Invoice.find(params["id"])
+  pdf_response(InvoiceDocument.template.to_json, invoice.to_json)
+end
+```
+
+<https://cf.solisoft.net/pdf> renders one this way.
+
+| Works | Does not |
+|-------|----------|
+| `pdf_render`, `pdf_response`, `pdf_from_markdown`, `pdf_layout_map` | `pdf_preview*`: the image encoder is not in the runtime |
+| `pdf_facturx`, `pdf_facturx_from_invoice`, `pdfa`, `password` | `stationery`, `attachments` and images given as a path |
+| `pdf_merge`, `pdf_pages`, `pdf_stamp`, `pdf_text`, `pdf_attachments`, `pdf_extract_facturx` on base64 | the same on a path |
+| `pdf_sign`, `pdf_verify` and the `sign` option, with the certificate and key as PEM strings (Worker secrets) | PEM files |
+| images from an `https` URL (through `fetch`, SSRF-checked) or a `data:` URI | your own fonts, a monospaced face, CJK text |
+
+- **Fonts.** A Worker has no `font/` folder, so the runtime falls back to four
+  Titillium Web faces compiled into it (Regular, Bold, Italic, BoldItalic,
+  SIL Open Font License). `mono` text is drawn in the regular face, and a
+  character the font lacks is dropped with a warning.
+- **Templates.** `slurp` does not read files in a Worker: write the template
+  as a hash in Soli and call `.to_json`, as above.
+- **Time.** A render counts against the Worker's CPU limit. The one-page
+  example takes about 30 ms on workerd.
+
 ## What runs on the edge
 
 | Runs | Stays with `soli serve` |
@@ -580,7 +625,8 @@ WebSocket routes and server-sent events still answer `501`.
 | i18n from `config/locales`; background jobs through Cloudflare Queues; `static cron` through Cron Triggers | `Cron.schedule` and the cron table, SMTP (mail goes [over HTTP](#mail-over-http)) |
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
-| static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, the `Image` class, `System.run` |
+| static files from `public/`; attachments on R2, with `Range` and image transforms | Office, the `Image` class, `System.run` |
+| [PDF](#pdf), with `--pdf`: `pdf_render`, `pdf_response`, `pdf_from_markdown`, Factur-X, signatures | PDF previews, your own font files |
 
 A builtin that needs what a Worker lacks returns an error naming the edge
 build ("… is not available on the edge (Cloudflare Workers) build").
@@ -602,7 +648,8 @@ build ("… is not available on the edge (Cloudflare Workers) build").
   have. `npx wrangler tail` shows each request and its status; Soli's own
   error log (the message and stack it prints under `soli serve`) does not
   reach the Worker's console yet.
-- **Size.** About 11.7 MB uncompressed (3.6 MB gzipped), against Workers'
+- **Size.** About 10.3 MB uncompressed (3.4 MB gzipped), 16.9 MB with
+  [PDF](#pdf), against Workers'
   64 MiB limit on the uncompressed bundle, the same on the free and paid
   plans; there is no compressed limit any more. The Workers limit that still
   applies is startup time: 1 second. The Postgres driver adds about 40 KB.
@@ -619,6 +666,8 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 | `Soli failed to boot: …` (500 on every request) | the app did not load: the message is the boot error (syntax error, missing `app/controllers`…) |
 | `501 Streaming responses are not available…` | the action streams (SSE, `stream`, `solidb_blob_response`) |
 | `… is not available on the edge (Cloudflare Workers) build` | a builtin that needs a socket, a thread, a subprocess or a disk |
+| `--pdf: the edge runtime in … was built without PDF` | build it with `scripts/build-edge.sh --pdf` |
+| `Undefined variable 'pdf_render'` in the Worker | the app was packaged without `--pdf` |
 | `no edge runtime found` from `soli edge build` | pass `--runtime` or set `SOLI_EDGE_RUNTIME` to the directory `build-edge.sh` wrote |
 | a model call hangs, then the request fails | `SOLIDB_HOST` is not reachable from Cloudflare (a LAN address, `localhost`) |
 | `no D1 binding named DB` | `wrangler.toml` lacks the `[[d1_databases]]` block whose `binding` the D1 url names |

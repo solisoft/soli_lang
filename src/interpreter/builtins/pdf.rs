@@ -1187,7 +1187,7 @@ fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
     let stationery = match opt_str(opts, "stationery") {
         Some(p) => {
             let resolved = resolve_font_dir(PathBuf::from(&p));
-            Some(std::fs::read(&resolved).map_err(|e| {
+            Some(crate::platform::fs::read(&resolved).map_err(|e| {
                 format!(
                     "stationery: could not read '{p}' ({}): {e}",
                     resolved.display()
@@ -1212,7 +1212,7 @@ fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
                 };
                 let path = path.to_string();
                 let resolved = resolve_font_dir(PathBuf::from(&path));
-                let bytes = std::fs::read(&resolved).map_err(|e| {
+                let bytes = crate::platform::fs::read(&resolved).map_err(|e| {
                     format!(
                         "attachments: could not read '{path}' ({}): {e}",
                         resolved.display()
@@ -1290,7 +1290,7 @@ fn load_pem(value: &str, what: &str) -> Result<String, String> {
         return Ok(value.to_string());
     }
     let resolved = resolve_font_dir(PathBuf::from(value));
-    std::fs::read_to_string(&resolved).map_err(|e| {
+    crate::platform::fs::read_to_string(&resolved).map_err(|e| {
         format!(
             "sign: could not read {what} '{value}' ({}): {e}",
             resolved.display()
@@ -1443,8 +1443,8 @@ fn apply_signature(pdf: Vec<u8>, cfg: Option<&SignConfig>) -> Result<Vec<u8>, St
 /// file, or base64-encoded PDF bytes (what `pdf_render` returns).
 fn load_pdf_source(s: &str) -> Result<Vec<u8>, String> {
     let resolved = resolve_font_dir(PathBuf::from(s));
-    if resolved.is_file() {
-        return std::fs::read(&resolved)
+    if crate::platform::fs::is_file(&resolved) {
+        return crate::platform::fs::read(&resolved)
             .map_err(|e| format!("could not read PDF '{s}' ({}): {e}", resolved.display()));
     }
     base64::engine::general_purpose::STANDARD

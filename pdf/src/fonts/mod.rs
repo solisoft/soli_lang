@@ -1,7 +1,9 @@
 //! Font loading, coverage itemization, and advance-width metrics.
 //!
-//! **No fonts are embedded in the binary.** All faces are loaded at runtime
-//! from the directories in `RenderOptions::font_dirs` (CLI `--font-dir`). The
+//! **No fonts are embedded in a native binary.** All faces are loaded at runtime
+//! from the directories in `RenderOptions::font_dirs` (CLI `--font-dir`); the
+//! wasm32 build, which has no disk, falls back to four compiled-in Titillium
+//! Web faces when those directories yield nothing (`EMBEDDED_FONTS`). The
 //! template's `fonts: [...]` field names the family to use as the primary text
 //! face; its Regular/Bold/Italic/BoldItalic styles are resolved from the loaded
 //! files. A monospaced font (e.g. JetBrains Mono) supplies the `code`/mono
@@ -235,6 +237,12 @@ impl FontRegistry {
                     }
                 }
             }
+        }
+        // The edge build has no disk to hold a `font/` folder: fall back to
+        // the faces compiled in, so a render needs no configuration there.
+        #[cfg(target_arch = "wasm32")]
+        if loaded.is_empty() {
+            loaded = embedded_faces();
         }
         if loaded.is_empty() {
             return Err(PdfError::Font(format!(
@@ -529,6 +537,37 @@ impl FontRegistry {
 }
 
 /// List `.ttf`/`.otf`/`.ttc` files in `dir`, sorted by name. Missing dir → empty.
+/// Titillium Web (SIL Open Font License 1.1, `fonts/OFL.txt`), compiled into
+/// the wasm32 build only: Regular, Bold, Italic and BoldItalic, about 266 KB.
+/// No monospaced face and no CJK coverage — those stay a matter of font files.
+#[cfg(any(target_arch = "wasm32", test))]
+const EMBEDDED_FONTS: [(&str, &[u8]); 4] = [
+    (
+        "titilliumweb-regular",
+        include_bytes!("../../fonts/TitilliumWeb-Regular.ttf"),
+    ),
+    (
+        "titilliumweb-bold",
+        include_bytes!("../../fonts/TitilliumWeb-Bold.ttf"),
+    ),
+    (
+        "titilliumweb-italic",
+        include_bytes!("../../fonts/TitilliumWeb-Italic.ttf"),
+    ),
+    (
+        "titilliumweb-bolditalic",
+        include_bytes!("../../fonts/TitilliumWeb-BoldItalic.ttf"),
+    ),
+];
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn embedded_faces() -> Vec<LoadedFace> {
+    EMBEDDED_FONTS
+        .iter()
+        .filter_map(|(key, bytes)| LoadedFace::load(bytes.to_vec(), key.to_string()).ok())
+        .collect()
+}
+
 fn font_files(dir: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = match fs::read_dir(dir) {
         Ok(rd) => rd.flatten().map(|e| e.path()).collect(),
@@ -551,6 +590,21 @@ mod tests {
     fn pdf_fonts() -> FontRegistry {
         FontRegistry::from_font_dirs(&[PathBuf::from("fonts")], &["titillium".to_string()])
             .expect("load fonts from ./fonts")
+    }
+
+    #[test]
+    fn embedded_faces_cover_the_four_styles() {
+        let faces = embedded_faces();
+        let mut styles: Vec<(bool, bool)> =
+            faces.iter().map(|f| (f.is_bold, f.is_italic)).collect();
+        styles.sort();
+        assert_eq!(
+            styles,
+            vec![(false, false), (false, true), (true, false), (true, true)]
+        );
+        assert!(faces
+            .iter()
+            .all(|f| !f.is_mono && f.matches_family("titillium")));
     }
 
     #[test]

@@ -6,12 +6,13 @@ its data in Cloudflare D1.
 
 ```bash
 soli serve .                                   # as usual, on your machine
-soli edge dev . --runtime ../../target/edge    # on workerd, rebuilt as you edit
-soli edge build . --runtime ../../target/edge  # the Worker, in dist/edge
+soli edge dev . --runtime ../../target/edge --pdf    # on workerd, rebuilt as you edit
+soli edge build . --runtime ../../target/edge --pdf  # the Worker, in dist/edge
 ```
 
-`../../target/edge` is what `scripts/build-edge.sh` produces in the Soli
-source tree.
+`../../target/edge` is what `scripts/build-edge.sh --pdf` produces in the Soli
+source tree. `--pdf` because the `/pdf` page renders one: without it the
+Worker is 6.6 MB smaller and that page answers with an error.
 
 ## Deploying cf.solisoft.net
 
@@ -21,7 +22,7 @@ observability settings. `soli edge build` copies it into `dist/edge` on every
 build, so a clone deploys the site as it is:
 
 ```bash
-soli edge build . --runtime ../../target/edge
+soli edge build . --runtime ../../target/edge --pdf
 cd dist/edge && npx wrangler deploy   # after `npx wrangler login`, or with CLOUDFLARE_API_TOKEN
 ```
 
