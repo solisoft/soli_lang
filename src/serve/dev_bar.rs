@@ -56,6 +56,60 @@ pub fn is_htmx_request(hx_request: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+/// What the request headers say about who will read the response, as far as
+/// the dev bar is concerned.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BarTarget {
+    /// A navigation, or a client that says nothing: the bar is injected.
+    Page,
+    /// A script fetched it (`Sec-Fetch-Dest: empty`). It gets a bar only when
+    /// the response is a whole document — Turbo-style navigation swaps the
+    /// `<body>` it fetched, and the bar has to come along.
+    Script,
+    /// The client said it wants a fragment (`HX-Request: true`,
+    /// `X-Requested-With: XMLHttpRequest`): never a bar.
+    Fragment,
+}
+
+/// Classify a request from its `hx-request`, `x-requested-with` and
+/// `sec-fetch-dest` headers. An Ajax response lands inside a page that already
+/// carries the bar, so a second one must not ride along in the fragment.
+pub fn bar_target(
+    hx_request: Option<&str>,
+    requested_with: Option<&str>,
+    sec_fetch_dest: Option<&str>,
+) -> BarTarget {
+    let ajax = requested_with
+        .map(|v| v.eq_ignore_ascii_case("XMLHttpRequest"))
+        .unwrap_or(false);
+    if is_htmx_request(hx_request) || ajax {
+        return BarTarget::Fragment;
+    }
+    match sec_fetch_dest {
+        Some(dest) if dest.eq_ignore_ascii_case("empty") => BarTarget::Script,
+        _ => BarTarget::Page,
+    }
+}
+
+/// Whether the bar goes into this HTML response.
+pub fn wants_bar(target: BarTarget, html: &str) -> bool {
+    match target {
+        BarTarget::Page => true,
+        BarTarget::Fragment => false,
+        BarTarget::Script => is_full_document(html),
+    }
+}
+
+/// A whole page rather than a fragment: it opens `<html` or closes `</body>`.
+fn is_full_document(html: &str) -> bool {
+    let has = |needle: &[u8]| {
+        html.as_bytes()
+            .windows(needle.len())
+            .any(|window| window.eq_ignore_ascii_case(needle))
+    };
+    has(b"<html") || has(b"</body>")
+}
+
 /// Data the response thread captures and hands to the injector.
 /// A fully-owned, cloneable snapshot of one request's dev data. It is both the
 /// input to [`render_bar`] and the value stored per-request in
@@ -2306,6 +2360,28 @@ mod tests {
         assert!(is_htmx_request(Some("true")));
         assert!(is_htmx_request(Some("TRUE")));
         assert!(!is_htmx_request(Some("false")));
+    }
+
+    #[test]
+    fn ajax_requests_are_fragments() {
+        assert_eq!(bar_target(None, None, None), BarTarget::Page);
+        assert_eq!(bar_target(None, None, Some("document")), BarTarget::Page);
+        assert_eq!(bar_target(Some("true"), None, None), BarTarget::Fragment);
+        assert_eq!(
+            bar_target(None, Some("XMLHttpRequest"), Some("empty")),
+            BarTarget::Fragment
+        );
+        assert_eq!(bar_target(None, None, Some("empty")), BarTarget::Script);
+    }
+
+    #[test]
+    fn a_script_fetch_gets_a_bar_only_on_a_whole_document() {
+        let fragment = "<div class=\"cart\">1 item</div>";
+        let page = "<!DOCTYPE html><HTML><body><p>hi</p></BODY></html>";
+        assert!(!wants_bar(BarTarget::Script, fragment));
+        assert!(wants_bar(BarTarget::Script, page));
+        assert!(wants_bar(BarTarget::Page, fragment));
+        assert!(!wants_bar(BarTarget::Fragment, page));
     }
 
     #[test]

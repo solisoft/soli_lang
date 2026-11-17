@@ -480,8 +480,17 @@ page load. Only the most recent requests are kept, so a long-idle row may report
 that it has aged out. WebSocket, SSE and `sendBeacon` traffic is not captured,
 and a request fired before the bar's script runs may be missed.
 
-**HTMx.** The bar is not re-injected on a swap — that would stack a second bar —
-so the header follows HTMx navigations instead: when HTMx pushes the URL
+**Ajax.** A response fetched by a script lands inside a page that already shows
+the bar, so it gets none of its own — a second bar would stack on the first. The
+call is listed in the requests panel instead. That covers HTMx (`HX-Request:
+true`), jQuery and anything else sending `X-Requested-With: XMLHttpRequest`, and
+a plain `fetch` (`Sec-Fetch-Dest: empty`) whose response is a fragment. A `fetch`
+that returns a whole document keeps its bar, because Turbo-style navigation swaps
+in the `<body>` it fetched. Browsers send `Sec-Fetch-Dest` only on `https` and
+`localhost`; on another plain-`http` host, send `X-Requested-With` with a
+`fetch` that returns an HTML fragment.
+
+**HTMx.** The header follows HTMx navigations: when HTMx pushes the URL
 (`hx-push-url` / `hx-boost`) the header's route and render time update. Widget
 requests that do not change the URL are added to the panel but leave the header
 alone.

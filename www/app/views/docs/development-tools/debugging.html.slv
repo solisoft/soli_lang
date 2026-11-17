@@ -533,7 +533,7 @@ end</code></pre>
 
         <div class="my-6 p-4 rounded-lg bg-sky-500/10 border border-sky-500/20">
             <p class="text-sky-300 text-sm">
-                <strong>HTMx-aware.</strong> Soli skips dev bar injection on responses to requests carrying the <code>HX-Request: true</code> header. HTMx swaps a fragment into a page that already shows the dev bar, so re-injecting the bar into the fragment would stack a duplicate at the bottom of the page on every swap.
+                <strong>Ajax-aware.</strong> A response fetched by a script lands inside a page that already shows the dev bar, so it gets none of its own &mdash; a second bar would stack on the first. The call is listed in the requests panel instead. That covers HTMx (<code>HX-Request: true</code>), jQuery and anything else sending <code>X-Requested-With: XMLHttpRequest</code>, and a plain <code>fetch</code> (<code>Sec-Fetch-Dest: empty</code>) whose response is a fragment. A <code>fetch</code> that returns a whole document keeps its bar, because Turbo-style navigation swaps in the <code>&lt;body&gt;</code> it fetched. Browsers send <code>Sec-Fetch-Dest</code> only on <code>https</code> and <code>localhost</code>; on another plain-<code>http</code> host, send <code>X-Requested-With</code> with a <code>fetch</code> that returns an HTML fragment.
             </p>
         </div>
 

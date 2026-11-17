@@ -227,7 +227,7 @@ The pattern is the same for any widget library: `x-init` for one-shot mounts, `x
 
 - **HTMx + Alpine** share the same DOM and work together cleanly. HTMx uses `hx-*`, Alpine uses `x-*` — no namespace collision.
 - **Live View** containers morph the DOM in place, so Alpine state attached to surviving nodes carries across patches. The safe home for an Alpine island inside a live region is a `soli-ignore` subtree: the morph never touches its children, so Alpine-inserted DOM (`x-if`/`x-for`) and `x-show` style toggles are preserved too. Outside `soli-ignore`, the server owns the tree and reverts client-inserted DOM on the next patch.
-- **The dev bar** automatically skips itself on HTMx partial responses (it reads the `HX-Request` header) so swaps don't accumulate stacked dev bars on the page. No configuration needed.
+- **The dev bar** automatically skips itself on Ajax responses — HTMx (`HX-Request`), jQuery (`X-Requested-With: XMLHttpRequest`) and a `fetch` that returns a fragment — so swaps don't accumulate stacked dev bars on the page. No configuration needed.
 
 ## Upgrading or Replacing
 

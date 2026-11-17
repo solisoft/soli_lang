@@ -6878,7 +6878,7 @@ fn handle_request(
         log_channels,
         cookie_session_id,
         cookie_secure: scheme.cookie_secure,
-        is_htmx: input.is_htmx,
+        bar_target: input.bar_target,
         captured_raw,
     };
 

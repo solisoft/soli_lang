@@ -32,10 +32,11 @@ use super::{
 pub(super) struct Input {
     /// `req` — the whole request as a Soli hash.
     pub(super) request_hash: Value,
-    /// Whether this is an HTMx partial swap. Captured here because the header
-    /// it is read from is taken out of `data` a few lines later, and the dev
-    /// bar needs the answer at the very end of the request.
-    pub(super) is_htmx: bool,
+    /// Who reads the response: a page, a script, or a client that asked for a
+    /// fragment. Captured here because the headers it is read from are taken
+    /// out of `data` a few lines later, and the dev bar needs the answer at
+    /// the very end of the request.
+    pub(super) bar_target: dev_bar::BarTarget,
 }
 
 /// How this request arrived, as far as the server can tell.
@@ -77,11 +78,15 @@ pub(super) fn build(
 
     publish_request_host(data, scheme);
 
-    // Capture whether this is an HTMx partial-swap request before `headers`
-    // is moved into `RequestData`. HTMx returns the response fragment into
-    // the live DOM, where the page-level dev bar already exists — injecting
-    // a second one into the fragment produces stacked bars.
-    let is_htmx = dev_bar::is_htmx_request(header_str(&data.headers, "hx-request"));
+    // Capture whether this is an Ajax request (HTMx, jQuery, `fetch`) before
+    // `headers` is moved into `RequestData`. Its response lands in the live
+    // DOM, where the page-level dev bar already exists — injecting a second
+    // one into the fragment produces stacked bars.
+    let bar_target = dev_bar::bar_target(
+        header_str(&data.headers, "hx-request"),
+        header_str(&data.headers, "x-requested-with"),
+        header_str(&data.headers, "sec-fetch-dest"),
+    );
 
     // Take ownership of headers and query to avoid cloning individual keys/values.
     // This is the ONE place the wire headers become owned Strings: straight
@@ -147,7 +152,7 @@ pub(super) fn build(
 
     Input {
         request_hash,
-        is_htmx,
+        bar_target,
     }
 }
 

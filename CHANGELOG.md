@@ -110,6 +110,15 @@
 
 ### Fixed
 
+- **Dev bar: an Ajax response no longer carries a second bar.** Only HTMx
+  requests (`HX-Request: true`) were recognised, so a jQuery call or a `fetch`
+  returning an HTML fragment got a bar of its own, stacked on the page's. The
+  bar is now left out when the request carries `X-Requested-With:
+  XMLHttpRequest`, and when a script fetched it (`Sec-Fetch-Dest: empty`) and
+  the response is a fragment. A script fetch that returns a whole document
+  keeps its bar, for Turbo-style navigation. The call is still listed in the
+  requests panel.
+
 - **ORM: `create` writes a field's literal default and builds value objects
   (#909).** `Order.create(attrs)` left out the fields declared with a literal
   default (`status: String = "draft"`): not validated, not stored, `nil` on

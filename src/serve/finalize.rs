@@ -60,9 +60,9 @@ pub(super) struct Finalizer {
     pub(super) cookie_session_id: Option<String>,
     /// Whether a `Set-Cookie` written here gets the `Secure` flag.
     pub(super) cookie_secure: bool,
-    /// Whether this response is an HTMx partial swap. The dev bar is not
-    /// injected into one — the page it swaps into already carries a bar.
-    pub(super) is_htmx: bool,
+    /// Who reads this response. The dev bar is not injected into an Ajax
+    /// fragment — the page it lands in already carries a bar.
+    pub(super) bar_target: dev_bar::BarTarget,
     /// The request as it arrived, kept in `--dev` for the replay button.
     pub(super) captured_raw: Option<dev_store::RawRequest>,
 }
@@ -308,12 +308,14 @@ fn dev_snapshot(f: &Finalizer, method: &str, path: &str, resp: &mut ResponseData
     }
     dev_store::put(request_id, ctx.clone());
 
-    // Inject the bar only into full HTML pages. HTMx partial responses
-    // share the page that already carries the dev bar; injecting again
-    // would append a second one into the live DOM on each swap.
-    if is_html && !f.is_htmx {
+    // Inject the bar only into pages. An Ajax response (HTMx, jQuery,
+    // `fetch`) shares the page that already carries the dev bar; injecting
+    // again would put a second one into the live DOM.
+    if is_html {
         if let Ok(body_str) = std::str::from_utf8(&resp.body) {
-            resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into();
+            if dev_bar::wants_bar(f.bar_target, body_str) {
+                resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into();
+            }
         }
     }
 }
