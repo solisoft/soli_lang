@@ -438,7 +438,8 @@ pub(crate) fn load_models(
 /// extends it; keep cross-file superclasses at an equal-or-shallower depth.
 ///
 /// One exception: files that declare a value object (a domain event is one),
-/// an enum or a mixin module load first, wherever they sit — `value_field
+/// an enum or a mixin module (a `module` with no `class` in it — one that
+/// wraps a class is a bounded context) load first, wherever they sit — `value_field
 /// :price, Price` in `invoice.sl` names a class that `price.sl` (or
 /// `values/price.sl`) would only define later, and `include Publishable` in
 /// `post.sl` names the module of `concerns/publishable.sl`, a subdirectory.
@@ -483,16 +484,22 @@ pub fn controller_load_order(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Whether a file's source declares a value object, an enum or a mixin
-/// module — a textual look, before anything is parsed. A protected bundle's serialized AST is
+/// module (no `class` in the file) — a textual look, before anything is parsed. A protected bundle's serialized AST is
 /// never matched: it loads in plain order.
 fn declares_values(source: &[u8]) -> bool {
     if crate::bundle::is_ast_blob(source) {
         return false;
     }
-    String::from_utf8_lossy(source).lines().any(|line| {
-        let line = line.trim_start();
+    let text = String::from_utf8_lossy(source);
+    let lines = || text.lines().map(str::trim_start);
+    // A module that holds a class is a bounded context (`module Care` around
+    // `class Entry < Model`), not a mixin: it keeps the plain order, after the
+    // folder's own files — a `const` of `app/models/_vocabulary.sl` that its
+    // validations read must exist first (2.36.0 regression).
+    let declares_class = lines().any(|line| line.starts_with("class "));
+    lines().any(|line| {
         line.starts_with("enum ")
-            || line.starts_with("module ")
+            || (line.starts_with("module ") && !declares_class)
             || (line.starts_with("class ")
                 && line.split_once('<').is_some_and(|(_, parent)| {
                     matches!(parent.trim(), "ValueObject" | "DomainEvent")

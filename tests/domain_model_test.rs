@@ -964,6 +964,19 @@ fn the_test_runner_preloads_contexts_in_the_servers_order() {
         "app/models/article.sl",
         "class Article < Model\n  include Publishable\nend\n",
     );
+    // A bounded context is a module too, but not a mixin: it loads after the
+    // folder's own files, so it can read a `const` of one (2.36.0 loaded it
+    // first: `Undefined variable 'CARE_KINDS'`, and the app did not boot).
+    write(
+        root,
+        "app/models/_vocabulary.sl",
+        "const CARE_KINDS = [\"note\"]\n",
+    );
+    write(
+        root,
+        "app/models/care/entry.sl",
+        "module Care\n  class Entry < Model\n    validates(\"kind\", {\"inclusion\": CARE_KINDS})\n  end\nend\n",
+    );
 
     let order: Vec<String> = solilang::serve::sl_load_order(&root.join("app/models"))
         .iter()
@@ -980,9 +993,11 @@ fn the_test_runner_preloads_contexts_in_the_servers_order() {
             "_base.sl",
             "concerns/publishable.sl",
             "values/price.sl",
+            "_vocabulary.sl",
             "article.sl",
             "zebra.sl",
-            "billing/invoice.sl"
+            "billing/invoice.sl",
+            "care/entry.sl"
         ]
     );
     assert!(solilang::serve::sl_load_order(&root.join("app/missing")).is_empty());

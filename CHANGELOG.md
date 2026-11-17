@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [2.37.1] - 2026-11-17
+
+### Fixed
+
+- **An app with a bounded context next to a top-level `const` did not boot
+  (2.36.0 regression).** Since 2.36.0 a file that declares a `module` loads
+  first, so that a concern of `app/models/concerns/` exists before the model
+  that includes it. A bounded context is a module too: `app/models/care/entry.sl`
+  (`module Care` around `class Entry < Model`) loaded before
+  `app/models/_vocabulary.sl`, and its `validates(..., {"inclusion":
+  CARE_KINDS})` stopped the boot with `Undefined variable 'CARE_KINDS'`;
+  behind soli-proxy every request got 421. A module whose file declares a
+  class keeps the plain order again (the folder's files, then its
+  subfolders); mixins, value objects, domain events and enums still load
+  first.
+
 ## [2.37.0] - 2026-11-17
 
 ### Changed
