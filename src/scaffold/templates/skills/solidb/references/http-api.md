@@ -474,8 +474,9 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   `PERCENTILE(r.col, p)` and `APPROX_COUNT_DISTINCT(r.col)` are answered
   from the arrays too: `STDDEV` 1,768 → 8 ms, `MEDIAN` 1,773 → 13 ms,
   `PERCENTILE(r.amount, 95)` 12 ms, `APPROX_COUNT_DISTINCT(r.user)` 22 ms
-  (exact `COUNT_DISTINCT(r.user)`: 394 ms; prefer the approximate one for
-  a dashboard). `UNIQUE`, `COLLECT_LIST`, `BIT_*` and `COLLECT … INTO`
+  (exact `COUNT_DISTINCT(r.user)`: 394 ms on 2.13.0 and at commit
+  `70fb3de3`, 49 ms after it, card #952). Three percentiles and a median
+  of one column in one COLLECT: 22 ms (its numbers are kept once). `UNIQUE`, `COLLECT_LIST`, `BIT_*` and `COLLECT … INTO`
   still build rows (about 1.7 s there). Results are
   the same either way. Through 2.11.0 columnar indexes serve `/query` and
   `/aggregate` only; from 2.12.0 a pushed-down SDBQL FILTER uses a hash,

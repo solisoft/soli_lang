@@ -110,7 +110,9 @@ FOR x IN 1..10 COLLECT AGGREGATE p = PERCENTILE(x, 90), a = APPROX_COUNT_DISTINC
 - A `MEDIAN` / `PERCENTILE` keeps its numbers: through 2.13.0 each counts as
   a row against `SOLIDB_MAX_INTERMEDIATE_ROWS` (a median over more than
   5,000,000 values → `500 "Query exceeded the intermediate row limit"`);
-  after it, eight numbers count as one row.
+  after it, eight numbers count as one row, and several `PERCENTILE` /
+  `MEDIAN` of the same expression in one COLLECT keep (and count) its
+  numbers once.
 
 **A full-scan COLLECT streams** (after 2.7.2): `FOR x IN c [FILTER …|LET …]*
 COLLECT …` folds each document into its group as it is read and decodes only
