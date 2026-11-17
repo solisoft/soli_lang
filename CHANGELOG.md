@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.37.0] - 2026-11-17
+
 ### Changed
 
 - **`Model.add_column_index(field, "minmax")` is refused.** SoliDB removed
@@ -109,6 +111,15 @@
 - **`jwt_sign` / `jwt_verify` take `ES256`** (a P-256 key in PEM form).
 
 ### Fixed
+
+- **`indexed: true` on a columnar column builds its index again.** SoliDB
+  2.3 and later ignore `"indexed"` in a column definition (it marked the
+  column without building anything), so `column "country", "string",
+  indexed: true` on a model and `{"indexed": true}` in `db.create_columnar`
+  left the column with no index while the docs promised the default `sorted`
+  one. Soli now asks for the index right after it creates the store; on an
+  older server, which answers that the column already has one, nothing
+  changes. CI runs the specs against SoliDB 2.13.0 (was 2.2.0).
 
 - **Dev bar: an Ajax response no longer carries a second bar.** Only HTMx
   requests (`HX-Request: true`) were recognised, so a jQuery call or a `fetch`

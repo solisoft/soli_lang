@@ -12,6 +12,11 @@ end
 
 const NO_DOCUMENT_API = "ColTestView is a columnar model; columnar stores have no document API"
 
+# The store's column indexes as sorted "column:kind" strings.
+def index_kinds
+  ColTestView.column_indexes.map { |index| "#{index["column"]}:#{index["index_type"]}" }.sort
+end
+
 # A raw client on the ORM's database: the only way to drop a columnar store.
 def raw_db
   db = Solidb(getenv("SOLIDB_HOST") || "http://localhost:6745", db_name())
@@ -171,13 +176,15 @@ describe("Columnar insert/aggregate/query/count (DB)") do
   test("column index lifecycle: add, list, drop") do
     insert_standard_rows()
 
+    # `country` is declared `indexed: true`: its index came with the store.
+    assert_eq(index_kinds(), ["country:sorted"])
+
     # `url` is not schema-indexed, so the full lifecycle runs on it.
     ColTestView.add_column_index("url", "bitmap")
-    indexes = ColTestView.column_indexes
-    assert_eq(indexes.map { |index| [index["column"], index["index_type"]] }, [["url", "bitmap"]])
+    assert_eq(index_kinds(), ["country:sorted", "url:bitmap"])
 
     ColTestView.drop_column_index("url")
-    assert_eq(ColTestView.column_indexes, [])
+    assert_eq(index_kinds(), ["country:sorted"])
   end
 
   test("a schema-declared indexed column already has an index") do

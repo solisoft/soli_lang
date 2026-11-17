@@ -386,11 +386,35 @@ impl SoliDBClient {
         if let Some(c) = compression {
             body["compression"] = serde_json::Value::String(c.to_string());
         }
-        self.request(
+        let created = self.request(
             reqwest::Method::POST,
             &format!("/_api/database/{}/columnar", seg(db)?),
             Some(&body),
-        )
+        )?;
+        // SoliDB ignores `indexed` in a column definition (it used to mark
+        // the column without building anything), so the index is built here.
+        // An older server refuses it as a duplicate: nothing more to do.
+        let indexed = columns
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|column| column.get("indexed").and_then(Value::as_bool) == Some(true));
+        for column in indexed {
+            let Some(column_name) = column.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            let built = self.request(
+                reqwest::Method::POST,
+                &format!("/_api/database/{}/columnar/{}/index", seg(db)?, seg(name)?),
+                Some(&serde_json::json!({ "column": column_name })),
+            );
+            if let Err(e) = built {
+                if !e.to_string().contains("already has an index") {
+                    return Err(e);
+                }
+            }
+        }
+        Ok(created)
     }
 
     pub fn drop_columnar(&self, name: &str) -> Result<(), SoliDBError> {

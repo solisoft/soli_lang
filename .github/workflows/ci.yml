@@ -130,7 +130,7 @@ jobs:
       # for its clients would become its listen address.
       - name: Start SoliDB (native driver test and specs)
         run: |
-          curl -fsSL -o /tmp/solidb.tgz https://github.com/solisoft/solidb/releases/download/v2.2.0/solidb-linux-amd64.tar.gz
+          curl -fsSL -o /tmp/solidb.tgz https://github.com/solisoft/solidb/releases/download/v2.13.0/solidb-linux-amd64.tar.gz
           mkdir -p /tmp/solidb && tar -xzf /tmp/solidb.tgz -C /tmp/solidb
           SOLIDB_ADMIN_PASSWORD=admin JWT_SECRET=ci-only-jwt-secret-for-the-test-server \
             nohup /tmp/solidb/solidb --host 127.0.0.1 --port 16745 --data-dir /tmp/solidb/data > /tmp/solidb/server.log 2>&1 &

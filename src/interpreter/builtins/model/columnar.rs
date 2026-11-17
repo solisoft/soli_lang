@@ -155,7 +155,22 @@ pub fn create_store_from_schema(
     if let Some(compression) = &schema.compression {
         body["compression"] = serde_json::Value::String(compression.clone());
     }
-    exec_db_api_request(reqwest::Method::POST, "/columnar", Some(body)).map(|_| ())
+    exec_db_api_request(reqwest::Method::POST, "/columnar", Some(body))?;
+    // SoliDB ignores `indexed` in a column definition (it used to mark the
+    // column without building anything), so the index is built here.
+    for column in schema.columns.iter().filter(|c| c.indexed) {
+        match create_index(collection, &column.name, None) {
+            Err(e) if !is_existing_index_error(&e) => return Err(e),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// An older SoliDB marks an `indexed` column at creation and then refuses
+/// the index as a duplicate: the column is as indexed as that server makes it.
+fn is_existing_index_error(err: &str) -> bool {
+    err.contains("already has an index")
 }
 
 /// Insert rows; auto-creates the store from the declared schema on a
