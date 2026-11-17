@@ -105,6 +105,14 @@ admin. `POST …/document/_jobs`, by caller:
   itself and through 2.12.1 they are `403` with the editor's message and
   only a global admin's query writes `_jobs`: use the document endpoint
   there. An editor's query stays `403`.
+- **From a Lua service script too, from commit `86074294`**
+  (unreleased; observed 2026-11-17 on a build of it): a script writes as
+  its caller, so one called by `admin@shop` in `shop` writes `_jobs` by
+  `db:collection("_jobs"):insert({…})` and by
+  `db:query("INSERT {…} INTO _jobs")`. Through 2.13.0 both are `403`
+  with the editor's message, whatever the docs said. The same script
+  called by that admin in another database, or by an editor, is `403`;
+  `_scripts` and `_env` stay `403` from a script as from the API.
 - That is all such an admin gains in a query: `ROW_POLICY("c", "…")` is
   still `403 "…changes a row policy and requires admin"` for anyone but a
   global admin.
