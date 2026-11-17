@@ -144,6 +144,35 @@ admin. `POST …/document/_jobs`, by caller:
 Other collection routes exist (`/compact`, `/recount`, `/repair`, `/prune`,
 `/properties`, `/export`, `/import`, `/schema`) — not exercised here.
 
+### Field rules (build after 2.13.0)
+
+What a collection asks of a top-level field; checked on every write (document
+API, SDBQL, driver, transactions, import) and, unlike a JSON schema, without
+slowing the driver's writes. Observed on a build of `main` after 2.13.0
+(2026-11-17):
+
+```text
+PUT /_api/database/{db}/collection/{name}/rules      (replaces the rules; Write)
+{"rules":[{"field":"name","required":true,"type":"string"},
+          {"field":"price","type":"number","min":0,"max":1000},
+          {"field":"status","in":["open","paid"]}]}
+→ 200 {"rules":[…as stored: min/max come back as floats, 0.0…]}
+GET    …/rules → 200 {"rules":[…]}        ({"rules":[]} when none)
+DELETE …/rules → 204
+```
+- Keys of a rule: `field` (top-level, no dot, no leading `_`), `required`
+  (present and not null), `type` (`string` `number` `integer` `bool` `object`
+  `array`), `min` / `max` (numbers), `in` (strings, numbers, booleans). A
+  field left out or null passes everything but `required`.
+- A write that breaks one: `400 {"code":400,"error":"Schema validation
+  failed: 'price' must be at least 0","type":"InvalidDocument"}` — the same
+  through SDBQL (`UPDATE "a" WITH {price: 2000} IN goods` → `'price' must be
+  at most 1000`). Nothing is written, a whole batch included.
+- A rule that asks for nothing → `400 The rule on 'x' asks for nothing`; an
+  unknown key in a rule → `422` (body does not deserialize).
+- Documents already stored are not checked; an update of one is.
+- Local to the node: not replicated, not dumped (as `/schema`).
+
 ## Documents
 
 | Method & path | Notes | Response |
