@@ -385,11 +385,19 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   column with an index → `409 "… drop the index first"`. Through 2.11.0
   the columns are fixed at creation.
 - No update of a row in place (delete and insert again).
-- No row policies: whoever may read the database reads every row.
-  `ROW_POLICY("metrics", …)` (or on `_columnar_metrics`) is refused from the
-  build after 2.13.0 with `'metrics' is a columnar collection: row policies
-  do not apply to it…`; on 2.13.0 the first answers `404 CollectionNotFound`
-  and the second is stored and never applied (observed 2026-11-17).
+- **Row policies**: on 2.13.0 none applies (whoever may read the database
+  reads every row): `ROW_POLICY("metrics", …)` answers `404
+  CollectionNotFound`, and on `_columnar_metrics` it is stored and never
+  applied (observed 2026-11-17). On builds of `main` from `ba99b3cf` to
+  `bec7192a` both are refused (`'metrics' is a columnar collection: row
+  policies do not apply to it…`). After `bec7192a` (card #955, from the
+  test suite, not observed on a server): `ROW_POLICY("metrics",
+  "doc.tenant == CURRENT_USER")` is kept and applied to every query that
+  reads the collection, admins exempt, with the answers a document
+  collection gives; such a query builds rows (slower: no array fold);
+  `POST …/columnar/{c}/query` and `…/aggregate` (and the driver's) answer
+  `403 "a row policy is declared on the columnar collection …"` to a
+  caller it binds. Not checked on `INSERT INTO`.
 - No change events: a changefeed or live query does not see columnar writes.
 - No triggers, no foreign keys (on it or towards it): from the build after
   2.13.0 both answer `400 '<name>' is a columnar collection: …`; on 2.13.0
