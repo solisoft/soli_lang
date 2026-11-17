@@ -563,6 +563,10 @@ The HTTP and SDBQL answers below were seen on a live server; `set_null`,
   an edge to a missing vertex → `409 "Foreign key violation: '_to' in
   follows refers to 'zed', which is not a document of 'customers'"`.
   `set_null` is refused on `_from` / `_to`.
+- Both ends at once (build after 2.13.0): `POST …/foreign-keys/ends`
+  `{"from":"people","to":"firms","on_delete":"cascade"}` → `201
+  {"from":{…"fk_from"…},"to":{…"fk_to"…}}`; both or neither (checked by
+  tests, 2026-11-17).
 - Not on sharded collections (`501`). On a replicating node the key's
   definition and the cascaded writes are replicated; a replicated write is
   not checked again.
