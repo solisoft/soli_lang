@@ -7,13 +7,16 @@
 ### Changed
 
 - **The score engraver (`eui-score`) plays fermatas and ornaments**, pinned
-  at eui `0ed95de` (was `0a305ba`) for `serve::eui::score`'s MIDI:
+  at eui `2bdc942` (was `0a305ba`) for `serve::eui::score`'s MIDI:
   - a note under a fermata sounds half its value again, then every staff
     waits two seconds — at the tempo of that moment — before going on (it
     sounded twice its value, and the music went straight on);
   - `\trill` (and `\startTrillSpan`), `\prall`, `\mordent` and `\turn` are
     written out, their neighbours the key signature's, and an `\arpeggio`
     chord comes in from its lowest note.
+
+  And a dynamic under a whole note's tremolo is drawn under its strokes,
+  not across them.
 
 ### Fixed
 
