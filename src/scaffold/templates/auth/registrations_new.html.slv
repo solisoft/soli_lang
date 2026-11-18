@@ -22,6 +22,14 @@
                class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
         <p class="mt-1 text-xs text-slate-500">At least 12 characters. A passphrase of a few words is easier to remember and harder to crack than a short jumble.</p>
       </div>
+      <% if setup_token_required %>
+      <div>
+        <label class="block text-sm font-medium text-slate-400 mb-1" for="setup_token">Setup token</label>
+        <input id="setup_token" name="setup_token" type="password" required autocomplete="off"
+               class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+        <p class="mt-1 text-xs text-slate-500">The first account is the admin: in production it needs the value of AUTH_SETUP_TOKEN.</p>
+      </div>
+      <% end %>
       <button type="submit"
               class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
         Create account

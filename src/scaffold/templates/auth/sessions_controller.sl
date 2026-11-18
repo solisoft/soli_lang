@@ -61,7 +61,7 @@ class SessionsController < Controller
     # from this response.
     if !user.nil? && user.locked?
       User.burn_password_work(password)
-      return @_reject("Invalid email or password", email, 401)
+      return @_reject(@_failure_message, email, 401)
     end
 
     # Both branches must cost the same. `authenticate` runs Argon2id (~100ms);
@@ -72,11 +72,13 @@ class SessionsController < Controller
 
     unless authenticated
       user.register_failed_attempt unless user.nil?
-      return @_reject("Invalid email or password", email, 401)
+      return @_reject(@_failure_message, email, 401)
     end
 
+    # The same answer as a wrong password: a distinct "confirm your email"
+    # appeared only once the password was right, which confirmed it.
     if auth_require_confirmed_email() && !user.confirmed?
-      return @_reject("Please confirm your email address first — check your inbox.", email, 403)
+      return @_reject(@_failure_message, email, 401)
     end
 
     user.clear_failed_attempts
@@ -121,6 +123,14 @@ class SessionsController < Controller
   end
 
   private
+
+  # What every refused sign-in says. With confirmation required it also
+  # covers an unconfirmed account, which must not answer differently.
+  def _failure_message
+    return "Invalid email or password." unless auth_require_confirmed_email()
+
+    "Invalid email or password — or, if you just signed up, confirm your email first (check your inbox)."
+  end
 
   # Re-render the sign-in form with an error and an accurate status code.
   # Every failure path goes through here so none of them can drift into

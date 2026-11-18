@@ -4714,6 +4714,14 @@ print(2.pow(10));      # 1024
 print([3, 7].min);     # 3
 print([3, 7].max);     # 7
 
+# Predicates (Int; Float has zero?, positive?, negative?)
+print(User.count.zero?); # true when there is no user — rather than `== 0`
+print(5.positive?);    # true
+print((-3).negative?); # true
+print(0.positive?);    # false — 0 is neither
+print(4.even?);        # true
+print(7.odd?);         # true
+
 # There is no Math namespace: the operations above are methods on the
 # number itself. Trigonometry, logarithms and exponentials are not in
 # the language today.

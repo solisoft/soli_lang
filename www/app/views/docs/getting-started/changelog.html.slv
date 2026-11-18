@@ -21,6 +21,13 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.0.</p>
+        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Sessions: a logout stays a logout.</strong> On <code class="text-cyan-400">disk</code>, <code class="text-cyan-400">solidb</code> and <code class="text-cyan-400">solikv</code>, a write in flight during <code class="text-cyan-400">session_destroy()</code> or <code class="text-cyan-400">session_regenerate()</code> saved the session back after the delete, <code>user_id</code> included. Each step now holds the id&rsquo;s lock, and a write whose session is gone does nothing.</li>
+            <li><strong class="text-white">Sessions: swept, capped, kept alive by reads.</strong> Expired <code class="text-cyan-400">disk</code> and <code class="text-cyan-400">solidb</code> sessions are swept from session creation (they piled up for good); <code class="text-cyan-400">SOLI_SESSION_MAX_LIFETIME</code> caps every driver, not only <code class="text-cyan-400">cookie</code>; a read refreshes the TTL too. Disk files are <code>0600</code>, written whole. <code class="text-cyan-400">session_destroy()</code> installs an empty session and sends its cookie.</li>
+            <li><strong class="text-white">Cookies: the first duplicate wins, and an <code class="text-cyan-400">https://</code> <code class="text-cyan-400">APP_BASE_URL</code> makes them <code>Secure</code>.</strong> A <code>session_id</code> planted by a sibling subdomain used to win. <code class="text-cyan-400">session_config()</code> no longer returns the SoliKV token.</li>
+            <li><strong class="text-white">Auth scaffolds.</strong> <code class="text-cyan-400">generate saml</code> strips the password and sessions of an unconfirmed account it links (someone could pre-register the victim&rsquo;s address); in production the first sign-up needs <code class="text-cyan-400">AUTH_SETUP_TOKEN</code>; an unconfirmed account answers like a wrong password; failed attempts are counted atomically. Apps generated earlier: copy the changes from a fresh <code class="text-cyan-400">soli generate</code>.</li>
+        </ul>
     </section>
 
     <section id="v2-39-0" class="mb-16 scroll-mt-24">

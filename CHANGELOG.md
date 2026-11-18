@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### Security
+- **Sessions (`disk`, `solidb`, `solikv`): a logout stays a logout.** A write
+  loads the session, changes it and saves it back; a write in flight during
+  `session_destroy()` or `session_regenerate()` saved it back after the
+  delete, `user_id` included (reproduced 4 times in 20 on `disk`: a client
+  that kept writing, or the victim's own polling, survived the logout). Each
+  step now holds the session id's lock (per process), and a write whose
+  session is gone does nothing.
+- **Sessions: expired ones are swept on a server.** The `disk` and `solidb`
+  sweep ran only from a path the server never takes: expired sessions piled
+  up for good, and a public page that writes the session let anyone fill the
+  disk or the collection. It now runs at most once a minute from session
+  creation, and `solidb` also removes sessions past their absolute lifetime.
+- **Sessions: an absolute lifetime on every driver.**
+  `SOLI_SESSION_MAX_LIFETIME` (default 30 days, `0` = none) applied to the
+  cookie driver only; a server-side session, or a stolen id, kept busy never
+  expired. `session_regenerate()` starts a new lifetime. Reads now refresh the
+  TTL too (once a quarter of it has passed), where only writes did.
+- **`session_destroy()` installs an empty session** and the response sets the
+  cookie to its new id: the request kept the dead id, so a `flash` after it
+  was lost, and no Set-Cookie told the client.
+- **Disk sessions are private and whole:** `0600` files in a `0700` directory
+  (they were `0644`/`0755`), written to a temporary file and renamed.
+- **Duplicate cookies: the first wins**, as in Rack (the most specific path,
+  then the oldest). The last one won, so a `session_id` planted by a sibling
+  subdomain could force a session on the user.
+- **`Secure` cookies from an `https://` `APP_BASE_URL`**, behind a TLS proxy
+  too (`SOLI_FORCE_SECURE_COOKIES=0` opts out).
+- **`session_config()` no longer returns the SoliKV token** (`"[set]"`), and
+  `session_configure` refuses a non-positive `ttl` (it became a huge number)
+  and an out-of-range `port`.
+- **`soli generate saml`: an unconfirmed account loses its password when it
+  is linked.** With open sign-up, anyone could create an account with the
+  victim's address; the victim's first SAML sign-in linked to it and the
+  creator kept the password. `SamlSso.take_over_unconfirmed` drops the
+  password, remember-me and sessions first, as the OAuth scaffold does.
+- **`soli generate auth`:**
+  - in production, `first_user` asks for `AUTH_SETUP_TOKEN` (16+ characters):
+    on a freshly deployed app the first visitor became the admin. Without the
+    token no first account is made, and OAuth makes none;
+  - with confirmation required, an unconfirmed account answers like a wrong
+    password (`401`, one message): the distinct reply came only when the
+    password was right;
+  - failed attempts are counted with an atomic `increment`, so parallel
+    guesses cannot slip past the lockout.
+
+Apps generated earlier keep their files: copy the changes from a fresh
+`soli generate auth` / `saml` / `oauth`.
+
+### Documentation
+- `zero?`, `positive?`, `negative?` (Int and Float), `even?` and `odd?` (Int)
+  are documented; `User.count.zero?` reads better than `== 0`.
+
 ## [2.39.0] - 2026-11-18
 
 ### Added

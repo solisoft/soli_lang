@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::resp::{RespPool, RespValue};
 use super::session::SessionStore;
+use super::session_lifetime::{self as lifetime, id_lock};
 use super::session_request_cache as request_cache;
 
 const DEFAULT_TTL_SECONDS: u64 = 86400;
@@ -31,6 +32,18 @@ impl SessionData {
 
     fn touch(&mut self) {
         self.last_accessed = chrono::Utc::now().timestamp_millis();
+    }
+
+    /// Not idle past `ttl` seconds, and not past the absolute lifetime.
+    fn is_live(&self, ttl: u64) -> bool {
+        let now = chrono::Utc::now().timestamp_millis();
+        let age_ms = (now - self.last_accessed).max(0) as u64;
+        Duration::from_millis(age_ms) < Duration::from_secs(ttl)
+            && !lifetime::outlived(
+                (self.created_at.max(0) / 1000) as u64,
+                (now.max(0) / 1000) as u64,
+                lifetime::max_lifetime_secs(),
+            )
     }
 }
 
@@ -122,6 +135,24 @@ impl SolikvSessionStore {
     }
 }
 
+impl SolikvSessionStore {
+    /// Change a session that still exists, under its id's lock: a write that
+    /// loaded the session before a `destroy`/`regenerate` and saved it after
+    /// brought it back, `user_id` included.
+    fn update<R>(&self, session_id: &str, change: impl FnOnce(&mut SessionData) -> R) -> Option<R> {
+        let _guard = id_lock(session_id);
+        request_cache::forget(self.memo_id(), session_id);
+        let mut session = self.load_session(session_id)?;
+        session.touch();
+        let result = change(&mut session);
+        match self.save_session(session_id, &session) {
+            Ok(()) => request_cache::remember(self.memo_id(), session_id, Some(session)),
+            Err(e) => eprintln!("Failed to save session: {}", e),
+        }
+        Some(result)
+    }
+}
+
 impl SessionStore for SolikvSessionStore {
     fn get_or_create(&self, session_id: &str) -> String {
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
@@ -130,11 +161,7 @@ impl SessionStore for SolikvSessionStore {
         }
 
         let live = self.read_session(session_id, |session| {
-            session.is_some_and(|session| {
-                let now = chrono::Utc::now().timestamp_millis();
-                let age_ms = (now - session.last_accessed) as u64;
-                Duration::from_millis(age_ms) < Duration::from_secs(self.ttl)
-            })
+            session.is_some_and(|session| session.is_live(self.ttl))
         });
         if live {
             return session_id.to_string();
@@ -168,54 +195,54 @@ impl SessionStore for SolikvSessionStore {
     /// See `DiskSessionStore::exists`: the trait default cannot see a session
     /// through a per-key `get`.
     fn exists(&self, session_id: &str) -> bool {
-        self.read_session(session_id, |session| {
-            session.is_some_and(|session| {
-                let now = chrono::Utc::now().timestamp_millis();
-                let age_ms = (now - session.last_accessed).max(0) as u64;
-                Duration::from_millis(age_ms) < Duration::from_secs(self.ttl)
-            })
-        })
+        let stamp = self.read_session(session_id, |session| {
+            session
+                .filter(|session| session.is_live(self.ttl))
+                .map(|session| session.last_accessed)
+        });
+        let Some(last_accessed) = stamp else {
+            return false;
+        };
+        // A read keeps the session (and its key's TTL) alive too, refreshed
+        // once a quarter of the TTL has passed.
+        if lifetime::needs_refresh(
+            (last_accessed.max(0) / 1000) as u64,
+            lifetime::now_secs(),
+            self.ttl,
+        ) {
+            self.update(session_id, |_| ());
+        }
+        true
     }
 
     // Writes keep their fresh load-modify-save. `SET` stores exactly the
     // document written, so a successful save refreshes the memo with it.
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
-        request_cache::forget(self.memo_id(), session_id);
-        if let Some(mut session) = self.load_session(session_id) {
-            session.touch();
+        self.update(session_id, |session| {
             session.data.insert(key.to_string(), value);
-            match self.save_session(session_id, &session) {
-                Ok(()) => request_cache::remember(self.memo_id(), session_id, Some(session)),
-                Err(e) => eprintln!("Failed to save session: {}", e),
-            }
-        }
+        });
     }
 
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        request_cache::forget(self.memo_id(), session_id);
-        if let Some(mut session) = self.load_session(session_id) {
-            session.touch();
-            let value = session.data.remove(key);
-            match self.save_session(session_id, &session) {
-                Ok(()) => request_cache::remember(self.memo_id(), session_id, Some(session)),
-                Err(e) => eprintln!("Failed to save session: {}", e),
-            }
-            value
-        } else {
-            None
-        }
+        self.update(session_id, |session| session.data.remove(key))
+            .flatten()
     }
 
     fn destroy(&self, session_id: &str) {
+        let _guard = id_lock(session_id);
         request_cache::forget(self.memo_id(), session_id);
         self.delete_session(session_id);
     }
 
     fn regenerate(&self, old_id: &str) -> String {
+        let _guard = id_lock(old_id);
         let old_session = self.load_session(old_id);
         let new_id = Uuid::new_v4().to_string();
 
-        if let Some(session) = old_session {
+        if let Some(mut session) = old_session {
+            // A new session: its absolute lifetime starts again.
+            session.created_at = chrono::Utc::now().timestamp_millis();
+            session.touch();
             match self.save_session(&new_id, &session) {
                 Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
                 Err(e) => eprintln!("Failed to create new session during regenerate: {}", e),

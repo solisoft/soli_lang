@@ -523,6 +523,21 @@ fn served_app_signs_in_through_the_identity_provider() {
     );
     assert_eq!(sso.post_response(&response).status, 302);
     assert_eq!(sso.whoami(), existing);
+    // Grace never confirmed her address, so whoever signed up with it may not
+    // be Grace: linking it to the identity provider drops that password, and
+    // the session opened with it.
+    let login = grace.request(
+        "POST",
+        "/login",
+        Some(json!({"email": "grace@example.com", "password": "correct horse battery"})),
+        &format!("http://127.0.0.1:{}", server.1),
+    );
+    assert_eq!(
+        login.status, 401,
+        "the sign-up password still works: {}",
+        login.body
+    );
+    assert_eq!(grace.whoami(), "guest", "the sign-up session survived");
 
     // The CSRF exemption is that one route.
     let cross = guest.request(

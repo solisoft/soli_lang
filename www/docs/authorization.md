@@ -22,13 +22,23 @@ layer:
   sign up (a public app); `closed` lets nobody (create accounts from a
   console, a seed or an admin page). Any other value counts as `closed`, so a
   typo fails shut. While sign-up is closed, `/signup` answers `403` with the
-  sign-in form and the "Create one" link is hidden.
+  sign-in form and the "Create one" link is hidden. **In production**
+  (`APP_ENV=production`), `first_user` asks for `AUTH_SETUP_TOKEN` (16+
+  characters) on the sign-up form: on a freshly deployed app the first
+  visitor to reach `/signup` became the admin. With no token set, production
+  creates no first account, and OAuth creates none either — the admin signs
+  up at `/signup` with the token.
 - **Password reset** (`/password/reset`): hashed one-time tokens, 2-hour
   expiry, no account enumeration, emailed via the scaffolded `AuthMailer`.
 - **Email confirmation** (`/confirm_email`, `/confirmation/resend`): sent on
   signup; enforcement is a one-line toggle (`auth_require_confirmed_email`
   in `app/models/user.sl`, off by default so the flow works before SMTP is
-  configured).
+  configured). With it on, an unconfirmed account answers a sign-in like a
+  wrong password (one message, `401`): a distinct "confirm your email" reply
+  appeared only once the password was right, which confirmed it.
+- **Account lockout**: failed attempts are counted with one atomic write
+  (`increment`); a read, +1 and save let parallel guesses overwrite each
+  other's count and slip past the lockout.
 - **Remember-me**: an HttpOnly + Secure persistent cookie carrying a
   digest-stored token, promoted to a fresh session by the middleware and
   revoked when the password is reset.

@@ -611,6 +611,9 @@ pub fn get_current_store() -> Arc<dyn SessionStore> {
 struct Session {
     data: HashMap<String, JsonValue>,
     last_accessed: Instant,
+    /// When the session began, for the absolute lifetime
+    /// (`SOLI_SESSION_MAX_LIFETIME`, see `session_lifetime`).
+    created: Instant,
 }
 
 impl Session {
@@ -619,6 +622,7 @@ impl Session {
         Self {
             data: HashMap::new(),
             last_accessed: now,
+            created: now,
         }
     }
 
@@ -626,8 +630,11 @@ impl Session {
         self.last_accessed = Instant::now();
     }
 
+    /// Idle past `max_age`, or past the absolute lifetime.
     fn is_expired(&self, max_age: Duration) -> bool {
+        let max_lifetime = super::session_lifetime::max_lifetime_secs();
         self.last_accessed.elapsed() > max_age
+            || (max_lifetime > 0 && self.created.elapsed() > Duration::from_secs(max_lifetime))
     }
 }
 
@@ -829,9 +836,20 @@ impl SessionStore for InMemorySessionStore {
         // Every request carrying a session cookie passes here, so this is what
         // arms the time-based sweep on a server that mints few sessions.
         self.maybe_cleanup(false);
-        self.read_shard(session_id)
-            .get(session_id)
-            .is_some_and(|session| !session.is_expired(self.max_age))
+        let refresh = match self.read_shard(session_id).get(session_id) {
+            Some(session) if !session.is_expired(self.max_age) => {
+                // A read keeps the session alive too (the TTL moved only on
+                // writes), refreshed once a quarter of the TTL has passed.
+                session.last_accessed.elapsed() > (self.max_age / 4)
+            }
+            _ => return false,
+        };
+        if refresh {
+            if let Some(session) = self.write_shard(session_id).get_mut(session_id) {
+                session.touch();
+            }
+        }
+        true
     }
 
     fn get_or_create(&self, session_id: &str) -> String {
@@ -883,7 +901,10 @@ impl SessionStore for InMemorySessionStore {
 
     fn regenerate(&self, old_id: &str) -> String {
         let new_id = Uuid::new_v4().to_string();
-        let session = self.remove(old_id).unwrap_or_else(Session::new);
+        let mut session = self.remove(old_id).unwrap_or_else(Session::new);
+        // A new session: its absolute lifetime starts again.
+        session.created = Instant::now();
+        session.touch();
         self.insert(new_id.clone(), session);
         new_id
     }
@@ -1014,8 +1035,12 @@ pub fn parse_cookies_from_header(cookie_header: Option<&str>) -> HashMap<String,
         if let Some(pos) = cookie.find('=') {
             let name = cookie[..pos].trim().to_string();
             let value = cookie[pos + 1..].trim().to_string();
+            // The first of two cookies with one name wins, as in Rack: a
+            // browser sends the most specific path, then the oldest, first.
+            // The last one won, which is the one a sibling subdomain can plant
+            // (cookie tossing), forcing its session on the user.
             if !name.is_empty() {
-                cookies.insert(name, value);
+                cookies.entry(name).or_insert(value);
             }
         }
     }
@@ -1024,7 +1049,7 @@ pub fn parse_cookies_from_header(cookie_header: Option<&str>) -> HashMap<String,
 
 /// Parse a Cookie header directly into Soli `HashPairs`, ready to drop into
 /// the request hash. Same parsing rules as `parse_cookies_from_header`
-/// (split on `;`, trim name and value, last duplicate wins) without the
+/// (split on `;`, trim name and value, first duplicate wins) without the
 /// intermediate `HashMap` — the request path parses the header exactly once.
 pub fn parse_cookie_pairs(cookie_header: Option<&str>) -> HashPairs {
     use crate::interpreter::value::HashKey;
@@ -1041,7 +1066,8 @@ pub fn parse_cookie_pairs(cookie_header: Option<&str>) -> HashPairs {
         if let Some(pos) = cookie.find('=') {
             let name = cookie[..pos].trim();
             let value = cookie[pos + 1..].trim();
-            if !name.is_empty() {
+            // First duplicate wins: see `parse_cookies_from_header`.
+            if !name.is_empty() && !pairs.contains_key(&HashKey::String(name.into())) {
                 pairs.insert(HashKey::String(name.into()), Value::String(value.into()));
             }
         }
@@ -1161,10 +1187,11 @@ pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<Str
     let mut plain: Option<String> = None;
     for cookie in cookies.split(';') {
         let cookie = cookie.trim();
+        // First duplicate wins: see `parse_cookies_from_header`.
         if let Some(value) = cookie.strip_prefix("__Host-session_id=") {
-            host_prefixed = Some(value.to_string());
+            host_prefixed.get_or_insert_with(|| value.to_string());
         } else if let Some(value) = cookie.strip_prefix("session_id=") {
-            plain = Some(value.to_string());
+            plain.get_or_insert_with(|| value.to_string());
         }
     }
     host_prefixed.or(plain)
@@ -1341,7 +1368,18 @@ pub fn register_session_builtins(env: &mut Environment) {
         "session_destroy".to_string(),
         Value::NativeFunction(NativeFunction::new("session_destroy", Some(0), |_args| {
             if let Some(id) = get_current_session_id() {
-                get_current_store().destroy(&id);
+                let store = get_current_store();
+                store.destroy(&id);
+                // An empty session takes its place, as Rails' `reset_session`
+                // does. The request went on with the dead id, so a
+                // `session_set` or `flash` after the destroy was written
+                // nowhere, and no Set-Cookie told the client its id was gone.
+                // The new id differs from the cookie, so the end of the
+                // request sends one. (The cookie driver replaces its own
+                // state in `destroy` and keeps the id it resolved.)
+                if store.driver_name() != "cookie" {
+                    set_current_session_id(Some(store.create_session()));
+                }
             }
             Ok(Value::Null)
         })),
@@ -1476,7 +1514,11 @@ pub fn register_session_builtins(env: &mut Environment) {
                     }
                     "solikv_port" | "port" => {
                         if let Value::Int(i) = v {
-                            config.solikv_port = Some(*i as u16);
+                            let port = u16::try_from(*i)
+                                .ok()
+                                .filter(|port| *port > 0)
+                                .ok_or_else(|| format!("session_configure: port {} is out of range", i))?;
+                            config.solikv_port = Some(port);
                         }
                     }
                     "solikv_token" | "token" => {
@@ -1491,6 +1533,14 @@ pub fn register_session_builtins(env: &mut Environment) {
                     }
                     "ttl" => {
                         if let Value::Int(i) = v {
+                            // A negative TTL became a huge u64 (sessions that
+                            // never expire).
+                            if *i <= 0 {
+                                return Err(format!(
+                                    "session_configure: ttl must be a positive number of seconds, got {}",
+                                    i
+                                ));
+                            }
                             config.ttl = *i as u64;
                         }
                     }
@@ -1551,10 +1601,12 @@ pub fn register_session_builtins(env: &mut Environment) {
                     Value::Int(port as i64),
                 );
             }
-            if let Some(ref token) = config.solikv_token {
+            // Whether a token is set, not the token: this hash reaches app
+            // code, and from there a debug view or a log.
+            if config.solikv_token.is_some() {
                 hash.insert(
                     crate::interpreter::value::HashKey::String("solikv_token".into()),
-                    Value::String(token.clone().into()),
+                    Value::String("[set]".into()),
                 );
             }
             hash.insert(
@@ -2509,6 +2561,28 @@ mod tests {
         assert_eq!(
             extract_session_id_from_cookie(Some("foo=1; __Host-session_id=xyz; bar=2")),
             Some("xyz".to_string())
+        );
+    }
+
+    /// Cookie tossing: a sibling subdomain plants a second `session_id`,
+    /// which the browser sends after the real one. The first wins, as in Rack.
+    #[test]
+    fn the_first_of_two_cookies_with_one_name_wins() {
+        let header = Some("session_id=real; theme=dark; session_id=planted");
+        assert_eq!(
+            extract_session_id_from_cookie(header).as_deref(),
+            Some("real")
+        );
+        assert_eq!(
+            parse_cookies_from_header(header)
+                .get("session_id")
+                .map(String::as_str),
+            Some("real")
+        );
+        let pairs = parse_cookie_pairs(header);
+        assert_eq!(
+            session_id_from_cookie_pairs(&pairs).as_deref(),
+            Some("real")
         );
     }
 

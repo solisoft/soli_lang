@@ -83,7 +83,7 @@ fn max_lifetime_from_env() -> u64 {
     )
 }
 
-fn parse_max_lifetime(raw: Option<&str>) -> u64 {
+pub(crate) fn parse_max_lifetime(raw: Option<&str>) -> u64 {
     raw.and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(DEFAULT_MAX_LIFETIME_SECS)
 }

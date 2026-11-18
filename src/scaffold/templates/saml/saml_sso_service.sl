@@ -144,6 +144,21 @@ class SamlSso
     getenv("SAML_LINK_EXISTING").to_s.trim.downcase != "off"
   end
 
+  # An account whose address nobody proved, about to be linked to the person
+  # the identity provider just vouched for: its password, remember-me cookie
+  # and sessions belong to whoever created it — with open sign-up, anyone who
+  # typed that address first, and who would otherwise keep a way into the
+  # account the real owner now uses. They are dropped, as the OAuth scaffold
+  # does.
+  static def take_over_unconfirmed(user)
+    user.password_digest = nil
+    user.remember_token_digest = nil
+    user.session_version = user.current_session_version + 1
+    user.confirmed_at = DateTime.utc.to_unix
+    user.confirmation_token_digest = nil
+    user.save
+  end
+
   # The account an assertion signs in. Known identity first; otherwise the
   # account with that email, linked from now on (never an admin's: an admin
   # is linked by hand); otherwise a new one. A new account is a plain member
@@ -169,6 +184,8 @@ class SamlSso
     else
       throw "#{email} has an account, and SAML_LINK_EXISTING=off" unless SamlSso.link_existing?
       throw "#{email} is an admin: link that account by hand" if user.admin?
+
+      SamlSso.take_over_unconfirmed(user) unless user.confirmed?
     end
     SamlIdentity.create({
       "user_id": user._key,

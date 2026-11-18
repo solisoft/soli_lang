@@ -54,10 +54,23 @@ fn parse_force_secure_env(raw: Option<&str>) -> bool {
 fn init_from_env() {
     ENV_INIT.call_once(|| {
         let raw = crate::platform::env::var("SOLI_FORCE_SECURE_COOKIES").ok();
-        if parse_force_secure_env(raw.as_deref()) {
+        let base_url = crate::platform::env::var("APP_BASE_URL").ok();
+        if secure_by_env(raw.as_deref(), base_url.as_deref()) {
             FORCE_SECURE_COOKIES.store(true, Ordering::Relaxed);
         }
     });
+}
+
+/// Whether cookies are `Secure` from the environment alone.
+/// `SOLI_FORCE_SECURE_COOKIES` decides when it is set (`0`/`false` keeps them
+/// plain); otherwise an `APP_BASE_URL` in `https://` does. A deployment behind
+/// a TLS proxy that set neither, nor `enable_trust_proxy()`, sent its session
+/// cookie without `Secure`, though the app knew its public origin was https.
+fn secure_by_env(force: Option<&str>, base_url: Option<&str>) -> bool {
+    match force.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => parse_force_secure_env(Some(value)),
+        None => base_url.is_some_and(|url| url.trim().to_ascii_lowercase().starts_with("https://")),
+    }
 }
 
 pub fn register_secure_cookies_builtins(env: &mut Environment) {
@@ -112,6 +125,16 @@ mod tests {
 
         FORCE_SECURE_COOKIES.store(false, Ordering::Relaxed);
         assert!(!is_force_secure_cookies_enabled());
+    }
+
+    #[test]
+    fn an_https_base_url_makes_cookies_secure_unless_forced_off() {
+        assert!(secure_by_env(None, Some("https://app.example.com")));
+        assert!(!secure_by_env(None, Some("http://localhost:5011")));
+        assert!(!secure_by_env(None, None));
+        assert!(!secure_by_env(Some("0"), Some("https://app.example.com")));
+        assert!(secure_by_env(Some("1"), Some("http://localhost:5011")));
+        assert!(secure_by_env(Some(" "), Some("HTTPS://APP.EXAMPLE.COM")));
     }
 
     #[test]

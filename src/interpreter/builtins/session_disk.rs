@@ -9,6 +9,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use super::session::SessionStore;
+use super::session_lifetime::{self as lifetime, id_lock};
 
 /// Reject session IDs that could escape the session directory or contain
 /// unexpected bytes. UUIDs (the only IDs we generate) consist of hex digits and
@@ -55,7 +56,7 @@ impl SessionFile {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        now - self.last_accessed > max_age_secs
+        now.saturating_sub(self.last_accessed) > max_age_secs
     }
 }
 
@@ -63,16 +64,41 @@ pub struct DiskSessionStore {
     session_dir: PathBuf,
     max_age: Duration,
     request_counter: AtomicU64,
+    /// Unix seconds of the last sweep of expired files (`cleanup_due`).
+    last_cleanup: AtomicU64,
+    /// `SOLI_SESSION_MAX_LIFETIME` (seconds, `0` = none).
+    max_lifetime: u64,
 }
 
 impl DiskSessionStore {
     pub fn new(session_dir: PathBuf) -> std::io::Result<Self> {
         fs::create_dir_all(&session_dir)?;
+        // Sessions hold who is signed in and the CSRF token: other local
+        // users must not read them. Files were 0644 in a 0755 directory.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&session_dir, fs::Permissions::from_mode(0o700))?;
+        }
         Ok(Self {
             session_dir,
             max_age: Duration::from_secs(24 * 60 * 60),
             request_counter: AtomicU64::new(0),
+            last_cleanup: AtomicU64::new(lifetime::now_secs()),
+            max_lifetime: lifetime::max_lifetime_secs(),
         })
+    }
+
+    /// Override the absolute lifetime (`0` disables it).
+    pub fn with_max_lifetime(mut self, seconds: u64) -> Self {
+        self.max_lifetime = seconds;
+        self
+    }
+
+    /// Live: not idle past the TTL, and not past the absolute lifetime.
+    fn is_live(&self, session: &SessionFile) -> bool {
+        !session.is_expired(self.max_age.as_secs())
+            && !lifetime::outlived(session.created_at, lifetime::now_secs(), self.max_lifetime)
     }
 
     /// SEC-038: thread `SOLI_SESSION_TTL` into the disk store so files
@@ -102,7 +128,44 @@ impl DiskSessionStore {
         })?;
         let content = serde_json::to_string_pretty(session)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        fs::write(path, content)
+        // Written whole under another name, then renamed over the session:
+        // `fs::write` truncated the file first, so a request reading it at
+        // that moment found no session and dropped the user.
+        let temporary = path.with_extension(format!("json.{}.tmp", Uuid::new_v4().simple()));
+        {
+            use std::io::Write;
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&temporary)?;
+            file.write_all(content.as_bytes())?;
+        }
+        fs::rename(&temporary, &path).inspect_err(|_| {
+            let _ = fs::remove_file(&temporary);
+        })
+    }
+
+    /// Change a session that still exists, under its id's lock. A session
+    /// destroyed or regenerated meanwhile stays gone.
+    fn update<R>(&self, session_id: &str, change: impl FnOnce(&mut SessionFile) -> R) -> Option<R> {
+        let _guard = id_lock(session_id);
+        let mut session = self.load_session(session_id)?;
+        session.touch();
+        let result = change(&mut session);
+        let _ = self.save_session(session_id, &session);
+        Some(result)
+    }
+
+    /// Sweep expired files at most once a minute, from the paths the server
+    /// takes (creating a session), not only from `get_or_create`.
+    fn maybe_cleanup(&self) {
+        if lifetime::cleanup_due(&self.last_cleanup, lifetime::now_secs()) {
+            self.cleanup();
+        }
     }
 
     fn delete_session_file(&self, session_id: &str) -> std::io::Result<()> {
@@ -141,7 +204,7 @@ impl SessionStore for DiskSessionStore {
         }
 
         if let Some(session) = self.load_session(session_id) {
-            if !session.is_expired(self.max_age.as_secs()) {
+            if self.is_live(&session) {
                 return session_id.to_string();
             }
         }
@@ -153,6 +216,7 @@ impl SessionStore for DiskSessionStore {
     }
 
     fn create_session(&self) -> String {
+        self.maybe_cleanup();
         let session_id = Uuid::new_v4().to_string();
         let session = SessionFile::new();
         let _ = self.save_session(&session_id, &session);
@@ -170,38 +234,50 @@ impl SessionStore for DiskSessionStore {
     /// refuses to mint a session for an unknown cookie) dropped every login
     /// on the next request.
     fn exists(&self, session_id: &str) -> bool {
-        self.load_session(session_id)
-            .is_some_and(|s| !s.is_expired(self.max_age.as_secs()))
+        let Some(session) = self.load_session(session_id) else {
+            return false;
+        };
+        if !self.is_live(&session) {
+            return false;
+        }
+        // A read keeps the session alive too, refreshed once a quarter of the
+        // TTL has passed rather than rewritten on every request.
+        if lifetime::needs_refresh(
+            session.last_accessed,
+            lifetime::now_secs(),
+            self.max_age.as_secs(),
+        ) {
+            self.update(session_id, |_| ());
+        }
+        true
     }
 
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
-        if let Some(mut session) = self.load_session(session_id) {
-            session.touch();
+        self.update(session_id, |session| {
             session.data.insert(key.to_string(), value);
-            let _ = self.save_session(session_id, &session);
-        }
+        });
     }
 
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        if let Some(mut session) = self.load_session(session_id) {
-            session.touch();
-            let value = session.data.remove(key);
-            let _ = self.save_session(session_id, &session);
-            value
-        } else {
-            None
-        }
+        self.update(session_id, |session| session.data.remove(key))
+            .flatten()
     }
 
     fn destroy(&self, session_id: &str) {
+        let _guard = id_lock(session_id);
         let _ = self.delete_session_file(session_id);
     }
 
     fn regenerate(&self, old_id: &str) -> String {
+        let _guard = id_lock(old_id);
         let old_session = self.load_session(old_id);
         let new_id = Uuid::new_v4().to_string();
 
-        if let Some(session) = old_session {
+        if let Some(mut session) = old_session {
+            // A new session, as the cookie driver's regenerate: its absolute
+            // lifetime starts again.
+            session.created_at = lifetime::now_secs();
+            session.touch();
             let _ = self.save_session(&new_id, &session);
         } else {
             let session = SessionFile::new();
@@ -216,7 +292,8 @@ impl SessionStore for DiskSessionStore {
         if let Ok(ids) = self.list_sessions() {
             for id in ids {
                 if let Some(session) = self.load_session(&id) {
-                    if session.is_expired(self.max_age.as_secs()) {
+                    if !self.is_live(&session) {
+                        let _guard = id_lock(&id);
                         let _ = self.delete_session_file(&id);
                     }
                 }
@@ -475,6 +552,123 @@ mod tests {
         assert!(
             !path.exists(),
             "Session file should be removed after destroy"
+        );
+    }
+
+    /// A write racing a logout used to save the whole session back after the
+    /// file was deleted. Now a write whose session is gone does nothing, and
+    /// the two cannot interleave (the id's lock).
+    #[test]
+    fn a_write_after_a_destroy_does_not_bring_the_session_back() {
+        let dir = tempdir().unwrap();
+        let store = std::sync::Arc::new(DiskSessionStore::new(dir.path().to_path_buf()).unwrap());
+        for _ in 0..20 {
+            let id = store.create_session();
+            store.set(&id, "user_id", JsonValue::from(42));
+            let writers: Vec<_> = (0..8)
+                .map(|n| {
+                    let store = std::sync::Arc::clone(&store);
+                    let id = id.clone();
+                    std::thread::spawn(move || {
+                        for _ in 0..20 {
+                            store.set(&id, "touched", JsonValue::from(n));
+                        }
+                    })
+                })
+                .collect();
+            store.destroy(&id);
+            for writer in writers {
+                writer.join().unwrap();
+            }
+            assert!(!store.exists(&id), "the destroyed session came back");
+            assert!(store.get(&id, "user_id").is_none());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_files_are_readable_by_the_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        let store = DiskSessionStore::new(sessions.clone()).unwrap();
+        let id = store.create_session();
+        store.set(&id, "user_id", JsonValue::from(1));
+        let file = store.session_path(&id).unwrap();
+        assert_eq!(
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(&sessions).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        // No temporary file is left behind by the atomic write.
+        let leftovers = fs::read_dir(&sessions)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn a_session_past_its_absolute_lifetime_is_gone_however_busy() {
+        let dir = tempdir().unwrap();
+        let store = DiskSessionStore::new(dir.path().to_path_buf())
+            .unwrap()
+            .with_max_lifetime(3_600);
+        let id = store.create_session();
+        let mut session = store.load_session(&id).unwrap();
+        session.created_at = lifetime::now_secs() - 3_601;
+        session.touch();
+        store.save_session(&id, &session).unwrap();
+        assert!(!store.exists(&id), "busy, but older than the lifetime");
+
+        // Regenerating starts a new lifetime.
+        let fresh = store.create_session();
+        let mut old = store.load_session(&fresh).unwrap();
+        old.created_at = lifetime::now_secs() - 3_000;
+        store.save_session(&fresh, &old).unwrap();
+        let regenerated = store.regenerate(&fresh);
+        let renewed = store.load_session(&regenerated).unwrap();
+        assert!(renewed.created_at + 10 >= lifetime::now_secs());
+    }
+
+    #[test]
+    fn a_read_keeps_the_session_alive() {
+        let dir = tempdir().unwrap();
+        let store = DiskSessionStore::new(dir.path().to_path_buf())
+            .unwrap()
+            .with_max_age(Duration::from_secs(100));
+        let id = store.create_session();
+        let mut session = store.load_session(&id).unwrap();
+        session.last_accessed = lifetime::now_secs() - 60;
+        store.save_session(&id, &session).unwrap();
+        assert!(store.exists(&id));
+        let refreshed = store.load_session(&id).unwrap();
+        assert!(
+            refreshed.last_accessed + 5 >= lifetime::now_secs(),
+            "read did not refresh"
+        );
+    }
+
+    #[test]
+    fn creating_sessions_sweeps_the_expired_ones() {
+        let dir = tempdir().unwrap();
+        let store = DiskSessionStore::new(dir.path().to_path_buf())
+            .unwrap()
+            .with_max_age(Duration::from_secs(10));
+        let stale = store.create_session();
+        let mut session = store.load_session(&stale).unwrap();
+        session.last_accessed = lifetime::now_secs() - 3_600;
+        store.save_session(&stale, &session).unwrap();
+        // Make the sweep due, then create a session as the server does.
+        store.last_cleanup.store(0, Ordering::Relaxed);
+        store.create_session();
+        assert!(
+            !store.session_path(&stale).unwrap().exists(),
+            "expired file kept"
         );
     }
 }

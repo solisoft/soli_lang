@@ -52,7 +52,25 @@ def auth_signup_open?
   return true if mode == "open"
   return false if mode == "closed"
 
-  User.count == 0
+  User.count.zero?
+end
+
+# In production, `first_user` asks for AUTH_SETUP_TOKEN: the first account
+# becomes the admin, and on a freshly deployed app the first visitor to
+# reach /signup is not necessarily you. Set AUTH_SETUP_TOKEN, then sign up
+# with it; until it is set, production creates no first account.
+def auth_setup_token_required?
+  auth_signup_mode() == "first_user" && getenv("APP_ENV").to_s.trim.downcase == "production"
+end
+
+# Whether `given` unlocks the first sign-up (always, outside production).
+def auth_setup_token_ok?(given)
+  return true unless auth_setup_token_required?()
+
+  expected = getenv("AUTH_SETUP_TOKEN").to_s
+  return false if expected.length < 16
+
+  Crypto.secure_compare(given.to_s, expected)
 end
 
 # Base URL used in password-reset / confirmation emails.
@@ -272,10 +290,17 @@ class User < Model
     # after the first window elapsed the attacker guessed at full rate forever.
     return true if @locked?
 
-    @failed_attempts = (@failed_attempts ?? 0) + 1
-    just_locked = @failed_attempts >= AUTH_MAX_FAILED_ATTEMPTS
-    @locked_at = DateTime.utc.to_unix if just_locked
-    @update
+    # Counted in the database (`increment` is one atomic write): a read, +1
+    # and save let parallel guesses overwrite each other's count, so a burst
+    # of wrong passwords slipped past the lockout.
+    @increment("failed_attempts")
+    attempts = @failed_attempts ?? 0
+    if attempts >= AUTH_MAX_FAILED_ATTEMPTS
+      @locked_at = DateTime.utc.to_unix
+      @update
+    end
+    # One notification, from the guess that reached the limit.
+    just_locked = attempts == AUTH_MAX_FAILED_ATTEMPTS
 
     # Tell the owner once, when the lock trips. The sign-in response says only
     # "Invalid email or password" whether or not the account is locked, because

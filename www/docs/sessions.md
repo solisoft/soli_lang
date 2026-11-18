@@ -253,6 +253,35 @@ Trade-offs to be aware of:
 If you need instant logout-everywhere or sessions bigger than a cookie,
 use a server-side driver (`solidb`, `solikv`, `disk`) instead.
 
+## Lifetime and logout, every driver
+
+- **The TTL counts from the last use.** `SOLI_SESSION_TTL` is idle time: a
+  write refreshes the session, and so does a read once a quarter of the TTL
+  has passed (through 2.39.0 the server-side drivers refreshed on writes only,
+  so a user who only read pages was signed out mid-visit).
+- **An absolute lifetime.** `SOLI_SESSION_MAX_LIFETIME` (seconds, default 30
+  days, `0` = none) caps a session's age counted from its creation, on every
+  driver (through 2.39.0, only on the cookie driver: a server-side session
+  kept busy, or a stolen id kept busy, never expired). `session_regenerate()`
+  starts a new session, with a new lifetime.
+- **`session_destroy()` starts an empty session.** The old one is deleted,
+  the request carries on with a fresh id, and the response sets the cookie to
+  it — a `flash` after the destroy lands in the new session. Through 2.39.0
+  the request kept the dead id and no cookie was sent.
+- **A logout stays a logout.** On the `disk`, `solidb` and `solikv` drivers a
+  write loads the session, changes it and saves it back; a write in flight
+  during `session_destroy()` or `session_regenerate()` could save it back
+  after the delete, `user_id` included. Each step now holds the session id's
+  lock and a write whose session is gone does nothing. The locks are per
+  process: several processes sharing one `disk` directory are not covered.
+- **Expired sessions are swept.** The `disk` and `solidb` drivers sweep at
+  most once a minute, from session creation (through 2.39.0 the sweep never
+  ran on a server, and a public page that writes the session let anyone fill
+  the disk or the collection). `solikv` keys expire on the server.
+- **Session files are private.** The `disk` driver writes each session to a
+  temporary file and renames it (`0600`, in a `0700` directory), so a reader
+  never sees half a file and other local users read nothing.
+
 ## Readiness and zero-downtime deploys
 
 When a network-backed session driver (`solidb` or `solikv`) is configured, a
@@ -284,7 +313,15 @@ Session cookies are automatically configured with:
 - `SameSite=Lax`: CSRF protection (override with `SOLI_SESSION_SAMESITE=Strict|None`). When set to `None`, Soli automatically forces `Secure` on the cookie regardless of the detected request scheme — browsers reject `SameSite=None` without `Secure`, so the pairing is non-optional.
 - `Path=/`: Available on all paths
 - `Max-Age`: tracks `SOLI_SESSION_TTL` (default `86400` — 24h)
-- `Secure`: set when serving over HTTPS
+- `Secure`: set when serving over HTTPS (`enable_trust_proxy()` and
+  `X-Forwarded-Proto: https`), with `SOLI_FORCE_SECURE_COOKIES=1`, or when
+  `APP_BASE_URL` is an `https://` URL (`SOLI_FORCE_SECURE_COOKIES=0` turns that
+  off)
+
+Two cookies with the same name (a sibling subdomain can plant one) are read
+the way Rack reads them: the **first** wins, which is the one with the most
+specific path, then the oldest. Through 2.39.0 the last one won, so a planted
+`session_id` could force a session on the user.
 
 ### Hardening with `__Host-` prefix
 

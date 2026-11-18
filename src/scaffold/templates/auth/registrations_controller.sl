@@ -23,7 +23,8 @@ class RegistrationsController < Controller
       {
         "title": "Create account",
         "error": "",
-        "user": User.new()
+        "user": User.new(),
+        "setup_token_required": auth_setup_token_required?()
       }
     )
   end
@@ -39,6 +40,9 @@ class RegistrationsController < Controller
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
     return @_reject(user, "Too many sign-up attempts. Try again in a few minutes.", 429) unless limiter.allowed
     return @_closed unless auth_signup_open?()
+    unless auth_setup_token_ok?(params["setup_token"])
+      return @_reject(user, "Creating the first account needs the setup token (AUTH_SETUP_TOKEN, 16+ characters).", 403)
+    end
 
     # `set_password` is a no-op on a blank value (so profile saves don't wipe
     # the digest), which means the length rule has to be checked here or an
@@ -86,6 +90,7 @@ class RegistrationsController < Controller
       {
         "title": "Create account",
         "user": user,
+        "setup_token_required": auth_setup_token_required?(),
         "error": message
       },
       {"status": status}

@@ -358,6 +358,8 @@ fn serve(root: &Path, env: &[(&str, &str)]) -> Server {
         .env_remove("AUTH_SIGNUP")
         .env_remove("AUTH_ATTEMPTS_PER_IP")
         .env_remove("AUTH_IP_WINDOW_SECONDS")
+        .env_remove("APP_ENV")
+        .env_remove("AUTH_SETUP_TOKEN")
         .env("SOLI_DB_ADAPTER", "sqlite")
         .env(
             "DATABASE_URL",
@@ -469,6 +471,58 @@ fn served_signup_closes_after_the_first_account_by_default() {
         .collect();
     assert_eq!(dump.len(), 1, "{dump:?}");
     assert!(dump[0].contains(r#""role":"admin""#), "{dump:?}");
+}
+
+/// In production the first account (the admin) needs AUTH_SETUP_TOKEN: on a
+/// freshly deployed app the first visitor to reach /signup was made admin.
+#[test]
+fn in_production_the_first_account_needs_the_setup_token() {
+    let token = "a-setup-token-long-enough-1234";
+    let dir = servable_app();
+    let server = serve(
+        dir.path(),
+        &[
+            ("APP_ENV", "production"),
+            ("SOLI_APP_HOSTS", "127.0.0.1"),
+            (
+                "SOLI_SESSION_SECRET",
+                "auth-test-secret-0123456789abcdef-0123",
+            ),
+            ("AUTH_SETUP_TOKEN", token),
+        ],
+    );
+    let (status, body) = call(&server, "GET", "/signup", None);
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("setup_token"), "no setup token field: {body}");
+
+    let without = r#"{"email": "eve@example.com", "password": "correct horse battery"}"#;
+    assert_eq!(call(&server, "POST", "/signup", Some(without)).0, 403);
+    let wrong = r#"{"email": "eve@example.com", "password": "correct horse battery", "setup_token": "guess"}"#;
+    assert_eq!(call(&server, "POST", "/signup", Some(wrong)).0, 403);
+    let right = format!(
+        r#"{{"email": "ada@example.com", "password": "correct horse battery", "setup_token": "{token}"}}"#
+    );
+    let (status, body) = call(&server, "POST", "/signup", Some(&right));
+    assert_eq!(status, 302, "{body}");
+    drop(server);
+
+    // Production with no token set (or one too short to guess-proof) creates
+    // no first account at all.
+    let dir = servable_app();
+    let server = serve(
+        dir.path(),
+        &[
+            ("APP_ENV", "production"),
+            ("SOLI_APP_HOSTS", "127.0.0.1"),
+            (
+                "SOLI_SESSION_SECRET",
+                "auth-test-secret-0123456789abcdef-0123",
+            ),
+            ("AUTH_SETUP_TOKEN", "short"),
+        ],
+    );
+    let short = r#"{"email": "ada@example.com", "password": "correct horse battery", "setup_token": "short"}"#;
+    assert_eq!(call(&server, "POST", "/signup", Some(short)).0, 403);
 }
 
 /// `AUTH_SIGNUP=open` lets anyone sign up, `closed` nobody, and the per-IP

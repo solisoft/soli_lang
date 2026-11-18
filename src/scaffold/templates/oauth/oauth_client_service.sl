@@ -83,6 +83,12 @@ class OauthClient
     if user.nil?
       throw "OAuth: no account for #{email}, and sign-up is closed" unless auth_signup_open?()
 
+      # In production the first account (the admin) is made at /signup with
+      # AUTH_SETUP_TOKEN, never by whoever reaches the provider button first.
+      if auth_setup_token_required?() && User.count.zero?
+        throw "OAuth: create the first account at /signup with AUTH_SETUP_TOKEN"
+      end
+
       user = User.new
       user.email = email
       user.name = name || email.split("@")[0]

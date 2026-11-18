@@ -10,6 +10,7 @@ use crate::solidb_http::{SoliDBClient, SoliDBError};
 
 use super::model::crud;
 use super::session::SessionStore;
+use super::session_lifetime::{self as lifetime, id_lock};
 use super::session_request_cache as request_cache;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -35,6 +36,18 @@ impl SessionDocument {
     fn touch(&mut self) {
         self.last_accessed = chrono::Utc::now().timestamp_millis();
     }
+
+    /// Not idle past `max_age`, and not past the absolute lifetime.
+    fn is_live(&self, max_age: Duration) -> bool {
+        let now = chrono::Utc::now().timestamp_millis();
+        let age = (now - self.last_accessed).max(0) as u64;
+        Duration::from_millis(age) < max_age
+            && !lifetime::outlived(
+                (self.created_at.max(0) / 1000) as u64,
+                (now.max(0) / 1000) as u64,
+                lifetime::max_lifetime_secs(),
+            )
+    }
 }
 
 pub struct SolidbSessionStore {
@@ -43,6 +56,8 @@ pub struct SolidbSessionStore {
     collection: String,
     max_age: Duration,
     request_counter: AtomicU64,
+    /// Unix seconds of the last sweep of expired sessions (`cleanup_due`).
+    last_cleanup: AtomicU64,
     /// SEC-025: authenticate worker → SoliDB calls so a network attacker
     /// (or an unrelated tenant on the same DB) can't read or forge
     /// session documents. At most one of {api_key} or {username+password}
@@ -60,6 +75,7 @@ impl SolidbSessionStore {
             collection: "sessions".to_string(),
             max_age: Duration::from_secs(24 * 60 * 60),
             request_counter: AtomicU64::new(0),
+            last_cleanup: AtomicU64::new(lifetime::now_secs()),
             api_key: None,
             username: None,
             password: None,
@@ -130,11 +146,21 @@ impl SolidbSessionStore {
     /// (never user input), so interpolating it is safe and matches how the
     /// model layer builds SDBQL; the cutoff is a bind var.
     fn purge_expired(client: &SoliDBClient, collection: &str, cutoff_ms: i64) {
+        // Idle past the TTL, or created before the absolute lifetime allows
+        // (`born` is 0 when there is none, which no session is older than).
+        let max_lifetime_ms = lifetime::max_lifetime_secs().saturating_mul(1000) as i64;
+        let born_ms = if max_lifetime_ms > 0 {
+            chrono::Utc::now().timestamp_millis() - max_lifetime_ms
+        } else {
+            0
+        };
         let sdbql = format!(
-            "FOR doc IN {collection} FILTER doc.last_accessed < @cutoff REMOVE doc IN {collection}"
+            "FOR doc IN {collection} FILTER doc.last_accessed < @cutoff OR doc.created_at < @born \
+             REMOVE doc IN {collection}"
         );
         let mut bind_vars = HashMap::new();
         bind_vars.insert("cutoff".to_string(), serde_json::json!(cutoff_ms));
+        bind_vars.insert("born".to_string(), serde_json::json!(born_ms));
         if let Err(e) = client.query(&sdbql, Some(bind_vars)) {
             eprintln!("Session cleanup failed: {}", e);
         }
@@ -233,6 +259,28 @@ impl SolidbSessionStore {
     }
 }
 
+impl SolidbSessionStore {
+    /// Change a session that still exists, under its id's lock: a write that
+    /// loaded the session before a `destroy`/`regenerate` and saved it after
+    /// brought it back. The memo is dropped rather than trusted — the stored
+    /// document is whatever SoliDB's merging update made of ours.
+    fn update<R>(
+        &self,
+        session_id: &str,
+        change: impl FnOnce(&mut SessionDocument) -> R,
+    ) -> Option<R> {
+        let _guard = id_lock(session_id);
+        request_cache::forget(self.memo_id(), session_id);
+        let mut session = self.load_session(session_id).ok().flatten()?;
+        session.touch();
+        let result = change(&mut session);
+        if let Err(e) = self.save_session(&session) {
+            eprintln!("Failed to save session: {}", e);
+        }
+        Some(result)
+    }
+}
+
 impl SessionStore for SolidbSessionStore {
     fn get_or_create(&self, session_id: &str) -> String {
         let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
@@ -242,11 +290,7 @@ impl SessionStore for SolidbSessionStore {
 
         let live = self
             .read_session(session_id, |session| {
-                session.is_some_and(|session| {
-                    let now = chrono::Utc::now().timestamp_millis();
-                    let age = (now - session.last_accessed) as u64;
-                    Duration::from_millis(age) < self.max_age
-                })
+                session.is_some_and(|session| session.is_live(self.max_age))
             })
             .unwrap_or(false);
         if live {
@@ -263,6 +307,12 @@ impl SessionStore for SolidbSessionStore {
     }
 
     fn create_session(&self) -> String {
+        // Expired sessions are swept from here, at most once a minute: the
+        // sweep ran only from `get_or_create`, which the server never calls,
+        // so the collection grew for good.
+        if lifetime::cleanup_due(&self.last_cleanup, lifetime::now_secs()) {
+            self.spawn_cleanup();
+        }
         let session_id = Uuid::new_v4().to_string();
         let session = SessionDocument::new(session_id.clone());
         match self.insert_session(&session) {
@@ -283,45 +333,45 @@ impl SessionStore for SolidbSessionStore {
     /// See `DiskSessionStore::exists`: the trait default cannot see a session
     /// through a per-key `get`.
     fn exists(&self, session_id: &str) -> bool {
-        self.read_session(session_id, |session| {
-            session.is_some_and(|session| {
-                let now = chrono::Utc::now().timestamp_millis();
-                let age = (now - session.last_accessed).max(0) as u64;
-                Duration::from_millis(age) < self.max_age
+        let stamp = self
+            .read_session(session_id, |session| {
+                session
+                    .filter(|session| session.is_live(self.max_age))
+                    .map(|session| session.last_accessed)
             })
-        })
-        .unwrap_or(false)
+            .ok()
+            .flatten();
+        let Some(last_accessed) = stamp else {
+            return false;
+        };
+        // A read keeps the session alive too, refreshed once a quarter of the
+        // TTL has passed.
+        if lifetime::needs_refresh(
+            (last_accessed.max(0) / 1000) as u64,
+            lifetime::now_secs(),
+            self.max_age.as_secs(),
+        ) {
+            self.update(session_id, |_| ());
+        }
+        true
     }
 
     // Writes keep their fresh load-modify-save, and then drop the memo rather
     // than trust it: the stored document is whatever SoliDB's merging update
     // made of ours, so the next read in this request reloads it.
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
-        request_cache::forget(self.memo_id(), session_id);
-        if let Ok(Some(mut session)) = self.load_session(session_id) {
-            session.touch();
+        self.update(session_id, |session| {
             session.data.insert(key.to_string(), value);
-            if let Err(e) = self.save_session(&session) {
-                eprintln!("Failed to save session: {}", e);
-            }
-        }
+        });
     }
 
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        request_cache::forget(self.memo_id(), session_id);
-        if let Ok(Some(mut session)) = self.load_session(session_id) {
-            session.touch();
-            let value = session.data.remove(key);
-            if let Err(e) = self.save_session(&session) {
-                eprintln!("Failed to save session: {}", e);
-            }
-            value
-        } else {
-            None
-        }
+        self.update(session_id, |session| session.data.remove(key))
+            .flatten()
     }
 
     fn destroy(&self, session_id: &str) {
+        let _guard = id_lock(session_id);
         request_cache::forget(self.memo_id(), session_id);
         if let Ok(client) = self.create_client() {
             if let Err(e) =
@@ -333,11 +383,16 @@ impl SessionStore for SolidbSessionStore {
     }
 
     fn regenerate(&self, old_id: &str) -> String {
-        let old_session = self.load_session(old_id).ok().flatten();
+        let old_session = {
+            let _guard = id_lock(old_id);
+            self.load_session(old_id).ok().flatten()
+        };
         let new_id = Uuid::new_v4().to_string();
 
         if let Some(mut session) = old_session {
             session.key = new_id.clone();
+            // A new session: its absolute lifetime starts again.
+            session.created_at = chrono::Utc::now().timestamp_millis();
             session.touch();
             match self.insert_session(&session) {
                 Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),

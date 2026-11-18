@@ -69,6 +69,10 @@ send an email address — as the NameID, or in an attribute named `email`,
    `(issuer, NameID)`; else the one with that email, linked from now on; else
    a new one. A new account is a `member` with no password — it signs in
    through the IdP only. `SAML_PROVISION=off` refuses anyone with no account.
+   An account whose email was never confirmed loses its password, remember-me
+   cookie and sessions when it is linked (`SamlSso.take_over_unconfirmed`, as
+   in the OAuth scaffold): with open sign-up, whoever typed that address first
+   kept a way into the account the real owner now uses.
    An admin's account is never linked by its email: link it by hand
    (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`).
    `SAML_LINK_EXISTING=off` links no existing account at all — set it when the
