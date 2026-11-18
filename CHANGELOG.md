@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [2.36.5] - 2026-11-18
+
+### Changed
+
+- **The score engraver (`eui-score`) plays fermatas and ornaments**, pinned
+  at eui `0ed95de` (was `0a305ba`) for `serve::eui::score`'s MIDI:
+  - a note under a fermata sounds half its value again, then every staff
+    waits two seconds — at the tempo of that moment — before going on (it
+    sounded twice its value, and the music went straight on);
+  - `\trill` (and `\startTrillSpan`), `\prall`, `\mordent` and `\turn` are
+    written out, their neighbours the key signature's, and an `\arpeggio`
+    chord comes in from its lowest note.
+
+  The code is that of 2.36.4 otherwise.
+
 ## [2.36.4] - 2026-11-16
 
 ### Fixed
