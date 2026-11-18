@@ -3339,6 +3339,14 @@ print(before(early, late), before(late, early))"##,
         "static_zero_arg_method_read_bare",
         "class Limits\n  static def history\n    20\n  end\n  static def keep(n)\n    n * 2\n  end\nend\nprint(Limits.history + 1)\nprint(Limits.keep(4))\nlet kept = Limits.history\nprint(kept)",
     ),
+    // The same with only defaulted parameters (`ApiCatalog.masterclasses`):
+    // no argument is needed, so the bare read calls it with the defaults. The
+    // VM required an empty parameter list for a static (an instance method
+    // already went by the required count), and returned `<fn masterclasses>`.
+    (
+        "static_method_with_only_defaults_read_bare",
+        "class Catalog\n  static def masterclasses(limit = 2, offset = 0)\n    [\"a\", \"b\", \"c\"].slice(offset, offset + limit)\n  end\n  static def both\n    Catalog.masterclasses.length\n  end\nend\nprint(Catalog.masterclasses)\nprint(Catalog.masterclasses(1))\nprint(Catalog.masterclasses.length)\nprint(Catalog.both)",
+    ),
     // `sort` with a comparator block. The VM's `sort` took no argument and
     // raised "expected 0, got 1"; int/float mixes use the numeric order too.
     (

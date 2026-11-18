@@ -15,7 +15,7 @@ use std::process;
 
 use crate::cli::args::{
     print_usage, CloudAction, DbMigrateAction, DbSeedAction, EngineAction, EnvAction, JobsCommand,
-    Options, VERSION,
+    Options, RunnerScript, VERSION,
 };
 
 #[cfg(unix)]
@@ -3907,6 +3907,71 @@ pub fn run_db_import(collections: &[String]) {
     }
 }
 
+/// What a script run "with the app loaded" gets, for `db:seed` and
+/// `soli runner`: `.env` (+ `.env.{APP_ENV}`) and the cached database config,
+/// so the Model layer reaches its database (JWT auth is acquired lazily by the
+/// CRUD layer on the first authenticated call, as in the test runner), and
+/// `app/models` + `app/services` as a preamble, so a script calls
+/// `User.create({...})` without imports, matching migrations and the test
+/// runner (recursive, top-down).
+fn load_app_context(app_path: &Path) -> Vec<(std::path::PathBuf, String)> {
+    solilang::serve::env_loader::load_env_files(app_path);
+    solilang::interpreter::builtins::model::init_db_config();
+    solilang::migration::collect_model_preamble_files(app_path)
+}
+
+/// `soli runner <file.sl | -e code> [folder]`: run code with the app loaded,
+/// from the app's folder. A script path is resolved from where the command
+/// was typed, then the working directory becomes the app's, as for `serve`.
+pub fn run_runner(script: &RunnerScript, folder: &str) {
+    let app_path = Path::new(folder);
+    if !app_path.join("app").is_dir() {
+        eprintln!(
+            "Error: '{}' is not a Soli app (no app/ folder); pass the app's folder: soli runner <file.sl> <folder>",
+            folder
+        );
+        process::exit(64);
+    }
+    let (source, script_path) = match script {
+        RunnerScript::Code(code) => (code.clone(), None),
+        RunnerScript::File(file) => {
+            let path = Path::new(file);
+            let path = if path.is_file() {
+                path.to_path_buf()
+            } else {
+                app_path.join(file)
+            };
+            match fs::read_to_string(&path) {
+                Ok(source) => (source, Some(path.canonicalize().unwrap_or(path))),
+                Err(e) => {
+                    eprintln!("Error: cannot read {}: {}", file, e);
+                    process::exit(66);
+                }
+            }
+        }
+    };
+    let app_path = app_path
+        .canonicalize()
+        .unwrap_or_else(|_| app_path.to_path_buf());
+    if let Err(e) = std::env::set_current_dir(&app_path) {
+        eprintln!("Error: cannot enter {}: {}", app_path.display(), e);
+        process::exit(66);
+    }
+    let preamble = load_app_context(&app_path);
+    let (_assertions, result) = solilang::run_with_path_and_coverage(
+        &source,
+        script_path.as_deref(),
+        false,
+        None,
+        None,
+        &preamble,
+    );
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        process::exit(70);
+    }
+}
+
 pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
     let app_path = Path::new(folder);
 
@@ -3977,17 +4042,7 @@ pub fn run_db_seed(action: &DbSeedAction, folder: &str) {
                 return;
             }
 
-            // Load `.env` (+ `.env.{APP_ENV}`) and cache the DB config so the
-            // Model layer can reach SoliDB. JWT auth is acquired lazily by the
-            // CRUD layer on the first authenticated call — same as the test
-            // runner — so no explicit `init_jwt_token()` is needed here.
-            solilang::serve::env_loader::load_env_files(app_path);
-            solilang::interpreter::builtins::model::init_db_config();
-
-            // Auto-load `app/models` and `app/services` as a preamble so seed
-            // scripts can call `User.create({...})` without explicit imports,
-            // matching migrations and the test runner (recursive, top-down).
-            let model_preamble_files = solilang::migration::collect_model_preamble_files(app_path);
+            let model_preamble_files = load_app_context(app_path);
 
             println!();
             println!("  \x1b[1mSeeding database...\x1b[0m");

@@ -43,6 +43,28 @@ Error: Type error: Wrong number of arguments: expected 2, got 3 at 11:1
 See [`error-codes.md`](error-codes.md) for how to read a frame, every code,
 and the `--format json` output of `soli check` and `soli lint`.
 
+## Running code with the app loaded (`soli runner`)
+
+`soli -e` and `soli script.sl` run in a bare interpreter: no `.env`, no
+database, no models. `soli runner` runs a script, or one line of code, with
+the app loaded — what `rails runner` does:
+
+```bash
+soli runner -e 'print(User.count)'              # one line, from the app's root
+soli runner tmp/backfill_slugs.sl               # a script
+soli runner tmp/report.sl ~/apps/shop           # the app's folder as an argument
+```
+
+It loads `.env` (and `.env.$APP_ENV`), the database configuration, then
+`app/models` and `app/services`, and runs from the app's folder; a script path
+is read from where you typed it, else from the app. Controllers, helpers and
+routes are not loaded. Output is whatever the code prints; an error prints
+`Error: …` and exits non-zero, so it fits in a cron line or a deploy step.
+
+For an interactive session, `soli` with no arguments in the app's root is a
+REPL with `.env` and the models loaded (not the services). The dev server's
+REPL (below) runs inside a request, with everything loaded.
+
 ## Breakpoints
 
 `debug()` stops the request where it stands and answers with the interactive

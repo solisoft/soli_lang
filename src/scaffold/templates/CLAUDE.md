@@ -889,6 +889,8 @@ soli generate                         # list the generators that exist
 soli generate scaffold post           # full resource (see the caveat above)
 soli db:migrate generate create_posts  # scaffold migration
 soli db:seed generate demo_posts      # scaffold seed
+soli runner -e 'print(User.count)'    # run code with the app loaded (.env, models, services)
+soli runner tmp/fix.sl                # same, for a script (soli -e loads no app)
 soli update docs                      # refresh CLAUDE.md / docs/ from this soli
 
 soli db:migrate up                    # run pending migrations

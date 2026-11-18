@@ -213,6 +213,12 @@ pub enum Command {
         action: DbSeedAction,
         folder: String,
     },
+    /// `soli runner <file.sl | -e code> [folder]`: run code with the app
+    /// loaded (`.env`, the database config, `app/models`, `app/services`).
+    Runner {
+        folder: String,
+        script: RunnerScript,
+    },
     /// `soli db:import [collection…]` — copy SoliDB collections into the
     /// configured SQL document backend (`SOLI_DB_ADAPTER=postgres|mysql|sqlite` +
     /// `DATABASE_URL`). Reads from SOLIDB_*; writes JSON document tables.
@@ -619,6 +625,13 @@ pub enum JobsCommand {
     },
 }
 
+/// What `soli runner` runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunnerScript {
+    File(String),
+    Code(String),
+}
+
 pub enum DbSeedAction {
     /// Run the project's seed scripts. When `file` is `Some`, run only that
     /// single seed file (resolved relative to the project folder) instead of
@@ -929,7 +942,11 @@ pub fn print_usage() {
     eprintln!("  graph note <text>    Keep a finding about the code (--on NAME…); later queries return it");
     eprintln!("  agent                MCP server on stdio: lets a coding agent read the running `serve --dev` (requests, queries, errors), replay, test, REPL");
     eprintln!("  engine               Engine commands (create, db:migrate, db:rollback)");
-    eprintln!("  -e <code>            Evaluate code and print result");
+    eprintln!("  runner <file.sl>     Run a script with the app loaded (.env, database, models, services)");
+    eprintln!(
+        "  runner -e <code>     Same, for one line of code: soli runner -e 'print(User.count)'"
+    );
+    eprintln!("  -e <code>            Evaluate code and print result (no app loaded: see runner)");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --no-type-check Skip type checking");
@@ -2117,6 +2134,43 @@ pub fn parse_args() -> Options {
                     i += 1;
                 }
                 options.command = Command::DbImport { collections };
+                return options;
+            }
+            "runner" => {
+                // `soli runner <file.sl> [folder]` or `soli runner -e '<code>' [folder]`,
+                // in any order: a `.sl` positional is the script, any other
+                // positional the app folder (default ".").
+                i += 1;
+                let mut folder = ".".to_string();
+                let mut script: Option<RunnerScript> = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "-e" => {
+                            i += 1;
+                            let Some(code) = args.get(i) else {
+                                eprintln!("runner -e requires code to run");
+                                process::exit(64);
+                            };
+                            script = Some(RunnerScript::Code(code.clone()));
+                        }
+                        arg if arg.ends_with(".sl") => {
+                            script = Some(RunnerScript::File(arg.to_string()))
+                        }
+                        arg if arg.starts_with('-') => {
+                            eprintln!("runner: unknown option {arg}");
+                            process::exit(64);
+                        }
+                        arg => folder = arg.to_string(),
+                    }
+                    i += 1;
+                }
+                let Some(script) = script else {
+                    eprintln!("runner requires a script (file.sl) or -e '<code>'");
+                    eprintln!("  soli runner tmp/fix_orders.sl");
+                    eprintln!("  soli runner -e 'print(User.count)'");
+                    process::exit(64);
+                };
+                options.command = Command::Runner { folder, script };
                 return options;
             }
             "db:seed" => {

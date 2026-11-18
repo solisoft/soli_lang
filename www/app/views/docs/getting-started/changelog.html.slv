@@ -21,6 +21,14 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.38.1.</p>
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli runner</code>: run code with the app loaded.</strong> <code class="text-cyan-400">soli runner -e 'print(User.count)'</code> or <code class="text-cyan-400">soli runner tmp/fix.sl [folder]</code> loads <code class="text-cyan-400">.env</code>, the database configuration, <code class="text-cyan-400">app/models</code> and <code class="text-cyan-400">app/services</code>, then runs from the app&rsquo;s folder &mdash; what <code>rails runner</code> does. <code class="text-cyan-400">soli -e</code> loads no app. See <a href="/docs/development-tools/debugging#soli-runner" class="text-amber-400 hover:underline">Debugging</a>.</li>
+        </ul>
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">VM: a static method whose parameters all have defaults is called when read bare.</strong> <code class="text-cyan-400">Catalog.masterclasses</code>, with <code class="text-cyan-400">static def masterclasses(limit = 6)</code>, returned <code class="text-cyan-400">&lt;fn masterclasses&gt;</code> on the VM &mdash; so in production &mdash; while the tree-walker called it. Instance methods were already called; until you upgrade, write <code class="text-cyan-400">Catalog.masterclasses()</code>.</li>
+        </ul>
     </section>
 
     <section id="v2-38-1" class="mb-16 scroll-mt-24">

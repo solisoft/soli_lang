@@ -58,6 +58,10 @@
                 <span class="w-8 h-8 rounded bg-red-500/20 flex items-center justify-center text-red-400 text-sm font-mono">8</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Errors on the Command Line</span>
             </a>
+            <a href="#soli-runner" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-lime-500/20 flex items-center justify-center text-lime-400 text-sm font-mono">9</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">soli runner</span>
+            </a>
         </div>
     </nav>
 
@@ -887,6 +891,32 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; sol
         <p class="text-gray-400">
             See <a href="/docs/development-tools/error-codes" class="text-amber-400 hover:text-amber-300 underline">Error Messages &amp; Codes</a>
             for how to read a frame, every code, and the <code>--format json</code> output of <code>soli check</code> and <code>soli lint</code>.
+        </p>
+    </section>
+
+    <section id="soli-runner" class="mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6">Running Code with the App Loaded (<code>soli runner</code>)</h2>
+        <p class="text-gray-400 mb-4">
+            <code>soli -e</code> and <code>soli script.sl</code> run in a bare interpreter: no <code>.env</code>, no database, no models.
+            <code class="text-amber-300">soli runner</code> runs a script, or one line of code, with the app loaded &mdash; what
+            <code>rails runner</code> does:
+        </p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli runner -e 'print(User.count)'              # one line, from the app's root
+soli runner tmp/backfill_slugs.sl               # a script
+soli runner tmp/report.sl ~/apps/shop           # the app's folder as an argument</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
+            It loads <code>.env</code> (and <code>.env.$APP_ENV</code>), the database configuration, then <code>app/models</code> and
+            <code>app/services</code>, and runs from the app's folder; a script path is read from where you typed it, else from the app.
+            Controllers, helpers and routes are not loaded. Output is whatever the code prints; an error prints <code>Error: &hellip;</code>
+            and exits non-zero, so it fits in a cron line or a deploy step.
+        </p>
+        <p class="text-gray-400 mb-4">
+            For an interactive session, <code>soli</code> with no arguments in the app's root is a REPL with <code>.env</code> and the
+            models loaded (not the services). The dev server's REPL runs inside a request, with everything loaded.
         </p>
     </section>
 </div>

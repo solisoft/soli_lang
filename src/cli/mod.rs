@@ -113,6 +113,7 @@ pub fn run() {
             tenant,
         } => commands::run_db_migrate(action, folder, connection.as_deref(), tenant.as_deref()),
         Command::DbSeed { action, folder } => commands::run_db_seed(action, folder),
+        Command::Runner { folder, script } => commands::run_runner(script, folder),
         Command::DbImport { collections } => commands::run_db_import(collections),
         Command::DbIndexes { folder } => commands::run_db_indexes(folder),
         Command::DbSchemaDump {

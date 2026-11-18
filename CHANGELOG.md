@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- **`soli runner`: run code with the app loaded.** `soli runner -e
+  'print(User.count)'` or `soli runner tmp/fix.sl [folder]` loads `.env` (and
+  `.env.$APP_ENV`), the database configuration, `app/models` and
+  `app/services`, then runs from the app's folder — what `rails runner` does.
+  `soli -e` and `soli script.sl` load no app. An error exits non-zero.
+  `db:seed` shares the same loading code.
+
+### Fixed
+- **VM: a static method whose parameters all have defaults is called when
+  read bare.** `Catalog.masterclasses` with `static def masterclasses(limit =
+  6)` returned `<fn masterclasses>` on the VM (so in production), while the
+  tree-walker called it: the VM's bare-static rule asked for an empty
+  parameter list, where the instance path (and the tree-walker) count the
+  required parameters. Pinned in the differential engines test.
+
 ## [2.38.1] - 2026-11-18
 
 ### Security

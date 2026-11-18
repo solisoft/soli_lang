@@ -1038,19 +1038,23 @@ impl Vm {
             }
             return Ok(val);
         }
-        // A zero-parameter static method read bare (`Assistant.history_messages`)
-        // is called, as the tree-walker's member auto-invoke does for methods.
-        // The class is its `this`, as in a call with parentheses.
+        // A static method read bare (`Assistant.history_messages`) is called
+        // when it needs no argument, as the tree-walker's member auto-invoke
+        // does for methods: no parameter, or only ones with a default
+        // (`def self.masterclasses(limit = 6)`), which the call fills in —
+        // the rule the instance path above already follows (`arity` counts
+        // the required parameters). The class is its `this`, as in a call
+        // with parentheses.
         if let Value::Class(class) = object {
             match &val {
-                Value::VmClosure(closure) if closure.proto.param_names.is_empty() => {
+                Value::VmClosure(closure) if closure.proto.arity == 0 => {
                     let closure = closure.clone();
                     self.push(object.clone());
                     return self.run_to_completion(|vm| {
                         vm.call_closure_in_class(closure, 0, span, Some(class.clone()))
                     });
                 }
-                Value::Function(func) if func.is_method && func.params.is_empty() => {
+                Value::Function(func) if func.is_method && func.arity() == 0 => {
                     if func.binds_this {
                         return self.call_method_bound_args(func, object.clone(), &[], span);
                     }
