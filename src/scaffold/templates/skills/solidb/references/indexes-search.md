@@ -231,8 +231,9 @@ sdb_api POST /_api/database/mydb/vector/docs '{"name":"emb_idx","field":"emb","d
 FOR r IN VECTOR_SEARCH("docs", "emb_idx", [1,0,0], 2) RETURN {k: r.doc._key, s: r.score}
 -- [{"k":"a","s":1.0},{"k":"b","s":0.9938…}]
 FOR r IN VECTOR_SEARCH("docs", "emb_idx", [1,0,0], 2, {filter: {tenant: "x"}}) RETURN r.doc._key
--- ["a","c"]   (filter = equality on fields, checked on the candidates; after 2.14.0 the search
---               widens until k pass or the index is exhausted: through 2.14.0 it checked 4·k
+-- ["a","c"]   (filter = equality on fields. After 2.14.0 it is followed inside the HNSW walk,
+--               and `ef` counts the documents that pass, as pgvector's hnsw.ef_search does:
+--               raise {ef: N} for recall, as for a plain search. Through 2.14.0 it checked 4·k
 --               candidates once, so a selective filter returned fewer than k rows)
 FOR d IN docs SORT VECTOR_SIMILARITY(d.emb, [1,0,0]) DESC LIMIT 2 RETURN d._key   -- exact scan
 RETURN VECTOR_DISTANCE([0,0], [3,4], "euclidean")   -- [5.0]
