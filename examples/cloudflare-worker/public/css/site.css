@@ -191,10 +191,14 @@ main pre code.hljs { background: none; padding: 0; }
   padding: .45rem .55rem; border: 1px solid var(--rule); border-radius: .4rem; background: var(--deck); color: var(--text);
   font: inherit; }
 .invoice-form .parties { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.invoice-form table.lines { width: 100%; border-collapse: collapse; margin-bottom: .6rem; }
+.invoice-form table.lines { width: 100%; border-collapse: collapse; margin-bottom: .6rem; table-layout: fixed; }
 .invoice-form table.lines th { text-align: left; font-weight: 500; font-size: .8rem; color: var(--muted); padding: 0 .25rem; }
 .invoice-form table.lines td { padding: .2rem .25rem; }
-.invoice-form table.lines td:first-child { width: 46%; }
+/* Fixed columns: the description takes what is left, the VAT select keeps room for "5.5" and its arrow. */
+.invoice-form table.lines th:nth-child(2) { width: 4.5rem; }
+.invoice-form table.lines th:nth-child(3) { width: 7rem; }
+.invoice-form table.lines th:nth-child(4) { width: 5.75rem; }
+.invoice-form table.lines th:nth-child(5) { width: 2.75rem; }
 .invoice-form input.num { text-align: right; }
 .button.small { padding: .3rem .7rem; font-size: .85rem; }
 .invoice-preview { margin: 0; position: sticky; top: 1rem; }
