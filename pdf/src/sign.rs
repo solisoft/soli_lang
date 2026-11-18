@@ -84,6 +84,13 @@ pub struct SignMeta {
     /// Append the signature as an incremental update even when the document
     /// has no signature yet. Already-signed documents always are.
     pub incremental: bool,
+    /// More places to draw the same signature block (initials on each page,
+    /// a second signature line…): `/Stamp` annotations carrying the
+    /// appearance, added in the same update as the signature and therefore
+    /// covered by it — moving or removing one afterwards breaks the
+    /// signature. Only `page`, `x`, `y`, `width`, `height` are read; the
+    /// image is `appearance.image`.
+    pub stamps: Vec<SignAppearance>,
 }
 
 /// A serialized PDF carrying a reserved, ByteRange-finalized signature slot,
@@ -523,6 +530,8 @@ fn add_signature_objects(
     let sig_id = doc.add_object(Object::Dictionary(sig));
     let image = meta.appearance.as_ref().and_then(|a| a.image.as_deref());
 
+    add_stamps(doc, meta, image)?;
+
     let (fields, taken) = walk_fields(doc);
     let acro_id = ensure_acroform(doc)?;
 
@@ -591,6 +600,58 @@ fn add_signature_objects(
     // 3. Hook the widget onto its page and the field into the AcroForm.
     push_to_array(doc, page_id, b"Annots", Object::Reference(field_id))?;
     push_to_array(doc, acro_id, b"Fields", Object::Reference(field_id))?;
+    Ok(())
+}
+
+/// Draw the signature block at each of `meta.stamps` as a locked, printable
+/// `/Stamp` annotation on its page. Called while the signature's own objects
+/// are being added, so the stamps land in the revision the signature covers.
+fn add_stamps(doc: &mut Document, meta: &SignMeta, image: Option<&[u8]>) -> Result<()> {
+    if meta.stamps.is_empty() {
+        return Ok(());
+    }
+    let pages = doc.get_pages();
+    for stamp in &meta.stamps {
+        let page_id = *pages.get(&stamp.page.max(1)).ok_or_else(|| {
+            backend(format!(
+                "sign: a stamp is on page {}, but the document has {} page(s)",
+                stamp.page,
+                pages.len()
+            ))
+        })?;
+        if stamp.width <= 1.0 || stamp.height <= 1.0 {
+            return Err(backend("sign: a stamp needs a width and a height"));
+        }
+        let ap_id = build_appearance(doc, meta, stamp.width, stamp.height, image)?;
+        let mut ap = Dictionary::new();
+        ap.set("N", Object::Reference(ap_id));
+        let mut annot = Dictionary::new();
+        annot.set("Type", Object::Name(b"Annot".to_vec()));
+        annot.set("Subtype", Object::Name(b"Stamp".to_vec()));
+        annot.set(
+            "Rect",
+            Object::Array(
+                [
+                    stamp.x,
+                    stamp.y,
+                    stamp.x + stamp.width,
+                    stamp.y + stamp.height,
+                ]
+                .iter()
+                .map(|v| Object::Real(*v))
+                .collect(),
+            ),
+        );
+        // Print (4) | Locked (128) | LockedContents (512).
+        annot.set("F", Object::Integer(644));
+        annot.set("P", Object::Reference(page_id));
+        annot.set("AP", Object::Dictionary(ap));
+        if let Some(name) = &meta.name {
+            annot.set("Contents", lit(name));
+        }
+        let annot_id = doc.add_object(Object::Dictionary(annot));
+        push_to_array(doc, page_id, b"Annots", Object::Reference(annot_id))?;
+    }
     Ok(())
 }
 

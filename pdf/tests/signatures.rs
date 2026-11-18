@@ -386,3 +386,74 @@ fn a_garbage_appearance_image_is_an_error() {
         .expect("refused");
     assert!(err.to_string().contains("appearance image"), "got: {err}");
 }
+
+fn stamp(page: u32, x: f32, y: f32) -> soli_pdf::SignAppearance {
+    soli_pdf::SignAppearance {
+        page,
+        x,
+        y,
+        width: 120.0,
+        height: 40.0,
+        image: None,
+    }
+}
+
+#[test]
+fn stamps_draw_the_block_again_inside_the_signed_revision() {
+    let mut m = meta();
+    m.appearance = Some(soli_pdf::SignAppearance {
+        page: 1,
+        x: 40.0,
+        y: 40.0,
+        width: 180.0,
+        height: 60.0,
+        image: None,
+    });
+    m.stamps = vec![stamp(1, 400.0, 760.0), stamp(1, 400.0, 400.0)];
+    let signed = sign_dummy(&simple_pdf(), &m);
+
+    let doc = Document::load_mem(&signed).unwrap();
+    let stamps: Vec<_> = doc
+        .objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .filter(|d| d.get(b"Subtype").and_then(|n| n.as_name()).ok() == Some(b"Stamp"))
+        .collect();
+    assert_eq!(stamps.len(), 2, "one /Stamp per entry");
+    for s in &stamps {
+        assert!(s.get(b"AP").is_ok(), "each stamp carries the appearance");
+        assert_eq!(
+            s.get(b"F").unwrap().as_i64().unwrap(),
+            644,
+            "printed and locked"
+        );
+    }
+    // Still one signature, and it covers the whole file — stamps included.
+    let sigs = soli_pdf::extract_signatures(&signed).unwrap();
+    assert_eq!(sigs.len(), 1);
+    assert!(sigs[0].covers_document);
+}
+
+#[test]
+fn stamps_also_go_with_an_incremental_signature() {
+    let once = sign_dummy(&simple_pdf(), &meta());
+    let mut m = meta();
+    m.stamps = vec![stamp(1, 300.0, 300.0)];
+    let twice = sign_dummy(&once, &m);
+    assert!(twice.starts_with(&once), "the first revision is untouched");
+    let appended = &twice[once.len()..];
+    assert!(
+        appended.windows(6).any(|w| w == b"/Stamp"),
+        "the stamp lives in the appended revision the second signature covers"
+    );
+}
+
+#[test]
+fn a_stamp_past_the_last_page_is_an_error() {
+    let mut m = meta();
+    m.stamps = vec![stamp(9, 10.0, 10.0)];
+    let err = prepare_signature(&simple_pdf(), &m, 4096)
+        .err()
+        .expect("refused");
+    assert!(err.to_string().contains("page 9"), "got: {err}");
+}

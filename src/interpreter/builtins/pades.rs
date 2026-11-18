@@ -725,6 +725,56 @@ mod tests {
         soli_pdf::embed_cms(prepared, &cms).expect("embed")
     }
 
+    /// Stamps (the signature block drawn again elsewhere) are part of the
+    /// revision the signature covers: the signature still verifies, and a
+    /// byte changed inside a stamp breaks it.
+    #[test]
+    fn stamps_are_covered_by_the_signature() {
+        let opts = soli_pdf::RenderOptions {
+            fetch_images: false,
+            font_dirs: vec![format!("{}/font", env!("CARGO_MANIFEST_DIR")).into()],
+            ..Default::default()
+        };
+        let tmpl = br#"{ "fonts": ["titillium"], "content": [
+            { "type": "paragraph", "value": "Initial each page" }
+        ] }"#;
+        let pdf = soli_pdf::render_to_bytes(tmpl, b"{}", &opts).expect("render");
+        let stamp = |y: f32| soli_pdf::SignAppearance {
+            page: 1,
+            x: 420.0,
+            y,
+            width: 120.0,
+            height: 40.0,
+            image: None,
+        };
+        let meta = soli_pdf::SignMeta {
+            name: Some("Alice".into()),
+            signing_time: Some("D:20260703120000+00'00'".into()),
+            appearance: Some(stamp(60.0)),
+            stamps: vec![stamp(700.0), stamp(400.0)],
+            ..Default::default()
+        };
+        let signed = sign_with(&pdf, &material("rsa_cert.pem", "rsa_key.pem"), &meta);
+        let sigs = soli_pdf::extract_signatures(&signed).expect("extract");
+        assert_eq!(sigs.len(), 1, "one signature for the block and its stamps");
+        assert!(
+            verify_cms(&sigs[0].cms_der, &sigs[0].signed_bytes)
+                .unwrap()
+                .valid
+        );
+
+        let at = signed
+            .windows(6)
+            .rposition(|w| w == b"/Stamp")
+            .expect("a stamp annotation");
+        let mut tampered = signed.clone();
+        tampered[at + 1] = b'X'; // /Stamp -> /Xtamp
+        let sig = &soli_pdf::extract_signatures(&tampered).expect("extract")[0];
+        assert!(!verify_cms(&sig.cms_der, &sig.signed_bytes)
+            .map(|o| o.valid)
+            .unwrap_or(false));
+    }
+
     /// Two signers in turn: the second signature is an incremental update, so
     /// the first one still verifies over the bytes it signed, and only the
     /// last one covers the whole file.

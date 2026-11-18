@@ -312,7 +312,7 @@ for sig in pdf_verify(received_pdf)
 end
 ```
 
-- **`pdf_sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`, `field?`, `incremental?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`. Signing a PDF that is **already signed** adds a signature and keeps the earlier ones valid — see [Several signatures](#several-signatures).
+- **`pdf_sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`, `field?`, `incremental?`, `stamps?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`. Signing a PDF that is **already signed** adds a signature and keeps the earlier ones valid — see [Several signatures](#several-signatures).
 - **`pdf_verify(pdf)`** — returns an array of `{ field, valid, covers_document, signer, reason?, signed_at? }`, one per signature. **`valid`** means the CMS signature verifies against its embedded certificate **and** the document's ByteRange digest matches — i.e. the content is authentic and unmodified. It does **not** assert certificate *trust* (whether the issuer is a trusted CA). `covers_document` is true when the signature spans the whole file.
 
 ### Options
@@ -430,6 +430,7 @@ pdf = pdf_facturx_from_invoice(template, invoice, {
 | `tsa` | — | URL of an [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161) Time-Stamp Authority. When set, the signature is timestamped (PAdES-**B-T**) — see below. Requires network access at sign time. |
 | `appearance` | — | Draw a **visible** signature block (name, "Digitally signed", date, reason, location): `{ "page"?: 1, "x"?, "y"?, "width"?, "height"?, "image"? }` in points from the page's bottom-left. `image` is a handwritten signature — a `data:image/png;base64,…` URL (what a canvas `toDataURL()` gives) or bare base64 PNG/JPEG/WebP, never a path — drawn above a small name + date caption, transparency kept. Omit `appearance` for an invisible-but-valid signature. |
 | `field` | — | Name of the signature field. If the PDF has an **empty signature field** of that name (placed by an authoring tool or a previous step), the signature fills it — its page and rectangle are used and the block is drawn there. Otherwise a field of that name is created. Default: the first free `Signature1`, `Signature2`, … A field that is already signed is refused. |
+| `stamps` | — | More places to draw the same signature block — initials on each page, a second signature line: an array of `{ "page", "x", "y", "width", "height" }` in points. Each is a locked `/Stamp` annotation added in the same update as the signature, so the one signature covers them all: moving or removing one afterwards breaks it. The image is `appearance.image`. A page past the end is an error. |
 | `incremental` | — | `true` appends the signature as an incremental update even when the PDF has no signature yet (it always does when one exists), leaving the original bytes untouched. |
 | `reason` / `location` / `name` / `contact` | — | Human-facing metadata shown in the reader's signature panel. |
 
@@ -482,6 +483,16 @@ its own revision — the file as it was when it was signed. What came after it i
 the later signatures' updates. Readers (Acrobat, `pdfsig`) show each signature
 as valid and the earlier ones as "not total document signed", which is the
 expected state for a document signed by several parties.
+
+One signer, several places — initials on every page plus the signature at the
+end — is one signature with `stamps`, not one signature per place:
+
+```soli
+pdf_sign(contract, { cert: seal_pem, key: seal_key, name: "Alice",
+                     appearance: { page: 3, x: 60, y: 90, width: 180, height: 60, image: drawn },
+                     stamps: [{ page: 1, x: 480, y: 40, width: 80, height: 30 },
+                              { page: 2, x: 480, y: 40, width: 80, height: 30 }] })
+```
 
 Place empty signature fields first and sign into them by name with `field:`;
 the signer then never chooses where the block goes.

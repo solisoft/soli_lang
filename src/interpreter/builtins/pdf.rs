@@ -1393,6 +1393,7 @@ fn sign_config_from_hash(sb: &HashPairs) -> Result<SignConfig, String> {
             sb.get(&HashKey::String("incremental".into())),
             Some(Value::Bool(true))
         ),
+        stamps: parse_sign_stamps(sb)?,
     };
     Ok(SignConfig {
         material: pades::SignerMaterial {
@@ -1439,6 +1440,45 @@ fn parse_sign_appearance(sb: &HashPairs) -> Result<Option<soli_pdf::SignAppearan
         height: num("height", 64.0),
         image,
     }))
+}
+
+/// Parse `sign.stamps`, an array of `{ page, x, y, width, height }`: more
+/// places to draw the signature block, covered by the same signature.
+fn parse_sign_stamps(sb: &HashPairs) -> Result<Vec<soli_pdf::SignAppearance>, String> {
+    let Some(value) = sb.get(&HashKey::String("stamps".into())) else {
+        return Ok(Vec::new());
+    };
+    let Value::Array(items) = value else {
+        return Err("sign: `stamps` must be an array of { page, x, y, width, height }".to_string());
+    };
+    let mut stamps = Vec::new();
+    for item in items.borrow().iter() {
+        let Value::Hash(h) = item else {
+            return Err(
+                "sign: each stamp must be a hash { page, x, y, width, height }".to_string(),
+            );
+        };
+        let stamp = h.borrow();
+        let num = |k: &str| stamp.get(&HashKey::String(k.into())).and_then(opt_num);
+        let page = match stamp.get(&HashKey::String("page".into())) {
+            Some(Value::Int(n)) if *n >= 1 => *n as u32,
+            _ => return Err("sign: a stamp needs a `page` (1-based)".to_string()),
+        };
+        let (Some(x), Some(y), Some(width), Some(height)) =
+            (num("x"), num("y"), num("width"), num("height"))
+        else {
+            return Err("sign: a stamp needs `x`, `y`, `width` and `height`".to_string());
+        };
+        stamps.push(soli_pdf::SignAppearance {
+            page,
+            x,
+            y,
+            width,
+            height,
+            image: None,
+        });
+    }
+    Ok(stamps)
 }
 
 /// A handwritten-signature image for `appearance.image`: a `data:` URL (what a
