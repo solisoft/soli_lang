@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.39.0] - 2026-11-18
+
 ### Added
 - **`soli runner`: run code with the app loaded.** `soli runner -e
   'print(User.count)'` or `soli runner tmp/fix.sl [folder]` loads `.env` (and
