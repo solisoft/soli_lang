@@ -1813,6 +1813,23 @@ mod tests {
         Ok(())
     }
 
+    /// A form's `_soli_ts` field is a signed timestamp in seconds: two renders
+    /// a second boundary apart differ there and nowhere else (a slow Windows
+    /// runner hit it). Its value is blanked before the renders are compared.
+    fn without_form_timestamp(html: &str) -> String {
+        const FIELD: &str = "name=\"_soli_ts\" value=\"";
+        let mut out = String::with_capacity(html.len());
+        let mut rest = html;
+        while let Some(at) = rest.find(FIELD) {
+            let value_start = at + FIELD.len();
+            out.push_str(&rest[..value_start]);
+            rest = &rest[value_start..];
+            rest = rest.find('"').map_or("", |end| &rest[end..]);
+        }
+        out.push_str(rest);
+        out
+    }
+
     fn assert_renders_same(source: &str, data: &Value) {
         let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
         let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
@@ -1828,7 +1845,11 @@ mod tests {
             .render(&mut vm, data)
             .unwrap_or_else(|e| panic!("{source}: vm: {e}"))
             .html;
-        assert_eq!(on_vm, tree, "{source}");
+        assert_eq!(
+            without_form_timestamp(&on_vm),
+            without_form_timestamp(&tree),
+            "{source}"
+        );
         assert!(
             vm.globals
                 .keys()
