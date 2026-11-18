@@ -716,4 +716,88 @@ mod tests {
         std::fs::write(&out, &signed).unwrap();
         eprintln!("wrote signed PDF: {}", out.display());
     }
+
+    fn sign_with(pdf: &[u8], signer: &SignerMaterial, meta: &soli_pdf::SignMeta) -> Vec<u8> {
+        let prepared =
+            soli_pdf::prepare_signature(pdf, meta, signer.cert_der.len() + 4096).expect("prepare");
+        let digest = sha256(&prepared.signed_bytes());
+        let cms = build_cms(&digest, signer, OffsetDateTime::UNIX_EPOCH, None).expect("cms");
+        soli_pdf::embed_cms(prepared, &cms).expect("embed")
+    }
+
+    /// Two signers in turn: the second signature is an incremental update, so
+    /// the first one still verifies over the bytes it signed, and only the
+    /// last one covers the whole file.
+    #[test]
+    fn second_signature_keeps_the_first_valid() {
+        let opts = soli_pdf::RenderOptions {
+            fetch_images: false,
+            font_dirs: vec![format!("{}/font", env!("CARGO_MANIFEST_DIR")).into()],
+            ..Default::default()
+        };
+        let tmpl = br#"{ "fonts": ["titillium"], "content": [
+            { "type": "paragraph", "value": "Contract between A and B" }
+        ] }"#;
+        let pdf = soli_pdf::render_to_bytes(tmpl, b"{}", &opts).expect("render");
+        let alice = material("rsa_cert.pem", "rsa_key.pem");
+        let bob = material("ec_cert.pem", "ec_key.pem");
+
+        let meta = |name: &str| soli_pdf::SignMeta {
+            name: Some(name.into()),
+            signing_time: Some("D:20260703120000+00'00'".into()),
+            ..Default::default()
+        };
+        let once = sign_with(&pdf, &alice, &meta("Alice"));
+        let twice = sign_with(&once, &bob, &meta("Bob"));
+        assert!(
+            twice.starts_with(&once),
+            "the first revision is kept verbatim"
+        );
+
+        let sigs = soli_pdf::extract_signatures(&twice).expect("extract");
+        assert_eq!(sigs.len(), 2, "two signature fields");
+        let mut names: Vec<&str> = sigs.iter().map(|s| s.field.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["Signature1", "Signature2"]);
+        for s in &sigs {
+            let outcome = verify_cms(&s.cms_der, &s.signed_bytes).expect("verify");
+            assert!(outcome.valid, "{} still verifies", s.field);
+        }
+        let last = sigs.iter().find(|s| s.field == "Signature2").unwrap();
+        let first = sigs.iter().find(|s| s.field == "Signature1").unwrap();
+        assert!(last.covers_document, "the last signature covers the file");
+        assert!(!first.covers_document, "the first covers its own revision");
+
+        // A third signer into a new, named field. Then tamper with a byte every
+        // signature covers: all of them must fail.
+        let thrice = sign_with(
+            &twice,
+            &alice,
+            &soli_pdf::SignMeta {
+                field: Some("Witness".into()),
+                ..meta("Carol")
+            },
+        );
+        let sigs = soli_pdf::extract_signatures(&thrice).expect("extract");
+        assert_eq!(sigs.len(), 3);
+        assert!(sigs
+            .iter()
+            .any(|s| s.field == "Witness" && s.covers_document));
+        for s in &sigs {
+            assert!(
+                verify_cms(&s.cms_der, &s.signed_bytes)
+                    .expect("verify")
+                    .valid
+            );
+        }
+        // Byte 11 sits in the header's binary-mark comment: the file still
+        // parses, but every ByteRange starts at 0 and covers it.
+        let mut tampered = thrice.clone();
+        tampered[11] ^= 0x01;
+        for s in soli_pdf::extract_signatures(&tampered).expect("extract") {
+            assert!(!verify_cms(&s.cms_der, &s.signed_bytes)
+                .map(|o| o.valid)
+                .unwrap_or(false));
+        }
+    }
 }

@@ -1387,7 +1387,12 @@ fn sign_config_from_hash(sb: &HashPairs) -> Result<SignConfig, String> {
         name: sign_str(sb, "name"),
         contact: sign_str(sb, "contact"),
         signing_time: Some(pdf_date(signing_time)),
-        appearance: parse_sign_appearance(sb),
+        appearance: parse_sign_appearance(sb)?,
+        field: sign_str(sb, "field"),
+        incremental: matches!(
+            sb.get(&HashKey::String("incremental".into())),
+            Some(Value::Bool(true))
+        ),
     };
     Ok(SignConfig {
         material: pades::SignerMaterial {
@@ -1401,12 +1406,13 @@ fn sign_config_from_hash(sb: &HashPairs) -> Result<SignConfig, String> {
     })
 }
 
-/// Parse the optional `sign.appearance` hash `{ page?, x?, y?, width?, height? }`
-/// into a visible signature block (defaults to a box in the bottom-left of
-/// page 1). Returns `None` when the key is absent — an invisible signature.
-fn parse_sign_appearance(sb: &HashPairs) -> Option<soli_pdf::SignAppearance> {
+/// Parse the optional `sign.appearance` hash
+/// `{ page?, x?, y?, width?, height?, image? }` into a visible signature block
+/// (defaults to a box in the bottom-left of page 1). Returns `None` when the
+/// key is absent — an invisible signature.
+fn parse_sign_appearance(sb: &HashPairs) -> Result<Option<soli_pdf::SignAppearance>, String> {
     let Some(Value::Hash(h)) = sb.get(&HashKey::String("appearance".into())) else {
-        return None;
+        return Ok(None);
     };
     let a = h.borrow();
     let num = |k: &str, d: f32| {
@@ -1421,13 +1427,36 @@ fn parse_sign_appearance(sb: &HashPairs) -> Option<soli_pdf::SignAppearance> {
             _ => None,
         })
         .unwrap_or(1);
-    Some(soli_pdf::SignAppearance {
+    let image = match a.get(&HashKey::String("image".into())) {
+        Some(Value::String(src)) => Some(load_signature_image(src)?),
+        _ => None,
+    };
+    Ok(Some(soli_pdf::SignAppearance {
         page,
         x: num("x", 40.0),
         y: num("y", 40.0),
         width: num("width", 190.0),
         height: num("height", 64.0),
-    })
+        image,
+    }))
+}
+
+/// A handwritten-signature image for `appearance.image`: a `data:` URL (what a
+/// canvas `toDataURL()` posts) or bare base64. Deliberately not a path: the
+/// value usually comes from a request, and a path would read the server's disk.
+fn load_signature_image(src: &str) -> Result<Vec<u8>, String> {
+    let b64 = |data: &str| {
+        base64::engine::general_purpose::STANDARD
+            .decode(data.trim())
+            .map_err(|e| format!("sign: appearance.image is not valid base64: {e}"))
+    };
+    if let Some(rest) = src.strip_prefix("data:") {
+        let (_, data) = rest
+            .split_once(";base64,")
+            .ok_or("sign: appearance.image data URL must be base64 (`data:image/png;base64,…`)")?;
+        return b64(data);
+    }
+    b64(src)
 }
 
 /// Reserve a signature slot, digest the ByteRange, build the CMS, and splice it
