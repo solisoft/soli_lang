@@ -231,7 +231,7 @@ sdb_api POST /_api/database/mydb/vector/docs '{"name":"emb_idx","field":"emb","d
 FOR r IN VECTOR_SEARCH("docs", "emb_idx", [1,0,0], 2) RETURN {k: r.doc._key, s: r.score}
 -- [{"k":"a","s":1.0},{"k":"b","s":0.9938…}]
 FOR r IN VECTOR_SEARCH("docs", "emb_idx", [1,0,0], 2, {filter: {tenant: "x"}}) RETURN r.doc._key
--- ["a","c"]   (filter = equality on fields. After 2.14.0 it is followed inside the HNSW walk,
+-- ["a","c"]   (filter = equality on fields. From 2.15.0 it is followed inside the HNSW walk,
 --               and `ef` counts the documents that pass, as pgvector's hnsw.ef_search does:
 --               raise {ef: N} for recall, as for a plain search. Through 2.14.0 it checked 4·k
 --               candidates once, so a selective filter returned fewer than k rows)
@@ -243,7 +243,7 @@ Through 2.14.0 the HNSW graph linked each vector to its M nearest only: on
 clustered vectors (embeddings are) recall@10 stayed near 0.5–0.6 whatever the
 search-time `ef` (the candidate list a search keeps: `VECTOR_SEARCH`'s
 `{ef: N}` option, `ef_search` in the HTTP search body; not the index option
-`ef_construction`). After 2.14.0 it uses the HNSW paper's neighbour heuristic
+`ef_construction`). From 2.15.0 it uses the HNSW paper's neighbour heuristic
 (recall ≈ 1.0 at search `ef` 40 on 20,000 clustered vectors); index builds
 take about twice as long.
 Observed on a build of `main`, 2026-11-18 (card #979).

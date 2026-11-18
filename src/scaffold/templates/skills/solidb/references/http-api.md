@@ -554,7 +554,7 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   recreated. On 2.10.4 or earlier: recreate the index after every insert,
   or do without. Dropping an index now clears the column's `index_type`.
 
-### Sharded columnar collections (after 2.14.0; observed on a two-node build of `main`, 2026-11-18, card #899)
+### Sharded columnar collections (from 2.15.0; observed on a two-node build of `main`, 2026-11-18, card #899)
 
 `POST …/columnar` with `"num_shards":4,"shard_key":"host","replication_factor":1`
 (the key must be a column, else `400`) → `{"status":"created",…}`; the
@@ -569,7 +569,7 @@ shards everywhere. Refused on `m` for now (`"'m' is sharded: … is not
 supported on it yet"`): deletes, truncate, columns, indexes, retention,
 compact, tags, branches, `/query`, `/aggregate`.
 
-### Exports as Parquet and Arrow (after 2.14.0; observed on a build of `main`, 2026-11-18, card #980)
+### Exports as Parquet and Arrow (from 2.15.0; observed on a build of `main`, 2026-11-18, card #980)
 
 `GET …/collection/{name}/export?format=parquet` → one zstd Parquet file
 (`application/vnd.apache.parquet`), `?format=arrow` → an Arrow IPC stream;
@@ -585,7 +585,7 @@ kinds / objects / other lists → JSON text. Read back with
 collections → `400` (JSON lines only). A server built without the
 `export-arrow` feature answers `400`.
 
-### Tags of a columnar collection (after 2.14.0; observed on a build of `main`, 2026-11-18, card #981)
+### Tags of a columnar collection (from 2.15.0; observed on a build of `main`, 2026-11-18, card #981)
 
 A name for a columnar collection's rows as they are now; queries read them
 later as they were, and a restore brings them back. Local to the node: not
