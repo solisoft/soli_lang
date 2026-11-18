@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.38.1] - 2026-11-18
+
 ### Security
 - **SAML: a signed element can no longer be hidden by an empty namespace
   declaration.** `xmlns:saml=""` (forbidden by XML 1.0) renders nothing in
