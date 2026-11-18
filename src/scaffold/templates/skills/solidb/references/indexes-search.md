@@ -239,9 +239,12 @@ RETURN VECTOR_DISTANCE([0,0], [3,4], "euclidean")   -- [5.0]
 ```
 
 Through 2.14.0 the HNSW graph linked each vector to its M nearest only: on
-clustered vectors (embeddings are) recall@10 stayed near 0.5–0.6 whatever `ef`.
-After 2.14.0 it uses the HNSW paper's neighbour heuristic (recall ≈ 1.0 at
-`ef` 40 on 20,000 clustered vectors); index builds take about twice as long.
+clustered vectors (embeddings are) recall@10 stayed near 0.5–0.6 whatever the
+search-time `ef` (the candidate list a search keeps: `VECTOR_SEARCH`'s
+`{ef: N}` option, `ef_search` in the HTTP search body; not the index option
+`ef_construction`). After 2.14.0 it uses the HNSW paper's neighbour heuristic
+(recall ≈ 1.0 at search `ef` 40 on 20,000 clustered vectors); index builds
+take about twice as long.
 Observed on a build of `main`, 2026-11-18 (card #979).
 
 A document whose vector has the wrong dimension is still inserted (no error).
