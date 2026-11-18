@@ -312,7 +312,7 @@ for sig in pdf_verify(received_pdf)
 end
 ```
 
-- **`pdf_sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`.
+- **`pdf_sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`, `field?`, `incremental?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`. Signing a PDF that is **already signed** adds a signature and keeps the earlier ones valid — see [Several signatures](#several-signatures).
 - **`pdf_verify(pdf)`** — returns an array of `{ field, valid, covers_document, signer, reason?, signed_at? }`, one per signature. **`valid`** means the CMS signature verifies against its embedded certificate **and** the document's ByteRange digest matches — i.e. the content is authentic and unmodified. It does **not** assert certificate *trust* (whether the issuer is a trusted CA). `covers_document` is true when the signature spans the whole file.
 
 ### Options
@@ -428,7 +428,9 @@ pdf = pdf_facturx_from_invoice(template, invoice, {
 | `key` | ✓ | The private key. **RSA** (PKCS#1 or PKCS#8) or **EC P-256** (PKCS#8) PEM/DER. Inline string or path. |
 | `chain` | — | Array of intermediate-certificate PEMs to embed so verifiers can build the trust path. |
 | `tsa` | — | URL of an [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161) Time-Stamp Authority. When set, the signature is timestamped (PAdES-**B-T**) — see below. Requires network access at sign time. |
-| `appearance` | — | Draw a **visible** signature block (name, "Digitally signed", date, reason, location): `{ "page"?: 1, "x"?, "y"?, "width"?, "height"? }` in points from the page's bottom-left. Omit for an invisible-but-valid signature. |
+| `appearance` | — | Draw a **visible** signature block (name, "Digitally signed", date, reason, location): `{ "page"?: 1, "x"?, "y"?, "width"?, "height"?, "image"? }` in points from the page's bottom-left. `image` is a handwritten signature — a `data:image/png;base64,…` URL (what a canvas `toDataURL()` gives) or bare base64 PNG/JPEG/WebP, never a path — drawn above a small name + date caption, transparency kept. Omit `appearance` for an invisible-but-valid signature. |
+| `field` | — | Name of the signature field. If the PDF has an **empty signature field** of that name (placed by an authoring tool or a previous step), the signature fills it — its page and rectangle are used and the block is drawn there. Otherwise a field of that name is created. Default: the first free `Signature1`, `Signature2`, … A field that is already signed is refused. |
+| `incremental` | — | `true` appends the signature as an incremental update even when the PDF has no signature yet (it always does when one exists), leaving the original bytes untouched. |
 | `reason` / `location` / `name` / `contact` | — | Human-facing metadata shown in the reader's signature panel. |
 
 **What it produces.** A **PAdES-B-B** signature: SHA-256 digest, RSA or ECDSA
@@ -454,6 +456,40 @@ pdf = pdf_render(template, data, {
 })
 ```
 
+### Several signatures
+
+Sign a signed PDF again and the new signature is added as an **incremental
+update**: the bytes already signed are kept exactly as they were, and only the
+new signature, its field and the changed form and page objects are appended
+after them. Each earlier signature still covers what it signed, so a contract
+can collect signatures in turn — and every one of them verifies.
+
+```soli
+contract = pdf_from_markdown(terms)
+contract = pdf_sign(contract, { cert: alice_pem, key: alice_key, name: "Alice",
+                                appearance: { x: 40, y: 40, width: 180, height: 60,
+                                              image: params["signature"] } })   # canvas data URL
+contract = pdf_sign(contract, { cert: bob_pem, key: bob_key, name: "Bob",
+                                appearance: { x: 320, y: 40, width: 180, height: 60 } })
+
+pdf_verify(contract)
+# [{ field: "Signature1", valid: true, covers_document: false, signer: "…", … },
+#  { field: "Signature2", valid: true, covers_document: true,  signer: "…", … }]
+```
+
+Only the **last** signature has `covers_document: true`; an earlier one covers
+its own revision — the file as it was when it was signed. What came after it is
+the later signatures' updates. Readers (Acrobat, `pdfsig`) show each signature
+as valid and the earlier ones as "not total document signed", which is the
+expected state for a document signed by several parties.
+
+Place empty signature fields first and sign into them by name with `field:`;
+the signer then never chooses where the block goes.
+
+`pdf_stamp`, `pdf_merge`, `pdf_fill` and the other editing builtins rewrite the
+whole file, so running one **after** a signature invalidates it: stamp, merge
+and fill first, sign last.
+
 **Key handling.** Read the certificate and key from files or env — never from
 request data — and keep the private key out of source control. Soli reads the
 material you pass and never logs it.
@@ -462,7 +498,7 @@ material you pass and never logs it.
 
 - **Incompatible with `password`** — a signed PDF must not be AES-encrypted; set one or the other.
 - The signer certificate must chain to a root the *verifier* trusts for a "trusted" badge; a self-signed cert still verifies as *valid + unmodified*, just untrusted.
-- A single signature. Long-term-validation (LTV) data — embedded OCSP/CRL responses for offline verification years later — is a planned follow-up.
+- Several signatures are supported (incremental updates, above); an encrypted PDF is refused. Certification signatures (DocMDP: "no changes allowed") and long-term-validation (LTV) data — embedded OCSP/CRL responses for offline verification years later — are planned follow-ups.
 
 ---
 

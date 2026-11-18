@@ -9,6 +9,17 @@
   `app/services`, then runs from the app's folder — what `rails runner` does.
   `soli -e` and `soli script.sl` load no app. An error exits non-zero.
   `db:seed` shares the same loading code.
+- **PDF: several signatures per document.** `pdf_sign` on an already-signed
+  PDF appends the signature as an incremental update (new objects + an xref
+  section whose `/Prev` points back, table or stream as the file had), so the
+  earlier signatures still cover exactly what they signed and still verify.
+  Before, the second signature re-serialized the file and broke the first.
+  New `sign` options: `field` (fill a pre-placed empty signature field by
+  name, or create one; a signed field is refused), `incremental: true`
+  (append even the first signature), `appearance.image` (a `data:` URL or
+  base64 PNG/JPEG/WebP of a handwritten signature, drawn above name + date,
+  transparency kept). Encrypted inputs are refused. The AcroForm is now
+  written as its own object.
 
 ### Fixed
 - **VM: a static method whose parameters all have defaults is called when
