@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.38.0] - 2026-11-18
+
 ### Added
 
 - **`pdf_invoice_data(invoice)`.** The data `pdf_facturx_from_invoice` hands
@@ -37,7 +39,7 @@
 
 - **Field rules, declared in a migration.** `db.set_field_rules("products",
   [{"field": "name", "required": true, "type": "string"}, {"field": "price",
-  "min": 0}])` has SoliDB (after 2.13.0) hold every write of the collection
+  "min": 0}])` has SoliDB (2.14.0 or later) hold every write of the collection
   to them, whoever writes; `db.list_field_rules(coll)` reads them, and an
   empty list removes them. In an engine's migrations too, and on the
   `Solidb` client. The SQL adapters raise `set_field_rules is SoliDB-only.`

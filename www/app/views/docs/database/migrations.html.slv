@@ -585,6 +585,41 @@ print("Seeded users")</code></pre>
         </div>
     </div>
 
+    <h2 id="field-rules" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Field Rule Helpers</h2>
+    <p class="text-gray-400 mb-6">
+        A field rule says what a collection asks of a top-level field of its documents: that it is there, its type, its bounds, the values it may take. SoliDB checks every write against them, whatever writes: the model, a raw query, another application. SoliDB only (the SQL adapters raise <code>set_field_rules is SoliDB-only.</code>; there, a column's type and <code>"null": false</code> say the same), on SoliDB 2.14.0 or later.
+    </p>
+    <div class="space-y-4 mb-8">
+        <div>
+            <code class="text-cyan-300 font-bold">db.set_field_rules(collection, rules)</code>
+            <p class="text-sm text-gray-400 mt-1">Replace the collection's rules (<code>[]</code> removes them). A rule: <code>field</code>, and any of <code>required</code> (present and not null), <code>type</code> (<code>"string"</code>, <code>"number"</code>, <code>"integer"</code>, <code>"bool"</code>, <code>"object"</code>, <code>"array"</code>), <code>min</code>, <code>max</code>, <code>in</code>. A field left out or <code>nil</code> passes everything but <code>required</code>.</p>
+        </div>
+        <div>
+            <code class="text-cyan-300 font-bold">db.list_field_rules(collection)</code>
+            <p class="text-sm text-gray-400 mt-1">The collection's rules.</p>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Field Rule Example</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def up(db: Any)
+  db.set_field_rules("products", [
+    { "field": "name", "required": true, "type": "string" },
+    { "field": "price", "type": "number", "min": 0, "max": 1000 },
+    { "field": "status", "in": ["open", "paid"] }
+  ])
+end
+
+def down(db: Any)
+  db.set_field_rules("products", [])   # removes them
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        Documents already stored are not checked; their next update is. A write that breaks a rule is refused by the server. Declare the same thing with <code>validates</code> on the model to get <code>_errors</code> on the field; the rule is what holds for the writers that do not go through the model.
+    </p>
+
     <h2 id="foreign-keys" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Foreign Key Helpers</h2>
     <p class="text-gray-400 mb-6">
         A foreign key says that a field of a collection holds the <code>_key</code> of a document of another collection, or nothing. SoliDB then refuses a document that points to a parent which is not there, and decides what a delete of the parent does to its children. SoliDB only (the SQL adapters raise <code>add_foreign_key is SoliDB-only.</code>; there, declare <code>"references"</code> on the column in <code>create_table</code>), on SoliDB 2.10.0 or later.
@@ -895,6 +930,14 @@ SOLIDB_PASSWORD=secret</code></pre>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.list_counters(collection)</code></td>
                     <td class="py-3 px-4 text-gray-400">List a collection's counters and their next number</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.set_field_rules(collection, rules)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Have SoliDB check required fields, types, bounds and allowed values on every write (SoliDB 2.14.0+)</td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-cyan-300">db.list_field_rules(collection)</code></td>
+                    <td class="py-3 px-4 text-gray-400">List a collection's field rules</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-cyan-300">db.query(sdbql, bind_vars?, options?)</code></td>

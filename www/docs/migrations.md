@@ -489,7 +489,7 @@ documents: that it is there, its type, its bounds, the values it may take.
 SoliDB checks every write against them, whatever writes: the model, a raw
 query, another application. SoliDB only (the SQL adapters raise
 `set_field_rules is SoliDB-only.`; there, a column's type and `"null": false`
-say the same), on a SoliDB that has field rules (after 2.13.0).
+say the same), on a SoliDB that has field rules (2.14.0 or later).
 
 ```soli
 def up(db: Any)
