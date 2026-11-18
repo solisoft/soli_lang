@@ -14,8 +14,9 @@ use base64::Engine as _;
 use serde_json::{json, Value as Json};
 use solilang::scaffold::{create_auth, create_saml};
 
-const SAML_FILES: [&str; 3] = [
+const SAML_FILES: [&str; 4] = [
     "app/models/saml_identity.sl",
+    "app/models/saml_assertion.sl",
     "app/services/saml_sso.sl",
     "app/controllers/saml_controller.sl",
 ];
@@ -60,6 +61,7 @@ fn saml_writes_its_files_migration_and_routes() {
         assert!(root.join(rel).exists(), "{rel} not created");
     }
     assert_eq!(migrations(root, "create_saml_identities"), 1);
+    assert_eq!(migrations(root, "create_saml_assertions"), 1);
     let routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
     for route in [
         r#"get("/saml/login", "saml#login")"#,
@@ -184,6 +186,11 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path, provision: &str) -> Server {
+    serve_with(root, provision, &[])
+}
+
+/// `serve`, with more environment (it wins over the defaults).
+fn serve_with(root: &Path, provision: &str, extra: &[(&str, &str)]) -> Server {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
@@ -216,6 +223,7 @@ fn serve(root: &Path, provision: &str) -> Server {
         )
         .env("SOLI_MAIL_DELIVERY_METHOD", "logger")
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+        .envs(extra.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let server = Server(command.spawn().expect("spawn soli serve"), port);
@@ -426,6 +434,11 @@ fn served_app_signs_in_through_the_identity_provider() {
     let mut ada = Browser::new(&server);
     let request_id = ada.start("/saml/login?return_to=/whoami");
     let response = issue(root, &request_id, json!({}));
+    // Whoever copies the response and the request cookie on the way.
+    let mut thief = Browser {
+        port: server.1,
+        jar: ada.jar.clone(),
+    };
     let reply = ada.post_response(&response);
     assert_eq!(
         (reply.status, reply.location.as_str()),
@@ -436,6 +449,9 @@ fn served_app_signs_in_through_the_identity_provider() {
     let who = ada.whoami();
     assert!(who.starts_with("ada@example.com member "), "{who}");
     assert!(!ada.jar.contains_key("saml_request"), "request cookie kept");
+    // Posted again with the cookie that came with it: an assertion signs in once.
+    assert_eq!(thief.post_response(&response).status, 401, "replayed");
+    assert_eq!(thief.whoami(), "guest");
 
     // The same response again: the request was answered once.
     let mut again = Browser::new(&server);
@@ -527,4 +543,66 @@ fn provisioning_off_refuses_a_user_with_no_account() {
     let response = issue(dir.path(), &id, json!({}));
     assert_eq!(ada.post_response(&response).status, 401);
     assert_eq!(ada.whoami(), "guest");
+}
+
+/// An admin's account is never taken over by an assertion that carries its
+/// email: the identity provider may let a user set that attribute.
+#[test]
+fn an_admin_account_is_not_linked_by_its_email() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, "on", &[("AUTH_SIGNUP", "first_user")]);
+    let mut admin = Browser::new(&server);
+    let signup = admin.request(
+        "POST",
+        "/signup",
+        Some(json!({"email": "root@example.com", "password": "correct horse battery"})),
+        &format!("http://127.0.0.1:{}", server.1),
+    );
+    assert_eq!(signup.status, 302, "{}", signup.body);
+    assert!(admin.whoami().starts_with("root@example.com admin "));
+
+    let mut eve = Browser::new(&server);
+    let id = eve.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"attributes": {"email": "root@example.com"}}),
+    );
+    assert_eq!(eve.post_response(&response).status, 401);
+    assert_eq!(eve.whoami(), "guest");
+}
+
+#[test]
+fn link_existing_off_refuses_an_account_that_exists() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "off")]);
+    let mut grace = Browser::new(&server);
+    let signup = grace.request(
+        "POST",
+        "/signup",
+        Some(json!({"email": "grace@example.com", "password": "correct horse battery"})),
+        &format!("http://127.0.0.1:{}", server.1),
+    );
+    assert_eq!(signup.status, 302, "{}", signup.body);
+
+    let mut sso = Browser::new(&server);
+    let id = sso.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"attributes": {"email": "grace@example.com"}}),
+    );
+    assert_eq!(sso.post_response(&response).status, 401);
+    assert_eq!(sso.whoami(), "guest");
+    // A newcomer is still provisioned.
+    let id = sso.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "new-at-idp", "attributes": {"email": "new@example.com"}}),
+    );
+    assert_eq!(sso.post_response(&response).status, 302);
+    assert!(sso.whoami().starts_with("new@example.com member "));
 }

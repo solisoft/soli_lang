@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Security
+- **SAML: a signed element can no longer be hidden by an empty namespace
+  declaration.** `xmlns:saml=""` (forbidden by XML 1.0) renders nothing in
+  the exclusive canonical form, so adding it to an element inside a signed
+  assertion left the digest unchanged while `Saml.verify_response` no longer
+  saw the element: whoever held a valid response could drop a signed
+  attribute (an `account_status`, a group), the `AuthnStatement`, or any
+  other optional element, and the response still verified. Every signing
+  mode was affected. The canonicalization parser (also behind
+  `Xml.c14n_exclusive`) now refuses a prefix bound to an empty URI, and
+  `verify_response` refuses a prefix used without a declaration.
+- **SAML: a signing certificate with an RSA key under 2048 bits is refused**
+  by `Saml.verify_response`.
+- **`soli generate saml`: an assertion signs in once.** The scaffold's
+  request cookie was cleared in the browser only; whoever kept a response and
+  that cookie could post them again until the assertion expired. The new
+  `SamlAssertion` model (and its `create_saml_assertions` migration) keeps
+  each assertion's id until it expires, and `SamlSso.spend` refuses a second
+  use.
+- **`soli generate saml`: an admin's account is never linked by its email.**
+  A first sign-in linked the local account carrying the asserted email,
+  whatever its role; an identity provider that lets users edit that attribute
+  handed over any account. An admin is now linked by hand, and
+  `SAML_LINK_EXISTING=off` links no existing account. The scaffold's
+  `_local_path` also answers `/` for a path holding a control character,
+  where `redirect()` raised after the session was opened.
+
+Apps generated before this release keep their files (the generator never
+overwrites): copy `spend`, `link_existing?` and the `user_for` change from a
+fresh `soli generate saml`, add `app/models/saml_assertion.sl`, and run the
+generator again for the migration.
+
 ## [2.38.0] - 2026-11-18
 
 ### Added

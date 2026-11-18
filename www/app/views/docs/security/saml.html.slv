@@ -37,7 +37,9 @@ soli generate saml</code></pre>
                     <tr><td class="py-3 px-4"><code>app/services/saml_sso.sl</code></td><td class="py-3 px-4"><code>SamlSso</code>: where the identity provider is, the request in flight, which account an assertion maps to</td></tr>
                     <tr><td class="py-3 px-4"><code>app/controllers/saml_controller.sl</code></td><td class="py-3 px-4"><code>GET /saml/login</code>, <code>POST /saml/acs</code>, <code>GET /saml/metadata</code></td></tr>
                     <tr><td class="py-3 px-4"><code>app/models/saml_identity.sl</code></td><td class="py-3 px-4"><code>SamlIdentity</code>: the link between a <code>User</code> and <code>(issuer, NameID)</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>app/models/saml_assertion.sl</code></td><td class="py-3 px-4"><code>SamlAssertion</code>: the assertions that already signed someone in, kept until they expire</td></tr>
                     <tr><td class="py-3 px-4"><code>db/migrations/…_create_saml_identities.sl</code></td><td class="py-3 px-4">Unique index on <code>(issuer, name_id)</code>, index on <code>user_id</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_create_saml_assertions.sl</code></td><td class="py-3 px-4">Index on <code>expires_at</code></td></tr>
                     <tr><td class="py-3 px-4"><code>config/routes.sl</code></td><td class="py-3 px-4">The three routes, and <code>skip_csrf("/saml/acs")</code></td></tr>
                 </tbody>
             </table>
@@ -82,8 +84,8 @@ soli generate saml</code></pre>
         <ol class="list-decimal pl-6 space-y-3 text-gray-400 mb-4">
             <li><code>/saml/login</code> builds the request (<code class="text-amber-300">Saml.auth_request</code>) and redirects to the IdP. The request id and the <code>return_to</code> path go in an encrypted cookie.</li>
             <li>The user authenticates at the IdP, which posts <code>SAMLResponse</code> to <code>/saml/acs</code>.</li>
-            <li><code>SamlSso.finish</code> takes the request id out of the cookie &mdash; once &mdash; and <code class="text-amber-300">Saml.verify_response</code> checks the response against it.</li>
-            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else the one with that email, linked from now on; else a new one. A new account is a <code>member</code> with no password &mdash; it signs in through the IdP only. <code class="text-amber-300">SAML_PROVISION=off</code> refuses anyone with no account.</li>
+            <li><code>SamlSso.finish</code> takes the request id out of the cookie &mdash; once &mdash; and <code class="text-amber-300">Saml.verify_response</code> checks the response against it. <code>SamlSso.spend</code> then records the assertion&rsquo;s id until it expires: a response posted again, even with a copy of the request cookie, is refused.</li>
+            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else the one with that email, linked from now on; else a new one. A new account is a <code>member</code> with no password &mdash; it signs in through the IdP only. <code class="text-amber-300">SAML_PROVISION=off</code> refuses anyone with no account. An admin&rsquo;s account is never linked by its email: link it by hand (<code>SamlIdentity.create({"user_id", "issuer", "name_id", "email"})</code>). <code class="text-amber-300">SAML_LINK_EXISTING=off</code> links no existing account at all &mdash; set it when the IdP lets users edit the email attribute it sends.</li>
             <li>A new session is opened and the browser goes to <code>return_to</code> (a path on this site, or <code>/</code>).</li>
         </ol>
         <p class="text-gray-400 mb-4">
@@ -112,7 +114,7 @@ soli generate saml</code></pre>
         </h2>
         <p class="text-gray-400 mb-4"><code class="text-amber-300">Saml.verify_response</code> raises unless all of this holds:</p>
         <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
-            <li><strong class="text-white">Signature.</strong> The assertion, the response, or both are signed, and every signature present verifies with a certificate you configured &mdash; never with the one the message carries.</li>
+            <li><strong class="text-white">Signature.</strong> The assertion, the response, or both are signed, and every signature present verifies with a certificate you configured &mdash; never with the one the message carries. A certificate with an RSA key under 2048 bits is refused.</li>
             <li><strong class="text-white">No signature wrapping.</strong> A signature is only looked for as a direct child of the response or of its one assertion, it must reference that parent&rsquo;s <code>ID</code>, and the claims are read from the very node the digest was computed over. A second assertion, a duplicated <code>ID</code>, or a signature that points elsewhere is refused.</li>
             <li><strong class="text-white">For this application.</strong> <code>Audience</code> is your entity id; <code>Recipient</code> and <code>Destination</code> are your ACS URL; <code>Issuer</code> is the configured IdP.</li>
             <li><strong class="text-white">For this request.</strong> <code>InResponseTo</code> is the id of the request this browser started. A response nobody asked for (IdP-initiated) is refused unless you pass <code>allow_unsolicited: true</code>.</li>
@@ -121,7 +123,14 @@ soli generate saml</code></pre>
         </ul>
         <p class="text-gray-400 mb-4">
             Comments inside a value do not split it: <code>user@example.com&lt;!----&gt;.evil.com</code> reads as the whole
-            signed text.
+            signed text. A namespace prefix bound to an empty URI (<code>xmlns:saml=""</code>, which XML 1.0 forbids) or used
+            without a declaration is refused: the canonical form cannot express either, so through 2.38.0 such a declaration
+            could hide a signed element from the reader without changing the digest.
+        </p>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-300">verify_response</code> checks one response; it keeps no state. That an assertion signs
+            in only once is the application&rsquo;s to enforce &mdash; <code>soli generate saml</code> does it with
+            <code>SamlSso.spend</code>, keyed on <code>assertion_id</code>.
         </p>
     </section>
 

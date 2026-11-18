@@ -2565,7 +2565,10 @@ signed by XML-DSig. Empty elements expand to start/end pairs, attributes and
 namespace declarations are sorted, the XML declaration and comments are removed,
 and (the "exclusive" part) namespace declarations that are not visibly utilized
 are dropped rather than inherited from ancestors. `DOCTYPE` declarations are
-rejected (XXE defense).
+rejected (XXE defense), and so is a prefix bound to an empty URI
+(`xmlns:p=""`, forbidden by XML 1.0): the canonical form has no way to write
+it, so it could change what a signed element means without changing its
+digest.
 
 The optional second argument is either the **InclusiveNamespaces PrefixList**
 directly — a space-separated string (e.g. `"ds saml"`) or an array of prefixes,

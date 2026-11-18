@@ -310,9 +310,39 @@ pub(crate) fn parse_document(xml: &str) -> Result<Element, String> {
     // re-escaped as `&#xD;` by the output stage.
     let normalized = xml.replace("\r\n", "\n").replace('\r', "\n");
     let tree = crate::xml::parse(&normalized, &ParsePolicy::c14n()).map_err(|e| message(&e))?;
-    tree.root_element()
+    let root = tree
+        .root_element()
         .and_then(|root| element(&tree, root))
-        .ok_or_else(|| "no document element found".to_string())
+        .ok_or_else(|| "no document element found".to_string())?;
+    refuse_prefix_undeclarations(&root)?;
+    Ok(root)
+}
+
+/// Refuse `xmlns:p=""`, which Namespaces in XML 1.0 forbids.
+///
+/// The canonical form has no way to write it: `canonicalize` renders a
+/// prefix only when it is bound to a URI, so `<saml:Attribute xmlns:saml="">`
+/// canonicalizes to the very bytes of `<saml:Attribute>` under the outer
+/// binding, while a reader resolves it to no namespace at all. A signed
+/// element could then be hidden from the code reading the signed document
+/// without its digest changing.
+fn refuse_prefix_undeclarations(el: &Element) -> Result<(), String> {
+    if let Some((prefix, _)) = el
+        .ns_decls
+        .iter()
+        .find(|(prefix, uri)| !prefix.is_empty() && uri.is_empty())
+    {
+        return Err(format!(
+            "namespace prefix '{}' is bound to an empty URI (not allowed in XML 1.0)",
+            prefix
+        ));
+    }
+    for node in &el.children {
+        if let Node::Element(child) = node {
+            refuse_prefix_undeclarations(child)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

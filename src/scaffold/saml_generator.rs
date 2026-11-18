@@ -41,6 +41,7 @@ pub fn create_saml(folder: &str) -> Result<(), String> {
 
     for (rel, contents) in [
         ("app/models/saml_identity.sl", saml::SAML_IDENTITY_MODEL),
+        ("app/models/saml_assertion.sl", saml::SAML_ASSERTION_MODEL),
         ("app/services/saml_sso.sl", saml::SAML_SSO_SERVICE),
         ("app/controllers/saml_controller.sl", saml::SAML_CONTROLLER),
     ] {
@@ -51,6 +52,12 @@ pub fn create_saml(folder: &str) -> Result<(), String> {
         "create_saml_identities",
         0,
         &saml::identities_migration(),
+    )?;
+    write_migration_once(
+        app_path,
+        "create_saml_assertions",
+        1,
+        &saml::assertions_migration(),
     )?;
     append_routes_once(
         app_path,
@@ -82,6 +89,8 @@ pub fn print_saml_success_message() {
     println!();
     println!("  A first sign-in creates the account (a member, no password);");
     println!("  \x1b[36mSAML_PROVISION=off\x1b[0m refuses anyone who has none.");
+    println!("  An existing account with the same email is linked on its first sign-in,");
+    println!("  never an admin's; \x1b[36mSAML_LINK_EXISTING=off\x1b[0m links none.");
     println!("  Docs: /docs/security/saml");
     println!();
 }

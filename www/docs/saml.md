@@ -20,7 +20,9 @@ generated files are the application's part, and yours to edit.
 | `app/services/saml_sso.sl` | `SamlSso`: where the identity provider is, the request in flight, which account an assertion maps to |
 | `app/controllers/saml_controller.sl` | `GET /saml/login`, `POST /saml/acs`, `GET /saml/metadata` |
 | `app/models/saml_identity.sl` | `SamlIdentity`: the link between a `User` and `(issuer, NameID)` |
+| `app/models/saml_assertion.sl` | `SamlAssertion`: the assertions that already signed someone in, kept until they expire |
 | `db/migrations/…_create_saml_identities.sl` | unique index on `(issuer, name_id)`, index on `user_id` |
+| `db/migrations/…_create_saml_assertions.sl` | index on `expires_at` |
 | `config/routes.sl` | the three routes, and `skip_csrf("/saml/acs")` |
 
 Nothing existing is overwritten. Add the link to your sign-in view:
@@ -60,11 +62,17 @@ send an email address — as the NameID, or in an attribute named `email`,
 2. The user authenticates at the IdP, which posts `SAMLResponse` to
    `/saml/acs`.
 3. `SamlSso.finish` takes the request id out of the cookie — once — and
-   `Saml.verify_response` checks the response against it.
+   `Saml.verify_response` checks the response against it. `SamlSso.spend`
+   then records the assertion's id until it expires: a response posted again,
+   even with a copy of the request cookie, is refused.
 4. `SamlSso.user_for` finds the account: the one already linked to this
    `(issuer, NameID)`; else the one with that email, linked from now on; else
    a new one. A new account is a `member` with no password — it signs in
    through the IdP only. `SAML_PROVISION=off` refuses anyone with no account.
+   An admin's account is never linked by its email: link it by hand
+   (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`).
+   `SAML_LINK_EXISTING=off` links no existing account at all — set it when the
+   IdP lets users edit the email attribute it sends.
 5. A new session is opened and the browser goes to `return_to` (a path on this
    site, or `/`).
 
@@ -88,7 +96,8 @@ already enforces it, mark the session in `SamlController#acs`:
 
 - **Signature.** The assertion, the response, or both are signed, and every
   signature present verifies with a certificate you configured — never with
-  the one the message carries.
+  the one the message carries. A certificate with an RSA key under 2048 bits
+  is refused.
 - **No signature wrapping.** A signature is only looked for as a direct child
   of the response or of its one assertion, it must reference that parent's
   `ID`, and the claims are read from the very node the digest was computed
@@ -104,7 +113,15 @@ already enforces it, mark the session in `SamlController#acs`:
 - **Successful.** The status is `Success`; otherwise the error names the status.
 
 Comments inside a value do not split it: `user@example.com<!---->.evil.com`
-reads as the whole signed text.
+reads as the whole signed text. A namespace prefix bound to an empty URI
+(`xmlns:saml=""`, which XML 1.0 forbids) or used without a declaration is
+refused: the canonical form cannot express either, so through 2.38.0 such a
+declaration could hide a signed element from the reader without changing the
+digest.
+
+`verify_response` checks one response; it keeps no state. That an assertion
+signs in only once is the application's to enforce — `soli generate saml`
+does it with `SamlSso.spend`, keyed on `assertion_id`.
 
 ## The `Saml` class
 

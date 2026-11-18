@@ -96,7 +96,27 @@ class SamlSso
       "acs_url": SamlSso.acs_url,
       "request_id": pending["id"]
     })
+    SamlSso.spend(assertion)
     {"assertion": assertion, "return_to": pending["return_to"]}
+  end
+
+  # A bearer assertion signs in once (SAML 2.0 profiles, 4.1.4.5). Clearing
+  # the request cookie only asks the browser to drop it; whoever kept the
+  # response and the cookie could post them again. The assertion's id is
+  # kept until it expires, and a second use is refused.
+  static def spend(assertion)
+    now = DateTime.utc.to_unix
+    SamlAssertion.where("doc.expires_at < @now", {"now": now}).delete_all
+    id = assertion["assertion_id"] ?? assertion["response_id"]
+    throw "the assertion has no id to spend" if id.nil?
+
+    # Kept past its expiry by the largest clock skew Saml.verify_response allows.
+    expires_at = assertion["expires_at"] ?? now + 86400
+    key = Crypto.sha256("#{assertion["issuer"]}\n#{id}")
+    # `{"key": …}` refuses a key that is taken, on every adapter (an `_key`
+    # in the data would be dropped, and a plain insert may replace a row).
+    spent = SamlAssertion.create({"expires_at": expires_at + 600}, {"key": key}) rescue nil
+    throw "the assertion was already used to sign in" if spent.nil? || spent._errors
   end
 
   # The address the assertion gives for its subject, or nil.
@@ -116,10 +136,19 @@ class SamlSso
     getenv("SAML_PROVISION").to_s.trim.downcase != "off"
   end
 
+  # Whether a first sign-in may take over an account that exists with the
+  # same email. The email is what the identity provider asserts: if its users
+  # can edit that attribute, SAML_LINK_EXISTING=off, and link accounts by hand
+  # (SamlIdentity.create({"user_id", "issuer", "name_id", "email"})).
+  static def link_existing?
+    getenv("SAML_LINK_EXISTING").to_s.trim.downcase != "off"
+  end
+
   # The account an assertion signs in. Known identity first; otherwise the
-  # account with that email, linked from now on; otherwise a new one. A new
-  # account is a plain member with no password: it signs in through the
-  # identity provider only. Raises when there is no account to give.
+  # account with that email, linked from now on (never an admin's: an admin
+  # is linked by hand); otherwise a new one. A new account is a plain member
+  # with no password: it signs in through the identity provider only. Raises
+  # when there is no account to give.
   static def user_for(assertion)
     identity = SamlIdentity.find_for(assertion["issuer"], assertion["name_id"])
     return User.find(identity.user_id) unless identity.nil?
@@ -137,6 +166,9 @@ class SamlSso
       user.confirmed_at = DateTime.utc.to_unix
       user.save
       throw "could not create the account for #{email}" if user._errors
+    else
+      throw "#{email} has an account, and SAML_LINK_EXISTING=off" unless SamlSso.link_existing?
+      throw "#{email} is an admin: link that account by hand" if user.admin?
     end
     SamlIdentity.create({
       "user_id": user._key,

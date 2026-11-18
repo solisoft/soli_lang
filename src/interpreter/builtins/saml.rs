@@ -173,6 +173,39 @@ impl<'a> Scoped<'a> {
     }
 }
 
+/// Refuse a prefix used with no declaration in scope. The shared parser lets
+/// one through (fragments need it); a response from an identity provider
+/// never has one, and the canonical form cannot say what it means.
+fn refuse_unbound_prefixes(el: &Element, inherited: &Scope) -> Result<(), String> {
+    let mut scope = inherited.clone();
+    for (prefix, uri) in &el.ns_decls {
+        scope.insert(prefix.clone(), uri.clone());
+    }
+    let bound = |prefix: &str| {
+        prefix.is_empty()
+            || prefix == "xml"
+            || scope
+                .get(prefix)
+                .map(|uri| !uri.is_empty())
+                .unwrap_or(false)
+    };
+    if let Some(prefix) = std::iter::once(el.prefix.as_str())
+        .chain(el.attrs.iter().map(|attr| attr.prefix.as_str()))
+        .find(|prefix| !bound(prefix))
+    {
+        return Err(format!(
+            "the namespace prefix '{}' is used without a declaration",
+            prefix
+        ));
+    }
+    for node in &el.children {
+        if let Node::Element(child) = node {
+            refuse_unbound_prefixes(child, &scope)?;
+        }
+    }
+    Ok(())
+}
+
 fn collect_ids(el: &Element, seen: &mut BTreeSet<String>) -> Result<(), String> {
     if let Some(id) = &el.id {
         if !seen.insert(id.clone()) {
@@ -245,17 +278,32 @@ fn unix_now() -> i64 {
         .unwrap_or(0)
 }
 
+/// The smallest RSA modulus a signing certificate may carry, in bits.
+const MIN_RSA_BITS: usize = 2048;
+
 fn certificate_key(text: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
     let der = super::x509::to_der(&Value::String(text.into()))?;
     let cert = super::x509::parse_certificate(&der)?;
-    super::x509::rsa_public_key(&cert).map_err(|e| match e {
+    let (n, e) = super::x509::rsa_public_key(&cert).map_err(|e| match e {
         super::x509::RsaKeyError::NotRsa => {
             "the certificate's key is not RSA (ECDSA signatures are not supported)".to_string()
         }
         super::x509::RsaKeyError::Malformed(reason) => {
             format!("the certificate's RSA key is malformed: {}", reason)
         }
-    })
+    })?;
+    let bits = n
+        .iter()
+        .position(|byte| *byte != 0)
+        .map(|first| (n.len() - first) * 8 - n[first].leading_zeros() as usize)
+        .unwrap_or(0);
+    if bits < MIN_RSA_BITS {
+        return Err(format!(
+            "the certificate's RSA key is {} bits; at least {} are required",
+            bits, MIN_RSA_BITS
+        ));
+    }
+    Ok((n, e))
 }
 
 impl Expected {
@@ -590,6 +638,7 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
     }
     let xml = String::from_utf8(bytes).map_err(|_| "the response is not UTF-8".to_string())?;
     let document = parse_document(&xml).map_err(|e| format!("the response is not XML: {}", e))?;
+    refuse_unbound_prefixes(&document, &root_in_scope())?;
     collect_ids(&document, &mut BTreeSet::new())?;
 
     let response = Scoped::root(&document);
@@ -1585,5 +1634,42 @@ mod tests {
                 .unwrap_err()
                 .contains("no identity provider")
         );
+    }
+
+    /// `xmlns:saml=""` renders nothing in the canonical form, so it left the
+    /// digest alone while hiding the element from the reader: a signed
+    /// attribute (here `groups`) vanished from a response that still
+    /// verified.
+    #[test]
+    fn a_prefix_bound_to_an_empty_uri_cannot_hide_a_signed_element() {
+        for sign in ["assertion", "response", "both"] {
+            let hidden = tamper(&issue(json!({"sign": sign})), |xml| {
+                let edited = xml.replacen(
+                    "<saml:Attribute Name=\"groups\"",
+                    "<saml:Attribute xmlns:saml=\"\" Name=\"groups\"",
+                    1,
+                );
+                assert_ne!(edited, xml);
+                edited
+            });
+            refused(verify(&hidden), "bound to an empty URI");
+        }
+    }
+
+    #[test]
+    fn a_prefix_without_a_declaration_is_refused() {
+        let unbound = tamper(&issue(json!({"sign": "assertion"})), |xml| {
+            xml.replacen("<samlp:Status>", "<samlp:Status><x:extra/>", 1)
+        });
+        refused(verify(&unbound), "prefix 'x' is used without a declaration");
+    }
+
+    #[test]
+    fn a_signing_key_under_2048_bits_is_refused() {
+        let weak = include_str!("../../../tests/fixtures/saml/weak.crt");
+        match expected(json!({"certificate": weak})) {
+            Ok(_) => panic!("a 1024-bit key was accepted"),
+            Err(error) => assert!(error.contains("1024 bits; at least 2048"), "got: {error}"),
+        }
     }
 }

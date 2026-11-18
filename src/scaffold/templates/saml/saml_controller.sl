@@ -56,6 +56,10 @@ class SamlController < Controller
     return "/" unless target.starts_with?("/")
     return "/" if target.starts_with?("//") || target.includes?("\\")
 
+    # A browser drops a tab or a newline from a URL: "/\t/evil.test" would
+    # read as "//evil.test". redirect() refuses them; "/" is the answer here.
+    return "/" if Regex.matches("[\\x00-\\x1f\\x7f]", target)
+
     target
   end
 
