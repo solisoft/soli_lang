@@ -561,7 +561,10 @@ over many rows. Not a document collection: it has its own routes, no `_key`
 shards appear as columnar collections `m_s0`…`m_s3` spread over the nodes;
 `m` itself lists `row_count: 0`. `POST …/columnar/m/insert` and SDBQL
 `INSERT … INTO m` route rows to their shards from any node; `FOR r IN m …`
-answers over every shard from any node; `DELETE …/columnar/m` drops the
+answers over every shard from any node (a `COLLECT` of COUNT / SUM /
+AVG / MIN / MAX is computed on each shard and only its groups travel;
+other queries read every shard's rows; results equal a single
+collection's); `DELETE …/columnar/m` drops the
 shards everywhere. Refused on `m` for now (`"'m' is sharded: … is not
 supported on it yet"`): deletes, truncate, columns, indexes, retention,
 compact, tags, branches, `/query`, `/aggregate`.
