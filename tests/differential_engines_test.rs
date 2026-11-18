@@ -22,6 +22,11 @@ const CASES: &[(&str, &str)] = &[
         "sort_with_nan",
         "n = \"nan\".to_f\nprint([n, 3.0, 1, n, 2.5, 0.5].sort)\nprint([{\"s\": 2.0}, {\"s\": n}, {\"s\": 1.0}].sort_by { |h| h[\"s\"] }.map { |h| h[\"s\"] })",
     ),
+    // --- arrays order element by element: composite sort keys ---
+    (
+        "sort_by_an_array_key",
+        "rows = [{\"p\": 1, \"y\": 5}, {\"p\": 3, \"y\": 90}, {\"p\": 3, \"y\": 10}, {\"p\": 2, \"y\": 1}]\nprint(rows.sort_by { |r| [r[\"p\"], r[\"y\"]] }.map { |r| \"#{r[\"p\"]}:#{r[\"y\"]}\" })\nprint(rows.sort_by { |r| [0 - r[\"p\"], r[\"y\"]] }.map { |r| \"#{r[\"p\"]}:#{r[\"y\"]}\" })\nprint([[2, 1], [1, 9], [1, 2, 0], [1, 2]].sort)\nprint([[\"b\", 1], [\"a\", 2]].min, [[\"b\", 1], [\"a\", 2]].max)\nprint([[1, nil], [1, 0]].sort)",
+    ),
     // --- #632: get / has_key / set with a string literal on a non-hash ---
     // The VM fuses these into hash super-instructions; a receiver that is a
     // class or an object with its own method must still get the call.

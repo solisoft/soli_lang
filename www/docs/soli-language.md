@@ -4688,7 +4688,9 @@ let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
 let sorted = unsorted.sort();  # [1, 1, 2, 3, 4, 5, 6, 9]
 # Ints and floats compare numerically; a NaN goes after every number
 # (here and in sort_by). Decimals compare by value and DateTimes by instant,
-# as `<` compares them — in sort, sort_by, min and max alike.
+# as `<` compares them — in sort, sort_by, min and max alike. Arrays compare
+# element by element, then shorter first, so a tuple is a composite key:
+# rows.sort_by { |r| [r.page, r.y] }   # by page, then y
 # A comparator block that raises ends the sort, and the error propagates.
 
 # Sort by key

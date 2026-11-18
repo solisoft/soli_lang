@@ -34,6 +34,7 @@
         </ul>
         <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Arrays sort as composite keys.</strong> <code class="text-cyan-400">sort_by { |r| [r.page, r.y] }</code> silently kept the input order, because arrays compared as equal. They now compare element by element, then shorter first, in <code class="text-cyan-400">sort</code>, <code class="text-cyan-400">sort_by</code>, <code class="text-cyan-400">min</code> and <code class="text-cyan-400">max</code>, on both engines.</li>
             <li><strong class="text-white">VM: a static method whose parameters all have defaults is called when read bare.</strong> <code class="text-cyan-400">Catalog.masterclasses</code>, with <code class="text-cyan-400">static def masterclasses(limit = 6)</code>, returned <code class="text-cyan-400">&lt;fn masterclasses&gt;</code> on the VM &mdash; so in production &mdash; while the tree-walker called it. Instance methods were already called; until you upgrade, write <code class="text-cyan-400">Catalog.masterclasses()</code>.</li>
         </ul>
     </section>

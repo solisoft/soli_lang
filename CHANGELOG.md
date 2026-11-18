@@ -29,6 +29,10 @@
   written as its own object.
 
 ### Fixed
+- **Arrays sort as composite keys.** `sort_by { |r| [r.page, r.y] }` kept
+  the input order: arrays compared as equal in every comparator. They now
+  compare element by element, then shorter first (Ruby's `<=>`), in `sort`,
+  `sort_by`, `min` and `max`, on both engines.
 - **VM: a static method whose parameters all have defaults is called when
   read bare.** `Catalog.masterclasses` with `static def masterclasses(limit =
   6)` returned `<fn masterclasses>` on the VM (so in production), while the

@@ -662,9 +662,31 @@ fn decimal_or_datetime_order(a: &Value, b: &Value) -> Option<std::cmp::Ordering>
 /// engines: Int, Float, Decimal and String compare among themselves (the
 /// numbers by value, NaN last), DateTimes by instant, every other pair
 /// compares `Equal`.
+/// Two arrays in the order `element` gives their items: element by element,
+/// then the shorter first — Ruby's `<=>` on arrays, and what a composite key
+/// (`sort_by { |r| [r.page, r.y] }`, `[[2, 1], [1, 9]].sort`) needs.
+fn array_order(
+    a: &Rc<RefCell<Vec<Value>>>,
+    b: &Rc<RefCell<Vec<Value>>>,
+    element: fn(&Value, &Value) -> std::cmp::Ordering,
+) -> std::cmp::Ordering {
+    if Rc::ptr_eq(a, b) {
+        return std::cmp::Ordering::Equal;
+    }
+    let (a, b) = (a.borrow(), b.borrow());
+    for (x, y) in a.iter().zip(b.iter()) {
+        let order = element(x, y);
+        if order != std::cmp::Ordering::Equal {
+            return order;
+        }
+    }
+    a.len().cmp(&b.len())
+}
+
 pub(crate) fn default_sort_order(a: &Value, b: &Value) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     match (a, b) {
+        (Value::Array(x), Value::Array(y)) => array_order(x, y, default_sort_order),
         (Value::Int(x), Value::Int(y)) => x.cmp(y),
         (Value::Float(x), Value::Float(y)) => float_order(*x, *y),
         (Value::String(x), Value::String(y)) => x.cmp(y),
@@ -691,6 +713,7 @@ pub(crate) fn min_or_max(items: &[Value], want_max: bool) -> Value {
             (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y),
             (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)),
             (Value::Float(x), _) | (_, Value::Float(x)) if x.is_nan() => None,
+            (Value::Array(x), Value::Array(y)) => Some(array_order(x, y, default_sort_order)),
             _ => decimal_or_datetime_order(item, best),
         };
         let wanted = if want_max {
@@ -800,6 +823,9 @@ pub(crate) fn compare_sort_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
         (Value::Int(a), Value::Float(b)) => float_order(*a as f64, *b),
         (Value::Float(a), Value::Int(b)) => float_order(*a, *b as f64),
+        // Arrays used to fall through to `Equal`, so a composite key —
+        // `sort_by { |r| [r.page, r.y] }` — silently kept the input order.
+        (Value::Array(a), Value::Array(b)) => array_order(a, b, compare_sort_values),
         _ => decimal_or_datetime_order(a, b).unwrap_or(Ordering::Equal),
     }
 }
