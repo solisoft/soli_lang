@@ -571,6 +571,17 @@ replicated, not dumped.
 FOR r IN m OPTIONS {tag: "q3"} COLLECT AGGREGATE s = SUM(r.v) RETURN s   -- [6] while m sums to 16
 ```
 
+**Branches** (same build): `POST …/columnar/{c}/branches {"branch":"trial","from":"q3"}`
+(no `from`: a tag `~trial` is taken for it) → `201 {"status":"created","name":"trial","rows":3}`;
+`GET …/columnar/{c}/branches` → `{"branches":["trial"]}`. The branch is a
+columnar collection read and written as any (`FOR r IN trial`), starting
+with the tag's rows; its writes and the parent's never meet. `GET
+…/columnar/trial` shows `"branch_of":{"collection":"m","tag":"~trial","implicit":true}`.
+Dropping the parent while a branch exists → `409 "'m' has branches (trial):
+drop them first"`; dropping the branch drops its implicit tag. A branch has
+no tag or branch of its own, its columns cannot be dropped or renamed, and
+it is not replicated.
+
 `tag` takes a literal string. One query reads a collection at one tag or
 as it is: `FOR a IN m OPTIONS {tag:"q3"} FOR b IN m …` → `400 "A query reads
 'm' at one tag, or as it is, not both"`. On a document collection → `400`;
