@@ -554,6 +554,22 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   recreated. On 2.10.4 or earlier: recreate the index after every insert,
   or do without. Dropping an index now clears the column's `index_type`.
 
+### Exports as Parquet and Arrow (after 2.14.0; observed on a build of `main`, 2026-11-18, card #980)
+
+`GET …/collection/{name}/export?format=parquet` → one zstd Parquet file
+(`application/vnd.apache.parquet`), `?format=arrow` → an Arrow IPC stream;
+no `format` (or `jsonl`) → JSON lines as before; anything else → `400
+"Unknown export format …: jsonl, parquet or arrow"`. `GET …/columnar/{c}/export`
+(Parquet by default) writes `_id` then the schema's columns, `timestamp`
+columns as `timestamp[ms, UTC]`. Columns of a document collection: `_key`
+first, no `_id` / `_rev`, `_created_at` / `_updated_at` as timestamps, ints
+→ `int64`, ints and floats → `float64`, a vector-indexed field →
+`fixed_size_list<float>[dim]`, a list of numbers → `list<double>`, mixed
+kinds / objects / other lists → JSON text. Read back with
+`pyarrow.parquet.read_table`, `pa.ipc.open_stream`. Sharded and blob
+collections → `400` (JSON lines only). A server built without the
+`export-arrow` feature answers `400`.
+
 ### Tags of a columnar collection (after 2.14.0; observed on a build of `main`, 2026-11-18, card #981)
 
 A name for a columnar collection's rows as they are now; queries read them
