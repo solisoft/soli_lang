@@ -68,6 +68,17 @@
             </div>
         </section>
 
+        <section id="def-sha256-base64" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-sha256-base64" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">Crypto.sha256_base64(b64)</code>
+                </a>
+                <p class="text-gray-400 mb-3">SHA-256 of the <strong>bytes</strong> a base64 string holds &mdash; the digest <code>sha256sum</code> prints for the file. PDFs, uploads and attachments travel as base64 in Soli, and <code class="text-amber-400">Crypto.sha256</code> would hash the base64 text instead. Raises on a string that is not valid base64.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">pdf = pdf_render(template, data)
+Crypto.sha256_base64(pdf)          # same as `sha256sum invoice.pdf`</code></pre>
+            </div>
+        </section>
+
         <section id="def-sha512" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-sha512" class="group flex items-center gap-2 mb-3">

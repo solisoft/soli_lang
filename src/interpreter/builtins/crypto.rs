@@ -889,6 +889,31 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         })),
     );
 
+    // Crypto.sha256_base64(b64) -> String: the SHA-256 (hex) of the *bytes* a
+    // base64 string holds — what `sha256sum file` prints for a PDF, an upload
+    // or an attachment, which builtins hand around as base64.
+    crypto_static_methods.insert(
+        "sha256_base64".to_string(),
+        Rc::new(NativeFunction::new(
+            "Crypto.sha256_base64",
+            Some(1),
+            |args| {
+                let Value::String(data) = &args[0] else {
+                    return Err(format!(
+                        "Crypto.sha256_base64() expects a base64 string, got {}",
+                        args[0].type_name()
+                    ));
+                };
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(data.trim())
+                    .map_err(|e| format!("Crypto.sha256_base64(): not valid base64: {e}"))?;
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                Ok(Value::String(bytes_to_hex(&hasher.finalize()).into()))
+            },
+        )),
+    );
+
     // Crypto.sha512(data) -> String
     crypto_static_methods.insert(
         "sha512".to_string(),

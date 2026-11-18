@@ -25,6 +25,15 @@ describe("hash functions") do
     assert_eq(Crypto.sha256("hello"), SHA256_HELLO)
   end
 
+  test("sha256_base64 hashes the decoded bytes, not the base64 text") do
+    assert_eq(Crypto.sha256_base64(Base64.encode("hello")), SHA256_HELLO)
+    assert_eq(Crypto.sha256_base64(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    # 0xFF 0x00 — bytes that are not text
+    assert_eq(Crypto.sha256_base64("/wA="), "ea5dbf9596d187e9500f23e9a680109475341cf4e81f7e043f7d97152c10772f")
+    assert_ne(Crypto.sha256_base64(Base64.encode("hello")), Crypto.sha256(Base64.encode("hello")))
+    assert_raises(fn() { Crypto.sha256_base64("not base64 !!") })
+  end
+
   test("sha512 matches the known digest of 'hello'") do
     assert_eq(sha512("hello"), SHA512_HELLO)
     assert_eq(Crypto.sha512("hello"), SHA512_HELLO)

@@ -9,6 +9,9 @@
   `app/services`, then runs from the app's folder — what `rails runner` does.
   `soli -e` and `soli script.sl` load no app. An error exits non-zero.
   `db:seed` shares the same loading code.
+- **`Crypto.sha256_base64(b64)`**: the SHA-256 of the bytes a base64 string
+  holds (a PDF, an upload, an attachment) — what `sha256sum` prints for the
+  file, where `Crypto.sha256` hashes the text.
 - **PDF: several signatures per document.** `pdf_sign` on an already-signed
   PDF appends the signature as an incremental update (new objects + an xref
   section whose `/Prev` points back, table or stream as the file had), so the

@@ -2086,6 +2086,19 @@ hash = Crypto.sha256("hello")
 # "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 ```
 
+#### Crypto.sha256_base64(b64)
+
+SHA-256 of the **bytes** a base64 string holds — the digest `sha256sum` prints
+for the file. PDFs, uploads and attachments travel as base64 in Soli, and
+`Crypto.sha256` would hash the base64 text instead.
+
+```soli
+pdf = pdf_render(template, data)
+Crypto.sha256_base64(pdf)          # same as `sha256sum invoice.pdf`
+```
+
+Raises on a string that is not valid base64.
+
 #### Crypto.sha512(data) / sha512(data)
 
 Computes SHA-512 hash of a string. Same caveats as `sha256` — **not** for password hashing.
