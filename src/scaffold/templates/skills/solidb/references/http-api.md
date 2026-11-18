@@ -554,6 +554,28 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   recreated. On 2.10.4 or earlier: recreate the index after every insert,
   or do without. Dropping an index now clears the column's `index_type`.
 
+### Tags of a columnar collection (after 2.14.0; observed on a build of `main`, 2026-11-18, card #981)
+
+A name for a columnar collection's rows as they are now; queries read them
+later as they were, and a restore brings them back. Local to the node: not
+replicated, not dumped.
+
+| Method & path | Body | Response |
+|---|---|---|
+| `POST …/columnar/{c}/tags` | `{"tag":"q3"}` — 1 to 128 of `[A-Za-z0-9_.-]` | `201 {"tag":"q3","created_at":…,"row_count":3,"blocks":1}`; taken twice → `409` |
+| `GET …/columnar/{c}/tags` | | `{"tags":[{tag, created_at, row_count, blocks}]}` |
+| `POST …/columnar/{c}/tags/{tag}/restore` | — Admin; refused while the node replicates | `{"status":"restored","rows":3}`; rows and schema become the tag's, indexes answer for no row until rebuilt |
+| `DELETE …/columnar/{c}/tags/{tag}` | — Admin | `{"status":"dropped"}` |
+
+```sdbql
+FOR r IN m OPTIONS {tag: "q3"} COLLECT AGGREGATE s = SUM(r.v) RETURN s   -- [6] while m sums to 16
+```
+
+`tag` takes a literal string. One query reads a collection at one tag or
+as it is: `FOR a IN m OPTIONS {tag:"q3"} FOR b IN m …` → `400 "A query reads
+'m' at one tag, or as it is, not both"`. On a document collection → `400`;
+an unknown tag → `404`. No index is used at a tag.
+
 ### Columnar collections from 2.11.0 (observed on builds of `main`, 2026-11-15)
 
 Same endpoints, driver commands and results as before; what changed is
