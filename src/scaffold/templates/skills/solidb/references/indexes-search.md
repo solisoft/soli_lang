@@ -231,10 +231,18 @@ sdb_api POST /_api/database/mydb/vector/docs '{"name":"emb_idx","field":"emb","d
 FOR r IN VECTOR_SEARCH("docs", "emb_idx", [1,0,0], 2) RETURN {k: r.doc._key, s: r.score}
 -- [{"k":"a","s":1.0},{"k":"b","s":0.9938…}]
 FOR r IN VECTOR_SEARCH("docs", "emb_idx", [1,0,0], 2, {filter: {tenant: "x"}}) RETURN r.doc._key
--- ["a","c"]   (filter = equality on fields, applied with over-fetch)
+-- ["a","c"]   (filter = equality on fields, checked on the candidates; after 2.14.0 the search
+--               widens until k pass or the index is exhausted: through 2.14.0 it checked 4·k
+--               candidates once, so a selective filter returned fewer than k rows)
 FOR d IN docs SORT VECTOR_SIMILARITY(d.emb, [1,0,0]) DESC LIMIT 2 RETURN d._key   -- exact scan
 RETURN VECTOR_DISTANCE([0,0], [3,4], "euclidean")   -- [5.0]
 ```
+
+Through 2.14.0 the HNSW graph linked each vector to its M nearest only: on
+clustered vectors (embeddings are) recall@10 stayed near 0.5–0.6 whatever `ef`.
+After 2.14.0 it uses the HNSW paper's neighbour heuristic (recall ≈ 1.0 at
+`ef` 40 on 20,000 clustered vectors); index builds take about twice as long.
+Observed on a build of `main`, 2026-11-18 (card #979).
 
 A document whose vector has the wrong dimension is still inserted (no error).
 HTTP search: `POST /vector/{coll}/{index}/search {"vector":[…],"limit":2}`.
