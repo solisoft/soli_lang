@@ -554,6 +554,18 @@ over many rows. Not a document collection: it has its own routes, no `_key`
   recreated. On 2.10.4 or earlier: recreate the index after every insert,
   or do without. Dropping an index now clears the column's `index_type`.
 
+### Sharded columnar collections (after 2.14.0; observed on a two-node build of `main`, 2026-11-18, card #899)
+
+`POST …/columnar` with `"num_shards":4,"shard_key":"host","replication_factor":1`
+(the key must be a column, else `400`) → `{"status":"created",…}`; the
+shards appear as columnar collections `m_s0`…`m_s3` spread over the nodes;
+`m` itself lists `row_count: 0`. `POST …/columnar/m/insert` and SDBQL
+`INSERT … INTO m` route rows to their shards from any node; `FOR r IN m …`
+answers over every shard from any node; `DELETE …/columnar/m` drops the
+shards everywhere. Refused on `m` for now (`"'m' is sharded: … is not
+supported on it yet"`): deletes, truncate, columns, indexes, retention,
+compact, tags, branches, `/query`, `/aggregate`.
+
 ### Exports as Parquet and Arrow (after 2.14.0; observed on a build of `main`, 2026-11-18, card #980)
 
 `GET …/collection/{name}/export?format=parquet` → one zstd Parquet file
