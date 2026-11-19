@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.39.3] - 2026-11-19
+
 ### Security
 - **A grandchild controller inherits its grandparent's hooks and layout on
   every boot.** Inheritance was resolved over a hash map in its iteration

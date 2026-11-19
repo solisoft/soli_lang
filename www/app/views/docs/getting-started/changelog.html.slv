@@ -20,12 +20,16 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.2.</p>
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.3.</p>
+    </section>
+
+    <section id="v2-39-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.39.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-19</span></h2>
+        <h3 id="v2-39-3-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A grandchild controller inherits its grandparent&rsquo;s hooks and layout on every boot.</strong> With <code class="text-cyan-400">C &lt; B &lt; A</code>, <code class="text-cyan-400">C</code> missed <code class="text-cyan-400">A</code>&rsquo;s <code class="text-cyan-400">this.layout</code> and <strong>its <code class="text-cyan-400">before_action</code>s &mdash; an auth check included</strong> &mdash; on some boots and not others: inheritance was resolved in a hash map&rsquo;s order. Each controller now walks its whole ancestor chain (<a href="/docs/core-concepts/controllers" class="text-amber-400 hover:underline">Controllers &rsaquo; Inheritance</a>).</li>
         </ul>
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <h3 id="v2-39-3-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A method name from another language suggests the Soli one.</strong> <code class="text-cyan-400">&quot;42&quot;.pad_start(5, &quot;0&quot;)</code> now ends with <code class="text-cyan-400">(did you mean 'lpad'?)</code> &mdash; before, no hint, and an agent concluded padding did not exist and wrote it by hand. Also <code class="text-cyan-400">padEnd</code>/<code class="text-cyan-400">pad_right</code> &rarr; <code class="text-cyan-400">rpad</code>, <code class="text-cyan-400">toUpperCase</code> &rarr; <code class="text-cyan-400">upcase</code>, <code class="text-cyan-400">startsWith</code>, <code class="text-cyan-400">indexOf</code>, <code class="text-cyan-400">push_back</code> &rarr; <code class="text-cyan-400">push</code>, <code class="text-cyan-400">forEach</code> &rarr; <code class="text-cyan-400">each</code> (<a href="/docs/language/error-handling" class="text-amber-400 hover:underline">Error handling</a>).</li>
         </ul>
