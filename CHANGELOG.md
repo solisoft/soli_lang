@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.39.2] - 2026-11-19
+
 ### Added
 - **`X509.issue(options)`: certificates from a CA the app holds.** Generates
   an EC P-256 key pair and a certificate for it signed by `issuer_key`: a
