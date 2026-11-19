@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.39.1] - 2026-11-19
+
 ### Security
 - **Sessions (`disk`, `solidb`, `solikv`): a logout stays a logout.** A write
   loads the session, changes it and saves it back; a write in flight during
