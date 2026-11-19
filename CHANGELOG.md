@@ -14,6 +14,20 @@
   issuer's. Pure RustCrypto (`x509-cert`, `p256`), so it runs on the edge
   build; behind the `pdf` feature.
 
+### Fixed
+- **`soli test`: the worker databases get the base database's counter
+  fields.** A migration's `db.create_counter` runs on the base test database
+  alone, and the worker databases were given its collections and indexes, not
+  its counters: with `--jobs` above 1, a collection numbered by SoliDB was a
+  plain one on the other workers, an insert took no number there, and a spec
+  that read the number passed or failed depending on the worker that ran it.
+  The counters are now declared on every worker database, before the indexes
+  (a declaration creates its own unique index, which the index copy then
+  leaves alone), each starting where the base database's stands. A worker
+  that already has one keeps it, so a database kept by `SOLI_TEST_KEEP_DB`
+  converges the same way; a server without counters (SoliDB before 2.12) is
+  skipped.
+
 ## [2.39.1] - 2026-11-19
 
 ### Security

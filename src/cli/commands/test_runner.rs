@@ -2004,6 +2004,16 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
             create_started.elapsed().as_millis()
         );
     }
+    // Counters first: declaring one creates its unique index, which the index
+    // copy then finds by name and leaves alone. The other way round, the copy
+    // would create that index bare and the declaration would collide with it.
+    copy_template_counters(
+        &host,
+        &auth_header,
+        base_database,
+        &databases[1..],
+        &template_collections,
+    );
     copy_template_indexes(
         &host,
         &auth_header,
@@ -2012,6 +2022,147 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
         &template_collections,
     );
     println!();
+}
+
+/// Give every sibling worker DB the counter fields the base DB has.
+///
+/// A migration's `db.create_counter` runs on the base DB alone, like its
+/// indexes. Without this, a collection numbered by SoliDB in the base DB was a
+/// plain collection on the other workers: an insert took no number there, and
+/// a spec reading the number failed or passed depending on which worker ran
+/// it. A counter a worker already has (409) is left as it is, so a DB kept by
+/// `SOLI_TEST_KEEP_DB` converges the same way a new one does. A server older
+/// than SoliDB 2.12 has no counters route: the listing fails and nothing is
+/// copied.
+fn copy_template_counters(
+    host: &str,
+    auth_header: &Option<String>,
+    base_database: &str,
+    workers: &[&String],
+    template_collections: &[(String, String)],
+) {
+    if workers.is_empty() {
+        return;
+    }
+    let template: Vec<(&str, Vec<serde_json::Value>)> = template_collections
+        .iter()
+        .filter_map(|(name, _)| {
+            let counters = list_counters(host, auth_header, base_database, name).ok()?;
+            (!counters.is_empty()).then_some((name.as_str(), counters))
+        })
+        .collect();
+    if template.is_empty() {
+        return;
+    }
+
+    let started = web_time::Instant::now();
+    let mut created = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+    for worker in workers {
+        for (collection, counters) in &template {
+            for counter in counters {
+                let field = counter["field"].as_str().unwrap_or("?");
+                match create_counter(host, auth_header, worker, collection, counter) {
+                    Ok(true) => created += 1,
+                    Ok(false) => {}
+                    Err(err) => {
+                        errors.push(format!("{}/{}.{}: {}", worker, collection, field, err))
+                    }
+                }
+            }
+        }
+    }
+    if created > 0 {
+        println!(
+            "  ✓ {} counter(s) copied from {} to {} worker DB(s) ({}ms)",
+            created,
+            base_database,
+            workers.len(),
+            started.elapsed().as_millis()
+        );
+    }
+    // Not fatal: a spec that needs a missing counter fails on its own.
+    for err in errors.iter().take(3) {
+        println!("  ⚠ {}", err);
+    }
+    if errors.len() > 3 {
+        println!("  ⚠ … and {} more counter error(s)", errors.len() - 3);
+    }
+}
+
+/// The counter fields of one collection, as SoliDB lists them (`field`,
+/// `start`, `reset`, `prefix`, … and `state`).
+fn list_counters(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    collection: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let url = format!(
+        "{}/_api/database/{}/collection/{}/counters",
+        host, database, collection
+    );
+    let mut req = agent.get(&url);
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    let body = req
+        .call()
+        .map_err(|err| format!("list counters failed: {}", err))?
+        .into_string()
+        .map_err(|err| format!("list counters failed: {}", err))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|err| format!("list counters failed: {}", err))?;
+    Ok(json["counters"].as_array().cloned().unwrap_or_default())
+}
+
+/// The declaration that recreates a listed counter elsewhere: its options,
+/// starting where the base DB's counter stands (`state.next`, else `start`).
+/// `node` is left out — it names a node of the base DB's cluster — and so are
+/// the read-only `index` and `state`, and every option the listing gives as
+/// null.
+fn counter_declaration(counter: &serde_json::Value) -> serde_json::Value {
+    let mut payload = serde_json::Map::new();
+    for key in [
+        "field", "reset", "timezone", "prefix", "suffix", "padding", "durable",
+    ] {
+        if let Some(value) = counter.get(key).filter(|value| !value.is_null()) {
+            payload.insert(key.to_string(), value.clone());
+        }
+    }
+    let start = counter["state"]["next"]
+        .as_u64()
+        .or_else(|| counter["start"].as_u64());
+    if let Some(start) = start {
+        payload.insert("start".to_string(), serde_json::json!(start));
+    }
+    serde_json::Value::Object(payload)
+}
+
+/// Declare one listed counter on another database. `Ok(false)` when the
+/// worker already has it (409).
+fn create_counter(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    collection: &str,
+    counter: &serde_json::Value,
+) -> Result<bool, String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let url = format!(
+        "{}/_api/database/{}/collection/{}/counters",
+        host, database, collection
+    );
+    let mut req = agent.post(&url).set("Content-Type", "application/json");
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    match req.send_string(&counter_declaration(counter).to_string()) {
+        Ok(_) => Ok(true),
+        Err(ureq::Error::Status(409, _)) => Ok(false),
+        Err(err) => Err(format!("create counter failed: {}", err)),
+    }
 }
 
 /// Give every sibling worker DB the indexes the base DB has.
@@ -3213,6 +3364,33 @@ mod tests {
         assert_eq!(
             worker_database_names(3, "foo_spec"),
             vec!["foo_spec", "foo_w1_spec", "foo_w2_spec"]
+        );
+    }
+
+    #[test]
+    fn a_counter_is_declared_again_from_where_it_stands() {
+        let listed = serde_json::json!({
+            "field": "number", "start": 1, "reset": "year", "timezone": "Europe/Paris",
+            "prefix": "FA-{YYYY}-", "suffix": "", "padding": 4, "durable": true,
+            "node": null, "index": "counter_number",
+            "state": { "epoch": 1794837472772u64, "date": null, "next": 42 }
+        });
+        assert_eq!(
+            counter_declaration(&listed),
+            serde_json::json!({
+                "field": "number", "reset": "year", "timezone": "Europe/Paris",
+                "prefix": "FA-{YYYY}-", "suffix": "", "padding": 4, "durable": true,
+                "start": 42
+            })
+        );
+    }
+
+    #[test]
+    fn a_counter_without_state_keeps_its_start_and_drops_null_options() {
+        let listed = serde_json::json!({ "field": "seq", "start": 7, "reset": null, "node": null });
+        assert_eq!(
+            counter_declaration(&listed),
+            serde_json::json!({ "field": "seq", "start": 7 })
         );
     }
 }
