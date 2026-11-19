@@ -206,9 +206,19 @@ pub fn primitive_methods(
     value_type: &str,
 ) -> &'static [crate::interpreter::executor::calls::method_registry::MethodDef] {
     use crate::interpreter::executor::calls::method_registry::known_methods;
-    let key = match value_type {
+    match primitive_key(value_type) {
+        Some(key) => known_methods(key),
+        None => &[],
+    }
+}
+
+/// The method-registry key of a primitive value type, as an error names it.
+/// An array type is named by its elements too (`Int[]`).
+fn primitive_key(value_type: &str) -> Option<&'static str> {
+    Some(match value_type {
         "String" | "string" => "string",
         "Array" | "array" => "array",
+        t if t.ends_with("[]") => "array",
         "Hash" | "hash" => "hash",
         "int" | "Int" => "int",
         "float" | "Float" => "float",
@@ -217,13 +227,70 @@ pub fn primitive_methods(
         "null" | "Null" => "null",
         "symbol" | "Symbol" => "symbol",
         "QueryBuilder" => "query_builder",
-        _ => return &[],
-    };
-    known_methods(key)
+        _ => return None,
+    })
 }
 
-/// A suggestion for an unknown method on a primitive value type.
+/// Names other languages give a method Soli has under another name, by
+/// the key [`primitive_methods`] uses. No edit distance links `pad_start` to
+/// `lpad`, so without this a JavaScript, Python or C# habit gets no hint, and
+/// an agent concludes the method does not exist and writes it by hand.
+const FOREIGN_NAMES: &[(&str, &[(&str, &str)])] = &[
+    (
+        "string",
+        &[
+            ("pad_start", "lpad"),
+            ("padStart", "lpad"),
+            ("pad_left", "lpad"),
+            ("padLeft", "lpad"),
+            ("PadLeft", "lpad"),
+            ("pad_end", "rpad"),
+            ("padEnd", "rpad"),
+            ("pad_right", "rpad"),
+            ("padRight", "rpad"),
+            ("PadRight", "rpad"),
+            ("zfill", "lpad"),
+            ("toUpperCase", "upcase"),
+            ("to_upper", "upcase"),
+            ("upper", "upcase"),
+            ("toLowerCase", "downcase"),
+            ("to_lower", "downcase"),
+            ("lower", "downcase"),
+            ("startsWith", "starts_with?"),
+            ("endsWith", "ends_with?"),
+            ("indexOf", "index_of"),
+            ("toString", "to_s"),
+        ],
+    ),
+    (
+        "array",
+        &[
+            ("push_back", "push"),
+            ("append", "push"),
+            ("forEach", "each"),
+            ("indexOf", "index_of"),
+        ],
+    ),
+];
+
+/// The Soli name of a method another language calls `name`, if any.
+fn foreign_equivalent(value_type: &str, name: &str) -> Option<&'static str> {
+    let key = primitive_key(value_type)?;
+    FOREIGN_NAMES
+        .iter()
+        .find(|(k, _)| *k == key)?
+        .1
+        .iter()
+        .find(|(foreign, _)| *foreign == name)
+        .map(|(_, soli)| *soli)
+}
+
+/// A suggestion for an unknown method on a primitive value type: the Soli
+/// name of a method known from another language, else the closest typo.
 pub fn primitive_method_suggestion(value_type: &str, name: &str) -> Option<String> {
+    if let Some(soli) = foreign_equivalent(value_type, name) {
+        return Some(soli.to_string());
+    }
     let methods = primitive_methods(value_type);
     if methods.is_empty() {
         return None;
@@ -309,5 +376,38 @@ mod tests {
             Some("length".into())
         );
         assert_eq!(primitive_method_suggestion("Widget", "lenght"), None);
+    }
+
+    #[test]
+    fn a_name_from_another_language_suggests_the_soli_one() {
+        assert_eq!(
+            primitive_method_suggestion("String", "pad_start"),
+            Some("lpad".into())
+        );
+        assert_eq!(
+            primitive_method_suggestion("String", "padEnd"),
+            Some("rpad".into())
+        );
+        assert_eq!(
+            primitive_method_suggestion("Int[]", "push_back"),
+            Some("push".into())
+        );
+    }
+
+    #[test]
+    fn every_foreign_name_points_at_a_real_method_and_is_not_one() {
+        for (key, pairs) in FOREIGN_NAMES {
+            let methods = primitive_methods(key);
+            for (foreign, soli) in *pairs {
+                assert!(
+                    methods.iter().any(|m| m.name == *soli),
+                    "{key}.{soli} (for {foreign}) is not a method"
+                );
+                assert!(
+                    !methods.iter().any(|m| m.name == *foreign),
+                    "{key}.{foreign} is a method itself"
+                );
+            }
+        }
     }
 }

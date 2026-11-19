@@ -575,6 +575,12 @@ entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> 
 "日本語テキスト".truncate(4, "…")  # "日本語…"
 "hi".truncate(10)                 # "hi" (already fits: unchanged)
 
+# Padding to a width (counts characters; the pad defaults to a space).
+# `rjust` / `ljust` are aliases of `lpad` / `rpad`
+"42".lpad(5, "0")    # "00042"
+"hi".rpad(5, ".")    # "hi..."
+"ab".center(6, "*")  # "**ab**"
+
 # Numeric conversion. `to_i` takes an optional radix from 2 to 36; the
 # conventional 0x / 0o / 0b prefixes are accepted.
 print("ff".to_i(16));      # 255
@@ -1352,6 +1358,23 @@ countr + 1        # Undefined variable 'countr' (did you mean 'counter'?) at 2:1
 "abc".upcse       # Cannot access property 'upcse' on String (did you mean 'upcase'?) at 3:7
 greet(greting: "Hi")   # Undefined variable 'greting' (did you mean 'greeting'?) at 4:7
 ```
+
+A method name from another language suggests the Soli one, though no edit
+distance links them:
+
+```soli
+"42".pad_start(5, "0")   # Cannot access property 'pad_start' on String (did you mean 'lpad'?)
+"hi".padEnd(5)           # … (did you mean 'rpad'?)
+"x".toUpperCase          # … (did you mean 'upcase'?)
+[1].push_back(2)         # … (did you mean 'push'?)
+```
+
+Covered: `pad_start`/`padStart`/`pad_left`/`padLeft`/`zfill` → `lpad`,
+`pad_end`/`padEnd`/`pad_right`/`padRight` → `rpad`,
+`toUpperCase`/`upper`/`to_upper` → `upcase` (and the lowercase ones →
+`downcase`), `startsWith`/`endsWith` → `starts_with?`/`ends_with?`,
+`indexOf` → `index_of`, `toString` → `to_s`, and on arrays `push_back` /
+`append` → `push`, `forEach` → `each`.
 
 It covers undefined variables and functions, unknown methods and fields on
 instances, classes and built-in types, `super` members, named arguments no

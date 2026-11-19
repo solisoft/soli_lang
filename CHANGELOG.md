@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+- **A method name from another language suggests the Soli one.**
+  `"42".pad_start(5, "0")` said only `Cannot access property 'pad_start' on
+  String`: no edit distance links it to `lpad`, so no hint, and an agent
+  concluded padding did not exist and wrote it by hand. `pad_start`,
+  `padStart`, `pad_left`, `padLeft`, `zfill` now suggest `lpad`; `pad_end`,
+  `padEnd`, `pad_right`, `padRight` suggest `rpad`; `toUpperCase`/`upper` →
+  `upcase`, `toLowerCase`/`lower` → `downcase`, `startsWith`/`endsWith`,
+  `indexOf`, `toString`; on arrays `push_back`/`append` → `push`, `forEach` →
+  `each`. The `soli new` CLAUDE.md lists the padding methods.
+
 ## [2.39.2] - 2026-11-19
 
 ### Added

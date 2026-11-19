@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.2.</p>
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A method name from another language suggests the Soli one.</strong> <code class="text-cyan-400">&quot;42&quot;.pad_start(5, &quot;0&quot;)</code> now ends with <code class="text-cyan-400">(did you mean 'lpad'?)</code> &mdash; before, no hint, and an agent concluded padding did not exist and wrote it by hand. Also <code class="text-cyan-400">padEnd</code>/<code class="text-cyan-400">pad_right</code> &rarr; <code class="text-cyan-400">rpad</code>, <code class="text-cyan-400">toUpperCase</code> &rarr; <code class="text-cyan-400">upcase</code>, <code class="text-cyan-400">startsWith</code>, <code class="text-cyan-400">indexOf</code>, <code class="text-cyan-400">push_back</code> &rarr; <code class="text-cyan-400">push</code>, <code class="text-cyan-400">forEach</code> &rarr; <code class="text-cyan-400">each</code> (<a href="/docs/language/error-handling" class="text-amber-400 hover:underline">Error handling</a>).</li>
+        </ul>
     </section>
 
     <section id="v2-39-2" class="mb-16 scroll-mt-24">

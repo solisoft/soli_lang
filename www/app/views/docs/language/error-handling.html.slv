@@ -230,6 +230,26 @@ greet(greting: "Hi")   # Undefined variable 'greting' (did you mean 'greeting'?)
             </div>
         </div>
         <p class="text-gray-400 mb-4">
+            A method name from another language suggests the Soli one, though no edit distance links them:
+            <code class="text-amber-400">pad_start</code>, <code class="text-amber-400">padStart</code>,
+            <code class="text-amber-400">pad_left</code>, <code class="text-amber-400">zfill</code> &rarr;
+            <code class="text-amber-400">lpad</code>; <code class="text-amber-400">pad_end</code>,
+            <code class="text-amber-400">padEnd</code>, <code class="text-amber-400">pad_right</code> &rarr;
+            <code class="text-amber-400">rpad</code>; <code class="text-amber-400">toUpperCase</code> /
+            <code class="text-amber-400">upper</code> &rarr; <code class="text-amber-400">upcase</code> (and the lowercase ones
+            &rarr; <code class="text-amber-400">downcase</code>); <code class="text-amber-400">startsWith</code> /
+            <code class="text-amber-400">endsWith</code>, <code class="text-amber-400">indexOf</code>,
+            <code class="text-amber-400">toString</code>; on arrays <code class="text-amber-400">push_back</code> /
+            <code class="text-amber-400">append</code> &rarr; <code class="text-amber-400">push</code> and
+            <code class="text-amber-400">forEach</code> &rarr; <code class="text-amber-400">each</code>.
+        </p>
+        <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">"42".pad_start(5, "0")   # Cannot access property 'pad_start' on String (did you mean 'lpad'?)
+[1].push_back(2)         # … (did you mean 'push'?)</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400 mb-4">
             It covers undefined variables and functions, unknown methods and fields on instances, classes and built-in
             types, <code class="text-amber-400">super</code> members, named arguments no parameter takes, and a missing
             superclass or module. <code class="text-amber-400">soli check</code> and the
