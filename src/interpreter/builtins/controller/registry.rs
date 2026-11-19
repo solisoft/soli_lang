@@ -244,44 +244,51 @@ fn resolve_controller_inheritance(
     registry: &mut ControllerRegistry,
     superclass_map: &HashMap<String, String>,
 ) {
-    // Collect inherited hooks from parents
+    // Collect inherited hooks by walking each child's whole ancestor chain
+    // in the registry as scanned. Building on a parent's already-resolved
+    // hooks instead depended on the map's iteration order: a grandchild
+    // seen before its parent missed every grandparent hook, layout included,
+    // differently from one boot to the next.
     let mut inherited: HashMap<String, InheritedHooks> = HashMap::new();
 
-    for (child_name, parent_name) in superclass_map {
-        if let Some(parent_info) = registry.get_by_name(parent_name) {
-            let mut before_actions = parent_info.before_actions.clone();
-            let mut after_actions = parent_info.after_actions.clone();
-            let mut layout = parent_info.layout.clone();
-            let mut action_layouts = parent_info.action_layouts.clone();
-
-            // If the parent also inherits, chain up
-            if let Some((parent_before, parent_after, parent_layout, parent_action_layouts)) =
-                inherited.get(parent_name)
-            {
-                let mut combined_before = parent_before.clone();
-                combined_before.extend(before_actions);
-                before_actions = combined_before;
-
-                let mut combined_after = parent_after.clone();
-                combined_after.extend(after_actions);
-                after_actions = combined_after;
-
-                if layout.is_none() {
-                    layout = parent_layout.clone();
-                }
-
-                // Grandparent rules sit after the parent's so nearer ancestors
-                // win; child rules are prepended later in the apply step.
-                let mut combined_action_layouts = action_layouts;
-                combined_action_layouts.extend(parent_action_layouts.clone());
-                action_layouts = combined_action_layouts;
+    for child_name in superclass_map.keys() {
+        // Nearest ancestor first; stops at a class the registry does not
+        // know (`Controller`, a plain class) or on a cycle.
+        let mut ancestors: Vec<&ControllerInfo> = Vec::new();
+        let mut seen: Vec<&str> = vec![child_name.as_str()];
+        let mut current = superclass_map.get(child_name);
+        while let Some(parent_name) = current {
+            if seen.contains(&parent_name.as_str()) {
+                break;
             }
-
-            inherited.insert(
-                child_name.clone(),
-                (before_actions, after_actions, layout, action_layouts),
-            );
+            let Some(parent_info) = registry.get_by_name(parent_name) else {
+                break;
+            };
+            ancestors.push(parent_info);
+            seen.push(parent_name.as_str());
+            current = superclass_map.get(parent_name);
         }
+        if ancestors.is_empty() {
+            continue;
+        }
+
+        // Hooks run root first; the nearest layout and per-action rules win.
+        let mut before_actions = Vec::new();
+        let mut after_actions = Vec::new();
+        for ancestor in ancestors.iter().rev() {
+            before_actions.extend(ancestor.before_actions.iter().cloned());
+            after_actions.extend(ancestor.after_actions.iter().cloned());
+        }
+        let layout = ancestors.iter().find_map(|a| a.layout.clone());
+        let action_layouts = ancestors
+            .iter()
+            .flat_map(|a| a.action_layouts.iter().cloned())
+            .collect();
+
+        inherited.insert(
+            child_name.clone(),
+            (before_actions, after_actions, layout, action_layouts),
+        );
     }
 
     // Apply inherited hooks to child controllers
@@ -1284,6 +1291,43 @@ pub fn setup_controller_context(
 
 #[cfg(test)]
 mod tests {
+
+    /// `D < C < B < A`, only `A` sets the layout and a before-action.
+    fn chain() -> (ControllerRegistry, HashMap<String, String>) {
+        let mut registry = ControllerRegistry::new();
+        let mut base = ControllerInfo::new("AController", "a");
+        base.layout = Some("admin".into());
+        base.before_actions.push(BeforeAction {
+            actions: Vec::new(),
+            handler_source: "fn(req) { nil }".into(),
+            source_line: 1,
+        });
+        registry.register(base);
+        let mut supers = HashMap::new();
+        for (child, parent) in [("B", "A"), ("C", "B"), ("D", "C")] {
+            registry.register(ControllerInfo::new(
+                &format!("{child}Controller"),
+                &child.to_lowercase(),
+            ));
+            supers.insert(format!("{child}Controller"), format!("{parent}Controller"));
+        }
+        (registry, supers)
+    }
+
+    #[test]
+    fn a_layout_reaches_every_generation_whatever_the_map_order() {
+        // Each HashMap is seeded afresh, so the iteration order varies run
+        // to run; the old resolution missed the grandparent in some of them.
+        for _ in 0..32 {
+            let (mut registry, supers) = chain();
+            resolve_controller_inheritance(&mut registry, &supers);
+            for name in ["BController", "CController", "DController"] {
+                let info = registry.get_by_name(name).expect("registered");
+                assert_eq!(info.layout_for("index").as_deref(), Some("admin"), "{name}");
+                assert_eq!(info.before_actions.len(), 1, "{name}");
+            }
+        }
+    }
 
     #[test]
     fn a_qualified_controller_name_maps_to_its_route_key() {

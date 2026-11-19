@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Security
+- **A grandchild controller inherits its grandparent's hooks and layout on
+  every boot.** Inheritance was resolved over a hash map in its iteration
+  order, building each child on its parent's already-resolved hooks: when a
+  grandchild came before its parent, it got the parent's own hooks only. So
+  `C < B < A` with `A`'s `static { this.layout = "app"; this.before_action =
+  … }` rendered `C` in the default layout and **skipped `A`'s
+  before-actions** — an auth check included — on some boots and not others
+  (4 boots in 6 answered 200 instead of 403 in a reproduction). Each child
+  now walks its whole ancestor chain. Present since 0.40.0.
+
 ### Changed
 - **A method name from another language suggests the Soli one.**
   `"42".pad_start(5, "0")` said only `Cannot access property 'pad_start' on
