@@ -638,6 +638,16 @@ pub fn register_x509_builtins(env: &mut Environment) {
         })),
     );
 
+    // X509.issue({issuer_cert, issuer_key, subject, days?, ca?, policies?})
+    //   -> { cert, key, serial, not_after_unix } — see x509_issue.rs
+    #[cfg(feature = "pdf")]
+    methods.insert(
+        "issue".to_string(),
+        Rc::new(NativeFunction::new("X509.issue", Some(1), |args| {
+            super::x509_issue::issue_builtin(&args[0])
+        })),
+    );
+
     // X509.info(cert) -> { subject, issuer, serial, not_before, not_after,
     //                      not_before_unix, not_after_unix, days_left,
     //                      expired, not_yet_valid, dns_names, pem }

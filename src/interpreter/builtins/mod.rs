@@ -221,6 +221,8 @@ pub mod validation;
 pub mod vapid;
 pub mod webauthn;
 pub mod x509;
+#[cfg(feature = "pdf")]
+pub mod x509_issue;
 pub mod xml;
 
 thread_local! {

@@ -2745,6 +2745,47 @@ pin = X509.spki_pin(File.read("cert.pem"))
 
 **Returns:** String — `"sha256/<base64>"`.
 
+#### X509.issue(options)
+
+Issues a certificate from a CA your app holds: a key pair is generated and the
+certificate for it is signed by `issuer_key`. It is what an advanced electronic
+signature (eIDAS art. 26) needs — a key and a certificate per signer, made when
+they sign and used once — and it can also make an intermediate CA.
+
+```soli
+identity = X509.issue({
+  "issuer_cert": getenv("SIGNERS_CA_CERT"),   # PEM, basicConstraints CA:TRUE
+  "issuer_key": getenv("SIGNERS_CA_KEY"),     # PEM, PKCS#8 EC P-256
+  "subject": {"common_name": "Adèle Martin", "email": "adele@example.com", "country": "FR"},
+  "days": 1,
+  "policies": ["1.3.6.1.4.1.99999.1.1"]       # optional certificatePolicies OIDs
+})
+
+signed = pdf_sign(pdf, {
+  "cert": identity["cert"], "key": identity["key"],
+  "chain": [getenv("SIGNERS_CA_CERT"), root_pem],
+  "name": "Adèle Martin"
+})
+# identity["key"] is never stored: the signature is the signer's alone.
+```
+
+| Option | Meaning |
+|---|---|
+| `issuer_cert`, `issuer_key` | the CA certificate and its private key, both PEM. The key must be **EC P-256** in PKCS#8 (`openssl pkcs8 -topk8 -nocrypt -in ca.key`) and match the certificate, which must be a CA |
+| `subject` | `common_name` (required), `email`, `country` (two letters), `organization`, `organizational_unit`, `given_name`, `surname`, `serial_number`; UTF-8, so accents survive |
+| `days` | validity, 1 (default) to 10980; capped at the issuer's own expiry |
+| `ca` | `true` makes an intermediate CA (`keyCertSign`, path length 0) instead of a signing certificate |
+| `policies` | OIDs written in `certificatePolicies`, e.g. your signature policy's |
+
+A signing certificate carries `digitalSignature` + `nonRepudiation`, the
+`documentSigning` (RFC 9336) and `emailProtection` extended key usages, the
+email as a SAN, and subject / authority key identifiers. The key is generated
+from the OS random source; it works on the edge (wasm32) build too. Available
+with the `pdf` feature (on in release builds).
+
+**Returns:** Hash — `cert` (PEM), `key` (PEM, PKCS#8 P-256), `serial` (hex),
+`not_after_unix`.
+
 #### Deflate.deflate(data) / Deflate.inflate(data)
 
 Raw DEFLATE (RFC 1951, no zlib/gzip wrapper) — the compression used by the SAML

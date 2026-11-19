@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- **`X509.issue(options)`: certificates from a CA the app holds.** Generates
+  an EC P-256 key pair and a certificate for it signed by `issuer_key`: a
+  signing certificate (digitalSignature + nonRepudiation, documentSigning and
+  emailProtection EKUs, email SAN, key identifiers, optional
+  certificatePolicies) or, with `ca: true`, an intermediate CA. A key and a
+  certificate per signer, used once with `pdf_sign`, is what an eIDAS
+  advanced signature needs. Refuses an issuer key that does not match its
+  certificate and an issuer that is not a CA; validity is capped at the
+  issuer's. Pure RustCrypto (`x509-cert`, `p256`), so it runs on the edge
+  build; behind the `pdf` feature.
+
 ## [2.39.1] - 2026-11-19
 
 ### Security

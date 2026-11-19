@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.1.</p>
+        <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">X509.issue</code>: issue certificates from your own CA.</strong> A key pair and its certificate, signed by a CA your app holds (EC P-256): a signing certificate per signer &mdash; what an eIDAS <em>advanced</em> signature needs, with <code class="text-cyan-400">pdf_sign</code> &mdash; or an intermediate CA with <code class="text-cyan-400">ca: true</code>. Subject in UTF-8, email SAN, <code>documentSigning</code> usage, optional policy OIDs; runs on the edge build too (<a href="/docs/builtins/crypto#def-x509-issue" class="text-amber-400 hover:underline">Crypto &rsaquo; X509.issue</a>).</li>
+        </ul>
     </section>
 
     <section id="v2-39-1" class="mb-16 scroll-mt-24">
