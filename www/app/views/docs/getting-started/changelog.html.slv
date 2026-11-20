@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.5.</p>
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Releases ship in about 20 minutes instead of 70.</strong> The binaries build while the checks run (the release stays a draft until both are done), <code class="text-cyan-400">render_pdf</code> builds in its own jobs, and the Docker image packs the release&rsquo;s Linux binary instead of compiling it again. The image is now <code class="text-cyan-400">linux/amd64</code> <em>and</em> <code class="text-cyan-400">linux/arm64</code>, on <code class="text-cyan-400">debian:trixie-slim</code>. The macOS and Windows binaries use ThinLTO (the <code class="text-cyan-400">release</code> profile) &mdash; a few percent slower than the fat-LTO Linux build, which is unchanged (<a href="/docs/getting-started/installation" class="text-amber-400 hover:underline">Installation</a>).</li>
+        </ul>
     </section>
 
     <section id="v2-39-5" class="mb-16 scroll-mt-24">

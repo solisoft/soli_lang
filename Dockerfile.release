@@ -1,0 +1,26 @@
+# The release image: the soli binary CI already built for the GitHub release,
+# not a second 20-minute compile. `Dockerfile` (which builds from source)
+# stays for local and third-party builds.
+#
+# CI downloads soli-linux-{amd64,arm64}.tar.gz from the release, checks their
+# sha256 and unpacks them to dist/linux-amd64/soli and dist/linux-arm64/soli
+# before building this file for both platforms.
+#
+# trixie, not bookworm: the binaries are built on Ubuntu 24.04 and need glibc
+# 2.39; bookworm has 2.36. Their other library, libz, is in every Debian slim
+# image (dpkg pre-depends on it).
+#
+# The CA bundle is one architecture-independent file, so it is installed in a
+# stage that runs on the build machine's platform and copied across: the final
+# stage has no RUN, and the arm64 image builds without emulation.
+
+FROM --platform=$BUILDPLATFORM debian:trixie-slim AS certs
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM debian:trixie-slim
+ARG TARGETARCH
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY dist/linux-${TARGETARCH}/soli /usr/local/bin/soli
+ENTRYPOINT ["soli"]

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+- **ci: a tag reaches Docker in ~20 minutes instead of ~70.** The binaries
+  build in parallel with the checks: the draft release is created first, and
+  `publish-release` waits for both the gate (`release`) and the builds — a red
+  check still stops the publish, leaving an unpublished draft. `render_pdf`
+  builds in its own matrix jobs. The Docker image no longer compiles soli: it
+  packs the release's `soli-linux-amd64`/`arm64` (`Dockerfile.release`, sha256
+  checked, `--version` run before the push), so it is now multi-arch, on
+  `debian:trixie-slim` (the binaries need glibc 2.39; bookworm has 2.36). The
+  macOS and Windows binaries build with the `release` profile (ThinLTO) instead
+  of `dist`: fat LTO took 26–30 min there and was the critical path. Linux keeps
+  `dist`. `Dockerfile` still builds from source for local use.
+
 ## [2.39.5] - 2026-11-20
 
 ### Added

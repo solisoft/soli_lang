@@ -552,14 +552,14 @@ jobs:
       - name: Validate PDF/UA-1
         run: /tmp/verapdf/verapdf --flavour ua1 /tmp/vp_tagged_pdfa.pdf
 
-  release:
-    # Tag releases wait for the full gate, not just test/clippy/fmt.
-    # audit, engine-parity, browser, and verapdf each cover a failure mode the
-    # Linux suite cannot see; a red job here must stop the draft release and
-    # the binary/docker publish. windows-check is not in this list: Windows
-    # gates only the Windows binary (build-windows), never the Linux and macOS
-    # release.
-    needs: [test, clippy, fmt, audit, engine-parity, browser, verapdf]
+  # The tag pipeline runs the builds in parallel with the checks instead of
+  # after them: the draft release is created at once, every binary compiles
+  # while test/clippy/… run, and `release` — the gate — is what
+  # `publish-release` waits for. A red check still stops the publish and the
+  # Docker image; it only leaves an unpublished draft holding the binaries
+  # (delete it before re-tagging). Before, the builds waited ~13 minutes for
+  # the gate and a tag took ~70 minutes to reach Docker.
+  draft-release:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -575,42 +575,70 @@ jobs:
           fi
           echo "Version check passed: $TAG_VERSION"
 
-      - name: Create GitHub Release
+      - name: Create the draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create ${{ github.ref_name }} --draft --generate-notes
+        # A re-run of a failed tag finds its draft already there.
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --draft --generate-notes
+
+  release:
+    # The gate. Tag releases wait for the full set, not just test/clippy/fmt:
+    # audit, engine-parity, browser, and verapdf each cover a failure mode the
+    # Linux suite cannot see; a red job here must stop the publish and the
+    # Docker image. windows-check is not in this list: Windows gates only the
+    # Windows binary (build-windows), never the Linux and macOS release.
+    needs: [draft-release, test, clippy, fmt, audit, engine-parity, browser, verapdf]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Every check passed for $GITHUB_REF_NAME"
 
   build-binaries:
-    needs: release
+    needs: draft-release
+    name: build ${{ matrix.kind }} ${{ matrix.platform.name }}
     strategy:
       matrix:
-        include:
+        # soli and render_pdf are separate jobs, so neither waits for the
+        # other's compile.
+        kind: [soli, render_pdf]
+        platform:
           # Linux binaries are built on Ubuntu 24.04, not `ubuntu-latest`: a
           # binary links against the build host's glibc, and `ubuntu-latest`
           # moved to 26.04 (glibc 2.43), so 2.36.1–2.36.3 refused to start on
           # 24.04 hosts ("GLIBC_2.43 not found"). The oldest supported LTS
           # sets the floor; raise it deliberately, never by a runner update.
-          - target: x86_64-unknown-linux-gnu
+          #
+          # `profile` is soli's. Linux — where Soli runs in production, and
+          # what the Docker image ships — gets `dist` (fat LTO, one codegen
+          # unit: a few percent faster, ~14 min). macOS gets `release`
+          # (ThinLTO, 16 units): the fat-LTO build took 26–30 min there and
+          # was the pipeline's critical path, for a development machine.
+          - name: linux-amd64
+            target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
-            artifact: soli-linux-amd64
-            pdf_artifact: render-pdf-linux-amd64
-          - target: aarch64-unknown-linux-gnu
+            profile: dist
+          - name: linux-arm64
+            target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04
-            artifact: soli-linux-arm64
-            pdf_artifact: render-pdf-linux-arm64
-          - target: aarch64-apple-darwin
+            profile: dist
+          - name: darwin-arm64
+            target: aarch64-apple-darwin
             os: macos-latest
-            artifact: soli-darwin-arm64
-            pdf_artifact: render-pdf-darwin-arm64
+            profile: release
           # Intel Mac. `soli update` has always resolved x86_64 macOS hosts to
           # this artifact name, so without it those users get a 404.
-          - target: x86_64-apple-darwin
+          - name: darwin-amd64
+            target: x86_64-apple-darwin
             os: macos-latest
-            artifact: soli-darwin-amd64
-            pdf_artifact: render-pdf-darwin-amd64
-    runs-on: ${{ matrix.os }}
+            profile: release
+    runs-on: ${{ matrix.platform.os }}
     permissions:
       contents: write
+    env:
+      # soli-linux-amd64, render-pdf-darwin-arm64, …
+      ARTIFACT: ${{ matrix.kind == 'soli' && 'soli' || 'render-pdf' }}-${{ matrix.platform.name }}
     # Shared with build-windows through the anchor.
     steps: &build-steps
       - uses: actions/checkout@v5
@@ -618,34 +646,34 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.platform.target }}
 
       - name: Install system dependencies (Linux x86_64)
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        if: matrix.platform.target == 'x86_64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        if: matrix.platform.target == 'aarch64-unknown-linux-gnu'
         run: |
-          # Only the cross linker/compiler is needed. OpenSSL is vendored
-          # (compiled from source — see `ssh2` in Cargo.toml), so we no longer
-          # install `libssl-dev:arm64` from the arm64 multiarch mirror
+          # Only the cross linker/compiler is needed; perl + make are
+          # preinstalled. No `libssl-dev:arm64` from the arm64 multiarch mirror
           # (ports.ubuntu.com), which is unreachable from some CI runners.
-          # perl + make (for building vendored OpenSSL) are preinstalled.
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Build
-        run: cargo build --profile dist --locked --target ${{ matrix.target }}
+      - name: Build soli
+        if: matrix.kind == 'soli'
+        run: cargo build --profile ${{ matrix.platform.profile }} --locked --target ${{ matrix.platform.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
           PKG_CONFIG_PATH_aarch64_unknown_linux_gnu: /usr/lib/aarch64-linux-gnu/pkgconfig
           PKG_CONFIG_ALLOW_CROSS: 1
 
-      - name: Package binary
+      - name: Package soli
+        if: matrix.kind == 'soli'
         # `shell: bash` is explicit because windows-latest defaults to
         # PowerShell, where this script would not run. Windows 10 1803+ ships
         # bsdtar as tar.exe, so the tar invocation itself is unchanged.
@@ -655,28 +683,19 @@ jobs:
           # standalone builder looks for the matching name inside the tarball.
           BIN=soli
           if [ "${{ runner.os }}" = "Windows" ]; then BIN=soli.exe; fi
-          ls -la target/${{ matrix.target }}/dist/$BIN
-          tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/dist $BIN
-          # SEC-041: publish a `.sha256` sibling so `soli update` can
-          # verify the downloaded tarball before extracting / chmod-ing.
-          # No single checksum tool spans the matrix: macOS ships `shasum` but
-          # not coreutils' `sha256sum`, while the Windows runner's Git Bash
-          # ships `sha256sum` but not `shasum`. Linux has both. Picking at
-          # runtime keeps one step for all five targets.
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
-          else
-            shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.tar.gz.sha256
-          fi
-          cat ${{ matrix.artifact }}.tar.gz.sha256
+          OUT=target/${{ matrix.platform.target }}/${{ matrix.platform.profile }}
+          ls -la $OUT/$BIN
+          tar -czf $ARTIFACT.tar.gz -C $OUT $BIN
 
       - name: Build render_pdf
-        run: cargo build --release --locked --manifest-path pdf/Cargo.toml --bin render_pdf --target ${{ matrix.target }}
+        if: matrix.kind == 'render_pdf'
+        run: cargo build --release --locked --manifest-path pdf/Cargo.toml --bin render_pdf --target ${{ matrix.platform.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
 
       - name: Package render_pdf
+        if: matrix.kind == 'render_pdf'
         # The standalone PDF renderer behind the `soli-pdf` Ruby gem. Fonts are
         # loaded at runtime, so the tarball carries pdf/fonts next to the binary.
         shell: bash
@@ -685,50 +704,59 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then BIN=render_pdf.exe; fi
           PKG=render-pdf-stage
           mkdir -p $PKG
-          cp pdf/target/${{ matrix.target }}/release/$BIN $PKG/
+          cp pdf/target/${{ matrix.platform.target }}/release/$BIN $PKG/
           cp -R pdf/fonts $PKG/fonts
-          tar -czf ${{ matrix.pdf_artifact }}.tar.gz -C $PKG .
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum ${{ matrix.pdf_artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.pdf_artifact }}.tar.gz.sha256
-          else
-            shasum -a 256 ${{ matrix.pdf_artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.pdf_artifact }}.tar.gz.sha256
-          fi
+          tar -czf $ARTIFACT.tar.gz -C $PKG .
 
-      - name: Upload to release
+      - name: Checksum and upload to release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz
-          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz.sha256
-          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.pdf_artifact }}.tar.gz
-          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.pdf_artifact }}.tar.gz.sha256
+          # SEC-041: publish a `.sha256` sibling so `soli update` can
+          # verify the downloaded tarball before extracting / chmod-ing.
+          # No single checksum tool spans the matrix: macOS ships `shasum` but
+          # not coreutils' `sha256sum`, while the Windows runner's Git Bash
+          # ships `sha256sum` but not `shasum`. Linux has both. Picking at
+          # runtime keeps one step for every target.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum $ARTIFACT.tar.gz | awk '{print $1}' > $ARTIFACT.tar.gz.sha256
+          else
+            shasum -a 256 $ARTIFACT.tar.gz | awk '{print $1}' > $ARTIFACT.tar.gz.sha256
+          fi
+          cat $ARTIFACT.tar.gz.sha256
+          gh release upload --clobber ${{ github.ref_name }} $ARTIFACT.tar.gz $ARTIFACT.tar.gz.sha256
 
   # Windows on its own: a red windows-check or a failed Windows build costs the
   # Windows binary only. The Linux and macOS release publishes without waiting;
   # this job uploads to the release whenever it finishes (`gh release upload`
   # takes a published release too).
   build-windows:
-    needs: [release, windows-check]
+    needs: [draft-release, windows-check]
+    name: build ${{ matrix.kind }} ${{ matrix.platform.name }}
     strategy:
       matrix:
-        include:
+        kind: [soli, render_pdf]
+        platform:
           # Keep the .tar.gz + .sha256 convention on Windows too: the standalone
           # builder downloads and verifies that shape, and a .zip would mean a
           # second code path plus a zip dependency for cosmetics. Windows 10
           # 1803+ ships bsdtar as tar.exe, so the packaging step is unchanged
-          # apart from the binary name.
-          - target: x86_64-pc-windows-msvc
+          # apart from the binary name. `release`, not `dist`, for the reason
+          # given on macOS above (fat LTO took 30 min here).
+          - name: windows-amd64
+            target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact: soli-windows-amd64
-            pdf_artifact: render-pdf-windows-amd64
-    runs-on: ${{ matrix.os }}
+            profile: release
+    runs-on: ${{ matrix.platform.os }}
     permissions:
       contents: write
+    env:
+      ARTIFACT: ${{ matrix.kind == 'soli' && 'soli' || 'render-pdf' }}-${{ matrix.platform.name }}
     steps: *build-steps
 
   publish-release:
-    needs: [build-binaries]
+    needs: [release, build-binaries]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -739,6 +767,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit ${{ github.ref_name }} --draft=false
 
+  # The image packs the Linux binaries the release already holds
+  # (Dockerfile.release) instead of compiling soli a second time, which took
+  # 20 minutes after everything else. It is amd64 and arm64.
   docker:
     needs: publish-release
     runs-on: ubuntu-latest
@@ -746,6 +777,18 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v5
+
+      - name: Fetch the Linux binaries from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for arch in amd64 arm64; do
+            gh release download "$GITHUB_REF_NAME" -D downloads \
+              -p "soli-linux-$arch.tar.gz" -p "soli-linux-$arch.tar.gz.sha256"
+            echo "$(cat downloads/soli-linux-$arch.tar.gz.sha256)  downloads/soli-linux-$arch.tar.gz" | sha256sum -c -
+            mkdir -p release-image/dist/linux-$arch
+            tar -xzf downloads/soli-linux-$arch.tar.gz -C release-image/dist/linux-$arch
+          done
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -757,13 +800,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Nothing compiles in the image, so a missing library or a glibc too old
+      # for the binary would only show when someone runs it. Run it first.
+      - name: Build the amd64 image locally
+        uses: docker/build-push-action@v6
+        with:
+          context: release-image
+          file: Dockerfile.release
+          platforms: linux/amd64
+          load: true
+          tags: soli-release-check
+
+      - name: The image runs and is this release
+        run: docker run --rm soli-release-check --version | tee /dev/stderr | grep -F "${GITHUB_REF_NAME#v}"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: release-image
+          file: Dockerfile.release
+          platforms: linux/amd64,linux/arm64
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest

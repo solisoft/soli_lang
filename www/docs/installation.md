@@ -92,8 +92,10 @@ cargo install --path . --locked --no-default-features \
 
 ## Docker
 
-Soli ships an official container image on the GitHub Container Registry, rebuilt
-and published for every release.
+Soli ships an official container image on the GitHub Container Registry,
+published for every release. It holds the same Linux binary as the release
+download, on `debian:trixie-slim`, for `linux/amd64` and `linux/arm64` (Docker
+picks the one matching your machine).
 
 ```bash
 # Pull the latest release (or pin a version, e.g. :v1.13.5)

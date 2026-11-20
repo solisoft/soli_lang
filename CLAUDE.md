@@ -658,10 +658,11 @@ you just made. Two things follow:
   about eighty seconds.
 - **`release` is not the shipped binary; `dist` is.** `release` is ThinLTO
   over 16 codegen units, the same thing the build server's override imposes. So
-  the remote release binary now matches the manifest. The tag build, the Docker
-  image, `scripts/bench.sh` and `scripts/compare_ruby.sh` use
-  `[profile.dist]` (fat LTO, one codegen unit, a few percent faster, minutes on
-  one core). To benchmark what ships, use `rbuild --faithful lang`, which forces
+  the remote release binary now matches the manifest. The Linux tag builds
+  (and the Docker image, which packs them), `scripts/bench.sh` and
+  `scripts/compare_ruby.sh` use `[profile.dist]` (fat LTO, one codegen unit, a
+  few percent faster, minutes on one core); the macOS and Windows release
+  binaries use `release`, to keep them off the tag pipeline's critical path. To benchmark what ships, use `rbuild --faithful lang`, which forces
   fat LTO and one codegen unit onto `release` for that build.
 
 `lang` patches `eui-proto`/`eui-client` to the sibling `../eui` checkout through
