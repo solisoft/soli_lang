@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Security
+A third round of the SSO audit. The scaffold fixes reach apps generated from
+now on; an app generated earlier keeps its files — copy the changes from a
+fresh `soli generate auth` / `saml` / `oauth` / `oidc_provider`.
+
+- **OIDC provider: the `profile` scope released the email.**
+  `oidc_user_claims` set `preferred_username` to the address, so a client
+  granted only `openid profile` received the email without the separate
+  `email` consent. `preferred_username` now comes from a `username` field, if
+  any.
+- **SAML: a confirmed SCIM account was linked on the asserted email.** It was
+  linked even with `SAML_LINK_EXISTING` off and kept its password, so an IdP
+  user who could set their own email attribute, or an IdP that is not the
+  directory's organisation, took the account. With linking off, a directory
+  account now links only when its `externalId` is the assertion's NameID, or
+  with the new `SAML_LINK_DIRECTORY=on`.
+- **SAML: a user removed at the IdP kept their session here.** With no single
+  logout, it lasted the session store's TTL (24 h by default). The ACS now
+  stores `sign_in_expires_at`: `SAML_SESSION_TTL` (default 28800 s), or the
+  IdP's `SessionNotOnOrAfter` if sooner. `load_current_user` (auth scaffold)
+  ends the session once that time passes.
+- **Apple / Microsoft sign-in: the unsigned id_token could come from
+  elsewhere.** It is trusted because it comes from the provider's token
+  endpoint over TLS (OIDC Core §3.1.3.7). But the exchange followed
+  redirects, and `APPLE_BASE_URL` / `MICROSOFT_BASE_URL` accepted any host,
+  so a wrong value let whoever answered there forge the token and link
+  accounts by its "verified" email. The exchange now sets
+  `follow_redirects: false`, and the override may name only this machine
+  (`OauthSso.token_endpoint_base`).
+- **OIDC provider: smaller fixes.** The consent POST re-checks `max_age`,
+  which the form now carries, so a consent page left open past it issues no
+  code. `OauthClient.register` applies the dynamic-registration rule: plain
+  `http` only to loopback. With `APP_ENV=production`, an unset
+  `SOLI_OIDC_ISSUER` raises an error instead of falling back to
+  `http://localhost:5011`.
+
 ## [2.39.4] - 2026-11-20
 
 ### Security

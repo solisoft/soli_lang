@@ -282,7 +282,11 @@ right here: it only ever signs a guest in):
 - Apple's and Microsoft's id_token is read without checking its signature: it
   comes from the provider's token endpoint over TLS, in answer to the server's
   own request (OpenID Connect Core §3.1.3.7). Issuer, audience, expiry — and for
-  Microsoft the tenant — are checked.
+  Microsoft the tenant — are checked. That trust needs the answer to really be
+  the provider's, so the token exchange follows no redirect, and
+  `APPLE_BASE_URL` / `MICROSOFT_BASE_URL` may name only this machine (a test
+  stand-in: `http://127.0.0.1:<port>`, `localhost`, `[::1]`); any other value
+  is refused rather than trusted to hand back a token.
 - With [two-factor](/docs/security/authentication#two-factor) on, a provider
   sign-in is followed by the code challenge.
 - Prefer HTTPS redirect URIs in production.

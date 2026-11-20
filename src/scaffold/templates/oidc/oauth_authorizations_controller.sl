@@ -84,6 +84,9 @@ class OauthAuthorizationsController < Controller
     user = current_user()
     return redirect("/login") if user.nil?
 
+    stale = this._stale_login_error(context)
+    return stale unless stale.nil?
+
     client = context["client"]
     scopes = context["scopes"]
 
@@ -154,7 +157,11 @@ class OauthAuthorizationsController < Controller
         "scope": scopes.join(" "),
         "nonce": effective["nonce"].to_s,
         "code_challenge": effective["code_challenge"].to_s,
-        "code_challenge_method": effective["code_challenge_method"].to_s
+        "code_challenge_method": effective["code_challenge_method"].to_s,
+        # Carried through the consent form so the POST holds the sign-in to
+        # max_age again: a consent page left open must not issue a code once
+        # the sign-in has grown older than the client allowed.
+        "max_age": effective["max_age"].to_s
       }
     }
   end

@@ -18,15 +18,20 @@ class OauthClient < Model
   static def register(name, redirect_uris, options)
     options = options ?? {}
     client_type = options["client_type"] ?? "confidential"
-    invalid = redirect_uris.filter(fn(uri) { !OauthClient.valid_redirect_uri?(uri) })
+    # The rule dynamic registration applies: https, or plain http to this
+    # machine only. A plain-http redirect to a remote host sends the code
+    # across the network in the clear.
+    invalid = redirect_uris.filter(fn(uri) { !OauthClient.registrable_redirect_uri?(uri) })
     if invalid.length() != 0
-      throw ("redirect_uris must be absolute http(s) URLs without a fragment: #{invalid.join(", ")}")
+      throw ("redirect_uris must be https URLs (plain http only to localhost / 127.0.0.1 / [::1]) " +
+        "without a fragment: #{invalid.join(", ")}")
     end
     post_logout = options["post_logout_redirect_uris"]
     unless post_logout.nil?
-      invalid = post_logout.filter(fn(uri) { !OauthClient.valid_redirect_uri?(uri) })
+      invalid = post_logout.filter(fn(uri) { !OauthClient.registrable_redirect_uri?(uri) })
       if invalid.length() != 0
-        throw ("post_logout_redirect_uris must be absolute http(s) URLs without a fragment: #{invalid.join(", ")}")
+        throw ("post_logout_redirect_uris must be https URLs (plain http only to localhost / 127.0.0.1 / [::1]) " +
+          "without a fragment: #{invalid.join(", ")}")
       end
     end
 

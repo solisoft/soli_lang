@@ -41,6 +41,10 @@ class SamlController < Controller
     session_set("auth_time", DateTime.utc.to_unix)
     # Stamped so a later password reset can invalidate this session.
     session_set("session_version", user.current_session_version)
+    # There is no single logout: this session would outlive the user's
+    # removal at the identity provider. It ends at the identity provider's
+    # SessionNotOnOrAfter, or after SAML_SESSION_TTL, whichever comes first.
+    session_set("sign_in_expires_at", SamlSso.session_expires_at(result["assertion"]))
     redirect(@_local_path(result["return_to"]))
   end
 

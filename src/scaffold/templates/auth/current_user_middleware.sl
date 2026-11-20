@@ -24,6 +24,14 @@ def load_current_user(req)
       session_destroy()
       return {"continue": true, "request": req}
     end
+    # A sign-in that came with an end (SAML: the identity provider's
+    # SessionNotOnOrAfter, or SAML_SESSION_TTL) ends here too, so a user
+    # removed at the identity provider is out once it passes.
+    expires_at = session_get("sign_in_expires_at")
+    if !expires_at.nil? && DateTime.utc.to_unix >= expires_at.to_i
+      session_destroy()
+      return {"continue": true, "request": req}
+    end
     req["current_user"] = user
     return {"continue": true, "request": req}
   end

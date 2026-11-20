@@ -280,6 +280,24 @@ fn emitted_templates_carry_the_security_guards() {
         "{refresh}"
     );
 
+    // Console / seed registration applies the dynamic-registration rule.
+    assert!(
+        client.contains(
+            "redirect_uris.filter(fn(uri) { !OauthClient.registrable_redirect_uri?(uri) })"
+        ),
+        "{client}"
+    );
+    // `profile` does not release the address: that is the `email` scope's.
+    let config = read("app/services/oidc_config.sl");
+    assert!(
+        !config.contains(r#"claims["preferred_username"] = user["email"]"#),
+        "{config}"
+    );
+    assert!(
+        config.contains(r#"throw "SOLI_OIDC_ISSUER is not set"#),
+        "{config}"
+    );
+
     let registrations = read("app/controllers/oauth_registrations_controller.sl");
     assert!(
         registrations.contains("OauthClient.registrable_redirect_uri?(uri)"),
@@ -287,6 +305,18 @@ fn emitted_templates_carry_the_security_guards() {
     );
 
     let authorizations = read("app/controllers/oauth_authorizations_controller.sl");
+    // The consent POST holds the sign-in to max_age again.
+    assert_eq!(
+        authorizations
+            .matches("this._stale_login_error(context)")
+            .count(),
+        2,
+        "{authorizations}"
+    );
+    assert!(
+        authorizations.contains(r#""max_age": effective["max_age"].to_s"#),
+        "{authorizations}"
+    );
     assert!(
         authorizations.contains("login_required"),
         "{authorizations}"

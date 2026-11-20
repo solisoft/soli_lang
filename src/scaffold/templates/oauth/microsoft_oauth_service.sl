@@ -42,7 +42,11 @@
 #
 # The id_token is read without checking its signature, on purpose: it arrives
 # from Microsoft's token endpoint over TLS, in answer to this server's own
-# request (OpenID Connect Core §3.1.3.7 allows exactly that).
+# request (OpenID Connect Core §3.1.3.7 allows exactly that). That trust holds
+# only if the answer really is Microsoft's, so the exchange follows no
+# redirect, and MICROSOFT_BASE_URL may name nothing but this machine (a
+# stand-in for tests): pointed at any other host, whoever answers there could
+# hand back a forged token, issuer and all.
 
 class MicrosoftOauth
   static def tenant
@@ -70,8 +74,7 @@ class MicrosoftOauth
   end
 
   static def base_url
-    url = getenv("MICROSOFT_BASE_URL").to_s.trim
-    url.present? ? url : "https://login.microsoftonline.com"
+    OauthSso.token_endpoint_base("MICROSOFT_BASE_URL", "https://login.microsoftonline.com")
   end
 
   static def authorize_url(state, code_challenge = nil)
@@ -102,7 +105,12 @@ class MicrosoftOauth
     response = HTTP.request(
       "POST",
       "#{MicrosoftOauth.base_url}/#{url_encode(MicrosoftOauth.tenant)}/oauth2/v2.0/token",
-      {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+      {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        # A redirect would take the token (read unsigned) from another host.
+        "follow_redirects": false
+      },
       body
     )
 

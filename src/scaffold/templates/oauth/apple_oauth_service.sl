@@ -22,7 +22,10 @@
 # The id_token is read without checking its signature, on purpose: it arrives
 # from Apple's token endpoint over TLS, in answer to this server's own request
 # (OpenID Connect Core §3.1.3.7 allows exactly that). Its issuer, audience and
-# expiry are still checked.
+# expiry are still checked. That trust holds only if the answer really is
+# Apple's, so the exchange follows no redirect, and APPLE_BASE_URL may name
+# nothing but this machine (a stand-in for tests): pointed at any other host,
+# whoever answers there could hand back a forged token, issuer and all.
 
 const APPLE_ISSUER = "https://appleid.apple.com"
 
@@ -48,8 +51,7 @@ class AppleOauth
   end
 
   static def base_url
-    url = getenv("APPLE_BASE_URL").to_s.trim
-    url.present? ? url : APPLE_ISSUER
+    OauthSso.token_endpoint_base("APPLE_BASE_URL", APPLE_ISSUER)
   end
 
   static def authorize_url(state, code_challenge = nil)
@@ -79,7 +81,12 @@ class AppleOauth
     response = HTTP.request(
       "POST",
       "#{AppleOauth.base_url}/auth/token",
-      {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+      {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        # A redirect would take the token (read unsigned) from another host.
+        "follow_redirects": false
+      },
       body
     )
     status = response["status"]

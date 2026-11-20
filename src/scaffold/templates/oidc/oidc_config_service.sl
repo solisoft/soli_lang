@@ -45,8 +45,15 @@ def oidc_issuer
   # MUST match the public origin exactly, with no trailing slash — relying
   # parties compare the `iss` claim against this string byte for byte.
   return getenv("SOLI_OIDC_ISSUER").to_s if getenv("SOLI_OIDC_ISSUER").present?
+  # A development default only: in production every token and the discovery
+  # document would name the wrong issuer, which relying parties then reject
+  # (or, worse, are configured to accept). Refuse rather than guess — and
+  # never from the Host header, which the client chooses.
+  if getenv("APP_ENV").to_s.trim.downcase == "production"
+    throw "SOLI_OIDC_ISSUER is not set: set it to this provider's public https:// origin"
+  end
 
-  "http://localhost:5011"  # TODO: set your production issuer
+  "http://localhost:5011"
 end
 
 # Initial access token for dynamic client registration (RFC 7591). Empty
@@ -95,7 +102,9 @@ def oidc_user_claims(user, scopes)
 
   if scopes.includes?("profile")
     claims["name"] = user["name"] unless user["name"].blank?
-    claims["preferred_username"] = user["email"] unless user["email"].blank?
+    # Never the email: that is the `email` scope's, a consent of its own. A
+    # client granted `openid profile` must not learn the address through here.
+    claims["preferred_username"] = user["username"] unless user["username"].blank?
   end
 
   if scopes.includes?("email")

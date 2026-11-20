@@ -76,6 +76,8 @@ Nothing existing is overwritten. Add the link to your sign-in view:
    |---|---|
    | `SAML_PROVISION` | `on`: a first sign-in creates the account; `off`: it does not. Unset, it follows `AUTH_SIGNUP` — `closed` provisions nobody, so the identity provider is no way around a sign-up you closed. Only `on` and `off` are read: any other value (`yes`, `true`) counts as `off` |
    | `SAML_LINK_EXISTING` | `on`: a first sign-in may link the account that already has the asserted email. **Off unless set** |
+   | `SAML_LINK_DIRECTORY` | `on`: a first sign-in may link, by email, an account a [SCIM](/docs/security/scim) directory provisioned. **Off unless set**; off, such an account still links when its SCIM `externalId` is the assertion's NameID |
+   | `SAML_SESSION_TTL` | seconds a SAML sign-in lasts here, cut shorter by the IdP's `SessionNotOnOrAfter`. Default `28800` (8 hours) |
 
    In production with `AUTH_SIGNUP=first_user`, no SAML sign-in creates an
    account until the first one exists: the first account is the admin, made at
@@ -119,7 +121,8 @@ and matched exactly.
    of the request cookie, is refused.
 4. `SamlSso.user_for` finds the account: the one already linked to this
    `(issuer, NameID)`; else the one with that email, linked from now on, when
-   `SAML_LINK_EXISTING=on`, when a directory provisioned it, or when nobody
+   `SAML_LINK_EXISTING=on`, when a directory provisioned it and named this
+   identity (or `SAML_LINK_DIRECTORY=on`), or when nobody
    confirmed its address (see below); else a new one (see `SAML_PROVISION`).
    Otherwise an address that already has an account is refused: link it by
    hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`). The
@@ -139,8 +142,12 @@ and matched exactly.
      password, if it has one, still works, and it is not marked `sso_only`.
    - **A directory account** — one [SCIM](/docs/security/scim) created
      (`scim_provisioned_at`) or gave an `externalId` — is linked by its first
-     SAML sign-in even with linking off: the directory and the IdP are the
-     same organisation's. With no password at that point it becomes
+     SAML sign-in with `SAML_LINK_EXISTING` off when its `externalId` is the
+     assertion's NameID: the directory named this very identity. By email
+     alone it is linked only with `SAML_LINK_DIRECTORY=on`, which says the
+     directory and the IdP are one organisation's and its users cannot edit
+     their email attribute — otherwise an IdP user who sets someone's address
+     would take that account. With no password at that point it becomes
      `sso_only`. An admin's is still refused.
    - **An unconfirmed account** is linked even with linking off, as long as a
      first sign-in may create accounts (`SAML_PROVISION`): otherwise whoever
@@ -174,12 +181,16 @@ anyone, and a link issued before is refused), no new API token (`403`) and no
 use of one made before, no passkey registration (`403`) and no sign-in with
 one registered before.
 
-It does **not** end what is already open. A session opened through the IdP
-lasts its normal lifetime after the user is removed there, and an OAuth
-identity already linked to the account (`soli generate oauth`) still signs
-in.
-Ending those takes a [SCIM](/docs/security/scim) deactivation (every request
-of a deactivated user is a guest's) or `revoke_credentials`.
+It does **not** end what is already open at once. A session opened through
+the IdP lasts until its end after the user is removed there — `SAML_SESSION_TTL`
+(8 hours by default) or the IdP's `SessionNotOnOrAfter`, whichever is sooner;
+the ACS stores it as `sign_in_expires_at`, which `load_current_user` enforces
+— and an OAuth identity already linked to the account (`soli generate oauth`)
+still signs in. Ending those at once takes a [SCIM](/docs/security/scim)
+deactivation (every request of a deactivated user is a guest's) or
+`revoke_credentials`. An app whose auth scaffold predates `sign_in_expires_at`
+needs the check copied into `app/middleware/current_user.sl` (see a freshly
+generated one).
 
 5. A new session is opened and the browser goes to `return_to` (a path on this
    site, or `/`).
@@ -365,7 +376,8 @@ Options: `sign` (`"assertion"` by default, `"response"`, `"both"`, `"none"`),
 - **Requests are not signed**, and the HTTP-POST binding is not offered for
   them. Most identity providers accept unsigned requests.
 - **No single logout.** Signing out of the application does not sign out of
-  the identity provider, and the reverse.
+  the identity provider, and the reverse. A SAML session here ends after
+  `SAML_SESSION_TTL` instead.
 - **No account deprovisioning.** A user removed at the IdP can no longer sign
   in through it, and an `sso_only` account has no other way in; but the
   account and its open sessions remain — that is what

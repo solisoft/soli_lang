@@ -132,8 +132,9 @@ class ScimController < Controller
     user.role = "member"
     # The directory vouches for the address.
     user.confirmed_at = DateTime.utc.to_unix
-    # Marks a directory account: its first SAML sign-in links it even with
-    # SAML_LINK_EXISTING off (`SamlSso.directory_account?`).
+    # Marks a directory account: its first SAML sign-in may link it with
+    # SAML_LINK_EXISTING off, when its externalId is the NameID or
+    # SAML_LINK_DIRECTORY=on (`SamlSso.directory_link?`).
     user.scim_provisioned_at = DateTime.utc.to_unix
     @_assign(user, body)
     user.save

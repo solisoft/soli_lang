@@ -81,6 +81,23 @@ class OauthSso
     throw "OAuth: #{message}"
   end
 
+  # Where a provider whose identity this app reads from an unsigned id_token
+  # (Apple, Microsoft) is reached: `official`, or the URL in `env_name` only
+  # when it is this machine (a stand-in for tests and development). The
+  # id_token is trusted because it came over TLS from the provider's own
+  # token endpoint; pointed anywhere else, whoever answers there could hand
+  # back a forged one, issuer and all.
+  static def token_endpoint_base(env_name, official)
+    url = getenv(env_name).to_s.trim
+    return official if url.blank? || url == official
+
+    unless Regex.matches("^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?/?$", url)
+      throw "#{env_name} may only name this machine (a stand-in); unset it to reach #{official}"
+    end
+
+    url.ends_with?("/") ? url.substring(0, url.length - 1) : url
+  end
+
   # What the browser is told about a failed sign-in.
   static def public_message(error)
     text = error.to_s

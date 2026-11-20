@@ -24,6 +24,22 @@
 #                            counts as off.
 #   SAML_LINK_EXISTING       on: a first sign-in may link the account that has
 #                            the asserted email. Off unless set.
+#   SAML_LINK_DIRECTORY      on: a first sign-in may link, by email, an account
+#                            a directory provisioned (SCIM). Off unless set:
+#                            say on only when the identity provider and the
+#                            directory are one organisation's and its users
+#                            cannot edit their email attribute. Off, a
+#                            directory account still links when its SCIM
+#                            externalId is the assertion's NameID.
+#
+# Sessions:
+#
+#   SAML_SESSION_TTL         seconds a SAML sign-in lasts here (default 28800,
+#                            8 hours), cut shorter by the identity provider's
+#                            SessionNotOnOrAfter. There is no single logout,
+#                            so this bounds how long a user removed at the
+#                            identity provider keeps a session here (SCIM
+#                            deactivation ends it at once).
 #
 # What to give the identity provider is at /saml/metadata. APP_BASE_URL must
 # be the https:// origin it reaches the application at: the request cookie is
@@ -247,12 +263,37 @@ class SamlSso
     auth_signup_mode() != "closed"
   end
 
+  # When the session a sign-in opens ends (Unix seconds): SAML_SESSION_TTL
+  # from now, or the assertion's SessionNotOnOrAfter when that is sooner.
+  static def session_expires_at(assertion)
+    ttl = getenv("SAML_SESSION_TTL").to_s.trim.to_i
+    ttl = 28800 if ttl <= 0
+    expires_at = DateTime.utc.to_unix + ttl
+    limit = assertion["session_expires_at"]
+    return limit.to_i if !limit.nil? && limit.to_i < expires_at
+
+    expires_at
+  end
+
   # Whether the account is one a directory provisioned (`soli generate
-  # scim`): the directory and the identity provider are the same
-  # organisation's, so its first SAML sign-in links it even with
-  # SAML_LINK_EXISTING off.
+  # scim`).
   static def directory_account?(user)
     user.scim_provisioned_at.present? || user.scim_external_id.to_s.present?
+  end
+
+  # Whether a directory account may be linked to this assertion with
+  # SAML_LINK_EXISTING off. The email alone proves nothing: an identity
+  # provider whose users edit their own email attribute, or one that is not
+  # the directory's organisation, would hand them the account. So either the
+  # directory named this very identity — its SCIM externalId is the NameID —
+  # or SAML_LINK_DIRECTORY=on says the two are one organisation's.
+  static def directory_link?(user, assertion)
+    return false unless SamlSso.directory_account?(user)
+
+    external_id = user.scim_external_id.to_s
+    return true if external_id.present? && external_id == assertion["name_id"].to_s
+
+    getenv("SAML_LINK_DIRECTORY").to_s.trim.downcase == "on"
   end
 
   # Whether a first sign-in may take over an account that exists with the
@@ -288,7 +329,8 @@ class SamlSso
   # account with the asserted email, linked from now on, when:
   #
   #   - SAML_LINK_EXISTING=on;
-  #   - or a directory provisioned it (SCIM);
+  #   - or a directory provisioned it (SCIM), and its externalId is the
+  #     NameID or SAML_LINK_DIRECTORY=on (`directory_link?`);
   #   - or nobody proved its address (unconfirmed) and a first sign-in may
   #     create accounts: whoever registered it is dropped
   #     (`take_over_unconfirmed`), so a squatter cannot keep the address
@@ -348,7 +390,7 @@ class SamlSso
   static def link_account(user, email, assertion)
     throw "#{email} is an admin: link that account by hand" if user.admin?
 
-    directory = SamlSso.directory_account?(user)
+    directory = SamlSso.directory_link?(user, assertion)
     unconfirmed = !user.confirmed? && SamlSso.provision?
     unless SamlSso.link_existing? || directory || unconfirmed
       throw "#{email} has an account, and SAML_LINK_EXISTING is not on"

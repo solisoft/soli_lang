@@ -1178,3 +1178,43 @@ fn oauth_sso_clears_stale_links_and_stamps_auth_time() {
         "{controller}"
     );
 }
+
+/// Apple and Microsoft are read from an unsigned id_token, trusted because it
+/// came over TLS from their own token endpoint: a base-URL override may only
+/// name this machine (a test stand-in), never another host.
+#[test]
+fn unsigned_id_token_providers_are_reached_only_at_their_own_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    make_app_with_auth(root);
+    create_oauth(root.to_str().unwrap(), "apple").unwrap();
+    for (url, expected) in [
+        ("", "https://appleid.apple.com"),
+        ("https://appleid.apple.com", "https://appleid.apple.com"),
+        ("http://127.0.0.1:9", "http://127.0.0.1:9"),
+        ("http://localhost:9/", "http://localhost:9"),
+        ("https://evil.example", "refused"),
+        ("http://localhost.evil.example", "refused"),
+        ("http://127.0.0.1@evil.example", "refused"),
+        ("http://127.0.0.1:9/path", "refused"),
+    ] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+            .args([
+                "runner",
+                "-e",
+                r#"print(OauthSso.token_endpoint_base("APPLE_BASE_URL", "https://appleid.apple.com") rescue "refused")"#,
+            ])
+            .current_dir(root)
+            .env_remove("SOLI_ENGINE")
+            .env("APPLE_BASE_URL", url)
+            .output()
+            .expect("run soli");
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(
+            text.trim().lines().last().unwrap_or_default(),
+            expected,
+            "{url}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}

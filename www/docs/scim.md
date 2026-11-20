@@ -67,8 +67,9 @@ Responses are `application/scim+json`; errors use SCIM's error schema.
 An account a directory creates is a `member`, confirmed, with no password
 (and `scim_provisioned_at` set): it signs in through SAML, OAuth or a magic
 link, or sets a password with a reset link. Its first [SAML](/docs/security/saml)
-sign-in links it even with `SAML_LINK_EXISTING` off — the directory and the
-identity provider are the same organisation's — and, if it still has no
+sign-in links it with `SAML_LINK_EXISTING` off when its `externalId` is the
+assertion's NameID, or, by email alone, with `SAML_LINK_DIRECTORY=on` (the
+directory and the identity provider are one organisation's) — and, if it still has no
 password then, makes it `sso_only`. Deactivating a user here (`active: false`)
 is what ends their open sessions and tokens: `sso_only` only closes the ways
 in that bypass the identity provider.

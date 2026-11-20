@@ -228,6 +228,8 @@ fn serve_with(root: &Path, provision: &str, extra: &[(&str, &str)]) -> Server {
         .env("SOLI_MAIL_DELIVERY_METHOD", "logger")
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
         .env_remove("SAML_LINK_EXISTING")
+        .env_remove("SAML_LINK_DIRECTORY")
+        .env_remove("SAML_SESSION_TTL")
         .envs(extra.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -1034,21 +1036,49 @@ fn an_unconfirmed_account_is_taken_over_with_linking_off() {
 }
 
 /// An account a directory provisioned (SCIM) is linked by its first SAML
-/// sign-in even with linking off, and, having no password, is SSO-only from
-/// then on.
+/// sign-in with SAML_LINK_EXISTING off only when the directory named that
+/// identity (externalId == NameID) or SAML_LINK_DIRECTORY=on; the email alone
+/// is refused. Linked with no password, it is SSO-only from then on.
 #[test]
-fn a_directory_account_is_linked_and_becomes_sso_only() {
+fn a_directory_account_is_linked_only_on_its_external_id_or_by_opt_in() {
     let dir = served_app();
     let root = dir.path();
-    let server = serve(root, "on");
     assert_eq!(
         runner(
             root,
-            r#"user = User.create({"email": "dir@corp.test", "role": "member", "confirmed_at": 1, "scim_provisioned_at": 1})
-print(user._errors.nil?)"#
+            r##"a = User.create({"email": "dir@corp.test", "role": "member", "confirmed_at": 1, "scim_provisioned_at": 1})
+b = User.create({"email": "ext@corp.test", "role": "member", "confirmed_at": 1, "scim_provisioned_at": 1, "scim_external_id": "ext-at-idp"})
+print("#{a._errors.nil?} #{b._errors.nil?}")"##
         ),
-        "true"
+        "true true"
     );
+
+    {
+        let server = serve(root, "on");
+        // The email of a directory account, under another NameID: refused.
+        let mut stranger = Browser::new(&server);
+        let id = stranger.start("/saml/login");
+        let response = issue(
+            root,
+            &id,
+            json!({"name_id": "someone-else", "attributes": {"email": "dir@corp.test"}}),
+        );
+        assert_eq!(stranger.post_response(&response).status, 401);
+        assert_eq!(stranger.whoami(), "guest");
+
+        // The directory named this identity: linked.
+        let mut ext = Browser::new(&server);
+        let id = ext.start("/saml/login");
+        let response = issue(
+            root,
+            &id,
+            json!({"name_id": "ext-at-idp", "attributes": {"email": "ext@corp.test"}}),
+        );
+        assert_eq!(ext.post_response(&response).status, 302);
+        assert!(ext.whoami().starts_with("ext@corp.test member "));
+    }
+
+    let server = serve_with(root, "on", &[("SAML_LINK_DIRECTORY", "on")]);
     let mut dee = Browser::new(&server);
     let id = dee.start("/saml/login");
     let response = issue(
@@ -1066,6 +1096,22 @@ print(user._errors.nil?)"#
         ),
         "true 1"
     );
+}
+
+/// There is no single logout: a SAML sign-in ends here after
+/// SAML_SESSION_TTL, so a user removed at the identity provider does not keep
+/// a session for the whole session-store TTL.
+#[test]
+fn a_saml_session_ends_after_its_ttl() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, "on", &[("SAML_SESSION_TTL", "2")]);
+    let mut ada = Browser::new(&server);
+    let id = ada.start("/saml/login");
+    assert_eq!(ada.post_response(&issue(root, &id, json!({}))).status, 302);
+    assert!(ada.whoami().starts_with("ada@example.com member "));
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert_eq!(ada.whoami(), "guest");
 }
 
 /// Wrong passwords typed for an address that has none count for nothing: a

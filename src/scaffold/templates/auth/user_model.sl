@@ -173,10 +173,11 @@ class User < Model
   # `soli generate saml`, or a directory-provisioned account SAML linked. It
   # has no password sign-in, no password reset, no magic link, no new API
   # token and no use of an old one, no passkey registration and no passkey
-  # sign-in: every way in goes through the identity provider. What it does
-  # not do is end a session already open here when the user is removed at the
-  # identity provider — that takes a SCIM deactivation (`soli generate scim`),
-  # or `revoke_credentials`.
+  # sign-in: every way in goes through the identity provider. There is no
+  # single logout: a user removed at the identity provider keeps a session
+  # open here until it ends (SAML_SESSION_TTL, 8 hours by default, or the
+  # identity provider's SessionNotOnOrAfter), unless a SCIM deactivation
+  # (`soli generate scim`) or `revoke_credentials` ends it first.
   def sso_only?
     @sso_only ? true : false
   end

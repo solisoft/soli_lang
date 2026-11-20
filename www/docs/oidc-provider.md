@@ -81,7 +81,9 @@ SOLI_OIDC_PUBLIC_KEY="$(cat oidc.pub.pem)"
 Both halves are configured because signing needs the private PEM and JWKS
 publication needs the public one. `SOLI_OIDC_ISSUER` **must** match your public
 origin exactly, with no trailing slash — relying parties compare the `iss`
-claim byte for byte.
+claim byte for byte. Unset, it is `http://localhost:5011` in development, and
+with `APP_ENV=production` every request that needs it fails rather than
+publish that issuer. It is never read from the `Host` header.
 
 ### 2. Migrations
 
@@ -107,7 +109,9 @@ Options: `client_type` (`"confidential"` | `"public"`), `scopes`,
 `introspect_any` (a resource server allowed to introspect tokens issued to other
 clients — see below), `post_logout_redirect_uris` (where `/oauth/logout` may
 send the browser back to; left out, the client's `redirect_uris` serve, as they
-did before the option existed — `[]` means nowhere).
+did before the option existed — `[]` means nowhere). Every URI must be `https`,
+or plain `http` to this machine only (`localhost`, `127.0.0.1`, `[::1]`) — the
+rule dynamic registration applies.
 
 **Machine-to-machine access.** Add `"client_credentials"` to a confidential client's
 `grant_types` (it is off by default) and it can `POST /oauth/token` with
@@ -177,7 +181,8 @@ is signed in and `consent_required` when consent is missing, without showing a
 page. `prompt=consent` shows the consent screen even when consent was given
 before or the client has `skip_consent`. `max_age=N` is honoured from the
 recorded `auth_time`: an older (or unrecorded) sign-in is answered
-`login_required`. `prompt=login` is always answered `login_required`: the
+`login_required`, on the consent form's POST as on the GET, so a consent page
+left open issues no code once the sign-in is past `max_age`. `prompt=login` is always answered `login_required`: the
 provider cannot make the person sign in again on its own, and OIDC Core
 §3.1.2.1 prefers that error to silently ignoring the request.
 
@@ -317,9 +322,12 @@ over, still turned into tokens for it.
 `iss`, `sub`, `aud`, `exp`, `iat`, plus `nonce` (echoed from the authorization
 request), `auth_time`, and `at_hash` — the left-most 128 bits of the SHA-256 of
 the access token, which lets a client detect an access token swapped in from a
-different response. Scope-gated claims (`email`, `name`, …) come from the
+different response. Scope-gated claims come from the
 `oidc_user_claims` hook in `app/services/oidc_config.sl`; that is the one place
-that needs to know what a `User` looks like.
+that needs to know what a `User` looks like. `profile` releases `name` (and
+`preferred_username` from a `username` field, if the user has one); the address
+is released only under `email` (`email`, `email_verified`) — the consent screen
+names them separately.
 
 Tokens carry a `kid` header matching the JWKS entry, so relying parties select
 the right key.

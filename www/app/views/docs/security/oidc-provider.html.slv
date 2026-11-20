@@ -79,7 +79,9 @@ SOLI_OIDC_PUBLIC_KEY="$(cat oidc.pub.pem)"</code></pre>
         <p class="text-gray-400 mt-3 mb-6 leading-relaxed">
             Both halves are configured because signing needs the private PEM and JWKS publication needs the public one.
             <code class="text-amber-300">SOLI_OIDC_ISSUER</code> <strong class="text-white">must</strong> match your public
-            origin exactly, with no trailing slash &mdash; relying parties compare the <code>iss</code> claim byte for byte.
+            origin exactly, with no trailing slash &mdash; relying parties compare the <code>iss</code> claim byte for byte. Unset, it
+            is <code>http://localhost:5011</code> in development, and with <code>APP_ENV=production</code> every request that needs it
+            fails rather than publish that issuer. It is never read from the <code>Host</code> header.
         </p>
 
         <h3 class="text-lg font-semibold text-white mb-3">Migrations</h3>
@@ -99,7 +101,9 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
             switched off &mdash; it is the only thing binding the code to the requester.
             <code class="text-amber-300">post_logout_redirect_uris</code> (an option) lists where
             <code>/oauth/logout</code> may send the browser back to; left out, the client&rsquo;s
-            <code>redirect_uris</code> serve, as they did before the option existed, and <code>[]</code> means nowhere.
+            <code>redirect_uris</code> serve, as they did before the option existed, and <code>[]</code> means nowhere. Every URI
+            must be <code>https</code>, or plain <code>http</code> to this machine only (<code>localhost</code>, <code>127.0.0.1</code>,
+            <code>[::1]</code>) &mdash; the rule dynamic registration applies.
         </p>
 
         <h3 class="text-lg font-semibold text-white mb-3">Record when the user signed in, and come back mid-flow</h3>
@@ -138,7 +142,8 @@ return redirect(destination)</code></pre>
             <code>login_required</code> when no one is signed in and <code>consent_required</code> when consent is missing, without
             showing a page. <code>prompt=consent</code> shows the consent screen even when consent was given before or the
             client has <code>skip_consent</code>. <code>max_age=N</code> is honoured from the recorded <code>auth_time</code>: an older (or
-            unrecorded) sign-in is answered <code>login_required</code>. <code>prompt=login</code> is always answered
+            unrecorded) sign-in is answered <code>login_required</code>, on the consent form&rsquo;s POST as on the GET, so a consent
+            page left open issues no code once the sign-in is past <code>max_age</code>. <code>prompt=login</code> is always answered
             <code>login_required</code>: the provider cannot make the person sign in again on its own, and OIDC Core &sect;3.1.2.1
             prefers that error to silently ignoring the request.
         </p>
@@ -176,7 +181,9 @@ return redirect(destination)</code></pre>
             The <code class="text-amber-300">id_token</code> carries <code>iss</code>, <code>sub</code>, <code>aud</code>,
             <code>exp</code>, <code>iat</code>, the echoed <code>nonce</code>, <code>auth_time</code> and <code>at_hash</code>.
             Scope-gated claims come from the <code class="text-amber-300">oidc_user_claims</code> hook &mdash; the one place that
-            needs to know what a <code>User</code> looks like.
+            needs to know what a <code>User</code> looks like. <code>profile</code> releases <code>name</code> (and
+            <code>preferred_username</code> from a <code>username</code> field, if any); the address is released only under
+            <code>email</code> (<code>email</code>, <code>email_verified</code>), which the consent screen names separately.
         </p>
 <pre data-filename="Rotating a signing key"><code class="language-bash text-sm"># 1. keep the outgoing key published
 SOLI_OIDC_PREVIOUS_PUBLIC_KEY="$(cat old.pub.pem)"
