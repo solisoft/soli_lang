@@ -434,6 +434,15 @@ fn served_app_signs_in_through_the_identity_provider() {
         "{}",
         metadata.body
     );
+    // A persistent NameID, not an address the identity provider may give
+    // to someone else later.
+    assert!(
+        metadata.body.contains(
+            "<md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>"
+        ),
+        "{}",
+        metadata.body
+    );
 
     // A response with no sign-in in progress in this browser.
     let unasked = issue(root, "_nobody", json!({}));
@@ -638,8 +647,8 @@ fn sign_up(browser: &mut Browser, email: &str) {
     assert_eq!(signup.status, 302, "{}", signup.body);
 }
 
-/// Linking an existing account by its email is opt-in: unset or `off`, the
-/// account is refused and a newcomer is still provisioned.
+/// Linking an existing (confirmed) account by its email is opt-in: unset or
+/// `off`, the account is refused and a newcomer is still provisioned.
 #[test]
 fn existing_accounts_are_linked_only_with_link_existing_on() {
     for setting in [None, Some("off")] {
@@ -652,6 +661,16 @@ fn existing_accounts_are_linked_only_with_link_existing_on() {
         let mut grace = Browser::new(&server);
         sign_up(&mut grace, "grace@example.com");
         let existing = grace.whoami();
+        // Confirmed: an unconfirmed account is taken over even so (see
+        // `an_unconfirmed_account_is_taken_over_with_linking_off`).
+        assert_eq!(
+            runner(
+                root,
+                r#"User.find_by("email", "grace@example.com").confirm_email
+print("confirmed")"#
+            ),
+            "confirmed"
+        );
 
         let mut sso = Browser::new(&server);
         let id = sso.start("/saml/login");
@@ -834,7 +853,7 @@ print("planted")"##
 
 /// Taking over an unconfirmed account drops every credential of whoever
 /// created it (`User#revoke_credentials`), the rows of the optional
-/// generators included, and does not make it SSO-only.
+/// generators included; left with no password, it is SSO-only.
 #[test]
 fn taking_over_an_unconfirmed_account_revokes_its_credentials() {
     let dir = served_app();
@@ -868,7 +887,7 @@ print(SamlIdentity.where({"user_id": user._key}).count)"##
 old = SamlIdentity.where({"issuer": "https://old-idp.test"}).count
 print("#{user.password_digest.nil?} #{user.confirmed?} #{user.sso_only?} #{old}")"##
         ),
-        "true true false 0"
+        "true true true 0"
     );
 }
 
@@ -933,4 +952,283 @@ fn a_plain_http_base_url_keeps_a_plain_cookie_name() {
                "audience": format!("{origin}/saml/metadata")}),
     );
     assert_eq!(ada.post_response(&response).status, 302);
+}
+
+/// One identity per account at each identity provider, held by the database
+/// too: two first sign-ins racing cannot both link one account.
+#[test]
+fn the_identities_migration_holds_one_identity_per_account_and_issuer() {
+    let dir = saml_app();
+    let migration = fs::read_dir(dir.path().join("db/migrations"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .find(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .contains("create_saml_identities")
+        })
+        .expect("no identities migration");
+    let source = fs::read_to_string(migration.path()).unwrap();
+    assert!(
+        source.contains(r#"["user_id", "issuer"], {"unique": true}"#),
+        "{source}"
+    );
+    assert!(
+        source.contains(r#"["issuer", "name_id"], {"unique": true}"#),
+        "{source}"
+    );
+}
+
+/// Whoever registered an address first, without proving it, does not keep
+/// it from its owner: with linking off, the first sign-in through the
+/// identity provider takes the unconfirmed account over (and drops the
+/// squatter's password and session) — as long as a first sign-in may create
+/// accounts at all.
+#[test]
+fn an_unconfirmed_account_is_taken_over_with_linking_off() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut squatter = Browser::new(&server);
+    sign_up(&mut squatter, "hire@corp.test");
+    let account = squatter.whoami();
+
+    let mut hire = Browser::new(&server);
+    let id = hire.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "hire-at-idp", "attributes": {"email": "hire@corp.test"}}),
+    );
+    assert_eq!(hire.post_response(&response).status, 302);
+    assert_eq!(hire.whoami(), account, "not the same account");
+    assert_eq!(
+        squatter.whoami(),
+        "guest",
+        "the squatter's session survived"
+    );
+    let login = squatter.request(
+        "POST",
+        "/login",
+        Some(json!({"email": "hire@corp.test", "password": "correct horse battery"})),
+        &format!("http://127.0.0.1:{}", server.1),
+    );
+    assert_eq!(login.status, 401, "the squatter's password still works");
+    drop(server);
+
+    // Provisioning off: nobody new signs in, an unconfirmed account neither.
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "off");
+    let mut squatter = Browser::new(&server);
+    sign_up(&mut squatter, "hire@corp.test");
+    let mut hire = Browser::new(&server);
+    let id = hire.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "hire-at-idp", "attributes": {"email": "hire@corp.test"}}),
+    );
+    assert_eq!(hire.post_response(&response).status, 401);
+    assert_eq!(hire.whoami(), "guest");
+}
+
+/// An account a directory provisioned (SCIM) is linked by its first SAML
+/// sign-in even with linking off, and, having no password, is SSO-only from
+/// then on.
+#[test]
+fn a_directory_account_is_linked_and_becomes_sso_only() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    assert_eq!(
+        runner(
+            root,
+            r#"user = User.create({"email": "dir@corp.test", "role": "member", "confirmed_at": 1, "scim_provisioned_at": 1})
+print(user._errors.nil?)"#
+        ),
+        "true"
+    );
+    let mut dee = Browser::new(&server);
+    let id = dee.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "dee-at-idp", "attributes": {"email": "dir@corp.test"}}),
+    );
+    assert_eq!(dee.post_response(&response).status, 302);
+    assert!(dee.whoami().starts_with("dir@corp.test member "));
+    assert_eq!(
+        runner(
+            root,
+            r#"user = User.find_by("email", "dir@corp.test")
+    print("#{user.sso_only?} #{SamlIdentity.where({"user_id": user._key}).count}")"#
+        ),
+        "true 1"
+    );
+}
+
+/// Wrong passwords typed for an address that has none count for nothing: a
+/// stranger cannot lock its owner out, and the password lockout never stands
+/// in the way of the identity provider's sign-in.
+#[test]
+fn wrong_passwords_do_not_lock_out_single_sign_on() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut ada = Browser::new(&server);
+    let id = ada.start("/saml/login");
+    assert_eq!(ada.post_response(&issue(root, &id, json!({}))).status, 302);
+
+    let mut stranger = Browser::new(&server);
+    for attempt in 0..11 {
+        let login = stranger.request(
+            "POST",
+            "/login",
+            Some(json!({"email": "ada@example.com", "password": format!("wrong password {attempt}")})),
+            &format!("http://127.0.0.1:{}", server.1),
+        );
+        assert_eq!(login.status, 401);
+    }
+    assert_eq!(
+        runner(
+            root,
+            r#"user = User.find_by("email", "ada@example.com")
+    print("#{user.failed_attempts.nil?} #{user.locked_at.nil?}")"#
+        ),
+        "true true"
+    );
+    let mut again = Browser::new(&server);
+    let id = again.start("/saml/login");
+    assert_eq!(
+        again.post_response(&issue(root, &id, json!({}))).status,
+        302
+    );
+
+    // A lock stamped all the same (an older app) does not refuse it either.
+    assert_eq!(
+        runner(
+            root,
+            r#"user = User.find_by("email", "ada@example.com")
+user.locked_at = DateTime.utc.to_unix
+user.failed_attempts = 10
+user.save
+print(user.locked?)"#
+        ),
+        "true"
+    );
+    let mut locked = Browser::new(&server);
+    let id = locked.start("/saml/login");
+    assert_eq!(
+        locked.post_response(&issue(root, &id, json!({}))).status,
+        302
+    );
+    assert!(locked.whoami().starts_with("ada@example.com member "));
+}
+
+/// An emailAddress NameID is stored and matched lowercased: the identity
+/// provider changing its case does not lock the user out. One stored exactly
+/// (before NameIDs were normalised) is still found.
+#[test]
+fn an_email_nameid_is_matched_whatever_its_case() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut alice = Browser::new(&server);
+    let id = alice.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "Alice@Corp.Test", "name_id_format": EMAIL_FORMAT, "attributes": {}}),
+    );
+    assert_eq!(alice.post_response(&response).status, 302);
+    let who = alice.whoami();
+    assert_eq!(
+        runner(root, r#"print(SamlIdentity.all[0].name_id)"#),
+        "alice@corp.test"
+    );
+    let mut later = Browser::new(&server);
+    let id = later.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "ALICE@corp.test", "name_id_format": EMAIL_FORMAT, "attributes": {}}),
+    );
+    assert_eq!(later.post_response(&response).status, 302);
+    assert_eq!(later.whoami(), who);
+
+    // Stored exactly by an older version of this file.
+    assert_eq!(
+        runner(
+            root,
+            &format!(
+                r#"user = User.create({{"email": "bob@corp.test", "role": "member", "confirmed_at": 1}})
+SamlIdentity.create({{"user_id": user._key, "issuer": "{IDP}", "name_id": "Bob@Corp.Test", "email": "bob@corp.test"}})
+print("seeded")"#
+            )
+        ),
+        "seeded"
+    );
+    let mut bob = Browser::new(&server);
+    let id = bob.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "Bob@Corp.Test", "name_id_format": EMAIL_FORMAT, "attributes": {}}),
+    );
+    assert_eq!(bob.post_response(&response).status, 302);
+    assert!(bob.whoami().starts_with("bob@corp.test member "));
+}
+
+/// The address comes from the first attribute of SAML_EMAIL_ATTRIBUTES the
+/// assertion carries, in that order — not from whichever the response lists
+/// first — and a blank one is passed over.
+#[test]
+fn email_attributes_follow_the_configured_order() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut first = Browser::new(&server);
+    let id = first.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "n1", "attributes": {"mail": "second@corp.test", "email": "first@corp.test"}}),
+    );
+    assert_eq!(first.post_response(&response).status, 302);
+    assert!(first.whoami().starts_with("first@corp.test member "));
+    let mut blank = Browser::new(&server);
+    let id = blank.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "n2", "attributes": {"Email": "", "mail": "fallback@corp.test"}}),
+    );
+    assert_eq!(blank.post_response(&response).status, 302);
+    assert!(blank.whoami().starts_with("fallback@corp.test member "));
+}
+
+/// In production with `first_user` sign-up, the first account is the admin,
+/// made at /signup with AUTH_SETUP_TOKEN: a SAML sign-in does not take its
+/// place (and close /signup) before it exists.
+#[test]
+fn production_first_user_waits_for_the_admin() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(
+        root,
+        "on",
+        &[
+            ("AUTH_SIGNUP", "first_user"),
+            ("APP_ENV", "production"),
+            ("AUTH_SETUP_TOKEN", "a-setup-token-of-twenty-chars"),
+            ("SOLI_APP_HOSTS", "app.test,127.0.0.1"),
+        ],
+    );
+    let mut ada = Browser::new(&server);
+    let id = ada.start("/saml/login");
+    assert_eq!(ada.post_response(&issue(root, &id, json!({}))).status, 401);
+    assert_eq!(ada.whoami(), "guest");
+    assert_eq!(ada.get("/signup").status, 200, "sign-up closed");
+    assert_eq!(runner(root, "print(User.count)"), "0");
 }

@@ -29,7 +29,9 @@ def authenticate_api_token(req)
   end
 
   user = User.find_by("_key", token.user_id)
-  if user.nil? || user.locked?
+  # A single-sign-on-only account's token (one made before the account
+  # became one) is refused like an unknown token.
+  if user.nil? || user.locked? || user.sso_only?
     return {
       "status": 401,
       "headers": {"Content-Type": "application/json", "WWW-Authenticate": "Bearer"},

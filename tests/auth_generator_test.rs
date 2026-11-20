@@ -289,6 +289,12 @@ ada.clear_failed_attempts
 print("cleared", User.find(ada._key).failed_attempts)
 print("resave", ada.save, ada._errors)
 print("policy", UserPolicy.new({"user": ada, "record": ada}).edit?, UserPolicy.new({"user": nil, "record": ada}).show?, UserPolicy.new({"user": ada, "record": ada}).new?)
+sso = User.new()
+sso.email = "sso@example.com"
+sso.sso_only = true
+sso.save
+sso.register_failed_attempt
+print("no password, no count", User.find(sso._key).failed_attempts.nil?, sso.locked?)
 "#
     );
     fs::write(app.join("auth_script.sl"), script).unwrap();
@@ -318,6 +324,7 @@ print("policy", UserPolicy.new({"user": ada, "record": ada}).edit?, UserPolicy.n
             "cleared 0",
             "resave true []",
             "policy true false false",
+            "no password, no count true false",
         ]
     );
     let open = run(&[

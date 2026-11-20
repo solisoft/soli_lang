@@ -3,7 +3,9 @@
 #
 # Managing tokens takes a person in a browser: a request made with a token
 # cannot list, create or revoke tokens, and neither can an administrator who
-# is impersonating the user.
+# is impersonating the user. An account that signs in through single sign-on
+# only (`user.sso_only?`) gets no token: one would keep working after the
+# user is removed at the identity provider.
 
 class ApiTokensController < Controller
   static {
@@ -22,6 +24,7 @@ class ApiTokensController < Controller
   def create
     user = @_person
     return redirect("/login") if user.nil?
+    return @_render(user, nil, "A single sign-on account cannot have API tokens.", 403) if user.sso_only?
     return @_render(user, nil, "Give the token a name.", 422) if params["name"].to_s.trim.blank?
 
     scopes = API_TOKEN_SCOPES.filter { |scope| params["scope_#{scope}"].to_s == "1" }

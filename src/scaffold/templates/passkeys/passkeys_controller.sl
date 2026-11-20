@@ -4,7 +4,9 @@
 # Adding a passkey is two requests from public/js/passkeys.js: `options`
 # issues a challenge (kept in the session, single use), the browser asks the
 # authenticator to create a credential, and `create` verifies the response
-# with `WebAuthn.verify_registration` before storing it.
+# with `WebAuthn.verify_registration` before storing it. An account that signs
+# in through single sign-on only (`user.sso_only?`) registers none: a passkey
+# would keep working after the user is removed at the identity provider.
 
 class PasskeysController < Controller
   static {
@@ -23,6 +25,7 @@ class PasskeysController < Controller
   def creation_options
     user = current_user()
     return render_json({"error": "Sign in first"}, 401) if user.nil?
+    return render_json({"error": "This account signs in through single sign-on only."}, 403) if user.sso_only?
 
     result = WebAuthn.registration_options({
       "rp_id": webauthn_rp_id(),
@@ -40,6 +43,7 @@ class PasskeysController < Controller
   def create
     user = current_user()
     return render_json({"error": "Sign in first"}, 401) if user.nil?
+    return render_json({"error": "This account signs in through single sign-on only."}, 403) if user.sso_only?
 
     challenge = webauthn_take_challenge("register")
     return render_json({"error": "The passkey request expired. Try again."}, 422) if challenge.nil?

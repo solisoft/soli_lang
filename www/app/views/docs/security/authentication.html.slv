@@ -209,7 +209,7 @@ soli db:migrate up</code></pre>
         <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
             <li><strong class="text-white">One use, fifteen minutes</strong> (<code>MAGIC_LINK_TTL</code>), and only the newest link of an account works.</li>
             <li><strong class="text-white">Only in the browser that asked.</strong> Asking sets a cookie; the link needs it. A link opened by a mail scanner, forwarded, or opened on another device signs nobody in &mdash; and is not used up by the attempt.</li>
-            <li><strong class="text-white">No account probing.</strong> The answer, cookie included, is the same whether or not the address has an account. A locked account gets no link.</li>
+            <li><strong class="text-white">No account probing.</strong> The answer, cookie included, is the same whether or not the address has an account. A locked account gets no link, nor does a single-sign-on-only one (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>), and a link issued to one before is refused like an expired one.</li>
             <li>It shares the sign-in form&rsquo;s per-IP throttle, and only digests are stored.</li>
             <li>Opening the link confirms the address. With <a href="#two-factor" class="text-amber-400 hover:text-amber-300">two-factor</a> on, the code challenge follows.</li>
         </ul>
@@ -232,6 +232,7 @@ curl -H "Authorization: Bearer soli_pat_…" https://app.example.com/invoices</c
             <li><strong class="text-white">Scopes are yours.</strong> <code class="text-amber-300">API_TOKEN_SCOPES</code> in <code>app/models/api_token.sl</code> lists them (<code>read</code>, <code>write</code> to start with); guard an action with <code class="text-amber-300">api_scope?</code>. A request signed in with the session is not limited by scopes.</li>
             <li><strong class="text-white">Managing tokens takes a person in a browser</strong>: a request made with a token cannot list, create or revoke tokens.</li>
             <li>A token is its own credential: the two-factor challenge does not apply to it. Give it the narrowest scopes and a lifetime.</li>
+            <li><strong class="text-white">None for a single-sign-on-only account</strong> (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>): creating one answers <code>403</code>, and a token made before is refused like an unknown one &mdash; it would outlive the user&rsquo;s removal at the identity provider.</li>
         </ul>
         <pre data-filename="app/controllers/invoices_controller.sl"><code class="language-soli text-sm"># POST /invoices
 def create
@@ -327,8 +328,13 @@ end</code></pre>
             <li>It then opens the session exactly as the password login does: the per-IP throttle (<code>AUTH_ATTEMPTS_PER_IP</code>), the locked and confirmed gates, <code>session_regenerate()</code>, <code>user_id</code> and <code>session_version</code>.</li>
         </ol>
         <p class="text-gray-400 mb-4">
-            Every failure &mdash; unknown credential, bad signature, expired challenge, locked account, a sign counter that
-            went backwards &mdash; gets the same <code>401</code>, so the endpoint reveals nothing about which passkeys exist.
+            A single-sign-on-only account (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>) registers
+            no passkey (<code>POST /passkeys/options</code> and <code>POST /passkeys</code> answer <code>403</code>), and one it
+            registered before does not sign in.
+        </p>
+        <p class="text-gray-400 mb-4">
+            Every failure &mdash; unknown credential, bad signature, expired challenge, locked account, a single-sign-on-only
+            account, a sign counter that went backwards &mdash; gets the same <code>401</code>, so the endpoint reveals nothing about which passkeys exist.
             The JSON requests carry the page's CSRF token in <code>X-CSRF-Token</code> (the views emit it in
             <code>data-csrf-token</code>), so they also pass with <code>SOLI_CSRF_TOKENS=require</code>.
         </p>

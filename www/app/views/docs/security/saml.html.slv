@@ -38,7 +38,7 @@ soli generate saml</code></pre>
                     <tr><td class="py-3 px-4"><code>app/controllers/saml_controller.sl</code></td><td class="py-3 px-4"><code>GET /saml/login</code>, <code>POST /saml/acs</code>, <code>GET /saml/metadata</code></td></tr>
                     <tr><td class="py-3 px-4"><code>app/models/saml_identity.sl</code></td><td class="py-3 px-4"><code>SamlIdentity</code>: the link between a <code>User</code> and <code>(issuer, NameID)</code></td></tr>
                     <tr><td class="py-3 px-4"><code>app/models/saml_assertion.sl</code></td><td class="py-3 px-4"><code>SamlAssertion</code>: the assertions that already signed someone in, kept until they expire</td></tr>
-                    <tr><td class="py-3 px-4"><code>db/migrations/…_create_saml_identities.sl</code></td><td class="py-3 px-4">Unique index on <code>(issuer, name_id)</code>, index on <code>user_id</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>db/migrations/…_create_saml_identities.sl</code></td><td class="py-3 px-4">Unique indexes on <code>(issuer, name_id)</code> and on <code>(user_id, issuer)</code> &mdash; one identity per account at each IdP</td></tr>
                     <tr><td class="py-3 px-4"><code>db/migrations/…_create_saml_assertions.sl</code></td><td class="py-3 px-4">Index on <code>expires_at</code></td></tr>
                     <tr><td class="py-3 px-4"><code>config/routes.sl</code></td><td class="py-3 px-4">The three routes, and <code>skip_csrf("/saml/acs")</code></td></tr>
                 </tbody>
@@ -55,8 +55,8 @@ soli generate saml</code></pre>
         </h2>
         <ol class="list-decimal pl-6 space-y-3 text-gray-400 mb-4">
             <li><code>soli db:migrate up</code></li>
-            <li>Set <code class="text-amber-300">APP_BASE_URL</code> to the <code>https://</code> origin the identity provider reaches the application at, and <code class="text-amber-300">SOLI_SESSION_SECRET</code> (32+ characters).</li>
-            <li>Give the identity provider&rsquo;s administrator <code>https://your.app/saml/metadata</code>. It states the two values every IdP asks for: the <strong class="text-white">entity ID</strong> (audience), <code>APP_BASE_URL/saml/metadata</code> unless <code class="text-amber-300">SAML_SP_ENTITY_ID</code> overrides it, and the <strong class="text-white">ACS URL</strong> (reply URL), <code>APP_BASE_URL/saml/acs</code>.</li>
+            <li>Set <code class="text-amber-300">APP_BASE_URL</code> to the <code>https://</code> origin the identity provider reaches the application at, and <code class="text-amber-300">SOLI_SESSION_SECRET</code> (32+ characters). <strong class="text-white">https is required</strong>, except on <code>localhost</code>: the request cookie must be <code>SameSite=None</code>, which a browser accepts only with <code>Secure</code>, and it keeps a <code>Secure</code> cookie over plain <code>http://</code> on <code>localhost</code> alone. On any other <code>http://</code> origin the cookie is dropped and every sign-in fails with &ldquo;no sign-in in progress&rdquo; (<code>/saml/login</code> logs a warning).</li>
+            <li>Give the identity provider&rsquo;s administrator <code>https://your.app/saml/metadata</code>. It states the two values every IdP asks for: the <strong class="text-white">entity ID</strong> (audience), <code>APP_BASE_URL/saml/metadata</code> unless <code class="text-amber-300">SAML_SP_ENTITY_ID</code> overrides it, and the <strong class="text-white">ACS URL</strong> (reply URL), <code>APP_BASE_URL/saml/acs</code>. It asks for a <strong class="text-white">persistent NameID</strong> (<code>SAML_NAMEID_FORMAT</code> in <code>app/services/saml_sso.sl</code>): a sign-in is matched on <code>(issuer, NameID)</code>, and a persistent NameID is an opaque id the IdP never gives anyone else. With the <code>emailAddress</code> format the NameID <em>is</em> the mailbox, and the application inherits the IdP&rsquo;s address reuse: when the IdP hands <code>alice@corp.example</code> to a new employee, the new employee signs in to the old Alice&rsquo;s account. Configure the emailAddress format only if the IdP can send nothing else, and never reuses addresses.</li>
             <li>Point the application at the identity provider, either way:</li>
         </ol>
         <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
@@ -81,20 +81,32 @@ soli generate saml</code></pre>
                     <tr><th class="py-3 px-4 font-semibold">Variable</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
                 </thead>
                 <tbody class="divide-y divide-white/10 text-gray-400">
-                    <tr><td class="py-3 px-4"><code>SAML_PROVISION</code></td><td class="py-3 px-4"><code>on</code>: a first sign-in creates the account; <code>off</code>: it does not. Unset, it follows <code>AUTH_SIGNUP</code> &mdash; <code>closed</code> provisions nobody, so the identity provider is no way around a sign-up you closed</td></tr>
+                    <tr><td class="py-3 px-4"><code>SAML_PROVISION</code></td><td class="py-3 px-4"><code>on</code>: a first sign-in creates the account; <code>off</code>: it does not. Unset, it follows <code>AUTH_SIGNUP</code> &mdash; <code>closed</code> provisions nobody, so the identity provider is no way around a sign-up you closed. Only <code>on</code> and <code>off</code> are read: any other value (<code>yes</code>, <code>true</code>) counts as <code>off</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SAML_LINK_EXISTING</code></td><td class="py-3 px-4"><code>on</code>: a first sign-in may link the account that already has the asserted email. <strong class="text-white">Off unless set</strong></td></tr>
                 </tbody>
             </table>
         </div>
         <p class="text-gray-400 mb-4">
+            In production with <code>AUTH_SIGNUP=first_user</code>, no SAML sign-in creates an account until the first one
+            exists: the first account is the admin, made at <code>/signup</code> with <code>AUTH_SETUP_TOKEN</code>, and a SAML
+            member created before it would make the app non-empty and close <code>/signup</code>. The refusal is logged.
+        </p>
+        <p class="text-gray-400 mb-4">
             The IdP must sign the assertion or the response (or both) with RSA-SHA256 &mdash; the metadata asks for signed
             assertions (<code>WantAssertionsSigned="true"</code>), and a response signed as a whole is accepted too. It must
             send an email address: in an attribute named <code>email</code>, <code>mail</code>, <code>emailaddress</code>, or
-            the usual claim URIs, or as the NameID when its format is
+            the usual claim URIs (the first of <code>SAML_EMAIL_ATTRIBUTES</code>, in that order, that the assertion carries
+            with a value), or as the NameID when its format is
             <code>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</code> (a NameID in any other format &mdash; a
             username, an opaque id &mdash; is never taken for an address, even with an <code>@</code> in it). An address with
             anything but ASCII in it is refused: lowercasing folds some Unicode letters into ASCII ones (the Kelvin sign
             <code>&#8490;</code> into <code>k</code>), and two different addresses would reach the same account.
+        </p>
+        <p class="text-gray-400 mb-4">
+            An <code>emailAddress</code>-format NameID is stored and looked up trimmed and lowercased, so an IdP that starts
+            sending <code>Alice@corp.example</code> for the identity stored as <code>alice@corp.example</code> still signs her in.
+            An identity stored exactly by an older version of the scaffold is found too (the lookup tries the normalised
+            NameID, then the exact one). A NameID in any other format is opaque and matched exactly.
         </p>
     </section>
 
@@ -107,15 +119,43 @@ soli generate saml</code></pre>
             <li><code>/saml/login</code> builds the request (<code class="text-amber-300">Saml.auth_request</code>) and redirects to the IdP. The request id and the <code>return_to</code> path go in an encrypted cookie.</li>
             <li>The user authenticates at the IdP, which posts <code>SAMLResponse</code> to <code>/saml/acs</code>.</li>
             <li><code>SamlSso.finish</code> reads the request id from the cookie and <code class="text-amber-300">Saml.verify_response</code> checks the response against it. Only once it verifies is the cookie cleared &mdash; a request is answered once &mdash; so a forged post to <code>/saml/acs</code>, which any site can make a browser send, does not cancel the sign-in in progress. <code>SamlSso.spend</code> then records the assertion&rsquo;s id until it expires: a response posted again, even with a copy of the request cookie, is refused.</li>
-            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else, only with <code class="text-amber-300">SAML_LINK_EXISTING=on</code>, the one with that email, linked from now on; else a new one (see <code>SAML_PROVISION</code>). Without linking, an address that already has an account is refused: link it by hand (<code>SamlIdentity.create({"user_id", "issuer", "name_id", "email"})</code>).
+            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else the one with that email, linked from now on, when <code class="text-amber-300">SAML_LINK_EXISTING=on</code>, when a directory provisioned it, or when nobody confirmed its address (see below); else a new one (see <code>SAML_PROVISION</code>). Otherwise an address that already has an account is refused: link it by hand (<code>SamlIdentity.create({"user_id", "issuer", "name_id", "email"})</code>). The link must be stored, or the sign-in is refused (and an account just created for it is deleted). The password lockout does not apply here: it counts wrong passwords, and the IdP authenticated the user.
                 <ul class="list-disc pl-6 space-y-2 mt-2">
-                    <li><strong class="text-white">A new account</strong> is a <code>member</code>, confirmed, with no password, and <code>sso_only: true</code>: it signs in through the IdP only. Password sign-in refuses it &mdash; with the same answer and the same Argon2id cost as a wrong password &mdash; and so does password reset (no link is sent; a link already in hand is refused as invalid), so a user removed at the IdP keeps no password here.</li>
-                    <li><strong class="text-white">Linking by email</strong> (<code>SAML_LINK_EXISTING=on</code>) trusts the IdP with every address it asserts. Turn it on only when its users cannot edit that attribute. Even then, an admin&rsquo;s account is never linked by its email, nor an account already linked to another identity at the same IdP: the address now names someone else there (a recycled mailbox), not the account&rsquo;s owner. A linked account stays as it was &mdash; its password, if it has one, still works, and it is not marked <code>sso_only</code>.</li>
-                    <li><strong class="text-white">An unconfirmed account</strong> loses every credential when it is linked (<code>SamlSso.take_over_unconfirmed</code> calls <code>User#revoke_credentials</code>, which the OAuth scaffold uses too): its password, a pending reset link, its remember-me cookie and open sessions, and its OAuth and SAML identities, passkeys, API tokens, two-factor and magic links where the app has those models. With open sign-up, whoever typed that address first kept a way into the account the real owner now uses.</li>
+                    <li><strong class="text-white">A new account</strong> is a <code>member</code>, confirmed, with no password, and <code>sso_only: true</code>: it signs in through the IdP only (see <a href="#sso-only" class="text-amber-400 hover:text-amber-300">what <code>sso_only</code> blocks</a>).</li>
+                    <li><strong class="text-white">Linking by email</strong> (<code>SAML_LINK_EXISTING=on</code>) trusts the IdP with every address it asserts. Turn it on only when its users cannot edit that attribute. Even then, an admin&rsquo;s account is never linked by its email, nor an account already linked to another identity at the same IdP: the address now names someone else there (a recycled mailbox), not the account&rsquo;s owner. A linked confirmed account stays as it was &mdash; its password, if it has one, still works, and it is not marked <code>sso_only</code>.</li>
+                    <li><strong class="text-white">A directory account</strong> &mdash; one <a href="/docs/security/scim" class="text-amber-400 hover:text-amber-300">SCIM</a> created (<code>scim_provisioned_at</code>) or gave an <code>externalId</code> &mdash; is linked by its first SAML sign-in even with linking off: the directory and the IdP are the same organisation&rsquo;s. With no password at that point it becomes <code>sso_only</code>. An admin&rsquo;s is still refused.</li>
+                    <li><strong class="text-white">An unconfirmed account</strong> is linked even with linking off, as long as a first sign-in may create accounts (<code>SAML_PROVISION</code>): otherwise whoever registered the address first, without proving it, would keep it from its owner for good. It loses every credential when it is linked (<code>SamlSso.take_over_unconfirmed</code> calls <code>User#revoke_credentials</code>, which the OAuth scaffold uses too) and becomes <code>sso_only</code>. An admin&rsquo;s is still refused.</li>
                 </ul>
             </li>
             <li>A new session is opened and the browser goes to <code>return_to</code> (a path on this site, or <code>/</code>).</li>
         </ol>
+        <h3 id="revoke-credentials" class="text-xl font-semibold text-white mt-8 mb-3">What <code>revoke_credentials</code> removes</h3>
+        <p class="text-gray-400 mb-4">
+            <code>User#revoke_credentials</code> deletes, where the app has the model, every row tied to the account &mdash;
+            <code>OauthIdentity</code>, <code>SamlIdentity</code>, <code>PasskeyCredential</code>, <code>ApiToken</code>,
+            <code>TwoFactor</code>, <code>MagicLink</code>, <code>Device</code> (push registrations), by <code>user_id</code>; the
+            OpenID Connect provider&rsquo;s <code>OauthConsent</code>, <code>OauthAuthorizationCode</code>,
+            <code>OauthDeviceCode</code>, <code>OauthRefreshToken</code>, by <code>user_key</code> &mdash; then clears the
+            password, a pending reset link and the remember-me digest, and bumps <code>session_version</code>, which ends every
+            open session. The list is <code>USER_CREDENTIAL_MODELS</code> in <code>app/models/user.sl</code>, as
+            <code>[class, key field]</code> pairs: add your own models there. The rows go first and the account last, and a
+            failure raises: a takeover that stops halfway leaves the account as it was and links nothing, and running it again
+            finishes it.
+        </p>
+        <h3 id="sso-only" class="text-xl font-semibold text-white mt-8 mb-3">What <code>sso_only</code> blocks</h3>
+        <p class="text-gray-400 mb-4">
+            An <code>sso_only</code> account signs in through the identity provider only. It gets no password sign-in (refused
+            with the same answer and the same Argon2id cost as a wrong password, and wrong passwords typed for it are not
+            counted, so nobody can lock it), no password reset, no magic link (asking answers as for anyone, and a link issued
+            before is refused), no new API token (<code>403</code>) and no use of one made before, no passkey registration
+            (<code>403</code>) and no sign-in with one registered before.
+        </p>
+        <p class="text-gray-400 mb-4">
+            It does <strong class="text-white">not</strong> end what is already open. A session opened through the IdP lasts its
+            normal lifetime after the user is removed there, and an OAuth identity already linked to the account still signs in.
+            Ending those takes a <a href="/docs/security/scim" class="text-amber-400 hover:text-amber-300">SCIM</a> deactivation
+            (every request of a deactivated user is a guest&rsquo;s) or <code>revoke_credentials</code>.
+        </p>
         <p class="text-gray-400 mb-4">
             A refused response renders the sign-in page with a generic message and a 401; the reason goes to the log
             (<code>SAML sign-in refused: …</code>).
@@ -126,8 +166,9 @@ soli generate saml</code></pre>
             <code>SameSite=None; Secure; HttpOnly; Path=/</code>, encrypted, and lives ten minutes. With an <code>https://</code>
             <code>APP_BASE_URL</code> it is named <code>__Host-saml_request</code>: a browser then keeps it only Secure, for this
             host alone, with no <code>Domain</code>, so a sibling subdomain cannot plant or overwrite it. Over plain
-            <code>http://</code> (local development) a browser drops a <code>__Host-</code> cookie, so there it is plain
-            <code>saml_request</code>. For
+            <code>http://</code> (local development on <code>localhost</code>) a browser drops a <code>__Host-</code> cookie, so
+            there it is plain <code>saml_request</code> &mdash; still <code>Secure</code>, which <code>localhost</code> accepts and
+            every other plain-http origin does not. For
             the same reason <code>/saml/acs</code> is exempt from the CSRF origin gate: what authenticates that request is the
             signature.
         </p>
@@ -227,7 +268,7 @@ request["xml"]   # the &lt;samlp:AuthnRequest&gt;</code></pre>
         </p>
 
         <h3 id="metadata" class="text-xl font-semibold text-white mt-8 mb-3">Saml.metadata(options)</h3>
-        <p class="text-gray-400 mb-4">The service provider&rsquo;s metadata XML, from <code>sp_entity_id</code> and <code>acs_url</code> (<code>name_id_format</code> defaults to <code>emailAddress</code>).</p>
+        <p class="text-gray-400 mb-4">The service provider&rsquo;s metadata XML, from <code>sp_entity_id</code> and <code>acs_url</code>. <code>name_id_format</code> defaults to <code>emailAddress</code>; the generated <code>SamlSso.metadata</code> passes <code>persistent</code> (see <a href="#setup" class="text-amber-400 hover:text-amber-300">Setup</a>).</p>
 
         <h3 id="parse-metadata" class="text-xl font-semibold text-white mt-8 mb-3">Saml.parse_metadata(xml)</h3>
         <pre data-filename="Soli"><code class="language-soli text-sm">idp = Saml.parse_metadata(File.read("idp-metadata.xml"))
@@ -264,7 +305,7 @@ idp["certificates"]   # signing certificates, PEM</code></pre>
             <li><strong class="text-white">Not supported, and refused by name:</strong> encrypted assertions and <code>EncryptedID</code> (turn assertion encryption off at the IdP), ECDSA and RSA-PSS signatures, SHA-384, inclusive canonicalization. <code>SignatureMethod</code> takes only <code>rsa-sha256</code>/<code>rsa-sha512</code> (and <code>rsa-sha1</code> with <code>allow_sha1</code>), <code>DigestMethod</code> only <code>sha256</code>/<code>sha512</code> (and <code>sha1</code>, also only with <code>allow_sha1</code>).</li>
             <li><strong class="text-white">Requests are not signed</strong>, and the HTTP-POST binding is not offered for them. Most identity providers accept unsigned requests.</li>
             <li><strong class="text-white">No single logout.</strong> Signing out of the application does not sign out of the identity provider, and the reverse.</li>
-            <li><strong class="text-white">No account deprovisioning.</strong> A user removed at the IdP can no longer sign in, but their account and open sessions remain &mdash; that is what <a href="/docs/security/scim" class="text-amber-400 hover:text-amber-300">SCIM</a> is for.</li>
+            <li><strong class="text-white">No account deprovisioning.</strong> A user removed at the IdP can no longer sign in through it, and an <code>sso_only</code> account has no other way in; but the account and its open sessions remain &mdash; that is what <a href="/docs/security/scim" class="text-amber-400 hover:text-amber-300">SCIM</a> is for.</li>
             <li><strong class="text-white">Attributes are not mapped to roles.</strong> <code>assertion["attributes"]</code> is there in <code>SamlSso.user_for</code> if you want to.</li>
         </ul>
     </section>

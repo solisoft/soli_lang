@@ -240,7 +240,9 @@ edits nothing: link to `/login/link` from your sign-in view.
   A link opened by a mail scanner, forwarded, or opened on another device
   signs nobody in — and is not used up by the attempt.
 - **No account probing.** The answer, cookie included, is the same whether or
-  not the address has an account. A locked account gets no link.
+  not the address has an account. A locked account gets no link, nor does
+  a single-sign-on-only one ([SAML](/docs/security/saml), `user.sso_only?`),
+  and a link issued to one before is refused like an expired one.
 - It shares the sign-in form's per-IP throttle, and only digests are stored.
 - Opening the link confirms the address. With
   [two-factor](#two-factor) on, the code challenge follows.
@@ -283,6 +285,10 @@ create (name, scopes, lifetime), list, revoke.
   token cannot list, create or revoke tokens.
 - A token is its own credential: the two-factor challenge does not apply to
   it. Give it the narrowest scopes and a lifetime.
+- **None for a single-sign-on-only account** ([SAML](/docs/security/saml),
+  `user.sso_only?`): creating one answers `403`, and a token made before is
+  refused like an unknown one — it would outlive the user's removal at the
+  identity provider.
 
 ## Impersonation
 
@@ -374,8 +380,13 @@ public `https://` URL.
    throttle (`AUTH_ATTEMPTS_PER_IP`), the locked and confirmed gates,
    `session_regenerate()`, `user_id` and `session_version`.
 
+A single-sign-on-only account ([SAML](/docs/security/saml),
+`user.sso_only?`) registers no passkey (`POST /passkeys/options` and
+`POST /passkeys` answer `403`), and one it registered before does not sign in.
+
 Every failure — unknown credential, bad signature, expired challenge, locked
-account, a sign counter that went backwards — gets the same `401`, so the
+account, a single-sign-on-only account, a sign counter that went backwards —
+gets the same `401`, so the
 endpoint reveals nothing about which passkeys exist. The JSON requests carry
 the page's CSRF token in `X-CSRF-Token` (the views emit it in
 `data-csrf-token`), so they also pass with `SOLI_CSRF_TOKENS=require`.

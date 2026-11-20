@@ -614,3 +614,74 @@ fn an_administrator_acts_as_a_user_and_comes_back() {
     );
     assert_eq!(grace.whoami(), "grace@example.com member");
 }
+
+/// `soli runner -e code` against the served app's database: the last line it
+/// prints.
+fn runner(root: &Path, code: &str) -> String {
+    let (ok, output) = soli(root, &["runner", "-e", code]);
+    assert!(ok, "{output}");
+    output.trim().lines().last().unwrap_or_default().to_string()
+}
+
+/// An account that signs in through single sign-on only (`sso_only?`, set by
+/// `soli generate saml`) gets no sign-in link and no API token, and a token or
+/// a link it had before is refused: none of them would end with the user's
+/// removal at the identity provider.
+#[test]
+fn a_single_sign_on_only_account_gets_no_link_and_no_token() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root);
+    let mut ada = sign_up(&server, "ada@example.com");
+    let created = ada.post("/api_tokens", json!({"name": "old", "scope_read": "1"}));
+    assert_eq!(created.status, 201, "{}", created.body);
+    let start = created.body.find("data-new-token>").unwrap() + 15;
+    let token = created.body[start..]
+        .split('<')
+        .next()
+        .unwrap()
+        .trim()
+        .to_string();
+    assert_eq!(
+        Client::script(&server, &token).whoami(),
+        "ada@example.com admin"
+    );
+    let link = runner(
+        root,
+        r##"user = User.find_by("email", "ada@example.com")
+link = MagicLink.issue(user)
+user.sso_only = true
+user.save
+print("#{link["token"]} #{link["nonce"]}")"##,
+    );
+    let (link_token, nonce) = link.split_once(' ').expect("token and nonce");
+
+    // The token made before is refused, and no new one is made.
+    assert_eq!(Client::script(&server, &token).get("/whoami").status, 401);
+    let refused = ada.post("/api_tokens", json!({"name": "new", "scope_read": "1"}));
+    assert_eq!(refused.status, 403, "{}", refused.body);
+    assert_eq!(
+        runner(root, r#"print(ApiToken.where({"name": "new"}).count)"#),
+        "0"
+    );
+
+    // Asking for a link answers as for anyone, and sends none.
+    let mut browser = Client::browser(&server);
+    let asked = browser.post("/login/link", json!({"email": "ada@example.com"}));
+    assert_eq!(asked.status, 200);
+    assert!(asked
+        .body
+        .contains("If that email has an account, a sign-in link is on its way."));
+    let mail = Client::browser(&server).get("/whoami/mail").body;
+    assert!(!mail.contains("/login/link/"), "a link was mailed: {mail}");
+
+    // A link issued before signs nobody in, even in the browser it was for.
+    browser
+        .jar
+        .insert("magic_link".to_string(), nonce.to_string());
+    assert_eq!(
+        browser.get(&format!("/login/link/{link_token}")).status,
+        401
+    );
+    assert_eq!(browser.whoami(), "guest");
+}

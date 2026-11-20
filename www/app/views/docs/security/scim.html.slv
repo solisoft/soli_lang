@@ -102,7 +102,7 @@ SCIM_TOKENS=okta=&lt;token&gt;,entra=&lt;token&gt;   # several, each named</code
                 </tbody>
             </table>
         </div>
-        <p class="text-gray-400 mb-4">An account a directory creates is a <code>member</code>, confirmed, with no password: it signs in through SAML, OAuth or a magic link, or sets a password with a reset link.</p>
+        <p class="text-gray-400 mb-4">An account a directory creates is a <code>member</code>, confirmed, with no password (and <code>scim_provisioned_at</code> set): it signs in through SAML, OAuth or a magic link, or sets a password with a reset link. Its first <a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a> sign-in links it even with <code>SAML_LINK_EXISTING</code> off &mdash; the directory and the identity provider are the same organisation&rsquo;s &mdash; and, if it still has no password then, makes it <code>sso_only</code>. Deactivating a user here (<code>active: false</code>) is what ends their open sessions and tokens: <code>sso_only</code> only closes the ways in that bypass the identity provider.</p>
         <p class="text-gray-400 mb-4">Both shapes of <code>PATCH</code> are understood: Okta&rsquo;s, with no path and the attributes in the value, and Entra&rsquo;s, with a path and &mdash; for <code>active</code> &mdash; the string <code>"False"</code>, including <code>emails[type eq "work"].value</code>.</p>
         <pre data-filename="PATCH /scim/v2/Users/:id"><code class="language-json text-sm">{"Operations": [{"op": "replace", "value": {"active": false}}]}                 // Okta
 {"Operations": [{"op": "Replace", "path": "active", "value": "False"}]}          // Entra</code></pre>

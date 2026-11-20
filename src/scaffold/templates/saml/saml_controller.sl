@@ -29,7 +29,10 @@ class SamlController < Controller
       Logger.warn("SAML sign-in refused: #{error}")
       return @_reject
     end
-    return @_reject if user.locked?
+    # No `user.locked?` here: that lock counts wrong passwords, and the
+    # identity provider authenticated this user. Honouring it let anyone who
+    # typed eleven wrong passwords for the address shut its owner out of
+    # single sign-on for half an hour.
 
     # New session id after a successful login defeats session fixation.
     session_regenerate()

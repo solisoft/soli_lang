@@ -22,9 +22,11 @@ class MagicLinksController < Controller
     return @_form("", "Too many requests. Try again in a few minutes.", 429) unless limiter.allowed
 
     user = User.find_by("email", params["email"].to_s.trim.downcase)
-    # A locked account gets no link, and no different answer.
+    # A locked account gets no link, and no different answer; nor does one
+    # that signs in through single sign-on only (`sso_only?`): a link in the
+    # mailbox would outlive the user's removal at the identity provider.
     nonce = Crypto.random_hex(32)
-    if !user.nil? && !user.locked?
+    if !user.nil? && !user.locked? && !user.sso_only?
       link = MagicLink.issue(user)
       nonce = link["nonce"]
       MagicLinkMailer.sign_in(user, link["token"]).deliver_now rescue nil
@@ -45,7 +47,9 @@ class MagicLinksController < Controller
     return @_form("", "Too many attempts. Try again in a few minutes.", 429) unless limiter.allowed
 
     user = MagicLink.redeem(params["token"], (cookies["magic_link"] rescue nil))
-    if user.nil? || user.locked?
+    # A link issued before the account became single sign-on only is refused
+    # like an expired one.
+    if user.nil? || user.locked? || user.sso_only?
       return @_form(
         "",
         "This link is invalid, has expired, or was opened in another browser than the one that asked for it.",

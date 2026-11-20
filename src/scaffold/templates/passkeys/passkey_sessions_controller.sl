@@ -38,7 +38,9 @@ class PasskeySessionsController < Controller
     return @_reject if result["counter_regressed"]
 
     user = User.find_by("_key", passkey.user_id)
-    return @_reject if user.nil? || user.locked?
+    # A single-sign-on-only account's passkey (one registered before the
+    # account became one) does not sign in.
+    return @_reject if user.nil? || user.locked? || user.sso_only?
     # Nothing named the user before this ceremony, so the user handle is
     # mandatory (WebAuthn L3 §7.2 step 6) and must name the passkey's owner.
     return @_reject unless result["user_handle"] == user._key

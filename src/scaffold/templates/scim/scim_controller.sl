@@ -14,7 +14,9 @@
 # any session or token of theirs as a guest's, and their sessions are
 # closed); `externalId`, the names and `displayName` are kept on the user.
 # An account a directory creates is a member with no password: it signs in
-# through SAML, OAuth or a link, or sets a password with a reset link.
+# through SAML, OAuth or a link, or sets a password with a reset link. Its
+# first SAML sign-in links it (`soli generate saml`), and, if it has no
+# password then, marks it single sign-on only.
 #
 # Groups are in app/controllers/scim_groups_controller.sl. No bulk, no
 # sorting, no ETags. The filter is `userName eq "…"` or `externalId eq "…"`,
@@ -130,6 +132,9 @@ class ScimController < Controller
     user.role = "member"
     # The directory vouches for the address.
     user.confirmed_at = DateTime.utc.to_unix
+    # Marks a directory account: its first SAML sign-in links it even with
+    # SAML_LINK_EXISTING off (`SamlSso.directory_account?`).
+    user.scim_provisioned_at = DateTime.utc.to_unix
     @_assign(user, body)
     user.save
     return @_error(400, "The user could not be created", "invalidValue") if user._errors

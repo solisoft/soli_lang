@@ -64,9 +64,14 @@ Responses are `application/scim+json`; errors use SCIM's error schema.
 | `displayName`, `name.formatted` | `name` |
 | `name.givenName`, `name.familyName` | `scim_given_name`, `scim_family_name` |
 
-An account a directory creates is a `member`, confirmed, with no password: it
-signs in through SAML, OAuth or a magic link, or sets a password with a reset
-link.
+An account a directory creates is a `member`, confirmed, with no password
+(and `scim_provisioned_at` set): it signs in through SAML, OAuth or a magic
+link, or sets a password with a reset link. Its first [SAML](/docs/security/saml)
+sign-in links it even with `SAML_LINK_EXISTING` off — the directory and the
+identity provider are the same organisation's — and, if it still has no
+password then, makes it `sso_only`. Deactivating a user here (`active: false`)
+is what ends their open sessions and tokens: `sso_only` only closes the ways
+in that bypass the identity provider.
 
 Both shapes of `PATCH` are understood: Okta's, with no path and the attributes
 in the value (`{"op": "replace", "value": {"active": false}}`), and Entra's,

@@ -77,7 +77,8 @@ pub fn print_saml_success_message() {
     println!(
         "  2. Give the identity provider \x1b[36m/saml/metadata\x1b[0m (entity id and ACS URL),"
     );
-    println!("     with \x1b[36mAPP_BASE_URL\x1b[0m set to the https:// origin it reaches you at.");
+    println!("     with \x1b[36mAPP_BASE_URL\x1b[0m set to the https:// origin it reaches you at");
+    println!("     (plain http works on localhost only: the request cookie is Secure).");
     println!(
         "  3. Point the app at the identity provider: \x1b[36mSAML_IDP_METADATA_FILE\x1b[0m, or"
     );
@@ -89,9 +90,14 @@ pub fn print_saml_success_message() {
     println!();
     println!("  A first sign-in creates the account (a member, SSO only: no password),");
     println!("  unless \x1b[36mAUTH_SIGNUP=closed\x1b[0m; \x1b[36mSAML_PROVISION=on|off\x1b[0m overrides it.");
-    println!("  An existing account with the same email is never linked by default;");
-    println!("  \x1b[36mSAML_LINK_EXISTING=on\x1b[0m links it (never an admin's) — only if the");
-    println!("  identity provider's users cannot choose the email it asserts.");
+    println!("  An existing confirmed account with the same email is not linked by default");
+    println!("  (an unconfirmed or directory-provisioned one is, never an admin's);");
+    println!("  \x1b[36mSAML_LINK_EXISTING=on\x1b[0m links it — only if the identity provider's");
+    println!("  users cannot choose the email it asserts. Ask the identity provider for a");
+    println!(
+        "  \x1b[36mpersistent\x1b[0m NameID (the metadata does): an email NameID inherits its"
+    );
+    println!("  address reuse.");
     println!("  Docs: /docs/security/saml");
     println!();
 }

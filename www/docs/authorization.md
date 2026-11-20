@@ -53,7 +53,13 @@ layer:
   `AUTH_IP_WINDOW_SECONDS`; unset, blank or non-positive falls back to the
   default) — raise them if your users sit behind a shared NAT.
 - **Account lockout**: 10 failed logins lock the account for 30 minutes
-  (auto-unlock); thresholds are constants at the top of the User model.
+  (auto-unlock); thresholds are constants at the top of the User model. The
+  owner is mailed once when the lock trips (`AuthMailer.account_locked`). An
+  account with no password — a [SAML](/docs/security/saml) `sso_only` one, a
+  directory-provisioned one — counts no failed attempts: there is no password
+  to guess, and counting them let anyone lock its owner out of the ways in
+  that do work. SAML sign-in ignores the lock (the identity provider
+  authenticated the user).
 - **No account enumeration on sign-in**: an unknown address and a wrong
   password return the same message *and* take the same time — the miss path
   spends the same Argon2id work rather than returning early, so response

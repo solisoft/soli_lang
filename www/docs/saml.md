@@ -21,7 +21,7 @@ generated files are the application's part, and yours to edit.
 | `app/controllers/saml_controller.sl` | `GET /saml/login`, `POST /saml/acs`, `GET /saml/metadata` |
 | `app/models/saml_identity.sl` | `SamlIdentity`: the link between a `User` and `(issuer, NameID)` |
 | `app/models/saml_assertion.sl` | `SamlAssertion`: the assertions that already signed someone in, kept until they expire |
-| `db/migrations/…_create_saml_identities.sl` | unique index on `(issuer, name_id)`, index on `user_id` |
+| `db/migrations/…_create_saml_identities.sl` | unique indexes on `(issuer, name_id)` and on `(user_id, issuer)` — one identity per account at each IdP |
 | `db/migrations/…_create_saml_assertions.sl` | index on `expires_at` |
 | `config/routes.sl` | the three routes, and `skip_csrf("/saml/acs")` |
 
@@ -35,7 +35,12 @@ Nothing existing is overwritten. Add the link to your sign-in view:
 
 1. `soli db:migrate up`
 2. Set `APP_BASE_URL` to the `https://` origin the identity provider reaches
-   the application at, and `SOLI_SESSION_SECRET` (32+ characters).
+   the application at, and `SOLI_SESSION_SECRET` (32+ characters). **https is
+   required**, except on `localhost`: the request cookie must be
+   `SameSite=None`, which a browser accepts only with `Secure`, and it keeps a
+   `Secure` cookie over plain `http://` on `localhost` alone. On any other
+   `http://` origin the cookie is dropped and every sign-in fails with "no
+   sign-in in progress" (`/saml/login` logs a warning).
 3. Give the identity provider's administrator `https://your.app/saml/metadata`.
    It states the two values every IdP asks for:
 
@@ -43,6 +48,16 @@ Nothing existing is overwritten. Add the link to your sign-in view:
    |---|---|
    | Entity ID (audience) | `APP_BASE_URL/saml/metadata` — override with `SAML_SP_ENTITY_ID` |
    | ACS URL (reply URL) | `APP_BASE_URL/saml/acs` |
+   | NameID format | `persistent` — `SAML_NAMEID_FORMAT` in `app/services/saml_sso.sl` |
+
+   **Ask for a persistent NameID.** A sign-in is matched on `(issuer, NameID)`,
+   so the NameID must name the person for good. A `persistent` NameID is an
+   opaque id the IdP never gives anyone else. With the `emailAddress` format the
+   NameID *is* the mailbox, and the application inherits the IdP's address
+   reuse: when the IdP hands `alice@corp.example` to a new employee, the new
+   employee signs in to the old Alice's account. Configure the emailAddress
+   format only if the IdP can send nothing else, and only if it never reuses
+   addresses.
 
 4. Point the application at the identity provider, either way:
 
@@ -59,19 +74,35 @@ Nothing existing is overwritten. Add the link to your sign-in view:
 
    | Variable | |
    |---|---|
-   | `SAML_PROVISION` | `on`: a first sign-in creates the account; `off`: it does not. Unset, it follows `AUTH_SIGNUP` — `closed` provisions nobody, so the identity provider is no way around a sign-up you closed |
+   | `SAML_PROVISION` | `on`: a first sign-in creates the account; `off`: it does not. Unset, it follows `AUTH_SIGNUP` — `closed` provisions nobody, so the identity provider is no way around a sign-up you closed. Only `on` and `off` are read: any other value (`yes`, `true`) counts as `off` |
    | `SAML_LINK_EXISTING` | `on`: a first sign-in may link the account that already has the asserted email. **Off unless set** |
+
+   In production with `AUTH_SIGNUP=first_user`, no SAML sign-in creates an
+   account until the first one exists: the first account is the admin, made at
+   `/signup` with `AUTH_SETUP_TOKEN`, and a SAML member created before it would
+   make the app non-empty and close `/signup`. The refusal is logged
+   (`SAML sign-in refused: no account exists yet: create the first one (the
+   admin) at /signup with AUTH_SETUP_TOKEN`).
 
 The IdP must sign the assertion or the response (or both) with RSA-SHA256 —
 the metadata asks for signed assertions (`WantAssertionsSigned="true"`), and
 a response signed as a whole is accepted too. It must send an email address:
-in an attribute named `email`, `mail`, `emailaddress`, or the usual claim URIs,
+in an attribute named `email`, `mail`, `emailaddress`, or the usual claim URIs
+(the first of `SAML_EMAIL_ATTRIBUTES`, in that order, that the assertion
+carries with a value — not whichever the response happens to list first),
 or as the NameID when its format is
 `urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress` (a NameID in any
 other format — a username, an opaque id — is never taken for an address, even
 with an `@` in it). An address with anything but ASCII in it is refused:
 lowercasing folds some Unicode letters into ASCII ones (the Kelvin sign,
 U+212A, into `k`), and two different addresses would reach the same account.
+
+An `emailAddress`-format NameID is stored and looked up trimmed and
+lowercased, so an IdP that starts sending `Alice@corp.example` for the
+identity stored as `alice@corp.example` still signs her in. An identity stored
+exactly by an older version of the scaffold is found too (the lookup tries the
+normalised NameID, then the exact one). A NameID in any other format is opaque
+and matched exactly.
 
 ## How a sign-in runs
 
@@ -87,30 +118,69 @@ U+212A, into `k`), and two different addresses would reach the same account.
    assertion's id until it expires: a response posted again, even with a copy
    of the request cookie, is refused.
 4. `SamlSso.user_for` finds the account: the one already linked to this
-   `(issuer, NameID)`; else, only with `SAML_LINK_EXISTING=on`, the one with
-   that email, linked from now on; else a new one (see `SAML_PROVISION`).
-   Without linking, an address that already has an account is refused: link it
-   by hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`).
+   `(issuer, NameID)`; else the one with that email, linked from now on, when
+   `SAML_LINK_EXISTING=on`, when a directory provisioned it, or when nobody
+   confirmed its address (see below); else a new one (see `SAML_PROVISION`).
+   Otherwise an address that already has an account is refused: link it by
+   hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`). The
+   link must be stored, or the sign-in is refused (and an account just created
+   for it is deleted). The password lockout (`AUTH_MAX_FAILED_ATTEMPTS`) does
+   not apply here: it counts wrong passwords, and the IdP authenticated the
+   user.
    - **A new account** is a `member`, confirmed, with no password, and
-     `sso_only: true`: it signs in through the IdP only. Password sign-in
-     refuses it — with the same answer and the same Argon2id cost as a wrong
-     password — and so does password reset (no link is sent; a link already in
-     hand is refused as invalid), so a user removed at the IdP keeps no
-     password here.
+     `sso_only: true`: it signs in through the IdP only (see
+     [What `sso_only` blocks](#what-sso_only-blocks)).
    - **Linking by email** (`SAML_LINK_EXISTING=on`) trusts the IdP with every
      address it asserts. Turn it on only when its users cannot edit that
      attribute. Even then, an admin's account is never linked by its email,
      nor an account already linked to another identity at the same IdP: the
      address now names someone else there (a recycled mailbox), not the
-     account's owner. A linked account stays as it was — its password, if it
-     has one, still works, and it is not marked `sso_only`.
-   - **An unconfirmed account** loses every credential when it is linked
+     account's owner. A linked confirmed account stays as it was — its
+     password, if it has one, still works, and it is not marked `sso_only`.
+   - **A directory account** — one [SCIM](/docs/security/scim) created
+     (`scim_provisioned_at`) or gave an `externalId` — is linked by its first
+     SAML sign-in even with linking off: the directory and the IdP are the
+     same organisation's. With no password at that point it becomes
+     `sso_only`. An admin's is still refused.
+   - **An unconfirmed account** is linked even with linking off, as long as a
+     first sign-in may create accounts (`SAML_PROVISION`): otherwise whoever
+     registered the address first, without proving it, would keep it from its
+     owner for good. It loses every credential when it is linked
      (`SamlSso.take_over_unconfirmed` calls `User#revoke_credentials`, which
-     the OAuth scaffold uses too): its password, a pending reset link, its
-     remember-me cookie and open sessions, and its OAuth and SAML identities,
-     passkeys, API tokens, two-factor and magic links where the app has those
-     models. With open sign-up, whoever typed that address first kept a way
-     into the account the real owner now uses.
+     the OAuth scaffold uses too) and becomes `sso_only`. An admin's is still
+     refused.
+
+### What `revoke_credentials` removes
+
+`User#revoke_credentials` deletes, where the app has the model, every row
+tied to the account — `OauthIdentity`, `SamlIdentity`, `PasskeyCredential`,
+`ApiToken`, `TwoFactor`, `MagicLink`, `Device` (push registrations), by
+`user_id`; the OpenID Connect provider's `OauthConsent`,
+`OauthAuthorizationCode`, `OauthDeviceCode`, `OauthRefreshToken`, by
+`user_key` — then clears the password, a pending reset link and the
+remember-me digest, and bumps `session_version`, which ends every open
+session. The list is `USER_CREDENTIAL_MODELS` in `app/models/user.sl`, as
+`[class, key field]` pairs: add your own models there. The rows go first and
+the account last, and a failure raises: a takeover that stops halfway leaves
+the account as it was and links nothing, and running it again finishes it.
+
+### What `sso_only` blocks
+
+An `sso_only` account signs in through the identity provider only. It gets
+no password sign-in (refused with the same answer and the same Argon2id cost
+as a wrong password, and wrong passwords typed for it are not counted, so
+nobody can lock it), no password reset, no magic link (asking answers as for
+anyone, and a link issued before is refused), no new API token (`403`) and no
+use of one made before, no passkey registration (`403`) and no sign-in with
+one registered before.
+
+It does **not** end what is already open. A session opened through the IdP
+lasts its normal lifetime after the user is removed there, and an OAuth
+identity already linked to the account (`soli generate oauth`) still signs
+in.
+Ending those takes a [SCIM](/docs/security/scim) deactivation (every request
+of a deactivated user is a guest's) or `revoke_credentials`.
+
 5. A new session is opened and the browser goes to `return_to` (a path on this
    site, or `/`).
 
@@ -123,8 +193,9 @@ the reason goes to the log (`SAML sign-in refused: …`).
 With an `https://` `APP_BASE_URL` it is named `__Host-saml_request`: a browser
 then keeps it only Secure, for this host alone, with no `Domain`, so a sibling
 subdomain cannot plant or overwrite it. Over plain `http://` (local
-development) a browser drops a `__Host-` cookie, so there it is plain
-`saml_request`. For the same reason `/saml/acs` is exempt from the CSRF origin gate:
+development on `localhost`) a browser drops a `__Host-` cookie, so there
+it is plain `saml_request` — still `Secure`, which `localhost` accepts and
+every other plain-http origin does not. For the same reason `/saml/acs` is exempt from the CSRF origin gate:
 what authenticates that request is the signature.
 
 **With two-factor.** A user who turned on [two-factor](/docs/security/authentication#two-factor)
@@ -238,8 +309,9 @@ certificate from the list to stop trusting it.
 
 ### Saml.metadata(options)
 
-The service provider's metadata XML, from `sp_entity_id` and `acs_url`
-(`name_id_format` defaults to `emailAddress`).
+The service provider's metadata XML, from `sp_entity_id` and `acs_url`.
+`name_id_format` defaults to `emailAddress`; the generated `SamlSso.metadata`
+passes `persistent` (see [Setup](#setup)).
 
 ### Saml.parse_metadata(xml)
 
@@ -295,7 +367,8 @@ Options: `sign` (`"assertion"` by default, `"response"`, `"both"`, `"none"`),
 - **No single logout.** Signing out of the application does not sign out of
   the identity provider, and the reverse.
 - **No account deprovisioning.** A user removed at the IdP can no longer sign
-  in, but their account and open sessions remain — that is what
+  in through it, and an `sso_only` account has no other way in; but the
+  account and its open sessions remain — that is what
   [SCIM](/docs/security/scim) is for.
 - **Attributes are not mapped to roles.** `assertion["attributes"]` is there
   in `SamlSso.user_for` if you want to.

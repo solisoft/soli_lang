@@ -635,6 +635,29 @@ fn served_app_registers_a_passkey_and_signs_in_with_it() {
     let stale = authenticator.get(&options, 1, &user_handle);
     assert_eq!(replay.post("/passkeys/login", stale).0, 401);
 
+    // An account that signs in through single sign-on only (`soli generate
+    // saml`): its passkey no longer signs in, and none is registered.
+    let database = format!("sqlite://{}/app.sqlite3", dir.path().display());
+    let (ok, output) = soli(
+        dir.path(),
+        &[
+            "runner",
+            "-e",
+            "user = User.find_by(\"email\", \"ada@example.com\")\nuser.sso_only = true\nuser.save\nprint(user.sso_only?)",
+        ],
+        &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
+    );
+    assert!(ok && output.trim().ends_with("true"), "{output}");
+    let mut sso = Browser::new(&server);
+    let (_, options) = sso.post("/passkeys/login/options", json!({}));
+    // A counter past the last one: only the account stands in the way.
+    let assertion = authenticator.get(&options, 2, &user_handle);
+    assert_eq!(
+        sso.post("/passkeys/login", assertion),
+        (401, failure.clone())
+    );
+    assert_eq!(ada.post("/passkeys/options", json!({})).0, 403);
+
     // Remove the passkey; it no longer signs in.
     let start = page.find("action=\"/passkeys/").expect("no remove button") + 8;
     let path = page[start..].split('"').next().unwrap().to_string();

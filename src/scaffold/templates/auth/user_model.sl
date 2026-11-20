@@ -93,15 +93,23 @@ def auth_require_confirmed_email
   false
 end
 
-# The models of the optional generators that hold a way into an account,
-# keyed by `user_id`. `revoke_credentials` empties those the app has.
+# The models of the optional generators that hold a way into an account, or
+# something granted to it, as [class name, field holding the user's key]:
+# `revoke_credentials` empties those the app has. The OpenID Connect
+# provider's rows (`soli generate oidc_provider`) name the user by
+# `user_key`; the others by `user_id`.
 const USER_CREDENTIAL_MODELS = [
-  "OauthIdentity",
-  "SamlIdentity",
-  "PasskeyCredential",
-  "ApiToken",
-  "TwoFactor",
-  "MagicLink"
+  ["OauthIdentity", "user_id"],
+  ["SamlIdentity", "user_id"],
+  ["PasskeyCredential", "user_id"],
+  ["ApiToken", "user_id"],
+  ["TwoFactor", "user_id"],
+  ["MagicLink", "user_id"],
+  ["Device", "user_id"],
+  ["OauthConsent", "user_key"],
+  ["OauthAuthorizationCode", "user_key"],
+  ["OauthDeviceCode", "user_key"],
+  ["OauthRefreshToken", "user_key"]
 ]
 
 class User < Model
@@ -161,9 +169,14 @@ class User < Model
     Crypto.password_verify(plaintext, @password_digest)
   end
 
-  # An account created by single sign-on (`soli generate saml`): it signs in
-  # through the identity provider only — no password sign-in, no password
-  # reset — so a user removed there cannot keep a way in here.
+  # An account that signs in through an identity provider only — created by
+  # `soli generate saml`, or a directory-provisioned account SAML linked. It
+  # has no password sign-in, no password reset, no magic link, no new API
+  # token and no use of an old one, no passkey registration and no passkey
+  # sign-in: every way in goes through the identity provider. What it does
+  # not do is end a session already open here when the user is removed at the
+  # identity provider — that takes a SCIM deactivation (`soli generate scim`),
+  # or `revoke_credentials`.
   def sso_only?
     @sso_only ? true : false
   end
@@ -234,22 +247,35 @@ class User < Model
   # Remove every way into this account except its email address, and save:
   # the password, a pending reset link, the remember-me cookie, every open
   # session, and the rows of the optional generators tied to it (OAuth and
-  # SAML identities, passkeys, API tokens, two-factor, magic links — each
-  # only when the app has that model). Called when an account whose address
-  # nobody proved is handed to the person an identity provider vouches for:
-  # whoever created it keeps nothing.
+  # SAML identities, passkeys, API tokens, two-factor, magic links, push
+  # devices, and the OpenID Connect provider's consents, codes and refresh
+  # tokens — each only when the app has that model). Called when an account
+  # whose address nobody proved is handed to the person an identity provider
+  # vouches for: whoever created it keeps nothing.
+  #
+  # The rows go first, the account's own secrets last, and any failure
+  # raises: a takeover that stops halfway leaves the account as it was
+  # (password included) and the caller links nothing, and running it again
+  # finishes the job. The reverse order could clear the password, fail on a
+  # row, and leave a passkey or a token behind on an account that looked
+  # cleaned. (Not one transaction: the models may live on other connections.)
   def revoke_credentials
+    USER_CREDENTIAL_MODELS.each do |entry|
+      # `const_get` answers nil for a class this app does not have.
+      model = const_get(entry[0])
+      unless model.nil?
+        owner = {}
+        owner[entry[1]] = @_key
+        model.where(owner).delete_all
+      end
+    end
     @password_digest = nil
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil
     @session_version = @current_session_version + 1
-    @update
-    USER_CREDENTIAL_MODELS.each do |name|
-      # `const_get` answers nil for a class this app does not have.
-      model = const_get(name)
-      model.where({"user_id": @_key}).delete_all unless model.nil?
-    end
+    throw "could not revoke the credentials of #{@email}" unless @update
+
     true
   end
 
@@ -333,6 +359,12 @@ class User < Model
     # after the first window elapsed the attacker guessed at full rate forever.
     return true if @locked?
 
+    # Only a password can be guessed. An account with none (single sign-on,
+    # a directory-provisioned user) has nothing to lock, and counting wrong
+    # passwords against it let anyone who knows the address lock its owner
+    # out of the ways in that do work.
+    return true if @sso_only? || @password_digest.blank?
+
     # Counted in the database (`increment` is one atomic write): a read, +1
     # and save let parallel guesses overwrite each other's count, so a burst
     # of wrong passwords slipped past the lockout.
@@ -351,7 +383,7 @@ class User < Model
     # was the right one. Delivery failures must not break sign-in.
     if just_locked
       try
-        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver
+        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver_now
       catch error
         Logger.warn("account-locked notification failed: #{error}")
       end

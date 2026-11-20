@@ -29,7 +29,10 @@ pub fn identities_migration() -> String {
 def up(db)
   db.create_collection("saml_identities")
   db.create_index("saml_identities", "idx_saml_issuer_name_id", ["issuer", "name_id"], {"unique": true})
-  db.create_index("saml_identities", "idx_saml_user_id", ["user_id"], {})
+  # One identity per account at each identity provider: a second one would be
+  # a reused address taking the account over (SamlSso.link_account refuses
+  # it; the index holds when two first sign-ins race).
+  db.create_index("saml_identities", "idx_saml_user_issuer", ["user_id", "issuer"], {"unique": true})
 end
 
 def down(db)
