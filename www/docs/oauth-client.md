@@ -21,7 +21,7 @@ soli db:migrate up
 | `app/services/github_oauth.sl` | GitHub authorize / token / profile + verified email, PKCE |
 | `app/services/google_oauth.sl` | Google OIDC code + PKCE |
 | `app/services/{apple,gitlab,discord,linkedin,microsoft}_oauth.sl` | One per provider you generate |
-| `app/controllers/oauth_controller.sl` | `/auth/:provider` + callback, `/oauth/identities`, `/oauth/reauth` |
+| `app/controllers/oauth_controller.sl` | `/auth/:provider` + callback, `POST /auth/:provider/link`, `/oauth/identities`, `/oauth/reauth` |
 | `app/views/oauth/identities.html.slv` | The connected-accounts page |
 | `app/views/oauth/reauth.html.slv` | "Confirm it's you" before a provider is linked |
 | `app/mailers/oauth_mailer.sl` + `app/views/oauth_mailer/provider_linked.html.slv` | Tells the owner a provider was linked to their account |
@@ -66,6 +66,13 @@ GITLAB_CLIENT_SECRET=…
 GITLAB_REDIRECT_URI=http://localhost:3000/auth/gitlab/callback
 ```
 
+The address is taken when the instance says `email_verified`. With
+`GITLAB_BASE_URL` pointing at an instance someone else runs, that is *their*
+word: its administrators can create a user with any address and mark it
+verified, and rule 3 below then hands them the account with that address here.
+Point it only at gitlab.com or an instance you trust as you trust your own user
+directory — the same reasoning as Microsoft's named tenants.
+
 **Discord** (`DISCORD_*`) and **LinkedIn** (`LINKEDIN_*`, "Sign In with LinkedIn
 using OpenID Connect") take the same three variables. Neither uses PKCE: Discord
 does not document it, and LinkedIn offers it only to native apps it approves.
@@ -99,7 +106,18 @@ center → App registrations → your app → Token configuration → Add option
 → token type **ID** → `email`, `xms_edov`, `verified_primary_email`. Without them
 no address is trusted: a Microsoft identity then signs in only once a signed-in
 user has linked it at `/oauth/identities`. `preferred_username` is never taken as
-an address. The identity's uid is `<tid>:<sub>`.
+an address.
+
+The identity's uid is `<tid>:<sub>`: `sub` is unique only within one tenant.
+Apps generated before that stored the bare `sub`. **Upgrading:** delete
+`app/services/microsoft_oauth.sl` and run `soli generate oauth microsoft` (the
+generator notes an old file). The new service rewrites an old row to
+`<tid>:<sub>` the first time its owner signs in — when the `tid` recorded with
+the row (its `raw` claims) is the token's, or, for a row that recorded none, only
+in a single-tenant app (`MICROSOFT_TENANT` a tenant id or domain): in a
+multi-tenant app the same `sub` may belong to a user of another directory. A row
+it does not adopt stays as it is, and its owner links Microsoft again from
+`/oauth/identities`.
 
 **Apple** has no client secret to copy: it is a short-lived JWT the service signs
 with your key (ES256) for each exchange.
@@ -122,7 +140,7 @@ return URLs only, on a domain you verified with it.
 
 ## How a provider is found
 
-`/auth/:provider` looks up the `<Name>Oauth` class (`GitlabOauth`, `DiscordOauth`, …)
+`/auth/:provider` (and `/auth/:provider/link`) looks up the `<Name>Oauth` class (`GitlabOauth`, `DiscordOauth`, …)
 by name, after checking the segment against `^[a-z][a-z0-9]{1,19}$`, so adding a
 provider never means editing the controller. Each service exposes
 `authorize_url(state, code_challenge)` and `complete!(code)`. The callback also
@@ -138,8 +156,10 @@ the new one.
 1. the account already linked to this `(provider, uid)`;
 2. while a signed-in user is connecting a provider (below), that user —
    refused when the identity belongs to someone else, when the account's email
-   is not confirmed, or without a recent sign-in;
-3. the account with the address the provider **verified**, linked from now on;
+   is not confirmed, without a recent sign-in, or when the account signs in
+   through single sign-on only;
+3. the account with the address the provider **verified**, linked from now on —
+   but never one that signs in through single sign-on only;
 4. a new one, when sign-up is open: `AUTH_SIGNUP` applies as it does to
    `/signup` (`first_user` by default — the first account becomes the admin,
    then sign-up closes; `open`; `closed`). The account is confirmed and has no
@@ -161,6 +181,15 @@ linked identities, passkeys, API tokens, two-factor setup and magic links are
 deleted. The address's owner gets the account alone. An app whose `user.sl`
 predates `revoke_credentials` gets a note from the generator.
 
+**Single sign-on only.** An account created by [`soli generate saml`](saml.md)
+is marked `sso_only` (`User#sso_only?`): it signs in through its identity
+provider and nothing else, so an administrator who removes someone there removes
+every way in. A provider vouching for the same address would be a way around
+that, so `OauthSso` refuses such an account in every rule — by address (rule 3),
+through an identity linked before it became SSO-only (rule 1), and when linking
+(rule 2). The check goes through `respond_to?("sso_only?")`, so an app whose
+`User` has no such method is unaffected.
+
 Whenever a provider is linked to an account that already existed — by its owner
 at `/oauth/identities` or by rule 3 — `OauthMailer.provider_linked` emails the
 account's address, so an owner hears about a way in they did not add.
@@ -169,25 +198,50 @@ account's address, so an owner hears about a way in they did not add.
 
 `/oauth/identities` lists the providers linked to the signed-in account, with a
 button to connect each provider the app has a service for and one to disconnect.
-Connecting is the same flow as signing in, started while signed in. The last way
-into an account cannot be removed: with no password, one provider stays.
+The last way into an account cannot be removed: with no password, one provider
+stays.
 
-Connecting needs two things:
+**Connecting starts from a POST.** Each Connect button is a `button_to` form
+posting to `POST /auth/:provider/link`, CSRF-checked like any other form. The
+plain `GET /auth/:provider` is for signing a *guest* in; a signed-in user who
+reaches it is shown `/oauth/identities` and nothing starts. It used to link: any
+site could send a recently signed-in visitor to `/auth/github` (a link, a
+top-level redirect), and the attacker's own GitHub account, authorized on the
+way, ended up attached to the victim's account. Starting a flow also drops any
+link left over from one abandoned half-way, so a later sign-in in the same
+browser is never taken for a link.
+
+Connecting needs:
 
 - **A confirmed email.** An unconfirmed account (anyone can create one with any
-  address) cannot link a provider: `/auth/:provider` answers 403.
+  address) cannot link a provider: the POST answers 403.
 - **A recent sign-in** — within ten minutes (`OauthSso.reauth_seconds`). A
   provider sign-in counts; a password sign-in through `/login` is not timed by
-  the auth scaffold, so `/auth/:provider` sends the user to `/oauth/reauth`,
-  which asks for the password (failures count toward the account lockout) and
-  then continues to the provider. An account with no password signs out and
-  back in with a provider it has, then connects within ten minutes. Without
-  this, a session borrowed for a minute — a shared computer, a stolen cookie —
-  could attach a provider that keeps signing in after a password reset.
+  the auth scaffold, so the POST sends the user to `/oauth/reauth`, which asks
+  for the password (failures count toward the account lockout) and then goes
+  straight on to the provider. An account with no password signs out and back
+  in with a provider it has, then connects within ten minutes. Without this, a
+  session borrowed for a minute — a shared computer, a stolen cookie — could
+  attach a provider that keeps signing in after a password reset.
+- **An account that is not SSO-only** (above): 403.
+
+An app generated before linking moved to the POST keeps its controller; the
+generator notes it. Delete `app/controllers/oauth_controller.sl`,
+`app/services/oauth_sso.sl` and `app/views/oauth/identities.html.slv`, then
+re-run it: the route `post("/auth/:provider/link", "oauth#link_provider")` is
+appended under its own marker.
+
+## Sign-in time (`auth_time`)
+
+A provider sign-in records `session_set("auth_time", DateTime.utc.to_unix)`
+(`OauthSso.sign_in`; linking does not, the session was already signed in). An
+app that is also an [OpenID Connect provider](oidc-provider.md) puts it in its
+id_tokens and checks `max_age` against it.
 
 ## Login button
 
-Do not re-run the generator to edit views — add a link yourself:
+Do not re-run the generator to edit views — add a link yourself (a plain link is
+right here: it only ever signs a guest in):
 
 ```html
 <a href="/auth/github">Sign in with GitHub</a>

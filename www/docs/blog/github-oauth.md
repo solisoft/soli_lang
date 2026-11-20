@@ -242,18 +242,27 @@ middleware("require_login", -> {
 
 ## Adding a Logout
 
+Signing out changes state, so it is a `POST`: a `GET /logout` would sign out
+anyone whose browser loads `<img src="https://your.app/logout">` on another
+site. The POST goes through the CSRF gate like any other form.
+
 ```soli
 # app/controllers/auth_controller.sl
 
+# POST /logout
 def logout
   session_destroy()
-  {"status": 302, "headers": {"Location": "/"}}
+  redirect("/")
 end
 ```
 
 ```soli
 # config/routes.sl
-get "/logout", "auth#logout"
+post("/logout", "auth#logout")
+```
+
+```erb
+<%- button_to("Sign out", "/logout") %>
 ```
 
 ## Issuing JWT Tokens for API Access
@@ -266,9 +275,13 @@ def github_callback_api
 
   user = User.find_or_create_from_github(github_user, email)
 
+  # Never sign with a missing secret: an empty key is one anyone can use.
+  secret = getenv("JWT_SECRET").to_s
+  throw "JWT_SECRET is not set (32+ random characters)" if secret.length < 32
+
   token = jwt_sign(
     {"sub": user._key, "username": user.username},
-    getenv("JWT_SECRET"),
+    secret,
     {"expires_in": 86400}
   )
 

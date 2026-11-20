@@ -105,7 +105,9 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
 Options: `client_type` (`"confidential"` | `"public"`), `scopes`,
 `grant_types`, `require_pkce`, `skip_consent`, `request_object_key`,
 `introspect_any` (a resource server allowed to introspect tokens issued to other
-clients — see below).
+clients — see below), `post_logout_redirect_uris` (where `/oauth/logout` may
+send the browser back to; left out, the client's `redirect_uris` serve, as they
+did before the option existed — `[]` means nowhere).
 
 **Machine-to-machine access.** Add `"client_credentials"` to a confidential client's
 `grant_types` (it is off by default) and it can `POST /oauth/token` with
@@ -120,33 +122,62 @@ A **public** client (SPA, mobile) has no secret, so PKCE is forced on and
 cannot be switched off — it is the only thing binding the code to the
 requester.
 
-### 4. Two edits to `sessions_controller.sl`
+### 4. Record when the user signed in, and come back mid-flow
 
-The generator does not modify files it did not create, so make these yourself:
+The generator does not modify files it did not create, so make these edits
+yourself. **Every path that signs a user in** records the moment, next to its
+`session_set("user_id", …)`:
 
 ```soli
-# in `create`, next to session_regenerate():
-session_set("auth_time", DateTime.utc().to_unix())
+session_set("auth_time", DateTime.utc.to_unix)
+```
 
-# and replace the final `return redirect("/")` with:
+| Sign-in path | Where |
+|---|---|
+| Password | `SessionsController#create` (`app/controllers/sessions_controller.sl`), next to `session_regenerate()` |
+| Two-factor | `TwoFactorController#verify` (`--two-factor`): the code check that finishes the sign-in |
+| Sign-up | `RegistrationsController#create`, which signs the new account in |
+| Password reset | `PasswordsController#update`, which signs the user in with the new password |
+| Passkey | `PasskeySessionsController#create` (`--passkeys`) |
+| Magic link | `MagicLinksController#show` (`--magic-link`) |
+| SAML | `SamlController#acs` (`soli generate saml`) |
+| OAuth provider | already done: `OauthSso.sign_in` ([OAuth Client](oauth-client.md)) |
+
+A remember-me cookie that restores a session (`load_current_user`) is not a
+sign-in: leave `auth_time` unset there, so `max_age` asks for a real one.
+
+**Impersonation** (`--impersonation`) must `session_delete("auth_time")` when an
+admin starts and when they stop impersonating: the session then belongs to
+someone who did not sign in at that time, and a relying party asking `max_age`
+must hear "unknown", not "fresh".
+
+Then, in `SessionsController#create`, replace the final `return redirect("/")`
+with:
+
+```soli
 destination = session_get("oidc_return_to") ?? "/"
 session_delete("oidc_return_to")
 return redirect(destination)
 ```
 
-Without the first, the provider does not know when the user signed in: the
+Without `auth_time` the provider does not know when the user signed in: the
 id_token carries no `auth_time` (it used to claim the authorization instant,
 which told a client that a day-old session was fresh), and a request with
-`max_age` is answered `login_required`. Without the second, a user who signs in
-mid-flow lands on the home page instead of completing the authorization.
+`max_age` is answered `login_required` — a missing value counts as unknown,
+never as now. A path that forgets it therefore fails closed for `max_age`
+clients, while one that sets it and is not a real sign-in (impersonation) would
+fail open: that is why impersonation deletes it. Without the redirect edit, a
+user who signs in mid-flow lands on the home page instead of completing the
+authorization.
 
 **`prompt` and `max_age`.** `prompt=none` answers `login_required` when no one
 is signed in and `consent_required` when consent is missing, without showing a
-page. `max_age=N` is honoured from the `auth_time` the first edit records: an
-older (or unrecorded) sign-in is answered `login_required`. `prompt=login` is
-always answered `login_required`: the provider cannot make the person sign in
-again on its own, and OIDC Core §3.1.2.1 prefers that error to silently
-ignoring the request.
+page. `prompt=consent` shows the consent screen even when consent was given
+before or the client has `skip_consent`. `max_age=N` is honoured from the
+recorded `auth_time`: an older (or unrecorded) sign-in is answered
+`login_required`. `prompt=login` is always answered `login_required`: the
+provider cannot make the person sign in again on its own, and OIDC Core
+§3.1.2.1 prefers that error to silently ignoring the request.
 
 ## More grants and endpoints
 
@@ -161,7 +192,9 @@ A client introspects **only the tokens issued to it**: another client's token
 answers `{"active": false}`, or any confidential client could read whose token
 it is and what it grants. A resource server that checks tokens issued to other
 clients is registered by an admin with `"introspect_any": true` (dynamic
-registration cannot set it). Discovery advertises `introspection_endpoint`.
+registration cannot set it). A refresh token whose user's session version moved
+since it was issued (below) answers `{"active": false}`, as the token endpoint
+would refuse it. Discovery advertises `introspection_endpoint`.
 
 ### Dynamic client registration (RFC 7591)
 
@@ -182,9 +215,15 @@ device grant, cannot set `skip_consent` or `introspect_any`, and cannot ask for
 scopes outside `OIDC_SUPPORTED_SCOPES`. Redirect URIs must be `https`, or `http`
 to this machine only — `127.0.0.1`, `[::1]` or `localhost` (RFC 8252 §7.3, for
 native apps and development) — without a fragment: a plain-http redirect to a
-remote host sends the authorization code across the network in the clear, and
-`http://localhost@evil.example/` is refused for naming another host. Discovery
-advertises `registration_endpoint` only when enabled.
+remote host sends the authorization code across the network in the clear. The
+loopback host must be the whole host: after it only an optional `:port` and a
+path or query may follow, and a backslash is refused anywhere — so
+`http://localhost@evil.example/`, `http://localhost.evil.example/`,
+`http://[::1]evil.example/` and `http://localhost:80\evil.example` (a browser
+reads the backslash as a slash) are all refused. `post_logout_redirect_uris`,
+optional, is held to the same rule; a client registered this way is sent back
+after logout only to those, never to its `redirect_uris`. Discovery advertises
+`registration_endpoint` only when enabled.
 
 ### Device authorization grant (RFC 8628)
 
@@ -259,12 +298,17 @@ because the provider cannot tell the two apart.
 
 A refresh token is only issued when the client asked for `offline_access`.
 
-**A password reset ends the grants.** A refresh token records the user's
-`session_version` when it is issued; once that has moved — a password reset, an
-account taken over from an unconfirmed squatter, anything that signs every
-session out — the next refresh is refused `invalid_grant` and its whole family
-revoked. Without it a stolen refresh token outlived the reset meant to lock its
-thief out.
+**A password reset ends the grants.** An authorization code, a device
+approval and a refresh token each record the user's `session_version` when they
+are made; once that has moved — a password reset, an account taken over from an
+unconfirmed squatter, anything that signs every session out — the code exchange
+or device poll is refused `invalid_grant`, and so is the next refresh (its whole
+family revoked); introspection reports such a refresh token inactive. A refresh
+token minted from a grant carries the grant's version, never the user's current
+one, so a code issued before a reset cannot launder itself into a fresh-looking
+token. Rows written before the field existed count as version 0. Without this, a
+squatter's code, issued minutes before the address's owner took the account
+over, still turned into tokens for it.
 
 ## id_token claims
 
@@ -342,6 +386,14 @@ the user signed in here — another user's real id_token for the same client
 still gets the confirmation page — and an access token is not accepted as a
 hint. The hint used to be read with `jwt_decode_unsafe`, so anyone could forge
 one naming any client and skip the confirmation.
+
+With **no one signed in** there is nothing to end, and nothing ties the request
+to this browser: the visitor gets a "You are signed out" page with a link back
+to the relying party instead of an immediate redirect, which would let anyone
+holding an id_token (their own) bounce visitors through this endpoint.
+
+The return URI must be one of the client's `post_logout_redirect_uris` — or,
+for a client registered without that field, one of its `redirect_uris`.
 
 ### Caveats
 

@@ -33,10 +33,10 @@
   <% if available.length > 0 %>
     <div class="flex flex-wrap gap-2">
       <% available.each do |provider| %>
-        <a href="/auth/<%= provider %>"
-           class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
-          Connect <%= provider.capitalize %>
-        </a>
+        <%- button_to("Connect " + provider.capitalize, "/auth/" + provider + "/link", {
+          "class": "rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors",
+          "form_class": "inline"
+        }) %>
       <% end %>
     </div>
   <% end %>

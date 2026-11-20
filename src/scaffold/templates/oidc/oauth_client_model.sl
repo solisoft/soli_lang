@@ -11,7 +11,7 @@
 class OauthClient < Model
   # Fields: client_id, client_secret_digest, client_type, name, redirect_uris,
   # scopes, grant_types, require_pkce, skip_consent, request_object_key,
-  # introspect_any, disabled_at.
+  # introspect_any, post_logout_redirect_uris, disabled_at.
 
   # Create a client and return the credentials. The secret is returned in the
   # clear exactly once, because only its Argon2 digest is persisted.
@@ -21,6 +21,13 @@ class OauthClient < Model
     invalid = redirect_uris.filter(fn(uri) { !OauthClient.valid_redirect_uri?(uri) })
     if invalid.length() != 0
       throw ("redirect_uris must be absolute http(s) URLs without a fragment: #{invalid.join(", ")}")
+    end
+    post_logout = options["post_logout_redirect_uris"]
+    unless post_logout.nil?
+      invalid = post_logout.filter(fn(uri) { !OauthClient.valid_redirect_uri?(uri) })
+      if invalid.length() != 0
+        throw ("post_logout_redirect_uris must be absolute http(s) URLs without a fragment: #{invalid.join(", ")}")
+      end
     end
 
     attributes = {
@@ -43,6 +50,10 @@ class OauthClient < Model
       # A resource server that introspects tokens issued to other clients.
       # Every other client introspects only its own (/oauth/introspect).
       "introspect_any": options["introspect_any"] == true,
+      # Where /oauth/logout may send the browser back to. Left out (nil), the
+      # client's redirect_uris serve, as they did before this field existed;
+      # an empty list means nowhere.
+      "post_logout_redirect_uris": post_logout,
       "client_secret_digest": null,
       "disabled_at": null
     }
@@ -82,20 +93,28 @@ class OauthClient < Model
     return false unless OauthClient.valid_redirect_uri?(uri)
 
     text = uri.to_s
+    # A backslash is a path separator to some URL parsers and part of the host
+    # to others: `http://localhost:80\evil.example` is evil.example to a browser.
+    return false if text.contains("\\")
     return true if text.starts_with("https://")
 
-    authority = text.substring(7, text.length()).split("/")[0].split("?")[0]
-    # `http://localhost@evil.example/` is a request to evil.example.
-    return false if authority.contains("@")
+    rest = text.substring(7, text.length())
+    ["127.0.0.1", "[::1]", "localhost"].any? { |host| OauthClient.loopback_authority?(rest, host) }
+  end
 
-    host = authority
-    if authority.starts_with("[")
-      host = authority.split("]")[0] + "]"
-    elsif authority.contains(":")
-      host = authority.split(":")[0]
-    end
+  # Is `rest` (a URL with its `http://` cut off) `host`, then nothing but an
+  # optional `:port` and a path or query? Anything else after the host —
+  # `localhost.evil.example`, `[::1]evil.example`, `localhost@evil.example` —
+  # names another machine.
+  static def loopback_authority?(rest, host)
+    return false unless rest.downcase().starts_with(host)
 
-    ["127.0.0.1", "[::1]", "localhost"].includes?(host.downcase())
+    tail = rest.substring(host.length(), rest.length())
+    return true if tail.blank? || tail.starts_with("/") || tail.starts_with("?")
+    return false unless tail.starts_with(":")
+
+    port = tail.substring(1, tail.length()).split("/")[0].split("?")[0]
+    !port.match("^[0-9]{1,5}$").nil?
   end
 
   # May this client introspect a token issued to `token_client_id`?
@@ -126,6 +145,18 @@ class OauthClient < Model
     return false if candidate.to_s.blank?
 
     return (this.redirect_uris ?? []).includes?(candidate.to_s)
+  end
+
+  # Where /oauth/logout may return the browser: an exact match against
+  # `post_logout_redirect_uris`, or, for a client registered without that
+  # field (every client made before it existed), against its redirect_uris.
+  def post_logout_redirect_uri_allowed?(candidate)
+    return false if candidate.to_s.blank?
+
+    registered = this.post_logout_redirect_uris
+    return this.redirect_uri_allowed?(candidate) if registered.nil?
+
+    registered.includes?(candidate.to_s)
   end
 
   def authenticate_secret(secret)

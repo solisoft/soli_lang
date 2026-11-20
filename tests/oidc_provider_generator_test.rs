@@ -300,3 +300,141 @@ fn emitted_templates_carry_the_security_guards() {
         "auth_time must not pretend the sign-in happened now"
     );
 }
+
+/// A grant made before the user's session version moved (a password reset,
+/// an account takeover) dies with it: the authorization code and the device
+/// approval record the version, the token endpoint refuses them once it moved,
+/// refresh tokens carry the version of the grant they came from (never the
+/// user's current one), and introspection agrees with the token endpoint.
+/// Logout redirects only where the client registered, and never straight away
+/// for a visitor with no session; `prompt=consent` shows the consent screen.
+#[test]
+fn grants_are_bound_to_the_session_version_and_logout_is_not_a_redirector() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    create_oidc_provider(dir.path().to_str().unwrap()).unwrap();
+    let read = |rel: &str| fs::read_to_string(dir.path().join(rel)).unwrap();
+
+    let authorizations = read("app/controllers/oauth_authorizations_controller.sl");
+    assert!(
+        authorizations.contains(r#""session_version": user.current_session_version"#),
+        "{authorizations}"
+    );
+    assert!(
+        authorizations.contains(r#"!prompts.includes?("consent")"#),
+        "{authorizations}"
+    );
+    let codes = read("app/models/oauth_authorization_code.sl");
+    assert!(
+        codes.contains(r#""session_version": attributes["session_version"] ?? 0"#),
+        "{codes}"
+    );
+    let device = read("app/controllers/oauth_device_controller.sl");
+    assert!(device.contains("user.current_session_version"), "{device}");
+    let device_codes = read("app/models/oauth_device_code.sl");
+    assert!(
+        device_codes.contains("session_version: #{session_version}"),
+        "{device_codes}"
+    );
+
+    let tokens = read("app/controllers/oauth_tokens_controller.sl");
+    assert!(
+        tokens
+            .matches(r#"_session_version_moved?(user, row["session_version"])"#)
+            .count()
+            == 2,
+        "the code and device grants must both check the version:\n{tokens}"
+    );
+    assert!(
+        tokens.contains(r#"_session_version_moved?(user, token["session_version"])"#),
+        "{tokens}"
+    );
+    assert!(tokens.contains("this._refresh_live?(refresh)"), "{tokens}");
+    let issue = tokens
+        .split("def _issue_tokens")
+        .nth(1)
+        .and_then(|rest| rest.split("\n  end").next())
+        .unwrap();
+    assert!(
+        !issue.contains("current_session_version"),
+        "refresh tokens must carry the grant's version:\n{issue}"
+    );
+
+    let sessions = read("app/controllers/oauth_sessions_controller.sl");
+    assert!(
+        sessions.contains("post_logout_redirect_uri_allowed?(requested)"),
+        "{sessions}"
+    );
+    assert!(sessions.contains(r#""signed_out": true"#), "{sessions}");
+    assert!(
+        !sessions.contains("user.nil? || hint"),
+        "a hint must not end a session that is not there:\n{sessions}"
+    );
+    let client = read("app/models/oauth_client.sl");
+    assert!(
+        client.contains("def post_logout_redirect_uri_allowed?"),
+        "{client}"
+    );
+    let view = read("app/views/oauth/logout_confirm.html.slv");
+    assert!(view.contains("signed_out"), "{view}");
+    let registrations = read("app/controllers/oauth_registrations_controller.sl");
+    assert!(
+        registrations.contains(r#"metadata["post_logout_redirect_uris"]"#),
+        "{registrations}"
+    );
+}
+
+/// Dynamic registration takes plain http only to this machine — and the host
+/// must really be the loopback one: no backslash, nothing glued after it.
+#[test]
+fn registrable_redirect_uris_are_loopback_only_over_http() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    create_oidc_provider(dir.path().to_str().unwrap()).unwrap();
+    let cases = [
+        ("http://localhost:80\\\\evil.example", false),
+        ("http://[::1]evil.example/", false),
+        ("http://localhost.evil.example/", false),
+        ("http://localhost@evil.example/", false),
+        ("http://127.0.0.1:99999x/", false),
+        ("http://localhost:/", false),
+        ("https://app.example/cb\\\\x", false),
+        ("http://example.com/cb", false),
+        ("http://localhost", true),
+        ("http://localhost:8080/cb", true),
+        ("http://127.0.0.1:3000/cb?x=1", true),
+        ("http://[::1]:5000/", true),
+        ("http://LOCALHOST/cb", true),
+        ("https://app.example/cb", true),
+    ];
+    let script = cases
+        .iter()
+        .map(|(uri, _)| format!("print(OauthClient.registrable_redirect_uri?(\"{uri}\"))"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["runner", "-e", &script])
+        .current_dir(dir.path())
+        .env_remove("SOLI_ENGINE")
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env(
+            "DATABASE_URL",
+            format!("sqlite://{}/app.sqlite3", dir.path().display()),
+        )
+        .output()
+        .expect("run soli runner");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "{stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let answers: Vec<&str> = stdout
+        .lines()
+        .filter(|line| *line == "true" || *line == "false")
+        .collect();
+    assert_eq!(answers.len(), cases.len(), "{stdout}");
+    for ((uri, expected), answer) in cases.iter().zip(answers) {
+        assert_eq!(answer, expected.to_string(), "{uri}");
+    }
+}

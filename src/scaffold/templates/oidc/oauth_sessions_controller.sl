@@ -6,11 +6,23 @@ class OauthSessionsController < Controller
   #
   # Ends the session here, then optionally returns the browser to the relying
   # party. The return URI is honoured only when it is one the client
-  # registered — an unchecked post_logout_redirect_uri is an open redirect in
-  # exactly the same way the authorization endpoint's would be.
+  # registered (`post_logout_redirect_uris`, or its redirect_uris for a client
+  # registered without them) — an unchecked post_logout_redirect_uri is an
+  # open redirect in exactly the same way the authorization endpoint's would be.
   def end_session
     hint = @_verified_hint
     destination = @_post_logout_destination(hint)
+
+    # Nobody is signed in here, so there is nothing to end — and nothing to
+    # tie the request to this browser. Redirecting straight away would make
+    # this endpoint bounce any visitor anywhere a hint (anyone's own
+    # id_token) allows; the "signed out" page links back instead.
+    if current_user().nil?
+      return render(
+        "oauth/logout_confirm",
+        {"signed_out": true, "post_logout_redirect_uri": destination, "id_token_hint": ""}
+      )
+    end
 
     # A bare GET must not end the session: `<img src="/oauth/logout">` on any
     # page would log the visitor out, and the same-origin CSRF gate covers only
@@ -25,6 +37,7 @@ class OauthSessionsController < Controller
       return render(
         "oauth/logout_confirm",
         {
+          "signed_out": false,
           "post_logout_redirect_uri": destination.blank? ? "" : destination,
           "id_token_hint": destination.blank? ? "" : params["id_token_hint"].to_s
         }
@@ -49,7 +62,7 @@ class OauthSessionsController < Controller
     return false if hint.nil?
 
     user = current_user()
-    user.nil? || hint["sub"].to_s == user["_key"].to_s
+    !user.nil? && hint["sub"].to_s == user["_key"].to_s
   end
 
   # The claims of `id_token_hint` when this provider signed it, or nil.
@@ -95,7 +108,7 @@ class OauthSessionsController < Controller
     # is checked against.
     client = OauthClient.find_active(hint["aud"].to_s)
     return "" if client.nil?
-    return "" unless client.redirect_uri_allowed?(requested)
+    return "" unless client.post_logout_redirect_uri_allowed?(requested)
 
     requested
   end

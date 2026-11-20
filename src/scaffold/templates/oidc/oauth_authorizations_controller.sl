@@ -42,7 +42,11 @@ class OauthAuthorizationsController < Controller
     stale = this._stale_login_error(context)
     return stale unless stale.nil?
 
-    if client.skip_consent == true || OauthConsent.covers?(user["_key"], client.client_id, scopes)
+    # `prompt=consent` (OIDC Core §3.1.2.1) asks for the consent screen even
+    # when consent was given before or the client skips it: a relying party
+    # that wants the person to see what they are granting gets exactly that.
+    remembered = client.skip_consent == true || OauthConsent.covers?(user["_key"], client.client_id, scopes)
+    if remembered && !prompts.includes?("consent")
       return this._issue_code(context, user, scopes)
     end
 
@@ -256,7 +260,10 @@ class OauthAuthorizationsController < Controller
       # When the person signed in, if the sign-in action recorded it (see
       # `_stale_login_error`). Never "now": that would tell a client asking
       # max_age that a day-old session is fresh.
-      "auth_time": session_get("auth_time")
+      "auth_time": session_get("auth_time"),
+      # A password reset or an account takeover before the exchange voids
+      # the code: the token endpoint compares this with the user's version.
+      "session_version": user.current_session_version
     })
 
     separator = oidc_query_separator(context["redirect_uri"])

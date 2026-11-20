@@ -107,7 +107,8 @@ class OauthTokensController < Controller
     end
 
     refresh = OauthRefreshToken.find_by_token(token)
-    if !refresh.nil? && refresh.active?() && client.may_introspect?(refresh["client_id"])
+    live = !refresh.nil? && refresh.active?() && this._refresh_live?(refresh)
+    if live && client.may_introspect?(refresh["client_id"])
       return oidc_json({
         "active": true,
         "scope": refresh["scope"],
@@ -123,6 +124,17 @@ class OauthTokensController < Controller
   end
 
   private
+
+  # A refresh token the token endpoint would still honour: its user exists and
+  # has not had every session ended (a password reset, an account takeover)
+  # since it was issued. Introspection must not call live what a refresh
+  # would refuse.
+  def _refresh_live?(refresh)
+    user = User.find_by("_key", refresh["user_key"])
+    return false if user.nil?
+
+    !this._session_version_moved?(user, refresh["session_version"])
+  end
 
   def _access_token_body(claims)
     {
@@ -152,8 +164,29 @@ class OauthTokensController < Controller
     scopes = oidc_scope_list(row["scope"])
     user = User.find_by("_key", row["user_key"])
     return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
+    # A code issued before a password reset or an account takeover is one
+    # the person locked out may still hold: it must not outlive the reset.
+    if this._session_version_moved?(user, row["session_version"])
+      return oidc_token_error("invalid_grant", "Authorization code is invalid, expired or used", 400)
+    end
 
-    this._issue_tokens(client, user, scopes, row["refresh_chain_id"], row["nonce"], row["auth_time"])
+    this._issue_tokens(
+      client,
+      user,
+      scopes,
+      row["refresh_chain_id"],
+      row["nonce"],
+      row["auth_time"],
+      row["session_version"]
+    )
+  end
+
+  # Has the user's session version moved past `version` — the one stamped on a
+  # code, a device approval or a refresh token when it was made? A password
+  # reset or an account takeover bumps it, and ends every grant made before.
+  # A row from before the stamp existed counts as version 0.
+  def _session_version_moved?(user, version)
+    user.current_session_version > (version ?? 0).to_i
   end
 
   # A code that did not burn was either never valid, or already used. The
@@ -219,7 +252,7 @@ class OauthTokensController < Controller
     # version, like an account takeover) signs every session out; it must end
     # the grants made before it as well, or a stolen refresh token outlives
     # the reset that was meant to lock its thief out.
-    if user.current_session_version > (token["session_version"] ?? 0).to_i
+    if this._session_version_moved?(user, token["session_version"])
       OauthRefreshToken.revoke_chain(token["chain_id"], "session_version_changed")
       return oidc_token_error("invalid_grant", "Refresh token is expired or revoked", 400)
     end
@@ -235,7 +268,7 @@ class OauthTokensController < Controller
       return oidc_token_error("invalid_grant", "Refresh token was already used", 400)
     end
 
-    this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null)
+    this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null, token["session_version"])
   end
 
   # RFC 8628 §3.4-3.5: the device polls until the person decides. Every answer
@@ -254,8 +287,21 @@ class OauthTokensController < Controller
     row = outcome["row"]
     user = User.find_by("_key", row["user_key"])
     return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
+    # Approved before a password reset or an account takeover: the approval
+    # was given by a session that no longer counts.
+    if this._session_version_moved?(user, row["session_version"])
+      return oidc_token_error("invalid_grant", "Device authorization: invalid_grant", 400)
+    end
 
-    this._issue_tokens(client, user, oidc_scope_list(row["scope"]), row["refresh_chain_id"], nil, row["auth_time"])
+    this._issue_tokens(
+      client,
+      user,
+      oidc_scope_list(row["scope"]),
+      row["refresh_chain_id"],
+      nil,
+      row["auth_time"],
+      row["session_version"]
+    )
   end
 
   # RFC 6749 §4.4: a confidential client acting for itself. There is no user, so
@@ -314,7 +360,11 @@ class OauthTokensController < Controller
   end
 
   # --- issuing ---------------------------------------------------------------
-  def _issue_tokens(client, user, scopes, chain_id, nonce, auth_time)
+  # `session_version` is the one stamped on the grant being exchanged (the
+  # code, the device approval, the refresh token), never the user's current
+  # one: stamping the current version would let a grant made before a reset
+  # mint refresh tokens that look newer than it.
+  def _issue_tokens(client, user, scopes, chain_id, nonce, auth_time, session_version)
     jti = uuid_v4()
     access_token = oidc_access_token(user["_key"], client.client_id, scopes, jti)
 
@@ -338,7 +388,7 @@ class OauthTokensController < Controller
         user["_key"],
         scopes,
         jti,
-        user.current_session_version
+        (session_version ?? 0).to_i
       )
     end
 

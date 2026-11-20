@@ -8,7 +8,9 @@
 class OauthAuthorizationCode < Model
   # Fields: code_digest, client_id, user_key, redirect_uri, scope, nonce,
   # code_challenge, code_challenge_method, auth_time, expires_at, used_at,
-  # refresh_chain_id.
+  # refresh_chain_id, session_version (the user's when the code was issued: an
+  # exchange after it moved — a password reset, an account takeover — is
+  # refused, as a refresh is).
 
   # Issue a code and return the plaintext (which goes in the redirect).
   static def issue(attributes)
@@ -27,7 +29,8 @@ class OauthAuthorizationCode < Model
       "auth_time": attributes["auth_time"],
       "expires_at": now + OIDC_CODE_TTL,
       "used_at": null,
-      "refresh_chain_id": uuid_v4()
+      "refresh_chain_id": uuid_v4(),
+      "session_version": attributes["session_version"] ?? 0
     })
     # Minted here rather than at first exchange: if this code is later
     # replayed, we need to know which token family the *first* exchange

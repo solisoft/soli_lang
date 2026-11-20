@@ -45,6 +45,16 @@ fn create_oauth_github_writes_files() {
         routes.contains(r#"post("/oauth/reauth", "oauth#reauthenticate")"#),
         "{routes}"
     );
+    // Linking starts from a CSRF-checked POST, never from the GET a
+    // cross-site link can make a browser send.
+    assert!(
+        routes.contains(r#"post("/auth/:provider/link", "oauth#link_provider")"#),
+        "{routes}"
+    );
+    assert!(
+        !routes.contains(r#"get("/auth/:provider/link""#),
+        "{routes}"
+    );
 
     let migrations: Vec<String> = fs::read_dir(dir.path().join("db/migrations"))
         .unwrap()
@@ -225,6 +235,7 @@ fn linking_routes_are_only_added_next_to_a_controller_that_has_the_actions() {
     let routes = fs::read_to_string(dir.path().join("config/routes.sl")).unwrap();
     assert!(routes.contains("oauth#callback"), "{routes}");
     assert!(!routes.contains("oauth#identities"), "{routes}");
+    assert!(!routes.contains("oauth#link_provider"), "{routes}");
 
     let fresh = tempfile::tempdir().unwrap();
     make_app_with_auth(fresh.path());
@@ -232,6 +243,7 @@ fn linking_routes_are_only_added_next_to_a_controller_that_has_the_actions() {
     create_oauth(fresh.path().to_str().unwrap(), "apple").unwrap();
     let routes = fs::read_to_string(fresh.path().join("config/routes.sl")).unwrap();
     assert_eq!(routes.matches("oauth#identities").count(), 1, "{routes}");
+    assert_eq!(routes.matches("oauth#link_provider").count(), 1, "{routes}");
     assert!(
         routes.contains(r#"skip_csrf("/auth/apple/callback")"#),
         "{routes}"
@@ -516,8 +528,26 @@ impl Browser {
     fn start(&mut self, provider: &str) -> String {
         let reply = self.get(&format!("/auth/{provider}"));
         assert_eq!(reply.status, 302, "{}", reply.body);
-        let state = reply.location.split("state=").nth(1).expect("no state");
-        state.split('&').next().unwrap().to_string()
+        state_of(&reply.location)
+    }
+
+    /// Start linking `provider` to the signed-in account: the same-origin
+    /// POST the Connect buttons of /oauth/identities send.
+    fn link(&mut self, provider: &str) -> Reply {
+        self.request(
+            "POST",
+            &format!("/auth/{provider}/link"),
+            Some(json!({})),
+            true,
+        )
+    }
+
+    /// A link started; the state the provider is asked to send back.
+    fn start_link(&mut self, provider: &str) -> String {
+        let reply = self.link(provider);
+        assert_eq!(reply.status, 302, "{}", reply.body);
+        assert!(reply.location.contains("state="), "{}", reply.location);
+        state_of(&reply.location)
     }
 
     /// A whole sign-in with a provider that redirects back.
@@ -531,6 +561,12 @@ impl Browser {
     fn whoami(&mut self) -> String {
         self.get("/whoami").body
     }
+}
+
+/// The `state` parameter of a redirect to a provider.
+fn state_of(location: &str) -> String {
+    let state = location.split("state=").nth(1).expect("no state");
+    state.split('&').next().unwrap().to_string()
 }
 
 fn soli(dir: &Path, args: &[&str]) -> (bool, String) {
@@ -666,10 +702,19 @@ fn served_app_signs_in_links_and_refuses() {
     );
     assert_eq!(signup.status, 302, "{}", signup.body);
     assert!(squatter.whoami().starts_with("grace@example.com"));
-    let refused = squatter.get("/auth/apple");
+    let refused = squatter.link("apple");
     assert_eq!(
         refused.status, 403,
         "an unconfirmed account started linking"
+    );
+    // A GET from a signed-in browser never links (any site can make one):
+    // it shows the connected accounts.
+    let get = squatter.get("/auth/apple");
+    assert_eq!(
+        (get.status, get.location.as_str()),
+        (302, "/oauth/identities"),
+        "{}",
+        get.body
     );
 
     // A session opened after a password reset bumped the account's session
@@ -750,7 +795,7 @@ fn served_app_signs_in_links_and_refuses() {
         true,
     );
     assert_eq!(login.status, 302, "{}", login.body);
-    let asked = hopper.get("/auth/apple");
+    let asked = hopper.link("apple");
     assert_eq!(
         (asked.status, asked.location.as_str()),
         (302, "/oauth/reauth?provider=apple"),
@@ -765,24 +810,23 @@ fn served_app_signs_in_links_and_refuses() {
         true,
     );
     assert_eq!(wrong.status, 401, "{}", wrong.body);
-    assert_eq!(hopper.get("/auth/apple").status, 302);
-    assert!(hopper
-        .get("/auth/apple")
-        .location
-        .starts_with("/oauth/reauth"));
+    assert_eq!(hopper.link("apple").status, 302);
+    assert!(hopper.link("apple").location.starts_with("/oauth/reauth"));
+    // The password POST is CSRF-checked and names the provider: it goes
+    // straight to the provider, linking.
     let confirmed = hopper.request(
         "POST",
         "/oauth/reauth",
         Some(json!({"provider": "apple", "password": "hopper password 1"})),
         true,
     );
-    assert_eq!(
-        (confirmed.status, confirmed.location.as_str()),
-        (302, "/auth/apple"),
+    assert_eq!(confirmed.status, 302, "{}", confirmed.body);
+    assert!(
+        confirmed.location.contains("state="),
         "{}",
-        confirmed.body
+        confirmed.location
     );
-    hopper.start("apple");
+    hopper.start_link("apple");
 
     // Linking: a signed-in user adds Apple. Apple posts its answer from its
     // own site, without the session cookie; the action hands it to a GET.
@@ -790,6 +834,30 @@ fn served_app_signs_in_links_and_refuses() {
     assert_eq!(page.status, 200, "{}", page.body);
     assert!(page.body.contains("Gitlab"), "{}", page.body);
     assert!(page.body.contains("Connect Apple") && page.body.contains("Connect Microsoft"));
+    // The Connect buttons are forms posting with the CSRF token, not links.
+    assert!(
+        page.body
+            .contains(r#"action="/auth/apple/link" method="POST""#),
+        "{}",
+        page.body
+    );
+    assert!(
+        !page.body.contains(r#"href="/auth/apple""#),
+        "{}",
+        page.body
+    );
+    // Ada, signed in a moment ago, follows a cross-site link to
+    // /auth/apple: she lands on her connected accounts, and nothing starts.
+    let get = ada.get("/auth/apple");
+    assert_eq!(
+        (get.status, get.location.as_str()),
+        (302, "/oauth/identities"),
+        "{}",
+        get.body
+    );
+    // A cross-site POST is stopped at the origin gate.
+    let cross_site = ada.request("POST", "/auth/apple/link", Some(json!({})), false);
+    assert_eq!(cross_site.status, 403, "{}", cross_site.body);
     assert!(
         !page.body.contains("Disconnect"),
         "the only way in can be removed"
@@ -798,7 +866,7 @@ fn served_app_signs_in_links_and_refuses() {
         "iss": "https://appleid.apple.com", "aud": "com.example.web", "exp": now + 600,
         "sub": "apple-ada", "email": "relay-ada@privaterelay.appleid.com", "email_verified": "true",
     }));
-    let apple_state = ada.start("apple");
+    let apple_state = ada.start_link("apple");
     let posted = ada.apple_posts(&format!(
         "code=apple-code&state={apple_state}&user={}",
         urlencoding::encode(r#"{"name":{"firstName":"Ada","lastName":"L"}}"#)
@@ -855,7 +923,7 @@ fn served_app_signs_in_links_and_refuses() {
     assert_eq!(phone.whoami(), "ada@example.com member From GitLab");
 
     // Grace cannot link the Apple account that is Ada's.
-    let grace_state = grace.start("apple");
+    let grace_state = grace.start_link("apple");
     let refused = grace.get(&format!("/auth/apple/callback?code=c&state={grace_state}"));
     assert_eq!(refused.status, 401, "{}", refused.body);
     assert!(
@@ -977,4 +1045,136 @@ fn a_provider_creates_no_account_when_sign_up_is_closed() {
     assert_eq!(founder.whoami(), "newcomer@example.com admin From GitLab");
     state.lock().unwrap().profile = gitlab("gl-10", "second@example.com", true);
     assert_eq!(Browser::new(&server).sign_in_with("gitlab").status, 401);
+}
+
+/// An account that signs in through single sign-on only (`User#sso_only?`,
+/// `soli generate saml`) gets no provider: not by its verified address, not
+/// through an identity linked before. And a Microsoft identity stored under
+/// the bare `sub` (before uids were `<tid>:<sub>`) is adopted on its owner's
+/// next sign-in only when the tenant recorded with it is the token's.
+#[test]
+fn sso_only_accounts_get_no_provider_and_legacy_microsoft_identities_are_adopted() {
+    let dir = served_app();
+    let root = dir.path();
+    fs::write(
+        root.join("seed.sl"),
+        concat!(
+            "sso = User.new\n",
+            "sso.email = \"sso@example.com\"\n",
+            "sso.name = \"Sso\"\n",
+            "sso.sso_only = true\n",
+            "sso.confirmed_at = 1\n",
+            "sso.save\n",
+            "OauthIdentity.link!(sso._key, \"gitlab\", \"gl-sso-linked\", nil, nil)\n",
+            "old = User.new\n",
+            "old.email = \"old@example.com\"\n",
+            "old.name = \"Old\"\n",
+            "old.confirmed_at = 1\n",
+            "old.save\n",
+            "OauthIdentity.create({\"user_id\": old._key, \"provider\": \"microsoft\", \"uid\": \"ms-old\", \"raw\": {\"tid\": \"tenant-good\"}})\n",
+            "OauthIdentity.create({\"user_id\": old._key, \"provider\": \"microsoft\", \"uid\": \"ms-elsewhere\", \"raw\": {\"tid\": \"tenant-also\"}})\n",
+            "OauthIdentity.create({\"user_id\": old._key, \"provider\": \"microsoft\", \"uid\": \"ms-no-tenant\"})\n",
+        ),
+    )
+    .unwrap();
+    let (ok, output) = soli(root, &["db:seed", ".", "seed.sl"]);
+    assert!(ok, "{output}");
+
+    let state = Arc::new(Mutex::new(Provider::default()));
+    let providers = start_providers(Arc::clone(&state));
+    let server = serve(root, providers, "open");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    for profile in [
+        gitlab("gl-sso-new", "sso@example.com", true),
+        gitlab("gl-sso-linked", "other@example.com", true),
+    ] {
+        state.lock().unwrap().profile = profile;
+        let mut visitor = Browser::new(&server);
+        let refused = visitor.sign_in_with("gitlab");
+        assert_eq!(refused.status, 401, "{}", refused.body);
+        assert!(
+            refused.body.contains("single sign-on only"),
+            "{}",
+            refused.body
+        );
+        assert_eq!(visitor.whoami(), "guest");
+    }
+    assert!(
+        !database_bytes(root).contains("gl-sso-new"),
+        "an identity was linked to the SSO-only account"
+    );
+
+    // No verified address in these tokens: only an adopted identity signs in.
+    let microsoft = |sub: &str| {
+        json!({
+            "iss": "https://login.microsoftonline.com/tenant-good/v2.0",
+            "aud": "ms-client", "exp": now + 600, "tid": "tenant-good",
+            "sub": sub, "name": "MS User",
+        })
+    };
+    state.lock().unwrap().claims = microsoft("ms-old");
+    let mut old = Browser::new(&server);
+    assert_eq!(old.sign_in_with("microsoft").status, 302);
+    assert_eq!(old.whoami(), "old@example.com member Old");
+    assert!(database_bytes(root).contains("tenant-good:ms-old"));
+    // Adopted once: the next sign-in finds it under its new uid.
+    let mut again = Browser::new(&server);
+    assert_eq!(again.sign_in_with("microsoft").status, 302);
+    assert_eq!(again.whoami(), "old@example.com member Old");
+
+    // Recorded for another tenant, or with no tenant in a multi-tenant app:
+    // the same `sub` may be someone else's.
+    for sub in ["ms-elsewhere", "ms-no-tenant"] {
+        state.lock().unwrap().claims = microsoft(sub);
+        let mut visitor = Browser::new(&server);
+        assert_eq!(visitor.sign_in_with("microsoft").status, 401, "{sub}");
+        assert_eq!(visitor.whoami(), "guest", "{sub}");
+    }
+}
+
+/// What the shared service and the controller hold to, read from the source:
+/// a guest start drops a leftover link, a provider sign-in records
+/// `auth_time` (the OIDC provider's `max_age`), and the GET never links.
+#[test]
+fn oauth_sso_clears_stale_links_and_stamps_auth_time() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    create_oauth(dir.path().to_str().unwrap(), "github").unwrap();
+    let read = |rel: &str| fs::read_to_string(dir.path().join(rel)).unwrap();
+
+    let service = read("app/services/oauth_sso.sl");
+    let begin_state = service
+        .split("static def begin_state")
+        .nth(1)
+        .and_then(|rest| rest.split("\n  end").next())
+        .unwrap();
+    assert!(
+        begin_state.contains(r#"session_delete("oauth_link_user")"#),
+        "{begin_state}"
+    );
+    assert!(
+        service.contains(r#"session_set("auth_time", DateTime.utc.to_unix)"#),
+        "{service}"
+    );
+    assert!(service.contains(r#"respond_to?("sso_only?")"#), "{service}");
+
+    let controller = read("app/controllers/oauth_controller.sl");
+    let start = controller
+        .split("def start(req)")
+        .nth(1)
+        .and_then(|rest| rest.split("\nend").next())
+        .unwrap();
+    assert!(!start.contains("begin_link"), "{start}");
+    assert!(
+        start.contains(r#"redirect("/oauth/identities")"#),
+        "{start}"
+    );
+    assert!(
+        controller.contains("def link_provider(req)"),
+        "{controller}"
+    );
 }

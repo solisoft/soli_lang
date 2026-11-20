@@ -161,14 +161,27 @@ pub fn create_oauth(folder: &str, provider: &str) -> Result<(), String> {
             "oauth reauth",
         )?;
     }
+    if controller_has(app_path, "def link_provider") {
+        append_routes_once(
+            app_path,
+            oauth::LINK_ROUTES_MARKER,
+            &oauth::link_routes_snippet(),
+            "oauth link",
+        )?;
+    }
     print_success(provider);
     Ok(())
 }
 
 /// Does the app's OAuth controller have the `/oauth/reauth` actions?
 fn controller_has_reauth(app_path: &Path) -> bool {
+    controller_has(app_path, "def reauthenticate")
+}
+
+/// Does the app's OAuth controller contain `needle`?
+fn controller_has(app_path: &Path, needle: &str) -> bool {
     fs::read_to_string(app_path.join("app/controllers/oauth_controller.sl"))
-        .map(|source| source.contains("def reauthenticate"))
+        .map(|source| source.contains(needle))
         .unwrap_or(false)
 }
 
@@ -185,6 +198,43 @@ fn warn_about_predecessors(app_path: &Path) {
                 "  \x1b[33mnote\x1b[0m   app/services/oauth_client.sl is the old `OauthClient` service; \
                  delete it, app/services/*_oauth.sl and app/controllers/oauth_controller.sl, then \
                  re-run this command for each provider: they now use `OauthSso` (app/services/oauth_sso.sl)"
+            );
+        }
+    }
+    // Linking used to start from `GET /auth/:provider`: a cross-site link to it
+    // from a recently signed-in user's browser began attaching a provider.
+    let controller = app_path.join("app/controllers/oauth_controller.sl");
+    if let Ok(source) = fs::read_to_string(&controller) {
+        if source.contains("def identities") && !source.contains("def link_provider") {
+            println!(
+                "  \x1b[33mnote\x1b[0m   app/controllers/oauth_controller.sl starts linking a provider from \
+                 GET /auth/:provider, which any site can make a signed-in browser send; delete it, \
+                 app/services/oauth_sso.sl and app/views/oauth/identities.html.slv, then re-run this \
+                 command: linking moves to POST /auth/:provider/link"
+            );
+        }
+    }
+    // OauthSso written before SSO-only accounts and auth_time: it links a
+    // provider to a `soli generate saml` account by its address.
+    if let Ok(source) = fs::read_to_string(app_path.join("app/services/oauth_sso.sl")) {
+        if source.contains("class OauthSso") && !source.contains("def sso_only?") {
+            println!(
+                "  \x1b[33mnote\x1b[0m   app/services/oauth_sso.sl predates SSO-only accounts: it links a \
+                 provider to an account that must sign in through its identity provider, and records no \
+                 auth_time; replace it with the current version (delete it and re-run this command)"
+            );
+        }
+    }
+    // Microsoft identities were stored under the bare `sub`; they are
+    // `<tid>:<sub>` now, and the current service adopts the old rows.
+    if let Ok(source) = fs::read_to_string(app_path.join("app/services/microsoft_oauth.sl")) {
+        if source.contains("class MicrosoftOauth") && !source.contains("adopt_legacy_identity") {
+            println!(
+                "  \x1b[33mnote\x1b[0m   app/services/microsoft_oauth.sl stores identities under the bare \
+                 `sub`, which is unique only within one tenant. The current version stores `<tid>:<sub>` and \
+                 rewrites an old row on its owner's next sign-in (when the tenant recorded with it matches, \
+                 or in a single-tenant app); delete the file and run `soli generate oauth microsoft` — \
+                 see /docs/security/oauth-client"
             );
         }
     }

@@ -97,29 +97,46 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
         <p class="text-gray-400 mt-3 mb-6 leading-relaxed">
             A <strong class="text-white">public</strong> client (SPA, mobile) has no secret, so PKCE is forced on and cannot be
             switched off &mdash; it is the only thing binding the code to the requester.
+            <code class="text-amber-300">post_logout_redirect_uris</code> (an option) lists where
+            <code>/oauth/logout</code> may send the browser back to; left out, the client&rsquo;s
+            <code>redirect_uris</code> serve, as they did before the option existed, and <code>[]</code> means nowhere.
         </p>
 
-        <h3 class="text-lg font-semibold text-white mb-3">Two edits to <code class="text-amber-300">sessions_controller.sl</code></h3>
+        <h3 class="text-lg font-semibold text-white mb-3">Record when the user signed in, and come back mid-flow</h3>
         <p class="text-gray-400 mb-3 leading-relaxed">
-            The generator does not modify files it did not create, so make these yourself:
+            The generator does not modify files it did not create, so make these edits yourself.
+            <strong class="text-white">Every path that signs a user in</strong> records the moment, next to its
+            <code>session_set("user_id", &hellip;)</code>:
         </p>
-<pre data-filename="app/controllers/sessions_controller.sl"><code class="language-soli text-sm"># in `create`, next to session_regenerate():
-session_set("auth_time", DateTime.utc().to_unix())
-
-# and replace the final `return redirect("/")` with:
-destination = session_get("oidc_return_to") ?? "/"
+<pre data-filename="every sign-in path"><code class="language-soli text-sm">session_set("auth_time", DateTime.utc.to_unix)</code></pre>
+        <ul class="list-disc list-inside space-y-1 text-gray-400 mt-3 mb-3 text-sm">
+            <li>Password: <code>SessionsController#create</code>, next to <code>session_regenerate()</code></li>
+            <li>Two-factor: <code>TwoFactorController#verify</code>, the code check that finishes the sign-in</li>
+            <li>Sign-up: <code>RegistrationsController#create</code>; password reset: <code>PasswordsController#update</code> (both sign the user in)</li>
+            <li>Passkey: <code>PasskeySessionsController#create</code>; magic link: <code>MagicLinksController#show</code>; SAML: <code>SamlController#acs</code></li>
+            <li>OAuth provider: already done by <code>OauthSso.sign_in</code></li>
+        </ul>
+        <p class="text-gray-400 mb-3 leading-relaxed">
+            <strong class="text-white">Impersonation</strong> must <code class="text-amber-300">session_delete("auth_time")</code>
+            when an admin starts and when they stop impersonating: the session then belongs to someone who did not sign in at
+            that time. A remember-me cookie restoring a session is not a sign-in either: leave <code>auth_time</code> unset there.
+            Then, in <code>SessionsController#create</code>, replace the final <code>return redirect("/")</code> with:
+        </p>
+<pre data-filename="app/controllers/sessions_controller.sl"><code class="language-soli text-sm">destination = session_get("oidc_return_to") ?? "/"
 session_delete("oidc_return_to")
 return redirect(destination)</code></pre>
         <p class="text-gray-400 mt-3 leading-relaxed">
-            Without the first, the provider does not know when the user signed in: the id_token carries no
+            Without <code>auth_time</code> the provider does not know when the user signed in: the id_token carries no
             <code class="text-amber-300">auth_time</code> (it used to claim the authorization instant, which told a client that a
-            day-old session was fresh), and a request with <code>max_age</code> is answered <code>login_required</code>. Without
-            the second, a user who signs in mid-flow lands on the home page instead of completing the authorization.
+            day-old session was fresh), and a request with <code>max_age</code> is answered <code>login_required</code> &mdash; a
+            missing value counts as unknown, never as now. Without the redirect edit, a user who signs in mid-flow lands on the
+            home page instead of completing the authorization.
         </p>
         <p class="text-gray-400 mt-3 leading-relaxed">
             <strong class="text-white"><code>prompt</code> and <code>max_age</code>.</strong> <code>prompt=none</code> answers
             <code>login_required</code> when no one is signed in and <code>consent_required</code> when consent is missing, without
-            showing a page. <code>max_age=N</code> is honoured from the <code>auth_time</code> the first edit records: an older (or
+            showing a page. <code>prompt=consent</code> shows the consent screen even when consent was given before or the
+            client has <code>skip_consent</code>. <code>max_age=N</code> is honoured from the recorded <code>auth_time</code>: an older (or
             unrecorded) sign-in is answered <code>login_required</code>. <code>prompt=login</code> is always answered
             <code>login_required</code>: the provider cannot make the person sign in again on its own, and OIDC Core &sect;3.1.2.1
             prefers that error to silently ignoring the request.
@@ -145,11 +162,14 @@ return redirect(destination)</code></pre>
             client asked for <code class="text-amber-300">offline_access</code>.
         </p>
         <p class="text-gray-400 mb-4 leading-relaxed">
-            <strong class="text-white">A password reset ends the grants.</strong> A refresh token records the user&rsquo;s
-            <code class="text-amber-300">session_version</code> when it is issued; once that has moved &mdash; a password reset, an
-            account taken over from an unconfirmed squatter, anything that signs every session out &mdash; the next refresh is
-            refused <code>invalid_grant</code> and its whole family revoked. Without it a stolen refresh token outlived the reset
-            meant to lock its thief out.
+            <strong class="text-white">A password reset ends the grants.</strong> An authorization code, a device approval and a
+            refresh token each record the user&rsquo;s <code class="text-amber-300">session_version</code> when they are made; once
+            that has moved &mdash; a password reset, an account taken over from an unconfirmed squatter, anything that signs every
+            session out &mdash; the code exchange or device poll is refused <code>invalid_grant</code>, and so is the next refresh
+            (its whole family revoked); introspection reports such a refresh token inactive. A refresh token minted from a grant
+            carries the grant&rsquo;s version, never the user&rsquo;s current one. Rows written before the field existed count as
+            version 0. Without this, a squatter&rsquo;s code issued minutes before the address&rsquo;s owner took the account over
+            still turned into tokens for it.
         </p>
         <p class="text-gray-400 mb-4 leading-relaxed">
             The <code class="text-amber-300">id_token</code> carries <code>iss</code>, <code>sub</code>, <code>aud</code>,
@@ -205,7 +225,7 @@ SOLI_OIDC_PUBLIC_KEY="$(cat new.pub.pem)"
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-semibold text-white mb-2">Logout asks unless the request proves itself</h4>
-                <p class="text-gray-400 text-sm">A bare <code>GET /oauth/logout</code> shows a confirmation page that posts back (CSRF-checked). The page is skipped, and <code>post_logout_redirect_uri</code> honoured, only for an <code>id_token_hint</code> this provider signed &mdash; verified with <code>jwt_verify</code> (RS256, the active or previous key, your issuer, a year of leeway on the expiry since RP-Initiated Logout allows an expired hint) &mdash; that names the user signed in here. An access token is not a hint. The hint used to be read with <code>jwt_decode_unsafe</code>, so anyone could forge one and skip the confirmation.</p>
+                <p class="text-gray-400 text-sm">A bare <code>GET /oauth/logout</code> shows a confirmation page that posts back (CSRF-checked). The page is skipped, and <code>post_logout_redirect_uri</code> honoured, only for an <code>id_token_hint</code> this provider signed &mdash; verified with <code>jwt_verify</code> (RS256, the active or previous key, your issuer, a year of leeway on the expiry since RP-Initiated Logout allows an expired hint) &mdash; that names the user signed in here. An access token is not a hint. The hint used to be read with <code>jwt_decode_unsafe</code>, so anyone could forge one and skip the confirmation. With no one signed in there is nothing to end: the visitor gets a &ldquo;You are signed out&rdquo; page with a link back instead of an immediate redirect, which would let anyone holding an id_token bounce visitors through this endpoint. The return URI must be one of the client&rsquo;s <code>post_logout_redirect_uris</code> (or, without that field, its <code>redirect_uris</code>).</p>
             </div>
         </div>
     </section>
@@ -219,8 +239,8 @@ SOLI_OIDC_PUBLIC_KEY="$(cat new.pub.pem)"
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed list-disc list-inside">
             <li>Registered <code class="text-amber-300">redirect_uris</code> must be absolute <code>http</code>/<code>https</code> with no fragment. Custom-scheme native redirects (<code>com.example.app:/cb</code>) are rejected at registration, because the redirect helper only accepts http(s); supporting them would mean bypassing the guard that closes the open redirect.</li>
             <li>An app serving files from <code class="text-amber-300">public/.well-known/</code> (ACME HTTP-01, for example) can shadow the discovery document, since static files take precedence for <code>GET</code>.</li>
-            <li><strong class="text-white">Token introspection (RFC 7662):</strong> <code>POST /oauth/introspect</code> answers <code>{"active": true, &hellip;}</code> for a live token and <code>{"active": false}</code> for anything else. Confidential clients only, and each introspects only the tokens issued to it; a resource server that checks other clients&rsquo; tokens is registered by an admin with <code>"introspect_any": true</code>.</li>
-            <li><strong class="text-white">Dynamic registration (RFC 7591):</strong> off until <code>SOLI_OIDC_REGISTRATION_TOKEN</code> is set; that value is the initial access token. Registrants cannot request <code>client_credentials</code>, the device grant, <code>skip_consent</code>, <code>introspect_any</code> or scopes outside <code>OIDC_SUPPORTED_SCOPES</code>. Redirect URIs must be <code>https</code>, or <code>http</code> to <code>127.0.0.1</code>, <code>[::1]</code> or <code>localhost</code> only (RFC 8252 &sect;7.3).</li>
+            <li><strong class="text-white">Token introspection (RFC 7662):</strong> <code>POST /oauth/introspect</code> answers <code>{"active": true, &hellip;}</code> for a live token and <code>{"active": false}</code> for anything else &mdash; including a refresh token whose user&rsquo;s session version moved since it was issued. Confidential clients only, and each introspects only the tokens issued to it; a resource server that checks other clients&rsquo; tokens is registered by an admin with <code>"introspect_any": true</code>.</li>
+            <li><strong class="text-white">Dynamic registration (RFC 7591):</strong> off until <code>SOLI_OIDC_REGISTRATION_TOKEN</code> is set; that value is the initial access token. Registrants cannot request <code>client_credentials</code>, the device grant, <code>skip_consent</code>, <code>introspect_any</code> or scopes outside <code>OIDC_SUPPORTED_SCOPES</code>. Redirect URIs (and the optional <code>post_logout_redirect_uris</code>) must be <code>https</code>, or <code>http</code> to <code>127.0.0.1</code>, <code>[::1]</code> or <code>localhost</code> only (RFC 8252 &sect;7.3) &mdash; the whole host: after it only <code>:port</code> and a path or query, and no backslash anywhere, so <code>http://localhost.evil.example/</code>, <code>http://[::1]evil.example/</code> and <code>http://localhost:80\evil.example</code> are refused.</li>
             <li><strong class="text-white">Device grant (RFC 8628):</strong> opt a client in with <code>urn:ietf:params:oauth:grant-type:device_code</code>. The device gets a device code and a <code>WDJB-MJHT</code>-style user code from <code>/oauth/device_authorization</code>, the person approves at <code>/oauth/device</code>, and the device polls the token endpoint (<code>authorization_pending</code>, <code>slow_down</code>, <code>access_denied</code>, <code>expired_token</code>). A device code yields tokens exactly once.</li>
             <li><strong class="text-white">Signed request objects (RFC 9101):</strong> register the client&rsquo;s public PEM as <code>request_object_key</code>; its <code>request=&lt;jwt&gt;</code> claims replace the query parameters. <code>request_uri</code> is not supported.</li>
             <li><strong class="text-white">Machine-to-machine:</strong> add <code>"client_credentials"</code> to a confidential client's <code>grant_types</code> (off by default) and it can request a token with <code>grant_type=client_credentials</code>. The token's <code>sub</code> is the client, with <code>gty: "client-credentials"</code>; there is no id token or refresh token, <code>openid</code> and <code>offline_access</code> are refused, and userinfo answers 401.</li>

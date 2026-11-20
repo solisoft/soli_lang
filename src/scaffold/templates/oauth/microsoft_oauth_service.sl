@@ -34,6 +34,12 @@
 # user has linked it (/oauth/identities). `preferred_username` is never an
 # address: it is whatever the directory calls the user.
 #
+# An identity's uid is `<tid>:<sub>` (`sub` is only unique within a tenant).
+# Apps generated before that stored the bare `sub`; such a row is rewritten to
+# the new form the first time its owner signs in (`adopt_legacy_identity`) —
+# when the tenant recorded with it is the token's, or, for a row that recorded
+# none, only in a single-tenant app.
+#
 # The id_token is read without checking its signature, on purpose: it arrives
 # from Microsoft's token endpoint over TLS, in answer to this server's own
 # request (OpenID Connect Core §3.1.3.7 allows exactly that).
@@ -146,6 +152,34 @@ class MicrosoftOauth
     nil
   end
 
+  # An identity stored under the bare `sub` (before uids were `<tid>:<sub>`)
+  # becomes `uid`, so its owner still signs in to the same account — but only
+  # when that row is provably this tenant's user: the `tid` recorded with it
+  # (`raw`) is the token's, or, when it recorded none, this app trusts a single
+  # tenant (in a multi-tenant one the same `sub` may be someone else's).
+  static def adopt_legacy_identity(claims, uid)
+    return nil unless OauthIdentity.find_for("microsoft", uid).nil?
+
+    sub = claims["sub"].to_s
+    return nil if sub.blank?
+
+    legacy = OauthIdentity.find_for("microsoft", sub)
+    return nil if legacy.nil?
+
+    raw = legacy.raw
+    recorded_tenant = type(raw) == "hash" ? raw["tid"].to_s.downcase : ""
+    if recorded_tenant.present?
+      return nil unless recorded_tenant == claims["tid"].to_s.downcase
+    elsif MicrosoftOauth.multi_tenant?
+      Logger.warn("Microsoft: identity #{legacy._key} has a bare sub and no tenant; not adopted (multi-tenant app)")
+      return nil
+    end
+
+    legacy.uid = uid
+    legacy.save
+    legacy
+  end
+
   static def complete!(code)
     token_data = MicrosoftOauth.exchange_code(code)
     if token_data["error"]
@@ -156,6 +190,7 @@ class MicrosoftOauth
     # The tenant and `sub` (unique to the user within this app) together, so
     # an identity is never confused across directories.
     uid = "#{claims["tid"].to_s.downcase}:#{claims["sub"]}"
+    MicrosoftOauth.adopt_legacy_identity(claims, uid)
     email = MicrosoftOauth.verified_email(claims)
     user = OauthSso.find_or_create_user("microsoft", uid, email, claims["name"], claims)
     OauthSso.sign_in(user)

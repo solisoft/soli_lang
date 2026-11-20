@@ -8,7 +8,9 @@
 class OauthDeviceCode < Model
   # Fields: device_code_digest, user_code, client_id, scope, status
   # ("pending" | "approved" | "denied"), user_key, auth_time, interval,
-  # last_polled_at, expires_at, consumed_at, refresh_chain_id.
+  # last_polled_at, expires_at, consumed_at, refresh_chain_id, session_version
+  # (the user's when they approved: a poll after it moved — a password reset,
+  # an account takeover — gets no tokens).
 
   # Returns {device_code, user_code, expires_in, interval}. The device code is
   # shown to the device once; only its digest is persisted.
@@ -25,6 +27,7 @@ class OauthDeviceCode < Model
       "status": "pending",
       "user_key": nil,
       "auth_time": nil,
+      "session_version": nil,
       "interval": OIDC_DEVICE_INTERVAL,
       "last_polled_at": 0,
       "expires_at": now + OIDC_DEVICE_CODE_TTL,
@@ -84,14 +87,16 @@ class OauthDeviceCode < Model
 
   # Record the person's decision. Only a still-pending code can be decided, so
   # a second tab cannot flip an answer already given.
-  static def decide(user_code, approved, user_key, auth_time)
+  static def decide(user_code, approved, user_key, auth_time, session_version = 0)
     normalized = OauthDeviceCode.normalize(user_code)
     now = DateTime.utc().to_unix()
     status = approved ? "approved" : "denied"
     rows = @sdbql{
       FOR d IN oauth_device_codes
         FILTER d.user_code == #{normalized} AND d.status == "pending" AND d.expires_at > #{now}
-        UPDATE d WITH { status: #{status}, user_key: #{user_key}, auth_time: #{auth_time} } IN oauth_device_codes
+        UPDATE d WITH {
+          status: #{status}, user_key: #{user_key}, auth_time: #{auth_time}, session_version: #{session_version}
+        } IN oauth_device_codes
         RETURN NEW
     }
     return nil unless rows.is_a?("array")

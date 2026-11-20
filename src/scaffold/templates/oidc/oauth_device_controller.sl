@@ -33,7 +33,15 @@ class OauthDeviceController < Controller
     code = params["user_code"].to_s
     return this._confirm_step(code) if params["approve"].to_s.blank?
 
-    row = OauthDeviceCode.decide(code, params["approve"].to_s == "1", user["_key"], session_get("auth_time"))
+    # The session version is recorded with the decision: a password reset or an
+    # account takeover between now and the device's next poll ends this grant.
+    row = OauthDeviceCode.decide(
+      code,
+      params["approve"].to_s == "1",
+      user["_key"],
+      session_get("auth_time"),
+      user.current_session_version
+    )
     return this._enter_step("That code is invalid, expired or already used.") if row.nil?
 
     if params["approve"].to_s == "1"

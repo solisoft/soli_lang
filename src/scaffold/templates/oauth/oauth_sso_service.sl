@@ -7,12 +7,19 @@
 # Which account:
 #
 #   1. the one already linked to this (provider, uid);
-#   2. while a signed-in user is linking a provider (/oauth/identities), that
-#      user — refused when the identity belongs to someone else, when the
-#      account's email is not confirmed, or when its owner has not signed in
-#      (or re-entered their password) in the last ten minutes;
-#   3. the account with the provider's verified email, linked from now on;
+#   2. while a signed-in user is linking a provider (POST /auth/:provider/link,
+#      from /oauth/identities), that user — refused when the identity belongs
+#      to someone else, when the account's email is not confirmed, when its
+#      owner has not signed in (or re-entered their password) in the last ten
+#      minutes, or when it signs in through single sign-on only;
+#   3. the account with the provider's verified email, linked from now on —
+#      never one that signs in through single sign-on only (`User#sso_only?`,
+#      `soli generate saml`): a provider vouching for the address must not be
+#      a way around the identity provider that account answers to;
 #   4. a new one, when sign-up is open (AUTH_SIGNUP, as for /signup).
+#
+# An SSO-only account signs in through its identity provider and nothing else:
+# rule 1 refuses it too, should a provider have been linked before it became one.
 #
 # Rule 3 hands an existing account to whoever proves the address at the
 # provider. If that account never confirmed its email, someone else may have
@@ -28,11 +35,15 @@ class OauthSso
     600
   end
 
-  # Store a random state token in the session and return it for the authorize URL.
+  # Store a random state token in the session and return it for the authorize
+  # URL. Every flow starts as a sign-in: a link left over from a flow abandoned
+  # half-way (`oauth_link_user`) is dropped here, and only `begin_link`, called
+  # after this, sets it again.
   static def begin_state(provider)
     state = Crypto.random_hex(32)
     session_set("oauth_state", state)
     session_set("oauth_provider", provider)
+    session_delete("oauth_link_user")
     state
   end
 
@@ -98,8 +109,18 @@ class OauthSso
     at > 0 && DateTime.utc.to_unix - at <= OauthSso.reauth_seconds
   end
 
+  # Does `user` sign in through single sign-on only? Asked through
+  # `respond_to?` so an app whose User has no `sso_only?` (no SAML) keeps working.
+  static def sso_only?(user)
+    return false if user.nil?
+    return false unless user.respond_to?("sso_only?")
+
+    user.sso_only? == true
+  end
+
   # Why `user` may not link a provider right now, or nil.
   static def link_refusal(user)
+    return "this account signs in through single sign-on only" if OauthSso.sso_only?(user)
     return "confirm your email address before connecting another account" unless user.confirmed?
     return "sign in again before connecting another account" unless OauthSso.recently_authenticated?(user)
 
@@ -142,7 +163,12 @@ class OauthSso
       OauthSso.link(user, provider, uid, email, raw, identity.nil?)
       return user
     end
-    return User.find(identity.user_id) unless identity.nil?
+    unless identity.nil?
+      user = User.find(identity.user_id)
+      OauthSso.refuse("this account signs in through single sign-on only") if OauthSso.sso_only?(user)
+
+      return user
+    end
 
     OauthSso.refuse("#{provider.capitalize} did not share a verified email address") if email.blank?
 
@@ -173,6 +199,10 @@ class OauthSso
       OauthSso.link(user, provider, uid, email, raw, false)
       return user
     end
+
+    # Linked by address, an SSO-only account would gain a way in that its
+    # identity provider does not control — and keep it once removed there.
+    OauthSso.refuse("this account signs in through single sign-on only") if OauthSso.sso_only?(user)
 
     OauthSso.take_over_unconfirmed(user) unless user.confirmed?
     OauthSso.link(user, provider, uid, email, raw, true)
@@ -213,8 +243,13 @@ class OauthSso
     session_set("session_version", user.current_session_version)
     OauthSso.clear_state
     # A provider sign-in is a fresh proof of identity; linking one is not
-    # (the session was already signed in) and leaves the stamp as it was.
-    OauthSso.mark_authenticated(user) unless linking
+    # (the session was already signed in) and leaves the stamps as they were.
+    # `auth_time` is what an OIDC provider (`soli generate oidc_provider`)
+    # puts in its id_tokens and checks `max_age` against.
+    unless linking
+      OauthSso.mark_authenticated(user)
+      session_set("auth_time", DateTime.utc.to_unix)
+    end
     session_set("oauth_linked", "1") if linking
   end
 end

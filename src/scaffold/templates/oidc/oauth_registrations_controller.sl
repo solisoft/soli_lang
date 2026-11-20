@@ -40,6 +40,17 @@ class OauthRegistrationsController < Controller
       )
     end
 
+    post_logout = metadata["post_logout_redirect_uris"]
+    unless post_logout.nil?
+      if type(post_logout) != "array"
+        return this._error("invalid_client_metadata", "post_logout_redirect_uris must be an array")
+      end
+      bad = post_logout.filter(fn(uri) { !OauthClient.registrable_redirect_uri?(uri) })
+      if bad.length() != 0
+        return this._error("invalid_client_metadata", "Not a registrable post_logout_redirect_uri: #{bad.join(", ")}")
+      end
+    end
+
     grant_types = metadata["grant_types"] ?? ["authorization_code"]
     unsupported = grant_types.filter(fn(grant) { !["authorization_code", "refresh_token"].includes?(grant) })
     if unsupported.length() != 0
@@ -64,7 +75,10 @@ class OauthRegistrationsController < Controller
     result = OauthClient.register(name, redirect_uris, {
       "client_type": public_client ? "public" : "confidential",
       "scopes": scopes,
-      "grant_types": grant_types
+      "grant_types": grant_types,
+      # Never nil here: a client registered through this endpoint is sent back
+      # after logout only where it said, not to every redirect_uri.
+      "post_logout_redirect_uris": post_logout ?? []
     })
 
     body = {
@@ -72,6 +86,7 @@ class OauthRegistrationsController < Controller
       "client_id_issued_at": DateTime.utc().to_unix(),
       "client_name": name,
       "redirect_uris": redirect_uris,
+      "post_logout_redirect_uris": post_logout ?? [],
       "grant_types": grant_types,
       "response_types": ["code"],
       "token_endpoint_auth_method": auth_method,
