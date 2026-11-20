@@ -15,17 +15,25 @@
 //! application — `< Model`, `< Controller`, a module from a library — a method
 //! not found may be inherited from there, so it is not reported. An interface
 //! declared outside the application's files is not checked either.
+//!
+//! The same holds for `abstract class`: a concrete class of the app that
+//! inherits an `abstract def` without defining it is refused, since the
+//! method it would run raises.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::ast::stmt::{ClassDecl, InterfaceDecl, MethodDecl, Parameter, Program, StmtKind};
 
-/// A class missing a method of an interface it implements.
+/// A class missing a method of an interface it implements, or of an abstract
+/// class it extends.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Broken {
     pub class: String,
+    /// The interface, or with `from_abstract` the abstract class.
     pub interface: String,
+    /// The method is an `abstract def` of the class named in `interface`.
+    pub from_abstract: bool,
     pub method: String,
     /// The interface's parameter count.
     pub arity: usize,
@@ -55,6 +63,13 @@ impl Broken {
                 format!("{n} arguments")
             }
         };
+        if self.from_abstract {
+            return format!(
+                "class `{}` ({place}) extends abstract class `{}` but does not define `{}`: \
+                 calling it would raise — define it, or declare `abstract class {}`",
+                self.class, self.interface, self.method, self.class
+            );
+        }
         match self.found_arity {
             None => format!(
                 "class `{}` ({place}) implements `{}` but has no method `{}` ({}): \
@@ -192,7 +207,7 @@ pub fn find_in_files(files: &[(PathBuf, Program, bool)]) -> Vec<Broken> {
         order,
     } = collect(files);
     let mut found = Vec::new();
-    for (class_name, decl, file) in order {
+    for &(ref class_name, decl, file) in &order {
         if decl.is_module {
             continue;
         }
@@ -217,6 +232,7 @@ pub fn find_in_files(files: &[(PathBuf, Program, bool)]) -> Vec<Broken> {
                 found.push(Broken {
                     class: class_name.clone(),
                     interface: interface_name.clone(),
+                    from_abstract: false,
                     method: wanted.name.clone(),
                     arity: wanted_arity,
                     found_arity,
@@ -224,6 +240,89 @@ pub fn find_in_files(files: &[(PathBuf, Program, bool)]) -> Vec<Broken> {
                     line: decl.span.line,
                 });
             }
+        }
+    }
+    found.extend(unimplemented_abstract_methods(&units, &order));
+    found
+}
+
+/// The class in `start`'s chain (itself, its included modules, then its
+/// superclasses) that defines instance method `name` nearest to it, or `None`
+/// when the chain leaves the application first.
+fn nearest_definer<'a>(
+    start: &'a ClassDecl,
+    name: &str,
+    units: &HashMap<String, &'a ClassDecl>,
+) -> Option<&'a ClassDecl> {
+    let defines = |decl: &ClassDecl| decl.methods.iter().any(|m| m.name == name && !m.is_static);
+    let mut current = Some(start);
+    let mut seen = 0;
+    while let Some(decl) = current {
+        seen += 1;
+        if seen > 64 {
+            return None;
+        }
+        if defines(decl) {
+            return Some(decl);
+        }
+        for module in &decl.includes {
+            let unit = units.get(module.as_str())?;
+            if defines(unit) {
+                return Some(unit);
+            }
+        }
+        current = match &decl.superclass {
+            None => None,
+            Some(parent) => Some(*units.get(parent.as_str())?),
+        };
+    }
+    None
+}
+
+/// Concrete classes that inherit an `abstract def` they never define.
+fn unimplemented_abstract_methods<'a>(
+    units: &HashMap<String, &'a ClassDecl>,
+    order: &[Declared<'a>],
+) -> Vec<Broken> {
+    let mut found = Vec::new();
+    for (class_name, decl, file) in order {
+        if decl.is_abstract || decl.is_module {
+            continue;
+        }
+        let mut ancestor = decl
+            .superclass
+            .as_deref()
+            .and_then(|p| units.get(p).copied());
+        let mut seen = 0;
+        while let Some(parent) = ancestor {
+            seen += 1;
+            if seen > 64 {
+                break;
+            }
+            for name in &parent.abstract_methods {
+                let definer = nearest_definer(decl, name, units);
+                let missing = definer.is_some_and(|d| std::ptr::eq(d, parent));
+                if missing
+                    && !found
+                        .iter()
+                        .any(|b: &Broken| &b.class == class_name && &b.method == name)
+                {
+                    found.push(Broken {
+                        class: class_name.clone(),
+                        interface: parent.name.clone(),
+                        from_abstract: true,
+                        method: name.clone(),
+                        arity: 0,
+                        found_arity: None,
+                        file: file.to_path_buf(),
+                        line: decl.span.line,
+                    });
+                }
+            }
+            ancestor = parent
+                .superclass
+                .as_deref()
+                .and_then(|p| units.get(p).copied());
         }
     }
     found
@@ -367,8 +466,28 @@ mod tests {
             "class MemoryRepo implements Repository\n  def find(id)\n    id\n  end\nend\n",
         );
         let err = crate::serve::global_names::check_app(dir.path()).unwrap_err();
-        assert!(err.starts_with("classes missing a method"), "{err}");
+        assert!(err.starts_with("classes missing a method of an interface"), "{err}");
         assert!(err.contains("no method `count`"), "{err}");
         assert_eq!(find_in_app(dir.path()).len(), 1);
+    }
+
+    #[test]
+    fn a_concrete_class_missing_an_abstract_method_is_reported() {
+        let all = files(&[(
+            "app/models/shapes.sl",
+            "abstract class Shape\n  abstract def area -> Float\n  abstract def name\nend\n\
+             abstract class Polygon < Shape\n  def name\n    \"polygon\"\n  end\nend\n\
+             class Square < Polygon\nend\n\
+             class Circle < Shape\n  def area\n    3.14\n  end\n  def name\n    \"circle\"\n  end\nend\n",
+        )]);
+        let found = find_in_files(&all);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].class, "Square");
+        assert_eq!(found[0].method, "area");
+        let message = found[0].message(Path::new(""));
+        assert!(
+            message.contains("extends abstract class `Shape` but does not define `area`"),
+            "{message}"
+        );
     }
 }

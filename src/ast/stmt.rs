@@ -325,6 +325,15 @@ pub struct ClassDecl {
     /// `true` when parsed as `module Name … end` (mixin + namespace).
     #[serde(default)]
     pub is_module: bool,
+    /// `abstract class Shape … end`: `Shape.new` raises; a subclass is
+    /// instantiated instead.
+    #[serde(default)]
+    pub is_abstract: bool,
+    /// The `abstract def`s of this class, by name. Each is also in `methods`,
+    /// with a body that raises, so a subclass that forgot one fails loudly on
+    /// both engines. The type checker and the boot check read this list.
+    #[serde(default)]
+    pub abstract_methods: Vec<String>,
     /// Modules mixed into instances: `include Greetable`.
     #[serde(default)]
     pub includes: Vec<String>,
@@ -592,6 +601,8 @@ impl EnumDecl {
             class_statements: Vec::new(),
             nested_classes: Vec::new(),
             is_module: false,
+            is_abstract: false,
+            abstract_methods: Vec::new(),
             includes: Vec::new(),
             extends: Vec::new(),
             included_hooks: Vec::new(),

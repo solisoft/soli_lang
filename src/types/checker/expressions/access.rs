@@ -182,7 +182,9 @@ impl TypeChecker {
                 match name {
                     "class" | "inspect" | "to_s" | "to_string" => return Ok(Type::String),
                     "nil?" | "blank?" | "present?" => return Ok(Type::Bool),
-                    "is_a?" => {
+                    // `x.is_a?("Repository")` (a class or an interface name),
+                    // `Klass.implements?("Repository")`.
+                    "is_a?" | "implements?" => {
                         return Ok(Type::Function {
                             params: vec![Type::String],
                             return_type: Box::new(Type::Bool),

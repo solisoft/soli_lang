@@ -14,7 +14,10 @@ impl Parser {
             self.export_declaration()
         } else if self.check(&TokenKind::Fn) {
             self.function_declaration()
-        } else if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
+        } else if self.check(&TokenKind::Class)
+            || self.check(&TokenKind::Module)
+            || self.at_abstract_before(&TokenKind::Class)
+        {
             self.class_declaration()
         } else if self.check(&TokenKind::Enum) {
             self.enum_declaration()
@@ -131,7 +134,10 @@ impl Parser {
         // Parse the declaration being exported
         let inner = if self.check(&TokenKind::Fn) {
             self.function_declaration()?
-        } else if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
+        } else if self.check(&TokenKind::Class)
+            || self.check(&TokenKind::Module)
+            || self.at_abstract_before(&TokenKind::Class)
+        {
             self.class_declaration()?
         } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()?
@@ -196,10 +202,19 @@ impl Parser {
     }
 
     pub(crate) fn class_declaration(&mut self) -> ParseResult<Stmt> {
+        // `abstract class Shape`: `abstract` is contextual, not a keyword, so
+        // a variable or method named `abstract` keeps working.
+        let is_abstract = self.at_abstract_before(&TokenKind::Class);
+        if is_abstract {
+            self.advance();
+        }
         self.class_nesting += 1;
         let parsed = self.class_declaration_body();
         self.class_nesting -= 1;
         let mut stmt = parsed?;
+        if let StmtKind::Class(decl) = &mut stmt.kind {
+            Self::settle_abstract(decl, is_abstract)?;
+        }
         if self.class_nesting == 0 && self.resolve_class_constants {
             if let StmtKind::Class(decl) = &mut stmt.kind {
                 super::class_constants::resolve(decl);
@@ -266,6 +281,8 @@ impl Parser {
                     class_statements: Vec::new(),
                     nested_classes: Vec::new(),
                     is_module,
+                    is_abstract: false,
+                    abstract_methods: Vec::new(),
                     includes: Vec::new(),
                     extends: Vec::new(),
                     included_hooks: Vec::new(),
@@ -285,6 +302,7 @@ impl Parser {
 
         let mut fields = Vec::new();
         let mut methods = Vec::new();
+        let mut abstract_methods: Vec<String> = Vec::new();
         let mut constructor = None;
         let mut static_block = None;
         let mut class_statements = Vec::new();
@@ -345,7 +363,15 @@ impl Parser {
                     ));
                 }
                 constructor = Some(self.parse_constructor()?);
-            } else if self.check(&TokenKind::Class) || self.check(&TokenKind::Module) {
+            } else if self.at_abstract_before(&TokenKind::Fn) {
+                let method_visibility = explicit_visibility.unwrap_or(section_visibility);
+                let method = self.parse_abstract_method(method_visibility, is_static)?;
+                abstract_methods.push(method.name.clone());
+                methods.push(method);
+            } else if self.check(&TokenKind::Class)
+                || self.check(&TokenKind::Module)
+                || self.at_abstract_before(&TokenKind::Class)
+            {
                 // Handle nested class / module declaration
                 let nested_class = self.class_declaration()?;
                 if let StmtKind::Class(mut nested_class_decl) = nested_class.kind {
@@ -396,6 +422,8 @@ impl Parser {
                 class_statements,
                 nested_classes,
                 is_module,
+                is_abstract: false,
+                abstract_methods,
                 includes,
                 extends,
                 included_hooks,
@@ -1114,19 +1142,128 @@ impl Parser {
         })
     }
 
+    /// `abstract` (an identifier, not a keyword) directly before `next`.
+    pub(crate) fn at_abstract_before(&self, next: &TokenKind) -> bool {
+        matches!(&self.peek().kind, TokenKind::Identifier(word) if word == "abstract")
+            && self.tokens.get(self.current + 1).map(|t| &t.kind) == Some(next)
+    }
+
+    /// `abstract def area -> Float`: a signature with no body. The body is
+    /// filled in by [`Self::settle_abstract`], which knows the class.
+    fn parse_abstract_method(
+        &mut self,
+        visibility: Visibility,
+        is_static: bool,
+    ) -> ParseResult<MethodDecl> {
+        let start_span = self.current_span();
+        self.advance(); // abstract
+        if is_static {
+            return Err(ParserError::general(
+                "a static method cannot be abstract",
+                start_span,
+            ));
+        }
+        self.expect(&TokenKind::Fn)?;
+        let name = self.expect_identifier()?;
+        let params = if self.check(&TokenKind::LeftParen) {
+            self.parse_parameters()?
+        } else {
+            Vec::new()
+        };
+        let return_type = if self.match_token(&TokenKind::Arrow) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        self.match_token(&TokenKind::Semicolon);
+        let span = start_span.merge(&self.previous_span());
+        Ok(MethodDecl {
+            visibility,
+            is_static: false,
+            name,
+            type_params: Vec::new(),
+            params,
+            return_type,
+            body: Vec::new().into(),
+            span,
+        })
+    }
+
+    /// Mark `decl` abstract (or not) and give each `abstract def` its body: a
+    /// `throw` naming the method, so a subclass that forgot one fails with
+    /// that message on both engines. An `abstract def` is refused in a class
+    /// that is not itself abstract, and in a module.
+    fn settle_abstract(decl: &mut ClassDecl, is_abstract: bool) -> ParseResult<()> {
+        decl.is_abstract = is_abstract;
+        if let Some(first) = decl.abstract_methods.first() {
+            if !is_abstract || decl.is_module {
+                let span = decl
+                    .methods
+                    .iter()
+                    .find(|m| &m.name == first)
+                    .map(|m| m.span)
+                    .unwrap_or(decl.span);
+                return Err(ParserError::general(
+                    format!(
+                        "`abstract def {first}` in {} '{}', which is not abstract: write `abstract class {}`",
+                        if decl.is_module { "module" } else { "class" },
+                        decl.name,
+                        decl.name
+                    ),
+                    span,
+                ));
+            }
+        }
+        for method in decl.methods.iter_mut() {
+            if decl.abstract_methods.contains(&method.name) && method.body.is_empty() {
+                let message = format!(
+                    "abstract method {}#{} is not implemented: a subclass of {} must define `{}`",
+                    decl.name, method.name, decl.name, method.name
+                );
+                let throw = Stmt::new(
+                    StmtKind::Throw(Expr::new(ExprKind::StringLiteral(message), method.span)),
+                    method.span,
+                    None,
+                );
+                method.body = vec![throw].into();
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn interface_declaration(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
         self.expect(&TokenKind::Interface)?;
 
         let name = self.expect_identifier()?;
-        self.expect(&TokenKind::LeftBrace)?;
+        // Two forms: `interface X { … }` and, like a class, `interface X … end`.
+        let close = if self.match_token(&TokenKind::LeftBrace) {
+            TokenKind::RightBrace
+        } else {
+            TokenKind::End
+        };
 
         let mut methods = Vec::new();
-        while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+        while !self.check(&close) && !self.is_at_end() {
+            if !self.check(&TokenKind::Fn) {
+                return Err(ParserError::general(
+                    format!(
+                        "interface '{name}' holds method signatures only (`def name(params) -> Type`, \
+                         no body), then `{}`; found '{}'",
+                        if close == TokenKind::End { "end" } else { "}" },
+                        self.peek().kind
+                    ),
+                    self.current_span(),
+                ));
+            }
             methods.push(self.parse_interface_method()?);
         }
 
-        self.expect(&TokenKind::RightBrace)?;
+        if close == TokenKind::End {
+            self.expect(&TokenKind::End)?;
+        } else {
+            self.expect(&TokenKind::RightBrace)?;
+        }
         let span = start_span.merge(&self.previous_span());
 
         Ok(Stmt::new(
@@ -1145,7 +1282,12 @@ impl Parser {
         self.expect(&TokenKind::Fn)?;
 
         let name = self.expect_identifier()?;
-        let params = self.parse_parameters()?;
+        // `def count -> Int`: no parentheses, no parameters — as in a class.
+        let params = if self.check(&TokenKind::LeftParen) {
+            self.parse_parameters()?
+        } else {
+            Vec::new()
+        };
 
         let return_type = if self.match_token(&TokenKind::Arrow) {
             Some(self.parse_type()?)

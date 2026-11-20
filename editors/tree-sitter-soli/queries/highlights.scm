@@ -27,6 +27,7 @@
   "let"
   "const"
   "static"
+  "abstract"
 ] @keyword.modifier
 
 (visibility) @keyword.modifier

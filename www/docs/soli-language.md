@@ -2897,19 +2897,20 @@ print(c.before())   # "authenticated" (inherited from BaseController)
 
 ### Interfaces
 
-An interface names methods a class promises to have. It is written with
-braces; each method is a signature, with `fn` or `def`:
+An interface names methods a class promises to have: one signature per line,
+no body. It is written like a class, with `end` (the brace form
+`interface X { fn m() }` is read too):
 
 ```soli
 # Interface Segregation: small contracts
-interface Repository {
-  fn find(id: Int) -> String
-  fn count() -> Int
-}
+interface Repository
+  def find(id: Int) -> String
+  def count -> Int
+end
 
-interface Notifier {
-  fn notify(message: String) -> String
-}
+interface Notifier
+  def notify(message: String) -> String
+end
 
 # Single Responsibility: one job per class
 class MemoryRepository implements Repository
@@ -2958,6 +2959,23 @@ A parameter or field typed with an interface accepts any class that
 implements it, directly or through a superclass, and its methods are typed by
 the interface's signatures.
 
+**Matching the signature.** An implementation need not repeat the interface's
+annotations: `def find(id)` satisfies `def find(id: Int) -> String`. Where both
+sides are annotated they must agree — a parameter may be wider than the
+interface's (`Float` for `Int`), the return narrower — and the error names what
+differs (`parameter 1 ('id') is String here, Int in the interface`). The method
+may take extra parameters if they have defaults.
+
+**At run time**, `is_a?` takes an interface name as well as a class name, and a
+class answers `implements?`:
+
+```soli
+repo = CachedRepository.new
+repo.is_a?("Repository")                    # true — through MemoryRepository
+CachedRepository.implements?("Repository")  # true
+MemoryRepository.implements?("Notifier")    # false
+```
+
 **When the contract is checked.** `soli run`, `soli check` and `soli test` type-check
 the class against the interface: a missing method, or one whose signature
 differs, is an error. In an application, `soli serve` checks every class under
@@ -2970,8 +2988,54 @@ and the modules they `include`; when that chain leaves the application
 (`class User < Model implements Searchable`), a method not found may be inherited
 from the framework, so it is not reported.
 
-Interfaces are not runtime values: `x.is_a?(Repository)` does not work. Test for
-a method with `x.respond_to?("find")`.
+### Abstract Classes
+
+An abstract class is a contract with shared code: `abstract def` declares a
+method its subclasses must define, and its ordinary methods may call it.
+
+```soli
+abstract class Shape
+  abstract def area -> Float
+  abstract def name -> String
+
+  def describe -> String
+    "#{@name} of area #{@area}"
+  end
+end
+
+class Square < Shape
+  side: Float
+
+  new(side: Float)
+    @side = side
+  end
+
+  def area -> Float
+    @side * @side
+  end
+
+  def name -> String
+    "square"
+  end
+end
+
+Square.new(1.5).describe   # "square of area 2.25"
+Shape.new                  # raises: cannot instantiate abstract class Shape
+```
+
+- `Shape.new` raises; instantiate a subclass.
+- A concrete subclass that does not define every inherited `abstract def` is a
+  type error, and in an application `soli serve` refuses to boot on it
+  (`smell/unimplemented-interface`). A subclass that leaves them to its own
+  subclasses is declared `abstract class` too.
+- Under `--no-type-check`, calling a method left abstract raises
+  `abstract method Shape#area is not implemented: a subclass of Shape must define 'area'`.
+- `abstract def` belongs in an abstract class (elsewhere it is a parse error), has
+  no body, and cannot be `static`. `abstract` is not a reserved word: a variable or
+  method may still be called `abstract`.
+
+Interfaces have no default methods: for shared code, use an abstract class or a
+`module` you `include`.
 
 #### `~` shorthand for `implements`
 

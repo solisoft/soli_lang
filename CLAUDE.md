@@ -298,18 +298,19 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
 
 ## SOLID Principles
 
-Apply these OOP design principles for maintainable code. Interfaces are the
-tool for I and D: written with braces, implemented with `implements` (or `~`).
+Apply these OOP design principles for maintainable code. Interfaces and
+abstract classes are the tools: an interface is a contract (`implements`, or
+`~`), an abstract class a contract with shared code.
 
 ```soli
 # I — small interfaces over one large one
-interface Repository {
-  fn find(id: Int) -> String
-}
+interface Repository
+  def find(id: Int) -> String
+end
 
-interface Notifier {
-  fn notify(message: String) -> String
-}
+interface Notifier
+  def notify(message: String) -> String
+end
 
 # S — each class does one thing
 class MemoryRepository implements Repository
@@ -340,16 +341,31 @@ class WelcomeService
     @notifier.notify("welcome #{@repo.find(id)}")
   end
 end
+
+# O — extend by adding a subclass, not by editing an `if` chain in the caller
+abstract class Shape
+  abstract def area -> Float
+
+  def describe -> String
+    "area #{@area}"
+  end
+end
+
+class Square < Shape
+  def area -> Float
+    4.0
+  end
+end
 ```
 
-O — extend by adding a class that implements the interface, not by editing an
-`if` chain in the caller. Soli has no abstract classes or default methods in
-interfaces; share code through a superclass or a `module` you `include`.
-
-A class missing a method of its interface is a type error under `soli run` /
-`soli check` / `soli test`, and `soli serve` refuses to boot on it
-(`smell/unimplemented-interface`). Interfaces are not runtime values —
-`x.is_a?(Repository)` does not work; use `x.respond_to?("find")`.
+- A class missing a method of its interface, or a concrete subclass missing an
+  `abstract def`, is a type error under `soli run` / `soli check` / `soli test`, and
+  `soli serve` refuses to boot on it (`smell/unimplemented-interface`).
+- An implementation need not repeat the interface's annotations.
+- `x.is_a?("Repository")` and `Klass.implements?("Repository")` answer at run time
+  (names as strings, like `is_a?("Post")`); `Shape.new` on an abstract class raises.
+- Interfaces have no default methods: share code through an abstract class or a
+  `module` you `include`.
 
 ## Linting
 
@@ -369,7 +385,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `smell/unreachable-code` - no code after return
 - `smell/empty-catch` - catch blocks shouldn't be empty
 - `smell/duplicate-methods` - no duplicate methods (an instance `def x` and a `static def x` are distinct)
-- `smell/unimplemented-interface` - a class of an app `implements` an interface but lacks one of its methods (or has it with an unusable arity); `soli serve` refuses to boot on it
+- `smell/unimplemented-interface` - a class of an app `implements` an interface but lacks one of its methods (or has it with an unusable arity), or extends an `abstract class` without defining an `abstract def`; `soli serve` refuses to boot on it
 - `smell/duplicate-global` - two files of an app declaring the same top-level class, module, `def` or `const` (the later one replaces the earlier); `soli serve` refuses to boot on it. Controllers' top-level `def`s (function-style actions) are exempt
 - `smell/deep-nesting` - nesting ≤4 levels
 - `smell/undefined-local` - reads of a bare name never assigned in the function scope (catches typos that bypass `let` because `let` is optional)

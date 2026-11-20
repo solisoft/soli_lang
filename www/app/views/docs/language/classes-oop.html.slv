@@ -792,14 +792,14 @@ print(cache.get("session:123"))</code></pre>
             Interfaces
         </h2>
 
-        <p class="text-gray-400 mb-4">An interface names methods a class promises to have. It is written with braces; each method is a signature, with <code class="text-orange-400">fn</code> or <code class="text-orange-400">def</code>.</p>
+        <p class="text-gray-400 mb-4">An interface names methods a class promises to have: one signature per line, no body. It is written like a class, with <code class="text-orange-400">end</code> (the brace form <code class="text-orange-400">interface X { fn m() }</code> is read too).</p>
 
         <section id="interface-basic" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Repository {
-  fn find(id: Int) -&gt; String
-  fn count() -&gt; Int
-}
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Repository
+  def find(id: Int) -&gt; String
+  def count -&gt; Int
+end
 
 class MemoryRepository implements Repository
   def find(id: Int) -&gt; String
@@ -817,13 +817,13 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Multiple Interfaces</h3>
                 <p class="text-gray-400 mb-3">A class can implement multiple interfaces.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Printable {
-  fn render() -&gt; String
-}
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Printable
+  def render -&gt; String
+end
 
-interface Exportable {
-  fn export() -&gt; String
-}
+interface Exportable
+  def export -&gt; String
+end
 
 class Report implements Printable, Exportable
   def render -&gt; String
@@ -841,9 +841,9 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Depending on an interface</h3>
                 <p class="text-gray-400 mb-3">A parameter or field typed with an interface accepts any class that implements it, directly or through a superclass, and its methods are typed by the interface&rsquo;s signatures &mdash; the dependency-inversion half of SOLID.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Notifier {
-  fn notify(message: String) -&gt; String
-}
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Notifier
+  def notify(message: String) -&gt; String
+end
 
 class LogNotifier implements Notifier
   def notify(message: String) -&gt; String
@@ -874,7 +874,24 @@ end
 
 WelcomeService.new(CachedRepository.new, LogNotifier.new).welcome(2)
 # "logged: welcome cached user 2"</code></pre>
-                <p class="text-gray-400 mt-3">Interfaces are not runtime values: <code class="text-orange-400">x.is_a?(Repository)</code> does not work. Test for a method with <code class="text-orange-400">x.respond_to?("find")</code>.</p>
+            </div>
+        </section>
+
+        <section id="interface-signatures" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Matching the signature</h3>
+                <p class="text-gray-400">An implementation need not repeat the interface&rsquo;s annotations: <code class="text-orange-400">def find(id)</code> satisfies <code class="text-orange-400">def find(id: Int) -&gt; String</code>. Where both sides are annotated they must agree &mdash; a parameter may be wider than the interface&rsquo;s (<code class="text-orange-400">Float</code> for <code class="text-orange-400">Int</code>), the return narrower &mdash; and the error names what differs (<code class="text-orange-400">parameter 1 ('id') is String here, Int in the interface</code>). The method may take extra parameters if they have defaults.</p>
+            </div>
+        </section>
+
+        <section id="interface-runtime" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">At run time</h3>
+                <p class="text-gray-400 mb-3"><code class="text-orange-400">is_a?</code> takes an interface name as well as a class name, and a class answers <code class="text-orange-400">implements?</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">repo = CachedRepository.new
+repo.is_a?("Repository")                    # true — through MemoryRepository
+CachedRepository.implements?("Repository")  # true
+MemoryRepository.implements?("Notifier")    # false</code></pre>
             </div>
         </section>
 
@@ -916,6 +933,48 @@ end</code></pre>
                 </p>
             </div>
         </section>
+    </section>
+
+    <!-- Abstract classes -->
+    <section id="section-abstract-classes" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Abstract Classes</h2>
+        <p class="text-gray-400 mb-4">An abstract class is a contract with shared code: <code class="text-orange-400">abstract def</code> declares a method its subclasses must define, and its ordinary methods may call it.</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="Example"><code class="language-soli text-sm">abstract class Shape
+  abstract def area -&gt; Float
+  abstract def name -&gt; String
+
+  def describe -&gt; String
+    "#{@name} of area #{@area}"
+  end
+end
+
+class Square &lt; Shape
+  side: Float
+
+  new(side: Float)
+    @side = side
+  end
+
+  def area -&gt; Float
+    @side * @side
+  end
+
+  def name -&gt; String
+    "square"
+  end
+end
+
+Square.new(1.5).describe   # "square of area 2.25"
+Shape.new                  # raises: cannot instantiate abstract class Shape</code></pre>
+        </div>
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li><code class="text-orange-400">Shape.new</code> raises; instantiate a subclass.</li>
+            <li>A concrete subclass that does not define every inherited <code class="text-orange-400">abstract def</code> is a type error, and in an application <code class="text-orange-400">soli serve</code> refuses to boot on it (<code class="text-orange-400">smell/unimplemented-interface</code>). A subclass that leaves them to its own subclasses is declared <code class="text-orange-400">abstract class</code> too.</li>
+            <li>Under <code class="text-orange-400">--no-type-check</code>, calling a method left abstract raises <code class="text-orange-400">abstract method Shape#area is not implemented</code>.</li>
+            <li><code class="text-orange-400">abstract def</code> belongs in an abstract class (elsewhere it is a parse error), has no body, and cannot be <code class="text-orange-400">static</code>. <code class="text-orange-400">abstract</code> is not a reserved word.</li>
+            <li>Interfaces have no default methods: for shared code, use an abstract class or a <code class="text-orange-400">module</code> you <code class="text-orange-400">include</code>.</li>
+        </ul>
     </section>
 
 </div>

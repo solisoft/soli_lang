@@ -208,6 +208,12 @@ pub enum Op {
     Include,
     /// Mix a module's instance methods in as class methods. Same stack as Include.
     Extend,
+    /// Record that the class on top of the stack `implements` the interface
+    /// named by the constant (for `is_a?` / `implements?`). Leaves the class.
+    Implements(u16),
+    /// Mark the class on top of the stack `abstract` (`X.new` raises).
+    /// Leaves the class.
+    Abstract,
     /// Add a method to a class. Name from constant index.
     Method(u16),
     /// Add a static method to a class. Name from constant index.

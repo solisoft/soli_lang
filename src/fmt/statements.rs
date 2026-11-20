@@ -700,6 +700,21 @@ impl Printer<'_> {
         self.newline();
     }
 
+    /// `abstract def area -> Float`: the signature only — its body is the
+    /// parser's `throw`, not source.
+    fn print_abstract_method(&mut self, decl: &MethodDecl) {
+        self.write("abstract def ");
+        self.write(&decl.name);
+        if !decl.params.is_empty() {
+            self.print_param_list(&decl.params);
+        }
+        if let Some(ret) = &decl.return_type {
+            self.write(" -> ");
+            self.write(&format_type(ret));
+        }
+        self.newline();
+    }
+
     fn print_constructor_decl(&mut self, decl: &ConstructorDecl) {
         self.write("new");
         self.print_param_list(&decl.params);
@@ -773,6 +788,9 @@ impl Printer<'_> {
     }
 
     fn print_class_decl(&mut self, decl: &ClassDecl) {
+        if decl.is_abstract {
+            self.write("abstract ");
+        }
         if decl.is_module {
             self.write("module ");
         } else {
@@ -908,7 +926,11 @@ impl Printer<'_> {
                 // not picked up later by `print_stmt` and dropped inside
                 // the body before the first statement.
                 p.flush_comments_before(m.span.line_usize());
-                p.print_method_decl(m);
+                if decl.abstract_methods.contains(&m.name) {
+                    p.print_abstract_method(m);
+                } else {
+                    p.print_method_decl(m);
+                }
             }
             // Nested classes
             if !decl.nested_classes.is_empty() {
@@ -1029,18 +1051,18 @@ impl Printer<'_> {
     }
 
     fn print_interface_decl(&mut self, decl: &InterfaceDecl) {
-        // Soli's parser only accepts `interface X { fn m() ... }` — braces are
-        // required, and methods use `fn`, not `def` (see parser/declarations
-        // .rs::interface_declaration / parse_interface_method).
+        // The `end` form, like a class: `def` signatures, no parentheses for
+        // no parameters. The parser also reads `interface X { fn m() }`.
         self.write("interface ");
         self.write(&decl.name);
-        self.write(" {");
         self.newline();
         self.with_indent(|p| {
             for m in &decl.methods {
-                p.write("fn ");
+                p.write("def ");
                 p.write(&m.name);
-                p.print_param_list(&m.params);
+                if !m.params.is_empty() {
+                    p.print_param_list(&m.params);
+                }
                 if let Some(ret) = &m.return_type {
                     p.write(" -> ");
                     p.write(&format_type(ret));
@@ -1048,7 +1070,7 @@ impl Printer<'_> {
                 p.newline();
             }
         });
-        self.write("}");
+        self.write("end");
         self.newline();
     }
 

@@ -32,11 +32,8 @@ impl Interpreter {
             }
         };
 
-        if class.is_module {
-            return Err(RuntimeError::type_error(
-                format!("cannot instantiate module {}", class.name),
-                span,
-            ));
+        if let Some(refusal) = class.instantiation_refusal() {
+            return Err(RuntimeError::type_error(refusal, span));
         }
 
         let mut positional_args = Vec::new();
@@ -83,11 +80,8 @@ impl Interpreter {
         named_args: HashMap<String, Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
-        if class.is_module {
-            return Err(RuntimeError::type_error(
-                format!("cannot instantiate module {}", class.name),
-                span,
-            ));
+        if let Some(refusal) = class.instantiation_refusal() {
+            return Err(RuntimeError::type_error(refusal, span));
         }
 
         let instance = Rc::new(RefCell::new(Instance::new(class.clone())));

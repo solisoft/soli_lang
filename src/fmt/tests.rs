@@ -271,29 +271,19 @@ fn nested_ternary_round_trips() {
 // ---- Bug 3: interface bodies need `{ }` braces and `fn` keyword ----
 
 #[test]
-fn interface_uses_brace_body() {
-    let src = "interface Drawable { fn draw() -> String }\n";
-    let formatted = format_source(src).expect("fmt failed");
-    assert!(
-        formatted.contains("interface Drawable {"),
-        "expected braces, got:\n{}",
-        formatted
-    );
-    assert!(
-        formatted.contains("fn draw"),
-        "interface methods must use `fn`, got:\n{}",
-        formatted
-    );
-    assert!(
-        !formatted.contains("def draw"),
-        "interface methods must NOT use `def`, got:\n{}",
-        formatted
+fn interface_is_written_in_the_end_form() {
+    let src = "interface Drawable { fn draw() -> String\nfn scale(by: Float) }\n";
+    assert_fmt(
+        src,
+        "interface Drawable\n  def draw -> String\n  def scale(by: Float)\nend\n",
     );
 }
 
 #[test]
 fn interface_round_trips() {
-    assert_round_trip("interface Printable { fn print() -> String\nfn name() -> String }\n");
+    assert_round_trip(
+        "interface Printable\n  def print -> String\n  def name(full: Bool) -> String\nend\n",
+    );
 }
 
 // ---- Bug 4: postfix `if` / `unless` must round-trip in postfix form ----
@@ -913,9 +903,18 @@ fn lambdas_keep_the_fn_keyword() {
 }
 
 #[test]
-fn interface_members_stay_fn() {
-    // The parser only accepts `fn` inside an interface body.
-    assert_round_trip("interface Named { fn name() -> String }\n");
+fn an_abstract_class_keeps_its_bodiless_methods() {
+    let src = "abstract class Shape\n  abstract def area -> Float\n\n  def describe\n    \"shape\"\n  end\nend\n";
+    let out = format_source(src).expect("fmt failed");
+    assert!(out.starts_with("abstract class Shape\n"), "{out}");
+    assert!(out.contains("  abstract def area -> Float\n"), "{out}");
+    assert!(!out.contains("throw"), "{out}");
+    assert_round_trip(src);
+}
+
+#[test]
+fn an_empty_interface_round_trips() {
+    assert_round_trip("interface Marker\nend\n");
 }
 
 #[test]

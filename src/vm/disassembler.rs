@@ -181,6 +181,11 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Inherit => out.push_str("INHERIT"),
         Op::Include => out.push_str("INCLUDE"),
         Op::Extend => out.push_str("EXTEND"),
+        Op::Abstract => out.push_str("ABSTRACT"),
+        Op::Implements(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("IMPLEMENTS   {:>5} ({})", idx, name));
+        }
         Op::Method(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("METHOD       {:>5} ({})", idx, name));

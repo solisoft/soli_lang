@@ -123,6 +123,15 @@ impl Compiler {
             self.compile_module_ref(module_name, line)?;
             self.emit(Op::Include, line);
         }
+        // After `Op::Inherit`, which rebuilds the class: recorded on the one
+        // that stays.
+        for interface in &decl.interfaces {
+            let idx = self.add_string_constant(interface);
+            self.emit(Op::Implements(idx), line);
+        }
+        if decl.is_abstract {
+            self.emit(Op::Abstract, line);
+        }
         for module_name in &decl.extends {
             self.compile_module_ref(module_name, line)?;
             self.emit(Op::Extend, line);

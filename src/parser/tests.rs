@@ -1889,4 +1889,113 @@ mod depth_limit_tests {
         let source = format!("{}1{}", "(".repeat(40), ")".repeat(40));
         parse(&source).expect("40-deep grouping parses");
     }
+
+    fn interface_of(source: &str) -> Result<crate::ast::InterfaceDecl, String> {
+        let tokens = Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = Parser::new(tokens).parse().map_err(|e| e.to_string())?;
+        match &program.statements[0].kind {
+            crate::ast::StmtKind::Interface(decl) => Ok((**decl).clone()),
+            other => Err(format!("not an interface: {other:?}")),
+        }
+    }
+
+    #[test]
+    fn an_interface_reads_in_the_end_form_and_the_brace_form() -> Result<(), String> {
+        let ruby = interface_of(
+            "interface Repository\n  def find(id: Int) -> String\n  def count -> Int\n  def reset\nend\n",
+        )?;
+        let braces = interface_of(
+            "interface Repository {\n  fn find(id: Int) -> String\n  fn count() -> Int\n  def reset\n}\n",
+        )?;
+        let shape = |decl: &crate::ast::InterfaceDecl| {
+            decl.methods
+                .iter()
+                .map(|m| (m.name.clone(), m.params.len(), m.return_type.is_some()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shape(&ruby), shape(&braces));
+        assert_eq!(
+            shape(&ruby),
+            vec![
+                ("find".to_string(), 1, true),
+                ("count".to_string(), 0, true),
+                ("reset".to_string(), 0, false),
+            ]
+        );
+        assert!(interface_of("interface Marker\nend\n")?.methods.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_method_body_in_an_interface_is_named_as_such() -> Result<(), String> {
+        let Err(err) =
+            interface_of("interface Named\n  def name -> String\n    \"x\"\n  end\nend\n")
+        else {
+            return Err("a method body in an interface parsed".to_string());
+        };
+        assert!(
+            err.contains("interface 'Named' holds method signatures only"),
+            "{err}"
+        );
+        Ok(())
+    }
+
+    fn class_of(source: &str) -> Result<crate::ast::ClassDecl, String> {
+        let tokens = Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = Parser::new(tokens).parse().map_err(|e| e.to_string())?;
+        match &program.statements[0].kind {
+            crate::ast::StmtKind::Class(decl) => Ok((**decl).clone()),
+            other => Err(format!("not a class: {other:?}")),
+        }
+    }
+
+    #[test]
+    fn an_abstract_class_lists_its_bodiless_methods_and_gives_them_a_throw() -> Result<(), String> {
+        let decl = class_of(
+            "abstract class Shape\n  abstract def area -> Float\n  abstract def scale(by: Float)\n  def name\n    \"shape\"\n  end\nend\n",
+        )?;
+        assert!(decl.is_abstract);
+        assert_eq(
+            decl.abstract_methods.clone(),
+            vec!["area".to_string(), "scale".to_string()],
+        );
+        let Some(area) = decl.methods.iter().find(|m| m.name == "area") else {
+            return Err("no area".to_string());
+        };
+        assert!(matches!(
+            area.body.first().map(|s| &s.kind),
+            Some(crate::ast::StmtKind::Throw(_))
+        ));
+        assert!(!class_of("class Plain\nend\n")?.is_abstract);
+        Ok(())
+    }
+
+    fn assert_eq(a: Vec<String>, b: Vec<String>) {
+        assert!(a == b, "{a:?} != {b:?}");
+    }
+
+    #[test]
+    fn abstract_stays_a_plain_name_elsewhere() -> Result<(), String> {
+        let tokens = Scanner::new("abstract = 1\nprint(abstract + 1)\n")
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        Parser::new(tokens).parse().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn an_abstract_def_needs_an_abstract_class() -> Result<(), String> {
+        let Err(err) = class_of("class Shape\n  abstract def area\nend\n") else {
+            return Err("an abstract def in a concrete class parsed".to_string());
+        };
+        assert!(
+            err.contains("`abstract def area` in class 'Shape', which is not abstract"),
+            "{err}"
+        );
+        Ok(())
+    }
 }

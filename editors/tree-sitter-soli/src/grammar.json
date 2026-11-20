@@ -1404,6 +1404,18 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "abstract"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "STRING",
           "value": "class"
         },
@@ -1825,7 +1837,24 @@
         },
         {
           "type": "SYMBOL",
+          "name": "abstract_method"
+        },
+        {
+          "type": "SYMBOL",
           "name": "_statement"
+        }
+      ]
+    },
+    "abstract_method": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "abstract"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "method_signature"
         }
       ]
     },
@@ -5452,6 +5481,10 @@
               {
                 "type": "STRING",
                 "value": "interface"
+              },
+              {
+                "type": "STRING",
+                "value": "abstract"
               },
               {
                 "type": "STRING",

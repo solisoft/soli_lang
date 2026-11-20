@@ -202,7 +202,7 @@ end</code></pre>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">smell/unimplemented-interface</code>
-                <p class="text-gray-400 mt-2">A class of an app <code>implements</code> an interface but lacks one of its methods, or has it with a parameter count the interface&rsquo;s calls cannot use. Methods count from superclasses and included modules; when the chain leaves the app (<code>&lt; Model</code>) a missing method may be inherited from the framework and is not reported. <code>soli serve</code> refuses to boot on it too, naming the class, its file and the method.</p>
+                <p class="text-gray-400 mt-2">A class of an app <code>implements</code> an interface but lacks one of its methods, or has it with a parameter count the interface&rsquo;s calls cannot use &mdash; or it extends an <code>abstract class</code> without defining one of its <code>abstract def</code>s. Methods count from superclasses and included modules; when the chain leaves the app (<code>&lt; Model</code>) a missing method may be inherited from the framework and is not reported. <code>soli serve</code> refuses to boot on it too, naming the class, its file and the method.</p>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">

@@ -427,6 +427,12 @@ print(r)"##,
         "map_filter_chain",
         "let r = [1, 2, 3, 4, 5].map(fn(x) x * 2).filter(fn(x) x > 4)\nprint(r)",
     ),
+    // --- interfaces: is_a? / implements? read the class's `implements`,
+    // its superclasses' too (Op::Implements on the VM) ---
+    (
+        "interface_is_a_and_implements",
+        "interface Shape\n  def area -> Float\nend\nclass Square implements Shape\n  def area\n    4.0\n  end\nend\nclass Big < Square\nend\nb = Big.new\nprint(b.is_a?(\"Shape\"), b.is_a?(\"Square\"), b.is_a?(\"Nope\"), Big.implements?(\"Shape\"), Square.implements?(\"Nope\"), b.area)",
+    ),
     // --- optional-let: bare assignment (no `let`) ---
     ("bare_top_level", "x = 5\nx = x + 1\nprint(x)"),
     (

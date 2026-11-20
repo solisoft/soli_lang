@@ -4149,6 +4149,17 @@ impl Vm {
                     let span = self.current_span();
                     self.op_extend(&class_val, &module_val, span)?;
                 }
+                Op::Abstract => {
+                    if let Some(Value::Class(class)) = self.stack.last() {
+                        class.is_abstract.set(true);
+                    }
+                }
+                Op::Implements(idx) => {
+                    let interface = self.read_string_constant_owned(idx);
+                    if let Some(Value::Class(class)) = self.stack.last() {
+                        class.interfaces.borrow_mut().push(interface);
+                    }
+                }
                 Op::Inherit => {
                     let superclass_val = self.stack.pop().unwrap();
                     let subclass_val = self.stack.last().unwrap().clone();

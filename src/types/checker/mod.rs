@@ -22,6 +22,10 @@ pub struct TypeChecker {
     /// them as globals, so a bare `name = value` anywhere in the file rebinds
     /// the function rather than creating a local (`let name = …` shadows).
     pub(crate) declared_functions: std::collections::HashSet<String>,
+    /// `abstract class` name → its `abstract def`s, which a concrete
+    /// subclass must define. Kept here, not on `ClassType`: that one is
+    /// inline in every `Type::Class`.
+    pub(crate) abstract_methods: std::collections::HashMap<String, Vec<String>>,
     /// For each `def` of the file or the project: the fewest and most
     /// arguments it takes, and the signature it was declared with (a call
     /// reaching another binding of the name is not checked against it).
@@ -57,6 +61,7 @@ impl TypeChecker {
             errors: Vec::new(),
             warnings: Vec::new(),
             declared_functions: std::collections::HashSet::new(),
+            abstract_methods: std::collections::HashMap::new(),
             function_arities: std::collections::HashMap::new(),
             declaring_project: false,
             job_classes: std::collections::HashSet::new(),

@@ -82,6 +82,23 @@ fn vm_define_method(class: Rc<Class>) -> Value {
     ))
 }
 
+/// `Klass.implements?("Repository")` for both engines: the class or a
+/// superclass declares `implements Repository`.
+pub(crate) fn class_implements_fn(class: Rc<Class>) -> Value {
+    Value::NativeFunction(NativeFunction::new(
+        "implements?",
+        Some(1),
+        move |args: &[Value]| -> Result<Value, String> {
+            match args.first() {
+                Some(Value::String(name)) | Some(Value::Symbol(name)) => {
+                    Ok(Value::Bool(class.implements(name.as_ref())))
+                }
+                _ => Err("implements? expects an interface name as a string".to_string()),
+            }
+        },
+    ))
+}
+
 /// `Class.alias_method(new_name, existing_name)` for both engines.
 fn vm_alias_method(class: Rc<Class>) -> Value {
     Value::NativeFunction(NativeFunction::new(
@@ -136,6 +153,7 @@ pub(crate) fn is_class_reflection_member(name: &str) -> bool {
         name,
         "define_method"
             | "alias_method"
+            | "implements?"
             | "class_eval"
             | "methods"
             | "respond_to?"
@@ -440,14 +458,7 @@ impl Vm {
                                     _ => return Err("is_a? expects a string argument".to_string()),
                                 };
                                 let inst_ref = inst_clone.borrow();
-                                let mut current: Option<&Class> = Some(&inst_ref.class);
-                                while let Some(c) = current {
-                                    if c.name == class_name.as_ref() {
-                                        return Ok(Value::Bool(true));
-                                    }
-                                    current = c.superclass.as_deref();
-                                }
-                                Ok(Value::Bool(false))
+                                Ok(Value::Bool(inst_ref.class.is_a_name(class_name.as_ref())))
                             },
                         )));
                     }
@@ -579,6 +590,9 @@ impl Vm {
                 }
                 if name == "alias_method" {
                     return Ok(vm_alias_method(class.clone()));
+                }
+                if name == "implements?" {
+                    return Ok(class_implements_fn(class.clone()));
                 }
                 // The rest of the reflection surface (`class_eval`, `send`,
                 // `methods`, …) lives only in the tree-walker's member access,
@@ -1179,6 +1193,8 @@ impl Vm {
             new_class.vm_init = sub.vm_init.clone();
             new_class.vm_static_methods = sub.vm_static_methods.clone();
             new_class.is_module = sub.is_module;
+            *new_class.interfaces.get_mut() = sub.interfaces.borrow().clone();
+            new_class.is_abstract.set(sub.is_abstract.get());
             new_class.included_modules = sub.included_modules.clone();
             new_class.mixin_static_methods = sub.mixin_static_methods.clone();
             new_class.declared_fields = sub.declared_fields.clone();
@@ -1294,6 +1310,8 @@ impl Vm {
                 new_class.vm_init = current.vm_init.clone();
                 new_class.vm_static_methods = current.vm_static_methods.clone();
                 new_class.is_module = current.is_module;
+                *new_class.interfaces.get_mut() = current.interfaces.borrow().clone();
+                new_class.is_abstract.set(current.is_abstract.get());
                 new_class.included_modules = current.included_modules.clone();
                 new_class.mixin_static_methods = current.mixin_static_methods.clone();
                 new_class.included_hook_stmts = current.included_hook_stmts.clone();

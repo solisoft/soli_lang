@@ -850,6 +850,8 @@ impl Interpreter {
             private_members: Rc::new(RefCell::new(private_members)),
             protected_members: Rc::new(RefCell::new(protected_members)),
             is_module: decl.is_module,
+            interfaces: RefCell::new(decl.interfaces.clone()),
+            is_abstract: std::cell::Cell::new(decl.is_abstract),
             defaults_env,
             ..Default::default()
         };

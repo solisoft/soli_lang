@@ -371,42 +371,249 @@ impl TypeChecker {
 
         // Verify interface implementation
         self.check_interface_implementation(decl);
+        self.check_abstract_methods_defined(decl);
 
         self.env.set_current_class(None);
         Ok(())
     }
 
+    /// A concrete class must define every `abstract def` it inherits: one
+    /// still reached on its abstract declarer would raise when called.
+    fn check_abstract_methods_defined(&mut self, decl: &ClassDecl) {
+        if decl.is_abstract || decl.is_module {
+            return;
+        }
+        let Some(class) = self.env.get_class(&decl.name).cloned() else {
+            return;
+        };
+        let mut ancestor = class.superclass.as_deref();
+        let mut missing: Vec<(String, String)> = Vec::new();
+        while let Some(parent) = ancestor {
+            let declared = self
+                .abstract_methods
+                .get(&parent.name)
+                .cloned()
+                .unwrap_or_default();
+            for name in &declared {
+                let owner = class.find_method_with_owner(name).map(|(_, owner)| owner);
+                if owner == Some(parent.name.as_str())
+                    && !missing.iter().any(|(method, _)| method == name)
+                {
+                    missing.push((name.clone(), parent.name.clone()));
+                }
+            }
+            ancestor = parent.superclass.as_deref();
+        }
+        for (method, owner) in missing {
+            self.errors.push(TypeError::General {
+                message: format!(
+                    "class '{}' does not define abstract method '{}' of '{}': define it, or declare `abstract class {}`",
+                    decl.name, method, owner, decl.name
+                ),
+                span: decl.span,
+            });
+        }
+    }
+
     fn check_interface_implementation(&mut self, decl: &ClassDecl) {
         for iface_name in &decl.interfaces {
-            if let Some(iface) = self.env.get_interface(iface_name).cloned() {
-                if let Some(class) = self.env.get_class(&decl.name) {
-                    for (method_name, sig) in &iface.methods {
-                        if let Some(method) = class.find_method(method_name) {
-                            // Check signature compatibility
-                            let method_params: Vec<Type> =
-                                method.params.iter().map(|(_, t)| t.clone()).collect();
-                            if method_params != sig.params || method.return_type != sig.return_type
-                            {
-                                self.errors.push(TypeError::General {
-                                    message: format!(
-                                        "method '{}' does not match interface signature",
-                                        method_name
-                                    ),
-                                    span: decl.span,
-                                });
-                            }
-                        } else {
-                            self.errors.push(TypeError::General {
-                                message: format!(
-                                    "class '{}' does not implement method '{}' from interface '{}'",
-                                    decl.name, method_name, iface_name
-                                ),
-                                span: decl.span,
-                            });
-                        }
-                    }
+            let Some(iface) = self.env.get_interface(iface_name).cloned() else {
+                continue;
+            };
+            let Some(class) = self.env.get_class(&decl.name).cloned() else {
+                continue;
+            };
+            let mut names: Vec<&String> = iface.methods.keys().collect();
+            names.sort();
+            for method_name in names {
+                let sig = &iface.methods[method_name];
+                let Some(method) = class.find_method(method_name) else {
+                    self.errors.push(TypeError::General {
+                        message: format!(
+                            "class '{}' does not implement method '{}' from interface '{}'",
+                            decl.name, method_name, iface_name
+                        ),
+                        span: decl.span,
+                    });
+                    continue;
+                };
+                // Parameters with a default, when the method is declared in
+                // this class (an inherited one counts every parameter).
+                let required = decl
+                    .methods
+                    .iter()
+                    .find(|m| &m.name == method_name && !m.is_static)
+                    .map(|m| {
+                        m.params
+                            .iter()
+                            .filter(|p| !p.is_block_param && p.default_value.is_none())
+                            .count()
+                    })
+                    .unwrap_or(method.params.len());
+                if let Some(problem) =
+                    signature_mismatch(&method.params, required, &method.return_type, sig)
+                {
+                    self.errors.push(TypeError::General {
+                        message: format!(
+                            "method '{}' of class '{}' does not match interface '{}': {}",
+                            method_name, decl.name, iface_name, problem
+                        ),
+                        span: decl.span,
+                    });
                 }
             }
         }
+    }
+}
+
+/// Why a method does not satisfy an interface signature, or `None` when it
+/// does. An unannotated type (`Any`) on either side matches anything: an
+/// implementation need not repeat the interface's annotations. Where both
+/// sides are annotated, a parameter may be wider than the interface's (it
+/// accepts every argument the interface's callers pass) and the return
+/// narrower (callers get what the interface promised). The method may take
+/// extra parameters only if they have defaults.
+fn signature_mismatch(
+    params: &[(String, Type)],
+    required: usize,
+    return_type: &Type,
+    sig: &crate::types::type_repr::MethodSignature,
+) -> Option<String> {
+    let loose = |t: &Type| matches!(t, Type::Any | Type::Unknown);
+    let count = |n: usize| {
+        if n == 1 {
+            "1 parameter".to_string()
+        } else {
+            format!("{n} parameters")
+        }
+    };
+    if params.len() < sig.params.len() || required > sig.params.len() {
+        let here = if required == params.len() {
+            count(params.len())
+        } else {
+            format!("{} to {} parameters", required, params.len())
+        };
+        return Some(format!(
+            "it takes {here}, the interface {}",
+            count(sig.params.len())
+        ));
+    }
+    for (i, (wanted, (name, actual))) in sig.params.iter().zip(params).enumerate() {
+        if loose(wanted) || loose(actual) || wanted.is_assignable_to(actual) {
+            continue;
+        }
+        return Some(format!(
+            "parameter {} ('{}') is {} here, {} in the interface",
+            i + 1,
+            name,
+            actual,
+            wanted
+        ));
+    }
+    let wanted = &sig.return_type;
+    if !(loose(wanted) || loose(return_type) || return_type.is_assignable_to(wanted)) {
+        return Some(format!(
+            "it returns {} here, {} in the interface",
+            return_type, wanted
+        ));
+    }
+    None
+}
+
+#[cfg(test)]
+mod interface_signature_tests {
+    use crate::types::TypeChecker;
+
+    fn check(source: &str) -> Result<(), String> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
+        TypeChecker::new().check(&program).map_err(|errs| {
+            errs.iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+    }
+
+    const IFACE: &str = "interface Repository {\n  fn find(id: Int) -> String\n}\n";
+
+    fn class(body: &str) -> String {
+        format!("{IFACE}class Repo implements Repository\n{body}\nend\n")
+    }
+
+    #[test]
+    fn an_implementation_need_not_repeat_the_annotations() {
+        check(&class("  def find(id)\n    \"x\"\n  end")).unwrap();
+        check(&class("  def find(id: Int)\n    \"x\"\n  end")).unwrap();
+        check(&class("  def find(id) -> String\n    \"x\"\n  end")).unwrap();
+    }
+
+    #[test]
+    fn an_extra_parameter_with_a_default_is_fine_without_one_it_is_not() {
+        check(&class("  def find(id, scope = nil)\n    \"x\"\n  end")).unwrap();
+        let err = check(&class("  def find(id, scope)\n    \"x\"\n  end")).unwrap_err();
+        assert!(
+            err.contains("it takes 2 parameters, the interface 1 parameter"),
+            "{err}"
+        );
+        let err = check(&class("  def find\n    \"x\"\n  end")).unwrap_err();
+        assert!(err.contains("it takes 0 parameters"), "{err}");
+    }
+
+    #[test]
+    fn annotated_on_both_sides_and_different_names_the_difference() {
+        let err = check(&class("  def find(id: String) -> String\n    id\n  end")).unwrap_err();
+        assert!(
+            err.contains("does not match interface 'Repository': parameter 1 ('id') is String here, Int in the interface"),
+            "{err}"
+        );
+        let err = check(&class("  def find(id: Int) -> Int\n    id\n  end")).unwrap_err();
+        assert!(
+            err.contains("it returns Int here, String in the interface"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_wider_parameter_and_a_narrower_return_are_compatible() {
+        let source = "interface Scale {\n  fn by(factor: Int) -> Float\n}\n\
+            class Doubler implements Scale\n  def by(factor: Float) -> Float\n    factor * 2.0\n  end\nend\n";
+        check(source).unwrap();
+    }
+
+    const SHAPES: &str = "abstract class Shape\n  abstract def area -> Float\n\n  def describe -> String\n    \"area #{@area}\"\n  end\nend\n";
+
+    #[test]
+    fn a_concrete_subclass_must_define_the_abstract_methods() {
+        let err = check(&format!("{SHAPES}class Blob < Shape\nend\n")).unwrap_err();
+        assert!(
+            err.contains("class 'Blob' does not define abstract method 'area' of 'Shape'"),
+            "{err}"
+        );
+        check(&format!(
+            "{SHAPES}class Square < Shape\n  def area -> Float\n    4.0\n  end\nend\n"
+        ))
+        .unwrap();
+    }
+
+    #[test]
+    fn an_abstract_subclass_may_leave_them_to_its_own_subclasses() {
+        let source = format!(
+            "{SHAPES}abstract class Polygon < Shape\nend\n\
+             class Square < Polygon\n  def area -> Float\n    4.0\n  end\nend\n"
+        );
+        check(&source).unwrap();
+        let err = check(&format!(
+            "{SHAPES}abstract class Polygon < Shape\nend\nclass Line < Polygon\nend\n"
+        ))
+        .unwrap_err();
+        assert!(
+            err.contains("class 'Line' does not define abstract method 'area'"),
+            "{err}"
+        );
     }
 }

@@ -627,6 +627,41 @@ end
         (integer)))))
 
 ================================================================================
+Abstract classes and the end form of interfaces
+================================================================================
+
+abstract class Shape
+  abstract def area -> Float
+end
+interface Repository
+  def find(id: Int) -> String
+end
+
+---
+
+(source_file
+  (class_declaration
+    (constant)
+    (class_body
+      (abstract_method
+        (method_signature
+          (identifier)
+          (type_identifier
+            (constant))))))
+  (interface_declaration
+    (constant)
+    (interface_body
+      (method_signature
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier
+              (constant))))
+        (type_identifier
+          (constant))))))
+
+================================================================================
 Union types and typed block parameters
 ================================================================================
 

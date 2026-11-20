@@ -2111,6 +2111,14 @@ pub struct Class {
     pub declared_fields: Rc<RefCell<Vec<String>>>,
     /// `true` when this Class was defined with `module Name … end`.
     pub is_module: bool,
+    /// The interfaces named in `class X implements A, B` (as written). Read
+    /// through [`Class::implements`] / [`Class::is_a_name`], which walk the
+    /// superclasses too. A `RefCell` because the VM sets it after `Op::Class`
+    /// (`Op::Implements`), on the class it already built.
+    pub interfaces: RefCell<Vec<String>>,
+    /// `abstract class X`: `X.new` raises (see [`Class::instantiation_refusal`]).
+    /// A `Cell` for the same reason as `interfaces` (`Op::Abstract`).
+    pub is_abstract: Cell<bool>,
     /// Modules mixed into this class via `include` (instance methods).
     pub included_modules: Rc<RefCell<Vec<Rc<Class>>>>,
     /// Instance methods copied from `extend Module` as class methods.
@@ -2414,6 +2422,8 @@ impl Default for Class {
             intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
+            interfaces: RefCell::new(Vec::new()),
+            is_abstract: Cell::new(false),
             included_modules: Rc::new(RefCell::new(Vec::new())),
             mixin_static_methods: Rc::new(RefCell::new(HashMap::new())),
             included_hook_stmts: Rc::new(RefCell::new(Vec::new())),
@@ -2473,6 +2483,8 @@ impl Class {
             intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
+            interfaces: RefCell::new(Vec::new()),
+            is_abstract: Cell::new(false),
             included_modules: Rc::new(RefCell::new(Vec::new())),
             mixin_static_methods: Rc::new(RefCell::new(HashMap::new())),
             included_hook_stmts: Rc::new(RefCell::new(Vec::new())),
@@ -2824,6 +2836,48 @@ impl Class {
 
         // Store in cache
         *self.all_native_methods_cache.borrow_mut() = Some(all_native_methods);
+    }
+
+    /// Why `Klass.new` is refused, or `None`: a module, or an abstract class.
+    /// Every instantiation path of both engines asks this.
+    pub fn instantiation_refusal(&self) -> Option<String> {
+        if self.is_module {
+            return Some(format!("cannot instantiate module {}", self.name));
+        }
+        if self.is_abstract.get() {
+            return Some(format!(
+                "cannot instantiate abstract class {}: instantiate a subclass that defines its abstract methods",
+                self.name
+            ));
+        }
+        None
+    }
+
+    /// Whether this class or one of its superclasses declares
+    /// `implements interface`.
+    pub fn implements(&self, interface: &str) -> bool {
+        let mut current = Some(self);
+        while let Some(class) = current {
+            if class.interfaces.borrow().iter().any(|i| i == interface) {
+                return true;
+            }
+            current = class.superclass.as_deref();
+        }
+        false
+    }
+
+    /// `is_a?(name)` for an instance of this class: the class itself, a
+    /// superclass, or an interface one of them implements. One definition
+    /// for both engines.
+    pub fn is_a_name(&self, name: &str) -> bool {
+        let mut current = Some(self);
+        while let Some(class) = current {
+            if class.name == name || class.interfaces.borrow().iter().any(|i| i == name) {
+                return true;
+            }
+            current = class.superclass.as_deref();
+        }
+        false
     }
 
     pub fn find_method(&self, name: &str) -> Option<Rc<Function>> {

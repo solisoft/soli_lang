@@ -443,6 +443,8 @@ pub fn register_expectation_class(env: &mut Environment) {
         intercepts_new_memo: Default::default(),
         declared_fields: Rc::new(RefCell::new(Vec::new())),
         is_module: false,
+        interfaces: RefCell::new(Vec::new()),
+        is_abstract: std::cell::Cell::new(false),
         included_modules: Rc::new(RefCell::new(Vec::new())),
         mixin_static_methods: Rc::new(RefCell::new(HashMap::new())),
         included_hook_stmts: Rc::new(RefCell::new(Vec::new())),

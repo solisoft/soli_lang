@@ -240,8 +240,8 @@ pub fn check_app(root: &Path) -> Result<(), String> {
     }
     let heading = match (duplicate_count, problems.len() - duplicate_count) {
         (_, 0) => "duplicate top-level names",
-        (0, _) => "classes missing a method of an interface they implement",
-        _ => "duplicate top-level names and unimplemented interfaces",
+        (0, _) => "classes missing a method of an interface or an abstract class",
+        _ => "duplicate top-level names and classes missing a method of an interface or an abstract class",
     };
     Err(format!("{heading}:\n  - {}", problems.join("\n  - ")))
 }

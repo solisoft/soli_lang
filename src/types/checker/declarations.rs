@@ -11,6 +11,10 @@ impl TypeChecker {
     pub(crate) fn declare_class(&mut self, decl: &ClassDecl) {
         let mut class_type = ClassType::new(decl.name.clone());
         class_type.is_module = decl.is_module;
+        if decl.is_abstract {
+            self.abstract_methods
+                .insert(decl.name.clone(), decl.abstract_methods.clone());
+        }
         class_type.decl_span = (!self.declaring_project).then_some(decl.span);
         class_type.type_params = decl.type_params.clone();
         class_type.constructor_params = decl.constructor.as_ref().map(|ctor| {

@@ -234,6 +234,7 @@ module.exports = grammar({
 
     class_declaration: ($) =>
       seq(
+        optional('abstract'),
         'class',
         field('name', $._class_name),
         optional($.type_parameters),
@@ -278,8 +279,12 @@ module.exports = grammar({
         $.class_field,
         $.constructor,
         $.static_block,
+        $.abstract_method,
         $._statement,
       ),
+
+    // `abstract def area -> Float` in an `abstract class`: no body.
+    abstract_method: ($) => seq('abstract', $.method_signature),
 
     class_field: ($) =>
       seq(
@@ -684,7 +689,7 @@ module.exports = grammar({
         alias($.identifier, $.property_identifier),
         alias($._predicate_name, $.property_identifier),
         alias($.constant, $.property_identifier),
-        alias(choice('new', 'class', 'end', 'in', 'not', 'match', 'if', 'unless', 'then', 'do', 'self', 'nil', 'when', 'case', 'import', 'export', 'try', 'catch', 'fn', 'def', 'next', 'break', 'return', 'and', 'or', 'interface', 'enum', 'module', 'static', 'private', 'public', 'protected', 'const', 'let', 'while', 'for', 'super', 'true', 'false', 'null', 'throw', 'rescue', 'ensure', 'begin', 'finally', 'else', 'elsif', 'from', 'as', 'extends', 'implements', 'until'), $.property_identifier),
+        alias(choice('new', 'class', 'end', 'in', 'not', 'match', 'if', 'unless', 'then', 'do', 'self', 'nil', 'when', 'case', 'import', 'export', 'try', 'catch', 'fn', 'def', 'next', 'break', 'return', 'and', 'or', 'interface', 'abstract', 'enum', 'module', 'static', 'private', 'public', 'protected', 'const', 'let', 'while', 'for', 'super', 'true', 'false', 'null', 'throw', 'rescue', 'ensure', 'begin', 'finally', 'else', 'elsif', 'from', 'as', 'extends', 'implements', 'until'), $.property_identifier),
       ),
 
     _predicate_name: (_) => /[a-zA-Z_][a-zA-Z0-9_]*[?!]/,

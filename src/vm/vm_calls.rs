@@ -803,7 +803,7 @@ impl Vm {
             Value::Class(class)
                 if !(crate::interpreter::domain::value_objects_declared()
                     && class.is_value_object())
-                    && !class.is_module =>
+                    && class.instantiation_refusal().is_none() =>
             {
                 let class = class.clone();
                 match self.resolve_constructor(&class, span)? {
@@ -2485,11 +2485,8 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let callee_idx = self.stack.len() - 1 - argc;
-        if class.is_module {
-            return Err(RuntimeError::type_error(
-                format!("cannot instantiate module {}", class.name),
-                span,
-            ));
+        if let Some(refusal) = class.instantiation_refusal() {
+            return Err(RuntimeError::type_error(refusal, span));
         }
         if crate::interpreter::domain::value_objects_declared() && class.is_value_object() {
             return self.construct_value_object(class, argc, span);
@@ -3308,14 +3305,7 @@ impl Vm {
             let Value::String(class_name) = arg else {
                 return None;
             };
-            let mut current = Some(&inst.class);
-            while let Some(class) = current {
-                if class.name == class_name.as_str() {
-                    return Some(true);
-                }
-                current = class.superclass.as_ref();
-            }
-            return Some(false);
+            return Some(inst.class.is_a_name(class_name.as_str()));
         }
         let method = match arg {
             Value::String(method) | Value::Symbol(method) => method.as_str(),

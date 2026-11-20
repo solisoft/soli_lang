@@ -12,6 +12,26 @@
   assignable to the interface (only the class's own `implements` list was read).
 
 ### Added
+- **language: abstract classes.** `abstract class Shape` with bodiless
+  `abstract def area -> Float`: `Shape.new` raises on both engines
+  (`Class::instantiation_refusal`, shared with modules); a concrete subclass
+  that does not define every inherited abstract method is a type error and,
+  in an app, refuses to boot (`smell/unimplemented-interface`); left
+  unchecked (`--no-type-check`), calling one raises `abstract method
+  Shape#area is not implemented`. `abstract` is contextual, not a reserved
+  word. VM: `Op::Abstract`.
+- **language: `interface X … end`.** An interface is written like a class,
+  with `def` signatures (parentheses optional) and `end`; braces still parse,
+  and `soli fmt` now writes the `end` form. A method body inside an interface
+  is a clear parse error.
+- **language: interfaces at run time.** `x.is_a?("Repository")` is true when
+  the class or a superclass implements it, `Klass.implements?("Repository")`
+  asks a class — the same on both engines (`Class::is_a_name`, VM
+  `Op::Implements`; a differential-engine case guards it).
+- **types: an implementation need not repeat the interface's annotations.**
+  An unannotated parameter or return matches; annotated on both sides, a
+  parameter may be wider and the return narrower; extra parameters need
+  defaults. The error names the parameter or return that differs.
 - **serve: `implements` is checked at boot.** The type checker never runs on an
   application's files, so a class missing a method of its interface booted and
   raised on the first call. `soli serve` and the Worker now refuse to boot,

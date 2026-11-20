@@ -53,6 +53,35 @@ interface Resizable {
   def resize(factor: Float) -> Float
 }
 
+# The `end` form, like a class, with `def` signatures.
+interface Shape
+  def area -> Float
+  def scale(by: Float) -> Float
+end
+
+# An implementation need not repeat the interface's annotations, and may add
+# a parameter that has a default.
+class Tile implements Shape
+  side: Float
+
+  new(side: Float)
+    @side = side
+  end
+
+  def area
+    @side * @side
+  end
+
+  def scale(by, round = false)
+    @side * by
+  end
+end
+
+# A parameter typed with an interface, called through it.
+def total_area(shapes: Array, one: Shape) -> Float
+  one.area + shapes.length
+end
+
 class Person implements Greetable
   def greet
     "Hello"
@@ -187,6 +216,10 @@ class Dog extends Animal ~ Greetable
   end
 end
 
+# Inherits Greetable from Dog.
+class Puppy < Dog
+end
+
 class Cat < Animal ~ Greetable
   def greet
     "meow"
@@ -258,9 +291,10 @@ describe("Interface implementation") do
     assert_eq(shapes.map { |shape| shape.draw }, ["Circle", "Square"])
   end
 
-  test("an interface is not a runtime type for is_a?") do
+  test("is_a? takes an interface name as well as a class name") do
     assert_eq(new Person().is_a?("Person"), true)
-    assert_eq(new Person().is_a?("Greetable"), false)
+    assert_eq(new Person().is_a?("Greetable"), true)
+    assert_eq(new Person().is_a?("Printable"), false)
   end
 end
 
@@ -286,5 +320,29 @@ describe("The ~ shorthand") do
     cat = new Cat()
     assert_eq(cat.breathe, "breathing")
     assert_eq(cat.greet, "meow")
+  end
+
+  test("the end form, unannotated implementations and interface-typed parameters") do
+    tile = Tile.new(3.0)
+    assert_eq(tile.area, 9.0)
+    assert_eq(tile.scale(2.0), 6.0)
+    assert_eq(total_area([1, 2], tile), 11.0)
+  end
+
+  test("is_a? names an interface the class or a superclass implements") do
+    tile = Tile.new(2.0)
+    assert(tile.is_a?("Shape"))
+    assert(tile.is_a?("Tile"))
+    assert(!tile.is_a?("Greetable"))
+    assert(Dog.new.is_a?("Greetable"))
+    assert(Puppy.new.is_a?("Greetable"))
+    assert(Puppy.new.is_a?("Animal"))
+  end
+
+  test("implements? asks a class") do
+    assert(Tile.implements?("Shape"))
+    assert(!Tile.implements?("Greetable"))
+    assert(Dog.implements?("Greetable"))
+    assert(Puppy.implements?("Greetable"))
   end
 end

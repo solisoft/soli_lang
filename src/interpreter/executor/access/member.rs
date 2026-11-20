@@ -962,14 +962,7 @@ impl Interpreter {
                             _ => return Err("is_a? expects a string argument".to_string()),
                         };
                         let inst_ref = inst_clone.borrow();
-                        let mut current_class: Option<&Class> = Some(&inst_ref.class);
-                        while let Some(c) = current_class {
-                            if c.name == class_name {
-                                return Ok(Value::Bool(true));
-                            }
-                            current_class = c.superclass.as_ref().map(|rc| rc.as_ref());
-                        }
-                        Ok(Value::Bool(false))
+                        Ok(Value::Bool(inst_ref.class.is_a_name(class_name)))
                     },
                 )));
             }
@@ -2220,6 +2213,11 @@ impl Interpreter {
                     },
                 )));
             }
+            "implements?" => {
+                return Ok(crate::vm::vm_classes::class_implements_fn(Rc::new(
+                    class.clone(),
+                )));
+            }
             // Metaprogramming: alias_method on a class. Primitive aliases live
             // intra-type in USER_METHODS; regular-class aliases copy within
             // `class.methods`.
@@ -3367,8 +3365,8 @@ pub fn check_attribute_args(
     class: &crate::interpreter::value::Class,
     args: &[Value],
 ) -> Result<(), String> {
-    if class.is_module {
-        return Err(format!("cannot instantiate module {}", class.name));
+    if let Some(refusal) = class.instantiation_refusal() {
+        return Err(refusal);
     }
     match args {
         [] | [Value::Null] | [Value::Hash(_)] => Ok(()),
