@@ -256,7 +256,7 @@ fn emitted_templates_carry_the_security_guards() {
     let read = |rel: &str| fs::read_to_string(dir.path().join(rel)).unwrap();
 
     let sessions = read("app/controllers/oauth_sessions_controller.sl");
-    assert!(!sessions.contains("jwt_decode_unsafe"), "{sessions}");
+    assert!(!sessions.contains("jwt_decode_unsafe("), "{sessions}");
     assert!(sessions.contains("jwt_verify(hint"), "{sessions}");
     assert!(
         sessions.contains(r#""issuer": oidc_issuer()"#),

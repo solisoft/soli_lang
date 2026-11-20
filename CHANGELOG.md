@@ -2,6 +2,62 @@
 
 ## [Unreleased]
 
+### Security
+SSO and SAML audit. Scaffold fixes reach apps generated from now on: an app
+generated earlier keeps its files — copy the changes from a fresh
+`soli generate auth` / `saml` / `oauth` / `oidc_provider`.
+
+- **SAML: an unsigned response could hold a worker for 16–34 s.** About 1 MB
+  of elements under 4,000 namespace declarations cost elements × declarations,
+  before any signature check, on the public ACS route. `Saml.verify_response`
+  now refuses a document over 10,000 elements, 64 distinct prefixes or 10,000
+  declarations, and no XML walk (canonicalization, `Xml.get_element_by_id`,
+  `Xml.get_elements_by_tag`) copies the namespace scope per element any more.
+  Those two `Xml` functions now declare inherited namespaces on the fragment's
+  root only.
+- **`Saml.verify_response` requires `idp_entity_id`.** An empty or missing one
+  skipped the Issuer check, so a response from another IdP sharing the
+  signing key was accepted. It now raises; opt out by name with
+  `any_issuer: true`. `response_id` is nil when only the assertion is signed,
+  and `expires_at` is the earlier of the Conditions and bearer
+  `NotOnOrAfter`. `SignatureMethod` and `DigestMethod` have separate
+  allow-lists.
+- **`jwt_verify` refuses an unknown or mistyped option.** `{"aud": …,
+  "iss": …}` — `jwt_sign`'s names — skipped the audience and issuer checks
+  without a word. It raises now, naming `audience`/`issuer`. New
+  `authorized_party` option (`azp`). An `iat` beyond the leeway fails
+  `InvalidIssuedAt`; a bare base64 public key passed as an HMAC secret raises.
+  A list of audiences is any-of (the docs said all-of).
+- **SAML scaffold: linking an existing account by email is opt-in**
+  (`SAML_LINK_EXISTING=on`). It was on by default: any IdP user asserting a
+  confirmed account's address signed in to it. When on, an account already
+  linked at that issuer is never linked again (a recycled address), the
+  NameID counts as an email only in the `emailAddress` format, and non-ASCII
+  addresses are refused (case folding merged distinct ones). A blank IdP
+  entity id raises; accounts SAML creates are `sso_only` (no password sign-in
+  or reset); provisioning follows `AUTH_SIGNUP` unless `SAML_PROVISION=on`;
+  the request cookie is `__Host-saml_request` behind https and is cleared only
+  after a verified response (a forged cross-site POST cancelled sign-ins).
+- **OAuth scaffold: an account squatted before its owner signed in stayed
+  the squatter's.** Taking over an unconfirmed account cleared its password
+  and sessions but not the provider the squatter had linked, who signed back
+  in with it. The takeover now calls the new `User#revoke_credentials`
+  (password, reset and remember tokens, sessions, and every linked identity,
+  passkey, API token, 2FA secret and magic link), an unconfirmed account
+  cannot link a provider, and linking needs a sign-in in the last 10 minutes
+  (`/oauth/reauth`) and emails the owner. Microsoft takes an address only
+  with `xms_edov` or `verified_primary_email` (no `preferred_username`), GitHub
+  only its verified primary address, with PKCE. Provider error bodies are
+  logged, not shown. The service is renamed `OauthSso`
+  (`app/services/oauth_sso.sl`): `OauthClient` clashed with the OIDC
+  provider's model.
+- **OIDC provider scaffold.** The logout `id_token_hint` is verified (a forged
+  one signed users out without confirmation); `/oauth/introspect` answers
+  only for the caller's own tokens; a refresh token dies when the user's
+  session version moves (password reset, sign-out everywhere); `prompt` and
+  `max_age` are honoured; dynamic registration refuses `http://` redirect
+  URIs except loopback.
+
 ## [2.39.3] - 2026-11-19
 
 ### Security
