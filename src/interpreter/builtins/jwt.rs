@@ -128,6 +128,13 @@ fn is_base64_der_key(text: &str) -> bool {
     }
 }
 
+/// The most leeway `jwt_verify` grants, in seconds: a year, which is what
+/// accepting an expired OpenID Connect logout hint takes (the generated OIDC
+/// provider passes exactly that). Unbounded, a leeway of 10^9 accepted tokens
+/// expired decades ago, and one past the current time made `now - leeway`
+/// wrap inside the verifier.
+const MAX_LEEWAY: i64 = 365 * 86_400;
+
 /// The options `jwt_verify` reads.
 const VERIFY_OPTIONS: &str = "algorithm, key, audience, issuer, subject, authorized_party, leeway";
 
@@ -493,7 +500,16 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                                 expected_authorized_party = Some(string_option(v)?)
                             }
                             "leeway" => match v {
-                                Value::Int(secs) if *secs >= 0 => leeway = Some(*secs as u64),
+                                Value::Int(secs) if (0..=MAX_LEEWAY).contains(secs) => {
+                                    leeway = Some(*secs as u64)
+                                }
+                                Value::Int(secs) if *secs > MAX_LEEWAY => {
+                                    return Err(format!(
+                                        "jwt_verify() option `leeway` is at most {} seconds \
+                                         (a year), got {}",
+                                        MAX_LEEWAY, secs
+                                    ))
+                                }
                                 other => {
                                     return Err(format!(
                                         "jwt_verify() option `leeway` must be a non-negative \
@@ -1568,6 +1584,16 @@ mod tests {
                 "leeway",
                 Value::Int(-1),
                 "`leeway` must be a non-negative Int",
+            ),
+            (
+                "leeway",
+                Value::Int(31_536_001),
+                "`leeway` is at most 31536000 seconds",
+            ),
+            (
+                "leeway",
+                Value::Int(1_000_000_000),
+                "`leeway` is at most 31536000 seconds",
             ),
             (
                 "audience",

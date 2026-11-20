@@ -510,6 +510,7 @@ pub(crate) fn canonicalize(
         &mut in_scope,
         &mut rendered,
         prefix_list,
+        true,
         enveloped,
         skip,
         out,
@@ -520,11 +521,21 @@ pub(crate) fn canonicalize(
 /// context already emitted by ancestors — the heart of the "exclusive" rule:
 /// a declaration is emitted only when visibly utilized and not already in
 /// the output context. Both stacks come back as they were given.
+///
+/// The prefix list is read whole at the apex only. Below it, a listed prefix
+/// can only change what is rendered where an element redeclares it: once the
+/// apex has rendered it, its binding in the input and in the output stay
+/// equal until a declaration splits them. So an element consults the list for
+/// its own declarations, and the walk is linear in the document plus the
+/// list — not elements times listed prefixes, which an attacker-chosen
+/// PrefixList of a hundred thousand tokens turned into minutes of CPU.
+#[allow(clippy::too_many_arguments)]
 fn canonicalize_in(
     el: &Element,
     in_scope: &mut NsStack,
     rendered: &mut NsStack,
     prefix_list: &BTreeSet<String>,
+    apex: bool,
     enveloped: bool,
     skip: Option<*const Element>,
     out: &mut String,
@@ -540,8 +551,16 @@ fn canonicalize_in(
             utilized.insert(a.prefix.as_str());
         }
     }
-    for p in prefix_list {
-        utilized.insert(p.as_str());
+    if apex {
+        for p in prefix_list {
+            utilized.insert(p.as_str());
+        }
+    } else {
+        for (p, _) in &el.ns_decls {
+            if prefix_list.contains(p) {
+                utilized.insert(p.as_str());
+            }
+        }
     }
 
     // The prefixes are distinct, so deciding them all before recording any
@@ -622,7 +641,16 @@ fn canonicalize_in(
                 if skip == Some(c as *const Element) {
                     continue;
                 }
-                canonicalize_in(c, in_scope, rendered, prefix_list, enveloped, skip, out);
+                canonicalize_in(
+                    c,
+                    in_scope,
+                    rendered,
+                    prefix_list,
+                    false,
+                    enveloped,
+                    skip,
+                    out,
+                );
             }
         }
     }
@@ -1562,6 +1590,57 @@ mod tests {
         let elapsed = started.elapsed();
         assert!(
             elapsed < std::time::Duration::from_secs(10),
+            "took {elapsed:?}"
+        );
+    }
+
+    /// Below the apex, the prefix list is consulted only where an element
+    /// redeclares a listed prefix — which renders exactly what consulting it
+    /// at every element did.
+    #[test]
+    fn a_listed_prefix_is_rendered_where_it_is_declared_or_rebound() {
+        // Declared below the apex, then rebound, then the default namespace.
+        let xml = r#"<r><a xmlns:n="urn:1"><b><c xmlns:n="urn:2"><d xmlns:n="urn:2"/></c></b></a><e xmlns="urn:d"><f xmlns=""/></e></r>"#;
+        assert_eq!(
+            c14n_with(xml, &["n", "#default"]),
+            concat!(
+                r#"<r><a xmlns:n="urn:1"><b><c xmlns:n="urn:2"><d></d></c></b></a>"#,
+                r#"<e xmlns="urn:d"><f xmlns=""></f></e></r>"#
+            )
+        );
+        // In scope above the apex: rendered once, on the apex.
+        let xml = r#"<r xmlns:n="urn:1"><s ID="x"><t><u/></t></s></r>"#;
+        let root = parse_document(xml).unwrap();
+        let (target, inherited) =
+            find_by_id(&root, "x", &mut NsStack::from_map(&root_in_scope())).unwrap();
+        let mut out = String::new();
+        let listed: BTreeSet<String> = ["n".to_string()].into();
+        canonicalize(target, &inherited, &listed, false, None, &mut out);
+        assert_eq!(out, r#"<s xmlns:n="urn:1" ID="x"><t><u></u></t></s>"#);
+    }
+
+    /// A caller's prefix list of thousands over hundreds of thousands of
+    /// elements cost a minute: every element inserted the whole list. The
+    /// list is now read once.
+    #[test]
+    fn a_long_prefix_list_over_many_elements_stays_linear() {
+        let mut xml = String::from("<r xmlns:p7=\"urn:7\">");
+        for _ in 0..250_000 {
+            xml.push_str("<a/>");
+        }
+        xml.push_str("</r>");
+        let listed: BTreeSet<String> = (0..2000).map(|i| format!("p{i}")).collect();
+
+        let started = std::time::Instant::now();
+        let canonical = canonicalize_exclusive(&xml, &listed).unwrap();
+        assert!(
+            canonical.starts_with("<r xmlns:p7=\"urn:7\"><a></a>"),
+            "{}",
+            &canonical[..60]
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
             "took {elapsed:?}"
         );
     }

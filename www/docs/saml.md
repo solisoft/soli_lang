@@ -158,9 +158,15 @@ already enforces it, mark the session in `SamlController#acs`:
 - **Successful.** The status is `Success`; otherwise the error names the status.
 - **Reasonable in shape.** Before any of the above is walked, a response with
   more than 10,000 elements, more than 64 distinct namespace prefixes or more
-  than 10,000 namespace declarations is refused. A real one has a few dozen
-  elements and half a dozen prefixes; through 2.39.2 a 1 MiB unsigned response
-  with thousands of prefixes cost tens of seconds of CPU.
+  than 30,000 namespace declarations is refused. A real one has a few dozen
+  elements and half a dozen prefixes (an IdP that repeats `xmlns:xs` and
+  `xmlns:xsi` on every `AttributeValue` makes two declarations per value, and
+  passes); through 2.39.2 a 1 MiB unsigned response with thousands of prefixes
+  cost tens of seconds of CPU. A signature's `SignedInfo` must hold its
+  `CanonicalizationMethod`, its `SignatureMethod` and one `Reference`, nothing
+  else, and an `InclusiveNamespaces` `PrefixList` may name at most 64
+  prefixes: before that limit, an unsigned response whose transform listed a
+  hundred thousand prefixes cost minutes of CPU before the key was consulted.
 
 Comments inside a value do not split it: `user@example.com<!---->.evil.com`
 reads as the whole signed text. A namespace prefix bound to an empty URI
@@ -282,7 +288,8 @@ Options: `sign` (`"assertion"` by default, `"response"`, `"both"`, `"none"`),
   `EncryptedID` (turn assertion encryption off at the IdP), ECDSA and RSA-PSS
   signatures, SHA-384, inclusive canonicalization. `SignatureMethod` takes
   only `rsa-sha256`/`rsa-sha512` (and `rsa-sha1` with `allow_sha1`),
-  `DigestMethod` only `sha256`/`sha512` (and `sha1`).
+  `DigestMethod` only `sha256`/`sha512` (and `sha1`, also only with
+  `allow_sha1`).
 - **Requests are not signed**, and the HTTP-POST binding is not offered for
   them. Most identity providers accept unsigned requests.
 - **No single logout.** Signing out of the application does not sign out of

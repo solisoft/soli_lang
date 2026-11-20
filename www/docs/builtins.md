@@ -3076,12 +3076,12 @@ Verifies and decodes a JWT token. **The verifier — not the token — chooses w
   - `audience` (String or Array) - Expected `aud`. When set, `aud` becomes a **required** claim, so a token without one cannot slip through a check you believed was enforced.
   - `issuer` (String or Array) - Expected `iss`, likewise required once set.
   - `subject` (String) - Expected `sub`
-  - `authorized_party` (String) - Your client id, checked against `azp` (OpenID Connect): when the token carries `azp` it must equal this, and a token naming several audiences must carry it.
-  - `leeway` (Int, ≥ 0) - Clock-skew tolerance in seconds (default 60). It also bounds how far in the future `iat` may be: a token issued later than now + leeway fails with `InvalidIssuedAt`.
+  - `authorized_party` (String) - Your client id, checked against `azp` (OpenID Connect): when the token carries `azp` it must equal this, and a token naming several audiences must carry it. It does not replace `audience`: a token with no `azp` and a single `aud` naming another client passes `authorized_party` alone, so pass both.
+  - `leeway` (Int, 0 to 31,536,000) - Clock-skew tolerance in seconds (default 60). It also bounds how far in the future `iat` may be: a token issued later than now + leeway fails with `InvalidIssuedAt`. More than a year (31,536,000) raises: unbounded, a leeway of 10^9 accepted tokens expired decades ago.
 
 Any other option name raises, and so does a value of the wrong type — `{"aud": …}` or `{"iss": …}` (jwt_sign's names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
 
-When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default. A `secret` that is key material — a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped — raises in that form: anyone holding a public key could forge an HMAC token with it.
+When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default. A `secret` that is key material — a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped — raises in that form: anyone holding a public key could forge an HMAC token with it. That check is a heuristic, not a guarantee: key material in another encoding (URL-safe base64, hex DER, a JWK) is not recognized, so pass `algorithm` or `key` whenever the token is not an HMAC one.
 
 > **Audience is opt-in.** `aud` is only checked when you pass `audience`; a token carrying an audience you never asked about verifies normally. Audience is caller-supplied policy, exactly like `iss`. If you issue tokens for more than one client, pass `audience` — otherwise a token minted for client A is accepted by client B.
 >

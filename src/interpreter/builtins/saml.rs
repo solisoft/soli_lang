@@ -82,8 +82,11 @@ const MAX_RESPONSE_ELEMENTS: usize = 10_000;
 /// uses half a dozen (`samlp`, `saml`, `ds`, `xs`, `xsi`, `ec`…), however
 /// many times an identity provider repeats their declarations.
 const MAX_RESPONSE_PREFIXES: usize = 64;
-/// The most namespace declarations a response may make in all.
-const MAX_RESPONSE_NS_DECLS: usize = 10_000;
+/// The most namespace declarations a response may make in all. Some identity
+/// providers repeat `xmlns:xs` and `xmlns:xsi` on every `AttributeValue`, so a
+/// legitimate response makes two or three per element; every walk is linear
+/// in the declarations, so this only keeps the count in proportion.
+const MAX_RESPONSE_NS_DECLS: usize = 3 * MAX_RESPONSE_ELEMENTS;
 
 /// The declarations one element makes, linked to those of its declaring
 /// ancestors. An element that declares nothing shares its parent's frame, so
@@ -548,14 +551,25 @@ fn exclusive_c14n(uri: &str, what: &str) -> Result<(), String> {
     }
 }
 
+/// The most prefixes an `<ec:InclusiveNamespaces PrefixList>` may name. An
+/// identity provider lists two or three (`xs`, `xsi`, `#default`); no list can
+/// usefully name more prefixes than a response may declare.
+const MAX_PREFIX_LIST: usize = MAX_RESPONSE_PREFIXES;
+
 /// The `PrefixList` of an `<ec:InclusiveNamespaces>` child, if there is one.
-fn inclusive_prefixes(el: &Scoped) -> BTreeSet<String> {
+fn inclusive_prefixes(el: &Scoped) -> Result<BTreeSet<String>, String> {
     let mut prefixes = BTreeSet::new();
     if let Some(list) = el
         .first(EXC_C14N, "InclusiveNamespaces")
         .and_then(|inclusive| inclusive.attr("PrefixList"))
     {
         for prefix in list.split_whitespace() {
+            if prefixes.len() == MAX_PREFIX_LIST {
+                return Err(format!(
+                    "the InclusiveNamespaces PrefixList names more than {} prefixes",
+                    MAX_PREFIX_LIST
+                ));
+            }
             prefixes.insert(if prefix == "#default" {
                 String::new()
             } else {
@@ -563,7 +577,7 @@ fn inclusive_prefixes(el: &Scoped) -> BTreeSet<String> {
             });
         }
     }
-    prefixes
+    Ok(prefixes)
 }
 
 fn decode_base64(text: &str, what: &str) -> Result<Vec<u8>, String> {
@@ -585,6 +599,19 @@ fn verify_signature(
         .ok_or_else(|| format!("the signed <{}> has no ID", signed.el.local))?;
 
     let signed_info = signature.only(DSIG_NS, "SignedInfo")?;
+    // CanonicalizationMethod, SignatureMethod, one Reference: anything more
+    // is padding that would be canonicalized before the key is consulted.
+    let parts = signed_info.children();
+    if parts.len() != 3
+        || !parts[0].is(DSIG_NS, "CanonicalizationMethod")
+        || !parts[1].is(DSIG_NS, "SignatureMethod")
+        || !parts[2].is(DSIG_NS, "Reference")
+    {
+        return Err(
+            "the <SignedInfo> is not a CanonicalizationMethod, a SignatureMethod and one <Reference>"
+                .to_string(),
+        );
+    }
     let method = signed_info.only(DSIG_NS, "CanonicalizationMethod")?;
     exclusive_c14n(
         algorithm_of(&method, "CanonicalizationMethod")?,
@@ -619,7 +646,7 @@ fn verify_signature(
                 continue;
             }
             exclusive_c14n(uri, "transform")?;
-            prefixes = inclusive_prefixes(transform);
+            prefixes = inclusive_prefixes(transform)?;
         }
     }
     let digest_hash = digest_hash_of(
@@ -638,7 +665,7 @@ fn verify_signature(
         ));
     }
 
-    let signed_bytes = signed_info.canonical(&inclusive_prefixes(&method), None);
+    let signed_bytes = signed_info.canonical(&inclusive_prefixes(&method)?, None);
     let signature_value = decode_base64(
         &signature.only(DSIG_NS, "SignatureValue")?.text(),
         "SignatureValue",
@@ -1911,6 +1938,133 @@ mod tests {
         }
         repeated.push_str("</samlp:Response>");
         refused(verify(&STANDARD.encode(&repeated)), "not SAML 2.0");
+
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "took {elapsed:?}"
+        );
+    }
+
+    /// Okta repeats `xmlns:xs` and `xmlns:xsi` on every `AttributeValue`: a
+    /// response with five thousand group memberships makes over ten thousand
+    /// declarations in well under 1 MiB, and is legitimate.
+    #[test]
+    fn declarations_repeated_on_every_attribute_value_are_accepted() {
+        let groups: Vec<String> = (0..5200).map(|i| format!("g{i}")).collect();
+        let xml = String::from_utf8(
+            STANDARD
+                .decode(issue(
+                    json!({"sign": "none", "attributes": {"groups": groups}}),
+                ))
+                .unwrap(),
+        )
+        .unwrap();
+        let typed = xml.replace(
+            "<saml:AttributeValue>",
+            "<saml:AttributeValue xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" \
+             xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"xs:string\">",
+        );
+        assert!(typed.len() < MAX_RESPONSE_BYTES, "{}", typed.len());
+        assert!(typed.matches("xmlns:x").count() > 10_000);
+        let verified = verify(&sign_assertion(&typed)).unwrap();
+        assert_eq!(
+            verified["attributes"]["groups"].as_array().unwrap().len(),
+            5200
+        );
+    }
+
+    fn padded(xml: &str, elements: usize) -> String {
+        let at = xml.find("<saml:Subject>").unwrap();
+        format!("{}{}{}", &xml[..at], "<a/>".repeat(elements), &xml[at..])
+    }
+
+    fn long_prefix_list(tokens: usize) -> String {
+        let list: Vec<String> = (0..tokens).map(|i| format!("p{i}")).collect();
+        format!(
+            "<ec:InclusiveNamespaces xmlns:ec=\"{EXC_C14N}\" PrefixList=\"{}\"/>",
+            list.join(" ")
+        )
+    }
+
+    /// An unsigned response whose exc-c14n Transform listed 130,000 prefixes
+    /// over 9,900 elements cost 2.5–3 minutes of CPU: the digest is computed
+    /// before the key is consulted, and canonicalization inserted the whole
+    /// list at every element. The CanonicalizationMethod's list over a
+    /// padded SignedInfo was the second road.
+    #[test]
+    fn a_hostile_prefix_list_or_signed_info_is_refused_quickly() {
+        let started = std::time::Instant::now();
+        let signed = issue(json!({"sign": "assertion"}));
+        let transform = format!("<ds:Transform Algorithm=\"{EXC_C14N}\"/>");
+        let method = format!("<ds:CanonicalizationMethod Algorithm=\"{EXC_C14N}\"/>");
+
+        let in_transform = tamper(&signed, |xml| {
+            assert!(xml.contains(&transform));
+            padded(
+                &xml.replacen(
+                    &transform,
+                    &format!(
+                        "<ds:Transform Algorithm=\"{EXC_C14N}\">{}</ds:Transform>",
+                        long_prefix_list(90_000)
+                    ),
+                    1,
+                ),
+                9_000,
+            )
+        });
+        refused(verify(&in_transform), "names more than 64 prefixes");
+
+        let in_method = tamper(&signed, |xml| {
+            assert!(xml.contains(&method));
+            xml.replacen(
+                &method,
+                &format!(
+                    "<ds:CanonicalizationMethod Algorithm=\"{EXC_C14N}\">{}</ds:CanonicalizationMethod>",
+                    long_prefix_list(90_000)
+                ),
+                1,
+            )
+        });
+        refused(verify(&in_method), "names more than 64 prefixes");
+
+        // At the cap, the list over a padded assertion still costs little.
+        let at_cap = tamper(&signed, |xml| {
+            padded(
+                &xml.replacen(
+                    &transform,
+                    &format!(
+                        "<ds:Transform Algorithm=\"{EXC_C14N}\">{}</ds:Transform>",
+                        long_prefix_list(64)
+                    ),
+                    1,
+                ),
+                9_000,
+            )
+        });
+        refused(verify(&at_cap), "digest mismatch");
+
+        // SignedInfo holds its two methods and one Reference, nothing else.
+        let reference_end = "</ds:Reference></ds:SignedInfo>";
+        let padded_signed_info = tamper(&signed, |xml| {
+            assert!(xml.contains(reference_end));
+            xml.replacen(
+                reference_end,
+                &format!("</ds:Reference>{}</ds:SignedInfo>", "<a/>".repeat(9_000)),
+                1,
+            )
+        });
+        refused(
+            verify(&padded_signed_info),
+            "is not a CanonicalizationMethod",
+        );
+        let two_references = tamper(&signed, |xml| {
+            let start = xml.find("<ds:Reference ").unwrap();
+            let end = xml.find(reference_end).unwrap() + "</ds:Reference>".len();
+            let reference = xml[start..end].to_string();
+            format!("{}{}{}", &xml[..end], reference, &xml[end..])
+        });
+        refused(verify(&two_references), "is not a CanonicalizationMethod");
 
         let elapsed = started.elapsed();
         assert!(
