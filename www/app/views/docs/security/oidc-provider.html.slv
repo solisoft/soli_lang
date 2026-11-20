@@ -104,9 +104,10 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
 
         <h3 class="text-lg font-semibold text-white mb-3">Record when the user signed in, and come back mid-flow</h3>
         <p class="text-gray-400 mb-3 leading-relaxed">
-            The generator does not modify files it did not create, so make these edits yourself.
             <strong class="text-white">Every path that signs a user in</strong> records the moment, next to its
-            <code>session_set("user_id", &hellip;)</code>:
+            <code>session_set("user_id", &hellip;)</code>. Apps generated after 2.39.3 already do it in each scaffold
+            below, and impersonation already deletes it; in an app generated earlier, the generator does not modify
+            files it did not create, so make these edits yourself:
         </p>
 <pre data-filename="every sign-in path"><code class="language-soli text-sm">session_set("auth_time", DateTime.utc.to_unix)</code></pre>
         <ul class="list-disc list-inside space-y-1 text-gray-400 mt-3 mb-3 text-sm">

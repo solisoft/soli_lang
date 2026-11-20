@@ -60,6 +60,44 @@ generated earlier keeps its files — copy the changes from a fresh
   `max_age` are honoured; dynamic registration refuses `http://` redirect
   URIs except loopback.
 
+From a counter-audit of the fixes above:
+
+- **SAML: the CPU denial of service had a second route.** An unsigned
+  response naming 130,000 prefixes in its `InclusiveNamespaces PrefixList`
+  cost 2.5–3 minutes of CPU (elements × prefixes, before the RSA check). A
+  PrefixList over 64 prefixes is refused, `SignedInfo` must be exactly
+  CanonicalizationMethod, SignatureMethod and one Reference, and
+  canonicalization reads the prefix list once (`Xml.c14n_exclusive` with a
+  long caller list is linear too). The namespace-declaration cap is 30,000,
+  so an Okta-style response with `xmlns:xs`/`xmlns:xsi` on every value fits.
+  `jwt_verify`'s `leeway` is at most a year.
+- **An SSO-only account had other ways in.** Magic links, API tokens and
+  passkeys were still issued to and accepted from accounts SAML created;
+  they are refused now (same generic answers), and OAuth no longer links or
+  signs in such an account. Wrong passwords no longer lock an SSO account
+  out of SAML (and the lock notice is actually sent: it called a missing
+  `deliver`).
+- **SAML first sign-in.** An account pre-registered unconfirmed is taken over
+  (credentials revoked) even with linking off, and a SCIM-provisioned account
+  is linked; in production `first_user` mode SAML waits for the admin to
+  sign up with `AUTH_SETUP_TOKEN`. The SP metadata asks for a persistent
+  NameID (an `emailAddress` one inherits the IdP's address reuse), email
+  NameIDs match whatever their case, email attributes follow
+  `SAML_EMAIL_ATTRIBUTES` order, a failed identity link refuses the sign-in,
+  and identities are unique per `(user_id, issuer)` in new apps.
+- **`revoke_credentials` also removes** push devices and the OIDC provider's
+  consents, codes, device codes and refresh tokens, and deletes rows before
+  clearing the account.
+- **OIDC: a code minted before a takeover or reset still yielded a refresh
+  chain.** Authorization codes and device approvals carry the user's
+  session version and are refused once it moved; introspection agrees.
+  Linking a provider starts from a CSRF-checked `POST /auth/:provider/link`
+  (a cross-site GET started it), every scaffold sign-in records `auth_time`
+  and impersonation clears it, `prompt=consent` is honoured, logout without a
+  session shows a page instead of redirecting, clients get
+  `post_logout_redirect_uris`, and Microsoft identities stored as a bare
+  `sub` are adopted as `tid:sub` when the tenant matches.
+
 ## [2.39.3] - 2026-11-19
 
 ### Security

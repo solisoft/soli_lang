@@ -124,9 +124,11 @@ requester.
 
 ### 4. Record when the user signed in, and come back mid-flow
 
-The generator does not modify files it did not create, so make these edits
-yourself. **Every path that signs a user in** records the moment, next to its
-`session_set("user_id", …)`:
+**Every path that signs a user in** records the moment, next to its
+`session_set("user_id", …)`. Apps generated after 2.39.3 already do it in each
+scaffold below (and impersonation already deletes it); in an app generated
+earlier, the generator does not modify files it did not create, so make these
+edits yourself:
 
 ```soli
 session_set("auth_time", DateTime.utc.to_unix)

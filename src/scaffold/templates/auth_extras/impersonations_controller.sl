@@ -61,6 +61,8 @@ class ImpersonationsController < Controller
     session_delete("impersonator_id")
     session_set("user_id", user._key)
     session_set("session_version", user.current_session_version)
+    # Nobody signed in as this user just now: no auth_time for the OIDC provider.
+    session_delete("auth_time")
     # The administrator passed their own second factor; the user's is not
     # theirs to give.
     session_set("two_factor", "ok:#{user._key}")

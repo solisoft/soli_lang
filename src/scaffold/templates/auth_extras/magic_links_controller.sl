@@ -68,6 +68,8 @@ class MagicLinksController < Controller
     # New session id after a successful login defeats session fixation.
     session_regenerate()
     session_set("user_id", user._key)
+    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
+    session_set("auth_time", DateTime.utc.to_unix)
     # Stamped so a later password reset can invalidate this session.
     session_set("session_version", user.current_session_version)
     redirect("/")

@@ -1061,8 +1061,8 @@ print(user._errors.nil?)"#
     assert_eq!(
         runner(
             root,
-            r#"user = User.find_by("email", "dir@corp.test")
-    print("#{user.sso_only?} #{SamlIdentity.where({"user_id": user._key}).count}")"#
+            r##"user = User.find_by("email", "dir@corp.test")
+    print("#{user.sso_only?} #{SamlIdentity.where({"user_id": user._key}).count}")"##
         ),
         "true 1"
     );
@@ -1093,8 +1093,8 @@ fn wrong_passwords_do_not_lock_out_single_sign_on() {
     assert_eq!(
         runner(
             root,
-            r#"user = User.find_by("email", "ada@example.com")
-    print("#{user.failed_attempts.nil?} #{user.locked_at.nil?}")"#
+            r##"user = User.find_by("email", "ada@example.com")
+    print("#{user.failed_attempts.nil?} #{user.locked_at.nil?}")"##
         ),
         "true true"
     );
