@@ -16,7 +16,7 @@
         </p>
             <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4">
             <p class="text-emerald-200 text-sm">
-                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval, define_method, alias_method, inherited. See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
+                <strong class="text-emerald-400">Available:</strong> respond_to?, send, method_missing, instance_variables, instance_variable_get, instance_variable_set, methods, instance_eval, class_eval, define_method, alias_method, inherited, implements? (a class: <code class="text-emerald-300">Klass.implements?("Repository")</code>). See <code class="text-emerald-300">tests/language/metaprogramming_spec.sl</code> for examples.
             </p>
         </div>
     </div>

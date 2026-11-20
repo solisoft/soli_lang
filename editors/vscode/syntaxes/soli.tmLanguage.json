@@ -257,7 +257,7 @@
         },
         {
           "name": "keyword.other.soli",
-          "match": "(?<![.@\\w])(let|const|fn|def|class|module|interface|enum|extends|implements|new|super|public|private|protected|static|import|export|from|as)\\b(?![?!])"
+          "match": "(?<![.@\\w])(let|const|fn|def|class|module|interface|enum|extends|implements|new|super|public|private|protected|static|abstract|import|export|from|as)\\b(?![?!])"
         },
         {
           "name": "variable.language.soli",

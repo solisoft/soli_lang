@@ -113,6 +113,14 @@ user.is_a?("Model")     # true (inheritance)
 user.is_a?("String")    # false
 ```
 
+**Interfaces:** the name of an interface the class (or a superclass)
+implements, directly or through `extends`, answers `true` too; a class
+answers `implements?`.
+```soli
+repo.is_a?("Repository")                 # true when its class implements Repository
+MemoryRepository.implements?("Repository")
+```
+
 **For primitives:** Supports "int", "numeric", "object" type names
 ```soli
 123.is_a?("Int")        # true
@@ -7771,6 +7779,48 @@ let shares = Money.allocate(Money.new(100, "EUR"), [50, 25, 25]);
 ```
 
 ---
+
+## Spreadsheet Class
+
+Reading and writing CSV and Excel (`.xlsx`) files as arrays of hashes, the
+first row giving the keys. (Built with the `office` feature, on by default.)
+
+```soli
+rows = Spreadsheet.csv("name,age\nAda,36")     # [{"name": "Ada", "age": "36"}] — CSV cells are Strings
+rows = Spreadsheet.csv_file("people.csv")
+csv  = Spreadsheet.to_csv(rows)
+Spreadsheet.csv_write(rows, "out.csv")
+
+rows   = Spreadsheet.excel("report.xlsx")              # the first sheet
+orders = Spreadsheet.excel("report.xlsx", "Commandes") # a sheet by name; an unknown name raises
+sheets = Spreadsheet.excel_sheets("report.xlsx")       # {"Clients": [...], "Commandes": [...]}, tab order
+```
+
+### Spreadsheet.excel_write(data, path, columns?)
+
+`data` is an array of hashes — one sheet, `Sheet1` — or a hash of sheet name
+⇒ rows for several sheets, one per entry in the hash's order.
+
+```soli
+# One sheet; without `columns`, the first row's keys in alphabetical order
+Spreadsheet.excel_write(rows, "out.xlsx", ["Date", "N°", "Montant (€)"])
+
+# Several sheets; a sheet may give its own columns
+Spreadsheet.excel_write({
+  "Clients": clients,
+  "Commandes": {"rows": orders, "columns": ["Date", "N°", "Montant (€)"]}
+}, "export.xlsx")
+```
+
+- `Int` and `Float` are written as numbers (read back as `Float`); everything
+  else as text, so `"00042"` keeps its zeros.
+- A key missing from a row leaves its cell empty.
+- Sheet names must be what Excel accepts — 1 to 31 characters, none of
+  `: \ / ? * [ ]`, no leading or trailing apostrophe, not `History`, unique
+  ignoring case — or the call raises before writing anything. With a hash of
+  sheets there is no third argument: put `columns` inside the sheet.
+- `excel_sheets` returns the shape `excel_write` takes, so a workbook
+  round-trips.
 
 ## See Also
 

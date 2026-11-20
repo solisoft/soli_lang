@@ -258,7 +258,7 @@
       "category": "Core",
       "path": "/docs/builtins/core#def-is-a",
       "signature": "value.is_a?(class_name)",
-      "description": "Returns whether a value is of the given type. For instances, checks class hierarchy. For primitives, supports 'int', 'numeric', 'object'.",
+      "description": "Returns whether a value is of the given type. For instances, checks class hierarchy and the interfaces it implements. For primitives, supports 'int', 'numeric', 'object'.",
       "keywords": [
         "instanceof",
         "typeof",
@@ -4061,6 +4061,50 @@
         "class",
         "oop",
         "object"
+      ]
+    },
+    {
+      "title": "interface",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/classes-oop#section-interfaces",
+      "signature": "interface Name<T> extends Other ... end",
+      "description": "Declares an interface: method signatures a class promises with implements; composable with extends, generic, checked at boot",
+      "keywords": [
+        "interface",
+        "implements",
+        "extends",
+        "contract",
+        "solid",
+        "protocol"
+      ]
+    },
+    {
+      "title": "abstract class",
+      "type": "keyword",
+      "category": "Language",
+      "path": "/docs/language/classes-oop#section-abstract-classes",
+      "signature": "abstract class Name ... abstract def m -> T ... end",
+      "description": "A class that cannot be instantiated; its abstract defs must be defined by each concrete subclass",
+      "keywords": [
+        "abstract",
+        "class",
+        "oop",
+        "solid",
+        "inheritance"
+      ]
+    },
+    {
+      "title": "implements?",
+      "type": "method",
+      "category": "Language",
+      "path": "/docs/language/classes-oop#interface-runtime",
+      "signature": "Klass.implements?(interface_name)",
+      "description": "Whether the class or a superclass implements the interface (directly or through extends)",
+      "keywords": [
+        "interface",
+        "reflection",
+        "introspection"
       ]
     },
     {
@@ -10092,8 +10136,8 @@
       "type": "method",
       "category": "Spreadsheet",
       "path": "/docs/builtins/spreadsheet",
-      "signature": "Spreadsheet.excel(path)",
-      "description": "Read an Excel (.xlsx) file into an array of hashes (first row = headers)",
+      "signature": "Spreadsheet.excel(path, sheet?)",
+      "description": "Read one sheet of an Excel (.xlsx) file — the first, or the one named — into an array of hashes (first row = headers)",
       "keywords": [
         "spreadsheet",
         "excel",
@@ -10108,14 +10152,33 @@
       "category": "Spreadsheet",
       "path": "/docs/builtins/spreadsheet#fn-spreadsheet-excel-write",
       "signature": "Spreadsheet.excel_write(data, path, columns?)",
-      "description": "Write an array of hashes to an Excel (.xlsx) file, columns in the given order, numbers as numbers",
+      "description": "Write an array of hashes (one sheet) or a hash of sheet name => rows (several sheets) to an Excel (.xlsx) file, columns in the given order, numbers as numbers",
       "keywords": [
         "spreadsheet",
         "excel",
         "xlsx",
         "export",
         "write",
-        "columns"
+        "columns",
+        "sheets",
+        "multi-sheet",
+        "workbook"
+      ]
+    },
+    {
+      "title": "Spreadsheet.excel_sheets",
+      "type": "method",
+      "category": "Spreadsheet",
+      "path": "/docs/builtins/spreadsheet#fn-spreadsheet-excel-sheets",
+      "signature": "Spreadsheet.excel_sheets(path)",
+      "description": "Read every sheet of an Excel (.xlsx) file: a hash of sheet name => array of hashes, in tab order",
+      "keywords": [
+        "spreadsheet",
+        "excel",
+        "xlsx",
+        "sheets",
+        "workbook",
+        "read"
       ]
     },
     {

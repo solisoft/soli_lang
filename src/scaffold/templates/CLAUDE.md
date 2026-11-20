@@ -718,9 +718,26 @@ This applies to controllers, models, middleware, helpers, and any new library co
 
 ## SOLID, as it actually applies here
 
-The textbook version (interfaces, injected repositories) does not survive
-contact with a dynamically-typed MVC framework. What follows is the version
-that holds, plus the three traps this framework sets for it.
+The textbook version — an interface and an injected repository for every
+model — does not pay off in an MVC app whose models already are the data
+layer. What follows is the version that holds, plus the three traps this
+framework sets for it.
+
+Where a real seam exists (two payment providers, a notifier with a test
+double), the language has the tools, and checks them:
+
+- `interface Notifier … end` with `def` signatures, `class X implements
+  Notifier`; interfaces compose (`extends`) and take type parameters
+  (`Repo<T>`). A parameter typed `notifier: Notifier` accepts any class that
+  implements it. `x.is_a?("Notifier")`, `X.implements?("Notifier")`.
+- `abstract class PaymentProvider` with `abstract def charge(cents: Int)`:
+  `.new` raises, each subclass must define `charge`.
+- A class missing a method of its interface, or a concrete subclass missing
+  an `abstract def`, refuses to boot the app (`soli lint`:
+  `smell/unimplemented-interface`). `soli check` also holds overrides to the
+  parent's signature and a function's last line to its `-> Type`.
+
+Reach for them at a seam, not by default.
 
 ### Where a rule belongs
 
@@ -870,6 +887,7 @@ Key rules:
 - `style/empty-block`, `style/line-length` (≤120 chars)
 - `style/redundant-model-import` — don't `import "../models/*.sl"` inside `app/controllers/`; models are auto-loaded
 - `smell/duplicate-global` — two files declaring the same top-level class, module, `def` or `const` (the boot refuses it too)
+- `smell/unimplemented-interface` — a class missing a method of an interface it implements, or of an `abstract class` it extends (the boot refuses it too)
 - `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`, `smell/dangerous-server-builtin` (flags `db_query_raw` / `Trusted.*` / `System.shell` / backticks in `app/controllers/`, `app/middleware/`, `app/views/`)
 - `smell/deep-nesting` (≤4 levels)
 - `smell/undefined-local` — reads of a name never assigned in scope (catches typos)
