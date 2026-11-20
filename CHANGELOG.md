@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.39.4] - 2026-11-20
+
 ### Security
 SSO and SAML audit. Scaffold fixes reach apps generated from now on: an app
 generated earlier keeps its files — copy the changes from a fresh

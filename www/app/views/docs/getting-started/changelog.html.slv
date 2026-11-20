@@ -20,8 +20,12 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.3.</p>
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.39.4.</p>
+    </section>
+
+    <section id="v2-39-4" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.39.4 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-20</span></h2>
+        <h3 id="v2-39-4-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <p class="text-gray-400 text-sm leading-relaxed mb-4">From an audit of SSO and SAML. The scaffold fixes reach apps generated from now on; an app generated earlier keeps its files &mdash; copy the changes from a fresh <code class="text-cyan-400">soli generate</code>.</p>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">SAML: an unsigned response could hold a worker for 16&ndash;34 s.</strong> Thousands of namespace declarations over many elements cost their product, before any signature check. A document over 10,000 elements, 64 distinct prefixes or 10,000 declarations is refused, and no XML walk copies the namespace scope per element any more (<a href="/docs/security/saml" class="text-amber-400 hover:underline">SAML</a>).</li>
