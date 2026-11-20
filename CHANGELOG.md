@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.39.5] - 2026-11-20
+
 ### Added
 - **spreadsheet: multi-sheet Excel files.** `Spreadsheet.excel_write` takes a
   hash of sheet name => rows and writes one sheet per entry, in the hash's
