@@ -243,3 +243,60 @@ fn emitted_templates_parse() {
         assert!(parsed.is_ok(), "{name} does not parse: {:?}", parsed.err());
     }
 }
+
+/// The guards the audit asked for, as the templates state them: a verified
+/// logout hint, introspection of one's own tokens only, refresh tokens bound
+/// to the user's session version, no plain-http remote redirect URI through
+/// dynamic registration, and `prompt` / `max_age` never silently ignored.
+#[test]
+fn emitted_templates_carry_the_security_guards() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    create_oidc_provider(dir.path().to_str().unwrap()).unwrap();
+    let read = |rel: &str| fs::read_to_string(dir.path().join(rel)).unwrap();
+
+    let sessions = read("app/controllers/oauth_sessions_controller.sl");
+    assert!(!sessions.contains("jwt_decode_unsafe"), "{sessions}");
+    assert!(sessions.contains("jwt_verify(hint"), "{sessions}");
+    assert!(
+        sessions.contains(r#""issuer": oidc_issuer()"#),
+        "{sessions}"
+    );
+    assert!(sessions.contains(r#""leeway":"#), "{sessions}");
+    // Only option keys `jwt_verify` knows.
+    for key in [r#""aud":"#, r#""iss":"#, r#""verify_exp""#] {
+        assert!(!sessions.contains(key), "{key} in {sessions}");
+    }
+
+    let tokens = read("app/controllers/oauth_tokens_controller.sl");
+    assert!(tokens.contains("may_introspect?"), "{tokens}");
+    assert!(tokens.contains("session_version_changed"), "{tokens}");
+    let client = read("app/models/oauth_client.sl");
+    assert!(client.contains("def may_introspect?"), "{client}");
+    assert!(client.contains("def registrable_redirect_uri?"), "{client}");
+    let refresh = read("app/models/oauth_refresh_token.sl");
+    assert!(
+        refresh.contains(r#""session_version": session_version"#),
+        "{refresh}"
+    );
+
+    let registrations = read("app/controllers/oauth_registrations_controller.sl");
+    assert!(
+        registrations.contains("OauthClient.registrable_redirect_uri?(uri)"),
+        "{registrations}"
+    );
+
+    let authorizations = read("app/controllers/oauth_authorizations_controller.sl");
+    assert!(
+        authorizations.contains("login_required"),
+        "{authorizations}"
+    );
+    assert!(
+        authorizations.contains("consent_required"),
+        "{authorizations}"
+    );
+    assert!(
+        !authorizations.contains(r#"session_get("auth_time") ?? DateTime"#),
+        "auth_time must not pretend the sign-in happened now"
+    );
+}

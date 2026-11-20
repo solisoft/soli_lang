@@ -1,0 +1,31 @@
+<div class="max-w-md mx-auto px-4 py-10">
+  <h1 class="text-2xl font-bold mb-2">Confirm it's you</h1>
+  <p class="mb-6 text-sm text-slate-400">
+    Connecting another account adds a way to sign in as you, so it needs a
+    sign-in from the last ten minutes.
+  </p>
+
+  <% if error.present? %>
+    <p class="mb-4 text-sm text-red-400"><%= error %></p>
+  <% end %>
+
+  <% if has_password %>
+    <form method="POST" action="/oauth/reauth" class="space-y-4">
+      <%- csrf_field() %>
+      <input type="hidden" name="provider" value="<%= provider %>">
+      <label class="block text-sm font-medium" for="password">Your password</label>
+      <input type="password" name="password" id="password" required autocomplete="current-password"
+             class="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-white">
+      <button type="submit"
+              class="rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+        Continue
+      </button>
+    </form>
+  <% else %>
+    <p class="text-sm text-slate-400">
+      Your account has no password. Sign out, sign back in with
+      <% if linked.length > 0 %><%= linked.join(" or ") %><% else %>the account you use<% end %>,
+      then connect the new account within ten minutes.
+    </p>
+  <% end %>
+</div>

@@ -82,21 +82,32 @@ class OauthTokensController < Controller
   # may ask: an anonymous introspection endpoint is a token-validity oracle.
   # Anything that is not a live token answers `{"active": false}` and nothing
   # else, so a caller learns no more about a dead token than that it is dead.
+  #
+  # A client introspects only the tokens issued to it: one client reading
+  # another's tokens (whose user, which scopes, still live?) would turn any
+  # confidential client into a probe of every other. A resource server that
+  # must check tokens issued to other clients is registered by an admin with
+  # `"introspect_any": true` (never through dynamic registration).
   def introspect
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
 
-    if auth["client"].public?()
+    client = auth["client"]
+    if client.public?()
       return oidc_token_error("invalid_client", "Public clients cannot introspect tokens", 401)
     end
 
     token = params["token"].to_s
     hint = params["token_type_hint"].to_s
     claims = hint == "refresh_token" ? nil : oidc_verify_access_token(token)
-    return oidc_json(this._access_token_body(claims), 200) unless claims.nil?
+    unless claims.nil?
+      return oidc_json({"active": false}, 200) unless client.may_introspect?(claims["aud"])
+
+      return oidc_json(this._access_token_body(claims), 200)
+    end
 
     refresh = OauthRefreshToken.find_by_token(token)
-    if !refresh.nil? && refresh.active?()
+    if !refresh.nil? && refresh.active?() && client.may_introspect?(refresh["client_id"])
       return oidc_json({
         "active": true,
         "scope": refresh["scope"],
@@ -203,6 +214,15 @@ class OauthTokensController < Controller
 
     user = User.find_by("_key", token["user_key"])
     return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
+
+    # A password reset (or anything else that bumps the user's session
+    # version, like an account takeover) signs every session out; it must end
+    # the grants made before it as well, or a stolen refresh token outlives
+    # the reset that was meant to lock its thief out.
+    if user.current_session_version > (token["session_version"] ?? 0).to_i
+      OauthRefreshToken.revoke_chain(token["chain_id"], "session_version_changed")
+      return oidc_token_error("invalid_grant", "Refresh token is expired or revoked", 400)
+    end
 
     # Claim the token atomically instead of read-then-write. Two requests
     # presenting the same token used to pass the checks above before either
@@ -312,7 +332,14 @@ class OauthTokensController < Controller
     # Only hand out a refresh token when the client asked for offline access —
     # a long-lived credential nobody requested is pure liability.
     if scopes.includes?("offline_access") && client.supports_grant?("refresh_token")
-      body["refresh_token"] = OauthRefreshToken.issue(chain_id, client.client_id, user["_key"], scopes, jti)
+      body["refresh_token"] = OauthRefreshToken.issue(
+        chain_id,
+        client.client_id,
+        user["_key"],
+        scopes,
+        jti,
+        user.current_session_version
+      )
     end
 
     oidc_json(body, 200)

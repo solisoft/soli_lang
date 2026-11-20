@@ -1,7 +1,13 @@
 //! Templates for `soli generate oauth <provider>`.
 
 pub const OAUTH_IDENTITY_MODEL: &str = include_str!("oauth/oauth_identity_model.sl");
-pub const OAUTH_CLIENT_SERVICE: &str = include_str!("oauth/oauth_client_service.sl");
+/// The shared client helpers, class `OauthSso` in `app/services/oauth_sso.sl`.
+/// (It was `OauthClient` in `oauth_client.sl`, which clashed with the model
+/// `soli generate oidc_provider` writes.)
+pub const OAUTH_SSO_SERVICE: &str = include_str!("oauth/oauth_sso_service.sl");
+pub const OAUTH_MAILER: &str = include_str!("oauth/oauth_mailer.sl");
+pub const PROVIDER_LINKED_MAIL_VIEW: &str = include_str!("oauth/mailer_provider_linked.html.slv");
+pub const REAUTH_VIEW: &str = include_str!("oauth/reauth.html.slv");
 pub const GITHUB_OAUTH_SERVICE: &str = include_str!("oauth/github_oauth_service.sl");
 pub const GOOGLE_OAUTH_SERVICE: &str = include_str!("oauth/google_oauth_service.sl");
 pub const GITLAB_OAUTH_SERVICE: &str = include_str!("oauth/gitlab_oauth_service.sl");
@@ -39,6 +45,22 @@ post("/auth/:provider/callback", "oauth#callback")
 skip_csrf("/auth/apple/callback")
 get("/oauth/identities", "oauth#identities")
 delete("/oauth/identities/:id", "oauth#unlink")
+"#
+    )
+}
+
+/// Marker of the routes of the re-authentication step that guards linking.
+pub const REAUTH_ROUTES_MARKER: &str = "# --- soli generate oauth: reauth ---";
+
+/// Routes of `/oauth/reauth`, appended only next to a controller that has the
+/// actions, like the linking ones.
+pub fn reauth_routes_snippet() -> String {
+    format!(
+        r#"
+{REAUTH_ROUTES_MARKER}
+# Linking a provider needs a sign-in from the last ten minutes, or the password.
+get("/oauth/reauth", "oauth#reauth")
+post("/oauth/reauth", "oauth#reauthenticate")
 "#
     )
 }

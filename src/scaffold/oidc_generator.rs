@@ -203,7 +203,8 @@ pub fn print_oidc_success_message() {
     println!("    \x1b[32msession_delete(\"oidc_return_to\")\x1b[0m");
     println!("    \x1b[32mreturn redirect(destination)\x1b[0m");
     println!();
-    println!("  Without the first, `auth_time` falls back to the authorization instant;");
+    println!("  Without the first, id_tokens carry no `auth_time` and `max_age` requests");
+    println!("  are answered `login_required`;");
     println!("  without the second, signing in mid-flow drops the user on the home page");
     println!("  instead of completing the authorization.");
     println!();

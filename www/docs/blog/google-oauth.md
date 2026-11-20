@@ -6,6 +6,11 @@
 
 This guide walks you through implementing Google OAuth authentication in your SoliLang application.
 
+> **The short way:** `soli generate auth && soli generate oauth google` writes
+> all of this — plus account linking, re-authentication before linking, and the
+> refusals below — see [OAuth Client](/docs/security/oauth-client). This post
+> builds it by hand, to show what each piece is for.
+
 ## Prerequisites
 
 - A SoliLang project with session support
@@ -32,96 +37,116 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ## Step 3: Create the OAuth Routes
 
 ```soli
-# app/controllers/auth_controller.sl
+# app/controllers/google_auth_controller.sl
 
-def google_login
-  client_id = getenv("GOOGLE_CLIENT_ID")
-  redirect_uri = getenv("GOOGLE_REDIRECT_URI")
-  scope = "openid email profile"
-  
-  auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" +
-    "client_id=" + client_id +
-    "&redirect_uri=" + redirect_uri +
-    "&response_type=code" +
-    "&scope=" + scope +
-    "&access_type=offline"
-  
-  {
-    "status": 302,
-    "headers": {
-      "Location": auth_url
-    }
-  }
+# GET /auth/google — to Google, with a fresh state and PKCE challenge
+def google_login(req)
+  state = Crypto.random_hex(32)
+  verifier = Crypto.random_hex(32)
+  session_set("oauth_state", state)
+  session_set("oauth_verifier", verifier)
+  # PKCE S256: the unpadded base64url of the SHA-256 of the verifier.
+  challenge = Base64.urlsafe_encode(Hex.decode(Crypto.sha256(verifier)))
+
+  query = [
+    "client_id=#{url_encode(getenv("GOOGLE_CLIENT_ID").to_s)}",
+    "redirect_uri=#{url_encode(getenv("GOOGLE_REDIRECT_URI").to_s)}",
+    "response_type=code",
+    "scope=#{url_encode("openid email profile")}",
+    "state=#{state}",
+    "code_challenge=#{challenge}",
+    "code_challenge_method=S256"
+  ]
+  redirect_external("https://accounts.google.com/o/oauth2/v2/auth?#{query.join("&")}")
 end
 
-def google_callback
-  code = req["query_params"]["code"]
-  
-  if code == null
-    return {"status": 400, "body": "Missing authorization code"}
+# GET /auth/google/callback
+def google_callback(req)
+  expected = session_get("oauth_state").to_s
+  verifier = session_get("oauth_verifier").to_s
+  session_delete("oauth_state")
+  session_delete("oauth_verifier")
+
+  # Verify state to prevent CSRF. Both sides must be present — two missing
+  # values are equal, so `!=` would wave a forged callback through — and the
+  # comparison is constant-time.
+  given = params["state"].to_s
+  unless expected.present? && given.present? && Crypto.secure_compare(expected, given)
+    return {"status": 403, "body": "Invalid state parameter"}
   end
-  
-  # Exchange code for tokens
-  token_response = google_exchange_code(code)
-  
-  if token_response["error"] != null
-    return {"status": 401, "body": "Failed to exchange code: " + token_response["error_description"]}
+
+  # Denied, or refused by Google: log what it said, show none of it.
+  if params["error"].present? || params["code"].blank?
+    Logger.warn("Google refused: #{params["error"]} #{params["error_description"]}")
+    return {"status": 401, "body": "Sign-in was cancelled."}
   end
-  
-  access_token = token_response["access_token"]
-  
-  # Get user info from Google
-  user_info = google_get_user_info(access_token)
-  
-  # Find or create user in database
-  user = find_or_create_google_user(user_info)
-  
-  # Create session
-  req["session"]["user_id"] = user["id"]
-  
-  {
-    "status": 302,
-    "headers": {
-      "Location": "/dashboard"
-    }
-  }
+
+  try
+    tokens = _google_exchange_code(params["code"].to_s, verifier)
+    profile = _google_userinfo(tokens["access_token"])
+    # An address Google did not verify is not proof of anything.
+    throw "email not verified" unless profile["email_verified"].to_s == "true"
+
+    user = User.find_or_create_from_google(profile)
+    session_regenerate()
+    session_set("user_id", user._key)
+    return redirect("/dashboard")
+  catch error
+    Logger.warn("Google sign-in failed: #{error}")
+    return {"status": 401, "body": "Sign-in failed. Try again."}
+  end
 end
 
-def google_exchange_code(code)
-  client_id = getenv("GOOGLE_CLIENT_ID")
-  client_secret = getenv("GOOGLE_CLIENT_SECRET")
-  redirect_uri = getenv("GOOGLE_REDIRECT_URI")
-  
-  params = {
-    "code": code,
-    "client_id": client_id,
-    "client_secret": client_secret,
-    "redirect_uri": redirect_uri,
-    "grant_type": "authorization_code"
-  }
-  
-  response = HTTP.post(
+# Form-encoded, every value escaped: a secret holding `&`, `+` or `=` would
+# otherwise cut the body in the wrong place. `HTTP.request` is the form that
+# sends headers and hands back the status with the body.
+def _google_exchange_code(code, verifier)
+  body = [
+    "code=#{url_encode(code)}",
+    "client_id=#{url_encode(getenv("GOOGLE_CLIENT_ID").to_s)}",
+    "client_secret=#{url_encode(getenv("GOOGLE_CLIENT_SECRET").to_s)}",
+    "redirect_uri=#{url_encode(getenv("GOOGLE_REDIRECT_URI").to_s)}",
+    "grant_type=authorization_code",
+    "code_verifier=#{url_encode(verifier)}"
+  ].join("&")
+  response = HTTP.request(
+    "POST",
     "https://oauth2.googleapis.com/token",
-    json_stringify(params),
-    {
-      "headers": { "Content-Type": "application/json" }
-    }
+    {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+    body
   )
-  
-  json_parse(response["body"])
+  _google_json(response)
 end
 
-def google_get_user_info(access_token)
-  response = HTTP.get(
-    "https://www.googleapis.com/oauth2/v2/userinfo",
-    {
-      "headers": { "Authorization": "Bearer " + access_token }
-    }
+def _google_userinfo(access_token)
+  response = HTTP.request(
+    "GET",
+    "https://openidconnect.googleapis.com/v1/userinfo",
+    {"Authorization": "Bearer #{access_token}", "Accept": "application/json"}
   )
-  
-  json_parse(response["body"])
+  _google_json(response)
+end
+
+def _google_json(response)
+  status = response["status"]
+  throw "Google answered HTTP #{status}" unless status >= 200 && status < 300
+
+  json_parse(response["body"].to_s)
 end
 ```
+
+Four things in there are easy to get wrong:
+
+- **State and PKCE live in the session.** `session_set` / `session_get`;
+  there is no writable `req["session"]`.
+- **Compare the state safely.** Both sides must be present — with `!=`, a
+  callback carrying no state matched a session holding none — and
+  `Crypto.secure_compare` does not leak where they differ.
+- **Encode the token request.** Every value goes through `url_encode`: a
+  client secret holding `&`, `+` or `=` would otherwise cut the body
+  somewhere else.
+- **Check `email_verified`.** Google says whether it verified the address
+  (a boolean, or the string `"true"`); an unverified one proves nothing.
 
 ## Step 4: Create the User Model
 
@@ -129,35 +154,32 @@ end
 # app/models/user.sl
 
 class User < Model
-  id: Int
-  google_id: String
-  email: String
-  name: String
-  avatar_url: String
-  created_at: DateTime
-  
-  def find_or_create_google_user(google_data)
-    let existing = User.find_by_google_id(google_data["id"])
-    
-    return existing if existing != nil
-  
-  User.create({
-    "google_id": google_data["id"],
-    "email": google_data["email"],
-    "name": google_data["name"],
-    "avatar_url": google_data["picture"]
-  })
-end
+  # Fields: google_id, email, name, avatar_url
+
+  # The account linked to this Google `sub` (its stable id), else a new one.
+  static def find_or_create_from_google(profile)
+    existing = User.find_by("google_id", profile["sub"])
+    return existing unless existing.nil?
+
+    User.create({
+      "google_id": profile["sub"],
+      "email": profile["email"],
+      "name": profile["name"],
+      "avatar_url": profile["picture"]
+    })
+  end
 end
 ```
+
+A sign-in finds the account by Google's `sub`, never by address alone.
 
 ## Step 5: Configure Routes
 
 ```soli
 # config/routes.sl
 
-get "/auth/google", "auth#google_login"
-get "/auth/google/callback", "auth#google_callback"
+get("/auth/google", "google_auth#google_login")
+get("/auth/google/callback", "google_auth#google_callback")
 ```
 
 ## Step 6: Add a Login Button
@@ -172,45 +194,14 @@ get "/auth/google/callback", "auth#google_callback"
 
 ## Security Considerations
 
-1. **Verify the state parameter** - Prevent CSRF attacks by generating and validating a state parameter
-2. **Validate ID tokens** - If using OpenID Connect, validate the ID token on your server
-3. **Handle token errors** - Gracefully handle expired or revoked tokens
-4. **Secure sessions** - Use secure, httpOnly cookies for sessions
-
-## Example with State Parameter
-
-```soli
-def generate_state()
-  # 32 bytes of CSPRNG output, base64url-encoded — URL-safe, so it needs no
-  # extra escaping when it goes into the query string below.
-  Crypto.random_token(32)
-end
-
-def google_login
-  state = generate_state()
-  req["session"]["oauth_state"] = state
-  
-  auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" +
-    "client_id=" + getenv("GOOGLE_CLIENT_ID") +
-    "&redirect_uri=" + getenv("GOOGLE_REDIRECT_URI") +
-    "&response_type=code" +
-    "&scope=openid email profile" +
-    "&state=" + state
-  
-  {"status": 302, "headers": {"Location": auth_url}}
-end
-
-def google_callback
-  received_state = req["query_params"]["state"]
-  stored_state = req["session"]["oauth_state"]
-  
-  if received_state != stored_state
-    return {"status": 400, "body": "Invalid state parameter"}
-  end
-  
-  # Continue with authentication...
-end
-```
+1. **Verify the state parameter** — done above: stored with `session_set`,
+   compared with `Crypto.secure_compare`, refused when either side is missing.
+2. **Use PKCE** — the `S256` challenge binds the code to the browser that asked for it.
+3. **Trust only a verified address** — `email_verified` must be true.
+4. **Don't echo provider errors** — `error_description` comes from the query
+   string; log it, show a generic message.
+5. **Secure sessions** — regenerate the session id after sign-in
+   (`session_regenerate()`), and serve over HTTPS.
 
 ## Conclusion
 

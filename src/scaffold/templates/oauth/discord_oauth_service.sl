@@ -63,11 +63,11 @@ class DiscordOauth
     end
 
     profile = DiscordOauth.fetch_user(token_data["access_token"])
-    throw "Discord: email is not verified" unless profile["verified"] == true
-
+    # An unverified address links nothing; the identity still signs in once linked.
+    email = profile["verified"] == true ? profile["email"] : nil
     name = profile["global_name"] || profile["username"]
-    user = OauthClient.find_or_create_user("discord", profile["id"], profile["email"], name, profile)
-    OauthClient.sign_in(user)
+    user = OauthSso.find_or_create_user("discord", profile["id"], email, name, profile)
+    OauthSso.sign_in(user)
     user
   end
 end

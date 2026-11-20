@@ -103,7 +103,9 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
 ```
 
 Options: `client_type` (`"confidential"` | `"public"`), `scopes`,
-`grant_types`, `require_pkce`, `skip_consent`.
+`grant_types`, `require_pkce`, `skip_consent`, `request_object_key`,
+`introspect_any` (a resource server allowed to introspect tokens issued to other
+clients — see below).
 
 **Machine-to-machine access.** Add `"client_credentials"` to a confidential client's
 `grant_types` (it is off by default) and it can `POST /oauth/token` with
@@ -132,9 +134,19 @@ session_delete("oidc_return_to")
 return redirect(destination)
 ```
 
-Without the first, `auth_time` falls back to the authorization instant. Without
-the second, a user who signs in mid-flow lands on the home page instead of
-completing the authorization.
+Without the first, the provider does not know when the user signed in: the
+id_token carries no `auth_time` (it used to claim the authorization instant,
+which told a client that a day-old session was fresh), and a request with
+`max_age` is answered `login_required`. Without the second, a user who signs in
+mid-flow lands on the home page instead of completing the authorization.
+
+**`prompt` and `max_age`.** `prompt=none` answers `login_required` when no one
+is signed in and `consent_required` when consent is missing, without showing a
+page. `max_age=N` is honoured from the `auth_time` the first edit records: an
+older (or unrecorded) sign-in is answered `login_required`. `prompt=login` is
+always answered `login_required`: the provider cannot make the person sign in
+again on its own, and OIDC Core §3.1.2.1 prefers that error to silently
+ignoring the request.
 
 ## More grants and endpoints
 
@@ -145,7 +157,11 @@ completing the authorization.
 refresh token, and `{"active": false}` — nothing else — for anything that is not.
 The caller must be an authenticated **confidential** client (Basic or form
 credentials); an anonymous introspection endpoint is a token-validity oracle.
-Discovery advertises `introspection_endpoint`.
+A client introspects **only the tokens issued to it**: another client's token
+answers `{"active": false}`, or any confidential client could read whose token
+it is and what it grants. A resource server that checks tokens issued to other
+clients is registered by an admin with `"introspect_any": true` (dynamic
+registration cannot set it). Discovery advertises `introspection_endpoint`.
 
 ### Dynamic client registration (RFC 7591)
 
@@ -162,9 +178,13 @@ clients. Body, as JSON:
 The `201` reply carries the `client_id` and, unless `token_endpoint_auth_method`
 is `none` (a public client, PKCE forced on), a `client_secret`. Whatever the
 metadata says, a registering caller cannot request `client_credentials` or the
-device grant, cannot set `skip_consent`, and cannot ask for scopes outside
-`OIDC_SUPPORTED_SCOPES`; redirect URIs must be absolute http(s) without a
-fragment. Discovery advertises `registration_endpoint` only when enabled.
+device grant, cannot set `skip_consent` or `introspect_any`, and cannot ask for
+scopes outside `OIDC_SUPPORTED_SCOPES`. Redirect URIs must be `https`, or `http`
+to this machine only — `127.0.0.1`, `[::1]` or `localhost` (RFC 8252 §7.3, for
+native apps and development) — without a fragment: a plain-http redirect to a
+remote host sends the authorization code across the network in the clear, and
+`http://localhost@evil.example/` is refused for naming another host. Discovery
+advertises `registration_endpoint` only when enabled.
 
 ### Device authorization grant (RFC 8628)
 
@@ -239,6 +259,13 @@ because the provider cannot tell the two apart.
 
 A refresh token is only issued when the client asked for `offline_access`.
 
+**A password reset ends the grants.** A refresh token records the user's
+`session_version` when it is issued; once that has moved — a password reset, an
+account taken over from an unconfirmed squatter, anything that signs every
+session out — the next refresh is refused `invalid_grant` and its whole family
+revoked. Without it a stolen refresh token outlived the reset meant to lock its
+thief out.
+
 ## id_token claims
 
 `iss`, `sub`, `aud`, `exp`, `iat`, plus `nonce` (echoed from the authorization
@@ -304,6 +331,18 @@ credentials and must not sit in a proxy cache. This is why the generated code
 returns a raw response hash rather than `render_json`, whose fast-path headers
 cannot be extended.
 
+**Logout asks unless the request proves itself.** A bare `GET /oauth/logout`
+shows a confirmation page that posts back (CSRF-checked), so an
+`<img src="/oauth/logout">` on another site logs no one out. The page is skipped,
+and `post_logout_redirect_uri` honoured, only for an `id_token_hint` this
+provider signed: verified with `jwt_verify` (RS256, the active or previous key,
+your issuer), with a year of leeway on the expiry because RP-Initiated Logout
+lets a relying party send an id_token that has since expired. The hint must name
+the user signed in here — another user's real id_token for the same client
+still gets the confirmation page — and an access token is not accepted as a
+hint. The hint used to be read with `jwt_decode_unsafe`, so anyone could forge
+one naming any client and skip the confirmation.
+
 ### Caveats
 
 - Registered `redirect_uris` must be absolute `http`/`https` with no fragment.
@@ -321,7 +360,10 @@ cannot be extended.
 
 ## Connecting a Soli app as a client
 
-The consumer side is hand-rolled — see the [GitHub](/docs/blog/github-oauth)
+For the common providers (GitHub, Google, GitLab, Microsoft…), `soli generate
+oauth` writes the consumer side — see [OAuth Client](oauth-client.md); its shared service is
+`OauthSso`, so it no longer clashes with this scaffold's `OauthClient` model and
+one app can be both. To hand-roll it, see the [GitHub](/docs/blog/github-oauth)
 and [Google](/docs/blog/google-oauth) guides. Generate `state` and the PKCE
 verifier with `Crypto.random_token()`, and verify the `id_token` against the
 provider's JWKS with `jwt_verify(token, "", {"algorithm": "RS256", "key": pem,

@@ -2,24 +2,33 @@
 
 class OauthSessionsController < Controller
   # GET /oauth/logout
+  # POST /oauth/logout
   #
   # Ends the session here, then optionally returns the browser to the relying
   # party. The return URI is honoured only when it is one the client
   # registered — an unchecked post_logout_redirect_uri is an open redirect in
   # exactly the same way the authorization endpoint's would be.
   def end_session
-    destination = this._post_logout_destination()
+    hint = @_verified_hint
+    destination = @_post_logout_destination(hint)
 
     # A bare GET must not end the session: `<img src="/oauth/logout">` on any
     # page would log the visitor out, and the same-origin CSRF gate covers only
-    # state-changing methods. A request that names a client through a valid
-    # `id_token_hint` is a real RP-initiated logout and proceeds; anything else
-    # gets a confirmation page, which is what turns the click into intent.
+    # state-changing methods. A GET carrying an `id_token_hint` this provider
+    # signed, for the user signed in here, is a real RP-initiated logout and
+    # proceeds; anything else gets a confirmation page, which is what turns
+    # the click into intent.
     #
     # `logout_confirmation` posts back to this same route, and the POST is
     # covered by the CSRF gate like any other form.
-    if destination.blank? && !this._request_confirms_logout()
-      return render("oauth/logout_confirm", {})
+    unless @_request_confirms_logout(hint)
+      return render(
+        "oauth/logout_confirm",
+        {
+          "post_logout_redirect_uri": destination.blank? ? "" : destination,
+          "id_token_hint": destination.blank? ? "" : params["id_token_hint"].to_s
+        }
+      )
     end
 
     session_destroy()
@@ -29,29 +38,62 @@ class OauthSessionsController < Controller
     redirect("/")
   end
 
-  # Did this request actually ask to log out, rather than merely load a URL?
-  # Either a POST (CSRF-checked), or an RP-initiated logout carrying a hint we
-  # could resolve to a registered client.
-  def _request_confirms_logout
-    return true if req["method"].to_s.upcase() == "POST"
+  private
 
-    false
+  # Did this request actually ask to log out, rather than merely load a URL?
+  # Either a POST (CSRF-checked), or a GET whose verified hint names the user
+  # signed in here. A hint for someone else — an attacker's own id_token for
+  # the same client — proves nothing about this browser's user.
+  def _request_confirms_logout(hint)
+    return true if req["method"].to_s.upcase == "POST"
+    return false if hint.nil?
+
+    user = current_user()
+    user.nil? || hint["sub"].to_s == user["_key"].to_s
   end
 
-  def _post_logout_destination
+  # The claims of `id_token_hint` when this provider signed it, or nil.
+  #
+  # The hint used to be read with `jwt_decode_unsafe`, so anyone could write
+  # one naming any client and skip the confirmation page. The signature and
+  # issuer are checked now; the expiry is not, on purpose: OpenID Connect
+  # RP-Initiated Logout §2 lets a relying party send an id_token that has
+  # since expired (they live ten minutes; sessions last longer), so the
+  # leeway is a year. Both the active and the previous key are tried, so a
+  # hint signed before a key rotation still verifies.
+  def _verified_hint
+    hint = params["id_token_hint"].to_s
+    return nil if hint.blank?
+
+    for key in [oidc_public_key(), oidc_previous_public_key()]
+      next if key.blank?
+
+      # `jwt_verify` raises on a token whose header does not parse.
+      claims = jwt_verify(hint, "", {
+        "algorithm": "RS256",
+        "key": key,
+        "issuer": oidc_issuer(),
+        "leeway": 31536000
+      }) rescue nil
+      next if claims.nil? || claims["error"] == true
+      # An access token carries the same signature and issuer; it is not an
+      # id_token.
+      return nil unless claims["scope"].nil?
+
+      return claims
+    end
+
+    nil
+  end
+
+  def _post_logout_destination(hint)
     requested = params["post_logout_redirect_uri"].to_s
     return "" if requested.blank?
+    return "" if hint.nil?
 
-    hint = params["id_token_hint"].to_s
-    return "" if hint.blank?
-
-    # The hint is not a credential — it only tells us which client is asking,
-    # so we can check the URI against that client's registrations. It is read
-    # without verification and nothing is trusted from it beyond the audience.
-    decoded = jwt_decode_unsafe(hint)
-    return "" if decoded["error"] == true
-
-    client = OauthClient.find_active(decoded["claims"]["aud"].to_s)
+    # The hint names the client (its audience), whose registrations the URI
+    # is checked against.
+    client = OauthClient.find_active(hint["aud"].to_s)
     return "" if client.nil?
     return "" unless client.redirect_uri_allowed?(requested)
 

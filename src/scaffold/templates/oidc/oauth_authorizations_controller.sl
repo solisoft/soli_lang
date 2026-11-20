@@ -20,8 +20,18 @@ class OauthAuthorizationsController < Controller
     client = context["client"]
     scopes = context["scopes"]
 
+    prompts = context["prompts"]
     user = current_user()
     if user.nil?
+      if prompts.includes?("none")
+        return oidc_authorize_error(
+          context["redirect_uri"],
+          "login_required",
+          "The user is not signed in",
+          context["state"]
+        )
+      end
+
       # Come back here once they have signed in. The full query string is kept
       # so no authorization parameter is lost across the round trip.
       session_set("oidc_return_to", "/oauth/authorize?#{req["query_string"].to_s}")
@@ -29,8 +39,20 @@ class OauthAuthorizationsController < Controller
       return redirect("/login")
     end
 
+    stale = this._stale_login_error(context)
+    return stale unless stale.nil?
+
     if client.skip_consent == true || OauthConsent.covers?(user["_key"], client.client_id, scopes)
       return this._issue_code(context, user, scopes)
+    end
+
+    if prompts.includes?("none")
+      return oidc_authorize_error(
+        context["redirect_uri"],
+        "consent_required",
+        "The user has not consented",
+        context["state"]
+      )
     end
 
     return render(
@@ -119,6 +141,8 @@ class OauthAuthorizationsController < Controller
       "scopes": scopes,
       "redirect_uri": redirect_uri,
       "state": state,
+      "prompts": oidc_scope_list(effective["prompt"]),
+      "max_age": effective["max_age"].to_s,
       "params": {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -129,6 +153,32 @@ class OauthAuthorizationsController < Controller
         "code_challenge_method": effective["code_challenge_method"].to_s
       }
     }
+  end
+
+  # `prompt=login` and `max_age` (OIDC Core §3.1.2.1) ask for a sign-in that
+  # is fresh. This provider cannot make the person sign in again on its own —
+  # the session belongs to the auth scaffold — and knows when they signed in
+  # only if your sign-in action records it: `session_set("auth_time",
+  # DateTime.utc.to_unix)` next to `session_set("user_id", …)`. Without that
+  # record, either request is answered `login_required`, which the spec
+  # allows; it is never silently ignored, since a client asking for a fresh
+  # sign-in usually guards something sensitive with it.
+  def _stale_login_error(context)
+    redirect_uri = context["redirect_uri"]
+    state = context["state"]
+    if context["prompts"].includes?("login")
+      return oidc_authorize_error(redirect_uri, "login_required", "prompt=login is not supported", state)
+    end
+
+    max_age = context["max_age"]
+    return nil if max_age.blank?
+
+    auth_time = session_get("auth_time")
+    if auth_time.nil? || DateTime.utc().to_unix() - auth_time.to_i > max_age.to_i
+      return oidc_authorize_error(redirect_uri, "login_required", "The sign-in is older than max_age", state)
+    end
+
+    nil
   end
 
   # Returns nil when the request is well-formed, or {code, description}.
@@ -203,7 +253,10 @@ class OauthAuthorizationsController < Controller
       "nonce": stored["nonce"],
       "code_challenge": stored["code_challenge"],
       "code_challenge_method": stored["code_challenge_method"],
-      "auth_time": session_get("auth_time") ?? DateTime.utc().to_unix()
+      # When the person signed in, if the sign-in action recorded it (see
+      # `_stale_login_error`). Never "now": that would tell a client asking
+      # max_age that a day-old session is fresh.
+      "auth_time": session_get("auth_time")
     })
 
     separator = oidc_query_separator(context["redirect_uri"])

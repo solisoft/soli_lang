@@ -17,24 +17,38 @@ soli db:migrate up
 | Path | Role |
 |------|------|
 | `app/models/oauth_identity.sl` | Links `User` ↔ provider + uid |
-| `app/services/oauth_client.sl` | State CSRF, PKCE helpers, and which account an identity signs in |
-| `app/services/github_oauth.sl` | GitHub authorize / token / profile |
+| `app/services/oauth_sso.sl` | `OauthSso`: state CSRF, PKCE helpers, re-authentication, and which account an identity signs in |
+| `app/services/github_oauth.sl` | GitHub authorize / token / profile + verified email, PKCE |
 | `app/services/google_oauth.sl` | Google OIDC code + PKCE |
 | `app/services/{apple,gitlab,discord,linkedin,microsoft}_oauth.sl` | One per provider you generate |
-| `app/controllers/oauth_controller.sl` | `/auth/:provider` + callback, `/oauth/identities` |
+| `app/controllers/oauth_controller.sl` | `/auth/:provider` + callback, `/oauth/identities`, `/oauth/reauth` |
 | `app/views/oauth/identities.html.slv` | The connected-accounts page |
+| `app/views/oauth/reauth.html.slv` | "Confirm it's you" before a provider is linked |
+| `app/mailers/oauth_mailer.sl` + `app/views/oauth_mailer/provider_linked.html.slv` | Tells the owner a provider was linked to their account |
 | `db/migrations/*_create_oauth_identities.sl` | Unique index on `(provider, uid)` |
 | `config/routes.sl` | Routes appended (idempotent marker) |
 
+The shared service is `OauthSso` in `oauth_sso.sl`. It used to be `class
+OauthClient` in `oauth_client.sl`, which clashed with the `OauthClient` model
+that [`soli generate oidc_provider`](oidc-provider.md) writes — an app could not
+be both a client and a provider. The generator notes an old `oauth_client.sl`
+when it finds one: delete it, the `*_oauth.sl` services and
+`oauth_controller.sl`, then re-run it for each provider.
+
 ## Environment
 
-**GitHub**
+**GitHub** (`GITHUB_BASE_URL` / `GITHUB_API_URL` for GitHub Enterprise Server,
+default `https://github.com` / `https://api.github.com`)
 
 ```bash
 GITHUB_CLIENT_ID=…
 GITHUB_CLIENT_SECRET=…
 GITHUB_REDIRECT_URI=http://localhost:3000/auth/github/callback
 ```
+
+The address is the one `/user/emails` marks **primary and verified** — never the
+profile's public `email`, which is whatever the user typed and GitHub never
+checked. The flow uses PKCE (S256), which GitHub supports.
 
 **Google**
 
@@ -52,7 +66,9 @@ GITLAB_CLIENT_SECRET=…
 GITLAB_REDIRECT_URI=http://localhost:3000/auth/gitlab/callback
 ```
 
-**Discord** (`DISCORD_*`) and **LinkedIn** (`LINKEDIN_*`, "Sign In with LinkedIn using OpenID Connect") take the same three variables.
+**Discord** (`DISCORD_*`) and **LinkedIn** (`LINKEDIN_*`, "Sign In with LinkedIn
+using OpenID Connect") take the same three variables. Neither uses PKCE: Discord
+does not document it, and LinkedIn offers it only to native apps it approves.
 
 **Microsoft** additionally requires your tenant — or the list of tenants:
 
@@ -74,6 +90,16 @@ is only ever taken from a tenant you named: your own, or — with
 of which you trust as you trust your own. The tenant is read from the id_token
 (`tid`), whose issuer must be that tenant's. `common` and `consumers` are
 refused, and so is `organizations` without a list.
+
+Even inside a named tenant an administrator can give a user any `email`, so the
+address is used only when Microsoft says it is verified: `email` with the
+`xms_edov` claim `true` (the domain's owner is verified), or
+`verified_primary_email`. Both are **optional claims you must add**: Entra admin
+center → App registrations → your app → Token configuration → Add optional claim
+→ token type **ID** → `email`, `xms_edov`, `verified_primary_email`. Without them
+no address is trusted: a Microsoft identity then signs in only once a signed-in
+user has linked it at `/oauth/identities`. `preferred_username` is never taken as
+an address. The identity's uid is `<tid>:<sub>`.
 
 **Apple** has no client secret to copy: it is a short-lived JWT the service signs
 with your key (ES256) for each exchange.
@@ -107,21 +133,37 @@ the new one.
 
 ## Which account a sign-in opens
 
-`OauthClient.find_or_create_user`, in this order:
+`OauthSso.find_or_create_user`, in this order:
 
 1. the account already linked to this `(provider, uid)`;
 2. while a signed-in user is connecting a provider (below), that user —
-   refused when the identity belongs to someone else;
-3. the account with the provider's verified email, linked from now on;
+   refused when the identity belongs to someone else, when the account's email
+   is not confirmed, or without a recent sign-in;
+3. the account with the address the provider **verified**, linked from now on;
 4. a new one, when sign-up is open: `AUTH_SIGNUP` applies as it does to
    `/signup` (`first_user` by default — the first account becomes the admin,
    then sign-up closes; `open`; `closed`). The account is confirmed and has no
    password; its owner can set one with a reset link.
 
+A provider that reports no verified address (an unverified Google, GitLab,
+LinkedIn, Apple or Discord address, a GitHub account without a verified primary
+one, a Microsoft token without `xms_edov` / `verified_primary_email`) still
+signs in through rule 1 — once it is linked — but never finds or creates an
+account by address.
+
 Rule 3 hands an existing account to whoever proves the address at the provider.
 If that account never confirmed its email, someone else may have created it in
-wait, with a password they know: its password and sessions are dropped before it
-is linked.
+wait, with a password they know — and, before, providers they linked to it. So
+`OauthSso.take_over_unconfirmed` calls `User#revoke_credentials` (written by
+`soli generate auth`) before it is linked: the password and remember-me token
+are cleared, the session version bumped (every session ends), and the user's
+linked identities, passkeys, API tokens, two-factor setup and magic links are
+deleted. The address's owner gets the account alone. An app whose `user.sl`
+predates `revoke_credentials` gets a note from the generator.
+
+Whenever a provider is linked to an account that already existed — by its owner
+at `/oauth/identities` or by rule 3 — `OauthMailer.provider_linked` emails the
+account's address, so an owner hears about a way in they did not add.
 
 ## Connected accounts
 
@@ -129,6 +171,19 @@ is linked.
 button to connect each provider the app has a service for and one to disconnect.
 Connecting is the same flow as signing in, started while signed in. The last way
 into an account cannot be removed: with no password, one provider stays.
+
+Connecting needs two things:
+
+- **A confirmed email.** An unconfirmed account (anyone can create one with any
+  address) cannot link a provider: `/auth/:provider` answers 403.
+- **A recent sign-in** — within ten minutes (`OauthSso.reauth_seconds`). A
+  provider sign-in counts; a password sign-in through `/login` is not timed by
+  the auth scaffold, so `/auth/:provider` sends the user to `/oauth/reauth`,
+  which asks for the password (failures count toward the account lockout) and
+  then continues to the provider. An account with no password signs out and
+  back in with a provider it has, then connects within ten minutes. Without
+  this, a session borrowed for a minute — a shared computer, a stolen cookie —
+  could attach a provider that keeps signing in after a password reset.
 
 ## Login button
 
@@ -143,18 +198,27 @@ Do not re-run the generator to edit views — add a link yourself:
 ## Security notes
 
 - Callback verifies `state` against the session (CSRF).
-- **PKCE is `S256`.** `begin_pkce()` stores a random verifier in the session and
-  returns `base64url(SHA256(verifier))` unpadded, per RFC 7636 §4.2. Earlier
-  cuts sent the raw verifier with `code_challenge_method=plain`, where the
-  challenge and the verifier are the same string — PKCE in name only. Never
-  ship `plain`.
+- **PKCE is `S256`** (every provider but Discord and LinkedIn). `begin_pkce()`
+  stores a random verifier in the session and returns
+  `base64url(SHA256(verifier))` unpadded, per RFC 7636 §4.2. Earlier cuts sent
+  the raw verifier with `code_challenge_method=plain`, where the challenge and
+  the verifier are the same string — PKCE in name only. Never ship `plain`.
+- Every value of a token request body is `url_encode`d. Google's used to be
+  concatenated raw, so a secret holding `&`, `+` or `=` broke the exchange.
+- **Errors are logged, not shown.** A refusal written for the user (`OauthSso.refuse`,
+  e.g. "this Apple account is linked to another user") reaches the page; what a
+  provider sent — `error_description`, an error body, an address, a tenant id —
+  goes to the log (`Logger.warn`) and the page says only that sign-in failed.
 - The services call `HTTP.request(method, url, headers, body)`. `HTTP.get` /
   `HTTP.post` read their options hash for `timeout` alone and return the body as
   a String, so a `"headers"` key there is silently dropped — which is why the
   generated flow used to 401.
 - Provider responses are status-checked, so a 401 reports as a 401 instead of a
   JSON parse error on the provider's error page.
-- Google, GitLab, LinkedIn and Apple require the provider to report `email_verified`; Discord requires `verified`; Microsoft is limited to the tenants you name (see above).
+- An address counts only when the provider verified it: Google, GitLab, LinkedIn
+  and Apple report `email_verified`; Discord `verified`; GitHub marks the
+  address primary and verified in `/user/emails`; Microsoft needs `xms_edov` or
+  `verified_primary_email`, from a tenant you name (see above).
 - The start redirect uses `redirect_external`: plain `redirect` only accepts local paths, and the first generated controller failed with a 500 for that reason.
 - Accounts created via OAuth are confirmed and have no password, and the session
   carries the account's session version, like a password sign-in. Earlier cuts

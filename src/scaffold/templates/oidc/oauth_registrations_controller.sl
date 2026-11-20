@@ -8,8 +8,9 @@
 #
 # What a registering caller can NOT do, whatever the metadata says:
 #   * ask for `client_credentials` (machine access is granted by an admin),
-#   * set `skip_consent`,
-#   * request scopes outside OIDC_SUPPORTED_SCOPES.
+#   * set `skip_consent` or `introspect_any`,
+#   * request scopes outside OIDC_SUPPORTED_SCOPES,
+#   * register a plain-http redirect URI anywhere but this machine (loopback).
 
 class OauthRegistrationsController < Controller
   # POST /oauth/register
@@ -31,9 +32,12 @@ class OauthRegistrationsController < Controller
     if type(redirect_uris) != "array" || redirect_uris.length() == 0
       return this._error("invalid_redirect_uri", "redirect_uris must be a non-empty array")
     end
-    bad = redirect_uris.filter(fn(uri) { !OauthClient.valid_redirect_uri?(uri) })
+    bad = redirect_uris.filter(fn(uri) { !OauthClient.registrable_redirect_uri?(uri) })
     if bad.length() != 0
-      return this._error("invalid_redirect_uri", "Not an absolute http(s) URL without a fragment: #{bad.join(", ")}")
+      return this._error(
+        "invalid_redirect_uri",
+        "Not an https URL (or http to 127.0.0.1, [::1] or localhost) without a fragment: #{bad.join(", ")}"
+      )
     end
 
     grant_types = metadata["grant_types"] ?? ["authorization_code"]

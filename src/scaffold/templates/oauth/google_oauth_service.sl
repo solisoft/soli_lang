@@ -4,86 +4,80 @@
 # Env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
 
 class GoogleOauth
-  static def authorize_url(state, code_challenge) -> String {
-    let client_id = url_encode(getenv("GOOGLE_CLIENT_ID").to_s)
-    let redirect = url_encode(getenv("GOOGLE_REDIRECT_URI").to_s)
-    "https://accounts.google.com/o/oauth2/v2/auth?" +
-      "client_id=" + client_id +
-      "&redirect_uri=" + redirect +
-      "&response_type=code" +
-      "&scope=openid%20email%20profile" +
-      "&state=" + state +
-      "&code_challenge=" + code_challenge +
-      "&code_challenge_method=S256" +
-      "&access_type=online" +
-      "&prompt=select_account"
-  }
+  static def authorize_url(state, code_challenge = nil)
+    query = [
+      "client_id=#{url_encode(getenv("GOOGLE_CLIENT_ID").to_s)}",
+      "redirect_uri=#{url_encode(getenv("GOOGLE_REDIRECT_URI").to_s)}",
+      "response_type=code",
+      "scope=#{url_encode("openid email profile")}",
+      "state=#{url_encode(state)}",
+      "code_challenge=#{url_encode(code_challenge.to_s)}",
+      "code_challenge_method=S256",
+      "access_type=online",
+      "prompt=select_account"
+    ]
 
-  static def exchange_code(code) -> Any {
-    let verifier = OauthClient.pkce_verifier()
-    let body = "code=" + code +
-      "&client_id=" + getenv("GOOGLE_CLIENT_ID") +
-      "&client_secret=" + getenv("GOOGLE_CLIENT_SECRET") +
-      "&redirect_uri=" + getenv("GOOGLE_REDIRECT_URI") +
-      "&grant_type=authorization_code"
-    body = body + "&code_verifier=" + verifier if verifier
+    "https://accounts.google.com/o/oauth2/v2/auth?#{query.join("&")}"
+  end
+
+  # Every value is form-encoded: a secret or a code holding `&`, `+` or `=`
+  # would otherwise cut the body somewhere else than intended.
+  static def exchange_code(code)
+    body = [
+      "code=#{url_encode(code.to_s)}",
+      "client_id=#{url_encode(getenv("GOOGLE_CLIENT_ID").to_s)}",
+      "client_secret=#{url_encode(getenv("GOOGLE_CLIENT_SECRET").to_s)}",
+      "redirect_uri=#{url_encode(getenv("GOOGLE_REDIRECT_URI").to_s)}",
+      "grant_type=authorization_code",
+      "code_verifier=#{url_encode(OauthSso.pkce_verifier.to_s)}"
+    ].join("&")
     # `HTTP.request` is the only form that sends headers: `HTTP.post`/`HTTP.get`
     # inspect their options hash for `timeout` alone, so a `"headers"` key there
     # is silently dropped — and they return the body as a String, not a response
     # hash. Headers are the 3rd positional argument; the body is the 4th.
-    let response = HTTP.request(
+    response = HTTP.request(
       "POST",
       "https://oauth2.googleapis.com/token",
-      {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
+      {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
       body
     )
-    GoogleOauth._json_body(response, "token exchange")
-  }
 
-  static def fetch_userinfo(access_token) -> Any {
-    let response = HTTP.request(
+    GoogleOauth._json_body(response, "token exchange")
+  end
+
+  static def fetch_userinfo(access_token)
+    response = HTTP.request(
       "GET",
       "https://openidconnect.googleapis.com/v1/userinfo",
-      {
-        "Authorization": "Bearer " + access_token
-      }
+      {"Authorization": "Bearer #{access_token}", "Accept": "application/json"}
     )
+
     GoogleOauth._json_body(response, "userinfo fetch")
-  }
+  end
 
   # `HTTP.request` returns the response instead of raising on a non-2xx, so the
   # status has to be read. Without this a 401 surfaced as a JSON parse error on
   # Google's error page.
-  static def _json_body(response, step) -> Any {
-    let status = response["status"]
-    let body = response["body"].to_s
-    unless status >= 200 && status < 300
-      throw "Google " + step + " failed (HTTP " + str(status) + "): " + body
-    end
+  static def _json_body(response, step)
+    status = response["status"]
+    body = response["body"].to_s
+    throw "Google #{step} failed (HTTP #{status}): #{body}" unless status >= 200 && status < 300
 
     json_parse(body)
-  }
+  end
 
-  static def complete!(code) -> Any {
-    let token_data = GoogleOauth.exchange_code(code)
+  static def complete!(code)
+    token_data = GoogleOauth.exchange_code(code)
     if token_data["error"]
-      throw "Google token exchange failed: " + str(token_data["error_description"] || token_data["error"])
+      throw "Google token exchange failed: #{token_data["error_description"] || token_data["error"]}"
     end
-    let access_token = token_data["access_token"]
-    let profile = GoogleOauth.fetch_userinfo(access_token)
-    unless profile["email_verified"] == true || profile["email_verified"] == "true"
-      throw "Google: email is not verified"
-    end
-    let user = OauthClient.find_or_create_user(
-      "google",
-      profile["sub"],
-      profile["email"],
-      profile["name"],
-      profile
-    )
-    OauthClient.sign_in(user)
+
+    profile = GoogleOauth.fetch_userinfo(token_data["access_token"])
+    # Google sends the flag as a boolean (userinfo) or the string "true".
+    email = profile["email_verified"].to_s == "true" ? profile["email"] : nil
+    # An unverified address links nothing; the identity still signs in once linked.
+    user = OauthSso.find_or_create_user("google", profile["sub"], email, profile["name"], profile)
+    OauthSso.sign_in(user)
     user
-  }
+  end
 end

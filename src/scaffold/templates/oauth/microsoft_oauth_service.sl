@@ -20,6 +20,20 @@
 # tenant to vouch for an address, and an open `organizations` (no list) would
 # let any directory in the world assert any email.
 #
+# Even inside a named tenant, an administrator can set any user's `email`
+# attribute to any address, unverified. So the address is used — to find or
+# create an account — only when Microsoft says it was verified:
+#
+# - `xms_edov: true` (the email domain's owner is verified) with `email`, or
+# - `verified_primary_email`.
+#
+# Both are optional claims: add them to the ID token in the Entra admin
+# center, App registrations → your app → Token configuration → Add optional
+# claim → ID → `email`, `xms_edov`, `verified_primary_email`. Without them no
+# address is trusted, and a Microsoft identity signs in only once a signed-in
+# user has linked it (/oauth/identities). `preferred_username` is never an
+# address: it is whatever the directory calls the user.
+#
 # The id_token is read without checking its signature, on purpose: it arrives
 # from Microsoft's token endpoint over TLS, in answer to this server's own
 # request (OpenID Connect Core §3.1.3.7 allows exactly that).
@@ -77,7 +91,7 @@ class MicrosoftOauth
       "client_secret=#{url_encode(getenv("MICROSOFT_CLIENT_SECRET").to_s)}",
       "redirect_uri=#{url_encode(getenv("MICROSOFT_REDIRECT_URI").to_s)}",
       "grant_type=authorization_code",
-      "code_verifier=#{url_encode(OauthClient.pkce_verifier.to_s)}"
+      "code_verifier=#{url_encode(OauthSso.pkce_verifier.to_s)}"
     ].join("&")
     response = HTTP.request(
       "POST",
@@ -110,13 +124,26 @@ class MicrosoftOauth
     # The issuer names the tenant that signed the user in; it must be the one
     # the token says it is.
     unless claims["iss"].to_s.downcase == "https://login.microsoftonline.com/#{tenant_id}/v2.0"
-      throw "Microsoft id_token: issuer does not match its tenant"
+      OauthSso.refuse("the Microsoft token's issuer does not match its tenant")
     end
     if MicrosoftOauth.multi_tenant? && !MicrosoftOauth.allowed_tenants.includes?(tenant_id)
-      throw "Microsoft: tenant #{tenant_id} is not allowed to sign in here"
+      Logger.warn("Microsoft: tenant #{tenant_id} is not in MICROSOFT_ALLOWED_TENANTS")
+      OauthSso.refuse("this Microsoft organization is not allowed to sign in here")
     end
 
     claims
+  end
+
+  # The address Microsoft verified, or nil — see the top of this file.
+  static def verified_email(claims)
+    edov = claims["xms_edov"].to_s
+    return claims["email"] if ["true", "1"].includes?(edov) && claims["email"].to_s.present?
+
+    verified = claims["verified_primary_email"]
+    return verified[0] if type(verified) == "array" && verified.length > 0 && verified[0].to_s.present?
+    return verified if type(verified) == "string" && verified.present?
+
+    nil
   end
 
   static def complete!(code)
@@ -126,10 +153,12 @@ class MicrosoftOauth
     end
 
     claims = MicrosoftOauth.identity(token_data["id_token"])
-    email = claims["email"] || claims["preferred_username"]
-    # `sub` is unique to the user within this app, whatever their tenant.
-    user = OauthClient.find_or_create_user("microsoft", claims["sub"], email, claims["name"], claims)
-    OauthClient.sign_in(user)
+    # The tenant and `sub` (unique to the user within this app) together, so
+    # an identity is never confused across directories.
+    uid = "#{claims["tid"].to_s.downcase}:#{claims["sub"]}"
+    email = MicrosoftOauth.verified_email(claims)
+    user = OauthSso.find_or_create_user("microsoft", uid, email, claims["name"], claims)
+    OauthSso.sign_in(user)
     user
   end
 end

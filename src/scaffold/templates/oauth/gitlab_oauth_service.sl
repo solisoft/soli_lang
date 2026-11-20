@@ -37,7 +37,7 @@ class GitlabOauth
       "client_secret=#{url_encode(getenv("GITLAB_CLIENT_SECRET").to_s)}",
       "redirect_uri=#{url_encode(getenv("GITLAB_REDIRECT_URI").to_s)}",
       "grant_type=authorization_code",
-      "code_verifier=#{url_encode(OauthClient.pkce_verifier.to_s)}"
+      "code_verifier=#{url_encode(OauthSso.pkce_verifier.to_s)}"
     ].join("&")
     response = HTTP.request(
       "POST",
@@ -74,10 +74,10 @@ class GitlabOauth
     end
 
     profile = GitlabOauth.fetch_userinfo(token_data["access_token"])
-    throw "GitLab: email is not verified" unless profile["email_verified"] == true
-
-    user = OauthClient.find_or_create_user("gitlab", profile["sub"], profile["email"], profile["name"], profile)
-    OauthClient.sign_in(user)
+    # An unverified address links nothing; the identity still signs in once linked.
+    email = profile["email_verified"] == true ? profile["email"] : nil
+    user = OauthSso.find_or_create_user("gitlab", profile["sub"], email, profile["name"], profile)
+    OauthSso.sign_in(user)
     user
   end
 end

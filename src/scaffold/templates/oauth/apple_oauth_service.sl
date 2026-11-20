@@ -74,7 +74,7 @@ class AppleOauth
       "client_secret=#{url_encode(AppleOauth.client_secret)}",
       "redirect_uri=#{url_encode(getenv("APPLE_REDIRECT_URI").to_s)}",
       "grant_type=authorization_code",
-      "code_verifier=#{url_encode(OauthClient.pkce_verifier.to_s)}"
+      "code_verifier=#{url_encode(OauthSso.pkce_verifier.to_s)}"
     ].join("&")
     response = HTTP.request(
       "POST",
@@ -119,10 +119,10 @@ class AppleOauth
 
     claims = AppleOauth.identity(token_data["id_token"])
     # Apple sends the flag as a boolean or as the string "true".
-    throw "Apple: email is not verified" unless claims["email_verified"].to_s == "true"
-
-    user = OauthClient.find_or_create_user("apple", claims["sub"], claims["email"], AppleOauth.posted_name, claims)
-    OauthClient.sign_in(user)
+    # An unverified address links nothing; the identity still signs in once linked.
+    email = claims["email_verified"].to_s == "true" ? claims["email"] : nil
+    user = OauthSso.find_or_create_user("apple", claims["sub"], email, AppleOauth.posted_name, claims)
+    OauthSso.sign_in(user)
     user
   end
 end

@@ -22,16 +22,29 @@ fn create_oauth_github_writes_files() {
 
     for rel in [
         "app/models/oauth_identity.sl",
-        "app/services/oauth_client.sl",
+        "app/services/oauth_sso.sl",
         "app/services/github_oauth.sl",
         "app/controllers/oauth_controller.sl",
+        "app/mailers/oauth_mailer.sl",
+        "app/views/oauth_mailer/provider_linked.html.slv",
+        "app/views/oauth/reauth.html.slv",
     ] {
         assert!(dir.path().join(rel).exists(), "{rel} missing");
     }
+    // The shared helpers are `OauthSso`: `OauthClient` is the model
+    // `soli generate oidc_provider` writes, and the two used to clash.
+    assert!(!dir.path().join("app/services/oauth_client.sl").exists());
+    let service = fs::read_to_string(dir.path().join("app/services/oauth_sso.sl")).unwrap();
+    assert!(service.contains("class OauthSso"), "{service}");
+    assert!(!service.contains("class OauthClient"), "{service}");
 
     let routes = fs::read_to_string(dir.path().join("config/routes.sl")).unwrap();
     assert!(routes.contains("/auth/:provider"));
     assert!(routes.contains("oauth#callback"));
+    assert!(
+        routes.contains(r#"post("/oauth/reauth", "oauth#reauthenticate")"#),
+        "{routes}"
+    );
 
     let migrations: Vec<String> = fs::read_dir(dir.path().join("db/migrations"))
         .unwrap()
@@ -112,15 +125,87 @@ fn emitted_provider_services_parse() {
 
     let dir = tempfile::tempdir().unwrap();
     make_app_with_auth(dir.path());
-    for provider in ["apple", "gitlab", "discord", "linkedin", "microsoft"] {
-        create_oauth(dir.path().to_str().unwrap(), provider).unwrap();
-        let rel = format!("app/services/{provider}_oauth.sl");
-        let source = fs::read_to_string(dir.path().join(&rel)).unwrap();
+    let parse = |rel: &str| {
+        let source = fs::read_to_string(dir.path().join(rel)).unwrap();
         let tokens = Scanner::new(&source).scan_tokens().unwrap();
         Parser::new(tokens)
             .parse()
             .unwrap_or_else(|e| panic!("{rel} does not parse: {e:?}"));
+    };
+    for provider in [
+        "apple",
+        "github",
+        "google",
+        "gitlab",
+        "discord",
+        "linkedin",
+        "microsoft",
+    ] {
+        create_oauth(dir.path().to_str().unwrap(), provider).unwrap();
+        parse(&format!("app/services/{provider}_oauth.sl"));
     }
+    for rel in [
+        "app/services/oauth_sso.sl",
+        "app/controllers/oauth_controller.sl",
+        "app/mailers/oauth_mailer.sl",
+    ] {
+        parse(rel);
+    }
+}
+
+/// What the provider services trust: GitHub's address only from /user/emails
+/// (primary and verified), Microsoft's only with `xms_edov` or
+/// `verified_primary_email`, never `preferred_username`; every form body
+/// encoded; PKCE on GitHub too.
+#[test]
+fn provider_services_take_only_verified_addresses_and_encode_their_bodies() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    for provider in ["github", "google", "microsoft"] {
+        create_oauth(dir.path().to_str().unwrap(), provider).unwrap();
+    }
+    let read = |rel: &str| fs::read_to_string(dir.path().join(rel)).unwrap();
+
+    let github = read("app/services/github_oauth.sl");
+    assert!(github.contains("/user/emails"), "{github}");
+    assert!(
+        github.contains(r#"entry["primary"] == true && entry["verified"] == true"#),
+        "{github}"
+    );
+    assert!(!github.contains(r#"profile["email"]"#), "{github}");
+    assert!(github.contains("code_challenge_method=S256"), "{github}");
+    assert!(github.contains("code_verifier="), "{github}");
+
+    let google = read("app/services/google_oauth.sl");
+    for field in ["code", "client_secret", "redirect_uri", "code_verifier"] {
+        assert!(
+            google.contains(&format!("\"{field}=#{{url_encode(")),
+            "{field} is not encoded:\n{google}"
+        );
+    }
+
+    let microsoft = read("app/services/microsoft_oauth.sl");
+    assert!(
+        !microsoft.contains(r#"claims["preferred_username"]"#),
+        "{microsoft}"
+    );
+    assert!(microsoft.contains("xms_edov"), "{microsoft}");
+    assert!(microsoft.contains("verified_primary_email"), "{microsoft}");
+
+    // Provider error text reaches the log, not the page.
+    let controller = read("app/controllers/oauth_controller.sl");
+    assert!(
+        !controller.contains("OAuth failed: #{error}"),
+        "{controller}"
+    );
+    assert!(
+        !controller.contains(r#"answer["error_description"] ||"#),
+        "{controller}"
+    );
+    assert!(
+        controller.contains("OauthSso.public_message(error)"),
+        "{controller}"
+    );
 }
 
 /// An OAuth controller written before account linking has no `identities`
@@ -561,12 +646,53 @@ fn served_app_signs_in_links_and_refuses() {
     assert_eq!(eve.sign_in_with("gitlab").status, 401);
     assert_eq!(eve.whoami(), "guest");
 
+    // What a provider says about a refusal is logged, never shown: the page
+    // would otherwise print whatever the query string carries.
+    let eve_state = eve.start("gitlab");
+    let denied = eve.get(&format!(
+        "/auth/gitlab/callback?state={eve_state}&error=access_denied&error_description=%3Cb%3Ephish%3C%2Fb%3E"
+    ));
+    assert_eq!(denied.status, 401, "{}", denied.body);
+    assert!(!denied.body.contains("phish"), "{}", denied.body);
+
+    // An account someone created in wait with the victim's address, never
+    // confirmed. It cannot link a provider to itself while unconfirmed...
+    let mut squatter = Browser::new(&server);
+    let signup = squatter.request(
+        "POST",
+        "/signup",
+        Some(json!({"email": "grace@example.com", "password": "squatter password 1"})),
+        true,
+    );
+    assert_eq!(signup.status, 302, "{}", signup.body);
+    assert!(squatter.whoami().starts_with("grace@example.com"));
+    let refused = squatter.get("/auth/apple");
+    assert_eq!(
+        refused.status, 403,
+        "an unconfirmed account started linking"
+    );
+
     // A session opened after a password reset bumped the account's session
-    // version stays open (it used to be refused on its next request).
+    // version stays open (it used to be refused on its next request). The
+    // same seed links an Apple identity to the squatter's account, as one
+    // linked before linking required a confirmed address would be, and makes
+    // Hopper, who signs in with a password.
     set_profile(gitlab("gl-1", "ada@example.com", true));
     fs::write(
         root.join("bump.sl"),
-        "user = User.find_by(\"email\", \"ada@example.com\")\nuser.session_version = 3\nuser.save\n",
+        concat!(
+            "user = User.find_by(\"email\", \"ada@example.com\")\n",
+            "user.session_version = 3\n",
+            "user.save\n",
+            "squatter = User.find_by(\"email\", \"grace@example.com\")\n",
+            "OauthIdentity.link!(squatter._key, \"apple\", \"apple-squatter\", \"squatter@privaterelay.appleid.com\", nil)\n",
+            "hopper = User.new\n",
+            "hopper.email = \"hopper@example.com\"\n",
+            "hopper.name = \"Hopper\"\n",
+            "hopper.set_password(\"hopper password 1\")\n",
+            "hopper.confirmed_at = 1\n",
+            "hopper.save\n",
+        ),
     )
     .unwrap();
     drop(server);
@@ -577,17 +703,16 @@ fn served_app_signs_in_links_and_refuses() {
     assert_eq!(ada.sign_in_with("gitlab").status, 302);
     assert_eq!(ada.whoami(), "ada@example.com member From GitLab");
 
-    // An account someone created in wait with the victim's address, never
-    // confirmed: the provider's proof of the address hands it over alone.
+    // ...and the provider's proof of the address hands it over alone: the
+    // squatter's password, session and linked Apple account all stop working.
     let mut squatter = Browser::new(&server);
-    let signup = squatter.request(
+    let login = squatter.request(
         "POST",
-        "/signup",
+        "/login",
         Some(json!({"email": "grace@example.com", "password": "squatter password 1"})),
         true,
     );
-    assert_eq!(signup.status, 302, "{}", signup.body);
-    assert!(squatter.whoami().starts_with("grace@example.com"));
+    assert_eq!(login.status, 302, "{}", login.body);
     set_profile(gitlab("gl-2", "grace@example.com", true));
     let mut grace = Browser::new(&server);
     assert_eq!(grace.sign_in_with("gitlab").status, 302);
@@ -604,6 +729,60 @@ fn served_app_signs_in_links_and_refuses() {
         true,
     );
     assert_eq!(login.status, 401, "the squatter's password still works");
+    set_claims(json!({
+        "iss": "https://appleid.apple.com", "aud": "com.example.web", "exp": now + 600,
+        "sub": "apple-squatter", "email": "squatter@privaterelay.appleid.com", "email_verified": "true",
+    }));
+    let mut squatter_phone = Browser::new(&server);
+    assert_eq!(squatter_phone.sign_in_with("apple").status, 302);
+    assert!(
+        !squatter_phone.whoami().starts_with("grace@example.com"),
+        "the squatter's linked identity still signs in to the account taken over"
+    );
+
+    // Linking needs a sign-in from the last ten minutes. Hopper signed in
+    // with a password, which this scaffold does not time: the password again.
+    let mut hopper = Browser::new(&server);
+    let login = hopper.request(
+        "POST",
+        "/login",
+        Some(json!({"email": "hopper@example.com", "password": "hopper password 1"})),
+        true,
+    );
+    assert_eq!(login.status, 302, "{}", login.body);
+    let asked = hopper.get("/auth/apple");
+    assert_eq!(
+        (asked.status, asked.location.as_str()),
+        (302, "/oauth/reauth?provider=apple"),
+        "{}",
+        asked.body
+    );
+    assert_eq!(hopper.get(&asked.location).status, 200);
+    let wrong = hopper.request(
+        "POST",
+        "/oauth/reauth",
+        Some(json!({"provider": "apple", "password": "not the password"})),
+        true,
+    );
+    assert_eq!(wrong.status, 401, "{}", wrong.body);
+    assert_eq!(hopper.get("/auth/apple").status, 302);
+    assert!(hopper
+        .get("/auth/apple")
+        .location
+        .starts_with("/oauth/reauth"));
+    let confirmed = hopper.request(
+        "POST",
+        "/oauth/reauth",
+        Some(json!({"provider": "apple", "password": "hopper password 1"})),
+        true,
+    );
+    assert_eq!(
+        (confirmed.status, confirmed.location.as_str()),
+        (302, "/auth/apple"),
+        "{}",
+        confirmed.body
+    );
+    hopper.start("apple");
 
     // Linking: a signed-in user adds Apple. Apple posts its answer from its
     // own site, without the session cookie; the action hands it to a GET.
@@ -720,8 +899,36 @@ fn served_app_signs_in_links_and_refuses() {
             "iss": format!("https://login.microsoftonline.com/{issuer_tenant}/v2.0"),
             "aud": "ms-client", "exp": now + 600, "tid": tenant,
             "sub": format!("ms-{tenant}"), "email": format!("user@{tenant}.example"), "name": "MS User",
+            "xms_edov": true,
         })
     };
+    // An address Microsoft does not say it verified — `email` without
+    // `xms_edov`, or only `preferred_username` — finds and creates nothing.
+    let mut unverified = microsoft("tenant-good", "tenant-good");
+    unverified["xms_edov"] = json!(false);
+    unverified["email"] = json!("ada@example.com");
+    set_claims(unverified.clone());
+    let mut intruder = Browser::new(&server);
+    assert_eq!(intruder.sign_in_with("microsoft").status, 401);
+    assert_eq!(intruder.whoami(), "guest");
+    unverified.as_object_mut().unwrap().remove("email");
+    unverified["preferred_username"] = json!("ada@example.com");
+    set_claims(unverified);
+    assert_eq!(intruder.sign_in_with("microsoft").status, 401);
+    assert_eq!(intruder.whoami(), "guest");
+    // `verified_primary_email` is taken over `email`.
+    let mut primary = microsoft("tenant-also", "tenant-also");
+    primary.as_object_mut().unwrap().remove("xms_edov");
+    primary["sub"] = json!("ms-primary");
+    primary["verified_primary_email"] = json!(["primary@tenant-also.example"]);
+    set_claims(primary);
+    let mut primary_user = Browser::new(&server);
+    assert_eq!(primary_user.sign_in_with("microsoft").status, 302);
+    assert_eq!(
+        primary_user.whoami(),
+        "primary@tenant-also.example member MS User"
+    );
+
     set_claims(microsoft("tenant-good", "tenant-good"));
     let mut employee = Browser::new(&server);
     assert_eq!(employee.sign_in_with("microsoft").status, 302);

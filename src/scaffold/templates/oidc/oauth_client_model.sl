@@ -11,7 +11,7 @@
 class OauthClient < Model
   # Fields: client_id, client_secret_digest, client_type, name, redirect_uris,
   # scopes, grant_types, require_pkce, skip_consent, request_object_key,
-  # disabled_at.
+  # introspect_any, disabled_at.
 
   # Create a client and return the credentials. The secret is returned in the
   # clear exactly once, because only its Argon2 digest is persisted.
@@ -40,6 +40,9 @@ class OauthClient < Model
       # Public PEM the client signs authorization request objects (JAR, RFC 9101)
       # with. Empty means the client cannot use `request=`.
       "request_object_key": options["request_object_key"] ?? "",
+      # A resource server that introspects tokens issued to other clients.
+      # Every other client introspects only its own (/oauth/introspect).
+      "introspect_any": options["introspect_any"] == true,
       "client_secret_digest": null,
       "disabled_at": null
     }
@@ -69,6 +72,37 @@ class OauthClient < Model
     return false if uri.to_s.contains("#")
 
     return uri.to_s.starts_with("http://") || uri.to_s.starts_with("https://")
+  end
+
+  # What dynamic registration accepts: https, or http to this machine only
+  # (127.0.0.1, [::1], localhost — RFC 8252 §7.3, for native apps and
+  # development). A plain-http redirect to a remote host sends the
+  # authorization code across the network in the clear.
+  static def registrable_redirect_uri?(uri)
+    return false unless OauthClient.valid_redirect_uri?(uri)
+
+    text = uri.to_s
+    return true if text.starts_with("https://")
+
+    authority = text.substring(7, text.length()).split("/")[0].split("?")[0]
+    # `http://localhost@evil.example/` is a request to evil.example.
+    return false if authority.contains("@")
+
+    host = authority
+    if authority.starts_with("[")
+      host = authority.split("]")[0] + "]"
+    elsif authority.contains(":")
+      host = authority.split(":")[0]
+    end
+
+    ["127.0.0.1", "[::1]", "localhost"].includes?(host.downcase())
+  end
+
+  # May this client introspect a token issued to `token_client_id`?
+  def may_introspect?(token_client_id)
+    return true if this.introspect_any == true
+
+    token_client_id.to_s == this.client_id.to_s
   end
 
   static def find_active(client_id)

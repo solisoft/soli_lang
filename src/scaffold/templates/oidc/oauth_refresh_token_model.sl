@@ -8,8 +8,10 @@
 
 class OauthRefreshToken < Model
   # Fields: token_digest, chain_id, client_id, user_key, scope, issued_at,
-  # expires_at, rotated_at, revoked_at, revoked_reason, access_jti.
-  static def issue(chain_id, client_id, user_key, scopes, access_jti)
+  # expires_at, rotated_at, revoked_at, revoked_reason, access_jti,
+  # session_version (the user's, at issue: a refresh after it moved — a
+  # password reset — is refused and ends the chain).
+  static def issue(chain_id, client_id, user_key, scopes, access_jti, session_version = 0)
     token = Crypto.random_token()
     now = DateTime.utc().to_unix()
 
@@ -24,7 +26,8 @@ class OauthRefreshToken < Model
       "rotated_at": null,
       "revoked_at": null,
       "revoked_reason": null,
-      "access_jti": access_jti
+      "access_jti": access_jti,
+      "session_version": session_version ?? 0
     })
 
     return token

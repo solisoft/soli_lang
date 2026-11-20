@@ -59,10 +59,10 @@ class LinkedinOauth
     end
 
     profile = LinkedinOauth.fetch_userinfo(token_data["access_token"])
-    throw "LinkedIn: email is not verified" unless profile["email_verified"] == true
-
-    user = OauthClient.find_or_create_user("linkedin", profile["sub"], profile["email"], profile["name"], profile)
-    OauthClient.sign_in(user)
+    # An unverified address links nothing; the identity still signs in once linked.
+    email = profile["email_verified"] == true ? profile["email"] : nil
+    user = OauthSso.find_or_create_user("linkedin", profile["sub"], email, profile["name"], profile)
+    OauthSso.sign_in(user)
     user
   end
 end

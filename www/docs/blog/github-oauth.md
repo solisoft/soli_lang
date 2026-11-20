@@ -6,6 +6,11 @@
 
 Most developer tools ship with GitHub login. It's familiar, fast, and your users already have an account. Here's how to wire it up in Soli — from creating the OAuth app to storing the user in your database.
 
+> **The short way:** `soli generate auth && soli generate oauth github` writes
+> all of this — plus account linking, re-authentication before linking, and the
+> refusals below — see [OAuth Client](/docs/security/oauth-client). This post
+> builds it by hand, to show what each piece is for.
+
 ## How OAuth 2.0 Works
 
 Before we write code, here's the flow:
@@ -42,122 +47,125 @@ Load these with `getenv()` — never hardcode secrets.
 ## Step 3: The Auth Controller
 
 ```soli
-# app/controllers/auth_controller.sl
+# app/controllers/github_auth_controller.sl
 
-def github_login
+# GET /auth/github — to GitHub, with a fresh state and PKCE challenge
+def github_login(req)
   state = Crypto.random_hex(32)
-  req["session"]["oauth_state"] = state
+  verifier = Crypto.random_hex(32)
+  session_set("oauth_state", state)
+  session_set("oauth_verifier", verifier)
+  # PKCE S256: the unpadded base64url of the SHA-256 of the verifier.
+  challenge = Base64.urlsafe_encode(Hex.decode(Crypto.sha256(verifier)))
 
-  auth_url = "https://github.com/login/oauth/authorize?" +
-    "client_id=" + getenv("GITHUB_CLIENT_ID") +
-    "&redirect_uri=" + getenv("GITHUB_REDIRECT_URI") +
-    "&scope=read:user user:email" +
-    "&state=" + state
-
-  {"status": 302, "headers": {"Location": auth_url}}
+  query = [
+    "client_id=#{url_encode(getenv("GITHUB_CLIENT_ID").to_s)}",
+    "redirect_uri=#{url_encode(getenv("GITHUB_REDIRECT_URI").to_s)}",
+    "scope=#{url_encode("read:user user:email")}",
+    "state=#{state}",
+    "code_challenge=#{challenge}",
+    "code_challenge_method=S256"
+  ]
+  redirect_external("https://github.com/login/oauth/authorize?#{query.join("&")}")
 end
 
-def github_callback
-  params = req["query_params"]
+# GET /auth/github/callback
+def github_callback(req)
+  expected = session_get("oauth_state").to_s
+  verifier = session_get("oauth_verifier").to_s
+  session_delete("oauth_state")
+  session_delete("oauth_verifier")
 
-  # Verify state to prevent CSRF
-  if params["state"] != req["session"]["oauth_state"]
+  # Verify state to prevent CSRF. Both sides must be present — two missing
+  # values are equal, so `!=` would wave a forged callback through — and the
+  # comparison is constant-time.
+  given = params["state"].to_s
+  unless expected.present? && given.present? && Crypto.secure_compare(expected, given)
     return {"status": 403, "body": "Invalid state parameter"}
   end
 
-  # Check for errors (user denied access, etc.)
-  if params["error"] != null
-    return {"status": 401, "body": "Authorization denied: " + params["error_description"]}
+  # Denied, or refused by GitHub: log what it said, show none of it.
+  if params["error"].present? || params["code"].blank?
+    Logger.warn("GitHub refused: #{params["error"]} #{params["error_description"]}")
+    return {"status": 401, "body": "Sign-in was cancelled."}
   end
 
-  code = params["code"]
+  try
+    token_data = _github_exchange_code(params["code"].to_s, verifier)
+    access_token = token_data["access_token"]
+    github_user = _github_get(access_token, "/user")
+    email = _verified_primary_email(_github_get(access_token, "/user/emails"))
+    user = User.find_or_create_from_github(github_user, email)
 
-  # Exchange code for access token
-  token_data = github_exchange_code(code)
-
-  if token_data["error"] != null
-    return {"status": 401, "body": "Token exchange failed: " + token_data["error_description"]}
+    session_regenerate()
+    session_set("user_id", user._key)
+    return redirect("/dashboard")
+  catch error
+    Logger.warn("GitHub sign-in failed: #{error}")
+    return {"status": 401, "body": "Sign-in failed. Try again."}
   end
-
-  access_token = token_data["access_token"]
-
-  # Fetch user profile from GitHub
-  github_user = github_get_user(access_token)
-
-  # If email is private, fetch from the emails endpoint
-  if github_user["email"] == null
-    emails = github_get_emails(access_token)
-    github_user["email"] = find_primary_email(emails)
-  end
-
-  # Find or create user in our database
-  user = find_or_create_github_user(github_user)
-
-  # Create session
-  session_regenerate()
-  req["session"]["user_id"] = user["id"]
-
-  {"status": 302, "headers": {"Location": "/dashboard"}}
 end
-```
 
-## Step 4: GitHub API Helpers
-
-```soli
-# app/controllers/auth_controller.sl (continued)
-
-def github_exchange_code(code)
-  let response = HTTP.post(
+# Form-encoded, every value escaped. `HTTP.request` is the form that sends
+# headers and hands back the status with the body.
+def _github_exchange_code(code, verifier)
+  body = [
+    "client_id=#{url_encode(getenv("GITHUB_CLIENT_ID").to_s)}",
+    "client_secret=#{url_encode(getenv("GITHUB_CLIENT_SECRET").to_s)}",
+    "code=#{url_encode(code)}",
+    "redirect_uri=#{url_encode(getenv("GITHUB_REDIRECT_URI").to_s)}",
+    "code_verifier=#{url_encode(verifier)}"
+  ].join("&")
+  response = HTTP.request(
+    "POST",
     "https://github.com/login/oauth/access_token",
-    JSON.stringify({
-      "client_id": getenv("GITHUB_CLIENT_ID"),
-      "client_secret": getenv("GITHUB_CLIENT_SECRET"),
-      "code": code
-    }),
-    {
-      "Content-Type": "application/json",
-      "Accept": "application/json"
-    }
+    {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+    body
   )
+  token_data = _github_json(response)
+  throw "token exchange: #{token_data["error"]}" if token_data["error"]
 
-  JSON.parse(response["body"])
+  token_data
 end
 
-def github_get_user(access_token)
-  let response = HTTP.get(
-    "https://api.github.com/user",
-    {
-      "Authorization": "Bearer " + access_token,
-      "Accept": "application/json"
-    }
+def _github_get(access_token, path)
+  response = HTTP.request(
+    "GET",
+    "https://api.github.com#{path}",
+    {"Authorization": "Bearer #{access_token}", "Accept": "application/json", "User-Agent": "my-app"}
   )
-
-  JSON.parse(response["body"])
+  _github_json(response)
 end
 
-def github_get_emails(access_token)
-  let response = HTTP.get(
-    "https://api.github.com/user/emails",
-    {
-      "Authorization": "Bearer " + access_token,
-      "Accept": "application/json"
-    }
-  )
+def _github_json(response)
+  status = response["status"]
+  throw "GitHub answered HTTP #{status}" unless status >= 200 && status < 300
 
-  JSON.parse(response["body"])
+  json_parse(response["body"].to_s)
 end
 
-def find_primary_email(emails)
-  for email in emails
-    if email["primary"] == true && email["verified"] == true
-      return email["email"]
-    end
-  end
-  null
+# The primary address, and only when GitHub verified it. The profile's public
+# `email` is whatever the user typed in their profile: never trust it.
+def _verified_primary_email(emails)
+  primary = emails.find { |entry| entry["primary"] == true && entry["verified"] == true }
+  primary.nil? ? nil : primary["email"]
 end
 ```
 
-Note the `Accept: application/json` header on the token exchange — without it, GitHub returns the response as a URL-encoded string instead of JSON.
+The state and the PKCE verifier live in the session (`session_set` /
+`session_get` — there is no writable `req["session"]`). The state check needs
+both sides present: with `!=`, a callback carrying no state matched a session
+holding none. GitHub supports PKCE, so the code is bound to this browser too.
+
+Note the `Accept: application/json` header on the token exchange — without it,
+GitHub returns the response as a URL-encoded string instead of JSON.
+
+## Step 4: Which Address to Trust
+
+The profile's `email` field is the public address the user typed in their
+profile; GitHub never checked it. `/user/emails` lists the addresses with a
+`verified` flag, and only the one that is both `primary` and `verified` is
+taken (scope `user:email`). A user without one simply has no address on file.
 
 ## Step 5: The User Model
 
@@ -165,35 +173,36 @@ Note the `Accept: application/json` header on the token exchange — without it,
 # app/models/user.sl
 
 class User < Model
-  id: Int
-  github_id: Int
-  username: String
-  email: String
-  avatar_url: String
-  created_at: DateTime
+  # Fields: github_id, username, email, avatar_url
 
-  def find_or_create_github_user(github_data)
-    existing = User.find_by_github_id(github_data["id"])
-
-    return existing if existing != nil
+  # The account linked to this GitHub id, else a new one. An address alone
+  # never opens an existing account: matching on it would hand that account
+  # to whoever gets the address onto a GitHub profile.
+  static def find_or_create_from_github(github_user, email)
+    existing = User.find_by("github_id", github_user["id"])
+    return existing unless existing.nil?
 
     User.create({
-      "github_id": github_data["id"],
-      "username": github_data["login"],
-      "email": github_data["email"],
-      "avatar_url": github_data["avatar_url"]
+      "github_id": github_user["id"],
+      "username": github_user["login"],
+      "email": email,
+      "avatar_url": github_user["avatar_url"]
     })
   end
 end
 ```
+
+A sign-in finds the account by GitHub id, never by address: linking on an
+address would hand an existing account to whoever gets that address onto a
+GitHub profile.
 
 ## Step 6: Routes
 
 ```soli
 # config/routes.sl
 
-get "/auth/github", "auth#github_login"
-get "/auth/github/callback", "auth#github_callback"
+get("/auth/github", "github_auth#github_login")
+get("/auth/github/callback", "github_auth#github_callback")
 ```
 
 ## Step 7: The Login Button
@@ -214,20 +223,21 @@ Once users can log in, you need to protect routes that require authentication:
 ```soli
 # app/middleware/require_login.sl
 
-def call
-  if req["session"]["user_id"] == null
-    return {"status": 302, "headers": {"Location": "/auth/github"}}
-  end
+# scope_only: true
+def require_login(req)
+  return redirect("/auth/github") if session_get("user_id").nil?
+
+  req
 end
 ```
 
 ```soli
 # config/routes.sl
 
-scope "/dashboard", middleware: ["require_login"] do
-  get "/", "dashboard#index"
-  get "/settings", "dashboard#settings"
-end
+middleware("require_login", -> {
+  get("/dashboard", "dashboard#index")
+  get("/dashboard/settings", "dashboard#settings")
+})
 ```
 
 ## Adding a Logout
@@ -254,10 +264,10 @@ If your app also has an API, you can issue a JWT after OAuth login instead of (o
 def github_callback_api
   # ... same OAuth flow as above ...
 
-  user = find_or_create_github_user(github_user)
+  user = User.find_or_create_from_github(github_user, email)
 
   token = jwt_sign(
-    {"sub": user["id"], "username": user["username"]},
+    {"sub": user._key, "username": user.username},
     getenv("JWT_SECRET"),
     {"expires_in": 86400}
   )
@@ -274,9 +284,11 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 
 ## Security Checklist
 
-- **Always use the `state` parameter.** It prevents CSRF attacks where an attacker tricks a user into linking their account to the attacker's GitHub. Generate it with `Crypto.random_hex(32)` and validate it in the callback.
+- **Always use the `state` parameter.** It prevents CSRF attacks where an attacker tricks a user into linking their account to the attacker's GitHub. Generate it with `Crypto.random_hex(32)`, keep it with `session_set`, and compare it with `Crypto.secure_compare` once both sides are known to be present.
 - **Regenerate the session after login.** `session_regenerate()` prevents session fixation attacks.
-- **Check email verification.** GitHub users can have unverified emails. Only trust `verified: true` emails.
+- **Check email verification.** GitHub users can have unverified emails, and the profile's public `email` is never checked. Only trust the address `/user/emails` marks `primary` and `verified`.
+- **Use PKCE.** GitHub supports `code_challenge_method=S256`; it binds the code to the browser that asked for it.
+- **Log provider errors, don't echo them.** `error_description` comes from the query string — anyone can write it.
 - **Use HTTPS in production.** OAuth tokens in transit over HTTP can be intercepted.
 - **Keep secrets out of code.** Use environment variables for `GITHUB_CLIENT_SECRET` and `JWT_SECRET`.
 

@@ -5,6 +5,8 @@
 # POST   /auth/:provider/callback   → callback (Apple posts its answer)
 # GET    /oauth/identities          → identities
 # DELETE /oauth/identities/:id      → unlink
+# GET    /oauth/reauth              → reauth
+# POST   /oauth/reauth              → reauthenticate
 #
 # A provider is the `<Name>Oauth` service class that `soli generate oauth <name>`
 # wrote (`GithubOauth`, `GoogleOauth`, `GitlabOauth`, …), found by name, so adding
@@ -27,16 +29,24 @@ end
 
 # GET /auth/:provider — redirects to the provider with a fresh state and PKCE
 # challenge. From a signed-in user it links the provider to their account
-# instead of signing in.
+# instead of signing in — once their email is confirmed, and only within ten
+# minutes of a sign-in (else /oauth/reauth asks for the password first).
 def start(req)
   provider = (req["params"]["provider"] || "").to_s.downcase
   service = oauth_service_for(provider)
   return {"status": 404, "body": "Unknown OAuth provider"} if service.nil?
 
-  state = OauthClient.begin_state(provider)
-  challenge = OauthClient.begin_pkce
   user = current_user()
-  OauthClient.begin_link(user) unless user.nil?
+  unless user.nil?
+    unless user.confirmed?
+      return {"status": 403, "body": "Confirm your email address before connecting another account."}
+    end
+    return redirect("/oauth/reauth?provider=#{provider}") unless OauthSso.recently_authenticated?(user)
+  end
+
+  state = OauthSso.begin_state(provider)
+  challenge = OauthSso.begin_pkce
+  OauthSso.begin_link(user) unless user.nil?
 
   redirect_external(service.authorize_url(state, challenge))
 end
@@ -60,8 +70,8 @@ def callback(req)
   end
 
   answer = req["query"] || req["query_params"] || {}
-  unless OauthClient.valid_state?(answer["state"])
-    OauthClient.clear_state
+  unless OauthSso.valid_state?(answer["state"])
+    OauthSso.clear_state
     return {"status": 403, "body": "Invalid OAuth state — try signing in again"}
   end
 
@@ -69,30 +79,32 @@ def callback(req)
   # callback for one provider could complete a flow begun for another.
   service = oauth_service_for(provider)
   if service.nil? || session_get("oauth_provider") != provider
-    OauthClient.clear_state
+    OauthSso.clear_state
     return {"status": 404, "body": "Unknown OAuth provider"}
   end
 
+  # The provider's own words (`error_description`) go to the log, never to
+  # the page: they are whatever the query string says.
   if answer["error"].present?
-    OauthClient.clear_state
-    return {
-      "status": 401,
-      "body": "Authorization denied: " + (answer["error_description"] || answer["error"]).to_s
-    }
+    OauthSso.clear_state
+    Logger.warn("OAuth #{provider}: authorization refused: #{answer["error"]} #{answer["error_description"]}")
+    return {"status": 401, "body": "Sign-in was cancelled or refused by the provider."}
   end
 
   code = answer["code"]
   if code.blank?
-    OauthClient.clear_state
+    OauthSso.clear_state
     return {"status": 400, "body": "Missing authorization code"}
   end
 
-  linking = OauthClient.linking?
+  linking = OauthSso.linking?
   try
     service.complete!(code)
   catch error
-    OauthClient.clear_state
-    return {"status": 401, "body": "OAuth failed: #{error}"}
+    OauthSso.clear_state
+    # Logged in full; the page gets only the refusals written for it.
+    Logger.warn("OAuth #{provider} sign-in failed: #{error}")
+    return {"status": 401, "body": OauthSso.public_message(error)}
   end
 
   redirect(linking ? "/oauth/identities" : "/")
@@ -128,4 +140,47 @@ def unlink(req)
   # Someone else's identity answers exactly like a missing one.
   identity.delete if !identity.nil? && identity.user_id == user._key && keeps_a_way_in
   redirect("/oauth/identities")
+end
+
+# GET /oauth/reauth — asks a signed-in user to prove it is them before a
+# provider is linked to their account.
+def reauth(req)
+  user = current_user()
+  return redirect("/login") if user.nil?
+
+  _render_reauth(user, params["provider"].to_s, "", 200)
+end
+
+# POST /oauth/reauth — the password, then on to the provider.
+def reauthenticate(req)
+  user = current_user()
+  return redirect("/login") if user.nil?
+
+  provider = params["provider"].to_s.downcase
+  # The sign-in form's lockout counts the guesses made here too.
+  if user.locked? || !user.authenticate(params["password"].to_s)
+    user.register_failed_attempt unless user.password_digest.blank?
+    return _render_reauth(user, provider, "That password is not right.", 401)
+  end
+
+  user.clear_failed_attempts
+  OauthSso.mark_authenticated(user)
+  return redirect("/oauth/identities") if oauth_service_for(provider).nil?
+
+  redirect("/auth/#{provider}")
+end
+
+def _render_reauth(user, provider, error, status)
+  provider = "" if oauth_service_for(provider.downcase).nil?
+  render(
+    "oauth/reauth",
+    {
+      "title": "Confirm it's you",
+      "provider": provider,
+      "error": error,
+      "has_password": user.password_digest.present?,
+      "linked": OauthIdentity.for_user(user).map { |identity| identity.provider.capitalize }
+    },
+    {"status": status}
+  )
 end

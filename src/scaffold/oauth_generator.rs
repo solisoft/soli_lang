@@ -63,6 +63,8 @@ pub fn create_oauth(folder: &str, provider: &str) -> Result<(), String> {
         "app/services",
         "app/controllers",
         "app/views/oauth",
+        "app/mailers",
+        "app/views/oauth_mailer",
         "config",
         "db/migrations",
     ] {
@@ -81,8 +83,19 @@ pub fn create_oauth(folder: &str, provider: &str) -> Result<(), String> {
     )?;
     write_if_absent(
         app_path,
-        "app/services/oauth_client.sl",
-        oauth::OAUTH_CLIENT_SERVICE,
+        "app/services/oauth_sso.sl",
+        oauth::OAUTH_SSO_SERVICE,
+    )?;
+    write_if_absent(app_path, "app/mailers/oauth_mailer.sl", oauth::OAUTH_MAILER)?;
+    write_if_absent(
+        app_path,
+        "app/views/oauth_mailer/provider_linked.html.slv",
+        oauth::PROVIDER_LINKED_MAIL_VIEW,
+    )?;
+    write_if_absent(
+        app_path,
+        "app/views/oauth/reauth.html.slv",
+        oauth::REAUTH_VIEW,
     )?;
     write_if_absent(
         app_path,
@@ -112,6 +125,7 @@ pub fn create_oauth(folder: &str, provider: &str) -> Result<(), String> {
         service_source,
     )?;
     warn_if_controller_is_hardcoded(app_path);
+    warn_about_predecessors(app_path);
 
     write_migration_once(
         app_path,
@@ -139,8 +153,52 @@ pub fn create_oauth(folder: &str, provider: &str) -> Result<(), String> {
              command, to get /oauth/identities and `soli generate oauth apple`"
         );
     }
+    if controller_has_reauth(app_path) {
+        append_routes_once(
+            app_path,
+            oauth::REAUTH_ROUTES_MARKER,
+            &oauth::reauth_routes_snippet(),
+            "oauth reauth",
+        )?;
+    }
     print_success(provider);
     Ok(())
+}
+
+/// Does the app's OAuth controller have the `/oauth/reauth` actions?
+fn controller_has_reauth(app_path: &Path) -> bool {
+    fs::read_to_string(app_path.join("app/controllers/oauth_controller.sl"))
+        .map(|source| source.contains("def reauthenticate"))
+        .unwrap_or(false)
+}
+
+/// Files an earlier `soli generate oauth` (or `auth`) wrote that the new
+/// templates cannot work with.
+fn warn_about_predecessors(app_path: &Path) {
+    // The shared helpers were `class OauthClient` in app/services/oauth_client.sl:
+    // the provider services written now call `OauthSso`, and the old name
+    // clashes with the model `soli generate oidc_provider` writes.
+    let old_service = app_path.join("app/services/oauth_client.sl");
+    if let Ok(source) = fs::read_to_string(&old_service) {
+        if source.contains("class OauthClient") && !source.contains("< Model") {
+            println!(
+                "  \x1b[33mnote\x1b[0m   app/services/oauth_client.sl is the old `OauthClient` service; \
+                 delete it, app/services/*_oauth.sl and app/controllers/oauth_controller.sl, then \
+                 re-run this command for each provider: they now use `OauthSso` (app/services/oauth_sso.sl)"
+            );
+        }
+    }
+    // Taking over an unconfirmed account revokes everything it can be entered
+    // with through `User#revoke_credentials`, which `soli generate auth` writes.
+    let user_model = fs::read_to_string(app_path.join("app/models/user.sl")).unwrap_or_default();
+    if !user_model.contains("def revoke_credentials") {
+        println!(
+            "  \x1b[33mnote\x1b[0m   app/models/user.sl has no `revoke_credentials`: OauthSso.take_over_unconfirmed \
+             calls it. Add it (it clears password_digest and remember_token_digest, bumps session_version and \
+             deletes the user's OauthIdentity, passkey, API token, 2FA and magic-link rows) — see \
+             /docs/security/oauth-client"
+        );
+    }
 }
 
 /// Does the app's OAuth controller have the linking actions? One written
@@ -209,7 +267,7 @@ fn print_success(provider: &str) {
         "microsoft" => (
             "Microsoft",
             "MICROSOFT",
-            "Register an Entra ID app; also set MICROSOFT_TENANT to your tenant, or to `organizations` with MICROSOFT_ALLOWED_TENANTS (a list of tenant ids)",
+            "Register an Entra ID app with the optional ID-token claims email, xms_edov and verified_primary_email (Token configuration); also set MICROSOFT_TENANT to your tenant, or to `organizations` with MICROSOFT_ALLOWED_TENANTS (a list of tenant ids)",
         ),
         _ => (provider, "PROVIDER", "Create an OAuth application"),
     };
