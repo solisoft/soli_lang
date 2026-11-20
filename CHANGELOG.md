@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [2.40.0] - 2026-11-20
+
+**Upgrading:** `soli check` is stricter — an override must fit the signature
+it replaces, and a function's last line its `-> Type` (which already raised at
+run time) — and `soli serve` refuses to boot when a class misses a method of
+its interface or abstract class. The docs site, the examples and the generated
+scaffolds trip none of them; an app may, and each report is a real bug.
+
 ### Fixed
 - **types: an interface works as a parameter or field type.** `def
   welcome(repo: Repository)` then `repo.find(id)` was refused ("Cannot access
