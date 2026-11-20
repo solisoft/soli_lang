@@ -11,6 +11,7 @@
     { "include": "#percent-arrays" },
     { "include": "#symbols" },
     { "include": "#numbers" },
+    { "include": "#contextual-keywords" },
     { "include": "#definitions" },
     { "include": "#keywords" },
     { "include": "#types" },
@@ -245,6 +246,15 @@
         }
       ]
     },
+    "contextual-keywords": {
+      "comment": "Words the lexer does not reserve, highlighted only where they act as keywords: `abstract` before `class` or `def`. A variable named `abstract` stays a variable.",
+      "patterns": [
+        {
+          "name": "keyword.other.soli",
+          "match": "(?<![.@\\w])abstract(?=\\s+(?:class|def|fn)\\b)"
+        }
+      ]
+    },
     "keywords": {
       "patterns": [
         {
@@ -257,7 +267,7 @@
         },
         {
           "name": "keyword.other.soli",
-          "match": "(?<![.@\\w])(let|const|fn|def|class|module|interface|enum|extends|implements|new|super|public|private|protected|static|abstract|import|export|from|as)\\b(?![?!])"
+          "match": "(?<![.@\\w])(let|const|fn|def|class|module|interface|enum|extends|implements|new|super|public|private|protected|static|import|export|from|as)\\b(?![?!])"
         },
         {
           "name": "variable.language.soli",

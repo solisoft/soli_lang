@@ -107,6 +107,13 @@ test("words the lexer does not reserve are not keywords", async () => {
   }
 });
 
+test("`abstract` is a keyword only before class or def", async () => {
+  assert.ok(hasScope(await soli("abstract class Shape", "abstract"), "keyword"));
+  assert.ok(hasScope(await soli("  abstract def area -> Float", "abstract"), "keyword"));
+  assert.ok(!hasScope(await soli("abstract = 1", "abstract"), "keyword"));
+  assert.ok(!hasScope(await soli("print(abstract)", "abstract"), "keyword"));
+});
+
 test("a method named like a keyword, or with a ? / ! suffix, is not a keyword", async () => {
   assert.ok(!hasScope(await soli("user.class", "class"), "keyword"));
   assert.ok(hasScope(await soli("xs.empty?", "empty?"), "entity.name.function"));
