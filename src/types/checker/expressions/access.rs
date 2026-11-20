@@ -224,6 +224,40 @@ impl TypeChecker {
                     declared,
                 })
             }
+            // `repo: Repository` then `repo.find(id)`: the interface's
+            // signature types the call. Whatever class implements it, the
+            // universal methods every value has are there too.
+            Type::Interface(iface) => {
+                let full = self
+                    .env
+                    .get_interface(&iface.name)
+                    .cloned()
+                    .unwrap_or(iface);
+                if let Some(signature) = full.methods.get(name) {
+                    return Ok(collapse_zero_arg_method(Type::Function {
+                        params: signature.params.clone(),
+                        return_type: Box::new(signature.return_type.clone()),
+                    }));
+                }
+                match name {
+                    "class" | "inspect" | "to_s" | "to_string" => Ok(Type::String),
+                    "nil?" | "blank?" | "present?" => Ok(Type::Bool),
+                    "is_a?" | "respond_to?" => Ok(Type::Function {
+                        params: vec![Type::String],
+                        return_type: Box::new(Type::Bool),
+                    }),
+                    _ => Err(TypeError::NoSuchMember {
+                        type_name: full.name.clone(),
+                        member: name.to_string(),
+                        span,
+                        suggestion: crate::error::suggest::best_match(
+                            name,
+                            full.methods.keys().map(|k| k.as_str()),
+                        ),
+                        declared: None,
+                    }),
+                }
+            }
             Type::Array(inner_type) => self
                 .check_array_method(&inner_type, name, span)
                 .map(|ty| builtin_member_type(ty, "array", name, called_with_args)),
@@ -1234,5 +1268,67 @@ mod optional_arg_builtin_tests {
         refuses("print([1, 2].get + 1)\n");
         // A method that takes a needle is still a function when read bare.
         refuses("print(\"ab\".starts_with? + 1)\n");
+    }
+}
+
+/// Interfaces as parameter types — dependency inversion. `repo.find(id)` on a
+/// `repo: Repository` was refused with "Cannot access member 'find' on type
+/// 'Repository'": member lookup had no interface arm.
+#[cfg(test)]
+mod interface_member_tests {
+    use crate::types::TypeChecker;
+
+    fn check(source: &str) -> Result<(), String> {
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
+        TypeChecker::new().check(&program).map_err(|errs| {
+            errs.iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
+    }
+
+    const REPO: &str = "interface Repository {\n  fn find(id: Int) -> String\n  fn count() -> Int\n}\n\
+        class MemoryRepo implements Repository\n  def find(id: Int) -> String\n    \"user #{id}\"\n  end\n  \
+        def count -> Int\n    1\n  end\nend\n";
+
+    #[test]
+    fn a_method_of_the_interface_is_callable_on_a_parameter_of_that_type() {
+        let source = format!(
+            "{REPO}def lookup(repo: Repository, id: Int) -> String\n  repo.find(id)\nend\n\
+             def total(repo: Repository) -> Int\n  repo.count + 1\nend\n\
+             print(lookup(MemoryRepo.new, 1))\n"
+        );
+        check(&source).unwrap();
+    }
+
+    #[test]
+    fn the_signature_types_the_call() {
+        let source =
+            format!("{REPO}def bad(repo: Repository)\n  let n: Int = repo.find(1)\n  n\nend\n");
+        assert!(check(&source).is_err(), "String returned as Int");
+    }
+
+    #[test]
+    fn a_member_the_interface_lacks_is_refused_with_a_suggestion() {
+        let source = format!("{REPO}def bad(repo: Repository)\n  repo.fnd(1)\nend\n");
+        let err = check(&source).unwrap_err();
+        assert!(err.contains("'fnd'") && err.contains("find"), "{err}");
+    }
+
+    #[test]
+    fn an_interface_value_passes_on_and_a_subclass_of_an_implementer_fits() {
+        let source = format!(
+            "{REPO}class CachedRepo < MemoryRepo\nend\n\
+             def inner(repo: Repository) -> Int\n  repo.count\nend\n\
+             def outer(repo: Repository) -> Int\n  inner(repo)\nend\n\
+             print(outer(CachedRepo.new))\n"
+        );
+        check(&source).unwrap();
     }
 }

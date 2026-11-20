@@ -2897,85 +2897,81 @@ print(c.before())   # "authenticated" (inherited from BaseController)
 
 ### Interfaces
 
+An interface names methods a class promises to have. It is written with
+braces; each method is a signature, with `fn` or `def`:
+
 ```soli
-# Define an interface
-interface Drawable {
-  def draw() -> String;
-  def get_color() -> String;
+# Interface Segregation: small contracts
+interface Repository {
+  fn find(id: Int) -> String
+  fn count() -> Int
 }
 
-# Another interface
-interface Resizable {
-  def resize(width: Float, height: Float);
-  def get_dimensions() -> {width: Float, height: Float};
+interface Notifier {
+  fn notify(message: String) -> String
 }
 
-# Class implementing multiple interfaces
-class Circle implements Drawable, Resizable {
-  radius: Float;
-  color: String;
+# Single Responsibility: one job per class
+class MemoryRepository implements Repository
+  def find(id: Int) -> String
+    "user #{id}"
+  end
 
-  new(radius: Float, color: String) {
-    this.radius = radius;
-    this.color = color;
-  }
+  def count -> Int
+    1
+  end
+end
 
-  def draw() -> String {
-    "Circle with radius " + str(this.radius) + " and color " + this.color
-  }
+# Liskov: a subclass of an implementer goes wherever the interface goes
+class CachedRepository < MemoryRepository
+  def find(id: Int) -> String
+    "cached #{super.find(id)}"
+  end
+end
 
-  def get_color() -> String {
-    this.color
-  }
+class LogNotifier implements Notifier
+  def notify(message: String) -> String
+    "logged: #{message}"
+  end
+end
 
-  def resize(width: Float, height: Float) {
-    this.radius = width / 2;
-  }
+# Dependency Inversion: depend on the contract, not on a class
+class WelcomeService
+  repo: Repository
+  notifier: Notifier
 
-  def get_dimensions() -> {width: Float, height: Float} {
-    {"width": this.radius * 2, "height": this.radius * 2}
-  }
-}
+  new(repo: Repository, notifier: Notifier)
+    @repo = repo
+    @notifier = notifier
+  end
 
-class Rectangle implements Drawable, Resizable {
-  width: Float;
-  height: Float;
-  color: String;
+  def welcome(id: Int) -> String
+    @notifier.notify("welcome #{@repo.find(id)}")
+  end
+end
 
-  new(width: Float, height: Float, color: String) {
-    this.width = width;
-    this.height = height;
-    this.color = color;
-  }
-
-  def draw() -> String {
-    "Rectangle " + str(this.width) + "x" + str(this.height) + " in " + this.color
-  }
-
-  def get_color() -> String {
-    this.color
-  }
-
-  def resize(width: Float, height: Float) {
-    this.width = width;
-    this.height = height;
-  }
-
-  def get_dimensions() -> {width: Float, height: Float} {
-    {"width": this.width, "height": this.height}
-  }
-}
-
-# Using interfaces
-shapes = [
-  Circle.new(5.0, "red"),
-  Rectangle.new(10.0, 6.0, "blue")
-];
-
-for shape in shapes {
-  print(shape.draw());
-}
+WelcomeService.new(MemoryRepository.new, LogNotifier.new).welcome(1)   # "logged: welcome user 1"
+WelcomeService.new(CachedRepository.new, LogNotifier.new).welcome(2)   # "logged: welcome cached user 2"
 ```
+
+A parameter or field typed with an interface accepts any class that
+implements it, directly or through a superclass, and its methods are typed by
+the interface's signatures.
+
+**When the contract is checked.** `soli run`, `soli check` and `soli test` type-check
+the class against the interface: a missing method, or one whose signature
+differs, is an error. In an application, `soli serve` checks every class under
+`app/` before loading anything and **refuses to boot** when one lacks a method of
+an interface it implements, or has it with a number of parameters the
+interface's calls cannot use. The message names the class, its file and line, and
+the method. A hot reload prints the same as a warning, and `soli lint` reports it
+as `smell/unimplemented-interface`. Methods count from the class, its superclasses
+and the modules they `include`; when that chain leaves the application
+(`class User < Model implements Searchable`), a method not found may be inherited
+from the framework, so it is not reported.
+
+Interfaces are not runtime values: `x.is_a?(Repository)` does not work. Test for
+a method with `x.respond_to?("find")`.
 
 #### `~` shorthand for `implements`
 

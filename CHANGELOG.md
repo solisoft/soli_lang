@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed
+- **types: an interface works as a parameter or field type.** `def
+  welcome(repo: Repository)` then `repo.find(id)` was refused ("Cannot access
+  member 'find' on type 'Repository'"): member lookup had no interface arm, so
+  dependency inversion could not be written. The call is now typed by the
+  interface's signature (a typo gets a suggestion). An interface value passes on
+  to another parameter of that type, and a subclass of an implementing class is
+  assignable to the interface (only the class's own `implements` list was read).
+
+### Added
+- **serve: `implements` is checked at boot.** The type checker never runs on an
+  application's files, so a class missing a method of its interface booted and
+  raised on the first call. `soli serve` and the Worker now refuse to boot,
+  naming the class, its file and line, and the method (or its wrong arity); a
+  hot reload warns; `soli lint` reports it as `smell/unimplemented-interface`.
+  Presence and parameter count only. Methods count from superclasses and
+  included modules; a chain that leaves the app (`< Model`, an unknown module)
+  is not judged, nor an interface declared outside the app's files.
+  (`src/serve/interface_contracts.rs`, sharing one parse with the
+  duplicate-global check.)
+
 ### Changed
 - **ci: a tag reaches Docker in ~20 minutes instead of ~70.** The binaries
   build in parallel with the checks: the draft release is created first, and

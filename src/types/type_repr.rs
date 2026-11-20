@@ -213,8 +213,20 @@ impl Type {
                 }
                 false
             }
-            // Class to interface
-            (Type::Class(class), Type::Interface(iface)) => class.interfaces.contains(&iface.name),
+            // Class to interface: the class or one of its ancestors declares
+            // it — a subclass of an implementer goes where the interface goes.
+            (Type::Class(class), Type::Interface(iface)) => {
+                let mut current = Some(class);
+                while let Some(c) = current {
+                    if c.interfaces.contains(&iface.name) {
+                        return true;
+                    }
+                    current = c.superclass.as_deref();
+                }
+                false
+            }
+            // An interface value passed on to another parameter of that type.
+            (Type::Interface(a), Type::Interface(b)) => a.name == b.name,
             _ => false,
         }
     }

@@ -792,30 +792,22 @@ print(cache.get("session:123"))</code></pre>
             Interfaces
         </h2>
 
-        <p class="text-gray-400 mb-4">Interfaces define contracts that classes must implement.</p>
+        <p class="text-gray-400 mb-4">An interface names methods a class promises to have. It is written with braces; each method is a signature, with <code class="text-orange-400">fn</code> or <code class="text-orange-400">def</code>.</p>
 
         <section id="interface-basic" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Drawable
-  def draw -> String
-  def get_color -> String
-end
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Repository {
+  fn find(id: Int) -&gt; String
+  fn count() -&gt; Int
+}
 
-class Circle implements Drawable
-  radius: Float
-  color: String
-
-  new(radius: Float, color: String)
-    this.radius = radius
-    this.color = color
+class MemoryRepository implements Repository
+  def find(id: Int) -&gt; String
+    "user #{id}"
   end
 
-  def draw -> String
-    "Circle with radius " + str(this.radius)
-  end
-
-  def get_color -> String
-    this.color
+  def count -&gt; Int
+    1
   end
 end</code></pre>
             </div>
@@ -825,23 +817,73 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Multiple Interfaces</h3>
                 <p class="text-gray-400 mb-3">A class can implement multiple interfaces.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">interface Printable
-  def print
-end
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Printable {
+  fn render() -&gt; String
+}
 
-interface Exportable
-  def export -> String
-end
+interface Exportable {
+  fn export() -&gt; String
+}
 
 class Report implements Printable, Exportable
-  def print
-    print("Printing report...")
+  def render -&gt; String
+    "Report"
   end
 
-  def export -> String
+  def export -&gt; String
     "PDF"
   end
 end</code></pre>
+            </div>
+        </section>
+
+        <section id="interface-types" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Depending on an interface</h3>
+                <p class="text-gray-400 mb-3">A parameter or field typed with an interface accepts any class that implements it, directly or through a superclass, and its methods are typed by the interface&rsquo;s signatures &mdash; the dependency-inversion half of SOLID.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Notifier {
+  fn notify(message: String) -&gt; String
+}
+
+class LogNotifier implements Notifier
+  def notify(message: String) -&gt; String
+    "logged: #{message}"
+  end
+end
+
+# A subclass of an implementer goes wherever the interface goes
+class CachedRepository &lt; MemoryRepository
+  def find(id: Int) -&gt; String
+    "cached #{super.find(id)}"
+  end
+end
+
+class WelcomeService
+  repo: Repository
+  notifier: Notifier
+
+  new(repo: Repository, notifier: Notifier)
+    @repo = repo
+    @notifier = notifier
+  end
+
+  def welcome(id: Int) -&gt; String
+    @notifier.notify("welcome #{@repo.find(id)}")
+  end
+end
+
+WelcomeService.new(CachedRepository.new, LogNotifier.new).welcome(2)
+# "logged: welcome cached user 2"</code></pre>
+                <p class="text-gray-400 mt-3">Interfaces are not runtime values: <code class="text-orange-400">x.is_a?(Repository)</code> does not work. Test for a method with <code class="text-orange-400">x.respond_to?("find")</code>.</p>
+            </div>
+        </section>
+
+        <section id="interface-checked" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">When the contract is checked</h3>
+                <p class="text-gray-400 mb-3"><code class="text-orange-400">soli run</code>, <code class="text-orange-400">soli check</code> and <code class="text-orange-400">soli test</code> type-check the class against the interface: a missing method, or one whose signature differs, is an error.</p>
+                <p class="text-gray-400 mb-3">In an application, <code class="text-orange-400">soli serve</code> checks every class under <code class="text-orange-400">app/</code> before loading anything and <strong class="text-white">refuses to boot</strong> when one lacks a method of an interface it implements, or has it with a number of parameters the interface&rsquo;s calls cannot use. The message names the class, its file and line, and the method. A hot reload prints the same as a warning, and <code class="text-orange-400">soli lint</code> reports it as <code class="text-orange-400">smell/unimplemented-interface</code>.</p>
+                <p class="text-gray-400">Methods count from the class, its superclasses and the modules they <code class="text-orange-400">include</code>. When that chain leaves the application (<code class="text-orange-400">class User &lt; Model implements Searchable</code>), a method not found may be inherited from the framework, so it is not reported.</p>
             </div>
         </section>
 

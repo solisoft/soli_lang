@@ -78,6 +78,7 @@ class MyClass end
 | `smell/unreachable-code` | code after `return` |
 | `smell/empty-catch` | a `catch` that swallows the error silently |
 | `smell/duplicate-methods` | two methods of one class sharing a name — an instance `def kind_label` and a `static def kind_label` are distinct and pass |
+| `smell/unimplemented-interface` | a class of an app `implements` an interface but lacks one of its methods, or has it with a parameter count the interface's calls cannot use. Methods count from superclasses and included modules; a chain that leaves the app (`< Model`) is not judged. `soli serve` refuses to boot on it too |
 | `smell/duplicate-global` | two files of an app declaring the same top-level class, module, `def` or `const`: the one loaded last would replace the other, so `soli serve` refuses to boot on it too. Controllers' top-level `def`s (function-style actions) are exempt |
 | `smell/deep-nesting` | more than four levels |
 | `smell/undefined-local` | a bare name never assigned in this scope |

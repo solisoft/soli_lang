@@ -220,6 +220,7 @@ pub static LINT_RULES: &[LintRule] = &[
     LintRule { id: "smell/unreachable-code", summary: "Code after `return` never runs. Delete it, or move the return." },
     LintRule { id: "smell/empty-catch", summary: "A `catch` that does nothing swallows the error silently. Log it, or handle it." },
     LintRule { id: "smell/duplicate-methods", summary: "Two methods of one class share a name; the later one replaces the earlier. An instance `def x` and a `static def x` are distinct." },
+    LintRule { id: "smell/unimplemented-interface", summary: "A class `implements` an interface but lacks one of its methods, or has it with an arity the interface's calls cannot use. Methods count from superclasses and included modules; a chain that leaves the app (`< Model`) is not judged. `soli serve` refuses to boot on it." },
     LintRule { id: "smell/duplicate-global", summary: "Two files of an app declare the same top-level class, module, `def` or `const`: the one loaded last replaces the other, so `soli serve` refuses to boot. Controllers' top-level `def`s are exempt." },
     LintRule { id: "smell/deep-nesting", summary: "More than four levels of nesting. Extract a method, or return early with a guard clause." },
     LintRule { id: "smell/undefined-local", summary: "A bare name is read but never assigned in this scope. `let` is optional, so a typo fails only at run time; this rule finds it statically and suggests the closest name. At run time the same mistake is E0301." },

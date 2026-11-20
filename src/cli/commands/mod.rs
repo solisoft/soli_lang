@@ -1521,6 +1521,35 @@ pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
             );
         }
         total_issues += found.len();
+
+        // A class missing a method of an interface it implements: the type
+        // checker never runs on an app's files, so this is where it shows.
+        let broken = solilang::serve::interface_contracts::find_in_app(target);
+        files_with_issues += broken.len();
+        total_issues += broken.len();
+        for contract in &broken {
+            if format == OutputFormat::Json {
+                json_findings.push(serde_json::json!({
+                    "severity": "warning",
+                    "code": "smell/unimplemented-interface",
+                    "name": null,
+                    "message": contract.message(target),
+                    "file": contract.file.display().to_string(),
+                    "line": contract.line,
+                    "column": 1,
+                    "hint": null,
+                    "secondary": [],
+                    "notes": [],
+                }));
+                continue;
+            }
+            println!(
+                "{}:{}:1 - [smell/unimplemented-interface] {}",
+                contract.file.display(),
+                contract.line,
+                contract.message(target)
+            );
+        }
     }
 
     for file in &files {

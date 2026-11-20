@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::ast::stmt::{Stmt, StmtKind};
+use crate::ast::stmt::{Program, Stmt, StmtKind};
 
 /// Directories loaded into the application's global environment.
 const APPLICATION_DIRS: &[&str] = crate::app_layout::APP_GLOBAL_DIRS;
@@ -167,11 +167,10 @@ fn sl_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// The declarations of the files under `dirs` of `root`. A file that does not
+/// The parsed `.sl` files under `dirs` of `root`. A file that does not
 /// parse, or a protected bundle's serialized AST, is left out: its own load
-/// reports it. Controllers' top-level `def`s are their actions (see the module
-/// header) and are not counted.
-fn declarations_under(root: &Path, dirs: &[&str]) -> Vec<Declaration> {
+/// reports it.
+pub(crate) fn parsed_under(root: &Path, dirs: &[&str]) -> Vec<(PathBuf, Program, bool)> {
     let mut out = Vec::new();
     for dir in dirs {
         for path in sl_files(&root.join(dir)) {
@@ -188,13 +187,23 @@ fn declarations_under(root: &Path, dirs: &[&str]) -> Vec<Declaration> {
             let Ok(program) = crate::parser::Parser::new(tokens).parse() else {
                 continue;
             };
-            let actions = *dir == "app/controllers";
-            out.extend(
-                declarations(&program.statements, &path)
-                    .into_iter()
-                    .filter(|d| !(actions && d.kind == "def")),
-            );
+            out.push((path, program, *dir == "app/controllers"));
         }
+    }
+    out
+}
+
+/// The declarations of `files` (from [`parsed_under`]). Controllers'
+/// top-level `def`s are their actions (see the module header) and are not
+/// counted.
+fn declarations_of(files: &[(PathBuf, Program, bool)]) -> Vec<Declaration> {
+    let mut out = Vec::new();
+    for (path, program, is_controller) in files {
+        out.extend(
+            declarations(&program.statements, path)
+                .into_iter()
+                .filter(|d| !(*is_controller && d.kind == "def")),
+        );
     }
     out
 }
@@ -202,25 +211,39 @@ fn declarations_under(root: &Path, dirs: &[&str]) -> Vec<Declaration> {
 /// Every name the application at `root` declares twice: in its global
 /// environment, or among its view helpers.
 pub fn find_in_app(root: &Path) -> Vec<Duplicate> {
-    let mut found = duplicates(declarations_under(root, APPLICATION_DIRS));
-    found.extend(duplicates(declarations_under(root, HELPER_DIRS)));
+    let mut found = duplicates(declarations_of(&parsed_under(root, APPLICATION_DIRS)));
+    found.extend(duplicates(declarations_of(&parsed_under(
+        root,
+        HELPER_DIRS,
+    ))));
     found
 }
 
-/// [`find_in_app`] as a boot check: `Err` lists every collision.
+/// The boot check: every name declared twice, and every class missing a
+/// method of an interface it `implements` (see `interface_contracts`). `Err`
+/// lists them all. The application's files are parsed once for both.
 pub fn check_app(root: &Path) -> Result<(), String> {
-    let found = find_in_app(root);
-    if found.is_empty() {
+    let application = parsed_under(root, APPLICATION_DIRS);
+    let mut problems: Vec<String> = duplicates(declarations_of(&application))
+        .iter()
+        .chain(duplicates(declarations_of(&parsed_under(root, HELPER_DIRS))).iter())
+        .map(|d| d.message(root))
+        .collect();
+    let duplicate_count = problems.len();
+    problems.extend(
+        crate::serve::interface_contracts::find_in_files(&application)
+            .iter()
+            .map(|b| b.message(root)),
+    );
+    if problems.is_empty() {
         return Ok(());
     }
-    Err(format!(
-        "duplicate top-level names:\n  - {}",
-        found
-            .iter()
-            .map(|d| d.message(root))
-            .collect::<Vec<_>>()
-            .join("\n  - ")
-    ))
+    let heading = match (duplicate_count, problems.len() - duplicate_count) {
+        (_, 0) => "duplicate top-level names",
+        (0, _) => "classes missing a method of an interface they implement",
+        _ => "duplicate top-level names and unimplemented interfaces",
+    };
+    Err(format!("{heading}:\n  - {}", problems.join("\n  - ")))
 }
 
 #[cfg(test)]

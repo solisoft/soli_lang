@@ -95,6 +95,7 @@ mod finalize;
 mod framework_assets;
 pub mod global_names;
 pub(crate) mod inject;
+pub mod interface_contracts;
 pub mod live_reload;
 #[cfg(not(target_arch = "wasm32"))]
 mod live_reload_ws; // WebSocket-based live reload
@@ -2139,6 +2140,9 @@ fn worker_loop(
             if let Some(root) = routes_file.parent().and_then(Path::parent) {
                 for duplicate in global_names::find_in_app(root) {
                     eprintln!("\x1b[33m[warning]\x1b[0m {}", duplicate.message(root));
+                }
+                for broken in interface_contracts::find_in_app(root) {
+                    eprintln!("\x1b[33m[warning]\x1b[0m {}", broken.message(root));
                 }
             }
         }

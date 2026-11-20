@@ -298,36 +298,58 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
 
 ## SOLID Principles
 
-Apply these OOP design principles for maintainable code:
+Apply these OOP design principles for maintainable code. Interfaces are the
+tool for I and D: written with braces, implemented with `implements` (or `~`).
 
-**Single Responsibility (S)** - Each class does one thing:
 ```soli
-class UserValidator { /* only validation */ }
-class UserRepository { /* only database operations */ }
+# I — small interfaces over one large one
+interface Repository {
+  fn find(id: Int) -> String
+}
+
+interface Notifier {
+  fn notify(message: String) -> String
+}
+
+# S — each class does one thing
+class MemoryRepository implements Repository
+  def find(id: Int) -> String
+    "user #{id}"
+  end
+end
+
+# L — a subclass goes wherever its parent's interface goes; don't change
+# what the method means
+class CachedRepository < MemoryRepository
+  def find(id: Int) -> String
+    "cached #{super.find(id)}"
+  end
+end
+
+# D — depend on the interface, not on a class
+class WelcomeService
+  repo: Repository
+  notifier: Notifier
+
+  new(repo: Repository, notifier: Notifier)
+    @repo = repo
+    @notifier = notifier
+  end
+
+  def welcome(id: Int) -> String
+    @notifier.notify("welcome #{@repo.find(id)}")
+  end
+end
 ```
 
-**Open/Closed (O)** - Open for extension, closed for modification:
-```soli
-class Shape { def area() -> Float; }
-class Circle extends Shape { radius: Float; def area() { 3.14 * radius * radius; } }
-```
+O — extend by adding a class that implements the interface, not by editing an
+`if` chain in the caller. Soli has no abstract classes or default methods in
+interfaces; share code through a superclass or a `module` you `include`.
 
-**Liskov Substitution (L)** - Subclasses can replace their parent:
-```soli
-# Don't override methods with incompatible behavior
-```
-
-**Interface Segregation (I)** - Many small interfaces over one large:
-```soli
-interface Printable { def print(); }
-interface Exportable { def export(); }
-```
-
-**Dependency Inversion (D)** - Depend on abstractions:
-```soli
-interface Repository { def find(id: Int) -> User; }
-class Service { repo: Repository; def get(id) { repo.find(id); } }
-```
+A class missing a method of its interface is a type error under `soli run` /
+`soli check` / `soli test`, and `soli serve` refuses to boot on it
+(`smell/unimplemented-interface`). Interfaces are not runtime values —
+`x.is_a?(Repository)` does not work; use `x.respond_to?("find")`.
 
 ## Linting
 
@@ -347,6 +369,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `smell/unreachable-code` - no code after return
 - `smell/empty-catch` - catch blocks shouldn't be empty
 - `smell/duplicate-methods` - no duplicate methods (an instance `def x` and a `static def x` are distinct)
+- `smell/unimplemented-interface` - a class of an app `implements` an interface but lacks one of its methods (or has it with an unusable arity); `soli serve` refuses to boot on it
 - `smell/duplicate-global` - two files of an app declaring the same top-level class, module, `def` or `const` (the later one replaces the earlier); `soli serve` refuses to boot on it. Controllers' top-level `def`s (function-style actions) are exempt
 - `smell/deep-nesting` - nesting ≤4 levels
 - `smell/undefined-local` - reads of a bare name never assigned in the function scope (catches typos that bypass `let` because `let` is optional)
