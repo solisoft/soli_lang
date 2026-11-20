@@ -272,6 +272,8 @@ fn a_declared_return_type_is_checked_on_the_vm_too() {
 fn a_non_primitive_return_type_is_checked_on_the_vm_too() {
     // `-> Hash` and a class name took the allocating path; they now check
     // against the type lowered at compile time, with the same error.
+    // (`assert_same` still compares the engines with the type check on: both
+    // refuse statically, identically.)
     for (source, message) in [
         (
             "class Pt\nend\ndef f -> Pt\n  \"x\"\nend\nprint(f())\n",
@@ -288,7 +290,9 @@ fn a_non_primitive_return_type_is_checked_on_the_vm_too() {
     ] {
         assert_same(source);
         let dir = script(source);
-        let run = soli(dir.path(), &["s.sl"], false);
+        // The run-time check is the subject: `soli check` now refuses these
+        // implicit returns before they run, so it is turned off.
+        let run = soli(dir.path(), &["--no-type-check", "s.sl"], false);
         if message.is_empty() {
             assert_eq!(run.stdout, "7\n", "{}", run.stderr);
         } else {

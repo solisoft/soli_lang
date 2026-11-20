@@ -182,6 +182,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Include => out.push_str("INCLUDE"),
         Op::Extend => out.push_str("EXTEND"),
         Op::Abstract => out.push_str("ABSTRACT"),
+        Op::InterfaceParent(child, parent) => {
+            out.push_str(&format!(
+                "IFACE_PARENT {:>5} ({}) < {} ({})",
+                child,
+                constant_string(chunk, *child),
+                parent,
+                constant_string(chunk, *parent)
+            ));
+        }
         Op::Implements(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("IMPLEMENTS   {:>5} ({})", idx, name));

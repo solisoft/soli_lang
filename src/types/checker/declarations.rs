@@ -11,6 +11,21 @@ impl TypeChecker {
     pub(crate) fn declare_class(&mut self, decl: &ClassDecl) {
         let mut class_type = ClassType::new(decl.name.clone());
         class_type.is_module = decl.is_module;
+        self.source_methods.insert(
+            decl.name.clone(),
+            decl.methods
+                .iter()
+                .filter(|m| !m.is_static)
+                .map(|m| {
+                    let required = m
+                        .params
+                        .iter()
+                        .filter(|p| !p.is_block_param && p.default_value.is_none())
+                        .count();
+                    (m.name.clone(), required)
+                })
+                .collect(),
+        );
         if decl.is_abstract {
             self.abstract_methods
                 .insert(decl.name.clone(), decl.abstract_methods.clone());
@@ -218,6 +233,8 @@ impl TypeChecker {
 
     pub(crate) fn declare_interface(&mut self, decl: &InterfaceDecl) {
         let mut iface_type = InterfaceType::new(decl.name.clone());
+        iface_type.parents = decl.extends.clone();
+        iface_type.type_params = decl.type_params.clone();
 
         for method in &decl.methods {
             let params: Vec<Type> = method

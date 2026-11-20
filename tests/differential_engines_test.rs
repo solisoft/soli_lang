@@ -433,6 +433,10 @@ print(r)"##,
         "interface_is_a_and_implements",
         "interface Shape\n  def area -> Float\nend\nclass Square implements Shape\n  def area\n    4.0\n  end\nend\nclass Big < Square\nend\nb = Big.new\nprint(b.is_a?(\"Shape\"), b.is_a?(\"Square\"), b.is_a?(\"Nope\"), Big.implements?(\"Shape\"), Square.implements?(\"Nope\"), b.area)",
     ),
+    (
+        "interface_extends_is_a",
+        "interface Named\n  def name -> String\nend\ninterface Aged extends Named\n  def age -> Int\nend\nclass E implements Aged\n  def name\n    \"a\"\n  end\n  def age\n    1\n  end\nend\nprint(E.new.is_a?(\"Named\"), E.implements?(\"Named\"), E.new.is_a?(\"Other\"))",
+    ),
     // --- optional-let: bare assignment (no `let`) ---
     ("bare_top_level", "x = 5\nx = x + 1\nprint(x)"),
     (

@@ -213,6 +213,13 @@ another type widens it (`total = 0` then `total = total * 1.5` makes it a
 `Float`). Only a type you wrote down — `let x: Int`, a typed parameter — makes
 `soli check` refuse a value of another type.
 
+A declared return type holds for the value a function ends on as well as for
+an explicit `return`: `soli check` refuses `def label -> Int` whose last line is a
+`String`, as the run time does when it is called. Only a plain last expression
+is judged statically — a function ending on an `if`, a `throw` or a guard clause
+is left to the run-time check — and a function with no return type, or `-> Void`,
+is not judged.
+
 ### Nullable Types
 
 `T?` is a `T` or `nil`. A parameter, a `let`, a field or a return type marked
@@ -2959,12 +2966,66 @@ A parameter or field typed with an interface accepts any class that
 implements it, directly or through a superclass, and its methods are typed by
 the interface's signatures.
 
+**Composing interfaces.** An interface may extend others: it takes their
+signatures, and a class implementing it is also a `Named` for parameters,
+`is_a?` and `implements?`.
+
+```soli
+interface Named
+  def name -> String
+end
+
+interface Person extends Named
+  def age -> Int
+end
+
+class Ada implements Person
+  def name -> String
+    "Ada"
+  end
+
+  def age -> Int
+    36
+  end
+end
+
+Ada.new.is_a?("Named")     # true
+```
+
+**Generic interfaces.** `interface Repo<T>` reads `T` in its signatures; a class
+binds it with `implements Repo<String>`, and a parameter typed `Repo<String>` reads
+its methods with `T` as `String`. A bare `Repo` leaves `T` unchecked.
+
+```soli
+interface Repo<T>
+  def find(id: Int) -> T
+end
+
+class Names implements Repo<String>
+  def find(id: Int) -> String
+    "name #{id}"
+  end
+end
+
+def first_name(repo: Repo<String>) -> String
+  repo.find(1)
+end
+```
+
 **Matching the signature.** An implementation need not repeat the interface's
 annotations: `def find(id)` satisfies `def find(id: Int) -> String`. Where both
 sides are annotated they must agree — a parameter may be wider than the
 interface's (`Float` for `Int`), the return narrower — and the error names what
 differs (`parameter 1 ('id') is String here, Int in the interface`). The method
 may take extra parameters if they have defaults.
+
+**Overrides keep the contract (Liskov).** A method that overrides one of a
+superclass must be callable the way the one it replaces is: it accepts the
+parent's required arguments (a parameter may be wider), returns what fits (the
+return may be narrower), and requires no more arguments than the parent. A
+`class B < A` whose `area(x: String) -> String` replaces `area(x: Int) -> Int` is a
+type error naming `A#area`. Unannotated types match anything; a builtin or
+framework parent (`Model#save`) and a private one are not judged.
 
 **At run time**, `is_a?` takes an interface name as well as a class name, and a
 class answers `implements?`:

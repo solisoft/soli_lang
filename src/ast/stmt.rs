@@ -334,6 +334,10 @@ pub struct ClassDecl {
     /// both engines. The type checker and the boot check read this list.
     #[serde(default)]
     pub abstract_methods: Vec<String>,
+    /// `implements Repo<String>`: the type arguments given to a generic
+    /// interface (its name is also in `interfaces`). Only generic ones.
+    #[serde(default)]
+    pub interface_type_args: Vec<crate::ast::types::GenericType>,
     /// Modules mixed into instances: `include Greetable`.
     #[serde(default)]
     pub includes: Vec<String>,
@@ -603,6 +607,7 @@ impl EnumDecl {
             is_module: false,
             is_abstract: false,
             abstract_methods: Vec::new(),
+            interface_type_args: Vec::new(),
             includes: Vec::new(),
             extends: Vec::new(),
             included_hooks: Vec::new(),
@@ -663,6 +668,13 @@ pub struct ConstructorDecl {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceDecl {
     pub name: String,
+    /// `interface Repo<T>`: type parameters, read in the signatures.
+    #[serde(default)]
+    pub type_params: Vec<String>,
+    /// `interface Person extends Named, Aged`: their methods are this
+    /// interface's too, and a `Person` goes where a `Named` is expected.
+    #[serde(default)]
+    pub extends: Vec<String>,
     pub methods: Vec<InterfaceMethod>,
     pub span: Span,
 }

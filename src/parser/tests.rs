@@ -1998,4 +1998,18 @@ mod depth_limit_tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn an_abstract_static_method_is_named_as_such() -> Result<(), String> {
+        for source in [
+            "abstract class S\n  abstract static def make\nend\n",
+            "abstract class S\n  static abstract def make\nend\n",
+        ] {
+            let Err(err) = class_of(source) else {
+                return Err(format!("{source:?} parsed"));
+            };
+            assert!(err.contains("a static method cannot be abstract"), "{err}");
+        }
+        Ok(())
+    }
 }

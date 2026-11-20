@@ -213,7 +213,7 @@ impl TypeChecker {
 
                 let outer_return = self.env.return_type().cloned();
                 self.env.set_return_type(Some(return_type));
-                self.check_body(&decl.body);
+                self.check_function_body(&decl.body);
                 self.env.set_return_type(outer_return);
                 self.env.pop_scope();
                 Ok(())
@@ -279,6 +279,43 @@ impl TypeChecker {
     /// A statement that fails while binding a new name (`x = broken(…)`)
     /// still binds it, as `Unknown`, so the lines that read it are checked
     /// without a cascade of "Undefined variable 'x'".
+    /// A `def` or method body: checked as any body, and its last line — the
+    /// value it returns when no `return` runs — held to the declared return
+    /// type, as an explicit `return` is. Only a plain expression statement
+    /// is judged (not an `if`, a `throw` or a guard clause), and only against
+    /// a declared type other than `Any` or `Void`.
+    pub(crate) fn check_function_body(&mut self, statements: &[Stmt]) {
+        let Some((last, rest)) = statements.split_last() else {
+            return;
+        };
+        self.check_body(rest);
+        let StmtKind::Expression(expr) = &last.kind else {
+            self.check_body(std::slice::from_ref(last));
+            return;
+        };
+        let value = match self.check_expr(expr) {
+            Ok(ty) => ty,
+            Err(error) => {
+                self.errors.push(error);
+                self.bind_after_error(last);
+                return;
+            }
+        };
+        let Some(expected) = self.env.return_type().cloned() else {
+            return;
+        };
+        if matches!(expected, Type::Any | Type::Unknown | Type::Void) {
+            return;
+        }
+        if !value.is_assignable_to(&expected) {
+            self.errors.push(TypeError::mismatch(
+                format!("{}", expected),
+                format!("{}", value),
+                last.span,
+            ));
+        }
+    }
+
     pub(crate) fn check_body(&mut self, statements: &[Stmt]) {
         for stmt in statements {
             if let Err(error) = self.check_stmt(stmt) {
@@ -341,7 +378,7 @@ impl TypeChecker {
                 .unwrap_or(Type::Any);
             self.env.set_return_type(Some(return_type));
 
-            self.check_body(&method.body);
+            self.check_function_body(&method.body);
 
             self.env.set_return_type(None);
             self.env.pop_scope();
@@ -372,6 +409,7 @@ impl TypeChecker {
         // Verify interface implementation
         self.check_interface_implementation(decl);
         self.check_abstract_methods_defined(decl);
+        self.check_overrides(decl);
 
         self.env.set_current_class(None);
         Ok(())
@@ -415,6 +453,74 @@ impl TypeChecker {
         }
     }
 
+    /// Liskov: a method that overrides one of a superclass declared in source
+    /// must be callable as the one it replaces — the same arguments accepted
+    /// (a parameter may be wider), a return that fits (it may be narrower).
+    /// Unannotated types match anything, as for interfaces. Private parents,
+    /// statics, and builtin or framework parents (`Model#save`) are not
+    /// judged.
+    fn check_overrides(&mut self, decl: &ClassDecl) {
+        if decl.is_module || decl.superclass.is_none() {
+            return;
+        }
+        let Some(class) = self.env.get_class(&decl.name).cloned() else {
+            return;
+        };
+        let Some(parent) = class.superclass.as_deref() else {
+            return;
+        };
+        let mut problems = Vec::new();
+        for method in decl.methods.iter().filter(|m| !m.is_static) {
+            let Some((overridden, owner)) = parent.find_method_with_owner(&method.name) else {
+                continue;
+            };
+            if overridden.is_static || overridden.is_private {
+                continue;
+            }
+            let Some(parent_required) = self
+                .source_methods
+                .get(owner)
+                .and_then(|methods| methods.get(&method.name))
+                .copied()
+            else {
+                continue;
+            };
+            let Some(own) = class.methods.get(&method.name) else {
+                continue;
+            };
+            let required = method
+                .params
+                .iter()
+                .filter(|p| !p.is_block_param && p.default_value.is_none())
+                .count();
+            let sig = crate::types::type_repr::MethodSignature {
+                name: method.name.clone(),
+                params: overridden.params.iter().map(|(_, t)| t.clone()).collect(),
+                return_type: overridden.return_type.clone(),
+            };
+            let against = format!("{}#{}", owner, method.name);
+            if let Some(problem) = override_mismatch(
+                &own.params,
+                required,
+                &own.return_type,
+                &sig,
+                parent_required,
+                &against,
+            ) {
+                problems.push(format!(
+                    "method '{}' of class '{}' does not match {} it overrides: {}",
+                    method.name, decl.name, against, problem
+                ));
+            }
+        }
+        for message in problems {
+            self.errors.push(TypeError::General {
+                message,
+                span: decl.span,
+            });
+        }
+    }
+
     fn check_interface_implementation(&mut self, decl: &ClassDecl) {
         for iface_name in &decl.interfaces {
             let Some(iface) = self.env.get_interface(iface_name).cloned() else {
@@ -425,8 +531,28 @@ impl TypeChecker {
             };
             let mut names: Vec<&String> = iface.methods.keys().collect();
             names.sort();
+            // `implements Repo<String>`: `T` in the signatures reads `String`
+            // (an unbound parameter reads `Any`).
+            let mut applied = iface.clone();
+            if let Some(generic) = decl
+                .interface_type_args
+                .iter()
+                .find(|g| &g.name == iface_name)
+            {
+                applied.type_args = generic.args.iter().map(|a| self.resolve_type(a)).collect();
+            }
+            let bindings = applied.bindings();
             for method_name in names {
-                let sig = &iface.methods[method_name];
+                let raw = &iface.methods[method_name];
+                let sig = &crate::types::type_repr::MethodSignature {
+                    name: raw.name.clone(),
+                    params: raw
+                        .params
+                        .iter()
+                        .map(|t| crate::types::generics::substitute(t, &bindings))
+                        .collect(),
+                    return_type: crate::types::generics::substitute(&raw.return_type, &bindings),
+                };
                 let Some(method) = class.find_method(method_name) else {
                     self.errors.push(TypeError::General {
                         message: format!(
@@ -466,6 +592,50 @@ impl TypeChecker {
     }
 }
 
+/// Why an override is not callable as the method it replaces, or `None`.
+/// Like [`signature_mismatch`], except that the parent's own optional
+/// parameters need not be taken: an override must accept every call the
+/// parent's callers make with its required arguments, and as many of the
+/// rest as it declares parameters for.
+fn override_mismatch(
+    params: &[(String, Type)],
+    required: usize,
+    return_type: &Type,
+    parent: &crate::types::type_repr::MethodSignature,
+    parent_required: usize,
+    against: &str,
+) -> Option<String> {
+    let count = |n: usize| {
+        if n == 1 {
+            "1 parameter".to_string()
+        } else {
+            format!("{n} parameters")
+        }
+    };
+    if params.len() < parent_required || required > parent_required {
+        return Some(format!(
+            "it requires {} and takes {}, {} requires {}",
+            required,
+            count(params.len()),
+            against,
+            parent_required
+        ));
+    }
+    let shared = params.len().min(parent.params.len());
+    let narrowed = crate::types::type_repr::MethodSignature {
+        name: parent.name.clone(),
+        params: parent.params[..shared].to_vec(),
+        return_type: parent.return_type.clone(),
+    };
+    signature_mismatch(
+        &params[..shared],
+        required.min(shared),
+        return_type,
+        &narrowed,
+    )
+    .map(|problem| problem.replace("in the interface", &format!("in {against}")))
+}
+
 /// Why a method does not satisfy an interface signature, or `None` when it
 /// does. An unannotated type (`Any`) on either side matches anything: an
 /// implementation need not repeat the interface's annotations. Where both
@@ -479,7 +649,7 @@ fn signature_mismatch(
     return_type: &Type,
     sig: &crate::types::type_repr::MethodSignature,
 ) -> Option<String> {
-    let loose = |t: &Type| matches!(t, Type::Any | Type::Unknown);
+    let loose = |t: &Type| matches!(t, Type::Any | Type::Unknown | Type::Param(_));
     let count = |n: usize| {
         if n == 1 {
             "1 parameter".to_string()
@@ -615,5 +785,105 @@ mod interface_signature_tests {
             err.contains("class 'Line' does not define abstract method 'area'"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn an_interface_takes_the_methods_of_those_it_extends() {
+        let base = "interface Named\n  def name -> String\nend\ninterface Person extends Named\n  def age -> Int\nend\n";
+        let err = check(&format!(
+            "{base}class Ada implements Person\n  def age -> Int\n    36\n  end\nend\n"
+        ))
+        .unwrap_err();
+        assert!(
+            err.contains("does not implement method 'name' from interface 'Person'"),
+            "{err}"
+        );
+        // A Person goes where a Named is expected, and so does its class.
+        check(&format!(
+            "{base}class Ada implements Person\n  def age -> Int\n    36\n  end\n  def name -> String\n    \"Ada\"\n  end\nend\n\
+             def greet(who: Named) -> String\n  who.name\nend\n\
+             def hello(who: Person) -> String\n  greet(who) + who.name\nend\n\
+             print(greet(Ada.new))\n"
+        ))
+        .unwrap();
+    }
+
+    #[test]
+    fn a_generic_interface_binds_its_parameter() {
+        let base = "interface Repo<T>\n  def find(id: Int) -> T\nend\n";
+        check(&format!(
+            "{base}class Names implements Repo<String>\n  def find(id: Int) -> String\n    \"x\"\n  end\nend\n"
+        ))
+        .unwrap();
+        let err = check(&format!(
+            "{base}class Names implements Repo<String>\n  def find(id: Int) -> Int\n    1\n  end\nend\n"
+        ))
+        .unwrap_err();
+        assert!(
+            err.contains("it returns Int here, String in the interface"),
+            "{err}"
+        );
+        // Through a typed parameter, `T` reads as the argument.
+        let err = check(&format!(
+            "{base}def bad(repo: Repo<String>)\n  let n: Int = repo.find(1)\n  n\nend\n"
+        ))
+        .unwrap_err();
+        assert!(err.to_lowercase().contains("string"), "{err}");
+        check(&format!(
+            "{base}def ok(repo: Repo<String>)\n  let s: String = repo.find(1)\n  s\nend\n"
+        ))
+        .unwrap();
+    }
+
+    #[test]
+    fn an_override_must_be_callable_as_the_method_it_replaces() {
+        let base = "class A\n  def area(x: Int, round = false) -> Int\n    x\n  end\nend\n";
+        let err = check(&format!(
+            "{base}class B < A\n  def area(x: String) -> String\n    x\n  end\nend\n"
+        ))
+        .unwrap_err();
+        assert!(
+            err.contains("method 'area' of class 'B' does not match A#area it overrides: parameter 1 ('x') is String here, Int in A#area"),
+            "{err}"
+        );
+        let err = check(&format!(
+            "{base}class B < A\n  def area(x: Int, y: Int) -> Int\n    x\n  end\nend\n"
+        ))
+        .unwrap_err();
+        assert!(
+            err.contains("it requires 2 and takes 2 parameters, A#area requires 1"),
+            "{err}"
+        );
+        // Unannotated, wider, narrower, dropping the parent's optional one,
+        // or adding an optional one: all fine.
+        for body in [
+            "  def area(x)\n    x\n  end",
+            "  def area(x: Float) -> Int\n    1\n  end",
+            "  def area(x: Int) -> Int\n    x\n  end",
+            "  def area(x: Int, round = true, scale = 1) -> Int\n    x\n  end",
+        ] {
+            check(&format!("{base}class B < A\n{body}\nend\n")).unwrap();
+        }
+    }
+
+    #[test]
+    fn the_last_line_is_held_to_the_declared_return_type() {
+        let err = check("def label -> Int\n  \"text\"\nend\n").unwrap_err();
+        assert!(err.contains("expected Int, found String"), "{err}");
+        let err = check("class A\n  def total -> Int\n    \"text\"\n  end\nend\n").unwrap_err();
+        assert!(err.contains("expected Int, found String"), "{err}");
+        // Not judged: no annotation, Void, a final `if`, a final throw, a
+        // nullable return of nil, a widening Int -> Float.
+        for source in [
+            "def a\n  \"text\"\nend\n",
+            "def b -> Void\n  print(\"x\")\nend\n",
+            "def c(x) -> Int\n  if x\n    return 1\n  end\n  return 2\nend\n",
+            "def d -> Int\n  throw \"no\"\nend\n",
+            "def e -> Int?\n  nil\nend\n",
+            "def f -> Float\n  1\nend\n",
+            "def g -> Int\n  1 + 2\nend\n",
+        ] {
+            check(source).unwrap_or_else(|e| panic!("{source:?}: {e}"));
+        }
     }
 }

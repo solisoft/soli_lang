@@ -59,6 +59,9 @@ module.exports = grammar({
   supertypes: ($) => [$._statement, $._expression, $._primary],
 
   conflicts: ($) => [
+    // `interface X < A, B` (extends) against `interface X<A, B>` (type
+    // parameters): settled by whether a `>` closes the list.
+    [$._class_name, $.type_parameters],
     [$.parenthesized_type, $.function_type],
     [$.if_expression, $._primary],
     [$.next_statement],
@@ -243,14 +246,23 @@ module.exports = grammar({
             seq(choice('<', 'extends'), field('superclass', $._class_name)),
           ),
         ),
-        optional(seq(choice('implements', '~'), commaSep1($._class_name))),
+        optional(seq(choice('implements', '~'), commaSep1($._implemented))),
         field('body', $.class_body),
       ),
 
     module_declaration: ($) => seq('module', field('name', $._class_name), field('body', $.class_body)),
 
     interface_declaration: ($) =>
-      seq('interface', field('name', $._class_name), optional($.type_parameters), field('body', $.interface_body)),
+      seq(
+        'interface',
+        field('name', $._class_name),
+        optional($.type_parameters),
+        optional(seq(choice('extends', '<'), commaSep1(field('parent', $._class_name)))),
+        field('body', $.interface_body),
+      ),
+
+    // `implements Named, Repo<String>`.
+    _implemented: ($) => seq($._class_name, optional($.type_arguments)),
 
     interface_body: ($) =>
       choice(

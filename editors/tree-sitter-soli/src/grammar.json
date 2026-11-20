@@ -1502,7 +1502,7 @@
                   "members": [
                     {
                       "type": "SYMBOL",
-                      "name": "_class_name"
+                      "name": "_implemented"
                     },
                     {
                       "type": "REPEAT",
@@ -1515,7 +1515,7 @@
                           },
                           {
                             "type": "SYMBOL",
-                            "name": "_class_name"
+                            "name": "_implemented"
                           }
                         ]
                       }
@@ -1592,12 +1592,92 @@
           ]
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": "extends"
+                    },
+                    {
+                      "type": "STRING",
+                      "value": "<"
+                    }
+                  ]
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "parent",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "_class_name"
+                      }
+                    },
+                    {
+                      "type": "REPEAT",
+                      "content": {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "STRING",
+                            "value": ","
+                          },
+                          {
+                            "type": "FIELD",
+                            "name": "parent",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "_class_name"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "FIELD",
           "name": "body",
           "content": {
             "type": "SYMBOL",
             "name": "interface_body"
           }
+        }
+      ]
+    },
+    "_implemented": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_class_name"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "type_arguments"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
@@ -6899,6 +6979,10 @@
     }
   ],
   "conflicts": [
+    [
+      "_class_name",
+      "type_parameters"
+    ],
     [
       "parenthesized_type",
       "function_type"

@@ -4149,6 +4149,11 @@ impl Vm {
                     let span = self.current_span();
                     self.op_extend(&class_val, &module_val, span)?;
                 }
+                Op::InterfaceParent(child, parent) => {
+                    let child = self.read_string_constant_owned(child);
+                    let parent = self.read_string_constant_owned(parent);
+                    crate::interpreter::value::register_interface_parent(&child, &parent);
+                }
                 Op::Abstract => {
                     if let Some(Value::Class(class)) = self.stack.last() {
                         class.is_abstract.set(true);

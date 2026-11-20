@@ -2003,6 +2003,48 @@ pub enum InstanceMethodDef {
     Source(Rc<Function>),
 }
 
+/// `interface B extends A`: each interface's direct parents, process-wide.
+/// Filled when an interface declaration runs (the tree-walker) or its
+/// `Op::InterfaceParent`s do (the VM); read by [`Class::implements`] and
+/// [`Class::is_a_name`], so `x.is_a?("A")` holds for a class implementing `B`.
+static INTERFACE_PARENTS: std::sync::LazyLock<std::sync::RwLock<HashMap<String, Vec<String>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Record that interface `name` extends `parent`.
+pub fn register_interface_parent(name: &str, parent: &str) {
+    if let Ok(mut map) = INTERFACE_PARENTS.write() {
+        let parents = map.entry(name.to_string()).or_default();
+        if !parents.iter().any(|p| p == parent) {
+            parents.push(parent.to_string());
+        }
+    }
+}
+
+/// Whether interface `name` is `wanted` or extends it, directly or not.
+pub fn interface_is_or_extends(name: &str, wanted: &str) -> bool {
+    if name == wanted {
+        return true;
+    }
+    let Ok(map) = INTERFACE_PARENTS.read() else {
+        return false;
+    };
+    let mut queue = vec![name.to_string()];
+    let mut seen: Vec<String> = Vec::new();
+    while let Some(current) = queue.pop() {
+        if seen.contains(&current) {
+            continue;
+        }
+        if let Some(parents) = map.get(&current) {
+            if parents.iter().any(|p| p == wanted) {
+                return true;
+            }
+            queue.extend(parents.iter().cloned());
+        }
+        seen.push(current);
+    }
+    false
+}
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {
@@ -2858,7 +2900,12 @@ impl Class {
     pub fn implements(&self, interface: &str) -> bool {
         let mut current = Some(self);
         while let Some(class) = current {
-            if class.interfaces.borrow().iter().any(|i| i == interface) {
+            if class
+                .interfaces
+                .borrow()
+                .iter()
+                .any(|i| interface_is_or_extends(i, interface))
+            {
                 return true;
             }
             current = class.superclass.as_deref();
@@ -2872,7 +2919,13 @@ impl Class {
     pub fn is_a_name(&self, name: &str) -> bool {
         let mut current = Some(self);
         while let Some(class) = current {
-            if class.name == name || class.interfaces.borrow().iter().any(|i| i == name) {
+            if class.name == name
+                || class
+                    .interfaces
+                    .borrow()
+                    .iter()
+                    .any(|i| interface_is_or_extends(i, name))
+            {
                 return true;
             }
             current = class.superclass.as_deref();

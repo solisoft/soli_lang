@@ -877,10 +877,63 @@ WelcomeService.new(CachedRepository.new, LogNotifier.new).welcome(2)
             </div>
         </section>
 
+        <section id="interface-extends" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Composing interfaces</h3>
+                <p class="text-gray-400 mb-3">An interface may extend others: it takes their signatures, and a class implementing it is also a <code class="text-orange-400">Named</code> for parameters, <code class="text-orange-400">is_a?</code> and <code class="text-orange-400">implements?</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Named
+  def name -&gt; String
+end
+
+interface Person extends Named
+  def age -&gt; Int
+end
+
+class Ada implements Person
+  def name -&gt; String
+    "Ada"
+  end
+
+  def age -&gt; Int
+    36
+  end
+end
+
+Ada.new.is_a?("Named")     # true</code></pre>
+            </div>
+        </section>
+
+        <section id="interface-generic" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Generic interfaces</h3>
+                <p class="text-gray-400 mb-3"><code class="text-orange-400">interface Repo&lt;T&gt;</code> reads <code class="text-orange-400">T</code> in its signatures; a class binds it with <code class="text-orange-400">implements Repo&lt;String&gt;</code>, and a parameter typed <code class="text-orange-400">Repo&lt;String&gt;</code> reads its methods with <code class="text-orange-400">T</code> as <code class="text-orange-400">String</code>. A bare <code class="text-orange-400">Repo</code> leaves <code class="text-orange-400">T</code> unchecked.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">interface Repo&lt;T&gt;
+  def find(id: Int) -&gt; T
+end
+
+class Names implements Repo&lt;String&gt;
+  def find(id: Int) -&gt; String
+    "name #{id}"
+  end
+end
+
+def first_name(repo: Repo&lt;String&gt;) -&gt; String
+  repo.find(1)
+end</code></pre>
+            </div>
+        </section>
+
         <section id="interface-signatures" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-lg font-semibold text-white mb-3">Matching the signature</h3>
                 <p class="text-gray-400">An implementation need not repeat the interface&rsquo;s annotations: <code class="text-orange-400">def find(id)</code> satisfies <code class="text-orange-400">def find(id: Int) -&gt; String</code>. Where both sides are annotated they must agree &mdash; a parameter may be wider than the interface&rsquo;s (<code class="text-orange-400">Float</code> for <code class="text-orange-400">Int</code>), the return narrower &mdash; and the error names what differs (<code class="text-orange-400">parameter 1 ('id') is String here, Int in the interface</code>). The method may take extra parameters if they have defaults.</p>
+            </div>
+        </section>
+
+        <section id="interface-overrides" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">Overrides keep the contract</h3>
+                <p class="text-gray-400">The Liskov half of SOLID, checked: a method that overrides one of a superclass must be callable the way the one it replaces is &mdash; it accepts the parent&rsquo;s required arguments (a parameter may be wider), returns what fits (the return may be narrower), and requires no more arguments than the parent. A <code class="text-orange-400">class B &lt; A</code> whose <code class="text-orange-400">area(x: String) -&gt; String</code> replaces <code class="text-orange-400">area(x: Int) -&gt; Int</code> is a type error naming <code class="text-orange-400">A#area</code>. Unannotated types match anything; a builtin or framework parent (<code class="text-orange-400">Model#save</code>) and a private one are not judged.</p>
             </div>
         </section>
 

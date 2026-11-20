@@ -809,6 +809,11 @@ impl Printer<'_> {
                     self.write(", ");
                 }
                 self.write(iface);
+                // `implements Repo<String>`.
+                if let Some(generic) = decl.interface_type_args.iter().find(|g| &g.name == iface) {
+                    let args: Vec<String> = generic.args.iter().map(format_type).collect();
+                    self.write(&format!("<{}>", args.join(", ")));
+                }
             }
         }
         self.newline();
@@ -1055,6 +1060,11 @@ impl Printer<'_> {
         // no parameters. The parser also reads `interface X { fn m() }`.
         self.write("interface ");
         self.write(&decl.name);
+        self.write(&type_params(&decl.type_params));
+        if !decl.extends.is_empty() {
+            self.write(" extends ");
+            self.write(&decl.extends.join(", "));
+        }
         self.newline();
         self.with_indent(|p| {
             for m in &decl.methods {

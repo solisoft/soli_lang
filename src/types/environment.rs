@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::types::type_repr::{ClassType, EnumType, FieldInfo, InterfaceType, MethodInfo, Type};
+use crate::types::type_repr::{
+    ClassType, EnumType, FieldInfo, InterfaceType, MethodInfo, MethodSignature, Type,
+};
 
 /// A type environment tracking types of variables and declarations.
 #[derive(Debug, Clone)]
@@ -3411,6 +3413,57 @@ impl TypeEnvironment {
     /// Define an interface type.
     pub fn define_interface(&mut self, iface: InterfaceType) {
         self.interfaces.insert(iface.name.clone(), iface);
+    }
+
+    /// Settle `extends` between the declared interfaces: each takes the
+    /// signatures of its ancestors it does not declare itself, and each
+    /// ancestor learns who extends it (`extended_by`). Run once every
+    /// interface is declared; running it again changes nothing.
+    pub fn resolve_interfaces(&mut self) {
+        let names: Vec<String> = self.interfaces.keys().cloned().collect();
+        let mut ancestry: Vec<(String, Vec<String>)> = Vec::new();
+        for name in &names {
+            let mut seen: Vec<String> = Vec::new();
+            let mut queue: Vec<String> = self
+                .interfaces
+                .get(name)
+                .map(|i| i.parents.clone())
+                .unwrap_or_default();
+            while let Some(parent) = queue.pop() {
+                if &parent == name || seen.contains(&parent) {
+                    continue;
+                }
+                if let Some(iface) = self.interfaces.get(&parent) {
+                    queue.extend(iface.parents.iter().cloned());
+                }
+                seen.push(parent);
+            }
+            ancestry.push((name.clone(), seen));
+        }
+        for (name, ancestors) in &ancestry {
+            for ancestor in ancestors {
+                let inherited: Vec<(String, MethodSignature)> = self
+                    .interfaces
+                    .get(ancestor)
+                    .map(|a| {
+                        a.methods
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if let Some(iface) = self.interfaces.get_mut(name) {
+                    for (method, signature) in inherited {
+                        iface.methods.entry(method).or_insert(signature);
+                    }
+                }
+                if let Some(parent) = self.interfaces.get_mut(ancestor) {
+                    if !parent.extended_by.contains(name) {
+                        parent.extended_by.push(name.clone());
+                    }
+                }
+            }
+        }
     }
 
     /// Get an interface type.

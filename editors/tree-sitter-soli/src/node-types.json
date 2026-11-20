@@ -839,6 +839,10 @@
           "named": true
         },
         {
+          "type": "type_arguments",
+          "named": true
+        },
+        {
           "type": "type_parameters",
           "named": true
         }
@@ -1811,6 +1815,20 @@
       "name": {
         "multiple": false,
         "required": true,
+        "types": [
+          {
+            "type": "constant",
+            "named": true
+          },
+          {
+            "type": "scope_resolution",
+            "named": true
+          }
+        ]
+      },
+      "parent": {
+        "multiple": true,
+        "required": false,
         "types": [
           {
             "type": "constant",

@@ -178,7 +178,7 @@ impl Parser {
 
     /// `Box<Int>`, `Hash<String, Int>`, `Array<Int>`: the `<` is the
     /// lookahead, written against the name.
-    fn parse_type_arguments(
+    pub(crate) fn parse_type_arguments(
         &mut self,
         name: String,
         start_span: Span,

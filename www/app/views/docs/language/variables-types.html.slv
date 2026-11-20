@@ -66,6 +66,9 @@ let user: Hash = {"name": "Alice", "age": 30};</code></pre>
         <p class="text-gray-400 mb-4">
             An inferred type is not a promise: reassigning an unannotated variable with another type widens it (<code class="text-cyan-400">total = 0</code> then <code class="text-cyan-400">total = total * 1.5</code> makes it a <code class="text-cyan-400">Float</code>). Only a type you wrote down &mdash; <code class="text-cyan-400">let x: Int</code>, a typed parameter &mdash; makes <code class="text-cyan-400">soli check</code> refuse a value of another type.
         </p>
+        <p class="text-gray-400 mb-4">
+            A declared return type holds for the value a function ends on as well as for an explicit <code class="text-cyan-400">return</code>: <code class="text-cyan-400">soli check</code> refuses <code class="text-cyan-400">def label -&gt; Int</code> whose last line is a <code class="text-cyan-400">String</code>, as the run time does when it is called. Only a plain last expression is judged statically &mdash; a function ending on an <code class="text-cyan-400">if</code>, a <code class="text-cyan-400">throw</code> or a guard clause is left to the run-time check &mdash; and a function with no return type, or <code class="text-cyan-400">-&gt; Void</code>, is not judged.
+        </p>
         <h3 class="text-lg font-semibold text-white mt-6 mb-3">Nullable types</h3>
         <p class="text-gray-400 mb-4">
             <code class="text-cyan-400">T?</code> is a <code class="text-cyan-400">T</code> or <code class="text-cyan-400">nil</code>. A parameter, a <code class="text-cyan-400">let</code>, a field or a return type marked <code class="text-cyan-400">?</code> accepts <code class="text-cyan-400">nil</code> as well as a <code class="text-cyan-400">T</code>:

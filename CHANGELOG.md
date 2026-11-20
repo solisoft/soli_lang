@@ -12,6 +12,28 @@
   assignable to the interface (only the class's own `implements` list was read).
 
 ### Added
+- **language: interfaces compose and take type parameters.** `interface
+  Person extends Named` (or `<`) inherits `Named`'s signatures; a class
+  implementing `Person` is assignable to `Named`, and `is_a?("Named")` /
+  `implements?("Named")` hold on both engines (a process-wide interface
+  ancestry, VM `Op::InterfaceParent`). `interface Repo<T>` is bound by
+  `implements Repo<String>` (`ClassDecl.interface_type_args`) for the
+  signature check, and a `Repo<String>` parameter reads its methods with `T`
+  bound; a bare `Repo` reads `T` as `Any`. The boot check includes inherited
+  signatures. tree-sitter: `extends`, `implements X<…>`.
+- **types: overrides are held to the signature they replace (Liskov).** An
+  override of a method of a source-declared superclass must accept the
+  parent's required arguments (a wider param type is fine), require no more,
+  and return what fits; the error names `Parent#method` and what differs.
+  Builtin/framework parents, private parents and statics are not judged. No
+  error on www, the examples or a generated app with every auth scaffold.
+- **types: implicit returns are checked.** A function or method's last
+  expression is held to its declared return type, as `return` was (the run
+  time already raised). Only a plain last expression; `-> Void` and no
+  annotation are not judged. Across `tests/`, the only new reports are the
+  two functions `type_system_spec.sl` writes to return the wrong type.
+- **parser: `abstract static def`** is "a static method cannot be abstract"
+  instead of a field-declaration error.
 - **language: abstract classes.** `abstract class Shape` with bodiless
   `abstract def area -> Float`: `Shape.new` raises on both engines
   (`Class::instantiation_refusal`, shared with modules); a concrete subclass

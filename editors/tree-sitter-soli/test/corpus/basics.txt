@@ -662,6 +662,44 @@ end
           (constant))))))
 
 ================================================================================
+Interface inheritance and generic interfaces
+================================================================================
+
+interface Repo<T> extends Named, Counted
+  def find(id: Int) -> T
+end
+class Names implements Repo<String>, Named
+end
+
+---
+
+(source_file
+  (interface_declaration
+    (constant)
+    (type_parameters
+      (constant))
+    (constant)
+    (constant)
+    (interface_body
+      (method_signature
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier
+              (constant))))
+        (type_identifier
+          (constant)))))
+  (class_declaration
+    (constant)
+    (constant)
+    (type_arguments
+      (type_identifier
+        (constant)))
+    (constant)
+    (class_body)))
+
+================================================================================
 Union types and typed block parameters
 ================================================================================
 

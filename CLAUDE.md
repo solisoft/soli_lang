@@ -362,6 +362,12 @@ end
   `abstract def`, is a type error under `soli run` / `soli check` / `soli test`, and
   `soli serve` refuses to boot on it (`smell/unimplemented-interface`).
 - An implementation need not repeat the interface's annotations.
+- Interfaces compose (`interface Person extends Named`) and take type
+  parameters (`interface Repo<T>`, `implements Repo<String>`, `repo: Repo<String>`).
+- Liskov is checked: an override of a source-declared parent method must accept
+  the parent's required arguments (wider param types OK) and return what fits.
+- A declared return type holds for a function's last expression too, not only
+  for an explicit `return`.
 - `x.is_a?("Repository")` and `Klass.implements?("Repository")` answer at run time
   (names as strings, like `is_a?("Post")`); `Shape.new` on an abstract class raises.
 - Interfaces have no default methods: share code through an abstract class or a

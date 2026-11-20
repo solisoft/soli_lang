@@ -1566,7 +1566,7 @@ fn stack_effect(op: Op) -> i32 {
         // Classes (class value stays on the stack; method/field defs pop one).
         Class(_) | Module(_) => 1,
         // Records an interface on the class on top of the stack; leaves it.
-        Implements(_) | Abstract => 0,
+        Implements(_) | Abstract | InterfaceParent(_, _) => 0,
         Inherit | Include | Extend | Method(_) | StaticMethod(_) | Field(_) | StaticField(_)
         | ConstField(_) | StaticConstField(_) => -1,
         New(argc) => -(argc as i32),
@@ -4338,6 +4338,7 @@ mod stack_effect_tests {
             (&[], Class(KEY)),
             (&[Class(KEY)], Implements(STR)),
             (&[Class(KEY)], Abstract),
+            (&[], InterfaceParent(STR, STR)),
             (&[Constant(INT)], Print(1)),
             (&[Constant(JSON)], JsonParse),
             (&[Constant(INT)], JsonStringify),

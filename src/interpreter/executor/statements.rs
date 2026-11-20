@@ -248,8 +248,12 @@ impl Interpreter {
                 Ok(ControlFlow::Normal(Value::Null))
             }
 
-            StmtKind::Interface(_) => {
-                // Interfaces are handled at type-check time, no runtime effect
+            StmtKind::Interface(decl) => {
+                // Checked at type-check time; at run time only `extends`
+                // matters, for `is_a?` / `implements?`.
+                for parent in &decl.extends {
+                    crate::interpreter::value::register_interface_parent(&decl.name, parent);
+                }
                 Ok(ControlFlow::Normal(Value::Null))
             }
 

@@ -211,6 +211,9 @@ pub enum Op {
     /// Record that the class on top of the stack `implements` the interface
     /// named by the constant (for `is_a?` / `implements?`). Leaves the class.
     Implements(u16),
+    /// `interface A extends B`: record that the interface named by the
+    /// first constant extends the one named by the second. Stack untouched.
+    InterfaceParent(u16, u16),
     /// Mark the class on top of the stack `abstract` (`X.new` raises).
     /// Leaves the class.
     Abstract,

@@ -199,8 +199,15 @@ impl Compiler {
                 // declaration, construction, and methods are all VM-native.
                 self.compile_class_decl(&decl.lower_to_class(), line)?;
             }
-            StmtKind::Interface(_) => {
-                // Interfaces are type-only, no runtime representation needed
+            StmtKind::Interface(decl) => {
+                // Type-only, but for `extends`, which `is_a?` / `implements?`
+                // read at run time. An op rather than a compile-time
+                // registration: a cached chunk is not compiled again.
+                for parent in &decl.extends {
+                    let child = self.add_string_constant(&decl.name);
+                    let parent = self.add_string_constant(parent);
+                    self.emit(Op::InterfaceParent(child, parent), line);
+                }
             }
             StmtKind::Import(decl) => {
                 self.compile_import(decl, line)?;

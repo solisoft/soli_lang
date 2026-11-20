@@ -255,11 +255,25 @@ impl Parser {
                 None
             };
 
+        // `implements Repo<String>, Named`: a generic interface's type
+        // arguments are kept apart, its name joins the plain list.
+        let mut interface_type_args: Vec<crate::ast::types::GenericType> = Vec::new();
         let interfaces =
             if self.match_token(&TokenKind::Implements) || self.match_token(&TokenKind::Tilde) {
-                let mut interfaces = vec![self.expect_identifier()?];
-                while self.match_token(&TokenKind::Comma) {
-                    interfaces.push(self.expect_identifier()?);
+                let mut interfaces = Vec::new();
+                loop {
+                    let span = self.current_span();
+                    let name = self.expect_identifier()?;
+                    if self.check(&TokenKind::Less) {
+                        let applied = self.parse_type_arguments(name.clone(), span)?;
+                        if let crate::ast::types::TypeKind::Generic(generic) = applied.kind {
+                            interface_type_args.push(*generic);
+                        }
+                    }
+                    interfaces.push(name);
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
                 }
                 interfaces
             } else {
@@ -283,6 +297,7 @@ impl Parser {
                     is_module,
                     is_abstract: false,
                     abstract_methods: Vec::new(),
+                    interface_type_args: Vec::new(),
                     includes: Vec::new(),
                     extends: Vec::new(),
                     included_hooks: Vec::new(),
@@ -363,6 +378,11 @@ impl Parser {
                     ));
                 }
                 constructor = Some(self.parse_constructor()?);
+            } else if self.at_abstract_before(&TokenKind::Static) {
+                return Err(ParserError::general(
+                    "a static method cannot be abstract",
+                    self.current_span(),
+                ));
             } else if self.at_abstract_before(&TokenKind::Fn) {
                 let method_visibility = explicit_visibility.unwrap_or(section_visibility);
                 let method = self.parse_abstract_method(method_visibility, is_static)?;
@@ -424,6 +444,7 @@ impl Parser {
                 is_module,
                 is_abstract: false,
                 abstract_methods,
+                interface_type_args,
                 includes,
                 extends,
                 included_hooks,
@@ -1236,6 +1257,30 @@ impl Parser {
         self.expect(&TokenKind::Interface)?;
 
         let name = self.expect_identifier()?;
+        // `interface Repo<T>`: `T` reads as a type parameter in the
+        // signatures, as in a generic class.
+        let type_params = self.parse_type_parameters();
+        let scope = self.type_params.len();
+        self.type_params.extend(type_params.iter().cloned());
+        let parsed = self.interface_declaration_rest(start_span, name, type_params);
+        self.type_params.truncate(scope);
+        parsed
+    }
+
+    fn interface_declaration_rest(
+        &mut self,
+        start_span: crate::span::Span,
+        name: String,
+        type_params: Vec<String>,
+    ) -> ParseResult<Stmt> {
+        // `interface Person extends Named, Aged` (or `<`, as for a class).
+        let mut extends = Vec::new();
+        if self.match_token(&TokenKind::Extends) || self.match_token(&TokenKind::Less) {
+            extends.push(self.expect_identifier()?);
+            while self.match_token(&TokenKind::Comma) {
+                extends.push(self.expect_identifier()?);
+            }
+        }
         // Two forms: `interface X { … }` and, like a class, `interface X … end`.
         let close = if self.match_token(&TokenKind::LeftBrace) {
             TokenKind::RightBrace
@@ -1269,6 +1314,8 @@ impl Parser {
         Ok(Stmt::new(
             StmtKind::interface(InterfaceDecl {
                 name,
+                type_params,
+                extends,
                 methods,
                 span,
             }),

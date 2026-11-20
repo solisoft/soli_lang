@@ -26,6 +26,11 @@ pub struct TypeChecker {
     /// subclass must define. Kept here, not on `ClassType`: that one is
     /// inline in every `Type::Class`.
     pub(crate) abstract_methods: std::collections::HashMap<String, Vec<String>>,
+    /// For each class declared from source (not a builtin or framework
+    /// class), its instance methods' required-argument counts. An override
+    /// is held to the signature it overrides only when the parent is here.
+    pub(crate) source_methods:
+        std::collections::HashMap<String, std::collections::HashMap<String, usize>>,
     /// For each `def` of the file or the project: the fewest and most
     /// arguments it takes, and the signature it was declared with (a call
     /// reaching another binding of the name is not checked against it).
@@ -62,6 +67,7 @@ impl TypeChecker {
             warnings: Vec::new(),
             declared_functions: std::collections::HashSet::new(),
             abstract_methods: std::collections::HashMap::new(),
+            source_methods: std::collections::HashMap::new(),
             function_arities: std::collections::HashMap::new(),
             declaring_project: false,
             job_classes: std::collections::HashSet::new(),
@@ -159,6 +165,7 @@ impl TypeChecker {
                 _ => {}
             }
         }
+        self.env.resolve_interfaces();
         // Parents before children, since a class keeps a copy of its parent;
         // twice, so a signature naming a class declared later resolves.
         let ordered = parents_first(&classes);
@@ -271,6 +278,10 @@ impl TypeChecker {
             }
         }
 
+        // `interface B extends A`: B takes A's signatures, A learns B extends
+        // it — once every interface of the file is declared.
+        self.env.resolve_interfaces();
+
         // Between the passes: fold `include` / `extend` members into the classes
         // that mix them in. Its own pass so declaration order does not matter.
         let class_decls: Vec<ClassDecl> = program
@@ -339,7 +350,13 @@ impl TypeChecker {
                     Type::Class(instance)
                 }
                 None => match self.env.get_interface(&generic.name) {
-                    Some(iface) => Type::Interface(iface.clone()),
+                    // `Repo<String>`: the interface, its parameters bound.
+                    Some(iface) => {
+                        let mut applied = iface.clone();
+                        applied.type_args =
+                            generic.args.iter().map(|a| self.resolve_type(a)).collect();
+                        Type::Interface(applied)
+                    }
                     None => Type::Unknown,
                 },
             },

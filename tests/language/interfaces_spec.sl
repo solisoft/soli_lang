@@ -53,6 +53,40 @@ interface Resizable {
   def resize(factor: Float) -> Float
 }
 
+# `extends`: a Person is a Named.
+interface Named
+  def name -> String
+end
+
+interface Aged extends Named
+  def age -> Int
+end
+
+class Elder implements Aged
+  def name -> String
+    "Ada"
+  end
+
+  def age -> Int
+    90
+  end
+end
+
+# A generic interface, bound by the class.
+interface Store<T>
+  def fetch(key: String) -> T
+end
+
+class Counts implements Store<Int>
+  def fetch(key: String) -> Int
+    key.length
+  end
+end
+
+def describe_named(who: Named) -> String
+  who.name
+end
+
 # The `end` form, like a class, with `def` signatures.
 interface Shape
   def area -> Float
@@ -344,5 +378,19 @@ describe("The ~ shorthand") do
     assert(!Tile.implements?("Greetable"))
     assert(Dog.implements?("Greetable"))
     assert(Puppy.implements?("Greetable"))
+  end
+
+  test("an interface extending another: methods, is_a? and implements?") do
+    elder = Elder.new
+    assert_eq(describe_named(elder), "Ada")
+    assert(elder.is_a?("Aged"))
+    assert(elder.is_a?("Named"))
+    assert(Elder.implements?("Named"))
+    assert(!Elder.implements?("Greetable"))
+  end
+
+  test("a generic interface") do
+    assert_eq(Counts.new.fetch("four"), 4)
+    assert(Counts.implements?("Store"))
   end
 end

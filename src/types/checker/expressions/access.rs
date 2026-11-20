@@ -230,16 +230,22 @@ impl TypeChecker {
             // signature types the call. Whatever class implements it, the
             // universal methods every value has are there too.
             Type::Interface(iface) => {
-                let full = self
+                let mut full = self
                     .env
                     .get_interface(&iface.name)
                     .cloned()
-                    .unwrap_or(iface);
+                    .unwrap_or_else(|| iface.clone());
+                // `repo: Repo<String>`: `T` in the signatures reads `String`.
+                full.type_args = iface.type_args.clone();
+                let bindings = full.bindings();
                 if let Some(signature) = full.methods.get(name) {
-                    return Ok(collapse_zero_arg_method(Type::Function {
+                    let ty = Type::Function {
                         params: signature.params.clone(),
                         return_type: Box::new(signature.return_type.clone()),
-                    }));
+                    };
+                    return Ok(collapse_zero_arg_method(
+                        crate::types::generics::substitute(&ty, &bindings),
+                    ));
                 }
                 match name {
                     "class" | "inspect" | "to_s" | "to_string" => Ok(Type::String),

@@ -913,6 +913,21 @@ fn an_abstract_class_keeps_its_bodiless_methods() {
 }
 
 #[test]
+fn interface_extends_and_generics_round_trip() {
+    let src = "interface Repo<T> extends Named, Counted\n  def find(id: Int) -> T\nend\n\nclass R implements Repo<String>, Named\n  def find(id)\n    \"x\"\n  end\nend\n";
+    let out = format_source(src).expect("fmt failed");
+    assert!(
+        out.contains("interface Repo<T> extends Named, Counted\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("class R implements Repo<String>, Named\n"),
+        "{out}"
+    );
+    assert_round_trip(src);
+}
+
+#[test]
 fn an_empty_interface_round_trips() {
     assert_round_trip("interface Marker\nend\n");
 }

@@ -218,15 +218,16 @@ impl Type {
             (Type::Class(class), Type::Interface(iface)) => {
                 let mut current = Some(class);
                 while let Some(c) = current {
-                    if c.interfaces.contains(&iface.name) {
+                    if c.interfaces.iter().any(|name| iface.accepts(name)) {
                         return true;
                     }
                     current = c.superclass.as_deref();
                 }
                 false
             }
-            // An interface value passed on to another parameter of that type.
-            (Type::Interface(a), Type::Interface(b)) => a.name == b.name,
+            // An interface value passed on to a parameter of that interface,
+            // or of one it extends.
+            (Type::Interface(a), Type::Interface(b)) => b.accepts(&a.name),
             _ => false,
         }
     }
@@ -496,7 +497,19 @@ pub struct MethodInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterfaceType {
     pub name: String,
+    /// Its own signatures, then (once [`crate::types::environment::TypeEnvironment::resolve_interfaces`]
+    /// ran) those inherited from the interfaces it `extends`.
     pub methods: HashMap<String, MethodSignature>,
+    /// `extends A, B`, as written.
+    pub parents: Vec<String>,
+    /// Every interface that extends this one, directly or not: a class
+    /// implementing one of them, or a value of one, goes where this one is
+    /// expected. Filled by `resolve_interfaces`.
+    pub extended_by: Vec<String>,
+    /// `interface Repo<T>`.
+    pub type_params: Vec<String>,
+    /// `Repo<String>` as a type: what `type_params` are bound to here.
+    pub type_args: Vec<Type>,
 }
 
 impl InterfaceType {
@@ -504,7 +517,32 @@ impl InterfaceType {
         Self {
             name,
             methods: HashMap::new(),
+            parents: Vec::new(),
+            extended_by: Vec::new(),
+            type_params: Vec::new(),
+            type_args: Vec::new(),
         }
+    }
+
+    /// Whether a value typed with interface `name` (or a class implementing
+    /// it) fits where this interface is expected.
+    pub fn accepts(&self, name: &str) -> bool {
+        self.name == name || self.extended_by.iter().any(|n| n == name)
+    }
+
+    /// What each type parameter is bound to; one with no argument (`Repo`
+    /// rather than `Repo<String>`) reads as `Any`.
+    pub fn bindings(&self) -> HashMap<String, Type> {
+        self.type_params
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                (
+                    p.clone(),
+                    self.type_args.get(i).cloned().unwrap_or(Type::Any),
+                )
+            })
+            .collect()
     }
 }
 

@@ -215,7 +215,7 @@ pub fn find_in_files(files: &[(PathBuf, Program, bool)]) -> Vec<Broken> {
             let Some(interface) = interfaces.get(interface_name.as_str()) else {
                 continue;
             };
-            for wanted in &interface.methods {
+            for wanted in interface_methods(interface, &interfaces) {
                 let (wanted_arity, _) = arity(&wanted.params);
                 let (method, closed) = find_method(decl, &wanted.name, &units);
                 let found_arity = match method {
@@ -244,6 +244,34 @@ pub fn find_in_files(files: &[(PathBuf, Program, bool)]) -> Vec<Broken> {
     }
     found.extend(unimplemented_abstract_methods(&units, &order));
     found
+}
+
+/// The signatures of `interface` and of the interfaces it extends (those
+/// declared in the application), each name once — its own win.
+fn interface_methods<'a>(
+    interface: &'a InterfaceDecl,
+    interfaces: &HashMap<String, &'a InterfaceDecl>,
+) -> Vec<&'a crate::ast::stmt::InterfaceMethod> {
+    let mut out: Vec<&crate::ast::stmt::InterfaceMethod> = Vec::new();
+    let mut queue = vec![interface];
+    let mut seen: Vec<&str> = Vec::new();
+    while let Some(current) = queue.pop() {
+        if seen.contains(&current.name.as_str()) {
+            continue;
+        }
+        seen.push(&current.name);
+        for method in &current.methods {
+            if !out.iter().any(|m| m.name == method.name) {
+                out.push(method);
+            }
+        }
+        for parent in &current.extends {
+            if let Some(decl) = interfaces.get(parent.as_str()) {
+                queue.push(decl);
+            }
+        }
+    }
+    out
 }
 
 /// The class in `start`'s chain (itself, its included modules, then its
@@ -466,7 +494,10 @@ mod tests {
             "class MemoryRepo implements Repository\n  def find(id)\n    id\n  end\nend\n",
         );
         let err = crate::serve::global_names::check_app(dir.path()).unwrap_err();
-        assert!(err.starts_with("classes missing a method of an interface"), "{err}");
+        assert!(
+            err.starts_with("classes missing a method of an interface"),
+            "{err}"
+        );
         assert!(err.contains("no method `count`"), "{err}");
         assert_eq!(find_in_app(dir.path()).len(), 1);
     }
@@ -489,5 +520,19 @@ mod tests {
             message.contains("extends abstract class `Shape` but does not define `area`"),
             "{message}"
         );
+    }
+
+    #[test]
+    fn an_interface_brings_the_methods_of_those_it_extends() {
+        let all = files(&[(
+            "app/services/people.sl",
+            "interface Named\n  def name -> String\nend\n\
+             interface Person extends Named\n  def age -> Int\nend\n\
+             class Ada implements Person\n  def age\n    36\n  end\nend\n",
+        )]);
+        let found = find_in_files(&all);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].method, "name");
+        assert_eq!(found[0].interface, "Person");
     }
 }
