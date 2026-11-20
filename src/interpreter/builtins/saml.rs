@@ -52,7 +52,7 @@ use serde_json::{json, Map as JsonMap, Value as Json};
 use sha2::{Digest, Sha256, Sha512};
 
 use super::xml::c14n::{
-    canonicalize, element_ns_uri, parse_document, root_in_scope, Element, Node,
+    canonicalize, element_ns_uri, parse_document, root_in_scope, Element, Node, NsLookup, NsStack,
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{json_to_value, value_to_json, Class, NativeFunction, Value};
@@ -75,21 +75,88 @@ const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const DEFAULT_CLOCK_SKEW: i64 = 120;
 const MAX_CLOCK_SKEW: i64 = 600;
 
-type Scope = BTreeMap<String, String>;
+/// The most elements a response may hold. A real one has a few dozen, a few
+/// thousand with a long list of group memberships.
+const MAX_RESPONSE_ELEMENTS: usize = 10_000;
+/// The most distinct namespace prefixes a response may declare. A real one
+/// uses half a dozen (`samlp`, `saml`, `ds`, `xs`, `xsi`, `ec`…), however
+/// many times an identity provider repeats their declarations.
+const MAX_RESPONSE_PREFIXES: usize = 64;
+/// The most namespace declarations a response may make in all.
+const MAX_RESPONSE_NS_DECLS: usize = 10_000;
+
+/// The declarations one element makes, linked to those of its declaring
+/// ancestors. An element that declares nothing shares its parent's frame, so
+/// walking the tree never copies a namespace map.
+struct Frame<'a> {
+    decls: &'a [(String, String)],
+    parent: Option<Rc<Frame<'a>>>,
+}
+
+/// The namespace context an element inherits: a chain of [`Frame`]s.
+#[derive(Clone, Default)]
+struct Chain<'a>(Option<Rc<Frame<'a>>>);
+
+impl<'a> Chain<'a> {
+    fn with(&self, el: &'a Element) -> Chain<'a> {
+        if el.ns_decls.is_empty() {
+            self.clone()
+        } else {
+            Chain(Some(Rc::new(Frame {
+                decls: &el.ns_decls,
+                parent: self.0.clone(),
+            })))
+        }
+    }
+
+    /// The whole context as a flat map, for canonicalization (taken once per
+    /// signed element, not per element walked).
+    fn flatten(&self) -> BTreeMap<String, String> {
+        let mut scope = root_in_scope();
+        let mut frames = Vec::new();
+        let mut frame = self.0.as_deref();
+        while let Some(current) = frame {
+            frames.push(current);
+            frame = current.parent.as_deref();
+        }
+        for current in frames.into_iter().rev() {
+            for (prefix, uri) in current.decls {
+                scope.insert(prefix.clone(), uri.clone());
+            }
+        }
+        scope
+    }
+}
+
+impl NsLookup for Chain<'_> {
+    fn lookup(&self, prefix: &str) -> Option<&str> {
+        if prefix == "xml" {
+            return Some("http://www.w3.org/XML/1998/namespace");
+        }
+        let mut frame = self.0.as_deref();
+        while let Some(current) = frame {
+            if let Some((_, uri)) = current.decls.iter().rev().find(|(p, _)| p == prefix) {
+                return Some(uri.as_str());
+            }
+            frame = current.parent.as_deref();
+        }
+        None
+    }
+}
 
 /// An element together with the namespace context it inherits, which is what
 /// both name resolution and canonicalization need.
 #[derive(Clone)]
 struct Scoped<'a> {
     el: &'a Element,
-    inherited: Rc<Scope>,
+    inherited: Chain<'a>,
 }
 
 impl<'a> Scoped<'a> {
     fn root(el: &'a Element) -> Self {
         Scoped {
             el,
-            inherited: Rc::new(root_in_scope()),
+            inherited: Chain::default(),
         }
     }
 
@@ -98,18 +165,14 @@ impl<'a> Scoped<'a> {
     }
 
     fn children(&self) -> Vec<Scoped<'a>> {
-        let mut scope = (*self.inherited).clone();
-        for (prefix, uri) in &self.el.ns_decls {
-            scope.insert(prefix.clone(), uri.clone());
-        }
-        let scope = Rc::new(scope);
+        let scope = self.inherited.with(self.el);
         self.el
             .children
             .iter()
             .filter_map(|node| match node {
                 Node::Element(el) => Some(Scoped {
                     el,
-                    inherited: Rc::clone(&scope),
+                    inherited: scope.clone(),
                 }),
                 _ => None,
             })
@@ -162,8 +225,7 @@ impl<'a> Scoped<'a> {
         let mut out = String::new();
         canonicalize(
             self.el,
-            &self.inherited,
-            &BTreeMap::new(),
+            &self.inherited.flatten(),
             prefixes,
             false,
             skip,
@@ -173,14 +235,51 @@ impl<'a> Scoped<'a> {
     }
 }
 
+/// Refuse a response too large in shape to be worth walking, before any
+/// walk: counted iteratively, in one pass, with no namespace map built.
+fn refuse_oversized(document: &Element) -> Result<(), String> {
+    let mut elements = 0usize;
+    let mut declarations = 0usize;
+    let mut prefixes: BTreeSet<&str> = BTreeSet::new();
+    let mut pending = vec![document];
+    while let Some(el) = pending.pop() {
+        elements += 1;
+        if elements > MAX_RESPONSE_ELEMENTS {
+            return Err(format!(
+                "the response has more than {} elements",
+                MAX_RESPONSE_ELEMENTS
+            ));
+        }
+        declarations += el.ns_decls.len();
+        if declarations > MAX_RESPONSE_NS_DECLS {
+            return Err(format!(
+                "the response makes more than {} namespace declarations",
+                MAX_RESPONSE_NS_DECLS
+            ));
+        }
+        for (prefix, _) in &el.ns_decls {
+            prefixes.insert(prefix.as_str());
+        }
+        if prefixes.len() > MAX_RESPONSE_PREFIXES {
+            return Err(format!(
+                "the response declares more than {} namespace prefixes",
+                MAX_RESPONSE_PREFIXES
+            ));
+        }
+        for node in &el.children {
+            if let Node::Element(child) = node {
+                pending.push(child);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Refuse a prefix used with no declaration in scope. The shared parser lets
 /// one through (fragments need it); a response from an identity provider
 /// never has one, and the canonical form cannot say what it means.
-fn refuse_unbound_prefixes(el: &Element, inherited: &Scope) -> Result<(), String> {
-    let mut scope = inherited.clone();
-    for (prefix, uri) in &el.ns_decls {
-        scope.insert(prefix.clone(), uri.clone());
-    }
+fn refuse_unbound_prefixes(el: &Element, scope: &mut NsStack) -> Result<(), String> {
+    let mark = scope.enter(el);
     let bound = |prefix: &str| {
         prefix.is_empty()
             || prefix == "xml"
@@ -200,9 +299,10 @@ fn refuse_unbound_prefixes(el: &Element, inherited: &Scope) -> Result<(), String
     }
     for node in &el.children {
         if let Node::Element(child) = node {
-            refuse_unbound_prefixes(child, &scope)?;
+            refuse_unbound_prefixes(child, scope)?;
         }
     }
+    scope.truncate(mark);
     Ok(())
 }
 
@@ -234,6 +334,7 @@ pub(crate) struct Expected {
     acs_url: String,
     /// The id of the request this answers; `None` only with `allow_unsolicited`.
     request_id: Option<String>,
+    /// The identity provider's entity id; `None` only with `any_issuer`.
     idp_entity_id: Option<String>,
     now: i64,
     clock_skew: i64,
@@ -343,6 +444,28 @@ impl Expected {
                     .to_string(),
             );
         }
+        // Who issued the assertion is checked unless the caller says, by
+        // name, that any issuer the certificate signs for will do. An empty
+        // string is a configuration that went missing (an unset environment
+        // variable), never a choice.
+        let idp_entity_id = match obj.get("idp_entity_id") {
+            None | Some(Json::Null) => None,
+            Some(Json::String(s)) if s.is_empty() => {
+                return Err("expected idp_entity_id is empty (the identity provider's \
+                     entity id, from its metadata)"
+                    .to_string());
+            }
+            Some(Json::String(s)) => Some(s.clone()),
+            Some(_) => return Err("idp_entity_id must be a String".to_string()),
+        };
+        if idp_entity_id.is_none() && !opt_bool(obj, "any_issuer")? {
+            return Err(
+                "expected idp_entity_id is required (the identity provider's entity id, \
+                 from its metadata); pass any_issuer: true to accept any issuer the \
+                 certificate signs for"
+                    .to_string(),
+            );
+        }
         let clock_skew = opt_int(obj, "clock_skew")?.unwrap_or(DEFAULT_CLOCK_SKEW);
         if !(0..=MAX_CLOCK_SKEW).contains(&clock_skew) {
             return Err(format!(
@@ -356,7 +479,7 @@ impl Expected {
                 .map_err(|e| format!("expected {} (the service provider's entity id)", e))?,
             acs_url: req_str(obj, "acs_url").map_err(|e| format!("expected {}", e))?,
             request_id,
-            idp_entity_id: opt_str(obj, "idp_entity_id")?,
+            idp_entity_id,
             now: opt_int(obj, "now")?.unwrap_or_else(unix_now),
             clock_skew,
             allow_sha1: opt_bool(obj, "allow_sha1")?,
@@ -377,24 +500,35 @@ fn digest(algorithm: &str, bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-fn hash_of(uri: &str, what: &str, allow_sha1: bool) -> Result<&'static str, String> {
+/// The hash of a `SignatureMethod`: RSA PKCS#1 v1.5 only.
+fn signature_hash_of(uri: &str, allow_sha1: bool) -> Result<&'static str, String> {
     match uri {
-        "http://www.w3.org/2001/04/xmlenc#sha256"
-        | "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" => Ok("sha256"),
-        "http://www.w3.org/2001/04/xmlenc#sha512"
-        | "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512" => Ok("sha512"),
-        "http://www.w3.org/2000/09/xmldsig#sha1" | "http://www.w3.org/2000/09/xmldsig#rsa-sha1" => {
-            if allow_sha1 {
-                Ok("sha1")
-            } else {
-                Err(format!(
-                    "the {} uses SHA-1; switch the identity provider to SHA-256, \
-                     or pass allow_sha1: true",
-                    what
-                ))
-            }
-        }
-        other => Err(format!("unsupported {} algorithm {}", what, other)),
+        "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" => Ok("sha256"),
+        "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512" => Ok("sha512"),
+        "http://www.w3.org/2000/09/xmldsig#rsa-sha1" => sha1_if_allowed("signature", allow_sha1),
+        other => Err(format!("unsupported signature algorithm {}", other)),
+    }
+}
+
+/// The hash of a `DigestMethod`: a bare digest, never a signature method.
+fn digest_hash_of(uri: &str, allow_sha1: bool) -> Result<&'static str, String> {
+    match uri {
+        "http://www.w3.org/2001/04/xmlenc#sha256" => Ok("sha256"),
+        "http://www.w3.org/2001/04/xmlenc#sha512" => Ok("sha512"),
+        "http://www.w3.org/2000/09/xmldsig#sha1" => sha1_if_allowed("digest", allow_sha1),
+        other => Err(format!("unsupported digest algorithm {}", other)),
+    }
+}
+
+fn sha1_if_allowed(what: &str, allow_sha1: bool) -> Result<&'static str, String> {
+    if allow_sha1 {
+        Ok("sha1")
+    } else {
+        Err(format!(
+            "the {} uses SHA-1; switch the identity provider to SHA-256, \
+             or pass allow_sha1: true",
+            what
+        ))
     }
 }
 
@@ -456,12 +590,11 @@ fn verify_signature(
         algorithm_of(&method, "CanonicalizationMethod")?,
         "canonicalization",
     )?;
-    let signature_hash = hash_of(
+    let signature_hash = signature_hash_of(
         algorithm_of(
             &signed_info.only(DSIG_NS, "SignatureMethod")?,
             "SignatureMethod",
         )?,
-        "signature",
         expected.allow_sha1,
     )?;
 
@@ -489,9 +622,8 @@ fn verify_signature(
             prefixes = inclusive_prefixes(transform);
         }
     }
-    let digest_hash = hash_of(
+    let digest_hash = digest_hash_of(
         algorithm_of(&reference.only(DSIG_NS, "DigestMethod")?, "DigestMethod")?,
-        "digest",
         expected.allow_sha1,
     )?;
     let digest_value = decode_base64(
@@ -556,8 +688,9 @@ fn check_in_response_to(found: Option<&str>, expected: &Expected, on: &str) -> R
     }
 }
 
-/// The bearer confirmation that makes the assertion ours to accept.
-fn check_subject_confirmation(subject: &Scoped, expected: &Expected) -> Result<(), String> {
+/// The bearer confirmation that makes the assertion ours to accept, and the
+/// instant it stops being acceptable (its `NotOnOrAfter`).
+fn check_subject_confirmation(subject: &Scoped, expected: &Expected) -> Result<i64, String> {
     let mut reason = "the subject has no bearer confirmation".to_string();
     for confirmation in subject.named(SAML_NS, "SubjectConfirmation") {
         if confirmation.attr("Method") != Some(BEARER) {
@@ -567,7 +700,7 @@ fn check_subject_confirmation(subject: &Scoped, expected: &Expected) -> Result<(
             reason = "the bearer confirmation has no SubjectConfirmationData".to_string();
             continue;
         };
-        let checked = (|| -> Result<(), String> {
+        let checked = (|| -> Result<i64, String> {
             if data.attr("Recipient") != Some(expected.acs_url.as_str()) {
                 return Err("the assertion is addressed to another recipient".to_string());
             }
@@ -582,16 +715,16 @@ fn check_subject_confirmation(subject: &Scoped, expected: &Expected) -> Result<(
                 }
             }
             match (&expected.request_id, data.attr("InResponseTo")) {
-                (Some(want), Some(got)) if want == got => Ok(()),
+                (Some(want), Some(got)) if want == got => Ok(not_on_or_after),
                 (Some(_), _) => Err("the assertion answers another request".to_string()),
                 (None, Some(_)) => {
                     Err("the assertion answers a request, and none was expected".to_string())
                 }
-                (None, None) => Ok(()),
+                (None, None) => Ok(not_on_or_after),
             }
         })();
         match checked {
-            Ok(()) => return Ok(()),
+            Ok(limit) => return Ok(limit),
             Err(why) => reason = why,
         }
     }
@@ -638,7 +771,8 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
     }
     let xml = String::from_utf8(bytes).map_err(|_| "the response is not UTF-8".to_string())?;
     let document = parse_document(&xml).map_err(|e| format!("the response is not XML: {}", e))?;
-    refuse_unbound_prefixes(&document, &root_in_scope())?;
+    refuse_oversized(&document)?;
+    refuse_unbound_prefixes(&document, &mut NsStack::from_map(&root_in_scope()))?;
     collect_ids(&document, &mut BTreeSet::new())?;
 
     let response = Scoped::root(&document);
@@ -726,8 +860,12 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
     if name.is_empty() {
         return Err("the NameID is empty".to_string());
     }
-    check_subject_confirmation(&subject, expected)?;
-    let expires_at = check_conditions(&assertion, expected)?;
+    let confirmation_expires_at = check_subject_confirmation(&subject, expected)?;
+    // The assertion is usable until the earlier of the two limits it states.
+    let expires_at = match check_conditions(&assertion, expected)? {
+        Some(conditions_expires_at) => conditions_expires_at.min(confirmation_expires_at),
+        None => confirmation_expires_at,
+    };
 
     let mut session_index = Json::Null;
     let mut session_expires_at = Json::Null;
@@ -779,7 +917,8 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
         "session_expires_at": session_expires_at,
         "authn_context": authn_context,
         "assertion_id": assertion.attr("ID"),
-        "response_id": response.attr("ID"),
+        // The response's id is only worth something when it was signed.
+        "response_id": if signed == "assertion" { None } else { response.attr("ID") },
         "in_response_to": expected.request_id,
         "expires_at": expires_at,
         "signed": signed,
@@ -1292,6 +1431,13 @@ mod tests {
             assert_eq!(verified["attributes"]["groups"], json!(["admin", "staff"]));
             assert_eq!(verified["attributes"]["email"], json!(["ada@example.com"]));
             assert_eq!(verified["assertion_id"], json!("_a1"));
+            // The response's id is returned only when the response is signed.
+            let response_id = if sign == "assertion" {
+                json!(null)
+            } else {
+                json!("_r1")
+            };
+            assert_eq!(verified["response_id"], response_id, "{sign}");
             assert_eq!(verified["in_response_to"], json!("_req1"));
             assert_eq!(verified["expires_at"], json!(NOW + 300));
             assert!(verified["session_index"].is_string());
@@ -1517,28 +1663,29 @@ mod tests {
             verify(&STANDARD.encode("<!DOCTYPE a [<!ENTITY x \"y\">]><a>&x;</a>")),
             "not XML",
         );
-        assert!(hash_of(
-            "http://www.w3.org/2000/09/xmldsig#rsa-sha1",
-            "signature",
-            false
-        )
-        .unwrap_err()
-        .contains("SHA-1"));
+        assert!(
+            signature_hash_of("http://www.w3.org/2000/09/xmldsig#rsa-sha1", false)
+                .unwrap_err()
+                .contains("SHA-1")
+        );
         assert_eq!(
-            hash_of(
-                "http://www.w3.org/2000/09/xmldsig#rsa-sha1",
-                "signature",
-                true
-            ),
+            signature_hash_of("http://www.w3.org/2000/09/xmldsig#rsa-sha1", true),
             Ok("sha1")
         );
-        assert!(hash_of(
-            "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256",
-            "signature",
-            false
-        )
-        .unwrap_err()
-        .contains("unsupported"));
+        assert!(
+            signature_hash_of("http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256", false)
+                .unwrap_err()
+                .contains("unsupported")
+        );
+        // A digest is not a signature method, and the other way round.
+        assert!(signature_hash_of("http://www.w3.org/2001/04/xmlenc#sha256", false).is_err());
+        assert!(
+            digest_hash_of("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256", false).is_err()
+        );
+        assert_eq!(
+            digest_hash_of("http://www.w3.org/2001/04/xmlenc#sha256", false),
+            Ok("sha256")
+        );
     }
 
     #[test]
@@ -1662,6 +1809,114 @@ mod tests {
             xml.replacen("<samlp:Status>", "<samlp:Status><x:extra/>", 1)
         });
         refused(verify(&unbound), "prefix 'x' is used without a declaration");
+    }
+
+    /// Sign the assertion of an unsigned response `xml`, as `test_response`
+    /// does, after the test has edited it.
+    fn sign_assertion(xml: &str) -> String {
+        let (n, d) = private_key(IDP_KEY).unwrap();
+        let signature = signature_for(xml, "_a1", &n, &d).unwrap();
+        let issuer = format!("<saml:Issuer>{IDP}</saml:Issuer>");
+        let at = xml.rfind(&issuer).unwrap() + issuer.len();
+        STANDARD.encode(format!("{}{}{}", &xml[..at], signature, &xml[at..]))
+    }
+
+    fn unsigned_xml() -> String {
+        String::from_utf8(STANDARD.decode(issue(json!({"sign": "none"}))).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn expires_at_is_the_earlier_of_conditions_and_the_bearer_confirmation() {
+        let xml = unsigned_xml();
+        let conditions = format!("NotOnOrAfter=\"{}\">", instant(NOW + 300));
+        let confirmation = format!("NotOnOrAfter=\"{}\" Recipient", instant(NOW + 300));
+        assert!(xml.contains(&conditions) && xml.contains(&confirmation));
+
+        let short_confirmation = xml.replacen(
+            &confirmation,
+            &format!("NotOnOrAfter=\"{}\" Recipient", instant(NOW + 60)),
+            1,
+        );
+        let verified = verify(&sign_assertion(&short_confirmation)).unwrap();
+        assert_eq!(verified["expires_at"], json!(NOW + 60));
+
+        let short_conditions = xml.replacen(
+            &conditions,
+            &format!("NotOnOrAfter=\"{}\">", instant(NOW + 90)),
+            1,
+        );
+        let verified = verify(&sign_assertion(&short_conditions)).unwrap();
+        assert_eq!(verified["expires_at"], json!(NOW + 90));
+
+        // Without a Conditions limit, the confirmation's is the one.
+        let no_conditions_limit = xml.replacen(&format!(" {conditions}"), ">", 1);
+        assert_ne!(no_conditions_limit, xml);
+        let verified = verify(&sign_assertion(&no_conditions_limit)).unwrap();
+        assert_eq!(verified["expires_at"], json!(NOW + 300));
+    }
+
+    #[test]
+    fn the_issuer_is_checked_unless_the_caller_opts_out_by_name() {
+        let message = |overrides: Json| expected(overrides).err().unwrap_or_default();
+        assert!(message(json!({"idp_entity_id": null})).contains("idp_entity_id is required"));
+        // An empty string is a missing setting, not "any".
+        assert!(message(json!({"idp_entity_id": ""})).contains("idp_entity_id is empty"));
+        assert!(message(json!({"idp_entity_id": "", "any_issuer": true}))
+            .contains("idp_entity_id is empty"));
+        let any = expected(json!({"idp_entity_id": null, "any_issuer": true})).unwrap();
+        let rogue = issue(json!({"issuer": "https://rogue.test"}));
+        assert_eq!(
+            verify_response(&rogue, &any).unwrap()["issuer"],
+            json!("https://rogue.test")
+        );
+        // Naming the issuer still checks it, any_issuer or not.
+        let both = expected(json!({"any_issuer": true})).unwrap();
+        refused(verify_response(&rogue, &both), "another identity provider");
+    }
+
+    /// A 1 MiB unsigned response whose root declares thousands of prefixes
+    /// over a few hundred thousand empty elements cost 16–34 s of CPU before
+    /// any signature was looked at: every walk copied the prefix map at every
+    /// element. It is refused by shape, before any walk.
+    #[test]
+    fn a_response_of_hostile_shape_is_refused_before_any_walk() {
+        let started = std::time::Instant::now();
+        let mut xml = format!("<samlp:Response xmlns:samlp=\"{SAMLP_NS}\"");
+        for i in 0..4000 {
+            xml.push_str(&format!(" xmlns:p{i}=\"urn:{i}\""));
+        }
+        xml.push('>');
+        while xml.len() < MAX_RESPONSE_BYTES - 64 {
+            xml.push_str("<a/>");
+        }
+        xml.push_str("</samlp:Response>");
+        refused(
+            verify(&STANDARD.encode(&xml)),
+            "more than 64 namespace prefixes",
+        );
+
+        // Few prefixes, too many elements.
+        let mut many = format!("<samlp:Response xmlns:samlp=\"{SAMLP_NS}\">");
+        while many.len() < MAX_RESPONSE_BYTES - 64 {
+            many.push_str("<a/>");
+        }
+        many.push_str("</samlp:Response>");
+        refused(verify(&STANDARD.encode(&many)), "more than 10000 elements");
+
+        // A declaration repeated on every element, as some identity
+        // providers do, counts once as a prefix.
+        let mut repeated = format!("<samlp:Response xmlns:samlp=\"{SAMLP_NS}\">");
+        for _ in 0..5000 {
+            repeated.push_str("<a xmlns:xs=\"urn:xs\"/>");
+        }
+        repeated.push_str("</samlp:Response>");
+        refused(verify(&STANDARD.encode(&repeated)), "not SAML 2.0");
+
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "took {elapsed:?}"
+        );
     }
 
     #[test]

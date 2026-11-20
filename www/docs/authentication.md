@@ -118,8 +118,9 @@ jwt_verify(token, secret, options)
 | `token` | String | The JWT token |
 | `secret` | String | Secret key for HMAC, or public key material for RS256/ES256/EdDSA |
 | `options.key` | String | PEM-encoded public key for RS256/ES256/EdDSA (optional) |
+| `options.algorithm`, `audience`, `issuer`, `subject`, `authorized_party`, `leeway` | | See [jwt_verify](/docs/builtins/jwt#def-jwt-verify) |
 
-Returns a hash with claims if valid, or `{"error": true, "message": "..."}` if invalid.
+Returns a hash with claims if valid, or `{"error": true, "message": "..."}` if invalid. An unknown option name (`aud` for `audience`, say) or a value of the wrong type raises instead of being skipped.
 
 ### jwt_decode_unsafe
 

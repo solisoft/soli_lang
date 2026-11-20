@@ -28,7 +28,7 @@
 //!   mirroring the SOAP parser).
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 #[cfg(test)]
 use std::ops::Deref;
 use std::rc::Rc;
@@ -353,22 +353,123 @@ fn attach(stack: &mut [Element], roots: &mut Vec<Node>, node: Node) {
     }
 }
 
+/// The namespace bindings in scope at one point of a walk down the tree.
+///
+/// One binding stack per prefix plus an undo log, the shape the shared XML
+/// core uses (`crate::xml::ns::Bindings`): entering an element pushes its
+/// own declarations, leaving it truncates back to the mark taken on entry.
+/// Nothing is copied per element — a map cloned at every element made a
+/// document with thousands of declarations on its root and a few hundred
+/// thousand empty elements cost seconds of CPU before any signature was
+/// looked at.
+#[derive(Default)]
+pub(crate) struct NsStack {
+    by_prefix: HashMap<String, Vec<String>>,
+    log: Vec<String>,
+}
+
+impl NsStack {
+    /// The bindings of a flat map (prefix -> uri, "" = default).
+    pub(crate) fn from_map(map: &BTreeMap<String, String>) -> Self {
+        let mut stack = NsStack::default();
+        for (prefix, uri) in map {
+            stack.push(prefix, uri);
+        }
+        stack
+    }
+
+    /// The mark to pass to [`NsStack::truncate`].
+    pub(crate) fn mark(&self) -> usize {
+        self.log.len()
+    }
+
+    pub(crate) fn push(&mut self, prefix: &str, uri: &str) {
+        match self.by_prefix.get_mut(prefix) {
+            Some(stack) => stack.push(uri.to_string()),
+            None => {
+                self.by_prefix
+                    .insert(prefix.to_string(), vec![uri.to_string()]);
+            }
+        }
+        self.log.push(prefix.to_string());
+    }
+
+    /// Push the declarations `el` makes.
+    pub(crate) fn enter(&mut self, el: &Element) -> usize {
+        let mark = self.mark();
+        for (prefix, uri) in &el.ns_decls {
+            self.push(prefix, uri);
+        }
+        mark
+    }
+
+    /// Drop every binding pushed since `mark` was taken.
+    pub(crate) fn truncate(&mut self, mark: usize) {
+        while self.log.len() > mark {
+            let Some(prefix) = self.log.pop() else {
+                break;
+            };
+            if let Some(stack) = self.by_prefix.get_mut(&prefix) {
+                stack.pop();
+                if stack.is_empty() {
+                    self.by_prefix.remove(&prefix);
+                }
+            }
+        }
+    }
+
+    /// The innermost binding of `prefix`, an empty undeclaration included.
+    pub(crate) fn get(&self, prefix: &str) -> Option<&str> {
+        self.by_prefix
+            .get(prefix)
+            .and_then(|stack| stack.last())
+            .map(String::as_str)
+    }
+
+    /// Every prefix in scope with its innermost URI. Linear in the distinct
+    /// prefixes; taken once per element a caller asked for, not per element
+    /// walked.
+    pub(crate) fn snapshot(&self) -> BTreeMap<String, String> {
+        self.by_prefix
+            .iter()
+            .filter_map(|(prefix, stack)| stack.last().map(|uri| (prefix.clone(), uri.clone())))
+            .collect()
+    }
+}
+
+/// Something a namespace prefix can be looked up in.
+pub(crate) trait NsLookup {
+    fn lookup(&self, prefix: &str) -> Option<&str>;
+}
+
+impl NsLookup for NsStack {
+    fn lookup(&self, prefix: &str) -> Option<&str> {
+        self.get(prefix)
+    }
+}
+
+impl NsLookup for BTreeMap<String, String> {
+    fn lookup(&self, prefix: &str) -> Option<&str> {
+        self.get(prefix).map(String::as_str)
+    }
+}
+
 /// Namespace URI used to sort an attribute (unprefixed = no namespace; the
 /// default namespace deliberately does NOT apply to attributes).
-fn attr_ns_uri(a: &Attr, in_scope: &BTreeMap<String, String>) -> String {
+fn attr_ns_uri<'s>(a: &Attr, in_scope: &'s NsStack) -> &'s str {
     if a.prefix.is_empty() {
-        String::new()
+        ""
     } else if a.prefix == "xml" {
-        XML_NS.to_string()
+        XML_NS
     } else {
-        in_scope.get(&a.prefix).cloned().unwrap_or_default()
+        in_scope.get(&a.prefix).unwrap_or("")
     }
 }
 
 /// Resolve an element's namespace URI, honouring its own declarations first
 /// then the inherited in-scope context.
-pub(crate) fn element_ns_uri(el: &Element, in_scope: &BTreeMap<String, String>) -> String {
-    for (p, uri) in &el.ns_decls {
+pub(crate) fn element_ns_uri<L: NsLookup + ?Sized>(el: &Element, in_scope: &L) -> String {
+    for (p, uri) in el.ns_decls.iter().rev() {
         if *p == el.prefix {
             return uri.clone();
         }
@@ -376,21 +477,19 @@ pub(crate) fn element_ns_uri(el: &Element, in_scope: &BTreeMap<String, String>) 
     if el.prefix == "xml" {
         return XML_NS.to_string();
     }
-    in_scope.get(&el.prefix).cloned().unwrap_or_default()
+    in_scope.lookup(&el.prefix).unwrap_or_default().to_string()
 }
 
 /// True if `el` is the `<ds:Signature>` element of an enveloped signature.
-fn is_enveloped_signature(el: &Element, in_scope: &BTreeMap<String, String>) -> bool {
+fn is_enveloped_signature(el: &Element, in_scope: &NsStack) -> bool {
     el.local == "Signature" && element_ns_uri(el, in_scope) == XMLDSIG_NS
 }
 
-/// Recursively canonicalize `el`, appending to `out`.
+/// Canonicalize `el`, appending to `out`.
 ///
-/// `in_scope` is the input namespace context (prefix -> uri, "" = default;
-/// an empty uri value means the default namespace is undeclared). `rendered`
-/// is the *output* namespace context already emitted by ancestors — the heart
-/// of the "exclusive" rule: a declaration is emitted only when visibly
-/// utilized and not already in the output context.
+/// `in_scope_parent` is the input namespace context inherited from the
+/// ancestors of `el` (prefix -> uri, "" = default; an empty uri value means
+/// the default namespace is undeclared). The output context starts empty.
 ///
 /// `enveloped` drops every descendant `<ds:Signature>`; `skip` drops exactly
 /// one element, by identity — the enveloped-signature transform as the spec
@@ -399,68 +498,90 @@ fn is_enveloped_signature(el: &Element, in_scope: &BTreeMap<String, String>) -> 
 pub(crate) fn canonicalize(
     el: &Element,
     in_scope_parent: &BTreeMap<String, String>,
-    rendered_parent: &BTreeMap<String, String>,
     prefix_list: &BTreeSet<String>,
     enveloped: bool,
     skip: Option<*const Element>,
     out: &mut String,
 ) {
-    let mut in_scope = in_scope_parent.clone();
-    for (p, uri) in &el.ns_decls {
-        in_scope.insert(p.clone(), uri.clone());
-    }
+    let mut in_scope = NsStack::from_map(in_scope_parent);
+    let mut rendered = NsStack::default();
+    canonicalize_in(
+        el,
+        &mut in_scope,
+        &mut rendered,
+        prefix_list,
+        enveloped,
+        skip,
+        out,
+    );
+}
+
+/// The recursion of [`canonicalize`]. `rendered` is the *output* namespace
+/// context already emitted by ancestors — the heart of the "exclusive" rule:
+/// a declaration is emitted only when visibly utilized and not already in
+/// the output context. Both stacks come back as they were given.
+fn canonicalize_in(
+    el: &Element,
+    in_scope: &mut NsStack,
+    rendered: &mut NsStack,
+    prefix_list: &BTreeSet<String>,
+    enveloped: bool,
+    skip: Option<*const Element>,
+    out: &mut String,
+) {
+    let scope_mark = in_scope.enter(el);
 
     // Visibly utilized prefixes: the element's own prefix, every *prefixed*
     // attribute's prefix, plus the InclusiveNamespaces prefix list.
-    let mut utilized: BTreeSet<String> = BTreeSet::new();
-    utilized.insert(el.prefix.clone());
+    let mut utilized: BTreeSet<&str> = BTreeSet::new();
+    utilized.insert(el.prefix.as_str());
     for a in &el.attrs {
         if !a.prefix.is_empty() {
-            utilized.insert(a.prefix.clone());
+            utilized.insert(a.prefix.as_str());
         }
     }
     for p in prefix_list {
-        utilized.insert(p.clone());
+        utilized.insert(p.as_str());
     }
 
-    let mut rendered = rendered_parent.clone();
+    // The prefixes are distinct, so deciding them all before recording any
+    // in `rendered` decides each exactly as recording them one by one would.
     let mut to_render: Vec<(String, String)> = Vec::new();
-
-    for p in &utilized {
+    for p in utilized {
         if p == "xml" {
             // The xml prefix is implicitly declared everywhere; never emitted.
             continue;
         }
         if p.is_empty() {
-            let uri = in_scope.get("").cloned().unwrap_or_default();
+            let uri = in_scope.get("").unwrap_or("");
             if uri.is_empty() {
                 // Default namespace is "none": emit xmlns="" only to override
                 // a non-empty default still in effect in the output.
                 if rendered.get("").map(|u| !u.is_empty()).unwrap_or(false) {
                     to_render.push((String::new(), String::new()));
-                    rendered.insert(String::new(), String::new());
                 }
-            } else if rendered.get("").map(|u| u != &uri).unwrap_or(true) {
-                to_render.push((String::new(), uri.clone()));
-                rendered.insert(String::new(), uri.clone());
+            } else if rendered.get("") != Some(uri) {
+                to_render.push((String::new(), uri.to_string()));
             }
         } else if let Some(uri) = in_scope.get(p) {
-            if !uri.is_empty() && rendered.get(p).map(|u| u != uri).unwrap_or(true) {
-                to_render.push((p.clone(), uri.clone()));
-                rendered.insert(p.clone(), uri.clone());
+            if !uri.is_empty() && rendered.get(p) != Some(uri) {
+                to_render.push((p.to_string(), uri.to_string()));
             }
         }
         // A used prefix that is not in scope cannot be rendered; skip it.
     }
+    // `utilized` is ordered, so `to_render` already is.
+    let render_mark = rendered.mark();
+    for (p, uri) in &to_render {
+        rendered.push(p, uri);
+    }
 
-    to_render.sort_by(|a, b| a.0.cmp(&b.0));
-
-    let mut attrs_sorted: Vec<&Attr> = el.attrs.iter().collect();
-    attrs_sorted.sort_by(|a, b| {
-        attr_ns_uri(a, &in_scope)
-            .cmp(&attr_ns_uri(b, &in_scope))
-            .then_with(|| a.local.cmp(&b.local))
-    });
+    let mut attrs_sorted: Vec<(&str, &Attr)> = el
+        .attrs
+        .iter()
+        .map(|a| (attr_ns_uri(a, in_scope), a))
+        .collect();
+    attrs_sorted.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.local.cmp(&b.1.local)));
 
     out.push('<');
     out.push_str(&el.qname);
@@ -475,7 +596,7 @@ pub(crate) fn canonicalize(
         out.push_str(&escape_attr(uri));
         out.push('"');
     }
-    for a in &attrs_sorted {
+    for (_, a) in &attrs_sorted {
         out.push(' ');
         out.push_str(&a.qname);
         out.push_str("=\"");
@@ -495,13 +616,13 @@ pub(crate) fn canonicalize(
             Node::Element(c) => {
                 // Enveloped-signature transform: drop the <ds:Signature> the
                 // signature lives in before canonicalizing the referenced subtree.
-                if enveloped && is_enveloped_signature(c, &in_scope) {
+                if enveloped && is_enveloped_signature(c, in_scope) {
                     continue;
                 }
                 if skip == Some(c as *const Element) {
                     continue;
                 }
-                canonicalize(c, &in_scope, &rendered, prefix_list, enveloped, skip, out);
+                canonicalize_in(c, in_scope, rendered, prefix_list, enveloped, skip, out);
             }
         }
     }
@@ -509,6 +630,9 @@ pub(crate) fn canonicalize(
     out.push_str("</");
     out.push_str(&el.qname);
     out.push('>');
+
+    rendered.truncate(render_mark);
+    in_scope.truncate(scope_mark);
 }
 
 /// Find the element with the given Id, returning it together with the
@@ -517,46 +641,56 @@ pub(crate) fn canonicalize(
 fn find_by_id<'a>(
     el: &'a Element,
     target: &str,
-    in_scope_parent: &BTreeMap<String, String>,
+    in_scope: &mut NsStack,
 ) -> Option<(&'a Element, BTreeMap<String, String>)> {
     if el.id.as_deref() == Some(target) {
-        return Some((el, in_scope_parent.clone()));
+        return Some((el, in_scope.snapshot()));
     }
-    let mut in_scope = in_scope_parent.clone();
-    for (p, uri) in &el.ns_decls {
-        in_scope.insert(p.clone(), uri.clone());
-    }
+    let mark = in_scope.enter(el);
     for child in &el.children {
         if let Node::Element(c) = child {
-            if let Some(found) = find_by_id(c, target, &in_scope) {
+            if let Some(found) = find_by_id(c, target, in_scope) {
                 return Some(found);
             }
         }
     }
+    in_scope.truncate(mark);
     None
 }
 
-/// Collect every element with the given local name, each paired with its
-/// inherited namespace context. Used to locate `<ds:SignedInfo>` (which has no
-/// Id) for verification.
-fn collect_by_local<'a>(
-    el: &'a Element,
+/// The most `Xml.get_elements_by_tag` returns, in bytes. Matches can nest,
+/// and each one carries every namespace in scope, so the result of a small
+/// document can be far larger than the document.
+const MAX_EXTRACTED_BYTES: usize = 32 * 1024 * 1024;
+
+/// Serialize every element with the given local name as a standalone
+/// fragment, each carrying its inherited namespace context.
+fn collect_by_local(
+    el: &Element,
     local: &str,
-    in_scope_parent: &BTreeMap<String, String>,
-    out: &mut Vec<(&'a Element, BTreeMap<String, String>)>,
-) {
+    in_scope: &mut NsStack,
+    out: &mut Vec<String>,
+    budget: &mut usize,
+) -> Result<(), String> {
     if el.local == local {
-        out.push((el, in_scope_parent.clone()));
+        let mut fragment = String::new();
+        serialize_faithful(el, &in_scope.snapshot(), &mut fragment);
+        *budget = budget.checked_sub(fragment.len()).ok_or_else(|| {
+            format!(
+                "the matching elements add up to more than {} bytes",
+                MAX_EXTRACTED_BYTES
+            )
+        })?;
+        out.push(fragment);
     }
-    let mut in_scope = in_scope_parent.clone();
-    for (p, uri) in &el.ns_decls {
-        in_scope.insert(p.clone(), uri.clone());
-    }
+    let mark = in_scope.enter(el);
     for child in &el.children {
         if let Node::Element(c) = child {
-            collect_by_local(c, local, &in_scope, out);
+            collect_by_local(c, local, in_scope, out, budget)?;
         }
     }
+    in_scope.truncate(mark);
+    Ok(())
 }
 
 pub(crate) fn root_in_scope() -> BTreeMap<String, String> {
@@ -581,16 +715,14 @@ fn canonicalize_exclusive_opts(
     let root = parse_document(xml)?;
     let base = root_in_scope();
     let (target, in_scope_parent) = match id {
-        Some(want) => find_by_id(&root, want, &base)
+        Some(want) => find_by_id(&root, want, &mut NsStack::from_map(&base))
             .ok_or_else(|| format!("no element with Id '{}' found", want))?,
         None => (&root, base),
     };
-    let rendered = BTreeMap::new();
     let mut out = String::new();
     canonicalize(
         target,
         &in_scope_parent,
-        &rendered,
         prefix_list,
         enveloped,
         None,
@@ -610,26 +742,34 @@ fn canonicalize_exclusive(xml: &str, prefix_list: &BTreeSet<String>) -> Result<S
 /// are resolved, attribute quoting normalised), but the *information* is —
 /// which is what callers need before handing the fragment to canonicalization.
 fn serialize_faithful(el: &Element, inherited: &BTreeMap<String, String>, out: &mut String) {
-    // Namespaces declared locally on this element.
-    let local_prefixes: BTreeSet<&str> = el.ns_decls.iter().map(|(p, _)| p.as_str()).collect();
+    serialize_element(el, Some(inherited), out);
+}
 
+/// One element of [`serialize_faithful`]. Only the fragment's root carries
+/// the inherited declarations; below it, an element writes its own — they
+/// are in scope there already, and repeating them on every descendant made
+/// the output grow with elements times declarations.
+fn serialize_element(el: &Element, inherited: Option<&BTreeMap<String, String>>, out: &mut String) {
     out.push('<');
     out.push_str(&el.qname);
 
     // Inject inherited namespaces not redeclared here (skip the implicit xml).
-    for (p, uri) in inherited {
-        if p == "xml" || uri.is_empty() || local_prefixes.contains(p.as_str()) {
-            continue;
+    if let Some(inherited) = inherited {
+        let local_prefixes: BTreeSet<&str> = el.ns_decls.iter().map(|(p, _)| p.as_str()).collect();
+        for (p, uri) in inherited {
+            if p == "xml" || uri.is_empty() || local_prefixes.contains(p.as_str()) {
+                continue;
+            }
+            if p.is_empty() {
+                out.push_str(" xmlns=\"");
+            } else {
+                out.push_str(" xmlns:");
+                out.push_str(p);
+                out.push_str("=\"");
+            }
+            out.push_str(&escape_attr(uri));
+            out.push('"');
         }
-        if p.is_empty() {
-            out.push_str(" xmlns=\"");
-        } else {
-            out.push_str(" xmlns:");
-            out.push_str(p);
-            out.push_str("=\"");
-        }
-        out.push_str(&escape_attr(uri));
-        out.push('"');
     }
     // This element's own declarations, in source order.
     for (p, uri) in &el.ns_decls {
@@ -652,11 +792,6 @@ fn serialize_faithful(el: &Element, inherited: &BTreeMap<String, String>, out: &
     }
     out.push('>');
 
-    // Child namespace context for recursion.
-    let mut child_scope = inherited.clone();
-    for (p, uri) in &el.ns_decls {
-        child_scope.insert(p.clone(), uri.clone());
-    }
     for child in &el.children {
         match child {
             Node::Text(t) => out.push_str(&escape_text(t)),
@@ -665,7 +800,7 @@ fn serialize_faithful(el: &Element, inherited: &BTreeMap<String, String>, out: &
                 out.push_str(p);
                 out.push_str("?>");
             }
-            Node::Element(c) => serialize_faithful(c, &child_scope, out),
+            Node::Element(c) => serialize_element(c, None, out),
         }
     }
 
@@ -677,9 +812,8 @@ fn serialize_faithful(el: &Element, inherited: &BTreeMap<String, String>, out: &
 /// Extract the subtree with the given Id as a standalone XML fragment.
 fn extract_by_id(xml: &str, id: &str) -> Result<String, String> {
     let root = parse_document(xml)?;
-    let base = root_in_scope();
-    let (target, inherited) =
-        find_by_id(&root, id, &base).ok_or_else(|| format!("no element with Id '{}' found", id))?;
+    let (target, inherited) = find_by_id(&root, id, &mut NsStack::from_map(&root_in_scope()))
+        .ok_or_else(|| format!("no element with Id '{}' found", id))?;
     let mut out = String::new();
     serialize_faithful(target, &inherited, &mut out);
     Ok(out)
@@ -688,17 +822,16 @@ fn extract_by_id(xml: &str, id: &str) -> Result<String, String> {
 /// Extract every element with the given local name as standalone XML fragments.
 fn extract_by_local(xml: &str, local: &str) -> Result<Vec<String>, String> {
     let root = parse_document(xml)?;
-    let base = root_in_scope();
     let mut found = Vec::new();
-    collect_by_local(&root, local, &base, &mut found);
-    Ok(found
-        .into_iter()
-        .map(|(el, inherited)| {
-            let mut out = String::new();
-            serialize_faithful(el, &inherited, &mut out);
-            out
-        })
-        .collect())
+    let mut budget = MAX_EXTRACTED_BYTES;
+    collect_by_local(
+        &root,
+        local,
+        &mut NsStack::from_map(&root_in_scope()),
+        &mut found,
+        &mut budget,
+    )?;
+    Ok(found)
 }
 
 /// Parse the optional InclusiveNamespaces argument: a space-separated string
@@ -1399,6 +1532,46 @@ mod tests {
         assert_eq!(
             canonicalize_exclusive(&frag, &BTreeSet::new()).unwrap(),
             direct
+        );
+    }
+
+    /// Thousands of declarations on the root over tens of thousands of empty
+    /// elements: every walk used to copy the whole prefix map at every
+    /// element (seconds to minutes of CPU for 1 MiB). Each walk is now linear.
+    #[test]
+    fn many_declarations_over_many_elements_stay_linear() {
+        let mut xml = String::from("<r");
+        for i in 0..4000 {
+            xml.push_str(&format!(" xmlns:p{i}=\"urn:{i}\""));
+        }
+        xml.push('>');
+        for _ in 0..50_000 {
+            xml.push_str("<a/>");
+        }
+        xml.push_str("<last ID=\"x\"/></r>");
+
+        let started = std::time::Instant::now();
+        let canonical = c14n(&xml);
+        assert!(canonical.starts_with("<r><a></a>"), "{}", &canonical[..40]);
+        assert_eq!(c14n_opts(&xml, Some("x"), true), "<last ID=\"x\"></last>");
+        assert!(extract_by_id(&xml, "x").unwrap().contains("xmlns:p3999"));
+        assert!(extract_by_id(&xml, "missing").is_err());
+        // Each match carries the 4000 declarations: the budget stops it.
+        let error = extract_by_local(&xml, "a").unwrap_err();
+        assert!(error.contains("add up to more than"), "{error}");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn a_fragment_declares_inherited_namespaces_on_its_root_only() {
+        let xml = r#"<r xmlns:a="http://a"><a:obj ID="x"><a:v><a:w/></a:v></a:obj></r>"#;
+        assert_eq!(
+            extract_by_id(xml, "x").unwrap(),
+            r#"<a:obj xmlns:a="http://a" ID="x"><a:v><a:w></a:w></a:v></a:obj>"#
         );
     }
 

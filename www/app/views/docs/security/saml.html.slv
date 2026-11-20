@@ -116,10 +116,11 @@ soli generate saml</code></pre>
         <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
             <li><strong class="text-white">Signature.</strong> The assertion, the response, or both are signed, and every signature present verifies with a certificate you configured &mdash; never with the one the message carries. A certificate with an RSA key under 2048 bits is refused.</li>
             <li><strong class="text-white">No signature wrapping.</strong> A signature is only looked for as a direct child of the response or of its one assertion, it must reference that parent&rsquo;s <code>ID</code>, and the claims are read from the very node the digest was computed over. A second assertion, a duplicated <code>ID</code>, or a signature that points elsewhere is refused.</li>
-            <li><strong class="text-white">For this application.</strong> <code>Audience</code> is your entity id; <code>Recipient</code> and <code>Destination</code> are your ACS URL; <code>Issuer</code> is the configured IdP.</li>
+            <li><strong class="text-white">For this application.</strong> <code>Audience</code> is your entity id; <code>Recipient</code> and <code>Destination</code> are your ACS URL; <code>Issuer</code> is the IdP you name in <code>idp_entity_id</code>. That key is required: an empty string raises (an unset environment variable is a missing setting, not &ldquo;any IdP&rdquo;), and accepting any issuer the certificate signs for takes <code>any_issuer: true</code>, said by name.</li>
             <li><strong class="text-white">For this request.</strong> <code>InResponseTo</code> is the id of the request this browser started. A response nobody asked for (IdP-initiated) is refused unless you pass <code>allow_unsolicited: true</code>.</li>
             <li><strong class="text-white">Now.</strong> <code>NotBefore</code> / <code>NotOnOrAfter</code> on the conditions and on the subject confirmation, with 120 seconds of clock skew (<code>clock_skew</code>, up to 600).</li>
             <li><strong class="text-white">Successful.</strong> The status is <code>Success</code>; otherwise the error names the status.</li>
+            <li><strong class="text-white">Reasonable in shape.</strong> Before any of the above is walked, a response with more than 10,000 elements, more than 64 distinct namespace prefixes or more than 10,000 namespace declarations is refused. A real one has a few dozen elements and half a dozen prefixes; through 2.39.2 a 1&nbsp;MiB unsigned response with thousands of prefixes cost tens of seconds of CPU.</li>
         </ul>
         <p class="text-gray-400 mb-4">
             Comments inside a value do not split it: <code>user@example.com&lt;!----&gt;.evil.com</code> reads as the whole
@@ -174,16 +175,23 @@ request["xml"]   # the &lt;samlp:AuthnRequest&gt;</code></pre>
                     <tr><td class="py-3 px-4"><code>issuer</code></td><td class="py-3 px-4">The identity provider&rsquo;s entity id</td></tr>
                     <tr><td class="py-3 px-4"><code>session_index</code>, <code>session_expires_at</code></td><td class="py-3 px-4">The IdP session (<code>nil</code> when not stated; times are Unix seconds)</td></tr>
                     <tr><td class="py-3 px-4"><code>authn_context</code></td><td class="py-3 px-4">The <code>AuthnContextClassRef</code></td></tr>
-                    <tr><td class="py-3 px-4"><code>assertion_id</code>, <code>response_id</code>, <code>in_response_to</code></td><td class="py-3 px-4">Ids</td></tr>
-                    <tr><td class="py-3 px-4"><code>expires_at</code></td><td class="py-3 px-4">The conditions&rsquo; <code>NotOnOrAfter</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>assertion_id</code>, <code>in_response_to</code></td><td class="py-3 px-4">Ids</td></tr>
+                    <tr><td class="py-3 px-4"><code>response_id</code></td><td class="py-3 px-4">The response&rsquo;s id &mdash; <code>nil</code> when only the assertion is signed, since nothing vouches for it then</td></tr>
+                    <tr><td class="py-3 px-4"><code>expires_at</code></td><td class="py-3 px-4">When the assertion stops being acceptable: the earlier of the conditions&rsquo; and the bearer confirmation&rsquo;s <code>NotOnOrAfter</code></td></tr>
                     <tr><td class="py-3 px-4"><code>signed</code></td><td class="py-3 px-4"><code>"assertion"</code>, <code>"response"</code> or <code>"both"</code></td></tr>
                 </tbody>
             </table>
         </div>
         <p class="text-gray-400 mb-4">
-            Other <code>expected</code> keys: <code>allow_unsolicited</code>, <code>clock_skew</code>, <code>allow_sha1</code>
-            (SHA-1 signatures are refused otherwise), <code>now</code> (Unix seconds, for specs). Listing several certificates
-            accepts any of them &mdash; that is how an IdP&rsquo;s certificate is rotated without downtime.
+            Other <code>expected</code> keys: <code>allow_unsolicited</code>, <code>any_issuer</code> (skip the
+            <code>Issuer</code> check when <code>idp_entity_id</code> is not given), <code>clock_skew</code>,
+            <code>allow_sha1</code> (SHA-1 signatures are refused otherwise), <code>now</code> (Unix seconds, for specs).
+            Listing several certificates accepts any of them &mdash; that is how an IdP&rsquo;s certificate is rotated without
+            downtime.
+        </p>
+        <p class="text-gray-400 mb-4">
+            The certificate is a pinned key, not a chain: its validity dates are not checked, so an expired certificate you
+            still list keeps verifying. Remove a certificate from the list to stop trusting it.
         </p>
 
         <h3 id="metadata" class="text-xl font-semibold text-white mt-8 mb-3">Saml.metadata(options)</h3>
@@ -221,7 +229,7 @@ idp["certificates"]   # signing certificates, PEM</code></pre>
         </h2>
         <ul class="list-disc pl-6 space-y-3 text-gray-400">
             <li><strong class="text-white">One identity provider per application.</strong> For one per customer, make <code>SamlSso.identity_provider</code> read it from the tenant instead of the environment.</li>
-            <li><strong class="text-white">Not supported, and refused by name:</strong> encrypted assertions and <code>EncryptedID</code> (turn assertion encryption off at the IdP), ECDSA and RSA-PSS signatures, SHA-384, inclusive canonicalization.</li>
+            <li><strong class="text-white">Not supported, and refused by name:</strong> encrypted assertions and <code>EncryptedID</code> (turn assertion encryption off at the IdP), ECDSA and RSA-PSS signatures, SHA-384, inclusive canonicalization. <code>SignatureMethod</code> takes only <code>rsa-sha256</code>/<code>rsa-sha512</code> (and <code>rsa-sha1</code> with <code>allow_sha1</code>), <code>DigestMethod</code> only <code>sha256</code>/<code>sha512</code> (and <code>sha1</code>).</li>
             <li><strong class="text-white">Requests are not signed</strong>, and the HTTP-POST binding is not offered for them. Most identity providers accept unsigned requests.</li>
             <li><strong class="text-white">No single logout.</strong> Signing out of the application does not sign out of the identity provider, and the reverse.</li>
             <li><strong class="text-white">No account deprovisioning.</strong> A user removed at the IdP can no longer sign in, but their account and open sessions remain &mdash; that is what <a href="/docs/security/scim" class="text-amber-400 hover:text-amber-300">SCIM</a> is for.</li>

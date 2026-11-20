@@ -70,9 +70,110 @@ fn string_list_option(value: &Value, func: &str, option: &str) -> Result<Vec<Str
 ///
 /// PEM armour and OpenSSH keys are unmistakable, and nobody types either as an
 /// HMAC password.
+///
+/// So is the body of a PEM with its armour stripped: base64 that decodes to
+/// one DER `SEQUENCE` spanning every byte, whose first element is a
+/// `SEQUENCE` (SubjectPublicKeyInfo, a certificate) or an `INTEGER` (PKCS#1,
+/// PKCS#8). DER starts with `0x30`, so its base64 starts with `M` — which a
+/// hex secret never does, and a random base64 one rarely does *and* parses.
 fn looks_like_key_material(secret: &str) -> bool {
     let trimmed = secret.trim_start();
-    trimmed.starts_with("-----BEGIN") || trimmed.starts_with("ssh-")
+    trimmed.starts_with("-----BEGIN") || trimmed.starts_with("ssh-") || is_base64_der_key(trimmed)
+}
+
+fn is_base64_der_key(text: &str) -> bool {
+    use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
+    use base64::Engine as _;
+
+    if !text.starts_with('M') {
+        return false;
+    }
+    let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let Some(der) = STANDARD
+        .decode(compact.as_bytes())
+        .ok()
+        .or_else(|| STANDARD_NO_PAD.decode(compact.as_bytes()).ok())
+    else {
+        return false;
+    };
+    // (tag, start of content, end of content) of the DER element at `at`.
+    let element = |at: usize| -> Option<(u8, usize, usize)> {
+        let tag = *der.get(at)?;
+        let first = *der.get(at + 1)? as usize;
+        let (length, start) = if first < 0x80 {
+            (first, at + 2)
+        } else {
+            let count = first & 0x7f;
+            if count == 0 || count > 3 {
+                return None;
+            }
+            let bytes = der.get(at + 2..at + 2 + count)?;
+            if bytes[0] == 0 {
+                return None;
+            }
+            let length = bytes.iter().fold(0usize, |acc, b| (acc << 8) | *b as usize);
+            if length < 0x80 {
+                return None;
+            }
+            (length, at + 2 + count)
+        };
+        let end = start.checked_add(length)?;
+        (end <= der.len()).then_some((tag, start, end))
+    };
+    match element(0) {
+        Some((0x30, start, end)) if end == der.len() && der.len() >= 32 => {
+            matches!(element(start), Some((0x30 | 0x02, _, inner_end)) if inner_end <= end)
+        }
+        _ => false,
+    }
+}
+
+/// The options `jwt_verify` reads.
+const VERIFY_OPTIONS: &str = "algorithm, key, audience, issuer, subject, authorized_party, leeway";
+
+/// The error for an option `jwt_verify` does not know. jwt_sign's claim
+/// names are the likely slip, and each has a verifier counterpart.
+fn unknown_verify_option(name: &str) -> String {
+    let hint = match name {
+        "aud" => " (did you mean `audience`?)",
+        "iss" => " (did you mean `issuer`?)",
+        "sub" => " (did you mean `subject`?)",
+        "azp" => " (did you mean `authorized_party`?)",
+        _ => "",
+    };
+    format!(
+        "jwt_verify() unknown option `{}`{}; valid options: {}",
+        name, hint, VERIFY_OPTIONS
+    )
+}
+
+/// Refuse a token issued further in the future than the clock leeway: a
+/// clock that far ahead, or a token minted to be used later.
+fn check_issued_at(iat: Option<u64>, leeway: u64) -> Result<(), String> {
+    match iat {
+        Some(issued) if issued > current_timestamp().saturating_add(leeway) => {
+            Err("InvalidIssuedAt: the token was issued in the future".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// OpenID Connect Core 3.1.3.7: when `azp` is present it must be the client
+/// verifying the token, and a token for several audiences must carry it.
+fn check_authorized_party(
+    claims: &HashMap<String, JsonValue>,
+    expected: &str,
+) -> Result<(), String> {
+    match claims.get("azp") {
+        Some(JsonValue::String(azp)) if azp == expected => Ok(()),
+        Some(_) => Err("InvalidAuthorizedParty".to_string()),
+        None => match claims.get("aud") {
+            Some(JsonValue::Array(auds)) if auds.len() > 1 => {
+                Err("Missing required claim: azp (the token names several audiences)".to_string())
+            }
+            _ => Ok(()),
+        },
+    }
 }
 
 pub fn register_jwt_builtins(env: &mut Environment) {
@@ -350,57 +451,86 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             let mut expected_audience: Option<Vec<String>> = None;
             let mut expected_issuer: Option<Vec<String>> = None;
             let mut expected_subject: Option<String> = None;
+            let mut expected_authorized_party: Option<String> = None;
             let mut leeway: Option<u64> = None;
-            if args.len() > 2 {
-                if let Value::Hash(opts) = &args[2] {
+            // Strict: an option the verifier does not know, or a value of the
+            // wrong type, used to be skipped — so `{"aud": …, "iss": …}`
+            // (jwt_sign's names) verified a token with no audience or issuer
+            // check at all. A check the caller believes is enforced must be.
+            match args.get(2) {
+                None | Some(Value::Null) => {}
+                Some(Value::Hash(opts)) => {
                     for (k, v) in opts.borrow().iter() {
-                        if let HashKey::String(key) = k {
-                            match key.as_ref() {
-                                "key" => {
-                                    if let Value::String(k) = v {
-                                        pem_key = Some(k.clone().to_string());
-                                    }
-                                }
-                                "audience" => {
-                                    expected_audience =
-                                        Some(string_list_option(v, "jwt_verify", "audience")?);
-                                }
-                                "issuer" => {
-                                    expected_issuer =
-                                        Some(string_list_option(v, "jwt_verify", "issuer")?);
-                                }
-                                "subject" => {
-                                    if let Value::String(s) = v {
-                                        expected_subject = Some(s.to_string());
-                                    }
-                                }
-                                "leeway" => {
-                                    if let Value::Int(secs) = v {
-                                        leeway = Some((*secs).max(0) as u64);
-                                    }
-                                }
-                                "algorithm" => {
-                                    if let Value::String(alg) = v {
-                                        expected_algorithm = Some(match alg.as_ref() {
-                                            "HS256" => Algorithm::HS256,
-                                            "HS384" => Algorithm::HS384,
-                                            "HS512" => Algorithm::HS512,
-                                            "RS256" => Algorithm::RS256,
-                                            "ES256" => Algorithm::ES256,
-                                            "EdDSA" => Algorithm::EdDSA,
-                                            _ => {
-                                                return Err(format!(
-                                                    "jwt_verify() unsupported algorithm: {}",
-                                                    alg
-                                                ))
-                                            }
-                                        });
-                                    }
-                                }
-                                _ => {}
+                        let key = match k {
+                            HashKey::String(key) => key.to_string(),
+                            other => {
+                                return Err(format!(
+                                    "jwt_verify() option names must be strings, got {:?}",
+                                    other
+                                ))
                             }
+                        };
+                        let string_option = |v: &Value| match v {
+                            Value::String(s) => Ok(s.to_string()),
+                            other => Err(format!(
+                                "jwt_verify() option `{}` must be a String, got {}",
+                                key,
+                                other.type_name()
+                            )),
+                        };
+                        match key.as_str() {
+                            "key" => pem_key = Some(string_option(v)?),
+                            "audience" => {
+                                expected_audience =
+                                    Some(string_list_option(v, "jwt_verify", "audience")?);
+                            }
+                            "issuer" => {
+                                expected_issuer =
+                                    Some(string_list_option(v, "jwt_verify", "issuer")?);
+                            }
+                            "subject" => expected_subject = Some(string_option(v)?),
+                            "authorized_party" => {
+                                expected_authorized_party = Some(string_option(v)?)
+                            }
+                            "leeway" => match v {
+                                Value::Int(secs) if *secs >= 0 => leeway = Some(*secs as u64),
+                                other => {
+                                    return Err(format!(
+                                        "jwt_verify() option `leeway` must be a non-negative \
+                                         Int (seconds), got {}",
+                                        match other {
+                                            Value::Int(secs) => secs.to_string(),
+                                            other => other.type_name().to_string(),
+                                        }
+                                    ))
+                                }
+                            },
+                            "algorithm" => {
+                                let alg = string_option(v)?;
+                                expected_algorithm = Some(match alg.as_str() {
+                                    "HS256" => Algorithm::HS256,
+                                    "HS384" => Algorithm::HS384,
+                                    "HS512" => Algorithm::HS512,
+                                    "RS256" => Algorithm::RS256,
+                                    "ES256" => Algorithm::ES256,
+                                    "EdDSA" => Algorithm::EdDSA,
+                                    _ => {
+                                        return Err(format!(
+                                            "jwt_verify() unsupported algorithm: {}",
+                                            alg
+                                        ))
+                                    }
+                                });
+                            }
+                            other => return Err(unknown_verify_option(other)),
                         }
                     }
+                }
+                Some(other) => {
+                    return Err(format!(
+                        "jwt_verify() options must be a Hash, got {}",
+                        other.type_name()
+                    ))
                 }
             }
 
@@ -495,8 +625,8 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             // with `InvalidAudience`. Audience is a caller-supplied policy,
             // exactly like `iss`, and is opt-in for the same reason.
             //
-            // Note: with several expected audiences jsonwebtoken requires the
-            // token to carry *all* of them (subset semantics), not any one.
+            // With several expected audiences the token passes when its `aud`
+            // names *any one* of them (jsonwebtoken intersects the two sets).
             match &expected_audience {
                 Some(auds) => {
                     validation.set_audience(auds);
@@ -517,7 +647,17 @@ pub fn register_jwt_builtins(env: &mut Environment) {
 
             // Try to decode and verify the token.
             let decoding_key = build_decoding_key(&token_alg, &secret, pem_key.as_deref())?;
-            match decode::<Claims>(&token, &decoding_key, &validation) {
+            let leeway_secs = validation.leeway;
+            let decoded = decode::<Claims>(&token, &decoding_key, &validation)
+                .map_err(|e| e.to_string())
+                .and_then(|token_data| {
+                    check_issued_at(token_data.claims.iat, leeway_secs)?;
+                    if let Some(party) = &expected_authorized_party {
+                        check_authorized_party(&token_data.claims.data, party)?;
+                    }
+                    Ok(token_data)
+                });
+            match decoded {
                 Ok(token_data) => {
                     // Convert claims to Soli Value
                     let claims = token_data.claims;
@@ -549,10 +689,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                     // See www/docs/authentication.md for the correct pattern.
                     let mut error_pairs: HashPairs = HashPairs::default();
                     error_pairs.insert(HashKey::String("error".into()), Value::Bool(true));
-                    error_pairs.insert(
-                        HashKey::String("message".into()),
-                        Value::String(format!("{}", e).into()),
-                    );
+                    error_pairs.insert(HashKey::String("message".into()), Value::String(e.into()));
                     Ok(Value::Hash(Rc::new(RefCell::new(error_pairs))))
                 }
             }
@@ -1368,6 +1505,223 @@ mod tests {
         ])
         .expect_err("unsupported algorithm name must error");
         assert!(err.contains("unsupported algorithm"), "{}", err);
+    }
+
+    fn verify_err(token: &str, verify_opts: Value) -> String {
+        let env = fresh_env();
+        let verify = jwt_fn(&env, "jwt_verify");
+        (verify.func)(&[
+            Value::String(token.into()),
+            Value::String(TEST_SECRET.into()),
+            verify_opts,
+        ])
+        .expect_err("expected jwt_verify to raise")
+    }
+
+    /// `{"aud": …, "iss": …}` are jwt_sign's names; jwt_verify skipped them,
+    /// so the token verified with no audience or issuer check at all.
+    #[test]
+    fn jwt_verify_refuses_unknown_options_and_wrong_types() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", Value::String("client1".into())),
+            ],
+        );
+        for (name, hint) in [
+            ("aud", "audience"),
+            ("iss", "issuer"),
+            ("sub", "subject"),
+            ("azp", "authorized_party"),
+        ] {
+            let err = verify_err(&token, opts(&[(name, Value::String("x".into()))]));
+            assert!(
+                err.contains(&format!("unknown option `{name}`"))
+                    && err.contains(&format!("did you mean `{hint}`"))
+                    && err.contains("valid options: algorithm, key, audience"),
+                "{err}"
+            );
+        }
+        let err = verify_err(&token, opts(&[("audiance", Value::String("x".into()))]));
+        assert!(err.contains("unknown option `audiance`"), "{err}");
+
+        for (name, value, want) in [
+            ("subject", Value::Int(1), "`subject` must be a String"),
+            ("key", Value::Int(1), "`key` must be a String"),
+            (
+                "algorithm",
+                Value::Bool(true),
+                "`algorithm` must be a String",
+            ),
+            (
+                "authorized_party",
+                Value::Null,
+                "`authorized_party` must be a String",
+            ),
+            (
+                "leeway",
+                Value::String("60".into()),
+                "`leeway` must be a non-negative Int",
+            ),
+            (
+                "leeway",
+                Value::Int(-1),
+                "`leeway` must be a non-negative Int",
+            ),
+            (
+                "audience",
+                Value::Int(1),
+                "`audience` expects string or array",
+            ),
+        ] {
+            let err = verify_err(&token, opts(&[(name, value)]));
+            assert!(err.contains(want), "{name}: {err}");
+        }
+        let err = verify_err(&token, Value::String("audience".into()));
+        assert!(err.contains("options must be a Hash"), "{err}");
+    }
+
+    /// Several expected audiences: the token passes naming any one of them.
+    #[test]
+    fn jwt_verify_audience_list_is_any_of() {
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", Value::String("client1".into())),
+            ],
+        );
+        let either = Value::Array(Rc::new(RefCell::new(vec![
+            Value::String("other".into()),
+            Value::String("client1".into()),
+        ])));
+        assert_eq!(
+            verify_claim(&token, &[("audience", either)], "aud"),
+            Some(Value::String("client1".into()))
+        );
+    }
+
+    #[test]
+    fn jwt_verify_checks_authorized_party() {
+        let two_audiences = Value::Array(Rc::new(RefCell::new(vec![
+            Value::String("client1".into()),
+            Value::String("api".into()),
+        ])));
+        let party = |p: &str| ("authorized_party", Value::String(p.to_string().into()));
+
+        let with_azp = sign_with(
+            &[("azp", Value::String("client1".into()))],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", two_audiences.clone()),
+            ],
+        );
+        assert_eq!(
+            verify_claim(&with_azp, &[party("client1")], "azp"),
+            Some(Value::String("client1".into()))
+        );
+        assert_eq!(
+            verify_claim(&with_azp, &[party("client2")], "message"),
+            Some(Value::String("InvalidAuthorizedParty".into()))
+        );
+
+        // Several audiences and no azp: refused once a party is expected.
+        let without_azp = sign_with(
+            &[],
+            &[("expires_in", Value::Int(600)), ("aud", two_audiences)],
+        );
+        match verify_claim(&without_azp, &[party("client1")], "message") {
+            Some(Value::String(s)) => assert!(s.contains("azp"), "{s}"),
+            other => panic!("expected a missing-azp error, got {other:?}"),
+        }
+        assert!(verify_claim(&without_azp, &[], "error").is_none());
+
+        // One audience and no azp: nothing to check.
+        let single = sign_with(
+            &[],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("aud", Value::String("client1".into())),
+            ],
+        );
+        assert!(verify_claim(&single, &[party("client1")], "error").is_none());
+    }
+
+    #[test]
+    fn jwt_verify_refuses_iat_in_the_future_beyond_the_leeway() {
+        let now = current_timestamp() as i64;
+        let future = sign_with(
+            &[],
+            &[
+                ("expires_in", Value::Int(7200)),
+                ("iat", Value::Int(now + 3600)),
+            ],
+        );
+        match verify_claim(&future, &[], "message") {
+            Some(Value::String(s)) => assert!(s.contains("InvalidIssuedAt"), "{s}"),
+            other => panic!("expected an iat error, got {other:?}"),
+        }
+        // Inside the leeway (default 60s): a clock slightly behind the issuer's.
+        let near = sign_with(
+            &[],
+            &[
+                ("expires_in", Value::Int(600)),
+                ("iat", Value::Int(now + 20)),
+            ],
+        );
+        assert!(verify_claim(&near, &[], "error").is_none());
+        match verify_claim(&near, &[("leeway", Value::Int(0))], "message") {
+            Some(Value::String(s)) => assert!(s.contains("InvalidIssuedAt"), "{s}"),
+            other => panic!("expected an iat error, got {other:?}"),
+        }
+    }
+
+    const RSA_SPKI: &str = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArNSGQQ1YInbNRnm7Rxtk
+VL3iOwXNl5LsOJizsDc8GSVjmloPCCP2fReTbPOBe2OHQW7ApS/vRakJ7ADd4+Ol
+7buTb0OpfVn9zQyiMo6iqml28QNLrwzwbleHzpBW0suM7jEHqpaKvwQGNeQh1Y9x
+zSfw5j36jZsrymt1UzA+xrR9nkBrr0qOZbvjZENEmTScECbWzBfBs3HIA5RsMDYe
+tVo4ukqSzfo3A3LUYu0JGZ7gPthgWII6BcCioj3Uq+9TAKje3b5O0yaKpVTGyR8W
+9ztL89hSiDUh0urG3j8OjzSFvVY7zTVcurYroiGXgxYNtT6OzNgmaim0kewesp8+
+TQIDAQAB";
+    const EC_SPKI: &str = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHrltsgZjCoqnCKZ1LsI8KPysLi8/NL3dxQRrGe+fmnr6if6p1pex3HKKLdTtsd03dW1gq+36yLJNjX4CGWNkkw==";
+    const ED25519_SPKI: &str = "MCowBQYDK2VwAyEAlEq2AHbiMejyudC0qJO3zeEDTsabg23pWJPkWcEfYUs=";
+
+    /// A public key with its PEM armour stripped is still a public key: as
+    /// an HMAC secret it lets anyone who holds it forge a token.
+    #[test]
+    fn bare_base64_keys_are_refused_as_hmac_secrets() {
+        let certificate: String = include_str!("../../../tests/fixtures/saml/idp.crt")
+            .lines()
+            .filter(|line| !line.contains("-----"))
+            .collect();
+        let single_line_rsa: String = RSA_SPKI.lines().collect();
+        for key in [
+            RSA_SPKI,
+            single_line_rsa.as_str(),
+            EC_SPKI,
+            ED25519_SPKI,
+            certificate.as_str(),
+        ] {
+            assert!(looks_like_key_material(key), "{key}");
+            let env = fresh_env();
+            let verify = jwt_fn(&env, "jwt_verify");
+            let err = (verify.func)(&[
+                Value::String(sign_hs256(key, "alice").into()),
+                Value::String(key.to_string().into()),
+            ])
+            .expect_err("a bare public key must not key an HMAC verifier");
+            assert!(err.contains("looks like key material"), "{err}");
+        }
+        // Secrets as people generate them stay secrets.
+        for secret in [
+            TEST_SECRET,
+            "4f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f",
+            "Mz8xYjQ0ZTdkNjVhYzE0ZWJmNjE4NDQ4YTZiZjFiZjA5OGE2MmY2Mzc0ZDE=",
+            "MyApplicationSecretThatIsLongEnoughToPass1234",
+        ] {
+            assert!(!looks_like_key_material(secret), "{secret}");
+        }
     }
 
     #[test]

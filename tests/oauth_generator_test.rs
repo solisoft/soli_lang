@@ -657,7 +657,7 @@ fn served_app_signs_in_links_and_refuses() {
     fs::write(
         root.join("secret.sl"),
         format!(
-            "claims = jwt_verify(\"{secret}\", \"\", {{\"algorithm\": \"ES256\", \"key\": File.read(\"config/apple_key.pub\"), \"aud\": \"https://appleid.apple.com\"}})\nprint(\"#{{claims[\"iss\"]}} #{{claims[\"sub\"]}} #{{claims[\"aud\"]}}\")\n"
+            "claims = jwt_verify(\"{secret}\", \"\", {{\"algorithm\": \"ES256\", \"key\": File.read(\"config/apple_key.pub\"), \"audience\": \"https://appleid.apple.com\"}})\nprint(\"#{{claims[\"iss\"]}} #{{claims[\"sub\"]}} #{{claims[\"aud\"]}}\")\n"
         ),
     )
     .unwrap();

@@ -2625,7 +2625,8 @@ Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": t
 Returns the element whose `Id`/`ID`/`id` attribute equals `id`, serialized as a
 standalone XML fragment with the inherited ancestor namespaces injected onto its
 root (so it re-parses and re-canonicalizes identically to the in-context
-subtree). Errors if no such element exists.
+subtree). They are declared on the fragment's root only, not again on each
+descendant. Errors if no such element exists.
 
 **Returns:** String — the element subtree as standalone XML.
 
@@ -2633,7 +2634,8 @@ subtree). Errors if no such element exists.
 
 Returns every element with the given local name (namespace prefix ignored),
 each as a standalone XML fragment. Used to locate elements that have no `Id`,
-such as `<ds:SignedInfo>`.
+such as `<ds:SignedInfo>`. Raises when the fragments add up to more than
+32 MiB (matches can nest, and each carries every namespace in scope).
 
 **Returns:** Array of String.
 
@@ -3074,13 +3076,16 @@ Verifies and decodes a JWT token. **The verifier — not the token — chooses w
   - `audience` (String or Array) - Expected `aud`. When set, `aud` becomes a **required** claim, so a token without one cannot slip through a check you believed was enforced.
   - `issuer` (String or Array) - Expected `iss`, likewise required once set.
   - `subject` (String) - Expected `sub`
-  - `leeway` (Int) - Clock-skew tolerance in seconds (default 60)
+  - `authorized_party` (String) - Your client id, checked against `azp` (OpenID Connect): when the token carries `azp` it must equal this, and a token naming several audiences must carry it.
+  - `leeway` (Int, ≥ 0) - Clock-skew tolerance in seconds (default 60). It also bounds how far in the future `iat` may be: a token issued later than now + leeway fails with `InvalidIssuedAt`.
 
-When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default.
+Any other option name raises, and so does a value of the wrong type — `{"aud": …}` or `{"iss": …}` (jwt_sign's names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
+
+When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default. A `secret` that is key material — a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped — raises in that form: anyone holding a public key could forge an HMAC token with it.
 
 > **Audience is opt-in.** `aud` is only checked when you pass `audience`; a token carrying an audience you never asked about verifies normally. Audience is caller-supplied policy, exactly like `iss`. If you issue tokens for more than one client, pass `audience` — otherwise a token minted for client A is accepted by client B.
 >
-> Passing **several** expected audiences means the token must carry *all* of them, not any one of them. To accept one of many, verify once per candidate.
+> Passing **several** expected audiences accepts a token whose `aud` names *any one* of them.
 
 **Returns:** Hash - Decoded payload, or `{ "error": true, "message": String }` on failure
 

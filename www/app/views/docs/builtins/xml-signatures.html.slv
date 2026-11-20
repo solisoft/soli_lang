@@ -92,7 +92,7 @@ Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": t
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Returns the element whose <code class="text-amber-300">Id</code>/<code class="text-amber-300">ID</code>/<code class="text-amber-300">id</code> attribute equals <code class="text-amber-300">id</code>, serialized as a standalone fragment with the inherited ancestor namespaces injected onto its root &mdash; so it re-parses and re-canonicalizes identically to the in-context subtree. Raises if no such element exists.</p>
+                <p class="text-gray-400 mb-3">Returns the element whose <code class="text-amber-300">Id</code>/<code class="text-amber-300">ID</code>/<code class="text-amber-300">id</code> attribute equals <code class="text-amber-300">id</code>, serialized as a standalone fragment with the inherited ancestor namespaces injected onto its root &mdash; so it re-parses and re-canonicalizes identically to the in-context subtree. They are declared on the fragment&rsquo;s root only, not again on each descendant. Raises if no such element exists.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">String</code> &mdash; the element subtree as standalone XML</div>
             </div>
@@ -106,7 +106,7 @@ Xml.c14n_exclusive(saml_response, {"id": "_assertion1", "enveloped_signature": t
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Every element with the given local name (namespace prefix ignored), each as a standalone fragment. Use it to locate elements that carry no <code class="text-amber-300">Id</code>, such as <code class="text-amber-300">&lt;ds:SignedInfo&gt;</code>.</p>
+                <p class="text-gray-400 mb-3">Every element with the given local name (namespace prefix ignored), each as a standalone fragment. Use it to locate elements that carry no <code class="text-amber-300">Id</code>, such as <code class="text-amber-300">&lt;ds:SignedInfo&gt;</code>. Raises when the fragments add up to more than 32&nbsp;MiB (matches can nest, and each carries every namespace in scope).</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Array</code> of <code class="text-orange-400">String</code></div>
             </div>

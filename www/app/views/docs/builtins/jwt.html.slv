@@ -110,17 +110,21 @@ id_token = jwt_sign(
                     <div><code class="text-amber-400">audience</code> : <code class="text-orange-400">String | Array</code> - Expected <code>aud</code>. Setting it makes <code>aud</code> a <strong>required</strong> claim, so a token without one cannot slip through a check you believed was enforced.</div>
                     <div><code class="text-amber-400">issuer</code> : <code class="text-orange-400">String | Array</code> - Expected <code>iss</code>, likewise required once set.</div>
                     <div><code class="text-amber-400">subject</code> : <code class="text-orange-400">String</code> - Expected <code>sub</code></div>
-                    <div><code class="text-amber-400">leeway</code> : <code class="text-orange-400">Int</code> - Clock-skew tolerance in seconds (default 60)</div>
+                    <div><code class="text-amber-400">authorized_party</code> : <code class="text-orange-400">String</code> - Your client id, checked against <code>azp</code> (OpenID Connect): when the token carries <code>azp</code> it must equal this, and a token naming several audiences must carry it.</div>
+                    <div><code class="text-amber-400">leeway</code> : <code class="text-orange-400">Int</code> - Clock-skew tolerance in seconds, 0 or more (default 60). It also bounds how far in the future <code>iat</code> may be: a token issued later than now + leeway fails with <code>InvalidIssuedAt</code>.</div>
                 </div>
                 <p class="text-gray-400 mt-3 text-sm">
-                    Without options, the 2-arg form accepts only HMAC algorithms (<code>HS256</code>/<code>HS384</code>/<code>HS512</code>), matching the back-compat default for existing <code>jwt_verify(token, secret)</code> callers.
+                    Any other option name raises, and so does a value of the wrong type &mdash; <code>{"aud": …}</code> or <code>{"iss": …}</code> (<code>jwt_sign</code>&rsquo;s names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
+                </p>
+                <p class="text-gray-400 mt-3 text-sm">
+                    Without options, the 2-arg form accepts only HMAC algorithms (<code>HS256</code>/<code>HS384</code>/<code>HS512</code>), matching the back-compat default for existing <code>jwt_verify(token, secret)</code> callers. A <code>secret</code> that is key material &mdash; a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped &mdash; raises in that form: anyone holding a public key could forge an HMAC token with it.
                 </p>
                 <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mt-3">
                     <p class="text-gray-300 text-sm">
                         <strong class="text-amber-400">Audience is opt-in.</strong> <code>aud</code> is only checked when you pass <code>audience</code>; a token carrying an audience you never asked about verifies normally. Audience is caller-supplied policy, exactly like <code>iss</code>. If you issue tokens for more than one client, pass <code>audience</code> &mdash; otherwise a token minted for client A is accepted by client B.
                     </p>
                     <p class="text-gray-300 text-sm mt-2">
-                        Passing <strong>several</strong> expected audiences requires the token to carry <em>all</em> of them, not any one. To accept one of many, verify once per candidate.
+                        Passing <strong>several</strong> expected audiences accepts a token whose <code>aud</code> names <em>any one</em> of them.
                     </p>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>

@@ -108,13 +108,21 @@ already enforces it, mark the session in `SamlController#acs`:
   over. A second assertion, a duplicated `ID`, or a signature that points
   elsewhere is refused.
 - **For this application.** `Audience` is your entity id; `Recipient` and
-  `Destination` are your ACS URL; `Issuer` is the configured IdP.
+  `Destination` are your ACS URL; `Issuer` is the IdP you name in
+  `idp_entity_id`. That key is required: an empty string raises (an unset
+  environment variable is a missing setting, not "any IdP"), and accepting any
+  issuer the certificate signs for takes `any_issuer: true`, said by name.
 - **For this request.** `InResponseTo` is the id of the request this browser
   started. A response nobody asked for (IdP-initiated) is refused unless you
   pass `allow_unsolicited: true`.
 - **Now.** `NotBefore` / `NotOnOrAfter` on the conditions and on the subject
   confirmation, with 120 seconds of clock skew (`clock_skew`, up to 600).
 - **Successful.** The status is `Success`; otherwise the error names the status.
+- **Reasonable in shape.** Before any of the above is walked, a response with
+  more than 10,000 elements, more than 64 distinct namespace prefixes or more
+  than 10,000 namespace declarations is refused. A real one has a few dozen
+  elements and half a dozen prefixes; through 2.39.2 a 1 MiB unsigned response
+  with thousands of prefixes cost tens of seconds of CPU.
 
 Comments inside a value do not split it: `user@example.com<!---->.evil.com`
 reads as the whole signed text. A namespace prefix bound to an empty URI
@@ -169,14 +177,20 @@ assertion = Saml.verify_response(params["SAMLResponse"], {
 | `issuer` | the identity provider's entity id |
 | `session_index`, `session_expires_at` | the IdP session (`nil` when not stated; times are Unix seconds) |
 | `authn_context` | the `AuthnContextClassRef` |
-| `assertion_id`, `response_id`, `in_response_to` | ids |
-| `expires_at` | the conditions' `NotOnOrAfter` |
+| `assertion_id`, `in_response_to` | ids |
+| `response_id` | the response's id — `nil` when only the assertion is signed, since nothing vouches for it then |
+| `expires_at` | when the assertion stops being acceptable: the earlier of the conditions' and the bearer confirmation's `NotOnOrAfter` |
 | `signed` | `"assertion"`, `"response"` or `"both"` |
 
-Other `expected` keys: `allow_unsolicited`, `clock_skew`, `allow_sha1`
-(SHA-1 signatures are refused otherwise), `now` (Unix seconds, for specs).
-Listing several certificates accepts any of them — that is how an IdP's
-certificate is rotated without downtime.
+Other `expected` keys: `allow_unsolicited`, `any_issuer` (skip the `Issuer`
+check when `idp_entity_id` is not given), `clock_skew`, `allow_sha1` (SHA-1
+signatures are refused otherwise), `now` (Unix seconds, for specs). Listing
+several certificates accepts any of them — that is how an IdP's certificate is
+rotated without downtime.
+
+The certificate is a pinned key, not a chain: its validity dates are not
+checked, so an expired certificate you still list keeps verifying. Remove a
+certificate from the list to stop trusting it.
 
 ### Saml.metadata(options)
 
@@ -224,7 +238,9 @@ Options: `sign` (`"assertion"` by default, `"response"`, `"both"`, `"none"`),
   environment.
 - **Not supported, and refused by name:** encrypted assertions and
   `EncryptedID` (turn assertion encryption off at the IdP), ECDSA and RSA-PSS
-  signatures, SHA-384, inclusive canonicalization.
+  signatures, SHA-384, inclusive canonicalization. `SignatureMethod` takes
+  only `rsa-sha256`/`rsa-sha512` (and `rsa-sha1` with `allow_sha1`),
+  `DigestMethod` only `sha256`/`sha512` (and `sha1`).
 - **Requests are not signed**, and the HTTP-POST binding is not offered for
   them. Most identity providers accept unsigned requests.
 - **No single logout.** Signing out of the application does not sign out of

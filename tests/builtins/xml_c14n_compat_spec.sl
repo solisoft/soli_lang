@@ -3,9 +3,11 @@
 # (src/xml). Every row must stay byte-identical except a row tagged
 # `# message:` (refused before and now, only the wording changed),
 # `# unavoidable:` (a refusal of the quick-xml NsReader the core is built on),
-# `# limit:` (a hardening limit of the core) or `# relaxed:` (input inside an
-# ignored trailing root is no longer checked), which shows the old output
-# above it.
+# `# limit:` (a hardening limit of the core), `# relaxed:` (input inside an
+# ignored trailing root is no longer checked) or `# fragment:` (a fragment
+# declares the inherited namespaces on its root only, not again on every
+# descendant: the output grew as elements times declarations), which shows
+# the old output above it.
 
 def capture(f)
   result = nil
@@ -244,7 +246,9 @@ describe("c14n trio compatibility") do
 
   describe("Xml.get_element_by_id") do
     test("inherited namespaces injected") do
-      assert_eq(by_id_json("<r xmlns=\"d\" xmlns:a=\"u\" xmlns:unused=\"z\"><a:x ID=\"t\"><y/></a:x></r>", "t"), "\"<a:x xmlns=\\\"d\\\" xmlns:a=\\\"u\\\" xmlns:unused=\\\"z\\\" ID=\\\"t\\\"><y xmlns=\\\"d\\\" xmlns:a=\\\"u\\\" xmlns:unused=\\\"z\\\"></y></a:x>\"")
+      # fragment: declared once, on the fragment's root
+      # was: "<a:x xmlns=\"d\" xmlns:a=\"u\" xmlns:unused=\"z\" ID=\"t\"><y xmlns=\"d\" xmlns:a=\"u\" xmlns:unused=\"z\"></y></a:x>"
+      assert_eq(by_id_json("<r xmlns=\"d\" xmlns:a=\"u\" xmlns:unused=\"z\"><a:x ID=\"t\"><y/></a:x></r>", "t"), "\"<a:x xmlns=\\\"d\\\" xmlns:a=\\\"u\\\" xmlns:unused=\\\"z\\\" ID=\\\"t\\\"><y></y></a:x>\"")
     end
     test("local redeclaration wins") do
       assert_eq(by_id_json("<r xmlns:a=\"u\"><a:x xmlns:a=\"v\" ID=\"t\"/></r>", "t"), "\"<a:x xmlns:a=\\\"v\\\" ID=\\\"t\\\"></a:x>\"")
@@ -271,10 +275,14 @@ describe("c14n trio compatibility") do
       assert_eq(by_tag_json("<r xmlns:a=\"u\" xmlns:b=\"v\"><a:Item>1</a:Item><b:Item>2</b:Item></r>", "Item"), "[\"<a:Item xmlns:a=\\\"u\\\" xmlns:b=\\\"v\\\">1</a:Item>\",\"<b:Item xmlns:a=\\\"u\\\" xmlns:b=\\\"v\\\">2</b:Item>\"]")
     end
     test("inherited namespaces per match") do
-      assert_eq(by_tag_json("<r xmlns:a=\"u\"><s xmlns:b=\"v\"><a:Item><b:x/></a:Item></s></r>", "Item"), "[\"<a:Item xmlns:a=\\\"u\\\" xmlns:b=\\\"v\\\"><b:x xmlns:a=\\\"u\\\" xmlns:b=\\\"v\\\"></b:x></a:Item>\"]")
+      # fragment: declared once, on the fragment's root
+      # was: ["<a:Item xmlns:a=\"u\" xmlns:b=\"v\"><b:x xmlns:a=\"u\" xmlns:b=\"v\"></b:x></a:Item>"]
+      assert_eq(by_tag_json("<r xmlns:a=\"u\"><s xmlns:b=\"v\"><a:Item><b:x/></a:Item></s></r>", "Item"), "[\"<a:Item xmlns:a=\\\"u\\\" xmlns:b=\\\"v\\\"><b:x></b:x></a:Item>\"]")
     end
     test("root matches") do
-      assert_eq(by_tag_json("<Item xmlns=\"d\"><Item/></Item>", "Item"), "[\"<Item xmlns=\\\"d\\\"><Item xmlns=\\\"d\\\"></Item></Item>\",\"<Item xmlns=\\\"d\\\"></Item>\"]")
+      # fragment: declared once, on the fragment's root
+      # was: ["<Item xmlns=\"d\"><Item xmlns=\"d\"></Item></Item>","<Item xmlns=\"d\"></Item>"]
+      assert_eq(by_tag_json("<Item xmlns=\"d\"><Item/></Item>", "Item"), "[\"<Item xmlns=\\\"d\\\"><Item></Item></Item>\",\"<Item xmlns=\\\"d\\\"></Item>\"]")
     end
     test("no match") do
       assert_eq(by_tag_json("<r/>", "Item"), "[]")

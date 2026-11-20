@@ -79,7 +79,7 @@ token_with_exp = jwt_sign(
             Verifying Tokens
         </h2>
         <p class="text-gray-400 mb-6">
-            Verify incoming tokens using <code class="text-orange-300">jwt_verify</code>. This function checks the signature and expiration automatically.
+            Verify incoming tokens using <code class="text-orange-300">jwt_verify</code>. This function checks the signature and expiration automatically. Its options (<code>audience</code>, <code>issuer</code>, <code>subject</code>, <code>authorized_party</code>, <code>leeway</code>, <code>algorithm</code>, <code>key</code>) are listed under <a href="/docs/builtins/jwt#def-jwt-verify" class="text-orange-400 hover:text-orange-300">jwt_verify</a>; any other name (<code>aud</code> for <code>audience</code>, say) raises instead of being skipped.
         </p>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
