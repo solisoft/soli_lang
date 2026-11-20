@@ -3,10 +3,12 @@
 //! Provides the Spreadsheet class for parsing and exporting spreadsheet files:
 //! - Spreadsheet.csv(content) - Parse CSV string to array
 //! - Spreadsheet.csv_file(path) - Parse CSV file to array
-//! - Spreadsheet.excel(path) - Parse Excel file to array
+//! - Spreadsheet.excel(path, sheet?) - Parse one sheet of an Excel file to array
+//! - Spreadsheet.excel_sheets(path) - Parse every sheet: hash of name => array
 //! - Spreadsheet.to_csv(data) - Convert array to CSV string
 //! - Spreadsheet.csv_write(data, path) - Write array to CSV file
-//! - Spreadsheet.excel_write(data, path) - Write array to Excel file
+//! - Spreadsheet.excel_write(data, path) - Write array (one sheet) or hash of
+//!   sheet name => array (one sheet each) to an Excel file
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -107,7 +109,7 @@ fn parse_csv_file(path: &str) -> Result<Value, String> {
     Ok(Value::Array(Rc::new(RefCell::new(rows))))
 }
 
-fn parse_excel_file(path: &str) -> Result<Value, String> {
+fn parse_excel_file(path: &str, sheet: Option<&str>) -> Result<Value, String> {
     // SECURITY: calamine parses the ZIP-embedded XML with a transitive
     // quick-xml < 0.41, which carries the DoS advisories RUSTSEC-2026-0194 /
     // -0195 (quadratic attribute scan, unbounded namespace allocation). No
@@ -115,18 +117,56 @@ fn parse_excel_file(path: &str) -> Result<Value, String> {
     // trusted input — do not parse attacker-supplied spreadsheets on a request
     // path without an out-of-band size/timeout sandbox. Tracked in
     // tasks/todo/transitive-quick-xml-dos-spreadsheets.md.
-    let mut workbook: Xlsx<_> = open_workbook(path)
-        .map_err(|e| format!("Spreadsheet.excel() cannot open {}: {}", path, e))?;
+    let mut workbook = open_xlsx(path)?;
+    let sheet_name = match sheet {
+        Some(name) => {
+            if !workbook.sheet_names().iter().any(|n| n == name) {
+                return Err(format!(
+                    "Spreadsheet.excel() {} has no sheet named \"{}\" (sheets: {})",
+                    path,
+                    name,
+                    workbook.sheet_names().join(", ")
+                ));
+            }
+            name.to_string()
+        }
+        None => workbook
+            .sheet_names()
+            .first()
+            .cloned()
+            .ok_or_else(|| "Spreadsheet.excel() file has no sheets".to_string())?,
+    };
+    read_sheet(&mut workbook, &sheet_name, "Spreadsheet.excel")
+}
 
-    let sheet_name = workbook
-        .sheet_names()
-        .first()
-        .cloned()
-        .ok_or_else(|| "Spreadsheet.excel() file has no sheets".to_string())?;
+/// Every sheet of the workbook, in workbook order: name => rows.
+fn parse_excel_sheets(path: &str) -> Result<Value, String> {
+    let mut workbook = open_xlsx(path)?;
+    let mut sheets = HashPairs::default();
+    for name in workbook.sheet_names() {
+        let rows = read_sheet(&mut workbook, &name, "Spreadsheet.excel_sheets")?;
+        sheets.insert(
+            crate::interpreter::value::HashKey::String(name.into()),
+            rows,
+        );
+    }
+    Ok(Value::Hash(Rc::new(RefCell::new(sheets))))
+}
 
+fn open_xlsx(path: &str) -> Result<Xlsx<BufReader<File>>, String> {
+    // SECURITY: treat `path` as trusted input — see parse_excel_file.
+    open_workbook(path).map_err(|e| format!("Spreadsheet.excel() cannot open {}: {}", path, e))
+}
+
+/// One sheet as an array of hashes keyed by its first row.
+fn read_sheet(
+    workbook: &mut Xlsx<BufReader<File>>,
+    sheet_name: &str,
+    caller: &str,
+) -> Result<Value, String> {
     let range = workbook
-        .worksheet_range(&sheet_name)
-        .map_err(|e| format!("Spreadsheet.excel() error reading sheet: {}", e))?;
+        .worksheet_range(sheet_name)
+        .map_err(|e| format!("{}() error reading sheet: {}", caller, e))?;
 
     let mut rows: Vec<Value> = Vec::new();
     let mut headers: Vec<String> = Vec::new();
@@ -285,11 +325,90 @@ fn column_letters(index: usize) -> String {
     out.iter().rev().collect()
 }
 
+/// One sheet to write: its name, rows and optional column list.
+struct SheetSpec {
+    name: String,
+    data: Rc<RefCell<Vec<Value>>>,
+    columns: Option<Vec<String>>,
+}
+
 fn write_excel_file(
     data: &Rc<RefCell<Vec<Value>>>,
     path: &str,
     columns: Option<Vec<String>>,
 ) -> Result<Value, String> {
+    write_excel_workbook(
+        vec![SheetSpec {
+            name: "Sheet1".to_string(),
+            data: data.clone(),
+            columns,
+        }],
+        path,
+    )
+}
+
+fn write_excel_workbook(sheets: Vec<SheetSpec>, path: &str) -> Result<Value, String> {
+    if sheets.is_empty() {
+        return Err("Spreadsheet.excel_write() needs at least one sheet".to_string());
+    }
+    let mut seen: Vec<String> = Vec::new();
+    let mut workbook = XlsxWorkbook::default();
+    for spec in sheets {
+        check_sheet_name(&spec.name)?;
+        let folded = spec.name.to_lowercase();
+        if seen.contains(&folded) {
+            return Err(format!(
+                "Spreadsheet.excel_write() sheet name \"{}\" is used twice (Excel ignores case)",
+                spec.name
+            ));
+        }
+        seen.push(folded);
+        workbook
+            .sheets
+            .push((spec.name, sheet_rows(&spec.data, spec.columns)?));
+    }
+
+    workbook
+        .save(std::path::Path::new(path))
+        .map_err(|e| format!("Spreadsheet.excel_write() cannot write to {}: {}", path, e))?;
+
+    Ok(Value::Null)
+}
+
+/// Excel refuses to open a workbook whose sheet name is empty, longer than
+/// 31 characters, holds one of `: \ / ? * [ ]`, starts or ends with an
+/// apostrophe, or is the reserved `History`.
+fn check_sheet_name(name: &str) -> Result<(), String> {
+    let problem = if name.is_empty() {
+        Some("is empty".to_string())
+    } else if name.chars().count() > 31 {
+        Some("is longer than 31 characters".to_string())
+    } else if let Some(c) = name
+        .chars()
+        .find(|c| matches!(c, ':' | '\\' | '/' | '?' | '*' | '[' | ']'))
+    {
+        Some(format!("contains '{}'", c))
+    } else if name.starts_with('\'') || name.ends_with('\'') {
+        Some("starts or ends with an apostrophe".to_string())
+    } else if name.eq_ignore_ascii_case("history") {
+        Some("is reserved by Excel".to_string())
+    } else {
+        None
+    };
+    match problem {
+        Some(why) => Err(format!(
+            "Spreadsheet.excel_write() sheet name \"{}\" {}",
+            name, why
+        )),
+        None => Ok(()),
+    }
+}
+
+/// The `<sheetData>` rows of one sheet: a header row, then one row per hash.
+fn sheet_rows(
+    data: &Rc<RefCell<Vec<Value>>>,
+    columns: Option<Vec<String>>,
+) -> Result<String, String> {
     let (headers, rows) = extract_rows_for(data, columns)?;
 
     // Int and Float values are written as numbers (Excel can sum them);
@@ -321,12 +440,7 @@ fn write_excel_file(
             .collect();
         sheet.row(cells);
     }
-
-    sheet
-        .save(std::path::Path::new(path))
-        .map_err(|e| format!("Spreadsheet.excel_write() cannot write to {}: {}", path, e))?;
-
-    Ok(Value::Null)
+    Ok(sheet.rows)
 }
 
 /// One cell of a written sheet.
@@ -335,12 +449,7 @@ enum Cell<'a> {
     Text(&'a str),
 }
 
-/// A one-sheet workbook, written as the smallest package Excel, LibreOffice,
-/// Numbers and calamine all open: six parts in a zip. Text is stored inline
-/// in its cell (`inlineStr`), which needs no shared-string table.
-///
-/// This replaced `umya-spreadsheet`, a full read-modify-write model of the
-/// format (a megabyte of code, a dozen crates) used here for exactly this.
+/// The rows of one sheet, as `<row>` XML.
 struct XlsxSheet {
     rows: String,
     row_count: usize,
@@ -384,24 +493,68 @@ impl XlsxSheet {
         }
         self.rows.push_str("</row>");
     }
+}
 
+/// A workbook written as the smallest package Excel, LibreOffice, Numbers
+/// and calamine all open: content types, two relationship parts, the
+/// workbook, styles, and one part per sheet, in a zip. Text is stored inline
+/// in its cell (`inlineStr`), which needs no shared-string table.
+///
+/// This replaced `umya-spreadsheet`, a full read-modify-write model of the
+/// format (a megabyte of code, a dozen crates) used here for exactly this.
+#[derive(Default)]
+struct XlsxWorkbook {
+    /// (sheet name, `<row>` XML), in tab order.
+    sheets: Vec<(String, String)>,
+}
+
+impl XlsxWorkbook {
     fn save(&self, path: &std::path::Path) -> Result<(), String> {
+        use std::fmt::Write as _;
+        let mut content_types = String::from(CONTENT_TYPES_HEAD);
+        let mut workbook = String::from(WORKBOOK_HEAD);
+        let mut workbook_rels = String::from(RELS_HEAD);
+        for (idx, (name, _)) in self.sheets.iter().enumerate() {
+            let n = idx + 1;
+            let _ = write!(
+                content_types,
+                "<Override PartName=\"/xl/worksheets/sheet{n}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+            );
+            workbook.push_str("<sheet name=\"");
+            push_xml_attr(&mut workbook, name);
+            let _ = write!(workbook, "\" sheetId=\"{n}\" r:id=\"rId{n}\"/>");
+            let _ = write!(
+                workbook_rels,
+                "<Relationship Id=\"rId{n}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{n}.xml\"/>"
+            );
+        }
+        content_types.push_str("</Types>");
+        workbook.push_str("</sheets></workbook>");
+        let styles_id = self.sheets.len() + 1;
+        let _ = write!(
+            workbook_rels,
+            "<Relationship Id=\"rId{styles_id}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>"
+        );
+
         let file = File::create(path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipWriter::new(file);
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
-        let sheet = format!(
-            "{XML_DECLARATION}<worksheet xmlns=\"{MAIN_NS}\"><sheetData>{}</sheetData></worksheet>",
-            self.rows
-        );
-        let parts: [(&str, &str); 6] = [
-            ("[Content_Types].xml", CONTENT_TYPES),
-            ("_rels/.rels", ROOT_RELS),
-            ("xl/workbook.xml", WORKBOOK),
-            ("xl/_rels/workbook.xml.rels", WORKBOOK_RELS),
-            ("xl/styles.xml", STYLES),
-            ("xl/worksheets/sheet1.xml", &sheet),
+        let mut parts: Vec<(String, String)> = vec![
+            ("[Content_Types].xml".to_string(), content_types),
+            ("_rels/.rels".to_string(), ROOT_RELS.to_string()),
+            ("xl/workbook.xml".to_string(), workbook),
+            ("xl/_rels/workbook.xml.rels".to_string(), workbook_rels),
+            ("xl/styles.xml".to_string(), STYLES.to_string()),
         ];
+        for (idx, (_, rows)) in self.sheets.iter().enumerate() {
+            parts.push((
+                format!("xl/worksheets/sheet{}.xml", idx + 1),
+                format!(
+                    "{XML_DECLARATION}<worksheet xmlns=\"{MAIN_NS}\"><sheetData>{rows}</sheetData></worksheet>"
+                ),
+            ));
+        }
         for (name, content) in parts {
             zip.start_file(name, options).map_err(|e| e.to_string())?;
             zip.write_all(content.as_bytes())
@@ -410,6 +563,13 @@ impl XlsxSheet {
         zip.finish().map_err(|e| e.to_string())?;
         Ok(())
     }
+}
+
+/// Escape `text` for a double-quoted XML attribute.
+fn push_xml_attr(out: &mut String, text: &str) {
+    let mut escaped = String::new();
+    push_xml_text(&mut escaped, text);
+    out.push_str(&escaped.replace('"', "&quot;"));
 }
 
 /// Escape `text` for an XML text node. Control characters other than tab,
@@ -430,15 +590,13 @@ fn push_xml_text(out: &mut String, text: &str) {
 const XML_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
-const CONTENT_TYPES: &str = concat!(
+const CONTENT_TYPES_HEAD: &str = concat!(
     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
     "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>",
     "<Default Extension=\"xml\" ContentType=\"application/xml\"/>",
     "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>",
-    "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>",
     "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>",
-    "</Types>"
 );
 
 const ROOT_RELS: &str = concat!(
@@ -448,20 +606,16 @@ const ROOT_RELS: &str = concat!(
     "</Relationships>"
 );
 
-const WORKBOOK: &str = concat!(
+const WORKBOOK_HEAD: &str = concat!(
     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
     "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ",
     "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">",
-    "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>",
-    "</workbook>"
+    "<sheets>",
 );
 
-const WORKBOOK_RELS: &str = concat!(
+const RELS_HEAD: &str = concat!(
     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
     "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
-    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>",
-    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>",
-    "</Relationships>"
 );
 
 /// The minimum Excel insists on: one font, the two reserved fills, one
@@ -478,6 +632,86 @@ const STYLES: &str = concat!(
     "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>",
     "</styleSheet>"
 );
+
+fn column_names(cols: &Rc<RefCell<Vec<Value>>>) -> Result<Vec<String>, String> {
+    cols.borrow()
+        .iter()
+        .map(|c| match c {
+            Value::String(s) => Ok(s.to_string()),
+            other => Err(format!(
+                "Spreadsheet.excel_write() columns must be strings, got {}",
+                other.type_name()
+            )),
+        })
+        .collect()
+}
+
+/// One entry of the hash of sheets: `rows` alone, or
+/// `{"rows": rows, "columns": [...]}`.
+fn sheet_spec(name: String, value: &Value) -> Result<SheetSpec, String> {
+    match value {
+        Value::Array(rows) => Ok(SheetSpec {
+            name,
+            data: rows.clone(),
+            columns: None,
+        }),
+        Value::Hash(options) => {
+            let options = options.borrow();
+            let lookup = |key: &str| {
+                options
+                    .get(&crate::interpreter::value::HashKey::String(key.into()))
+                    .cloned()
+            };
+            if let Some(unknown) = options
+                .keys()
+                .map(|k| k.to_string())
+                .find(|k| k != "rows" && k != "columns")
+            {
+                return Err(format!(
+                    "Spreadsheet.excel_write() sheet \"{}\" has an unknown option \"{}\" (expected rows, columns)",
+                    name, unknown
+                ));
+            }
+            let data = match lookup("rows") {
+                Some(Value::Array(rows)) => rows,
+                Some(other) => {
+                    return Err(format!(
+                        "Spreadsheet.excel_write() sheet \"{}\" rows must be an array, got {}",
+                        name,
+                        other.type_name()
+                    ))
+                }
+                None => {
+                    return Err(format!(
+                        "Spreadsheet.excel_write() sheet \"{}\" needs \"rows\"",
+                        name
+                    ))
+                }
+            };
+            let columns = match lookup("columns") {
+                None | Some(Value::Null) => None,
+                Some(Value::Array(cols)) => Some(column_names(&cols)?),
+                Some(other) => {
+                    return Err(format!(
+                        "Spreadsheet.excel_write() sheet \"{}\" columns must be an array, got {}",
+                        name,
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(SheetSpec {
+                name,
+                data,
+                columns,
+            })
+        }
+        other => Err(format!(
+            "Spreadsheet.excel_write() sheet \"{}\" expects an array of rows, got {}",
+            name,
+            other.type_name()
+        )),
+    }
+}
 
 fn get_spreadsheet_class() -> Rc<Class> {
     thread_local! {
@@ -527,7 +761,13 @@ fn build_spreadsheet_class() -> Rc<Class> {
 
     static_methods.insert(
         "excel".to_string(),
-        Rc::new(NativeFunction::new("Spreadsheet.excel", Some(1), |args| {
+        Rc::new(NativeFunction::new("Spreadsheet.excel", None, |args| {
+            if args.is_empty() || args.len() > 2 {
+                return Err(format!(
+                    "Spreadsheet.excel() expects 1-2 arguments (path, sheet?), got {}",
+                    args.len()
+                ));
+            }
             let path = match &args[0] {
                 Value::String(s) => s.clone(),
                 _ => {
@@ -537,8 +777,39 @@ fn build_spreadsheet_class() -> Rc<Class> {
                     ))
                 }
             };
-            parse_excel_file(&path)
+            let sheet = match args.get(1) {
+                None | Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.to_string()),
+                Some(other) => {
+                    let got = other.type_name();
+                    return Err(format!(
+                        "Spreadsheet.excel() expects a sheet name, got {}",
+                        got
+                    ));
+                }
+            };
+            parse_excel_file(&path, sheet.as_deref())
         })),
+    );
+
+    static_methods.insert(
+        "excel_sheets".to_string(),
+        Rc::new(NativeFunction::new(
+            "Spreadsheet.excel_sheets",
+            Some(1),
+            |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(format!(
+                            "Spreadsheet.excel_sheets() expects string path, got {}",
+                            args[0].type_name()
+                        ))
+                    }
+                };
+                parse_excel_sheets(&path)
+            },
+        )),
     );
 
     static_methods.insert(
@@ -598,15 +869,6 @@ fn build_spreadsheet_class() -> Rc<Class> {
                         args.len()
                     ));
                 }
-                let data = match &args[0] {
-                    Value::Array(arr) => arr.clone(),
-                    _ => {
-                        return Err(format!(
-                            "Spreadsheet.excel_write() expects array as first argument, got {}",
-                            args[0].type_name()
-                        ))
-                    }
-                };
                 let path = match &args[1] {
                     Value::String(s) => s.clone(),
                     _ => {
@@ -616,29 +878,38 @@ fn build_spreadsheet_class() -> Rc<Class> {
                     ))
                     }
                 };
-                // Optional column list: order and selection of the keys.
-                let columns = match args.get(2) {
-                    None | Some(Value::Null) => None,
-                    Some(Value::Array(cols)) => Some(
-                        cols.borrow()
-                            .iter()
-                            .map(|c| match c {
-                                Value::String(s) => Ok(s.to_string()),
-                                other => Err(format!(
-                                    "Spreadsheet.excel_write() columns must be strings, got {}",
+                match &args[0] {
+                    Value::Array(arr) => {
+                        // Optional column list: order and selection of the keys.
+                        let columns = match args.get(2) {
+                            None | Some(Value::Null) => None,
+                            Some(Value::Array(cols)) => Some(column_names(cols)?),
+                            Some(other) => {
+                                return Err(format!(
+                                    "Spreadsheet.excel_write() expects an array of column names as third argument, got {}",
                                     other.type_name()
-                                )),
-                            })
-                            .collect::<Result<Vec<String>, String>>()?,
-                    ),
-                    Some(other) => {
-                        return Err(format!(
-                            "Spreadsheet.excel_write() expects an array of column names as third argument, got {}",
-                            other.type_name()
-                        ))
+                                ))
+                            }
+                        };
+                        write_excel_file(arr, &path, columns)
                     }
-                };
-                write_excel_file(&data, &path, columns)
+                    // Several sheets: name => rows, or name => {"rows", "columns"}.
+                    Value::Hash(sheets) => {
+                        if args.len() > 2 {
+                            return Err("Spreadsheet.excel_write() with a hash of sheets takes no third argument; give each sheet its own {\"rows\": …, \"columns\": […]}".to_string());
+                        }
+                        let specs = sheets
+                            .borrow()
+                            .iter()
+                            .map(|(name, value)| sheet_spec(name.to_string(), value))
+                            .collect::<Result<Vec<SheetSpec>, String>>()?;
+                        write_excel_workbook(specs, &path)
+                    }
+                    other => Err(format!(
+                        "Spreadsheet.excel_write() expects an array of rows or a hash of sheets as first argument, got {}",
+                        other.type_name()
+                    )),
+                }
             },
         )),
     );
@@ -731,5 +1002,48 @@ mod tests {
         let second: Vec<&Data> = range.rows().nth(2).unwrap().iter().collect();
         assert!(matches!(second[1], Data::Empty) || second[1] == &Data::String(String::new()));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn excel_write_writes_one_sheet_per_entry_in_order() {
+        let dir = std::env::temp_dir().join(format!("soli_xlsx_multi_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("book.xlsx");
+        let specs = vec![
+            SheetSpec {
+                name: "Clients & co".to_string(),
+                data: Rc::new(RefCell::new(vec![row(&[(
+                    "nom",
+                    Value::String("Ada".into()),
+                )])])),
+                columns: None,
+            },
+            SheetSpec {
+                name: "Commandes".to_string(),
+                data: Rc::new(RefCell::new(vec![
+                    row(&[("n", Value::Int(1)), ("total", Value::Float(9.5))]),
+                    row(&[("n", Value::Int(2)), ("total", Value::Float(3.0))]),
+                ])),
+                columns: Some(vec!["total".to_string(), "n".to_string()]),
+            },
+        ];
+        write_excel_workbook(specs, path.to_str().unwrap()).unwrap();
+
+        let mut book: calamine::Xlsx<_> = calamine::open_workbook(&path).unwrap();
+        assert_eq!(book.sheet_names(), vec!["Clients & co", "Commandes"]);
+        let orders = book.worksheet_range("Commandes").unwrap();
+        assert_eq!(orders.height(), 3);
+        assert_eq!(orders.get((0, 0)), Some(&Data::String("total".into())));
+        assert!(matches!(orders.get((1, 0)), Some(Data::Float(f)) if *f == 9.5));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sheet_names_excel_would_refuse_are_rejected() {
+        for bad in ["", "a/b", "x[1]", "'quoted'", "History", &"x".repeat(32)] {
+            assert!(check_sheet_name(bad).is_err(), "{bad:?} should be refused");
+        }
+        assert!(check_sheet_name("Ventes 2026 — T1").is_ok());
+        assert!(check_sheet_name(&"é".repeat(31)).is_ok());
     }
 }

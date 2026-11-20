@@ -62,16 +62,33 @@ end</code></pre>
             <section id="fn-spreadsheet-excel" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-excel" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel(path)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel(path, sheet?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Reads and parses an Excel (.xlsx) file. Returns an array of hashes using the first row as headers.</p>
+                    <p class="text-gray-400 mb-3">Reads and parses one sheet of an Excel (.xlsx) file &mdash; the first, or the one named by <code class="text-amber-400">sheet</code>. Returns an array of hashes using the sheet&rsquo;s first row as headers. A sheet name the workbook does not have raises, listing the sheets it does have.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">data = Spreadsheet.excel("report.xlsx")
 for row in data
   print(row["Name"])
-end</code></pre>
+end
+
+orders = Spreadsheet.excel("report.xlsx", "Commandes")</code></pre>
+                </div>
+            </section>
+
+            <section id="fn-spreadsheet-excel-sheets" class="scroll-mt-20">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#fn-spreadsheet-excel-sheets" class="group flex items-center gap-2 mb-2">
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel_sheets(path)</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Reads every sheet of an Excel (.xlsx) file. Returns a hash of sheet name &rArr; array of hashes, in the workbook&rsquo;s tab order &mdash; the same shape <code class="text-amber-400">excel_write</code> takes, so a workbook round-trips.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">sheets = Spreadsheet.excel_sheets("report.xlsx")
+sheets.keys                 # ["Clients", "Commandes"]
+sheets["Commandes"].length</code></pre>
                 </div>
             </section>
         </div>
@@ -118,13 +135,18 @@ Spreadsheet.csv_write(data, "output.csv")</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Writes an array of hashes to an Excel (.xlsx) file. Without <code class="text-amber-400">columns</code>, the columns are the first row&rsquo;s keys in alphabetical order; with it, exactly those keys, in that order, as the header row (a key missing from a row leaves its cell empty). <code class="text-amber-400">Int</code> and <code class="text-amber-400">Float</code> values are written as numbers, so Excel can sum them; everything else is text, Strings included &mdash; a postcode or an order number keeps its leading zeros.</p>
+                    <p class="text-gray-400 mb-3">Writes an array of hashes to an Excel (.xlsx) file, as one sheet named <code class="text-amber-400">Sheet1</code>. Without <code class="text-amber-400">columns</code>, the columns are the first row&rsquo;s keys in alphabetical order; with it, exactly those keys, in that order, as the header row (a key missing from a row leaves its cell empty). <code class="text-amber-400">Int</code> and <code class="text-amber-400">Float</code> values are written as numbers, so Excel can sum them; everything else is text, Strings included &mdash; a postcode or an order number keeps its leading zeros.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">data = [{"name": "Alice", "score": 95}, {"name": "Bob", "score": 87}]
 Spreadsheet.excel_write(data, "output.xlsx")
 
 # Column order and headers of your choice
 rows = orders.map { |o| {"Date": o.date, "N°": o.number, "Montant (€)": o.cents / 100.0} }
 Spreadsheet.excel_write(rows, "tmp/orders.xlsx", ["Date", "N°", "Montant (€)"])</code></pre>
+                    <p class="text-gray-400 mt-3 mb-3"><strong class="text-white">Several sheets.</strong> Pass a hash instead of an array: each entry is one sheet, named by its key, in the hash&rsquo;s order. The value is the sheet&rsquo;s rows, or <code class="text-amber-400">{"rows": rows, "columns": [&hellip;]}</code> to choose its columns (with a hash, there is no third argument). Sheet names must be what Excel accepts &mdash; 1 to 31 characters, none of <code class="text-amber-400">: \ / ? * [ ]</code>, no leading or trailing apostrophe, not <code class="text-amber-400">History</code>, and unique ignoring case &mdash; or the call raises before writing anything.</p>
+                    <pre data-filename="Several sheets"><code class="language-soli text-sm">Spreadsheet.excel_write({
+  "Clients": clients.map { |c| {"Nom": c.name, "Ville": c.city} },
+  "Commandes": {"rows": order_rows, "columns": ["Date", "N°", "Montant (€)"]}
+}, "tmp/export.xlsx")</code></pre>
                     <p class="text-gray-400 mt-3 text-sm">To send it as a download, read it back as base64 &mdash; <code class="text-amber-400">uploaded_file_at(path)["data"]</code> &mdash; and return <code class="text-amber-400">{"status": 200, "headers": {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": "attachment; filename=\"orders.xlsx\""}, "body_base64": data}</code>.</p>
                 </div>
             </section>

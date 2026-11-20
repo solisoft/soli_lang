@@ -169,6 +169,41 @@ describe("Spreadsheet") do
       assert_eq(Spreadsheet.excel(XLSX_OUT), [])
     end
 
+    test("a hash writes one sheet per entry, in order") do
+      clients = [{"nom": "Ada", "ville": "Paris"}]
+      orders = [{"n": 1, "total": 9.5}, {"n": 2, "total": 3}]
+      Spreadsheet.excel_write({"Clients": clients, "Commandes": {"rows": orders, "columns": ["total", "n"]}}, XLSX_OUT)
+      sheets = Spreadsheet.excel_sheets(XLSX_OUT)
+      assert_eq(sheets.keys, ["Clients", "Commandes"])
+      assert_eq(sheets["Clients"], [{"nom": "Ada", "ville": "Paris"}])
+      assert_eq(sheets["Commandes"][0].keys, ["total", "n"])
+      assert_eq(sheets["Commandes"][1]["total"], 3.0)
+    end
+
+    test("excel reads a sheet by name, the first one by default") do
+      Spreadsheet.excel_write({"A": [{"x": "1"}], "B": [{"y": "2"}]}, XLSX_OUT)
+      assert_eq(Spreadsheet.excel(XLSX_OUT), [{"x": "1"}])
+      assert_eq(Spreadsheet.excel(XLSX_OUT, "B"), [{"y": "2"}])
+      assert_raises("has no sheet named \"C\"") do
+        Spreadsheet.excel(XLSX_OUT, "C")
+      end
+    end
+
+    test("refuses sheet names Excel would not open") do
+      assert_raises("sheet name \"a/b\" contains '/'") do
+        Spreadsheet.excel_write({"a/b": []}, XLSX_OUT)
+      end
+      assert_raises("is used twice") do
+        Spreadsheet.excel_write({"Ventes": [], "VENTES": []}, XLSX_OUT)
+      end
+      assert_raises("needs at least one sheet") do
+        Spreadsheet.excel_write({}, XLSX_OUT)
+      end
+      assert_raises("unknown option \"cols\"") do
+        Spreadsheet.excel_write({"S": {"rows": [], "cols": ["a"]}}, XLSX_OUT)
+      end
+    end
+
     test("checks its arguments") do
       assert_raises("Spreadsheet.excel_write() expects 2-3 arguments (data, path, columns?), got 1") do
         Spreadsheet.excel_write([{"a": 1}])

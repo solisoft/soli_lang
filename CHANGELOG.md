@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- **spreadsheet: multi-sheet Excel files.** `Spreadsheet.excel_write` takes a
+  hash of sheet name => rows and writes one sheet per entry, in the hash's
+  order; a sheet's value may be `{"rows": rows, "columns": [...]}` to choose
+  its columns. Names Excel refuses (empty, over 31 characters, `: \ / ? * [ ]`,
+  a leading or trailing apostrophe, `History`, a duplicate ignoring case)
+  raise before anything is written. `Spreadsheet.excel(path, sheet)` reads a
+  sheet by name (the first one without it, as before), and
+  `Spreadsheet.excel_sheets(path)` reads every sheet into the same hash shape.
+  [Docs](www/app/views/docs/builtins/spreadsheet.html.slv)
+
 ### Security
 A third round of the SSO audit. The scaffold fixes reach apps generated from
 now on; an app generated earlier keeps its files — copy the changes from a
