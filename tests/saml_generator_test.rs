@@ -26,6 +26,10 @@ const IDP_CERT: &str = include_str!("fixtures/saml/idp.crt");
 const OTHER_KEY: &str = include_str!("fixtures/saml/other.key");
 
 const ORIGIN: &str = "https://app.test";
+/// Behind an https:// APP_BASE_URL the request cookie carries the `__Host-`
+/// prefix.
+const REQUEST_COOKIE: &str = "__Host-saml_request";
+const EMAIL_FORMAT: &str = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 const IDP: &str = "https://idp.test/metadata";
 const SSO: &str = "https://idp.test/sso";
 
@@ -223,6 +227,7 @@ fn serve_with(root: &Path, provision: &str, extra: &[(&str, &str)]) -> Server {
         )
         .env("SOLI_MAIL_DELIVERY_METHOD", "logger")
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+        .env_remove("SAML_LINK_EXISTING")
         .envs(extra.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -311,6 +316,11 @@ impl Browser {
 
     /// Start a sign-in; the id of the request the identity provider receives.
     fn start(&mut self, path: &str) -> String {
+        self.start_at(path, ORIGIN, REQUEST_COOKIE)
+    }
+
+    /// `start`, for an application at `origin` whose request cookie is `cookie`.
+    fn start_at(&mut self, path: &str, origin: &str, cookie: &str) -> String {
         let reply = self.get(path);
         assert_eq!(reply.status, 302, "{}", reply.body);
         assert!(
@@ -318,7 +328,7 @@ impl Browser {
             "{}",
             reply.location
         );
-        assert!(self.jar.contains_key("saml_request"), "no request cookie");
+        assert!(self.jar.contains_key(cookie), "no request cookie {cookie}");
         let encoded = reply.location.split("SAMLRequest=").nth(1).unwrap();
         let deflated = STANDARD
             .decode(urlencoding::decode(encoded).unwrap().as_bytes())
@@ -329,7 +339,7 @@ impl Browser {
             .unwrap();
         assert!(
             xml.contains(&format!(
-                "AssertionConsumerServiceURL=\"{ORIGIN}/saml/acs\""
+                "AssertionConsumerServiceURL=\"{origin}/saml/acs\""
             )),
             "{xml}"
         );
@@ -405,7 +415,7 @@ fn served_app() -> tempfile::TempDir {
 fn served_app_signs_in_through_the_identity_provider() {
     let dir = served_app();
     let root = dir.path();
-    let server = serve(root, "on");
+    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "on")]);
 
     let mut guest = Browser::new(&server);
     let metadata = guest.get("/saml/metadata");
@@ -448,7 +458,7 @@ fn served_app_signs_in_through_the_identity_provider() {
     );
     let who = ada.whoami();
     assert!(who.starts_with("ada@example.com member "), "{who}");
-    assert!(!ada.jar.contains_key("saml_request"), "request cookie kept");
+    assert!(!ada.jar.contains_key(REQUEST_COOKIE), "request cookie kept");
     // Posted again with the cookie that came with it: an assertion signs in once.
     assert_eq!(thief.post_response(&response).status, 401, "replayed");
     assert_eq!(thief.whoami(), "guest");
@@ -502,7 +512,8 @@ fn served_app_signs_in_through_the_identity_provider() {
     assert_eq!((reply.status, reply.location.as_str()), (302, "/"));
     assert_eq!(later.whoami(), who);
 
-    // An account that already exists is linked by its email, and keeps its role.
+    // With SAML_LINK_EXISTING=on, an account that already exists is linked by
+    // its email, and keeps its role.
     let mut grace = Browser::new(&server);
     let signup = grace.request(
         "POST",
@@ -518,7 +529,7 @@ fn served_app_signs_in_through_the_identity_provider() {
         root,
         &id,
         json!({"name_id": "grace@example.com",
-               "name_id_format": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+               "name_id_format": EMAIL_FORMAT,
                "attributes": {}}),
     );
     assert_eq!(sso.post_response(&response).status, 302);
@@ -566,7 +577,11 @@ fn provisioning_off_refuses_a_user_with_no_account() {
 fn an_admin_account_is_not_linked_by_its_email() {
     let dir = served_app();
     let root = dir.path();
-    let server = serve_with(root, "on", &[("AUTH_SIGNUP", "first_user")]);
+    let server = serve_with(
+        root,
+        "on",
+        &[("AUTH_SIGNUP", "first_user"), ("SAML_LINK_EXISTING", "on")],
+    );
     let mut admin = Browser::new(&server);
     let signup = admin.request(
         "POST",
@@ -588,19 +603,254 @@ fn an_admin_account_is_not_linked_by_its_email() {
     assert_eq!(eve.whoami(), "guest");
 }
 
-#[test]
-fn link_existing_off_refuses_an_account_that_exists() {
-    let dir = served_app();
-    let root = dir.path();
-    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "off")]);
-    let mut grace = Browser::new(&server);
-    let signup = grace.request(
+/// `soli runner -e code` against the served app's database: the last line it
+/// prints.
+fn runner(root: &Path, code: &str) -> String {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["runner", "-e", code])
+        .current_dir(root)
+        .env_remove("SOLI_ENGINE")
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env(
+            "DATABASE_URL",
+            format!("sqlite://{}/app.sqlite3", root.display()),
+        )
+        .output()
+        .expect("run soli runner");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    assert!(
+        output.status.success(),
+        "{stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    stdout.trim().lines().last().unwrap_or_default().to_string()
+}
+
+/// Sign up through the form, as a browser on the application's own origin.
+fn sign_up(browser: &mut Browser, email: &str) {
+    let origin = format!("http://127.0.0.1:{}", browser.port);
+    let signup = browser.request(
         "POST",
         "/signup",
-        Some(json!({"email": "grace@example.com", "password": "correct horse battery"})),
-        &format!("http://127.0.0.1:{}", server.1),
+        Some(json!({"email": email, "password": "correct horse battery"})),
+        &origin,
     );
     assert_eq!(signup.status, 302, "{}", signup.body);
+}
+
+/// Linking an existing account by its email is opt-in: unset or `off`, the
+/// account is refused and a newcomer is still provisioned.
+#[test]
+fn existing_accounts_are_linked_only_with_link_existing_on() {
+    for setting in [None, Some("off")] {
+        let dir = served_app();
+        let root = dir.path();
+        let extra: Vec<(&str, &str)> = setting
+            .map(|value| vec![("SAML_LINK_EXISTING", value)])
+            .unwrap_or_default();
+        let server = serve_with(root, "on", &extra);
+        let mut grace = Browser::new(&server);
+        sign_up(&mut grace, "grace@example.com");
+        let existing = grace.whoami();
+
+        let mut sso = Browser::new(&server);
+        let id = sso.start("/saml/login");
+        let response = issue(
+            root,
+            &id,
+            json!({"attributes": {"email": "grace@example.com"}}),
+        );
+        assert_eq!(sso.post_response(&response).status, 401, "{setting:?}");
+        assert_eq!(sso.whoami(), "guest", "{setting:?}");
+        assert_eq!(grace.whoami(), existing, "{setting:?}");
+        // A newcomer is still provisioned.
+        let id = sso.start("/saml/login");
+        let response = issue(
+            root,
+            &id,
+            json!({"name_id": "new-at-idp", "attributes": {"email": "new@example.com"}}),
+        );
+        assert_eq!(sso.post_response(&response).status, 302, "{setting:?}");
+        assert!(sso.whoami().starts_with("new@example.com member "));
+    }
+}
+
+/// An address already linked to someone at this identity provider names
+/// another person there now (a reused mailbox): it is not linked again.
+#[test]
+fn an_account_linked_at_the_issuer_is_not_linked_again_by_email() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "on")]);
+    let mut alice = Browser::new(&server);
+    let id = alice.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "emp-001", "attributes": {"email": "alice@corp.test"}}),
+    );
+    assert_eq!(alice.post_response(&response).status, 302);
+
+    let mut successor = Browser::new(&server);
+    let id = successor.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "emp-999", "attributes": {"email": "alice@corp.test"}}),
+    );
+    assert_eq!(successor.post_response(&response).status, 401);
+    assert_eq!(successor.whoami(), "guest");
+}
+
+/// The NameID stands for an address only in the emailAddress format; an
+/// address with anything but ASCII in it is refused (lowercasing folds the
+/// Kelvin sign into a k).
+#[test]
+fn only_an_email_nameid_or_an_ascii_address_is_an_email() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "on")]);
+    let mut kim = Browser::new(&server);
+    sign_up(&mut kim, "kim@kk.test");
+
+    let mut eve = Browser::new(&server);
+    let id = eve.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "nobody@example.com",
+               "name_id_format": "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
+               "attributes": {}}),
+    );
+    assert_eq!(eve.post_response(&response).status, 401, "a username");
+    let id = eve.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "kelvin", "attributes": {"email": "kim@\u{212A}\u{212A}.test"}}),
+    );
+    assert_eq!(eve.post_response(&response).status, 401, "non-ASCII");
+    assert_eq!(eve.whoami(), "guest");
+
+    let id = eve.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "Eve@Example.com", "name_id_format": EMAIL_FORMAT, "attributes": {}}),
+    );
+    assert_eq!(eve.post_response(&response).status, 302);
+    assert!(eve.whoami().starts_with("eve@example.com member "));
+}
+
+/// Unset, SAML_PROVISION follows AUTH_SIGNUP: a closed sign-up provisions
+/// nobody through the identity provider either, unless SAML_PROVISION=on.
+#[test]
+fn provisioning_follows_a_closed_sign_up() {
+    for (provision, status) in [("", 401), ("on", 302)] {
+        let dir = served_app();
+        let server = serve_with(dir.path(), provision, &[("AUTH_SIGNUP", "closed")]);
+        let mut ada = Browser::new(&server);
+        let id = ada.start("/saml/login");
+        let response = issue(dir.path(), &id, json!({}));
+        assert_eq!(
+            ada.post_response(&response).status,
+            status,
+            "SAML_PROVISION={provision:?}"
+        );
+    }
+}
+
+/// An account the identity provider created signs in there only: no reset
+/// link, no password sign-in, even with a password in its row.
+#[test]
+fn an_sso_only_account_has_no_password_way_in() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut ada = Browser::new(&server);
+    let id = ada.start("/saml/login");
+    assert_eq!(ada.post_response(&issue(root, &id, json!({}))).status, 302);
+    let origin = format!("http://127.0.0.1:{}", server.1);
+
+    let mut guest = Browser::new(&server);
+    let reset = guest.request(
+        "POST",
+        "/password/reset",
+        Some(json!({"email": "ada@example.com"})),
+        &origin,
+    );
+    assert_eq!(reset.status, 200, "{}", reset.body);
+    assert_eq!(
+        runner(
+            root,
+            r##"user = User.find_by("email", "ada@example.com")
+print("#{user.sso_only?} #{user.reset_token_digest.nil?}")"##
+        ),
+        "true true"
+    );
+
+    // A token and a password planted in the row change nothing.
+    assert_eq!(
+        runner(
+            root,
+            r##"user = User.find_by("email", "ada@example.com")
+user.set_password("brand new password 1")
+user.reset_token_digest = Crypto.sha256("planted-token")
+user.reset_sent_at = DateTime.utc.to_unix
+user.save
+print("planted")"##
+        ),
+        "planted"
+    );
+    let edit = guest.get("/password/edit?token=planted-token");
+    assert!(
+        edit.body.contains("invalid or has expired"),
+        "{}",
+        edit.body
+    );
+    let update = guest.request(
+        "POST",
+        "/password/update",
+        Some(
+            json!({"token": "planted-token", "password": "another password 22",
+                    "password_confirmation": "another password 22"}),
+        ),
+        &origin,
+    );
+    assert!(
+        update.body.contains("invalid or has expired"),
+        "{}",
+        update.body
+    );
+    let login = guest.request(
+        "POST",
+        "/login",
+        Some(json!({"email": "ada@example.com", "password": "brand new password 1"})),
+        &origin,
+    );
+    assert_eq!(login.status, 401, "{}", login.body);
+    assert_eq!(guest.whoami(), "guest");
+}
+
+/// Taking over an unconfirmed account drops every credential of whoever
+/// created it (`User#revoke_credentials`), the rows of the optional
+/// generators included, and does not make it SSO-only.
+#[test]
+fn taking_over_an_unconfirmed_account_revokes_its_credentials() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "on")]);
+    let mut grace = Browser::new(&server);
+    sign_up(&mut grace, "grace@example.com");
+    assert_eq!(
+        runner(
+            root,
+            r##"user = User.find_by("email", "grace@example.com")
+SamlIdentity.create({"user_id": user._key, "issuer": "https://old-idp.test", "name_id": "g"})
+print(SamlIdentity.where({"user_id": user._key}).count)"##
+        ),
+        "1"
+    );
 
     let mut sso = Browser::new(&server);
     let id = sso.start("/saml/login");
@@ -609,15 +859,78 @@ fn link_existing_off_refuses_an_account_that_exists() {
         &id,
         json!({"attributes": {"email": "grace@example.com"}}),
     );
-    assert_eq!(sso.post_response(&response).status, 401);
-    assert_eq!(sso.whoami(), "guest");
-    // A newcomer is still provisioned.
-    let id = sso.start("/saml/login");
+    assert_eq!(sso.post_response(&response).status, 302);
+    assert_eq!(grace.whoami(), "guest", "the sign-up session survived");
+    assert_eq!(
+        runner(
+            root,
+            r##"user = User.find_by("email", "grace@example.com")
+old = SamlIdentity.where({"issuer": "https://old-idp.test"}).count
+print("#{user.password_digest.nil?} #{user.confirmed?} #{user.sso_only?} #{old}")"##
+        ),
+        "true true false 0"
+    );
+}
+
+/// Anyone can make a browser post to /saml/acs: a post that does not verify
+/// leaves the sign-in in progress alone.
+#[test]
+fn a_forged_post_does_not_cancel_a_sign_in() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut ada = Browser::new(&server);
+    let id = ada.start("/saml/login");
+    let junk = ada.request("POST", "/saml/acs", Some(json!({})), "https://evil.test");
+    assert_eq!(junk.status, 401);
+    assert!(
+        ada.jar.contains_key(REQUEST_COOKIE),
+        "request cookie cleared"
+    );
+    let reply = ada.post_response(&issue(root, &id, json!({})));
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    assert!(!ada.jar.contains_key(REQUEST_COOKIE), "request cookie kept");
+}
+
+/// Without the identity provider's entity id there is no Issuer to check:
+/// nothing signs in.
+#[test]
+fn no_identity_provider_entity_id_no_sign_in() {
+    let dir = served_app();
+    let root = dir.path();
+    let (jar, id) = {
+        let server = serve(root, "on");
+        let mut ada = Browser::new(&server);
+        let id = ada.start("/saml/login");
+        (ada.jar, id)
+    };
+    let server = serve_with(root, "on", &[("SAML_IDP_ENTITY_ID", "")]);
+    let mut ada = Browser {
+        port: server.1,
+        jar,
+    };
+    let response = issue(root, &id, json!({"issuer": "https://elsewhere.test"}));
+    assert_eq!(ada.post_response(&response).status, 401);
+    assert_eq!(ada.whoami(), "guest");
+    assert_ne!(ada.get("/saml/login").status, 302);
+}
+
+/// `__Host-` needs Secure, which a browser refuses over plain http: behind an
+/// http:// APP_BASE_URL the request cookie has its plain name.
+#[test]
+fn a_plain_http_base_url_keeps_a_plain_cookie_name() {
+    let dir = served_app();
+    let root = dir.path();
+    let origin = "http://app.test";
+    let server = serve_with(root, "on", &[("APP_BASE_URL", origin)]);
+    let mut ada = Browser::new(&server);
+    let id = ada.start_at("/saml/login", origin, "saml_request");
+    assert!(!ada.jar.contains_key(REQUEST_COOKIE));
     let response = issue(
         root,
         &id,
-        json!({"name_id": "new-at-idp", "attributes": {"email": "new@example.com"}}),
+        json!({"acs_url": format!("{origin}/saml/acs"),
+               "audience": format!("{origin}/saml/metadata")}),
     );
-    assert_eq!(sso.post_response(&response).status, 302);
-    assert!(sso.whoami().starts_with("new@example.com member "));
+    assert_eq!(ada.post_response(&response).status, 302);
 }

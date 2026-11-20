@@ -69,6 +69,8 @@ fn create_auth_writes_all_files() {
         "start_remember_me",
         "register_failed_attempt",
         "AUTH_MAX_FAILED_ATTEMPTS",
+        "def revoke_credentials",
+        "def sso_only?",
     ] {
         assert!(user_model.contains(needle), "user model missing {needle}");
     }
@@ -548,4 +550,48 @@ fn served_signup_and_throttle_follow_the_environment() {
     assert_eq!(call(&server, "GET", "/signup", None).0, 403);
     assert_eq!(call(&server, "POST", "/signup", Some(ADA)).0, 403);
     assert!(!offers_signup(&server));
+}
+
+/// `User#revoke_credentials` leaves an account nothing but its email: the
+/// password, the remember-me digest and every session go, and so do the rows
+/// of the optional credential models the app has (here an `ApiToken`), while
+/// those it lacks (`OauthIdentity`, `TwoFactor`…) are skipped, not raised on.
+#[test]
+fn revoke_credentials_leaves_only_the_email() {
+    let dir = servable_app();
+    let root = dir.path();
+    fs::write(
+        root.join("app/models/api_token.sl"),
+        "class ApiToken < Model\nend\n",
+    )
+    .unwrap();
+    let code = r##"user = User.new
+user.email = "ada@example.com"
+user.set_password("correct horse battery")
+user.save
+user.start_remember_me
+ApiToken.create({"user_id": user._key, "name": "ci"})
+ApiToken.create({"user_id": "someone-else", "name": "other"})
+user.revoke_credentials
+user = User.find_by("email", "ada@example.com")
+gone = ApiToken.where({"user_id": user._key}).count
+print("#{user.password_digest.nil?} #{user.remember_token_digest.nil?} #{user.current_session_version} #{user.authenticate("correct horse battery")} #{gone} #{ApiToken.count}")"##;
+    let database = format!("sqlite://{}/app.sqlite3", root.display());
+    for engine in ["tree", "vm"] {
+        let _ = fs::remove_file(root.join("app.sqlite3"));
+        let (ok, output) = soli(
+            root,
+            &["runner", "-e", code],
+            &[
+                ("SOLI_DB_ADAPTER", "sqlite"),
+                ("DATABASE_URL", &database),
+                ("SOLI_ENGINE", engine),
+            ],
+        );
+        assert!(ok, "{engine}: {output}");
+        assert!(
+            output.trim_end().ends_with("true true 1 false 0 1"),
+            "{engine}: {output}"
+        );
+    }
 }

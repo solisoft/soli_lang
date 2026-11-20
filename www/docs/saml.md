@@ -51,9 +51,27 @@ Nothing existing is overwritten. Add the link to your sign-in view:
    | `SAML_IDP_METADATA_FILE` | path to the IdP's metadata XML, inside the app (the server reads no file outside it) |
    | `SAML_IDP_ENTITY_ID`, `SAML_IDP_SSO_URL`, `SAML_IDP_CERTIFICATE` | or its three values: entity id, single sign-on URL (HTTP-Redirect binding), signing certificate (PEM; `\n` for newlines) |
 
-The IdP must sign the assertion or the response (or both) with RSA-SHA256, and
-send an email address — as the NameID, or in an attribute named `email`,
-`mail`, `emailaddress`, or the usual claim URIs.
+   Without an entity id `SamlSso.identity_provider` raises, and no sign-in
+   starts or finishes: it is what the `Issuer` of every response is checked
+   against.
+
+5. Decide who gets an account:
+
+   | Variable | |
+   |---|---|
+   | `SAML_PROVISION` | `on`: a first sign-in creates the account; `off`: it does not. Unset, it follows `AUTH_SIGNUP` — `closed` provisions nobody, so the identity provider is no way around a sign-up you closed |
+   | `SAML_LINK_EXISTING` | `on`: a first sign-in may link the account that already has the asserted email. **Off unless set** |
+
+The IdP must sign the assertion or the response (or both) with RSA-SHA256 —
+the metadata asks for signed assertions (`WantAssertionsSigned="true"`), and
+a response signed as a whole is accepted too. It must send an email address:
+in an attribute named `email`, `mail`, `emailaddress`, or the usual claim URIs,
+or as the NameID when its format is
+`urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress` (a NameID in any
+other format — a username, an opaque id — is never taken for an address, even
+with an `@` in it). An address with anything but ASCII in it is refused:
+lowercasing folds some Unicode letters into ASCII ones (the Kelvin sign,
+U+212A, into `k`), and two different addresses would reach the same account.
 
 ## How a sign-in runs
 
@@ -61,22 +79,38 @@ send an email address — as the NameID, or in an attribute named `email`,
    IdP. The request id and the `return_to` path go in an encrypted cookie.
 2. The user authenticates at the IdP, which posts `SAMLResponse` to
    `/saml/acs`.
-3. `SamlSso.finish` takes the request id out of the cookie — once — and
-   `Saml.verify_response` checks the response against it. `SamlSso.spend`
-   then records the assertion's id until it expires: a response posted again,
-   even with a copy of the request cookie, is refused.
+3. `SamlSso.finish` reads the request id from the cookie and
+   `Saml.verify_response` checks the response against it. Only once it
+   verifies is the cookie cleared — a request is answered once — so a forged
+   post to `/saml/acs`, which any site can make a browser send, does not
+   cancel the sign-in in progress. `SamlSso.spend` then records the
+   assertion's id until it expires: a response posted again, even with a copy
+   of the request cookie, is refused.
 4. `SamlSso.user_for` finds the account: the one already linked to this
-   `(issuer, NameID)`; else the one with that email, linked from now on; else
-   a new one. A new account is a `member` with no password — it signs in
-   through the IdP only. `SAML_PROVISION=off` refuses anyone with no account.
-   An account whose email was never confirmed loses its password, remember-me
-   cookie and sessions when it is linked (`SamlSso.take_over_unconfirmed`, as
-   in the OAuth scaffold): with open sign-up, whoever typed that address first
-   kept a way into the account the real owner now uses.
-   An admin's account is never linked by its email: link it by hand
-   (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`).
-   `SAML_LINK_EXISTING=off` links no existing account at all — set it when the
-   IdP lets users edit the email attribute it sends.
+   `(issuer, NameID)`; else, only with `SAML_LINK_EXISTING=on`, the one with
+   that email, linked from now on; else a new one (see `SAML_PROVISION`).
+   Without linking, an address that already has an account is refused: link it
+   by hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`).
+   - **A new account** is a `member`, confirmed, with no password, and
+     `sso_only: true`: it signs in through the IdP only. Password sign-in
+     refuses it — with the same answer and the same Argon2id cost as a wrong
+     password — and so does password reset (no link is sent; a link already in
+     hand is refused as invalid), so a user removed at the IdP keeps no
+     password here.
+   - **Linking by email** (`SAML_LINK_EXISTING=on`) trusts the IdP with every
+     address it asserts. Turn it on only when its users cannot edit that
+     attribute. Even then, an admin's account is never linked by its email,
+     nor an account already linked to another identity at the same IdP: the
+     address now names someone else there (a recycled mailbox), not the
+     account's owner. A linked account stays as it was — its password, if it
+     has one, still works, and it is not marked `sso_only`.
+   - **An unconfirmed account** loses every credential when it is linked
+     (`SamlSso.take_over_unconfirmed` calls `User#revoke_credentials`, which
+     the OAuth scaffold uses too): its password, a pending reset link, its
+     remember-me cookie and open sessions, and its OAuth and SAML identities,
+     passkeys, API tokens, two-factor and magic links where the app has those
+     models. With open sign-up, whoever typed that address first kept a way
+     into the account the real owner now uses.
 5. A new session is opened and the browser goes to `return_to` (a path on this
    site, or `/`).
 
@@ -85,8 +119,12 @@ the reason goes to the log (`SAML sign-in refused: …`).
 
 **Why a cookie and not the session.** The response is a cross-site POST, and a
 `SameSite=Lax` session cookie does not accompany one. The request cookie is
-`SameSite=None; Secure; HttpOnly`, scoped to `/saml`, encrypted, and lives ten
-minutes. For the same reason `/saml/acs` is exempt from the CSRF origin gate:
+`SameSite=None; Secure; HttpOnly; Path=/`, encrypted, and lives ten minutes.
+With an `https://` `APP_BASE_URL` it is named `__Host-saml_request`: a browser
+then keeps it only Secure, for this host alone, with no `Domain`, so a sibling
+subdomain cannot plant or overwrite it. Over plain `http://` (local
+development) a browser drops a `__Host-` cookie, so there it is plain
+`saml_request`. For the same reason `/saml/acs` is exempt from the CSRF origin gate:
 what authenticates that request is the signature.
 
 **With two-factor.** A user who turned on [two-factor](/docs/security/authentication#two-factor)
@@ -235,7 +273,11 @@ Options: `sign` (`"assertion"` by default, `"response"`, `"both"`, `"none"`),
 
 - **One identity provider per application.** For one per customer, make
   `SamlSso.identity_provider` read it from the tenant instead of the
-  environment.
+  environment — and scope the accounts per tenant too (a database per tenant,
+  or a tenant key on `User` and `SamlIdentity` that `user_for` filters on).
+  Keep `SAML_LINK_EXISTING` off there: each customer's IdP asserts whatever
+  addresses its own administrator types, so linking by email would let one
+  tenant's IdP sign in to another tenant's accounts.
 - **Not supported, and refused by name:** encrypted assertions and
   `EncryptedID` (turn assertion encryption off at the IdP), ECDSA and RSA-PSS
   signatures, SHA-384, inclusive canonicalization. `SignatureMethod` takes

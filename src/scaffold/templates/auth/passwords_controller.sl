@@ -3,7 +3,8 @@
 # POST /password/reset always responds the same way whether or not the email
 # exists, so the form can't be used to probe for accounts. Reset links carry
 # a one-time token whose SHA-256 digest is stored; links expire after
-# AUTH_RESET_TOKEN_TTL seconds (see app/models/user.sl).
+# AUTH_RESET_TOKEN_TTL seconds (see app/models/user.sl). An account that
+# signs in through single sign-on only (`user.sso_only?`) gets no link.
 
 class PasswordsController < Controller
   static {
@@ -33,7 +34,10 @@ class PasswordsController < Controller
 
     email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
-    unless user.nil?
+    # An account that signs in through single sign-on only gets no reset link,
+    # and the same answer: a password set here would outlive its removal at
+    # the identity provider.
+    unless user.nil? || user.sso_only?
       token = user.start_password_reset
       AuthMailer.reset_password(user, token).deliver_now rescue nil
     end
@@ -101,6 +105,7 @@ class PasswordsController < Controller
     user = User.find_by("reset_token_digest", Crypto.sha256(token.to_s))
     return nil if user.nil?
     return nil if user.reset_token_expired?
+    return nil if user.sso_only?
 
     user
   end

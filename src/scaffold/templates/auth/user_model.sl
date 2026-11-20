@@ -93,6 +93,17 @@ def auth_require_confirmed_email
   false
 end
 
+# The models of the optional generators that hold a way into an account,
+# keyed by `user_id`. `revoke_credentials` empties those the app has.
+const USER_CREDENTIAL_MODELS = [
+  "OauthIdentity",
+  "SamlIdentity",
+  "PasskeyCredential",
+  "ApiToken",
+  "TwoFactor",
+  "MagicLink"
+]
+
 class User < Model
   # Fields: email, password_digest, role, plus the auth-flow fields:
   # reset_token_digest, reset_sent_at, confirmation_token_digest,
@@ -140,11 +151,21 @@ class User < Model
     nil
   end
 
-  # True when `plaintext` matches the stored Argon2id digest.
+  # True when `plaintext` matches the stored Argon2id digest. Never for an
+  # account with no password, nor for one that signs in through single
+  # sign-on only — and either costs the same work as a wrong password, so
+  # the answer's timing does not tell such an account apart.
   def authenticate(plaintext)
-    return false if @password_digest.blank?
+    return User.burn_password_work(plaintext) if @sso_only? || @password_digest.blank?
 
     Crypto.password_verify(plaintext, @password_digest)
+  end
+
+  # An account created by single sign-on (`soli generate saml`): it signs in
+  # through the identity provider only — no password sign-in, no password
+  # reset — so a user removed there cannot keep a way in here.
+  def sso_only?
+    @sso_only ? true : false
   end
 
   # Spend the same Argon2id work as a real `authenticate` without having an
@@ -205,9 +226,31 @@ class User < Model
   end
 
   # Bumped whenever every existing session must be invalidated (a password
-  # reset today; add other events here as they appear).
+  # reset, `revoke_credentials`; add other events here as they appear).
   def current_session_version
     @session_version ?? 0
+  end
+
+  # Remove every way into this account except its email address, and save:
+  # the password, a pending reset link, the remember-me cookie, every open
+  # session, and the rows of the optional generators tied to it (OAuth and
+  # SAML identities, passkeys, API tokens, two-factor, magic links — each
+  # only when the app has that model). Called when an account whose address
+  # nobody proved is handed to the person an identity provider vouches for:
+  # whoever created it keeps nothing.
+  def revoke_credentials
+    @password_digest = nil
+    @reset_token_digest = nil
+    @reset_sent_at = nil
+    @remember_token_digest = nil
+    @session_version = @current_session_version + 1
+    @update
+    USER_CREDENTIAL_MODELS.each do |name|
+      # `const_get` answers nil for a class this app does not have.
+      model = const_get(name)
+      model.where({"user_id": @_key}).delete_all unless model.nil?
+    end
+    true
   end
 
   # --- Email confirmation -----------------------------------------------------

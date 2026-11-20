@@ -16,6 +16,14 @@
 #   SAML_IDP_SSO_URL         the single sign-on URL (HTTP-Redirect binding),
 #   SAML_IDP_CERTIFICATE     and the signing certificate (PEM, `\n` for newlines)
 #
+# Accounts:
+#
+#   SAML_PROVISION           on: a first sign-in creates the account; off: it
+#                            does not. Unset, it follows AUTH_SIGNUP (closed
+#                            provisions nobody).
+#   SAML_LINK_EXISTING       on: a first sign-in may link the account that has
+#                            the asserted email. Off unless set.
+#
 # What to give the identity provider is at /saml/metadata. APP_BASE_URL must
 # be the https:// origin it reaches the application at.
 
@@ -28,27 +36,41 @@ const SAML_EMAIL_ATTRIBUTES = [
   "urn:oid:0.9.2342.19200300.100.1.3"
 ]
 
+# The NameID format that says the NameID is an email address.
+const SAML_NAMEID_EMAIL = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+
 # The request in flight travels in its own cookie, not in the session: the
 # response is a cross-site POST, which a SameSite=Lax session cookie does not
-# accompany. This one is SameSite=None, encrypted, short-lived and scoped to
-# /saml.
+# accompany. This one is SameSite=None, encrypted and short-lived. Behind an
+# https:// APP_BASE_URL it is named `__Host-saml_request`: the browser then
+# keeps it only Secure, for this host alone (Path=/, no Domain), so a sibling
+# subdomain cannot plant or overwrite it. Over plain http (local development)
+# a browser drops a `__Host-` cookie, so the name is plain there.
 const SAML_REQUEST_COOKIE = {
-  "path": "/saml",
+  "path": "/",
   "http_only": true,
   "secure": true,
   "same_site": "None"
 }
 
 class SamlSso
+  # Raises without an entity id: the Issuer of every response is checked
+  # against it, and a blank one would be no check at all.
   static def identity_provider
     path = getenv("SAML_IDP_METADATA_FILE").to_s
-    return Saml.parse_metadata(File.read(path)) if path.present?
+    idp = nil
+    if path.present?
+      idp = Saml.parse_metadata(File.read(path))
+    else
+      idp = {
+        "entity_id": getenv("SAML_IDP_ENTITY_ID").to_s,
+        "sso_url": getenv("SAML_IDP_SSO_URL").to_s,
+        "certificates": [getenv("SAML_IDP_CERTIFICATE").to_s.replace("\\n", "\n")]
+      }
+    end
+    throw "the identity provider has no entity id (SAML_IDP_ENTITY_ID)" if idp["entity_id"].to_s.trim.blank?
 
-    {
-      "entity_id": getenv("SAML_IDP_ENTITY_ID").to_s,
-      "sso_url": getenv("SAML_IDP_SSO_URL").to_s,
-      "certificates": [getenv("SAML_IDP_CERTIFICATE").to_s.replace("\\n", "\n")]
-    }
+    idp
   end
 
   # The name the identity provider knows this application by.
@@ -61,6 +83,13 @@ class SamlSso
   # Where the identity provider posts its response.
   static def acs_url
     auth_base_url() + "/saml/acs"
+  end
+
+  # The request cookie's name: `__Host-` wherever the browser accepts it.
+  static def request_cookie
+    return "__Host-saml_request" if auth_base_url().starts_with?("https://")
+
+    "saml_request"
   end
 
   static def metadata
@@ -76,16 +105,14 @@ class SamlSso
       "acs_url": SamlSso.acs_url
     })
     options = SAML_REQUEST_COOKIE.merge({"encrypted": true, "max_age": 600})
-    set_cookie("saml_request", {"id": request["id"], "return_to": return_to}, options)
+    set_cookie(SamlSso.request_cookie, {"id": request["id"], "return_to": return_to}, options)
     request["url"]
   end
 
   # Finish a sign-in: the verified assertion and where to go next. Raises on
   # anything short of a valid response to the request this browser started.
   static def finish(saml_response)
-    pending = read_cookie("saml_request", {"encrypted": true})
-    # A request is answered once.
-    set_cookie("saml_request", "", SAML_REQUEST_COOKIE.merge({"max_age": 0}))
+    pending = read_cookie(SamlSso.request_cookie, {"encrypted": true})
     throw "no sign-in in progress in this browser" if pending.nil?
 
     idp = SamlSso.identity_provider
@@ -96,6 +123,10 @@ class SamlSso
       "acs_url": SamlSso.acs_url,
       "request_id": pending["id"]
     })
+    # A request is answered once. Cleared only now: any site can make a
+    # browser post to /saml/acs, and clearing it first let one cancel the
+    # sign-in in progress.
+    set_cookie(SamlSso.request_cookie, "", SAML_REQUEST_COOKIE.merge({"max_age": 0}))
     SamlSso.spend(assertion)
     {"assertion": assertion, "return_to": pending["return_to"]}
   end
@@ -119,57 +150,74 @@ class SamlSso
     throw "the assertion was already used to sign in" if spent.nil? || spent._errors
   end
 
-  # The address the assertion gives for its subject, or nil.
+  # The address the assertion gives for its subject, or nil: an email
+  # attribute, else the NameID when its format says it is an email address
+  # (a username or an opaque id that happens to hold an "@" is not one).
+  #
+  # An address with anything but ASCII in it is refused: lowercasing folds
+  # some Unicode letters into ASCII ones (the Kelvin sign into k), so two
+  # different addresses would reach the same account.
   static def email_of(assertion)
     attributes = assertion["attributes"]
     name = attributes.keys.find { |key| SAML_EMAIL_ATTRIBUTES.includes?(key.downcase) }
     values = name.nil? ? [] : attributes[name]
-    return values[0].to_s.trim.downcase if values.length > 0
+    address = ""
+    if values.length > 0
+      address = values[0].to_s
+    elsif assertion["name_id_format"].to_s == SAML_NAMEID_EMAIL
+      address = assertion["name_id"].to_s
+    end
+    return nil if Regex.matches("[^\\x00-\\x7f]", address)
 
-    name_id = assertion["name_id"].to_s.trim.downcase
-    name_id.includes?("@") ? name_id : nil
+    address = address.trim.downcase
+    address.includes?("@") ? address : nil
   end
 
-  # Whether a first sign-in creates the account. SAML_PROVISION=off refuses
-  # anyone who has none: accounts are then created by an admin.
+  # Whether a first sign-in creates the account. SAML_PROVISION=on or off
+  # decides; unset, it follows AUTH_SIGNUP: `closed` provisions nobody, so the
+  # identity provider is no way around a sign-up you closed.
   static def provision?
-    getenv("SAML_PROVISION").to_s.trim.downcase != "off"
+    setting = getenv("SAML_PROVISION").to_s.trim.downcase
+    return setting == "on" if setting.present?
+
+    auth_signup_mode() != "closed"
   end
 
   # Whether a first sign-in may take over an account that exists with the
-  # same email. The email is what the identity provider asserts: if its users
-  # can edit that attribute, SAML_LINK_EXISTING=off, and link accounts by hand
+  # same email. Off unless SAML_LINK_EXISTING=on: the email is only what the
+  # identity provider asserts, and if its users can edit that attribute, or
+  # it gives a departed employee's address to someone new, linking hands them
+  # an account that is not theirs. Off, link accounts by hand
   # (SamlIdentity.create({"user_id", "issuer", "name_id", "email"})).
   static def link_existing?
-    getenv("SAML_LINK_EXISTING").to_s.trim.downcase != "off"
+    getenv("SAML_LINK_EXISTING").to_s.trim.downcase == "on"
   end
 
   # An account whose address nobody proved, about to be linked to the person
-  # the identity provider just vouched for: its password, remember-me cookie
-  # and sessions belong to whoever created it — with open sign-up, anyone who
-  # typed that address first, and who would otherwise keep a way into the
-  # account the real owner now uses. They are dropped, as the OAuth scaffold
-  # does.
+  # the identity provider just vouched for: its password, remember-me cookie,
+  # sessions and every other credential belong to whoever created it — with
+  # open sign-up, anyone who typed that address first, and who would
+  # otherwise keep a way into the account the real owner now uses. They are
+  # dropped (`User#revoke_credentials`), as the OAuth scaffold does.
   static def take_over_unconfirmed(user)
-    user.password_digest = nil
-    user.remember_token_digest = nil
-    user.session_version = user.current_session_version + 1
+    user.revoke_credentials
     user.confirmed_at = DateTime.utc.to_unix
     user.confirmation_token_digest = nil
     user.save
   end
 
-  # The account an assertion signs in. Known identity first; otherwise the
-  # account with that email, linked from now on (never an admin's: an admin
-  # is linked by hand); otherwise a new one. A new account is a plain member
-  # with no password: it signs in through the identity provider only. Raises
-  # when there is no account to give.
+  # The account an assertion signs in. Known identity first; otherwise, with
+  # SAML_LINK_EXISTING=on, the account with that email, linked from now on
+  # (never an admin's, nor one already linked to another identity at this
+  # identity provider); otherwise a new one. A new account is a plain member
+  # with no password, marked `sso_only`: it signs in through the identity
+  # provider only. Raises when there is no account to give.
   static def user_for(assertion)
     identity = SamlIdentity.find_for(assertion["issuer"], assertion["name_id"])
     return User.find(identity.user_id) unless identity.nil?
 
     email = SamlSso.email_of(assertion)
-    throw "the identity provider sent no email address" if email.nil?
+    throw "the identity provider sent no usable email address" if email.nil?
 
     user = User.find_by("email", email)
     if user.nil?
@@ -179,11 +227,19 @@ class SamlSso
       user.email = email
       user.role = "member"
       user.confirmed_at = DateTime.utc.to_unix
+      # No password reset, no password sign-in: removed at the identity
+      # provider, the user is locked out here too.
+      user.sso_only = true
       user.save
       throw "could not create the account for #{email}" if user._errors
     else
-      throw "#{email} has an account, and SAML_LINK_EXISTING=off" unless SamlSso.link_existing?
+      throw "#{email} has an account, and SAML_LINK_EXISTING is not on" unless SamlSso.link_existing?
       throw "#{email} is an admin: link that account by hand" if user.admin?
+
+      # Linked already to someone at this identity provider: the address now
+      # names another person there (a reused mailbox), not the account's owner.
+      linked = SamlIdentity.where({"user_id": user._key, "issuer": assertion["issuer"]}).first
+      throw "#{email} is linked to another identity at #{assertion["issuer"]}" unless linked.nil?
 
       SamlSso.take_over_unconfirmed(user) unless user.confirmed?
     end

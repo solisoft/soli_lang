@@ -87,10 +87,11 @@ pub fn print_saml_success_message() {
     println!("  5. Add the link to your sign-in view:");
     println!("       \x1b[36m<a href=\"/saml/login\">Sign in with SSO</a>\x1b[0m");
     println!();
-    println!("  A first sign-in creates the account (a member, no password);");
-    println!("  \x1b[36mSAML_PROVISION=off\x1b[0m refuses anyone who has none.");
-    println!("  An existing account with the same email is linked on its first sign-in,");
-    println!("  never an admin's; \x1b[36mSAML_LINK_EXISTING=off\x1b[0m links none.");
+    println!("  A first sign-in creates the account (a member, SSO only: no password),");
+    println!("  unless \x1b[36mAUTH_SIGNUP=closed\x1b[0m; \x1b[36mSAML_PROVISION=on|off\x1b[0m overrides it.");
+    println!("  An existing account with the same email is never linked by default;");
+    println!("  \x1b[36mSAML_LINK_EXISTING=on\x1b[0m links it (never an admin's) — only if the");
+    println!("  identity provider's users cannot choose the email it asserts.");
     println!("  Docs: /docs/security/saml");
     println!();
 }

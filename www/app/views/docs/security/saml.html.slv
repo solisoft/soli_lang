@@ -71,8 +71,30 @@ soli generate saml</code></pre>
             </table>
         </div>
         <p class="text-gray-400 mb-4">
-            The IdP must sign the assertion or the response (or both) with RSA-SHA256, and send an email address &mdash; as the
-            NameID, or in an attribute named <code>email</code>, <code>mail</code>, <code>emailaddress</code>, or the usual claim URIs.
+            Without an entity id <code>SamlSso.identity_provider</code> raises, and no sign-in starts or finishes: it is what
+            the <code>Issuer</code> of every response is checked against.
+        </p>
+        <p class="text-gray-400 mb-4">Then decide who gets an account:</p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 mb-4">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4 font-semibold">Variable</th><th class="py-3 px-4 font-semibold">What it does</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/10 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>SAML_PROVISION</code></td><td class="py-3 px-4"><code>on</code>: a first sign-in creates the account; <code>off</code>: it does not. Unset, it follows <code>AUTH_SIGNUP</code> &mdash; <code>closed</code> provisions nobody, so the identity provider is no way around a sign-up you closed</td></tr>
+                    <tr><td class="py-3 px-4"><code>SAML_LINK_EXISTING</code></td><td class="py-3 px-4"><code>on</code>: a first sign-in may link the account that already has the asserted email. <strong class="text-white">Off unless set</strong></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            The IdP must sign the assertion or the response (or both) with RSA-SHA256 &mdash; the metadata asks for signed
+            assertions (<code>WantAssertionsSigned="true"</code>), and a response signed as a whole is accepted too. It must
+            send an email address: in an attribute named <code>email</code>, <code>mail</code>, <code>emailaddress</code>, or
+            the usual claim URIs, or as the NameID when its format is
+            <code>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</code> (a NameID in any other format &mdash; a
+            username, an opaque id &mdash; is never taken for an address, even with an <code>@</code> in it). An address with
+            anything but ASCII in it is refused: lowercasing folds some Unicode letters into ASCII ones (the Kelvin sign
+            <code>&#8490;</code> into <code>k</code>), and two different addresses would reach the same account.
         </p>
     </section>
 
@@ -84,8 +106,14 @@ soli generate saml</code></pre>
         <ol class="list-decimal pl-6 space-y-3 text-gray-400 mb-4">
             <li><code>/saml/login</code> builds the request (<code class="text-amber-300">Saml.auth_request</code>) and redirects to the IdP. The request id and the <code>return_to</code> path go in an encrypted cookie.</li>
             <li>The user authenticates at the IdP, which posts <code>SAMLResponse</code> to <code>/saml/acs</code>.</li>
-            <li><code>SamlSso.finish</code> takes the request id out of the cookie &mdash; once &mdash; and <code class="text-amber-300">Saml.verify_response</code> checks the response against it. <code>SamlSso.spend</code> then records the assertion&rsquo;s id until it expires: a response posted again, even with a copy of the request cookie, is refused.</li>
-            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else the one with that email, linked from now on; else a new one. A new account is a <code>member</code> with no password &mdash; it signs in through the IdP only. <code class="text-amber-300">SAML_PROVISION=off</code> refuses anyone with no account. An account whose email was never confirmed loses its password, remember-me cookie and sessions when it is linked (<code>SamlSso.take_over_unconfirmed</code>, as in the OAuth scaffold): with open sign-up, whoever typed that address first kept a way into the account the real owner now uses. An admin&rsquo;s account is never linked by its email: link it by hand (<code>SamlIdentity.create({"user_id", "issuer", "name_id", "email"})</code>). <code class="text-amber-300">SAML_LINK_EXISTING=off</code> links no existing account at all &mdash; set it when the IdP lets users edit the email attribute it sends.</li>
+            <li><code>SamlSso.finish</code> reads the request id from the cookie and <code class="text-amber-300">Saml.verify_response</code> checks the response against it. Only once it verifies is the cookie cleared &mdash; a request is answered once &mdash; so a forged post to <code>/saml/acs</code>, which any site can make a browser send, does not cancel the sign-in in progress. <code>SamlSso.spend</code> then records the assertion&rsquo;s id until it expires: a response posted again, even with a copy of the request cookie, is refused.</li>
+            <li><code>SamlSso.user_for</code> finds the account: the one already linked to this <code>(issuer, NameID)</code>; else, only with <code class="text-amber-300">SAML_LINK_EXISTING=on</code>, the one with that email, linked from now on; else a new one (see <code>SAML_PROVISION</code>). Without linking, an address that already has an account is refused: link it by hand (<code>SamlIdentity.create({"user_id", "issuer", "name_id", "email"})</code>).
+                <ul class="list-disc pl-6 space-y-2 mt-2">
+                    <li><strong class="text-white">A new account</strong> is a <code>member</code>, confirmed, with no password, and <code>sso_only: true</code>: it signs in through the IdP only. Password sign-in refuses it &mdash; with the same answer and the same Argon2id cost as a wrong password &mdash; and so does password reset (no link is sent; a link already in hand is refused as invalid), so a user removed at the IdP keeps no password here.</li>
+                    <li><strong class="text-white">Linking by email</strong> (<code>SAML_LINK_EXISTING=on</code>) trusts the IdP with every address it asserts. Turn it on only when its users cannot edit that attribute. Even then, an admin&rsquo;s account is never linked by its email, nor an account already linked to another identity at the same IdP: the address now names someone else there (a recycled mailbox), not the account&rsquo;s owner. A linked account stays as it was &mdash; its password, if it has one, still works, and it is not marked <code>sso_only</code>.</li>
+                    <li><strong class="text-white">An unconfirmed account</strong> loses every credential when it is linked (<code>SamlSso.take_over_unconfirmed</code> calls <code>User#revoke_credentials</code>, which the OAuth scaffold uses too): its password, a pending reset link, its remember-me cookie and open sessions, and its OAuth and SAML identities, passkeys, API tokens, two-factor and magic links where the app has those models. With open sign-up, whoever typed that address first kept a way into the account the real owner now uses.</li>
+                </ul>
+            </li>
             <li>A new session is opened and the browser goes to <code>return_to</code> (a path on this site, or <code>/</code>).</li>
         </ol>
         <p class="text-gray-400 mb-4">
@@ -95,7 +123,11 @@ soli generate saml</code></pre>
         <p class="text-gray-400 mb-4">
             <strong class="text-white">Why a cookie and not the session.</strong> The response is a cross-site POST, and a
             <code>SameSite=Lax</code> session cookie does not accompany one. The request cookie is
-            <code>SameSite=None; Secure; HttpOnly</code>, scoped to <code>/saml</code>, encrypted, and lives ten minutes. For
+            <code>SameSite=None; Secure; HttpOnly; Path=/</code>, encrypted, and lives ten minutes. With an <code>https://</code>
+            <code>APP_BASE_URL</code> it is named <code>__Host-saml_request</code>: a browser then keeps it only Secure, for this
+            host alone, with no <code>Domain</code>, so a sibling subdomain cannot plant or overwrite it. Over plain
+            <code>http://</code> (local development) a browser drops a <code>__Host-</code> cookie, so there it is plain
+            <code>saml_request</code>. For
             the same reason <code>/saml/acs</code> is exempt from the CSRF origin gate: what authenticates that request is the
             signature.
         </p>
@@ -228,7 +260,7 @@ idp["certificates"]   # signing certificates, PEM</code></pre>
             Limits
         </h2>
         <ul class="list-disc pl-6 space-y-3 text-gray-400">
-            <li><strong class="text-white">One identity provider per application.</strong> For one per customer, make <code>SamlSso.identity_provider</code> read it from the tenant instead of the environment.</li>
+            <li><strong class="text-white">One identity provider per application.</strong> For one per customer, make <code>SamlSso.identity_provider</code> read it from the tenant instead of the environment &mdash; and scope the accounts per tenant too (a database per tenant, or a tenant key on <code>User</code> and <code>SamlIdentity</code> that <code>user_for</code> filters on). Keep <code>SAML_LINK_EXISTING</code> off there: each customer&rsquo;s IdP asserts whatever addresses its own administrator types, so linking by email would let one tenant&rsquo;s IdP sign in to another tenant&rsquo;s accounts.</li>
             <li><strong class="text-white">Not supported, and refused by name:</strong> encrypted assertions and <code>EncryptedID</code> (turn assertion encryption off at the IdP), ECDSA and RSA-PSS signatures, SHA-384, inclusive canonicalization. <code>SignatureMethod</code> takes only <code>rsa-sha256</code>/<code>rsa-sha512</code> (and <code>rsa-sha1</code> with <code>allow_sha1</code>), <code>DigestMethod</code> only <code>sha256</code>/<code>sha512</code> (and <code>sha1</code>).</li>
             <li><strong class="text-white">Requests are not signed</strong>, and the HTTP-POST binding is not offered for them. Most identity providers accept unsigned requests.</li>
             <li><strong class="text-white">No single logout.</strong> Signing out of the application does not sign out of the identity provider, and the reverse.</li>
