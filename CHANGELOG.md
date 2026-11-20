@@ -12,6 +12,12 @@
   `snapshot_state` / `restore_snapshot` override what is kept (the default
   takes plain values and names a field it cannot keep); `take_snapshot`
   backfills. New native `__class_static(object, name)` for the prelude.
+- **types: an unknown member points to `abstract def`.** When the member is
+  declared by an interface the class (or a superclass) implements, `Cannot
+  access member 'x' on type 'Base'` adds that `Base` implements the
+  interface declaring it, and to define it or make `Base` an `abstract
+  class` with `abstract def x` (a 2.40.0 user hit it without finding abstract
+  methods). `soli explain E0304` covers it.
 - **lint: `smell/context-boundary`.** `[contexts]` in `soli.toml` maps which
   bounded context (top-level module) may use which — `"Billing"` its classes,
   `"Billing:events"` its `DomainEvent` subclasses only — and `soli lint`

@@ -84,6 +84,14 @@ pub enum ParserError {
     General { message: String, span: Span },
 }
 
+/// `NoSuchMember`'s tail: its hint, or else its "did you mean".
+fn member_suffix(suggestion: Option<&str>, hint: Option<&str>) -> String {
+    match hint {
+        Some(hint) => format!(" ({hint})"),
+        None => suggest::suffix(suggestion),
+    }
+}
+
 impl ParserError {
     pub fn unexpected_token(
         expected: impl Into<String>,
@@ -186,13 +194,18 @@ pub enum TypeError {
         declared: Option<Span>,
     },
 
-    #[error("Cannot access member '{member}' on type '{type_name}'{} at {span}", suggest::suffix(.suggestion.as_deref()))]
+    #[error("Cannot access member '{member}' on type '{type_name}'{} at {span}", member_suffix(.suggestion.as_deref(), .hint.as_deref().map(String::as_str)))]
     NoSuchMember {
         type_name: String,
         member: String,
         span: Span,
         /// A "did you mean" suggestion.
         suggestion: Option<String>,
+        /// A way out other than a spelling, shown in place of the
+        /// suggestion (the diagnostic's `help:` line): the member belongs
+        /// to an interface the class implements but does not define.
+        /// Boxed: `TypeError` stays under clippy's `result_large_err` bound.
+        hint: Option<Box<String>>,
         /// Where the class is declared, when it is in the file being
         /// checked: a code frame's second label. Not in the message.
         declared: Option<Span>,
@@ -1062,6 +1075,7 @@ mod tests {
                 declared: None,
             },
             TypeError::NoSuchMember {
+                hint: None,
                 type_name: "Foo".into(),
                 member: "bar".into(),
                 span: s,
@@ -1084,6 +1098,7 @@ mod tests {
     #[test]
     fn type_no_such_member_message_includes_type_and_member() {
         let e = TypeError::NoSuchMember {
+            hint: None,
             type_name: "Array".into(),
             member: "frobnicate".into(),
             span: span(1, 1),

@@ -3,7 +3,7 @@
 use crate::ast::*;
 use crate::error::TypeError;
 use crate::span::Span;
-use crate::types::type_repr::Type;
+use crate::types::type_repr::{ClassType, Type};
 
 use super::{TypeChecker, TypeResult};
 
@@ -218,7 +218,9 @@ impl TypeChecker {
                 }
                 let suggestion = crate::error::suggest::best_match(name, class.member_names());
                 let declared = self.env.get_class(&class.name).and_then(|c| c.decl_span);
+                let hint = self.interface_member_hint(&class, name).map(Box::new);
                 Err(TypeError::NoSuchMember {
+                    hint,
                     type_name: class.name,
                     member: name.to_string(),
                     span,
@@ -255,6 +257,7 @@ impl TypeChecker {
                         return_type: Box::new(Type::Bool),
                     }),
                     _ => Err(TypeError::NoSuchMember {
+                        hint: None,
                         type_name: full.name.clone(),
                         member: name.to_string(),
                         span,
@@ -298,6 +301,7 @@ impl TypeChecker {
             // Functions support universal methods (nil?, blank?, present?, class, inspect)
             Type::Function { .. } => Ok(Type::Any),
             _ => Err(TypeError::NoSuchMember {
+                hint: None,
                 type_name: format!("{}", obj_type),
                 member: name.to_string(),
                 span,
@@ -305,6 +309,31 @@ impl TypeChecker {
                 declared: None,
             }),
         }
+    }
+
+    /// `name` is declared by an interface the class (or a superclass)
+    /// implements, but nothing defines it: say so, and how to declare it
+    /// without a body. The usual case is a base class calling a method its
+    /// subclasses are meant to provide.
+    fn interface_member_hint(&self, class: &ClassType, name: &str) -> Option<String> {
+        let mut current = Some(class);
+        while let Some(c) = current {
+            for interface in &c.interfaces {
+                let declares = self
+                    .env
+                    .get_interface(interface)
+                    .is_some_and(|i| i.methods.contains_key(name));
+                if declares {
+                    return Some(format!(
+                        "`{}` implements `{interface}`, which declares `{name}`: define it in `{}`, \
+                         or make `{}` an `abstract class` with `abstract def {name}`",
+                        class.name, class.name, class.name
+                    ));
+                }
+            }
+            current = c.superclass.as_deref();
+        }
+        None
     }
 
     /// Check array method access.
@@ -505,6 +534,7 @@ impl TypeChecker {
                 return_type: Box::new(Type::Bool),
             }),
             _ => Err(TypeError::NoSuchMember {
+                hint: None,
                 type_name: format!("{}[]", inner_type),
                 member: name.to_string(),
                 span,
@@ -660,6 +690,7 @@ impl TypeChecker {
                 return_type: Box::new(Type::Bool),
             }),
             _ => Err(TypeError::NoSuchMember {
+                hint: None,
                 type_name: format!("Hash({}, {})", key_type, value_type),
                 member: name.to_string(),
                 span,
@@ -824,6 +855,7 @@ impl TypeChecker {
                 return_type: Box::new(Type::Bool),
             }),
             _ => Err(TypeError::NoSuchMember {
+                hint: None,
                 type_name: "String".to_string(),
                 member: name.to_string(),
                 span,
@@ -1338,5 +1370,20 @@ mod interface_member_tests {
              print(outer(CachedRepo.new))\n"
         );
         check(&source).unwrap();
+    }
+
+    #[test]
+    fn a_member_an_implemented_interface_declares_points_to_abstract_def() {
+        let source = "interface Command\n  def check_parameters -> Bool\nend\n\
+            class Base implements Command\n  def run -> String\n    return \"no\" unless @check_parameters\n\n    \"ran\"\n  end\nend\n";
+        let err = check(source).unwrap_err();
+        assert!(
+            err.contains("Cannot access member 'check_parameters' on type 'Base' (`Base` implements `Command`, which declares `check_parameters`: define it in `Base`, or make `Base` an `abstract class` with `abstract def check_parameters`)"),
+            "{err}"
+        );
+        // The way it points to is accepted.
+        let fixed = "interface Command\n  def check_parameters -> Bool\nend\n\
+            abstract class Base implements Command\n  abstract def check_parameters -> Bool\n\n  def run -> String\n    return \"no\" unless @check_parameters\n\n    \"ran\"\n  end\nend\n";
+        check(fixed).unwrap();
     }
 }
