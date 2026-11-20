@@ -1283,6 +1283,38 @@ version cannot both append the next one: the second `save` throws
 `StaleRecord` (409 in a served app), its events not stored. Load the
 aggregate again and retry.
 
+### Snapshots
+
+A long stream costs its whole length on every `load`. Declare
+`static snapshot_every: Int = N` and `save` also writes a snapshot of the
+aggregate each time its version crosses a multiple of `N` — in the same
+transaction as the events — and `load` restores the snapshot, then replays
+only the events after it.
+
+```soli
+class Account < EventSourced
+  static snapshot_every: Int = 100
+  owner: String
+  balance: Int = 0
+  # …
+end
+```
+
+- The default snapshot keeps every field but `id`, `version` and the pending
+  events, and only plain values — `Int`, `Float`, `String`, `Bool`, `nil`,
+  arrays and hashes. A field holding anything else (a `DateTime`, a value
+  object) fails the `save` with its name; define `snapshot_state -> Hash` and
+  `restore_snapshot(state)` to keep it your way.
+- When the shape of the state changes, raise `static snapshot_version: Int`:
+  a snapshot written under another version is ignored (the whole stream is
+  replayed) and the next snapshot replaces it.
+- `aggregate.take_snapshot` writes one now, at the current version — to
+  backfill after turning snapshots on. It refuses while events are pending.
+
+Snapshots live in `soli_event_snapshots`, one row per stream (`stream`,
+`version`, `schema`, `state`). The events stay the source of truth: deleting
+the snapshots only makes the next loads replay everything.
+
 ## Aggregate Roots
 
 An aggregate is a root and the entities that only exist through it — an
@@ -1346,6 +1378,37 @@ Inside the module its classes are read unqualified (`Invoice` in a
 `Billing` service is `Billing::Invoice`). Relations default to models of the
 same context; `class_name:` names any other (`belongs_to("user", {"class_name": "User"})`). Two files that declare
 the same qualified class stop the boot, as two top-level classes do.
+
+### The context map
+
+`private class` keeps a context's internals to itself. Which contexts may
+depend on which is a decision of its own; write it in `soli.toml`, and
+`soli lint` holds the code to it (`smell/context-boundary`):
+
+```toml
+[contexts]
+Shipping = ["Billing:events"]     # only Billing's domain events
+Reporting = ["Billing", "Shipping"]
+Billing = []                      # nothing from another context
+```
+
+A context listed there may use, from another context, only what its entry
+names: `"Billing"` for its classes, `"Billing:events"` for its `DomainEvent`
+subclasses only. A use is a qualified name in the module's code
+(`Billing::Invoice`) or a string naming a class of another context
+(`{"class_name": "Billing::Invoice"}`, `is_a?("Billing::InvoicePaid")`):
+
+```
+app/models/shipping.sl:10:1 - [smell/context-boundary] `Shipping` uses
+`Billing::Invoice`, but soli.toml [contexts] lets it use only `Billing`'s domain events
+```
+
+A context not listed is not restricted, code outside every module
+(controllers, top-level services) is not a context, and without a
+`[contexts]` table nothing is checked. A name in the table that is not a
+top-level module of the application is reported, so a typo does not
+silently switch a rule off.
+
 
 ## Optimistic Locking
 

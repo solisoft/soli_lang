@@ -1522,6 +1522,35 @@ pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
         }
         total_issues += found.len();
 
+        // A bounded context reaching one `soli.toml` [contexts] does not let
+        // it use.
+        let crossings = solilang::serve::context_map::find_in_app(target);
+        files_with_issues += crossings.len();
+        total_issues += crossings.len();
+        for crossing in &crossings {
+            if format == OutputFormat::Json {
+                json_findings.push(serde_json::json!({
+                    "severity": "warning",
+                    "code": "smell/context-boundary",
+                    "name": null,
+                    "message": crossing.message,
+                    "file": crossing.file.display().to_string(),
+                    "line": crossing.line,
+                    "column": 1,
+                    "hint": null,
+                    "secondary": [],
+                    "notes": [],
+                }));
+                continue;
+            }
+            println!(
+                "{}:{}:1 - [smell/context-boundary] {}",
+                crossing.file.display(),
+                crossing.line,
+                crossing.message
+            );
+        }
+
         // A class missing a method of an interface it implements: the type
         // checker never runs on an app's files, so this is where it shows.
         let broken = solilang::serve::interface_contracts::find_in_app(target);

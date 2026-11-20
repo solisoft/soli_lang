@@ -4503,6 +4503,11 @@ otherwise (`belongs_to("user", {"class_name": "User"})`). Two files that
 declare the same qualified class still stop the boot. `new Billing::Invoice(…)`
 and `Billing::Invoice.new(…)` work on both engines.
 
+
+Which context may use which is written in `soli.toml` (`[contexts]
+Shipping = ["Billing:events"]`) and checked by `soli lint`
+(`smell/context-boundary`) — see [Models › The context map](/docs/database/domain-events#context-map).
+
 ### Importing Modules
 
 ```soli

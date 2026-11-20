@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+- **domain: snapshots for event-sourced aggregates.** `static snapshot_every:
+  Int = N` on an `EventSourced` class: `save` writes a snapshot (model
+  `SoliEventSnapshot`, one row per stream) each time the version crosses a
+  multiple of N, in the transaction of the events; `load` restores it and
+  replays only the later events (`where version > n`). `static
+  snapshot_version` invalidates snapshots written under another one;
+  `snapshot_state` / `restore_snapshot` override what is kept (the default
+  takes plain values and names a field it cannot keep); `take_snapshot`
+  backfills. New native `__class_static(object, name)` for the prelude.
+- **lint: `smell/context-boundary`.** `[contexts]` in `soli.toml` maps which
+  bounded context (top-level module) may use which — `"Billing"` its classes,
+  `"Billing:events"` its `DomainEvent` subclasses only — and `soli lint`
+  reports each qualified name or string naming a class that crosses it, plus
+  any name in the table that is not a module of the app. Off without the
+  table (`src/serve/context_map.rs`).
+
 ## [2.40.0] - 2026-11-20
 
 **Upgrading:** `soli check` is stricter — an override must fit the signature

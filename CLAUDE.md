@@ -391,6 +391,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `smell/unreachable-code` - no code after return
 - `smell/empty-catch` - catch blocks shouldn't be empty
 - `smell/duplicate-methods` - no duplicate methods (an instance `def x` and a `static def x` are distinct)
+- `smell/context-boundary` - code in a bounded context (top-level `module`) uses another context that `[contexts]` in `soli.toml` does not allow (`Shipping = ["Billing:events"]`); off without the table
 - `smell/unimplemented-interface` - a class of an app `implements` an interface but lacks one of its methods (or has it with an unusable arity), or extends an `abstract class` without defining an `abstract def`; `soli serve` refuses to boot on it
 - `smell/duplicate-global` - two files of an app declaring the same top-level class, module, `def` or `const` (the later one replaces the earlier); `soli serve` refuses to boot on it. Controllers' top-level `def`s (function-style actions) are exempt
 - `smell/deep-nesting` - nesting ≤4 levels

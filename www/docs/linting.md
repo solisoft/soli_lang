@@ -78,6 +78,7 @@ class MyClass end
 | `smell/unreachable-code` | code after `return` |
 | `smell/empty-catch` | a `catch` that swallows the error silently |
 | `smell/duplicate-methods` | two methods of one class sharing a name — an instance `def kind_label` and a `static def kind_label` are distinct and pass |
+| `smell/context-boundary` | code in a bounded context (a top-level `module`) uses another context that `[contexts]` in `soli.toml` does not let it use — a qualified name or a string naming its class; `"Billing:events"` allows only Billing's domain events. Without the table nothing is checked |
 | `smell/unimplemented-interface` | a class of an app `implements` an interface but lacks one of its methods, or has it with a parameter count the interface's calls cannot use; or it extends an `abstract class` without defining one of its `abstract def`s. Methods count from superclasses and included modules; a chain that leaves the app (`< Model`) is not judged. `soli serve` refuses to boot on it too |
 | `smell/duplicate-global` | two files of an app declaring the same top-level class, module, `def` or `const`: the one loaded last would replace the other, so `soli serve` refuses to boot on it too. Controllers' top-level `def`s (function-style actions) are exempt |
 | `smell/deep-nesting` | more than four levels |

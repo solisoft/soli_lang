@@ -4262,6 +4262,37 @@
       ]
     },
     {
+      "title": "snapshot_every",
+      "type": "dsl",
+      "category": "Database",
+      "path": "/docs/database/domain-events#snapshots",
+      "signature": "static snapshot_every: Int = 100",
+      "description": "Snapshot an event-sourced aggregate every N events so load replays only what came after; snapshot_version, snapshot_state, restore_snapshot, take_snapshot",
+      "keywords": [
+        "snapshot",
+        "event sourcing",
+        "EventSourced",
+        "replay",
+        "aggregate"
+      ]
+    },
+    {
+      "title": "[contexts] context map",
+      "type": "feature",
+      "category": "Database",
+      "path": "/docs/database/domain-events#context-map",
+      "signature": "[contexts] Shipping = [\"Billing:events\"]",
+      "description": "Which bounded context may use which, in soli.toml; soli lint reports crossings as smell/context-boundary",
+      "keywords": [
+        "bounded context",
+        "context map",
+        "ddd",
+        "module",
+        "lint",
+        "context-boundary"
+      ]
+    },
+    {
       "title": "Bounded contexts",
       "type": "guide",
       "category": "Language",

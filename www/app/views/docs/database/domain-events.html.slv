@@ -141,6 +141,29 @@ again = Account.load(account.id)   # replays the stream: owner "Acme", version 1
         Events live in one collection, <code>soli_event_store_records</code>, a row per event with <code>stream</code>, <code>version</code>, <code>event_type</code>, <code>event_version</code> and <code>data</code>. The row key is the stream and the version, so two writers that loaded the same version cannot both append the next one: the second <code>save</code> throws <code>StaleRecord</code> (409 in a served app), its events not stored. Load the aggregate again and retry.
     </p>
 
+    <h3 id="snapshots" class="text-xl font-semibold text-white mb-4">Snapshots</h3>
+    <p class="text-gray-400 mb-4">
+        A long stream costs its whole length on every <code>load</code>. Declare <code>static snapshot_every: Int = N</code> and <code>save</code> also writes a snapshot of the aggregate each time its version crosses a multiple of <code>N</code> &mdash; in the same transaction as the events &mdash; and <code>load</code> restores the snapshot, then replays only the events after it.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Account &lt; EventSourced
+  static snapshot_every: Int = 100
+  owner: String
+  balance: Int = 0
+  # …
+end</code></pre>
+        </div>
+    </div>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-4">
+        <li>The default snapshot keeps every field but <code>id</code>, <code>version</code> and the pending events, and only plain values &mdash; <code>Int</code>, <code>Float</code>, <code>String</code>, <code>Bool</code>, <code>nil</code>, arrays and hashes. A field holding anything else (a <code>DateTime</code>, a value object) fails the <code>save</code> with its name; define <code>snapshot_state -&gt; Hash</code> and <code>restore_snapshot(state)</code> to keep it your way.</li>
+        <li>When the shape of the state changes, raise <code>static snapshot_version: Int</code>: a snapshot written under another version is ignored (the whole stream is replayed) and the next snapshot replaces it.</li>
+        <li><code>aggregate.take_snapshot</code> writes one now, at the current version &mdash; to backfill after turning snapshots on. It refuses while events are pending.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">
+        Snapshots live in <code>soli_event_snapshots</code>, one row per stream (<code>stream</code>, <code>version</code>, <code>schema</code>, <code>state</code>). The events stay the source of truth: deleting the snapshots only makes the next loads replay everything.
+    </p>
+
     <h2 id="after-commit" class="text-2xl font-bold text-white mb-6">After the commit</h2>
     <p class="text-gray-400 mb-4">
         <code>after_commit { … }</code> (or <code>after_commit do … end</code>) runs a block once the data is durable: after the outermost commit inside a transaction, never if it rolls back, at once outside one. It is the place for side effects that must not happen for data that was never stored.
@@ -224,4 +247,23 @@ module Shipping
 end</code></pre>
         </div>
     </div>
+
+    <h3 id="context-map" class="text-xl font-semibold text-white mb-4">The context map</h3>
+    <p class="text-gray-400 mb-4">
+        <code>private class</code> keeps a context&rsquo;s internals to itself. Which contexts may depend on which is a decision of its own; write it in <code>soli.toml</code>, and <code>soli lint</code> holds the code to it (<code>smell/context-boundary</code>):
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-toml text-sm">[contexts]
+Shipping = ["Billing:events"]     # only Billing's domain events
+Reporting = ["Billing", "Shipping"]
+Billing = []                      # nothing from another context</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        A context listed there may use, from another context, only what its entry names: <code>"Billing"</code> for its classes, <code>"Billing:events"</code> for its <code>DomainEvent</code> subclasses only. A use is a qualified name in the module&rsquo;s code (<code>Billing::Invoice</code>) or a string naming a class of another context (<code>{"class_name": "Billing::Invoice"}</code>, <code>is_a?("Billing::InvoicePaid")</code>).
+    </p>
+    <p class="text-gray-400 mb-12">
+        A context not listed is not restricted, code outside every module (controllers, top-level services) is not a context, and without a <code>[contexts]</code> table nothing is checked. A name in the table that is not a top-level module of the application is reported, so a typo does not silently switch a rule off.
+    </p>
 </div>

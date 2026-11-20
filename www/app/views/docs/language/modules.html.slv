@@ -272,7 +272,7 @@ end
 Billing::Invoice.count              # 1
 Shipping::Invoice.create({"number": "S-1"})</code></pre>
                 <p class="text-gray-400 mt-3">A relation that leaves its context says so: <code>belongs_to("user", {"class_name": "User"})</code>. Two files declaring the same qualified class still stop the boot. A controller can live in its context too: <code>module Billing; class InvoicesController &lt; Controller</code> in <code>app/controllers/billing/invoices_controller.sl</code> answers <code>billing/invoices#index</code>, and reads the context&rsquo;s classes unqualified.</p>
-                <p class="text-gray-400 mt-3">A class that is an implementation detail of its context is a <code class="text-amber-400">private class</code>: code inside the module uses it, code outside gets an error (<code>Billing::Ledger is private to Billing</code>), with <code>::</code> or a dot. Other contexts reach it through its public classes and its events.</p>
+                <p class="text-gray-400 mt-3">A class that is an implementation detail of its context is a <code class="text-amber-400">private class</code>: code inside the module uses it, code outside gets an error (<code>Billing::Ledger is private to Billing</code>), with <code>::</code> or a dot. Other contexts reach it through its public classes and its events. Which context may use which is written in <code>soli.toml</code> and checked by <code>soli lint</code>: see <a href="/docs/database/domain-events#context-map" class="text-amber-400 hover:underline">the context map</a>.</p>
 <pre data-filename="app/models/billing/ledger.sl"><code class="language-soli text-sm">module Billing
   private class Ledger              # only Billing's code sees it
     static def balance -&gt; Int

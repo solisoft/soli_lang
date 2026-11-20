@@ -805,6 +805,94 @@ print("final:", Account.load(account.id).balance, Account.load(account.id).versi
     );
 }
 
+/// `static snapshot_every`: a snapshot every N events, in the transaction of
+/// the events; `load` starts from it and replays only what came after (a
+/// marker written into the stored state shows through); another
+/// `snapshot_version` makes it ignored; a field a snapshot cannot hold as it
+/// is fails the save with its name.
+#[test]
+fn an_event_sourced_aggregate_loads_from_its_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let lines = sqlite_script(
+        dir.path(),
+        r##"class Deposited < DomainEvent
+  cents: Int
+end
+
+class Account < EventSourced
+  static snapshot_every: Int = 2
+  balance: Int = 0
+  history: Array = []
+
+  def deposit(cents: Int)
+    @emit(Deposited.new(cents))
+  end
+
+  def apply(event)
+    @balance = @balance + event.cents
+    @history = @history + [event.cents]
+  end
+end
+
+account = Account.new
+account.deposit(10)
+account.save
+print("v1 snapshots:", SoliEventSnapshot.where({"stream": "Account:#{account.id}"}).count)
+account.deposit(20)
+account.save
+snap = SoliEventSnapshot.find_by("stream", "Account:#{account.id}")
+print("v2 snapshot:", snap.version, snap.state)
+account.deposit(5)
+account.save
+loaded = Account.load(account.id)
+print("loaded:", loaded.balance, loaded.version, loaded.history)
+
+# Prove the snapshot is used: change its state, load shows the marker.
+snap.update({"state": {"balance": 1000, "history": ["marker"]}})
+marked = Account.load(account.id)
+print("from snapshot:", marked.balance, marked.history, marked.version)
+
+# Another schema: the snapshot is ignored, everything replayed.
+snap.update({"schema": 99})
+print("schema mismatch:", Account.load(account.id).balance)
+
+# take_snapshot writes one at the current version.
+again = Account.load(account.id)
+print("take_snapshot:", again.take_snapshot, SoliEventSnapshot.find_by("stream", "Account:#{account.id}").version)
+
+class Bad < EventSourced
+  static snapshot_every: Int = 1
+  when_at: Any = nil
+  def touch
+    @emit(Deposited.new(1))
+  end
+  def apply(event)
+    @when_at = DateTime.utc
+  end
+end
+b = Bad.new
+b.touch
+try
+  b.save
+catch e
+  print("refused:", "#{e}")
+end
+"##,
+    );
+    assert_eq!(
+        lines,
+        vec![
+            "v1 snapshots: 0",
+            "v2 snapshot: 2 {balance => 30, history => [10, 20]}",
+            "loaded: 35 3 [10, 20, 5]",
+            "from snapshot: 1005 [marker, 5] 3",
+            "schema mismatch: 35",
+            "take_snapshot: true 3",
+            "refused: Bad: a snapshot cannot keep `when_at` (a DateTime) as it is — define snapshot_state and restore_snapshot",
+        ]
+    );
+}
+
 #[test]
 fn create_with_a_chosen_key_refuses_a_taken_one() {
     let dir = tempfile::tempdir().unwrap();

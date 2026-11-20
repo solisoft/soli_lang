@@ -887,6 +887,7 @@ Key rules:
 - `style/empty-block`, `style/line-length` (≤120 chars)
 - `style/redundant-model-import` — don't `import "../models/*.sl"` inside `app/controllers/`; models are auto-loaded
 - `smell/duplicate-global` — two files declaring the same top-level class, module, `def` or `const` (the boot refuses it too)
+- `smell/context-boundary` — with a `[contexts]` table in `soli.toml` (`Shipping = ["Billing:events"]`), code in one context (a top-level `module`) using another it is not allowed to
 - `smell/unimplemented-interface` — a class missing a method of an interface it implements, or of an `abstract class` it extends (the boot refuses it too)
 - `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`, `smell/dangerous-server-builtin` (flags `db_query_raw` / `Trusted.*` / `System.shell` / backticks in `app/controllers/`, `app/middleware/`, `app/views/`)
 - `smell/deep-nesting` (≤4 levels)

@@ -590,6 +590,24 @@ fn event_version(class: &Class) -> i64 {
     class.superclass.as_deref().map(event_version).unwrap_or(1)
 }
 
+/// `__class_static(object, name)`: the static field `name` of `object`'s
+/// class or a superclass, `nil` when none declares it. Lets the
+/// `EventSourced` prelude read `static snapshot_every` from an instance.
+pub fn class_static_native(args: &[Value]) -> Result<Value, String> {
+    let (Some(Value::Instance(inst)), Some(Value::String(name))) = (args.first(), args.get(1))
+    else {
+        return Err("__class_static(object, name)".to_string());
+    };
+    let mut current = Some(inst.borrow().class.clone());
+    while let Some(class) = current {
+        if let Some(value) = class.static_fields.borrow().get(name.as_str()) {
+            return Ok(value.clone());
+        }
+        current = class.superclass.clone();
+    }
+    Ok(Value::Null)
+}
+
 /// Call a tree-walker function with positional arguments.
 fn call_function(func: &Function, args: Vec<Value>) -> Result<Value, RuntimeError> {
     let mut env = Environment::for_call(func.closure.clone());
@@ -616,6 +634,11 @@ pub const EVENT_SOURCED_PRELUDE: &str = r##"
 class SoliEventStoreRecord < Model
 end
 
+# One row per stream: the aggregate's state at `version`, so `load` replays
+# only what came after. Written by `save` every `snapshot_every` events.
+class SoliEventSnapshot < Model
+end
+
 class EventSourced
   id: Any = nil
   version: Int = 0
@@ -632,6 +655,42 @@ class EventSourced
     @pending_events = []
     @__replay
     self
+  end
+
+  # The state a snapshot keeps: every field but the bookkeeping (`id`,
+  # `version`, the pending events). The default takes plain values only —
+  # Int, Float, String, Bool, nil, Array, Hash; a class holding anything
+  # else defines `snapshot_state` and `restore_snapshot` itself.
+  def snapshot_state -> Hash
+    state = {}
+    self.instance_variables.each do |field|
+      name = field.replace("@", "")
+      next if ["id", "version", "pending_events"].includes?(name)
+
+      value = self.instance_variable_get(name)
+      kind = type(value)
+      unless ["int", "float", "string", "bool", "null", "array", "hash"].includes?(kind)
+        throw "#{self.class}: a snapshot cannot keep `#{name}` (a #{kind}) as it is — define snapshot_state and restore_snapshot"
+      end
+      state[name] = value
+    end
+    state
+  end
+
+  def restore_snapshot(state)
+    state.each do |name, value|
+      self.instance_variable_set(name, value)
+    end
+  end
+
+  # Write a snapshot now, at the current version (a backfill, or after
+  # turning `snapshot_every` on). Refused with unsaved events pending.
+  def take_snapshot
+    throw "#{@__stream}: save the pending events before taking a snapshot" if (@pending_events ?? []).length > 0
+    return false if @version == 0
+
+    @__write_snapshot
+    true
   end
 
   def apply(event)
@@ -664,6 +723,7 @@ class EventSourced
           @__refuse(record._errors, loaded_version) if record._errors
           publish(event)
         end
+        @__snapshot_if_due(loaded_version)
       end
     catch StaleRecord error
       @version = loaded_version
@@ -697,8 +757,53 @@ class EventSourced
     "#{self.class}:#{@id}"
   end
 
+  # `static snapshot_every: Int = 100`: a snapshot each time the version
+  # crosses a multiple of it, written in the transaction of the events.
+  def __snapshot_if_due(from_version)
+    every = __class_static(self, "snapshot_every") ?? 0
+    return nil if every <= 0
+    return nil if from_version / every == @version / every
+
+    @__write_snapshot
+  end
+
+  def __write_snapshot
+    attributes = {
+      "stream": @__stream,
+      "version": @version,
+      "schema": __class_static(self, "snapshot_version") ?? 1,
+      "state": @snapshot_state
+    }
+    existing = SoliEventSnapshot.find_by("stream", @__stream)
+    if existing.nil?
+      SoliEventSnapshot.create(attributes)
+    else
+      existing.update(attributes)
+    end
+  end
+
+  # The snapshot's version, its state restored — or 0 when there is none,
+  # snapshots are off, or it was written under another `snapshot_version`
+  # (the state's shape changed: replay everything, the next save writes a
+  # fresh one).
+  def __restore_snapshot -> Int
+    every = __class_static(self, "snapshot_every") ?? 0
+    return 0 if every <= 0
+
+    snapshot = SoliEventSnapshot.find_by("stream", @__stream)
+    return 0 if snapshot.nil?
+    return 0 unless snapshot.schema == (__class_static(self, "snapshot_version") ?? 1)
+
+    @restore_snapshot(snapshot.state)
+    @version = snapshot.version
+    snapshot.version
+  end
+
   def __replay
-    records = SoliEventStoreRecord.where({"stream": @__stream}).order("version", "asc").all
+    from = @__restore_snapshot
+    filter = {"stream": @__stream}
+    filter["version"] = {"gt": from} if from > 0
+    records = SoliEventStoreRecord.where(filter).order("version", "asc").all
     records.each do |record|
       event = __rebuild_event(record.event_type, record.data, record.event_version)
       @apply(event) unless event.nil?

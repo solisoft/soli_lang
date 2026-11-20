@@ -946,6 +946,14 @@ fn register_event_builtins(env: &mut Environment) {
         )),
     );
     env.define(
+        "__class_static".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__class_static",
+            Some(2),
+            crate::interpreter::events::class_static_native,
+        )),
+    );
+    env.define(
         "__event_version".to_string(),
         Value::NativeFunction(NativeFunction::new(
             "__event_version",

@@ -369,7 +369,7 @@ const PRELUDE_NAMES: &[&[&str]] = &[
         "detach_all_uploads",
         "AttachmentsController",
     ],
-    &["SoliEventStoreRecord", "EventSourced"],
+    &["SoliEventStoreRecord", "SoliEventSnapshot", "EventSourced"],
 ];
 
 /// Preludes the runtime evaluates as Soli source.
