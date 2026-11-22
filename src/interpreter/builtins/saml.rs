@@ -328,9 +328,23 @@ fn collect_ids(el: &Element, seen: &mut BTreeSet<String>) -> Result<(), String> 
 // ---------------------------------------------------------------------------
 
 /// What the caller holds a response to.
+/// One of the identity provider's signing certificates: its RSA public key
+/// and the period the certificate states it is valid for.
+struct IdpKey {
+    n: Vec<u8>,
+    e: Vec<u8>,
+    not_before: i64,
+    not_after: i64,
+}
+
 pub(crate) struct Expected {
-    /// RSA public keys `(n, e)` of the identity provider's signing certificates.
-    keys: Vec<(Vec<u8>, Vec<u8>)>,
+    /// The identity provider's signing certificates.
+    keys: Vec<IdpKey>,
+    /// Refuse a signature made with a certificate outside its validity
+    /// period. Off by default: SAML metadata treats a certificate as a key
+    /// container, and identity providers do sign with expired ones — the
+    /// result says so (`certificate_expired`) either way.
+    require_valid_certificate: bool,
     /// The service provider's entity id.
     audience: String,
     /// The assertion consumer service URL the response must be addressed to.
@@ -385,7 +399,7 @@ fn unix_now() -> i64 {
 /// The smallest RSA modulus a signing certificate may carry, in bits.
 const MIN_RSA_BITS: usize = 2048;
 
-fn certificate_key(text: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
+fn certificate_key(text: &str) -> Result<IdpKey, String> {
     let der = super::x509::to_der(&Value::String(text.into()))?;
     let cert = super::x509::parse_certificate(&der)?;
     let (n, e) = super::x509::rsa_public_key(&cert).map_err(|e| match e {
@@ -407,7 +421,13 @@ fn certificate_key(text: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
             bits, MIN_RSA_BITS
         ));
     }
-    Ok((n, e))
+    let validity = &cert.tbs_certificate.validity;
+    Ok(IdpKey {
+        n,
+        e,
+        not_before: validity.not_before.to_unix_duration().as_secs() as i64,
+        not_after: validity.not_after.to_unix_duration().as_secs() as i64,
+    })
 }
 
 impl Expected {
@@ -476,14 +496,27 @@ impl Expected {
                 MAX_CLOCK_SKEW
             ));
         }
+        // A clock that cannot be read answers 0, and at 0 nothing has expired:
+        // refuse rather than accept every assertion ever issued.
+        let now = match opt_int(obj, "now")? {
+            Some(now) => now,
+            None => match unix_now() {
+                0 => return Err(
+                    "the system clock cannot be read, so no assertion's validity can be checked"
+                        .to_string(),
+                ),
+                now => now,
+            },
+        };
         Ok(Expected {
             keys,
+            require_valid_certificate: opt_bool(obj, "require_valid_certificate")?,
             audience: req_str(obj, "audience")
                 .map_err(|e| format!("expected {} (the service provider's entity id)", e))?,
             acs_url: req_str(obj, "acs_url").map_err(|e| format!("expected {}", e))?,
             request_id,
             idp_entity_id,
-            now: opt_int(obj, "now")?.unwrap_or_else(unix_now),
+            now,
             clock_skew,
             allow_sha1: opt_bool(obj, "allow_sha1")?,
         })
@@ -587,12 +620,13 @@ fn decode_base64(text: &str, what: &str) -> Result<Vec<u8>, String> {
         .map_err(|_| format!("{} is not valid base64", what))
 }
 
-/// Verify `signature`, a direct child of `signed`, over `signed` itself.
-fn verify_signature(
+/// Verify `signature`, a direct child of `signed`, over `signed` itself, and
+/// return the certificate whose key made it.
+fn verify_signature<'e>(
     signed: &Scoped,
     signature: &Scoped,
-    expected: &Expected,
-) -> Result<(), String> {
+    expected: &'e Expected,
+) -> Result<&'e IdpKey, String> {
     let id = signed
         .attr("ID")
         .filter(|id| !id.is_empty())
@@ -670,15 +704,26 @@ fn verify_signature(
         &signature.only(DSIG_NS, "SignatureValue")?.text(),
         "SignatureValue",
     )?;
-    for (n, e) in &expected.keys {
+    for key in &expected.keys {
         if super::rsa_key::verify_pkcs1_v15_components(
-            n,
-            e,
+            &key.n,
+            &key.e,
             signed_bytes.as_bytes(),
             &signature_value,
             signature_hash,
         )? {
-            return Ok(());
+            if expected.require_valid_certificate
+                && !(key.not_before..=key.not_after).contains(&expected.now)
+            {
+                return Err(format!(
+                    "the identity provider's certificate is outside its validity period \
+                     ({} to {}): install its current certificate, or drop \
+                     require_valid_certificate",
+                    instant(key.not_before),
+                    instant(key.not_after)
+                ));
+            }
+            return Ok(key);
         }
     }
     Err(format!(
@@ -841,22 +886,17 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
     if response_signatures.len() > 1 || assertion_signatures.len() > 1 {
         return Err("an element carries more than one signature".to_string());
     }
-    let signed = match (response_signatures.first(), assertion_signatures.first()) {
+    // `key` is the certificate that signed what the claims are read from:
+    // the assertion's when it carries a signature, else the response's.
+    let (signed, key) = match (response_signatures.first(), assertion_signatures.first()) {
         (None, None) => {
             return Err("neither the response nor the assertion is signed".to_string());
         }
-        (Some(outer), None) => {
-            verify_signature(&response, outer, expected)?;
-            "response"
-        }
-        (None, Some(inner)) => {
-            verify_signature(&assertion, inner, expected)?;
-            "assertion"
-        }
+        (Some(outer), None) => ("response", verify_signature(&response, outer, expected)?),
+        (None, Some(inner)) => ("assertion", verify_signature(&assertion, inner, expected)?),
         (Some(outer), Some(inner)) => {
             verify_signature(&response, outer, expected)?;
-            verify_signature(&assertion, inner, expected)?;
-            "both"
+            ("both", verify_signature(&assertion, inner, expected)?)
         }
     };
 
@@ -938,6 +978,10 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
     Ok(json!({
         "name_id": name,
         "name_id_format": name_id.attr("Format"),
+        // What scopes a persistent or transient NameID: the same value under
+        // another qualifier is another principal.
+        "name_qualifier": name_id.attr("NameQualifier"),
+        "sp_name_qualifier": name_id.attr("SPNameQualifier"),
         "issuer": issuer,
         "attributes": attributes,
         "session_index": session_index,
@@ -949,6 +993,10 @@ pub(crate) fn verify_response(encoded: &str, expected: &Expected) -> Result<Json
         "in_response_to": expected.request_id,
         "expires_at": expires_at,
         "signed": signed,
+        // The signing certificate's own period. Not enforced unless
+        // `require_valid_certificate`: watch it, and renew before it lapses.
+        "certificate_expires_at": key.not_after,
+        "certificate_expired": expected.now > key.not_after,
     }))
 }
 
@@ -1245,6 +1293,15 @@ pub(crate) fn test_response(opts: &Json) -> Result<Json, String> {
         attributes = format!("<saml:AttributeStatement>{attributes}</saml:AttributeStatement>");
     }
     let session_index = opt_str(opts, "session_index")?.unwrap_or_else(new_id);
+    let mut qualifiers = String::new();
+    for (option, attribute) in [
+        ("name_qualifier", "NameQualifier"),
+        ("sp_name_qualifier", "SPNameQualifier"),
+    ] {
+        if let Some(value) = opt_str(opts, option)? {
+            qualifiers.push_str(&format!(" {attribute}=\"{}\"", escape(&value)));
+        }
+    }
 
     let mut xml = format!(
         "<samlp:Response xmlns:samlp=\"{SAMLP_NS}\" xmlns:saml=\"{SAML_NS}\" ID=\"{}\" \
@@ -1253,7 +1310,7 @@ pub(crate) fn test_response(opts: &Json) -> Result<Json, String> {
          <samlp:Status><samlp:StatusCode Value=\"{}\"/></samlp:Status>\
          <saml:Assertion ID=\"{}\" Version=\"2.0\" IssueInstant=\"{issued}\">\
          <saml:Issuer>{}</saml:Issuer>{ASSERTION_MARK}\
-         <saml:Subject><saml:NameID Format=\"{}\">{}</saml:NameID>\
+         <saml:Subject><saml:NameID Format=\"{}\"{qualifiers}>{}</saml:NameID>\
          <saml:SubjectConfirmation Method=\"{BEARER}\">\
          <saml:SubjectConfirmationData NotOnOrAfter=\"{expires}\" Recipient=\"{}\"{in_response_to}/>\
          </saml:SubjectConfirmation></saml:Subject>\
@@ -2080,5 +2137,53 @@ mod tests {
             Ok(_) => panic!("a 1024-bit key was accepted"),
             Err(error) => assert!(error.contains("1024 bits; at least 2048"), "got: {error}"),
         }
+    }
+
+    #[test]
+    fn the_signing_certificate_s_period_is_reported_and_enforced_on_request() {
+        let not_after = certificate_key(IDP_CERT).unwrap().not_after;
+        let late = not_after + 1_000;
+        let response = issue(json!({"now": late}));
+
+        // By default an expired certificate still verifies, and says so.
+        let lenient = expected(json!({"now": late + 10})).unwrap();
+        let assertion = verify_response(&response, &lenient).unwrap();
+        assert_eq!(assertion["certificate_expires_at"], json!(not_after));
+        assert_eq!(assertion["certificate_expired"], json!(true));
+
+        let strict =
+            expected(json!({"now": late + 10, "require_valid_certificate": true})).unwrap();
+        refused(
+            verify_response(&response, &strict),
+            "certificate is outside its validity period",
+        );
+
+        // Inside the period, the strict check passes and reports no expiry.
+        let fresh = verify_response(
+            &issue(json!({})),
+            &expected(json!({"require_valid_certificate": true})).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(fresh["certificate_expired"], json!(false));
+    }
+
+    #[test]
+    fn the_name_id_s_qualifiers_are_returned() {
+        let qualified = verify(&issue(json!({
+            "name_qualifier": "https://idp.test/metadata",
+            "sp_name_qualifier": "https://app.test/saml/metadata",
+        })))
+        .unwrap();
+        assert_eq!(
+            qualified["name_qualifier"],
+            json!("https://idp.test/metadata")
+        );
+        assert_eq!(
+            qualified["sp_name_qualifier"],
+            json!("https://app.test/saml/metadata")
+        );
+        let plain = verify(&issue(json!({}))).unwrap();
+        assert_eq!(plain["name_qualifier"], Json::Null);
+        assert_eq!(plain["sp_name_qualifier"], Json::Null);
     }
 }

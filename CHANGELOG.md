@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Security
+- **saml: `Saml.verify_response` reports the signing certificate's period and
+  the NameID's qualifiers, and fails on an unreadable clock.** The result
+  gains `certificate_expires_at` / `certificate_expired` (the certificate
+  whose key signed the claims; its validity was never read) and
+  `name_qualifier` / `sp_name_qualifier`. New `require_valid_certificate:
+  true` refuses a signature from a certificate outside its period — opt-in,
+  since SAML metadata treats certificates as key containers and IdPs do sign
+  with expired ones. A system clock answering 0 raised no error and made every
+  assertion look unexpired; it now fails the verification. From a fourth
+  read of the native verifier, which found nothing exploitable.
+
 ### Added
 - **domain: snapshots for event-sourced aggregates.** `static snapshot_every:
   Int = N` on an `EventSourced` class: `save` writes a snapshot (model

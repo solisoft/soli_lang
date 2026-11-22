@@ -249,6 +249,7 @@ request["xml"]   # the &lt;samlp:AuthnRequest&gt;</code></pre>
                 </thead>
                 <tbody class="divide-y divide-white/10 text-gray-400">
                     <tr><td class="py-3 px-4"><code>name_id</code>, <code>name_id_format</code></td><td class="py-3 px-4">The subject</td></tr>
+                    <tr><td class="py-3 px-4"><code>name_qualifier</code>, <code>sp_name_qualifier</code></td><td class="py-3 px-4">The NameID&rsquo;s <code>NameQualifier</code> / <code>SPNameQualifier</code> (<code>nil</code> when absent): what scopes a persistent or transient id &mdash; the same value under another qualifier is another principal</td></tr>
                     <tr><td class="py-3 px-4"><code>attributes</code></td><td class="py-3 px-4"><code>{name: [values]}</code> &mdash; always arrays</td></tr>
                     <tr><td class="py-3 px-4"><code>issuer</code></td><td class="py-3 px-4">The identity provider&rsquo;s entity id</td></tr>
                     <tr><td class="py-3 px-4"><code>session_index</code>, <code>session_expires_at</code></td><td class="py-3 px-4">The IdP session (<code>nil</code> when not stated; times are Unix seconds)</td></tr>
@@ -257,13 +258,14 @@ request["xml"]   # the &lt;samlp:AuthnRequest&gt;</code></pre>
                     <tr><td class="py-3 px-4"><code>response_id</code></td><td class="py-3 px-4">The response&rsquo;s id &mdash; <code>nil</code> when only the assertion is signed, since nothing vouches for it then</td></tr>
                     <tr><td class="py-3 px-4"><code>expires_at</code></td><td class="py-3 px-4">When the assertion stops being acceptable: the earlier of the conditions&rsquo; and the bearer confirmation&rsquo;s <code>NotOnOrAfter</code></td></tr>
                     <tr><td class="py-3 px-4"><code>signed</code></td><td class="py-3 px-4"><code>"assertion"</code>, <code>"response"</code> or <code>"both"</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>certificate_expires_at</code>, <code>certificate_expired</code></td><td class="py-3 px-4">The <code>notAfter</code> (Unix seconds) of the certificate whose key signed the claims, and whether it has passed &mdash; watch it and install the IdP&rsquo;s next certificate before it lapses</td></tr>
                 </tbody>
             </table>
         </div>
         <p class="text-gray-400 mb-4">
             Other <code>expected</code> keys: <code>allow_unsolicited</code>, <code>any_issuer</code> (skip the
             <code>Issuer</code> check when <code>idp_entity_id</code> is not given), <code>clock_skew</code>,
-            <code>allow_sha1</code> (SHA-1 signatures are refused otherwise), <code>now</code> (Unix seconds, for specs).
+            <code>allow_sha1</code> (SHA-1 signatures are refused otherwise), <code>require_valid_certificate</code> (refuse a signature made with a certificate outside its validity period &mdash; off by default, because SAML treats the certificate as a key container and identity providers do sign with expired ones; the result reports it either way), <code>now</code> (Unix seconds, for specs).
             Listing several certificates accepts any of them &mdash; that is how an IdP&rsquo;s certificate is rotated without
             downtime.
         </p>

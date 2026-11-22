@@ -299,6 +299,7 @@ assertion = Saml.verify_response(params["SAMLResponse"], {
 | Key | |
 |---|---|
 | `name_id`, `name_id_format` | the subject |
+| `name_qualifier`, `sp_name_qualifier` | the NameID's `NameQualifier` / `SPNameQualifier` (`nil` when absent): what scopes a persistent or transient id — the same value under another qualifier is another principal |
 | `attributes` | `{name: [values]}` — always arrays |
 | `issuer` | the identity provider's entity id |
 | `session_index`, `session_expires_at` | the IdP session (`nil` when not stated; times are Unix seconds) |
@@ -307,10 +308,15 @@ assertion = Saml.verify_response(params["SAMLResponse"], {
 | `response_id` | the response's id — `nil` when only the assertion is signed, since nothing vouches for it then |
 | `expires_at` | when the assertion stops being acceptable: the earlier of the conditions' and the bearer confirmation's `NotOnOrAfter` |
 | `signed` | `"assertion"`, `"response"` or `"both"` |
+| `certificate_expires_at`, `certificate_expired` | the `notAfter` (Unix seconds) of the certificate whose key signed the claims, and whether it has passed — watch it and install the IdP's next certificate before it lapses |
 
 Other `expected` keys: `allow_unsolicited`, `any_issuer` (skip the `Issuer`
 check when `idp_entity_id` is not given), `clock_skew`, `allow_sha1` (SHA-1
-signatures are refused otherwise), `now` (Unix seconds, for specs). Listing
+signatures are refused otherwise), `require_valid_certificate` (refuse a
+signature made with a certificate outside its validity period — off by
+default, because SAML treats the certificate as a key container and identity
+providers do sign with expired ones; the result reports it either way), `now`
+(Unix seconds, for specs). Listing
 several certificates accepts any of them — that is how an IdP's certificate is
 rotated without downtime.
 
