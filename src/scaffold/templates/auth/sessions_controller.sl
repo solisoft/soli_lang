@@ -115,9 +115,15 @@ class SessionsController < Controller
     user_id = session_get("user_id")
     # The remember-me token is its owner's to drop: not an administrator's
     # acting as them, nor a visitor's who only got as far as the password.
+    # Written without reading the account first, and not rescued: a read
+    # that failed would leave the token alive behind a logout that said it
+    # was done — a copy of the cookie would still sign in.
     if !user_id.blank? && auth_own_session?(req) && !current_user().nil?
-      user = User.find_by("_key", user_id) rescue nil
-      user&.forget_me
+      auth_written(User.where({"_key": user_id}).update_all({
+        "remember_token_digest": nil,
+        "remember_previous_digest": nil,
+        "remember_created_at": nil
+      }))
     end
     # Expire the remember-me cookie immediately.
     set_cookie("remember_token", "", {

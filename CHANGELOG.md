@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: logout drops the remember-me token with one write, unrescued.**
+  It read the account first and rescued that read: a database that did
+  not answer left the token alive behind a logout that said it was done.
+  **saml:** a take-over that stopped before its identity row was written
+  left an account nothing could enter (confirmed, single sign-on only, no
+  identity); the next sign-in links it. **orm:** `Model.find` with a key
+  the store cannot address (`/orders/abc` on an integer key) is a miss —
+  404 — again, not the 500 the previous entry made of it.
 - **orm: the last writes that answered a refusal as a value raise.**
   `Model.update(id, …)`, `Model.delete(id)` and `Model.transaction(sdbql)`
   returned an `"Error: …"` string — truthy — when the database refused.

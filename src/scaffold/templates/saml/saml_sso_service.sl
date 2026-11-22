@@ -402,7 +402,13 @@ class SamlSso
     # by an administrator and used since keeps what its user set.
     unconfirmed = !user.confirmed? && SamlSso.provision? && auth_require_confirmed_email() &&
       user.never_signed_in?
-    unless SamlSso.link_existing? || directory || unconfirmed
+    # A take-over that stopped half way — the account made single sign-on
+    # only, the identity row not written (the database, a blank NameID) —
+    # left an account nothing could enter: confirmed, so not taken over
+    # again; `sso_only`, so no password, link or provider. It is linked now.
+    half_taken = SamlSso.provision? && user.sso_only? &&
+      SamlIdentity.where({"user_id": user._key}).count == 0
+    unless SamlSso.link_existing? || directory || unconfirmed || half_taken
       if !user.confirmed?
         throw "#{email} has an unconfirmed account that may be in use: confirm or delete it, " +
           "or set SAML_LINK_EXISTING=on to link accounts by address"

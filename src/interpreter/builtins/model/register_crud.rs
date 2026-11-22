@@ -876,6 +876,12 @@ fn create_key_option(options: Option<&Value>) -> Result<Option<String>, String> 
     Ok(key)
 }
 
+/// Did the store refuse the key itself, before any read? `/orders/abc` on
+/// an integer key, a document key that normalizes to nothing.
+fn key_names_no_row(error: &str) -> bool {
+    error.contains("is not a number") || error.contains("invalid document key")
+}
+
 /// `Model.find(id)` outside the coalesced SoliDB path: the record, or the
 /// RecordNotFound error the request handler turns into a 404.
 fn find_by_key(
@@ -893,7 +899,14 @@ fn find_by_key(
         // A read that failed is not a row that is missing: answered with
         // RecordNotFound, a database that did not reply was a 404, and
         // `Post.find(id) rescue nil` took the row for gone.
-        Err(e) if !super::crud::document_already_gone(&e.to_string()) => Err(e.to_string()),
+        // (A key the store cannot address — not a number for an integer
+        // key, an empty or dotted document key — names no row: a miss.)
+        Err(e)
+            if !super::crud::document_already_gone(&e.to_string())
+                && !key_names_no_row(&e.to_string()) =>
+        {
+            Err(e.to_string())
+        }
         // Not found → raise with the RecordNotFound marker so the HTTP
         // request handler converts it into a 404 response. Callers that
         // want the "or null" shape should use find_by / first_by, or wrap
