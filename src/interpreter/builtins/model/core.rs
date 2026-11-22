@@ -56,7 +56,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_get_tx, json_to_value};
                 match exec_get_tx(&collection, &key) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => in_band_if_gone(e),
                 }
             }
         })),
@@ -75,7 +75,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_insert_tx, json_to_value};
                 match exec_insert_tx(&collection, None, doc) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => Err(e.to_string()),
                 }
             }
         })),
@@ -104,7 +104,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_update_tx, json_to_value};
                 match exec_update_tx(&collection, &key, doc) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => in_band_if_gone(e),
                 }
             }
         })),
@@ -128,7 +128,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_delete_tx, json_to_value};
                 match exec_delete_tx(&collection, &key) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => in_band_if_gone(e),
                 }
             }
         })),
@@ -143,7 +143,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::commit_transaction;
                 match commit_transaction() {
                     Ok(()) => Ok(Value::Bool(true)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => Err(e.to_string()),
                 }
             },
         )),
@@ -158,7 +158,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::rollback_transaction;
                 match rollback_transaction() {
                     Ok(()) => Ok(Value::Bool(true)),
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => Err(e.to_string()),
                 }
             },
         )),
@@ -1505,6 +1505,20 @@ pub(super) fn build_uploader_config_from_args(
         max_height,
         service,
     })
+}
+
+/// What a write that failed answers. A refusal raises — handed back as an
+/// "Error: …" string it was truthy, and code went on as if the write had
+/// happened. One answer stays in band, as it always was: the row is not
+/// there (a double submit, a record deleted meanwhile), which callers test
+/// for and the `dependent: "delete"` cascade skips.
+pub(crate) fn in_band_if_gone(error: impl ToString) -> Result<Value, String> {
+    let message = error.to_string();
+    if super::crud::document_already_gone(&message) {
+        Ok(Value::String(format!("Error: {}", message).into()))
+    } else {
+        Err(message)
+    }
 }
 
 /// Turn the query layer's in-band error value into a real error.

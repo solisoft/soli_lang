@@ -25,6 +25,9 @@ struct SqliteAsD1 {
     trips: Mutex<Vec<usize>>,
     /// Answer every `batch()` with an error, as D1 does when one statement fails.
     refuse_batches: AtomicBool,
+    /// Fail every statement whose SQL names this table, as D1 does for one
+    /// it cannot read.
+    unavailable_table: Mutex<Option<String>>,
 }
 
 impl SqliteAsD1 {
@@ -34,6 +37,7 @@ impl SqliteAsD1 {
             seen: Mutex::new(Vec::new()),
             trips: Mutex::new(Vec::new()),
             refuse_batches: AtomicBool::new(false),
+            unavailable_table: Mutex::new(None),
         }
     }
 }
@@ -72,6 +76,11 @@ impl SqliteAsD1 {
             .lock()
             .unwrap()
             .push((binding.to_string(), sql.to_string()));
+        if let Some(table) = self.unavailable_table.lock().unwrap().as_deref() {
+            if sql.contains(table) {
+                return Err(format!("D1_ERROR: {table} is unavailable"));
+            }
+        }
         // D1's own limit, so a statement this adapter builds too big fails here too.
         if params.len() > 100 {
             return Err(format!(
@@ -487,4 +496,55 @@ switch_tenant(nil)
     assert!(seen
         .iter()
         .any(|(b, sql)| b == "do://SITES/acme" && sql.contains("INSERT INTO \"do_notes\"")));
+}
+
+/// One read of a `grouped` block fails on D1 (its table cannot be read; the
+/// batch is refused, each statement then runs alone and that one fails). It
+/// is never taken for "no such row": read where nothing can raise, or not
+/// read at all while the reads beside it answer, it is raised by the block's
+/// end.
+#[test]
+fn a_read_that_fails_in_a_grouped_block_on_d1_is_not_read_as_nil() {
+    let _lock = registry_test_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let d1 = Arc::new(SqliteAsD1::new());
+    set_executor(d1.clone());
+    set_registry_for_tests(d1_registry("d1://DB"));
+    seed_fruit(&d1);
+    *d1.unavailable_table.lock().unwrap() = Some("crates".to_string());
+
+    let in_a_condition = run(&format!(
+        "{GROUPED_MODELS}\n{}",
+        r##"
+verdict = "unset"
+grouped(fn() {
+  ban = Crate.where({"label": "a"}).first
+  top = Fruit.order("views", "desc").first
+  verdict = ban ? "banned" : "nothing forbids it"
+})
+throw "decided: #{verdict}"
+"##
+    ));
+    let unread = run(&format!(
+        "{GROUPED_MODELS}\n{}",
+        r##"
+ban = nil
+top = nil
+grouped(fn() {
+  ban = Crate.where({"label": "a"}).first
+  top = Fruit.order("views", "desc").first
+  check("the read beside it", top.title, "banana")
+})
+throw "the block finished on a read that failed"
+"##
+    ));
+    clear_registry_override();
+    for (label, outcome) in [("in a condition", in_a_condition), ("unread", unread)] {
+        let error = outcome.expect_err("the script throws either way");
+        assert!(
+            error.contains("crates is unavailable"),
+            "{label}: the failed read was not raised: {error}"
+        );
+    }
 }

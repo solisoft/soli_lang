@@ -155,6 +155,12 @@ impl VmTemplate {
         let names = std::mem::take(&mut vm.globals);
         let args = self.bind(data, inherited, &names);
         vm.globals = names;
+        // A read that failed inside `grouped` and reaches the view unread is
+        // an error here, not the nil the page would be rendered on.
+        let args = args.map_err(|message| RuntimeError::General {
+            message,
+            span: Span::default(),
+        })?;
         self.run(vm, args)
     }
 
@@ -189,14 +195,19 @@ impl VmTemplate {
         data: &Value,
         inherited: Option<&Rc<RefCell<Instance>>>,
         names: &ahash::AHashMap<String, Value>,
-    ) -> Vec<Value> {
+    ) -> Result<Vec<Value>, String> {
         self.params
             .iter()
             .map(|name| {
-                data_value(data, name)
-                    .or_else(|| inherited.and_then(|controller| inherited_value(controller, name)))
-                    .or_else(|| names.get(name).cloned())
-                    .unwrap_or(Value::Null)
+                if let Some(value) = data_value(data, name)? {
+                    return Ok(value);
+                }
+                if let Some(controller) = inherited {
+                    if let Some(value) = inherited_value(controller, name)? {
+                        return Ok(value);
+                    }
+                }
+                Ok(names.get(name).cloned().unwrap_or(Value::Null))
             })
             .collect()
     }
@@ -242,37 +253,39 @@ impl VmTemplate {
 
 /// The value a view's bare `name` reads from its data: the key itself, or the
 /// whole hash for `locals`, as `core_eval::create_template_interpreter` binds.
-fn data_value(data: &Value, name: &str) -> Option<Value> {
+fn data_value(data: &Value, name: &str) -> Result<Option<Value>, String> {
     // `locals` is always a hash: the data, or an empty one when the data is
     // not a hash (a partial rendered with no locals).
     if name == "locals" {
-        return Some(match data {
+        return Ok(Some(match data {
             Value::Hash(_) => data.clone(),
             _ => Value::Hash(Rc::new(RefCell::new(
                 crate::interpreter::value::HashPairs::default(),
             ))),
-        });
+        }));
     }
     let Value::Hash(map) = data else {
-        return None;
+        return Ok(None);
     };
-    let value = hash_get_value(&map.borrow(), &Value::String(name.into())).cloned()?;
+    let Some(value) = hash_get_value(&map.borrow(), &Value::String(name.into())).cloned() else {
+        return Ok(None);
+    };
     // A controller `@ivar` set inside `grouped(fn() { ... })` arrives as a
-    // placeholder; the tree-walker resolves it on read, as this does on bind.
-    Some(match value {
-        Value::Deferred(_) => value.force_deferred(),
-        other => other,
-    })
+    // placeholder; the tree-walker resolves it on read, as this does on bind
+    // — and a read that failed is that failure, not nil.
+    value.force_checked().map(Some)
 }
 
 /// The controller's `@ivar` an include reads for `name` past its data, a
 /// `grouped {}` placeholder forced as [`data_value`] forces one.
-fn inherited_value(controller: &Rc<RefCell<Instance>>, name: &str) -> Option<Value> {
-    let value = inherited_field(&controller.borrow(), name)?;
-    Some(match value {
-        Value::Deferred(_) => value.force_deferred(),
-        other => other,
-    })
+fn inherited_value(
+    controller: &Rc<RefCell<Instance>>,
+    name: &str,
+) -> Result<Option<Value>, String> {
+    match inherited_field(&controller.borrow(), name) {
+        Some(value) => value.force_checked().map(Some),
+        None => Ok(None),
+    }
 }
 
 /// Whether the data has a key `name`, whatever its value: the tree-walker
@@ -944,7 +957,15 @@ pub fn render_view(
     view_vm.vm.template_content_before = None;
     let outcome = {
         let _cache = RenderingCache::set(cache);
-        compiled.run(&mut view_vm.vm, args)
+        // A read that failed inside `grouped` and reaches the view unread
+        // is an error here, not the nil the page would be rendered on.
+        match args {
+            Ok(args) => compiled.run(&mut view_vm.vm, args),
+            Err(message) => Err(RuntimeError::General {
+                message,
+                span: Span::default(),
+            }),
+        }
     };
     view_vm.vm.tree_walk_env = None;
     // What a failed render must take back: the tree-walker renders the view

@@ -199,7 +199,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     }
                     Ok(json_to_value(&result))
                 }
-                Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                Err(e) => in_band_if_gone(e),
             }
         })),
     );
@@ -249,7 +249,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     }
                     Ok(json_to_value(&result))
                 }
-                Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                Err(e) => in_band_if_gone(e),
             }
         })),
     );
@@ -357,7 +357,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     use super::crud::exec_transaction_sdbql;
                     match exec_transaction_sdbql(s) {
                         Ok(result) => Ok(json_to_value(&result)),
-                        Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                        Err(e) => Err(e.to_string()),
                     }
                 }
                 Some(Value::Function(_)) | Some(Value::VmClosure(_)) => {

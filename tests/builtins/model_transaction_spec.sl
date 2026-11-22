@@ -272,8 +272,10 @@ describe("Model.transaction") do
       assert_eq(TxAccount.find_by("name", "existing").balance, 50)
     end
 
-    test("a malformed statement comes back as an error string") do
-      assert_match(TxAccount.transaction("FOR a IN"), "^Error: Query failed")
+    test("a malformed statement raises") do
+      assert_raises("Query failed") do
+        TxAccount.transaction("FOR a IN")
+      end
     end
   end
 
