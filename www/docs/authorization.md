@@ -35,7 +35,14 @@ layer:
   in `app/models/user.sl`, off by default so the flow works before SMTP is
   configured). With it on, an unconfirmed account answers a sign-in like a
   wrong password (one message, `401`): a distinct "confirm your email" reply
-  appeared only once the password was right, which confirmed it.
+  appeared only once the password was right, which confirmed it. The link in
+  the email shows a page with a button, and only the button confirms (a
+  CSRF-checked `POST /confirm_email`): a mail scanner or a link preview that
+  fetches the URL confirms nothing, so an account someone else opened with an
+  address does not become "confirmed" — which is what provider and SAML
+  sign-ins link an account by. Completing a password reset confirms the
+  address too (the reset link proves the mailbox). Require confirmation
+  whenever sign-up is open alongside SAML or a provider sign-in.
 - **Account lockout**: failed attempts are counted with one atomic write
   (`increment`); a read, +1 and save let parallel guesses overwrite each
   other's count and slip past the lockout.

@@ -44,6 +44,16 @@ class OauthSessionsController < Controller
       )
     end
 
+    # End the session as `DELETE /logout` does: without forgetting the
+    # remember-me token, the next request restores the session from its
+    # cookie and the relying party's "sign in" finds the user still here.
+    current_user()&.forget_me
+    set_cookie("remember_token", "", {
+      "max_age": 0,
+      "http_only": true,
+      "same_site": "Lax",
+      "secure": true
+    })
     session_destroy()
 
     return redirect_external(destination) unless destination.blank?

@@ -30,6 +30,15 @@ class OauthDeviceController < Controller
     user = current_user()
     return redirect("/login") if user.nil?
 
+    # A grant is the account owner's to give, not an impersonating admin's.
+    if session_get("impersonator_id").to_s.present?
+      return this._enter_step("Stop impersonating before connecting a device.")
+    end
+    # A user code is short: guessing or denying other people's is throttled.
+    unless oidc_within_rate_limit(req, "user_code", OIDC_USER_CODE_ATTEMPTS_PER_IP)
+      return this._enter_step("Too many attempts. Wait a minute and try again.")
+    end
+
     code = params["user_code"].to_s
     return this._confirm_step(code) if params["approve"].to_s.blank?
 

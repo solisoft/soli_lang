@@ -159,7 +159,9 @@ the new one.
    is not confirmed, without a recent sign-in, or when the account signs in
    through single sign-on only;
 3. the account with the address the provider **verified**, linked from now on —
-   but never one that signs in through single sign-on only;
+   but never one that signs in through single sign-on only, and never one
+   already linked to another identity at this provider (the address was
+   given to someone else there);
 4. a new one, when sign-up is open: `AUTH_SIGNUP` applies as it does to
    `/signup` (`first_user` by default — the first account becomes the admin,
    then sign-up closes; `open`; `closed`). The account is confirmed and has no
@@ -170,6 +172,12 @@ LinkedIn, Apple or Discord address, a GitHub account without a verified primary
 one, a Microsoft token without `xms_edov` / `verified_primary_email`) still
 signs in through rule 1 — once it is linked — but never finds or creates an
 account by address.
+
+An identity with no subject (`sub` / `id`) is refused outright, and so is the
+sign-in when the identity cannot be stored. An address that is not plain ASCII
+is never matched to an account: lowercasing folds letters such as the Kelvin
+sign into ASCII ones, so a look-alike address a provider verified would open
+someone else's account.
 
 Rule 3 hands an existing account to whoever proves the address at the provider.
 If that account never confirmed its email, someone else may have created it in

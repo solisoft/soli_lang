@@ -1047,6 +1047,62 @@ fn a_provider_creates_no_account_when_sign_up_is_closed() {
     assert_eq!(Browser::new(&server).sign_in_with("gitlab").status, 401);
 }
 
+/// Who a provider sign-in may be matched to: an identity with no subject is
+/// nobody's; an address that only looks like an account's (a non-ASCII
+/// letter that lowercases to an ASCII one) matches no account; and an
+/// account already linked at the provider is not linked a second time because
+/// its address now belongs to someone else there.
+#[test]
+fn a_provider_identity_needs_a_subject_and_an_address_matches_one_owner() {
+    let dir = served_app();
+    let state = Arc::new(Mutex::new(Provider::default()));
+    let providers = start_providers(Arc::clone(&state));
+    let server = serve(dir.path(), providers, "open");
+    let set_profile = |profile: Json| state.lock().unwrap().profile = profile;
+
+    // No subject: refused, and no account is made.
+    set_profile(json!({"email": "ghost@example.com", "email_verified": true, "name": "Ghost"}));
+    let mut ghost = Browser::new(&server);
+    let refused = ghost.sign_in_with("gitlab");
+    assert_eq!(refused.status, 401, "{}", refused.body);
+    assert!(
+        refused.body.contains("did not say who signed in"),
+        "{}",
+        refused.body
+    );
+    assert_eq!(ghost.whoami(), "guest");
+
+    // Mike's account, linked to his GitLab identity.
+    set_profile(gitlab("gl-mike", "mike@example.com", true));
+    let mut mike = Browser::new(&server);
+    assert_eq!(mike.sign_in_with("gitlab").status, 302);
+    assert_eq!(mike.whoami(), "mike@example.com member From GitLab");
+
+    // The mailbox was given to someone else, with another subject: the
+    // address alone does not open Mike's account.
+    set_profile(gitlab("gl-newcomer", "mike@example.com", true));
+    let mut newcomer = Browser::new(&server);
+    let refused = newcomer.sign_in_with("gitlab");
+    assert_eq!(refused.status, 401, "{}", refused.body);
+    assert!(
+        refused
+            .body
+            .contains("already linked to another Gitlab account"),
+        "{}",
+        refused.body
+    );
+    assert_eq!(newcomer.whoami(), "guest");
+
+    // KELVIN SIGN for the k: lowercased it would read `mike@example.com`.
+    // It is matched to no account, and makes none of its own.
+    set_profile(gitlab("gl-lookalike", "mi\u{212a}e@example.com", true));
+    let mut lookalike = Browser::new(&server);
+    let refused = lookalike.sign_in_with("gitlab");
+    assert_eq!(refused.status, 401, "{}", refused.body);
+    assert_eq!(lookalike.whoami(), "guest");
+    assert_eq!(mike.whoami(), "mike@example.com member From GitLab");
+}
+
 /// An account that signs in through single sign-on only (`User#sso_only?`,
 /// `soli generate saml`) gets no provider: not by its verified address, not
 /// through an identity linked before. And a Microsoft identity stored under

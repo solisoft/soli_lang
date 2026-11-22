@@ -149,13 +149,20 @@ and matched exactly.
      their email attribute — otherwise an IdP user who sets someone's address
      would take that account. With no password at that point it becomes
      `sso_only`. An admin's is still refused.
-   - **An unconfirmed account** is linked even with linking off, as long as a
-     first sign-in may create accounts (`SAML_PROVISION`): otherwise whoever
-     registered the address first, without proving it, would keep it from its
-     owner for good. It loses every credential when it is linked
+   - **An unconfirmed account** is linked with linking off only where it
+     cannot have been used: when `auth_require_confirmed_email` is `true`
+     (nobody signs in to an unconfirmed account, so it is a placeholder
+     someone typed) and a first sign-in may create accounts
+     (`SAML_PROVISION`). It then loses every credential
      (`SamlSso.take_over_unconfirmed` calls `User#revoke_credentials`, which
-     the OAuth scaffold uses too) and becomes `sso_only`. An admin's is still
-     refused.
+     the OAuth scaffold uses too) and becomes `sso_only`. With the default —
+     unconfirmed accounts sign in — most real accounts are "unconfirmed", and
+     handing one to whoever the identity provider says has that address is the
+     takeover linking-off exists to prevent: the sign-in is refused, and the
+     log says to confirm or delete the account, or to require confirmation.
+     **Turn `auth_require_confirmed_email` on with SAML** if sign-up is open,
+     so that an address registered in wait does not block its owner. An
+     admin's account is refused either way.
 
 ### What `revoke_credentials` removes
 

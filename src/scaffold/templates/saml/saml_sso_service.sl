@@ -391,8 +391,18 @@ class SamlSso
     throw "#{email} is an admin: link that account by hand" if user.admin?
 
     directory = SamlSso.directory_link?(user, assertion)
-    unconfirmed = !user.confirmed? && SamlSso.provision?
+    # An unconfirmed account is taken over only where it cannot have been
+    # used: with `auth_require_confirmed_email` on, nobody signs in to one, so
+    # it is a placeholder someone typed. Where unconfirmed accounts do sign in
+    # (the default), "unconfirmed" is most real accounts — their owners never
+    # clicked the link — and handing one to whoever the identity provider says
+    # has that address is the takeover SAML_LINK_EXISTING=off exists to stop.
+    unconfirmed = !user.confirmed? && SamlSso.provision? && auth_require_confirmed_email()
     unless SamlSso.link_existing? || directory || unconfirmed
+      if !user.confirmed?
+        throw "#{email} has an unconfirmed account that may be in use: confirm or delete it, " +
+          "or make `auth_require_confirmed_email` true so an unconfirmed account cannot be used"
+      end
       throw "#{email} has an account, and SAML_LINK_EXISTING is not on"
     end
 
@@ -405,8 +415,10 @@ class SamlSso
       SamlSso.take_over_unconfirmed(user)
     elsif directory && user.password_digest.blank? && !user.sso_only?
       # A directory account with no password signs in through the identity
-      # provider from now on.
+      # provider from now on — and whatever session it had open (a magic
+      # link's, which has no expiry of its own) closes.
       user.sso_only = true
+      user.session_version = user.current_session_version + 1
       user.save
       throw "could not update #{email}" if user._errors
     end

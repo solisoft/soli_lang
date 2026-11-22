@@ -10,28 +10,34 @@ class ConfirmationsController < Controller
   }
 
   # GET /confirm_email?token=... — the link from the email
+  #
+  # Shows a page with a button; it confirms nothing. A GET from an email is
+  # followed by things that are not the owner — a mail-security scanner, a
+  # link preview — and a confirmed address is what the provider and SAML
+  # sign-ins link an account by: an account someone else opened with this
+  # address must not become "confirmed" because a robot fetched a URL. The
+  # button posts to `confirm`, which is where the address is confirmed.
   def show
     token = params["token"].to_s
-    user = token.blank? ? nil : User.find_by("confirmation_token_digest", Crypto.sha256(token))
-    # An expired link is indistinguishable from an invalid one to the visitor,
-    # which is right: both mean "ask for a fresh one".
-    if user.nil? || user.confirmation_token_expired?
-      return @_form(
-        "Confirm your email",
-        "",
-        "That confirmation link is invalid or was already used. Enter your email to get a fresh one."
-      )
-    end
+    return @_invalid if @_pending(token).nil?
+
+    @_page(
+      "Confirm your email",
+      "",
+      "",
+      token
+    )
+  end
+
+  # POST /confirm_email — the button on that page
+  def confirm
+    user = @_pending(params["token"].to_s)
+    return @_invalid if user.nil?
 
     user.confirm_email
-    # Confirm, but do not sign in.
-    #
-    # This is a GET reached from an email, so whoever (or whatever) follows the
-    # link gets the session: a corporate link scanner, a shared mailbox, or the
-    # colleague the message was forwarded to. Confirming the address from a link
-    # is fine; handing out a logged-in session from one is not. The visitor
-    # signs in normally, which is one form fill and proves they hold the
-    # password.
+    # Confirm, but do not sign in: whoever holds the link — a shared mailbox,
+    # the colleague the message was forwarded to — has not proved they hold
+    # the password. The visitor signs in normally.
     @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
   end
 
@@ -54,14 +60,41 @@ class ConfirmationsController < Controller
 
   private
 
+  # The account a confirmation token names, while the link is still good.
+  # An expired link is indistinguishable from an invalid one to the visitor,
+  # which is right: both mean "ask for a fresh one".
+  def _pending(token)
+    return nil if token.blank?
+
+    user = User.find_by("confirmation_token_digest", Crypto.sha256(token))
+    return nil if user.nil? || user.confirmation_token_expired?
+
+    user
+  end
+
+  def _invalid
+    @_form(
+      "Confirm your email",
+      "",
+      "That confirmation link is invalid or was already used. Enter your email to get a fresh one."
+    )
+  end
+
   # The confirmation page with a title, a notice and an error.
   def _form(title, notice, error)
+    @_page(title, notice, error, "")
+  end
+
+  # With a `token`, the page is the "confirm this address" button; without
+  # one, the "send me a fresh link" form.
+  def _page(title, notice, error, token)
     render(
       "confirmations/new",
       {
         "title": title,
         "notice": notice,
-        "error": error
+        "error": error,
+        "token": token
       }
     )
   end

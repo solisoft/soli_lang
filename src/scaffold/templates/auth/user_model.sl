@@ -228,6 +228,11 @@ class User < Model
     @remember_token_digest = nil
     @failed_attempts = 0
     @locked_at = nil
+    # The reset link went to the mailbox: whoever completes it holds the
+    # address, which is all a confirmation proves. Without this an owner who
+    # only ever reset their password stayed "unconfirmed", and their first
+    # provider sign-in treated the account as squatted and wiped it.
+    @confirmed_at = DateTime.utc.to_unix if @confirmed_at.nil?
     # Invalidate every session opened before this moment.
     #
     # Sessions are not indexed by user, so there is nothing to delete; instead

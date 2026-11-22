@@ -468,3 +468,109 @@ fn registrable_redirect_uris_are_loopback_only_over_http() {
         assert_eq!(answer, expected.to_string(), "{uri}");
     }
 }
+
+/// The fourth audit's fixes, read from what the generator writes: a logout
+/// forgets the remember-me token; a device user code names one request and a
+/// poll writes two fields, not the row; a revoked refresh-token family stays
+/// revoked for a token minted meanwhile; an access token dies with the
+/// session version and the family it was granted under; an impersonating
+/// admin grants nothing; the machine endpoints are throttled.
+#[test]
+fn the_fourth_audit_s_guards_are_in_the_generated_files() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    create_oidc_provider(dir.path().to_str().unwrap()).unwrap();
+    let read = |rel: &str| fs::read_to_string(dir.path().join(rel)).unwrap();
+    let has = |source: &str, needle: &str| {
+        assert!(source.contains(needle), "missing `{needle}` in:\n{source}")
+    };
+
+    let sessions = read("app/controllers/oauth_sessions_controller.sl");
+    has(&sessions, "current_user()&.forget_me");
+    has(&sessions, r#"set_cookie("remember_token", "", {"#);
+
+    let device = read("app/models/oauth_device_code.sl");
+    has(
+        &device,
+        "FILTER d._key == #{key} AND d.status == \"pending\"",
+    );
+    has(
+        &device,
+        "UPDATE d WITH { interval: #{slower}, last_polled_at: #{now} }",
+    );
+    has(&device, "UPDATE d WITH { last_polled_at: #{now} }");
+    assert!(
+        !device.contains("\n      row.update()") && !device.contains("\n    row.update()"),
+        "a poll writes the whole row:\n{device}"
+    );
+    has(&device, "throw \"could not issue a device code\"");
+    let migration = fs::read_dir(dir.path().join("db/migrations"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| fs::read_to_string(e.path()).unwrap())
+        .find(|source| source.contains("idx_oauth_device_user_code"))
+        .expect("no device-code migration");
+    let index = migration
+        .split("idx_oauth_device_user_code")
+        .nth(1)
+        .unwrap_or_default();
+    assert!(
+        index
+            .split(')')
+            .next()
+            .unwrap_or_default()
+            .contains(r#""unique": true"#),
+        "the user-code index is not unique:\n{migration}"
+    );
+
+    let refresh = read("app/models/oauth_refresh_token.sl");
+    has(&refresh, "OauthRevocation.revoke_family(chain_id, reason)");
+    has(&refresh, "if OauthRevocation.family_revoked?(chain_id)");
+    let marker = refresh
+        .find("OauthRevocation.revoke_family(chain_id, reason)")
+        .unwrap();
+    let rows = refresh
+        .find(r#"tokens = OauthRefreshToken.where({"chain_id": chain_id.to_s})"#)
+        .unwrap();
+    assert!(
+        marker < rows,
+        "the family marker must be written before the rows are read"
+    );
+    let revocation = read("app/models/oauth_revocation.sl");
+    has(&revocation, "OIDC_REFRESH_TOKEN_TTL");
+
+    let helper = read("app/services/oidc_helper.sl");
+    has(&helper, r#"OauthRevocation.family_revoked?(claims["cid"])"#);
+    has(&helper, "oidc_access_token_user_live?(claims)");
+    has(
+        &helper,
+        "user.current_session_version <= claims[\"sv\"].to_i",
+    );
+    has(&helper, "return false unless user.deactivated_at.nil?");
+    let tokens = read("app/controllers/oauth_tokens_controller.sl");
+    has(&tokens, r#""sv": (session_version ?? 0).to_i"#);
+    has(&tokens, r#""cid": chain_id.to_s"#);
+    assert_eq!(
+        tokens.matches("oidc_within_rate_limit(req,").count(),
+        4,
+        "token, revoke, device_authorization and introspect are throttled:\n{tokens}"
+    );
+
+    let authorize = read("app/controllers/oauth_authorizations_controller.sl");
+    assert_eq!(
+        authorize
+            .matches("return this._impersonating() if this._impersonating?()")
+            .count(),
+        2,
+        "{authorize}"
+    );
+    let device_controller = read("app/controllers/oauth_device_controller.sl");
+    has(
+        &device_controller,
+        r#"session_get("impersonator_id").to_s.present?"#,
+    );
+    has(
+        &device_controller,
+        r#"oidc_within_rate_limit(req, "user_code""#,
+    );
+}

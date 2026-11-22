@@ -74,6 +74,28 @@ password then, makes it `sso_only`. Deactivating a user here (`active: false`)
 is what ends their open sessions and tokens: `sso_only` only closes the ways
 in that bypass the identity provider.
 
+### Which accounts a directory can touch
+
+Only the ones it provisioned. An administrator, an account that signed up
+here, and another directory's account (`SCIM_TOKENS` names each directory, and
+an account remembers which one made it in `scim_directory`) are not there for
+it: not listed, not found by a filter, `404` on a read, a `PUT`, a `PATCH` or a
+`DELETE`, and never put in a group. So a leaked or over-eager token cannot move
+an administrator's address and then reset its password, deactivate the app's
+own accounts, or reach across tenants.
+
+A directory that finds no user under a `userName` creates one, and gets a
+`409` if a local account already has that address. To let it take such an
+account under its management instead — the way Okta and Entra match an
+existing user — set `SCIM_ADOPT_EXISTING=on`. Adopting an account **revokes
+what it could sign in with** (`User#revoke_credentials`: password, sessions,
+API tokens, passkeys, linked identities): whoever created it is not known to
+be the person the directory means. An administrator is never adopted.
+
+A write that cannot be saved — a `userName` that is another account's, an
+address the model refuses — answers `409` or `400`, never `200`: a directory
+that reads `200` records the change, a deactivation included, as made.
+
 Both shapes of `PATCH` are understood: Okta's, with no path and the attributes
 in the value (`{"op": "replace", "value": {"active": false}}`), and Entra's,
 with a path and — for `active` — the string `"False"`
@@ -89,7 +111,9 @@ whatever signed them in: a password, a provider, a link, an API token. Checking
 there rather than in each sign-in action covers them all. `active: true`
 restores the account; the sessions closed meanwhile stay closed.
 
-`DELETE` removes the account. To keep what it owns, change `destroy` in the
+`DELETE` removes the account, after revoking its credentials (a linked
+identity or an API token left behind would name an account that is gone). To
+keep what it owns, change `destroy` in the
 controller to deactivate instead — the comment there says how.
 
 ## Groups

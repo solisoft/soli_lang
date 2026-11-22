@@ -15,7 +15,7 @@ class OauthRefreshToken < Model
     token = Crypto.random_token()
     now = DateTime.utc().to_unix()
 
-    OauthRefreshToken.create({
+    record = OauthRefreshToken.create({
       "token_digest": Crypto.sha256(token),
       "chain_id": chain_id,
       "client_id": client_id,
@@ -29,6 +29,17 @@ class OauthRefreshToken < Model
       "access_jti": access_jti,
       "session_version": session_version ?? 0
     })
+    # The family was revoked while this token was being minted (a reuse was
+    # detected, the user disconnected the app, the client revoked): it is
+    # born revoked, and the access token issued with it is denylisted.
+    # `revoke_chain` writes its marker before it reads the rows, so a token
+    # it did not see always finds the marker here.
+    if OauthRevocation.family_revoked?(chain_id)
+      record.revoked_at = now
+      record.revoked_reason = "family_revoked"
+      record.update()
+      OauthRevocation.revoke(access_jti, "family_revoked")
+    end
 
     return token
   end
@@ -44,6 +55,8 @@ class OauthRefreshToken < Model
   static def revoke_chain(chain_id, reason)
     return 0 if chain_id.to_s.blank?
 
+    # The marker first, then the rows: see `issue`.
+    OauthRevocation.revoke_family(chain_id, reason)
     now = DateTime.utc().to_unix()
     tokens = OauthRefreshToken.where({"chain_id": chain_id.to_s})
     tokens.each do |token|

@@ -62,7 +62,8 @@ def up(db)
   db.create_index("oauth_revocations", "idx_oauth_revocations_jti", ["jti"], { "unique": true })
   db.create_index("oauth_device_codes", "idx_oauth_device_digest", ["device_code_digest"],
                   { "unique": true })
-  db.create_index("oauth_device_codes", "idx_oauth_device_user_code", ["user_code"], {})
+  db.create_index("oauth_device_codes", "idx_oauth_device_user_code", ["user_code"],
+                  { "unique": true })
 end
 
 def down(db)

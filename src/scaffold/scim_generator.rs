@@ -71,6 +71,8 @@ pub fn print_scim_success_message() {
     println!("  3. In the directory: base URL \x1b[36mAPP_BASE_URL/scim/v2\x1b[0m, bearer token");
     println!("     authentication, `userName` mapped to the email.");
     println!();
+    println!("  A directory reaches the accounts it provisioned, never an admin or a local");
+    println!("  account. \x1b[36mSCIM_ADOPT_EXISTING=on\x1b[0m lets it adopt one (its credentials are revoked).");
     println!("  A deactivated user is signed out and kept out by app/middleware/scim_active.sl.");
     println!("  Groups: read them with \x1b[36mScimGroup.names_for(user)\x1b[0m, or map them to roles in");
     println!("  \x1b[36mSCIM_GROUP_ROLES\x1b[0m (app/models/scim_group.sl). A directory never grants `admin`.");

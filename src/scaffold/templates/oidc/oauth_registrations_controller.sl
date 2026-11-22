@@ -19,6 +19,7 @@ class OauthRegistrationsController < Controller
     # Disabled means absent, not "forbidden": the endpoint should not advertise
     # itself to anyone who has not been given the token.
     return {"status": 404, "body": ""} if expected.blank?
+    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
 
     presented = oidc_bearer_token(req)
     if presented.blank? || !(Crypto.secure_compare(presented, expected))

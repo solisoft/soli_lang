@@ -12,6 +12,8 @@
 class OauthTokensController < Controller
   # POST /oauth/token
   def create
+    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
+
     grant_type = params["grant_type"].to_s
 
     auth = this._authenticate_client()
@@ -30,6 +32,8 @@ class OauthTokensController < Controller
   # Always answers 200, even for an unknown token: telling a caller whether a
   # token existed is an oracle, and the RFC requires success either way.
   def revoke
+    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
+
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
 
@@ -47,6 +51,8 @@ class OauthTokensController < Controller
   # device grant in its `grant_types`; public clients are fine, since a TV
   # cannot keep a secret.
   def device_authorization
+    return oidc_rate_limited() unless oidc_within_rate_limit(req, "device_start", OIDC_DEVICE_STARTS_PER_IP)
+
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
 
@@ -89,6 +95,8 @@ class OauthTokensController < Controller
   # must check tokens issued to other clients is registered by an admin with
   # `"introspect_any": true` (never through dynamic registration).
   def introspect
+    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
+
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
 
@@ -366,7 +374,15 @@ class OauthTokensController < Controller
   # mint refresh tokens that look newer than it.
   def _issue_tokens(client, user, scopes, chain_id, nonce, auth_time, session_version)
     jti = uuid_v4()
-    access_token = oidc_access_token(user["_key"], client.client_id, scopes, jti)
+    # `sv` and `cid` let the token be refused once the session version moves
+    # or its family is revoked (`oidc_verify_access_token`).
+    access_token = oidc_access_token(
+      user["_key"],
+      client.client_id,
+      scopes,
+      jti,
+      {"sv": (session_version ?? 0).to_i, "cid": chain_id.to_s}
+    )
 
     body = {
       "access_token": access_token,

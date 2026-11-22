@@ -36,6 +36,10 @@ class SamlController < Controller
 
     # New session id after a successful login defeats session fixation.
     session_regenerate()
+    # `session_regenerate` keeps the session's data. A sign-in is a new
+    # person: an impersonation left in the session would let this user's
+    # "stop impersonating" become the admin who started it.
+    session_delete("impersonator_id")
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)

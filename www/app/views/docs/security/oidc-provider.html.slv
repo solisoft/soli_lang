@@ -208,6 +208,30 @@ SOLI_OIDC_PUBLIC_KEY="$(cat new.pub.pem)"
         </p>
         <div class="space-y-4">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">An access token dies with what it was granted under</h4>
+                <p class="text-gray-400 text-sm">It carries the session version of its grant (<code>sv</code>) and its refresh-token family (<code>cid</code>), and <code>/oauth/userinfo</code> and <code>/oauth/introspect</code> refuse it once the user&rsquo;s sessions were ended (a password reset, a takeover, a SCIM deactivation), the account is gone or deactivated, or the family was revoked &mdash; a replayed code, a reused refresh token, <code>/oauth/revoke</code>. That reaches tokens issued without a refresh token too. A resource server verifying offline still sees it valid until <code>exp</code> (10 minutes): use introspection where immediate revocation matters.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">A revoked family stays revoked</h4>
+                <p class="text-gray-400 text-sm"><code>revoke_chain</code> records the family before it revokes its rows, and a refresh token minted while that happens is born revoked &mdash; a rotation in flight does not outlive the revocation.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">A logout ends the remembered session too</h4>
+                <p class="text-gray-400 text-sm"><code>/oauth/logout</code> forgets the remember-me token and expires its cookie, as <code>DELETE /logout</code> does; otherwise the next request restored the session and the relying party&rsquo;s &ldquo;sign in&rdquo; found the user still there.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">An impersonating admin grants nothing</h4>
+                <p class="text-gray-400 text-sm"><code>/oauth/authorize</code> and <code>/oauth/device</code> refuse while the session is an impersonation: the consent and the refresh token would outlive it, at a third party, in the user&rsquo;s name.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Device codes</h4>
+                <p class="text-gray-400 text-sm">A user code names one pending request (a unique index; a taken code is drawn again), the approval updates that request by its key, and a poll writes only its own two fields &mdash; it cannot put a decided request back to pending or un-consume one.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Throttled</h4>
+                <p class="text-gray-400 text-sm"><code>/oauth/token</code>, <code>/oauth/introspect</code>, <code>/oauth/revoke</code> and registration share <code>OIDC_REQUESTS_PER_IP</code> (300 a minute) per address &mdash; each verifies a client secret, an Argon2 hash, for anyone naming a client id; starting a device flow has <code>OIDC_DEVICE_STARTS_PER_IP</code> (30), and typing user codes <code>OIDC_USER_CODE_ATTEMPTS_PER_IP</code> (20). The constants are in <code>app/services/oidc_config.sl</code>.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-semibold text-white mb-2">Exact <code class="text-amber-300">redirect_uri</code> matching</h4>
                 <p class="text-gray-400 text-sm">Byte for byte against a registered URI &mdash; no prefix matching, no wildcards, no normalization. Anything looser lets an attacker who can register a lookalike path harvest authorization codes.</p>
             </div>

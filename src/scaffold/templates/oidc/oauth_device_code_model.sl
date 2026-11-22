@@ -14,26 +14,41 @@ class OauthDeviceCode < Model
 
   # Returns {device_code, user_code, expires_in, interval}. The device code is
   # shown to the device once; only its digest is persisted.
+  #
+  # A user code names one pending request, never two: the index on it is
+  # unique, and a code that is taken is drawn again. Two devices sharing a
+  # code would both be approved by the one person who typed it — and the
+  # other device may be a stranger's.
   static def issue(client_id, scopes)
     device_code = Crypto.random_token()
-    user_code = OauthDeviceCode.generate_user_code()
     now = DateTime.utc().to_unix()
-
-    OauthDeviceCode.create({
-      "device_code_digest": Crypto.sha256(device_code),
-      "user_code": OauthDeviceCode.normalize(user_code),
-      "client_id": client_id,
-      "scope": scopes.join(" "),
-      "status": "pending",
-      "user_key": nil,
-      "auth_time": nil,
-      "session_version": nil,
-      "interval": OIDC_DEVICE_INTERVAL,
-      "last_polled_at": 0,
-      "expires_at": now + OIDC_DEVICE_CODE_TTL,
-      "consumed_at": nil,
-      "refresh_chain_id": uuid_v4()
-    })
+    user_code = nil
+    attempts = 0
+    while user_code.nil? && attempts < 5
+      attempts = attempts + 1
+      candidate = OauthDeviceCode.generate_user_code()
+      normalized = OauthDeviceCode.normalize(candidate)
+      # An expired request frees its code.
+      stale = OauthDeviceCode.find_by("user_code", normalized)
+      stale.delete if !stale.nil? && stale["expires_at"] <= now
+      record = OauthDeviceCode.create({
+        "device_code_digest": Crypto.sha256(device_code),
+        "user_code": normalized,
+        "client_id": client_id,
+        "scope": scopes.join(" "),
+        "status": "pending",
+        "user_key": nil,
+        "auth_time": nil,
+        "session_version": nil,
+        "interval": OIDC_DEVICE_INTERVAL,
+        "last_polled_at": 0,
+        "expires_at": now + OIDC_DEVICE_CODE_TTL,
+        "consumed_at": nil,
+        "refresh_chain_id": uuid_v4()
+      })
+      user_code = candidate if (record._errors ?? []).length == 0
+    end
+    throw "could not issue a device code" if user_code.nil?
 
     return {
       "device_code": device_code,
@@ -88,12 +103,17 @@ class OauthDeviceCode < Model
   # Record the person's decision. Only a still-pending code can be decided, so
   # a second tab cannot flip an answer already given.
   static def decide(user_code, approved, user_key, auth_time, session_version = 0)
-    normalized = OauthDeviceCode.normalize(user_code)
+    # The one request the person was shown, by its key — not every row that
+    # happens to carry the code.
+    shown = OauthDeviceCode.find_by_user_code(user_code)
+    return nil if shown.nil?
+
+    key = shown["_key"]
     now = DateTime.utc().to_unix()
     status = approved ? "approved" : "denied"
     rows = @sdbql{
       FOR d IN oauth_device_codes
-        FILTER d.user_code == #{normalized} AND d.status == "pending" AND d.expires_at > #{now}
+        FILTER d._key == #{key} AND d.status == "pending" AND d.expires_at > #{now}
         UPDATE d WITH {
           status: #{status}, user_key: #{user_key}, auth_time: #{auth_time}, session_version: #{session_version}
         } IN oauth_device_codes
@@ -119,20 +139,31 @@ class OauthDeviceCode < Model
 
     # Polling faster than `interval` gets slow_down and a longer interval
     # (RFC 8628 §3.5): a client that ignores it cannot hammer the endpoint.
+    #
+    # Only these two fields are written. `row.update()` would write the whole
+    # row as it was read, and a poll that read it before the person answered
+    # — or before another poll consumed it — would put `pending` or an
+    # unconsumed row back: an approval undone, or tokens handed out twice.
+    digest = row["device_code_digest"]
     if now - row["last_polled_at"] < row["interval"]
-      row.interval = row["interval"] + 5
-      row.last_polled_at = now
-      row.update()
+      slower = row["interval"] + 5
+      @sdbql{
+        FOR d IN oauth_device_codes
+          FILTER d.device_code_digest == #{digest}
+          UPDATE d WITH { interval: #{slower}, last_polled_at: #{now} } IN oauth_device_codes
+      }
 
       return {"error": "slow_down"}
     end
-    row.last_polled_at = now
-    row.update()
+    @sdbql{
+      FOR d IN oauth_device_codes
+        FILTER d.device_code_digest == #{digest}
+        UPDATE d WITH { last_polled_at: #{now} } IN oauth_device_codes
+    }
 
     return {"error": "authorization_pending"} if row["status"] == "pending"
     return {"error": "access_denied"} if row["status"] == "denied"
 
-    digest = row["device_code_digest"]
     rows = @sdbql{
       FOR d IN oauth_device_codes
         FILTER d.device_code_digest == #{digest} AND d.status == "approved" AND d.consumed_at == null

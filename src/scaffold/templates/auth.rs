@@ -83,6 +83,7 @@ post("/password/reset", "passwords#create")
 get("/password/edit", "passwords#edit", name: "password_edit")
 post("/password/update", "passwords#update")
 get("/confirm_email", "confirmations#show", name: "confirm_email")
+post("/confirm_email", "confirmations#confirm")
 get("/confirmation/resend", "confirmations#new", name: "confirmation_resend")
 post("/confirmation/resend", "confirmations#create")
 "#;

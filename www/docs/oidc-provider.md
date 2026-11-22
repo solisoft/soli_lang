@@ -351,6 +351,41 @@ alone. This only works because tokens carry `kid`.
 These are the decisions worth knowing about, because several of them are places
 where a looser implementation would still appear to work.
 
+**An access token dies with what it was granted under.** It carries the
+session version of its grant (`sv`) and its refresh-token family (`cid`), and
+`/oauth/userinfo` and `/oauth/introspect` refuse it once the user's sessions
+were ended (a password reset, a takeover, a SCIM deactivation), the account is
+gone or deactivated, or the family was revoked — a replayed code, a reused
+refresh token, `/oauth/revoke`. That reaches tokens issued without a refresh
+token too. A resource server verifying offline still sees it valid until `exp`
+(10 minutes): use introspection where immediate revocation matters.
+
+**A revoked family stays revoked.** `revoke_chain` records the family before it
+revokes its rows, and a refresh token minted while that happens is born
+revoked — a rotation in flight does not outlive the revocation.
+
+**A logout ends the remembered session too.** `/oauth/logout` forgets the
+remember-me token and expires its cookie, as `DELETE /logout` does; otherwise
+the next request restored the session and the relying party's "sign in" found
+the user still there.
+
+**An impersonating admin grants nothing.** `/oauth/authorize` and
+`/oauth/device` refuse while the session is an impersonation
+(`--impersonation`): the consent and the refresh token would outlive it, at a
+third party, in the user's name.
+
+**Device codes.** A user code names one pending request (a unique index; a
+taken code is drawn again), the approval updates that request by its key, and
+a poll writes only its own two fields — it cannot put a decided request back
+to pending or un-consume one.
+
+**Throttled.** `/oauth/token`, `/oauth/introspect`, `/oauth/revoke` and
+registration share `OIDC_REQUESTS_PER_IP` (300 a minute) per address — each
+verifies a client secret, an Argon2 hash, for anyone naming a client id;
+starting a device flow has `OIDC_DEVICE_STARTS_PER_IP` (30), and typing user
+codes `OIDC_USER_CODE_ATTEMPTS_PER_IP` (20). The constants are in
+`app/services/oidc_config.sl`.
+
 **Exact `redirect_uri` matching.** Byte for byte against a registered URI — no
 prefix matching, no wildcards, no normalization. Anything looser lets an
 attacker who can register a lookalike path harvest authorization codes.

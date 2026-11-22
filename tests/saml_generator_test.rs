@@ -982,56 +982,97 @@ fn the_identities_migration_holds_one_identity_per_account_and_issuer() {
 }
 
 /// Whoever registered an address first, without proving it, does not keep
-/// it from its owner: with linking off, the first sign-in through the
-/// identity provider takes the unconfirmed account over (and drops the
-/// squatter's password and session) — as long as a first sign-in may create
+/// it from its owner — where an unconfirmed account cannot have been used.
+/// With `auth_require_confirmed_email` on nobody signs in to one, so with
+/// linking off the first sign-in through the identity provider takes it over
+/// (dropping the squatter's password), as long as a first sign-in may create
 /// accounts at all.
 #[test]
-fn an_unconfirmed_account_is_taken_over_with_linking_off() {
+fn an_unconfirmed_account_is_taken_over_only_where_it_cannot_have_been_used() {
+    let require_confirmation = |root: &Path| {
+        let model = root.join("app/models/user.sl");
+        let source = fs::read_to_string(&model).unwrap();
+        let on = source.replace(
+            "def auth_require_confirmed_email\n  false\nend",
+            "def auth_require_confirmed_email\n  true\nend",
+        );
+        assert_ne!(on, source, "auth_require_confirmed_email not found");
+        fs::write(model, on).unwrap();
+    };
+    let squat = |server: &Server| {
+        let mut squatter = Browser::new(server);
+        let origin = format!("http://127.0.0.1:{}", server.1);
+        squatter.request(
+            "POST",
+            "/signup",
+            Some(json!({"email": "hire@corp.test", "password": "correct horse battery"})),
+            &origin,
+        );
+        squatter
+    };
+    let assertion = json!({"name_id": "hire-at-idp", "attributes": {"email": "hire@corp.test"}});
+    let login = json!({"email": "hire@corp.test", "password": "correct horse battery"});
+
     let dir = served_app();
     let root = dir.path();
+    require_confirmation(root);
     let server = serve(root, "on");
-    let mut squatter = Browser::new(&server);
-    sign_up(&mut squatter, "hire@corp.test");
-    let account = squatter.whoami();
-
-    let mut hire = Browser::new(&server);
-    let id = hire.start("/saml/login");
-    let response = issue(
-        root,
-        &id,
-        json!({"name_id": "hire-at-idp", "attributes": {"email": "hire@corp.test"}}),
-    );
-    assert_eq!(hire.post_response(&response).status, 302);
-    assert_eq!(hire.whoami(), account, "not the same account");
+    let mut squatter = squat(&server);
     assert_eq!(
         squatter.whoami(),
         "guest",
-        "the squatter's session survived"
+        "an unconfirmed account signed in"
     );
-    let login = squatter.request(
-        "POST",
-        "/login",
-        Some(json!({"email": "hire@corp.test", "password": "correct horse battery"})),
-        &format!("http://127.0.0.1:{}", server.1),
+    let mut hire = Browser::new(&server);
+    let id = hire.start("/saml/login");
+    assert_eq!(
+        hire.post_response(&issue(root, &id, assertion.clone()))
+            .status,
+        302
     );
-    assert_eq!(login.status, 401, "the squatter's password still works");
+    assert!(hire.whoami().starts_with("hire@corp.test member"));
+    let origin = format!("http://127.0.0.1:{}", server.1);
+    let attempt = squatter.request("POST", "/login", Some(login.clone()), &origin);
+    assert_eq!(attempt.status, 401, "the squatter's password still works");
+    drop(server);
+
+    // The default: an unconfirmed account signs in, so it may be somebody's.
+    // The identity provider's word for an address does not hand it over —
+    // the account, its session and its password stay as they were.
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let mut owner = squat(&server);
+    let account = owner.whoami();
+    assert!(account.starts_with("hire@corp.test member"), "{account}");
+    let mut claimant = Browser::new(&server);
+    let id = claimant.start("/saml/login");
+    assert_eq!(
+        claimant
+            .post_response(&issue(root, &id, assertion.clone()))
+            .status,
+        401
+    );
+    assert_eq!(claimant.whoami(), "guest");
+    assert_eq!(owner.whoami(), account, "the account's session was closed");
+    let mut again = Browser::new(&server);
+    let origin = format!("http://127.0.0.1:{}", server.1);
+    assert_eq!(
+        again.request("POST", "/login", Some(login), &origin).status,
+        302,
+        "the account's password was revoked"
+    );
     drop(server);
 
     // Provisioning off: nobody new signs in, an unconfirmed account neither.
     let dir = served_app();
     let root = dir.path();
+    require_confirmation(root);
     let server = serve(root, "off");
-    let mut squatter = Browser::new(&server);
-    sign_up(&mut squatter, "hire@corp.test");
+    squat(&server);
     let mut hire = Browser::new(&server);
     let id = hire.start("/saml/login");
-    let response = issue(
-        root,
-        &id,
-        json!({"name_id": "hire-at-idp", "attributes": {"email": "hire@corp.test"}}),
-    );
-    assert_eq!(hire.post_response(&response).status, 401);
+    assert_eq!(hire.post_response(&issue(root, &id, assertion)).status, 401);
     assert_eq!(hire.whoami(), "guest");
 }
 

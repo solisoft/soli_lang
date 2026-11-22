@@ -126,6 +126,11 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
+    serve_with(root, &[])
+}
+
+/// `serve`, with more of the environment set (or a variable overridden).
+fn serve_with(root: &Path, extra: &[(&str, &str)]) -> Server {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
@@ -153,6 +158,9 @@ fn serve(root: &Path) -> Server {
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+    for (name, value) in extra {
+        command.env(name, value);
+    }
     let server = Server(command.spawn().expect("spawn soli serve"), port);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
@@ -309,6 +317,23 @@ fn served_app() -> tempfile::TempDir {
     .unwrap();
     let mut routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
     routes.push_str("get(\"/roles\", \"roles#index\")\n");
+    // A fixture, not part of the scaffold: marks an account as one the `okta`
+    // directory provisioned, which is what a directory account that later set
+    // a password looks like — and reads an account's address and password
+    // state back.
+    fs::write(
+        root.join("app/controllers/fixture_controller.sl"),
+        "class FixtureController < Controller\n  # GET /fixture/provisioned?email=\n  def provisioned\n    \
+         user = User.find_by(\"email\", params[\"email\"].to_s)\n    user.scim_provisioned_at = DateTime.utc.to_unix\n    \
+         user.scim_directory = \"okta\"\n    user.save\n    render_text(\"ok\")\n  end\n\n  \
+         # GET /fixture/account?email=\n  def account\n    user = User.find_by(\"email\", params[\"email\"].to_s)\n    \
+         return render_text(\"none\") if user.nil?\n\n    \
+         render_text(\"#{user.email} password=#{user.password_digest.present?} active=#{user.deactivated_at.nil?} \
+         directory=#{user.scim_directory.to_s} key=#{user._key}\")\n  end\nend\n",
+    )
+    .unwrap();
+    routes.push_str("get(\"/fixture/provisioned\", \"fixture#provisioned\")\n");
+    routes.push_str("get(\"/fixture/account\", \"fixture#account\")\n");
     fs::write(root.join("config/routes.sl"), routes).unwrap();
     let (ok, output) = soli(root, &["db:migrate", "up", "."]);
     assert!(ok, "db:migrate up:\n{output}");
@@ -539,7 +564,14 @@ fn a_deactivated_user_is_signed_out_and_kept_out() {
     script.bearer = Some(token);
     assert_eq!(script.whoami(), "grace@example.com member");
 
-    // The directory finds her and deactivates her.
+    // She is a directory account (one it provisioned, that later set a
+    // password): the directory finds her and deactivates her.
+    assert_eq!(
+        grace
+            .request("GET", "/fixture/provisioned?email=grace@example.com", None)
+            .1,
+        "ok"
+    );
     let (_, found) = scim(
         &server,
         "GET",
@@ -771,10 +803,9 @@ fn groups_give_roles_and_take_them_back_but_never_admin() {
     );
     let support_id = support["id"].as_str().unwrap().to_string();
     let all = roles(&server);
-    assert_eq!(
-        all["linus@example.com"],
-        json!(["admin", "Finance", "Support"])
-    );
+    // An administrator is out of the directory's reach: he keeps the group
+    // he was in before, and is not put in a new one.
+    assert_eq!(all["linus@example.com"], json!(["admin", "Finance"]));
     // Ada is in two mapped groups: the later one in the mapping wins.
     assert_eq!(
         all["ada@example.com"],
@@ -839,7 +870,7 @@ fn groups_give_roles_and_take_them_back_but_never_admin() {
     );
     let all = roles(&server);
     assert_eq!(all["grace@example.com"], json!(["member", "Owners"]));
-    assert_eq!(all["linus@example.com"], json!(["admin", "Helpdesk"]));
+    assert_eq!(all["linus@example.com"], json!(["admin"]));
 
     // A deleted user leaves its groups.
     let owners_id = owners["id"].as_str().unwrap();
@@ -853,5 +884,233 @@ fn groups_give_roles_and_take_them_back_but_never_admin() {
     assert_eq!(
         (page["totalResults"].clone(), page["itemsPerPage"].clone()),
         (json!(2), json!(1))
+    );
+}
+
+const OTHER_TOKEN: &str = "entra-token-0123456789abcdef0123456789";
+
+/// What `/fixture/account` says of an account, and its key.
+fn account(server: &Server, email: &str) -> (String, String) {
+    let text = ureq::get(&format!(
+        "http://127.0.0.1:{}/fixture/account?email={email}",
+        server.1
+    ))
+    .call()
+    .unwrap()
+    .into_string()
+    .unwrap();
+    let key = text
+        .rsplit("key=")
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let state = text.split(" key=").next().unwrap_or_default().to_string();
+    (state, key)
+}
+
+fn create_user(server: &Server, email: &str, token: &str) -> String {
+    let (status, user) = scim(
+        server,
+        "POST",
+        "/Users",
+        Some(json!({"schemas": [USER_SCHEMA], "userName": email, "active": true})),
+        token,
+    );
+    assert_eq!(status, 201, "{user}");
+    user["id"].as_str().unwrap().to_string()
+}
+
+fn find_count(server: &Server, email: &str, token: &str) -> Json {
+    scim(
+        server,
+        "GET",
+        &format!(
+            "/Users?filter={}",
+            urlencoding::encode(&format!("userName eq \"{email}\""))
+        ),
+        None,
+        token,
+    )
+    .1["totalResults"]
+        .clone()
+}
+
+/// A directory reaches the accounts it provisioned and no other: an
+/// administrator's address cannot be moved (then reset), a local account
+/// cannot be deactivated, deleted or given a group's role.
+#[test]
+fn a_directory_cannot_touch_an_admin_or_an_account_it_did_not_provision() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    for email in ["boss@example.com", "local@example.com"] {
+        let mut visitor = Client::browser(&server);
+        let signup = json!({"email": email, "password": "correct horse battery"});
+        assert_eq!(visitor.request("POST", "/signup", Some(signup)).0, 302);
+    }
+    fs::write(
+        dir.path().join("promote.sl"),
+        "user = User.find_by(\"email\", \"boss@example.com\")\nuser.role = \"admin\"\n\
+         user.scim_provisioned_at = 1\nuser.save\n",
+    )
+    .unwrap();
+    drop(server);
+    let (ok, output) = soli(dir.path(), &["db:seed", ".", "promote.sl"]);
+    assert!(ok, "{output}");
+    let server = serve(dir.path());
+
+    let ada = create_user(&server, "ada@example.com", TOKEN);
+    let (_, boss) = account(&server, "boss@example.com");
+    let (_, local) = account(&server, "local@example.com");
+
+    // Not found by name, not listed, and 404 by id — read or write.
+    assert_eq!(find_count(&server, "boss@example.com", TOKEN), json!(0));
+    assert_eq!(find_count(&server, "local@example.com", TOKEN), json!(0));
+    assert_eq!(find_count(&server, "ada@example.com", TOKEN), json!(1));
+    let (_, list) = scim(&server, "GET", "/Users", None, TOKEN);
+    assert_eq!(list["totalResults"], json!(1), "{list}");
+    let move_address = json!({"Operations": [
+        {"op": "replace", "path": "userName", "value": "attacker@evil.test"},
+        {"op": "replace", "path": "active", "value": false}
+    ]});
+    for target in [&boss, &local] {
+        let path = format!("/Users/{target}");
+        assert_eq!(scim(&server, "GET", &path, None, TOKEN).0, 404);
+        assert_eq!(
+            scim(&server, "PATCH", &path, Some(move_address.clone()), TOKEN).0,
+            404
+        );
+        let put = json!({"userName": "attacker@evil.test", "active": false});
+        assert_eq!(scim(&server, "PUT", &path, Some(put), TOKEN).0, 404);
+        assert_eq!(scim(&server, "DELETE", &path, None, TOKEN).0, 404);
+    }
+    assert_eq!(
+        account(&server, "boss@example.com").0,
+        "boss@example.com password=true active=true directory="
+    );
+    assert_eq!(
+        account(&server, "local@example.com").0,
+        "local@example.com password=true active=true directory="
+    );
+    assert_eq!(account(&server, "attacker@evil.test").0, "none");
+
+    // A group's role goes to the directory's own account only.
+    scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance", "members": [
+            {"value": boss}, {"value": local}, {"value": ada}
+        ]})),
+        TOKEN,
+    );
+    let all = roles(&server);
+    assert_eq!(all["boss@example.com"], json!(["admin"]));
+    assert_eq!(all["local@example.com"], json!(["member"]));
+    assert_eq!(all["ada@example.com"], json!(["accountant", "Finance"]));
+
+    // A patch that cannot be saved says so: the deactivation riding with a
+    // userName that is another account's is not reported as done.
+    create_user(&server, "linus@example.com", TOKEN);
+    let collide = json!({"Operations": [
+        {"op": "replace", "path": "active", "value": false},
+        {"op": "replace", "path": "userName", "value": "linus@example.com"}
+    ]});
+    let (status, error) = scim(
+        &server,
+        "PATCH",
+        &format!("/Users/{ada}"),
+        Some(collide),
+        TOKEN,
+    );
+    assert_eq!(status, 409, "{error}");
+    assert_eq!(
+        account(&server, "ada@example.com").0,
+        "ada@example.com password=false active=true directory=okta"
+    );
+
+    // The attribute's full name is the attribute.
+    let qualified = json!({"Operations": [{
+        "op": "replace",
+        "path": "urn:ietf:params:scim:schemas:core:2.0:User:active",
+        "value": false
+    }]});
+    let (status, user) = scim(
+        &server,
+        "PATCH",
+        &format!("/Users/{ada}"),
+        Some(qualified),
+        TOKEN,
+    );
+    assert_eq!((status, user["active"].clone()), (200, json!(false)));
+}
+
+/// `SCIM_ADOPT_EXISTING=on`: an existing account is found and managed, and
+/// what it could sign in with is revoked — never an administrator.
+#[test]
+fn adopting_an_existing_account_revokes_its_credentials() {
+    let dir = served_app();
+    let server = serve_with(dir.path(), &[("SCIM_ADOPT_EXISTING", "on")]);
+    let mut squatter = Client::browser(&server);
+    let signup = json!({"email": "newhire@example.com", "password": "correct horse battery"});
+    assert_eq!(
+        squatter.request("POST", "/signup", Some(signup.clone())).0,
+        302
+    );
+    assert_eq!(squatter.whoami(), "newhire@example.com member");
+
+    assert_eq!(find_count(&server, "newhire@example.com", TOKEN), json!(1));
+    let (_, key) = account(&server, "newhire@example.com");
+    let adopt = json!({"Operations": [{"op": "replace", "path": "externalId", "value": "00u1"}]});
+    let (status, user) = scim(
+        &server,
+        "PATCH",
+        &format!("/Users/{key}"),
+        Some(adopt),
+        TOKEN,
+    );
+    assert_eq!(status, 200, "{user}");
+
+    // The session is closed and the password is gone.
+    assert_eq!(squatter.whoami(), "guest");
+    assert_eq!(
+        account(&server, "newhire@example.com").0,
+        "newhire@example.com password=false active=true directory=okta"
+    );
+    let mut again = Client::browser(&server);
+    again.request("POST", "/login", Some(signup));
+    assert_eq!(again.whoami(), "guest");
+}
+
+/// With several directories, each sees and writes its own accounts.
+#[test]
+fn a_directory_cannot_reach_another_directory_s_accounts() {
+    let dir = served_app();
+    let tokens = format!("okta={TOKEN},entra={OTHER_TOKEN}");
+    let server = serve_with(dir.path(), &[("SCIM_TOKENS", &tokens)]);
+    let ada = create_user(&server, "ada@example.com", TOKEN);
+    create_user(&server, "grace@example.com", OTHER_TOKEN);
+
+    assert_eq!(
+        find_count(&server, "ada@example.com", OTHER_TOKEN),
+        json!(0)
+    );
+    assert_eq!(
+        find_count(&server, "grace@example.com", OTHER_TOKEN),
+        json!(1)
+    );
+    let (_, list) = scim(&server, "GET", "/Users", None, OTHER_TOKEN);
+    assert_eq!(list["totalResults"], json!(1), "{list}");
+    let off = json!({"Operations": [{"op": "replace", "path": "active", "value": false}]});
+    let path = format!("/Users/{ada}");
+    assert_eq!(
+        scim(&server, "PATCH", &path, Some(off.clone()), OTHER_TOKEN).0,
+        404
+    );
+    assert_eq!(scim(&server, "DELETE", &path, None, OTHER_TOKEN).0, 404);
+    assert_eq!(scim(&server, "PATCH", &path, Some(off), TOKEN).0, 200);
+    assert_eq!(
+        account(&server, "ada@example.com").0,
+        "ada@example.com password=false active=false directory=okta"
     );
 }

@@ -164,7 +164,15 @@ class OauthSso
   # for none: such an identity signs in only once it is linked. Raises when
   # there is no account to give.
   static def find_or_create_user(provider, uid, email, name = nil, raw = nil)
-    email = email.to_s.trim.downcase
+    # No subject, no identity. A provider that sent none would otherwise give
+    # every such sign-in the same key — `"<tenant>:null"` — and the same
+    # account, or slip past the lookup and be matched by address alone.
+    uid = uid.to_s.trim
+    if uid.blank? || uid == "null" || uid.ends_with?(":") || uid.ends_with?(":null")
+      OauthSso.refuse("#{provider.capitalize} did not say who signed in")
+    end
+
+    email = OauthSso.matchable_email(email)
     identity = OauthIdentity.find_for(provider, uid)
     linking = session_get("oauth_link_user").to_s
 
@@ -221,15 +229,38 @@ class OauthSso
     # identity provider does not control — and keep it once removed there.
     OauthSso.refuse("this account signs in through single sign-on only") if OauthSso.sso_only?(user)
 
+    # Linked already to someone else at this provider: the address now names
+    # another person there (a reused mailbox), not the account's owner.
+    if OauthIdentity.where({"user_id": user._key, "provider": provider}).count > 0
+      OauthSso.refuse("this account is already linked to another #{provider.capitalize} account")
+    end
+
     OauthSso.take_over_unconfirmed(user) unless user.confirmed?
     OauthSso.link(user, provider, uid, email, raw, true)
     user
   end
 
+  # The address to match an account by, lowercased — or "" when it is not
+  # plain ASCII. Lowercasing folds letters such as the Kelvin sign into ASCII
+  # ones, so a look-alike address a provider verified would match someone
+  # else's account; such an identity signs in only once it is linked.
+  static def matchable_email(email)
+    address = email.to_s.trim
+    return "" if Regex.matches("[^\\x00-\\x7f]", address)
+
+    address.downcase
+  end
+
   # Attach the identity; with `notify`, tell the account's owner a new way in
   # was added — the one sign that someone else did it.
   static def link(user, provider, uid, email, raw, notify)
-    OauthIdentity.link!(user._key, provider, uid, email.blank? ? nil : email, raw)
+    identity = OauthIdentity.link!(user._key, provider, uid, email.blank? ? nil : email, raw)
+    # A link that was not stored is not a link: do not sign in on it, and do
+    # not tell the owner one was added.
+    if identity.nil? || (identity._errors ?? []).length > 0
+      Logger.warn("OAuth: could not link #{provider} #{uid} to #{user._key}: #{identity&._errors}")
+      OauthSso.refuse("could not link the #{provider.capitalize} account")
+    end
     return unless notify
 
     try

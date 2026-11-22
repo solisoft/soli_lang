@@ -139,6 +139,19 @@ def oidc_access_token(user_key, client_id, scopes, jti, extra_claims = {})
   jwt_sign(claims, "", options)
 end
 
+# Is this address still within `limit` calls per window for `bucket`? Each
+# bucket has its own budget, apart from the sign-in throttle's.
+def oidc_within_rate_limit(req, bucket, limit)
+  RateLimiter("oidc_#{bucket}:" + client_ip(req).to_s, limit, OIDC_RATE_WINDOW_SECONDS).allowed()
+end
+
+# The 429 the machine endpoints answer over budget.
+def oidc_rate_limited
+  response = oidc_token_error("temporarily_unavailable", "Too many requests; slow down", 429)
+  response["headers"]["Retry-After"] = OIDC_RATE_WINDOW_SECONDS.to_s
+  response
+end
+
 # Verify an access token presented as a Bearer credential. Returns the claims,
 # or nil when the token is invalid, expired or revoked.
 def oidc_verify_access_token(token)
@@ -167,8 +180,29 @@ def oidc_verify_access_token(token)
   return null if claims["jti"].blank?
   return null if claims["scope"].nil?
   return null if OauthRevocation.revoked?(claims["jti"])
+  # Its refresh-token family (`cid`) was revoked — a replayed code, a reuse, a
+  # disconnect: that reaches the access tokens that have no refresh row too.
+  return null if OauthRevocation.family_revoked?(claims["cid"])
+  return null unless oidc_access_token_user_live?(claims)
 
   claims
+end
+
+# A user's access token dies with what it was granted under: the account is
+# gone or deactivated, or every session of it was ended (a password reset, a
+# takeover) since the grant — `sv` is the session version stamped on it.
+# Without this, userinfo answered and introspection said `active` until the
+# token ran out. A client_credentials token has no user; a token minted before
+# `sv` existed is judged on the user alone.
+def oidc_access_token_user_live?(claims)
+  return true if claims["gty"] == "client-credentials"
+
+  user = User.find_by("_key", claims["sub"].to_s)
+  return false if user.nil?
+  return false unless user.deactivated_at.nil?
+  return true if claims["sv"].nil?
+
+  user.current_session_version <= claims["sv"].to_i
 end
 
 # Pull a Bearer token out of the Authorization header. Header names arrive

@@ -26,6 +26,16 @@ const OIDC_DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 const OIDC_DEVICE_CODE_TTL = 600  # how long a device has to be approved (RFC 8628)
 const OIDC_DEVICE_INTERVAL = 5  # minimum seconds between a device's polls
 
+# Per-address budgets, each over OIDC_RATE_WINDOW_SECONDS. The machine
+# endpoints (token, introspect, revoke, registration) verify a client secret
+# per call — an Argon2 hash — for anyone who names a client id, and client ids
+# are public. Starting a device flow writes a row, and a user code is eight
+# letters someone can keep guessing.
+const OIDC_RATE_WINDOW_SECONDS = 60
+const OIDC_REQUESTS_PER_IP = 300  # token, introspect, revoke, registration
+const OIDC_DEVICE_STARTS_PER_IP = 30  # POST /oauth/device_authorization
+const OIDC_USER_CODE_ATTEMPTS_PER_IP = 20  # POST /oauth/device
+
 # Access tokens are signed JWTs so resource servers can verify them offline,
 # with no call back to this provider. The cost is that a token stays valid
 # until it expires: revoking a grant kills the *refresh* token immediately,

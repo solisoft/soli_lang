@@ -16,6 +16,7 @@ class OauthAuthorizationsController < Controller
   def new
     context = this._validate_request()
     return context["response"] unless context["response"].nil?
+    return this._impersonating() if this._impersonating?()
 
     client = context["client"]
     scopes = context["scopes"]
@@ -80,6 +81,7 @@ class OauthAuthorizationsController < Controller
   def create
     context = this._validate_request()
     return context["response"] unless context["response"].nil?
+    return this._impersonating() if this._impersonating?()
 
     user = current_user()
     return redirect("/login") if user.nil?
@@ -109,6 +111,18 @@ class OauthAuthorizationsController < Controller
   # Validate the request parameters common to both actions. Returns a context
   # hash; a non-nil "response" key means validation failed and that response
   # should be returned as-is.
+  # An administrator acting as a user (`soli generate auth --impersonation`)
+  # must not grant in that user's name: the consent and the refresh token
+  # would outlive the impersonation, at a third party, with nothing marking
+  # them as the admin's doing.
+  def _impersonating?
+    session_get("impersonator_id").to_s.present?
+  end
+
+  def _impersonating
+    oidc_authorize_fatal("Stop impersonating before connecting an application: a grant is the account owner's to give.")
+  end
+
   def _validate_request
     client_id = params["client_id"].to_s
 

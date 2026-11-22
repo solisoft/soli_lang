@@ -13,18 +13,35 @@
       </div>
     <% end %>
 
-    <form action="/confirmation/resend" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <%- csrf_field() %>
-      <div>
-        <label class="block text-sm font-medium text-slate-400 mb-1" for="email">Email</label>
-        <input id="email" name="email" type="email" required autofocus
-               class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
-      </div>
-      <button type="submit"
-              class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
-        Resend confirmation link
-      </button>
-    </form>
+    <% if token.present? %>
+      <form action="/confirm_email" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <%- csrf_field() %>
+        <input type="hidden" name="token" value="<%= token %>">
+        <p class="text-sm text-slate-300">
+          Confirm this address only if you created the account yourself.
+        </p>
+        <p class="text-sm text-slate-400">
+          If you did not sign up, close this page: someone else used your address, and confirming would vouch for them.
+        </p>
+        <button type="submit"
+                class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+          Confirm my email
+        </button>
+      </form>
+    <% else %>
+      <form action="/confirmation/resend" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <%- csrf_field() %>
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1" for="email">Email</label>
+          <input id="email" name="email" type="email" required autofocus
+                 class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+        </div>
+        <button type="submit"
+                class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+          Resend confirmation link
+        </button>
+      </form>
+    <% end %>
 
     <p class="mt-4 text-center text-sm text-slate-400">
       <a href="/login" class="text-indigo-400 hover:text-indigo-300">Back to sign in</a>

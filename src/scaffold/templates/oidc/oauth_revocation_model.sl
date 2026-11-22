@@ -24,6 +24,31 @@ class OauthRevocation < Model
     return true
   end
 
+  # A revoked refresh-token family (`chain_id`), remembered for as long as one
+  # of its tokens could still be presented. Revoking the rows that exist is
+  # not enough: a rotation in flight inserts the next token after the rows
+  # were read, and that token would outlive the revocation.
+  static def revoke_family(chain_id, reason)
+    return false if chain_id.to_s.blank?
+
+    marker = "chain:#{chain_id}"
+    return true if OauthRevocation.revoked?(marker)
+
+    OauthRevocation.create({
+      "jti": marker,
+      "reason": reason,
+      "expires_at": DateTime.utc().to_unix() + OIDC_REFRESH_TOKEN_TTL
+    })
+
+    return true
+  end
+
+  static def family_revoked?(chain_id)
+    return false if chain_id.to_s.blank?
+
+    return OauthRevocation.revoked?("chain:#{chain_id}")
+  end
+
   static def revoked?(jti)
     return false if jti.to_s.blank?
 

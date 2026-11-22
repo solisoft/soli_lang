@@ -51,7 +51,7 @@ class OauthClient < Model
       "skip_consent": options["skip_consent"] ?? false,
       # Public PEM the client signs authorization request objects (JAR, RFC 9101)
       # with. Empty means the client cannot use `request=`.
-      "request_object_key": options["request_object_key"] ?? "",
+      "request_object_key": options["request_object_key"].to_s,
       # A resource server that introspects tokens issued to other clients.
       # Every other client introspects only its own (/oauth/introspect).
       "introspect_any": options["introspect_any"] == true,

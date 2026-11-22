@@ -602,3 +602,107 @@ print("#{user.password_digest.nil?} #{user.remember_token_digest.nil?} #{user.cu
         );
     }
 }
+
+/// The link in the confirmation email shows a button; only the button
+/// confirms. A mail scanner or a link preview that fetches the URL must not
+/// turn an account someone else opened with an address into a confirmed one —
+/// which is what provider and SAML sign-ins link an account by.
+#[test]
+fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
+    let dir = servable_app();
+    let root = dir.path();
+    fs::write(
+        root.join("app/controllers/fixture_controller.sl"),
+        "class FixtureController < Controller\n  # GET /fixture/token?email=\n  def token\n    \
+         user = User.find_by(\"email\", params[\"email\"].to_s)\n    render_text(user.start_email_confirmation)\n  end\n\n  \
+         # GET /fixture/confirmed?email=\n  def confirmed\n    \
+         user = User.find_by(\"email\", params[\"email\"].to_s)\n    render_text(user.confirmed?.to_s)\n  end\nend\n",
+    )
+    .unwrap();
+    let mut routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
+    routes.push_str("get(\"/fixture/token\", \"fixture#token\")\n");
+    routes.push_str("get(\"/fixture/confirmed\", \"fixture#confirmed\")\n");
+    fs::write(root.join("config/routes.sl"), routes).unwrap();
+    let (ok, output) = soli(
+        root,
+        &["db:migrate", "up", "."],
+        &[
+            ("SOLI_DB_ADAPTER", "sqlite"),
+            (
+                "DATABASE_URL",
+                &format!("sqlite://{}/app.sqlite3", root.display()),
+            ),
+        ],
+    );
+    assert!(ok, "{output}");
+    let server = serve(root, &[("AUTH_SIGNUP", "open")]);
+    assert_eq!(call(&server, "POST", "/signup", Some(ADA)).0, 302);
+    let confirmed = |server: &Server| {
+        call(
+            server,
+            "GET",
+            "/fixture/confirmed?email=ada@example.com",
+            None,
+        )
+        .1
+    };
+    assert_eq!(confirmed(&server), "false");
+    let (_, token) = call(&server, "GET", "/fixture/token?email=ada@example.com", None);
+    assert!(token.len() >= 20, "{token}");
+
+    // Fetching the link — what a scanner does — shows the button and stops.
+    let (status, page) = call(
+        &server,
+        "GET",
+        &format!("/confirm_email?token={token}"),
+        None,
+    );
+    assert_eq!(status, 200);
+    assert!(page.contains("Confirm my email"), "{page}");
+    assert!(page.contains("action=\"/confirm_email\""), "{page}");
+    assert_eq!(confirmed(&server), "false", "a GET confirmed the address");
+
+    // A wrong token confirms nothing either, by GET or by POST.
+    let (_, page) = call(&server, "GET", "/confirm_email?token=nope", None);
+    assert!(page.contains("invalid or was already used"), "{page}");
+    let (_, page) = call(
+        &server,
+        "POST",
+        "/confirm_email",
+        Some(r#"{"token": "nope"}"#),
+    );
+    assert!(page.contains("invalid or was already used"), "{page}");
+    assert_eq!(confirmed(&server), "false");
+
+    // The button does, once.
+    let body = format!(r#"{{"token": "{token}"}}"#);
+    let (status, page) = call(&server, "POST", "/confirm_email", Some(&body));
+    assert_eq!(status, 200);
+    assert!(page.contains("Your email address is confirmed"), "{page}");
+    assert_eq!(confirmed(&server), "true");
+    let (_, page) = call(&server, "POST", "/confirm_email", Some(&body));
+    assert!(page.contains("invalid or was already used"), "{page}");
+}
+
+/// Completing a password reset proves the mailbox, as a confirmation does:
+/// the account is confirmed by it.
+#[test]
+fn a_completed_password_reset_confirms_the_address() {
+    let dir = servable_app();
+    let root = dir.path();
+    let code = r##"user = User.new
+user.email = "ada@example.com"
+user.set_password("correct horse battery")
+user.save
+before = user.confirmed?
+user.finish_password_reset("another horse battery")
+print("#{before} #{User.find_by("email", "ada@example.com").confirmed?}")"##;
+    let database = format!("sqlite://{}/app.sqlite3", root.display());
+    let (ok, output) = soli(
+        root,
+        &["runner", "-e", code],
+        &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
+    );
+    assert!(ok, "{output}");
+    assert!(output.trim_end().ends_with("false true"), "{output}");
+}

@@ -3,6 +3,62 @@
 ## [Unreleased]
 
 ### Security
+A fourth audit of SAML, SCIM, the OAuth client and the OIDC provider. The
+native verifier held; the fixes are in the scaffolds, so they reach apps
+generated from now on — an app generated earlier keeps its files: copy the
+changes from a fresh `soli generate scim` / `auth` / `saml` / `oauth` /
+`oidc_provider`.
+
+- **scim: a directory could rewrite any account, an administrator's
+  included.** `PUT`, `PATCH` and `DELETE /scim/v2/Users/:id` took any account
+  by key: a leaked or over-eager token could move an admin's address, then
+  reset its password. A directory now reaches only the accounts it
+  provisioned (`scim_provisioned_at`, owner recorded in `scim_directory`):
+  admins, local accounts and another directory's are not listed, not found,
+  `404` on a read or a write, and never put in a group.
+  `SCIM_ADOPT_EXISTING=on` lets it adopt an existing non-admin account, which
+  revokes that account's credentials. `DELETE` revokes credentials first.
+- **scim: a write that failed answered 200.** `replace` and `update` did not
+  look at `_errors`, so a deactivation riding with a colliding `userName` was
+  reported as done. Now `409` / `400`. A URN-qualified `path`
+  (`…:User:active`) is read as the attribute.
+- **auth: the confirmation link confirmed on GET.** A mail scanner fetching it
+  confirmed an account someone else had opened with the address, which a
+  provider or SAML sign-in then linked to the owner with the squatter's
+  password intact. `GET /confirm_email` now shows a button; the CSRF-checked
+  `POST /confirm_email` confirms. A completed password reset confirms the
+  address.
+- **saml: an unconfirmed account was taken over on the identity provider's
+  word.** With `SAML_LINK_EXISTING` off, any unconfirmed account was handed to
+  whoever the IdP said had its address — and by default most real accounts are
+  unconfirmed. It is now taken over only when `auth_require_confirmed_email`
+  is true (it cannot have been used); otherwise the sign-in is refused.
+  A directory link also ends the account's open sessions. A sign-in clears a
+  leftover `impersonator_id`.
+- **oidc provider: RP-initiated logout left the remember-me cookie**, so the
+  next request restored the session. `/oauth/logout` forgets it.
+- **oidc provider: access tokens outlived what they were granted under.**
+  They now carry the grant's session version (`sv`) and refresh family
+  (`cid`); userinfo and introspection refuse them after a password reset, a
+  deactivation, or a family revocation — including tokens issued with no
+  refresh token. A revoked family is recorded before its rows are revoked, so
+  a refresh token minted meanwhile is born revoked.
+- **oidc provider: device flow.** User codes are unique (index + redraw) and
+  an approval updates one request by key; a poll writes two fields instead of
+  the whole row, which could put a decided request back to pending or let two
+  polls both get tokens.
+- **oidc provider: an impersonating admin could grant in the user's name**;
+  authorize and device approval refuse during impersonation. Token,
+  introspect, revoke, registration, device start and user-code entry are
+  throttled per address (`OIDC_*_PER_IP`).
+- **oauth client:** an identity with no subject is refused; a link that was
+  not stored fails the sign-in; an account already linked at the provider is
+  not linked again by address (a reused mailbox); a non-ASCII address matches
+  no account.
+
+  Verified by served-app integration tests (SCIM, SAML, auth, OAuth on
+  SQLite) and, for the provider, a device/refresh/userinfo run against a
+  live SoliDB.
 - **saml: `Saml.verify_response` reports the signing certificate's period and
   the NameID's qualifiers, and fails on an unreadable clock.** The result
   gains `certificate_expires_at` / `certificate_expired` (the certificate

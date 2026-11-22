@@ -18,6 +18,20 @@
 # first SAML sign-in links it (`soli generate saml`), and, if it has no
 # password then, marks it single sign-on only.
 #
+# What a directory may touch: the accounts it provisioned, and nothing else.
+# An administrator, an account that signed up here, and another directory's
+# account are not there for it — not listed, 404 on a read or a write — so a
+# leaked or over-eager token cannot move an admin's address (and reset its
+# password), deactivate the app's own accounts or reach across tenants.
+#
+#   SCIM_ADOPT_EXISTING=on   let a directory take an existing non-admin
+#                            account under its management, the way Okta and
+#                            Entra match a user by userName. Adopting revokes
+#                            what the account could sign in with — password,
+#                            tokens, passkeys, linked identities, sessions —
+#                            since whoever made it is not known to be the
+#                            person the directory means.
+#
 # Groups are in app/controllers/scim_groups_controller.sl. No bulk, no
 # sorting, no ETags. The filter is `userName eq "…"` or `externalId eq "…"`,
 # which is what directories send.
@@ -102,17 +116,18 @@ class ScimController < Controller
     start = params["startIndex"].to_i > 0 ? params["startIndex"].to_i : 1
     count = params["count"].to_s.present? ? params["count"].to_i : SCIM_PAGE
     count = SCIM_PAGE if count > SCIM_PAGE || count < 0
-    users = User.order("email", "asc").offset(start - 1).limit(count).all
+    scope = @_scope
+    users = User.where(scope).order("email", "asc").offset(start - 1).limit(count).all
     @_list(users.map(&{ |user|
       @_resource(user)
-    }), User.count, start)
+    }), User.where(scope).count, start)
   end
 
   # GET /scim/v2/Users/:id
   def show
     return @_unauthorized if @_directory.nil?
 
-    user = User.find_by("_key", params["id"])
+    user = @_user(params["id"])
     return @_error(404, "User #{params["id"]} not found", nil) if user.nil?
 
     @_json(200, @_resource(user))
@@ -136,6 +151,7 @@ class ScimController < Controller
     # SAML_LINK_EXISTING off, when its externalId is the NameID or
     # SAML_LINK_DIRECTORY=on (`SamlSso.directory_link?`).
     user.scim_provisioned_at = DateTime.utc.to_unix
+    user.scim_directory = @_directory
     @_assign(user, body)
     user.save
     return @_error(400, "The user could not be created", "invalidValue") if user._errors
@@ -147,31 +163,28 @@ class ScimController < Controller
   def replace
     return @_unauthorized if @_directory.nil?
 
-    user = User.find_by("_key", params["id"])
+    user = @_user(params["id"])
     return @_error(404, "User #{params["id"]} not found", nil) if user.nil?
 
     body = @_body
     email = @_email_of(body)
     return @_error(400, "userName is required", "invalidValue") if email.blank?
+    return @_error(409, "A user with that userName exists", "uniqueness") if @_taken?(email, user)
 
-    taken = User.find_by("email", email)
-    if !taken.nil? && taken._key != user._key
-      return @_error(409, "A user with that userName exists", "uniqueness")
-    end
-
+    @_take_charge(user)
     user.email = email
     @_assign(user, body)
-    user.save
-    @_json(200, @_resource(user))
+    @_saved(user)
   end
 
   # PATCH /scim/v2/Users/:id — what directories use to deactivate
   def update
     return @_unauthorized if @_directory.nil?
 
-    user = User.find_by("_key", params["id"])
+    user = @_user(params["id"])
     return @_error(404, "User #{params["id"]} not found", nil) if user.nil?
 
+    @_take_charge(user)
     operations = @_body["Operations"] ?? []
     operations.each do |operation|
       path = operation["path"].to_s
@@ -183,25 +196,94 @@ class ScimController < Controller
         @_set(user, path, value)
       end
     end
-    user.save
-    @_json(200, @_resource(user))
+    return @_error(409, "A user with that userName exists", "uniqueness") if @_taken?(user.email, user)
+
+    @_saved(user)
   end
 
   # DELETE /scim/v2/Users/:id
   def destroy
     return @_unauthorized if @_directory.nil?
 
-    user = User.find_by("_key", params["id"])
+    user = @_user(params["id"])
     return @_error(404, "User #{params["id"]} not found", nil) if user.nil?
 
-    # The account goes. To keep what it owns, deactivate here instead:
+    # The account goes, and with it what it could sign in with: a linked
+    # identity or an API token left behind would name an account that is no
+    # longer there. To keep what the account owns, deactivate here instead:
     # `@_set_active(user, false)` then `user.save`.
+    user.revoke_credentials
     ScimMembership.where({"user_id": user._key}).delete_all
     user.delete
     {"status": 204, "body": ""}
   end
 
   private
+
+  # Does SCIM_ADOPT_EXISTING let a directory take an existing account?
+  def _adopts?
+    ["on", "true", "1", "yes"].includes?(getenv("SCIM_ADOPT_EXISTING").to_s.trim.downcase)
+  end
+
+  # May this request's directory read and write `user`? Never an
+  # administrator; never another directory's account; an account no directory
+  # provisioned only with SCIM_ADOPT_EXISTING.
+  def _manages?(user)
+    return false if user.nil? || user.admin?
+    return false unless user.scim_directory.blank? || user.scim_directory == @_directory
+    return true unless user.scim_provisioned_at.nil?
+
+    @_adopts?
+  end
+
+  # The same rule as a filter, for the list and its total.
+  def _scope
+    scope = {
+      "role": {"ne": "admin"},
+      "or": [{"scim_directory": @_directory}, {"scim_directory": nil}]
+    }
+    scope["scim_provisioned_at"] = {"gt": 0} unless @_adopts?
+    scope
+  end
+
+  # The user `id` names, if this directory manages it — nil otherwise, so an
+  # account out of its reach reads exactly as one that does not exist.
+  def _user(id)
+    user = User.find_by("_key", id.to_s)
+    @_manages?(user) ? user : nil
+  end
+
+  # Before a write. An account the directory did not provision is adopted
+  # (SCIM_ADOPT_EXISTING let `_user` return it): its credentials are revoked
+  # and the directory vouches for its address from now on. A provisioned
+  # account with no owner yet (made before directories were recorded) takes
+  # this one.
+  def _take_charge(user)
+    if user.scim_provisioned_at.nil?
+      user.revoke_credentials
+      user.scim_provisioned_at = DateTime.utc.to_unix
+      user.confirmed_at = DateTime.utc.to_unix if user.confirmed_at.nil?
+    end
+    user.scim_directory = @_directory if user.scim_directory.blank?
+  end
+
+  # Is `email` another account's?
+  def _taken?(email, user)
+    other = User.find_by("email", email.to_s)
+    !other.nil? && other._key != user._key
+  end
+
+  # Save, and answer with what was stored — or with the refusal. A directory
+  # that reads 200 records the change as made: a deactivation that did not
+  # save must not look like one that did.
+  def _saved(user)
+    user.save
+    if (user._errors ?? []).length > 0
+      return @_error(400, "The user could not be saved: #{user._errors}", "invalidValue")
+    end
+
+    @_json(200, @_resource(user))
+  end
 
   # The name of the directory whose token the request carries, or nil.
   def _directory
@@ -242,9 +324,9 @@ class ScimController < Controller
 
   # The user a filter names, or nil.
   def _find(attribute, value)
-    return User.find_by("email", value.downcase) if attribute == "username"
-
-    User.find_by("scim_external_id", value)
+    by_name = attribute == "username"
+    user = User.find_by(by_name ? "email" : "scim_external_id", by_name ? value.downcase : value)
+    @_manages?(user) ? user : nil
   end
 
   # The request body. Directories send `application/scim+json`.
@@ -280,6 +362,8 @@ class ScimController < Controller
   # Apply one patch operation that names its attribute.
   def _set(user, path, value)
     attribute = path.downcase
+    # `urn:ietf:params:scim:schemas:core:2.0:User:active` is `active`.
+    attribute = attribute.split(":").last if attribute.starts_with?("urn:")
     return @_set_active(user, value) if attribute == "active"
 
     user.scim_external_id = value if attribute == "externalid"

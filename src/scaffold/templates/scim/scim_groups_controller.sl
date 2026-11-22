@@ -76,6 +76,8 @@ class ScimGroupsController < ScimController
     @_rename(group, name)
     group.external_id = body["externalId"] if body.has_key("externalId")
     group.save
+    return @_error(400, "The group could not be saved: #{group._errors}", "invalidValue") if @_failed?(group)
+
     group.replace_members(@_member_ids(body["members"]))
     @_json(200, @_group(group))
   end
@@ -92,6 +94,8 @@ class ScimGroupsController < ScimController
       @_apply(group, operation["op"].to_s.downcase, operation["path"].to_s, operation["value"])
     end
     group.save
+    return @_error(400, "The group could not be saved: #{group._errors}", "invalidValue") if @_failed?(group)
+
     @_json(200, @_group(group))
   end
 
@@ -107,6 +111,11 @@ class ScimGroupsController < ScimController
   end
 
   private
+
+  # Did the last save leave errors? (`_errors` is nil or empty when it held.)
+  def _failed?(record)
+    (record._errors ?? []).length > 0
+  end
 
   # One PATCH operation.
   def _apply(group, op, path, value)
@@ -145,7 +154,9 @@ class ScimGroupsController < ScimController
   # The user ids of a `members` value: [{"value": "<id>"}, …].
   def _member_ids(members)
     list = members ?? []
-    list.map { |member| member["value"].to_s }.filter { |id| id.present? }
+    # Only the accounts this directory manages (`_user`): a group cannot hand
+    # its role to an administrator, a local account or another directory's.
+    list.map { |member| member["value"].to_s }.filter { |id| id.present? && !@_user(id).nil? }
   end
 
   def _group(group)
