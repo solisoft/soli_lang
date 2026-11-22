@@ -2175,6 +2175,14 @@ impl Vm {
                     return Ok(true);
                 }
             };
+            // STI: a subclass deletes rows of its own hierarchy only.
+            if !crate::interpreter::builtins::model::core::sti_row_matches(&class.name, &doc) {
+                self.stack.truncate(receiver_idx);
+                self.stack.push(Value::String(
+                    format!("Error: {} with id '{}' not found", class.name, id).into(),
+                ));
+                return Ok(true);
+            }
             let model_class = get_model_class(&class.name).unwrap_or(class);
             crud::json_doc_to_instance(&model_class, &doc)
         };

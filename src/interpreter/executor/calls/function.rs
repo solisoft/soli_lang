@@ -1405,6 +1405,13 @@ impl Interpreter {
                     .map_err(|message| RuntimeError::General { message, span })
             }
         };
+        // STI: a subclass deletes rows of its own hierarchy only, as the
+        // native answers — the shared collection's other rows are not its.
+        if !crate::interpreter::builtins::model::core::sti_row_matches(&class.name, &doc) {
+            return Ok(Some(Value::String(
+                format!("Error: {} with id '{}' not found", class.name, id).into(),
+            )));
+        }
         let model_class = get_model_class(&class.name).unwrap_or(class);
         let instance_value = crud::json_doc_to_instance(&model_class, &doc);
         let result = self.delete_model_instance(&instance_value, span)?;

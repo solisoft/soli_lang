@@ -890,6 +890,10 @@ fn find_by_key(
         Ok(doc) if sti_row_matches(&class.name, &doc) => {
             Ok(super::crud::json_doc_to_instance(class, &doc))
         }
+        // A read that failed is not a row that is missing: answered with
+        // RecordNotFound, a database that did not reply was a 404, and
+        // `Post.find(id) rescue nil` took the row for gone.
+        Err(e) if !super::crud::document_already_gone(&e.to_string()) => Err(e.to_string()),
         // Not found → raise with the RecordNotFound marker so the HTTP
         // request handler converts it into a 404 response. Callers that
         // want the "or null" shape should use find_by / first_by, or wrap

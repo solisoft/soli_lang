@@ -778,8 +778,9 @@ pub enum ViewRender {
     /// [`VmFailure`] when the VM tried and failed, which the caller settles
     /// once the tree-walker has rendered the view.
     TreeWalker(Option<VmFailure>),
-    /// The VM failed past the request's time budget: the render fails with
-    /// this message. The tree-walker does not render the view again — that
+    /// The request's failure, not the view's — the VM ran past the request's
+    /// time budget, or a value the view is given is a read that failed: the
+    /// render fails with this message. The tree-walker does not render the view again — that
     /// is the work the budget was meant to stop — and the view stays
     /// compiled: the error is the request's, not the view's.
     Failed(String),
@@ -959,7 +960,10 @@ pub fn render_view(
     // stays compiled.
     let args = match compiled.bind(data, inherited, &view_vm.names) {
         Ok(args) => args,
-        Err(message) => return ViewRender::Failed(message),
+        Err(message) => {
+            view_vm.put_back();
+            return ViewRender::Failed(message);
+        }
     };
     view_vm.vm.tree_walk_env = Some(env.clone());
     view_vm.vm.template_content_before = None;

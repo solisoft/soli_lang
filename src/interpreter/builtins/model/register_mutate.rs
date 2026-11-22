@@ -208,10 +208,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 // A duplicate or a foreign key the database refused is a
                 // validation failure, as `record.update` reports it — not a
                 // 500 for editing a row into an address that is taken.
+                // (Not a transaction's own conflict: SoliDB answers that
+                // with a 409 too, and it is no validation — it raises.)
                 Err(e)
-                    if super::validation::is_unique_violation(&e.to_string())
-                        || super::validation::solidb_foreign_key_error(&e.to_string())
-                            .is_some() =>
+                    if !refused_by_the_transaction(&e.to_string())
+                        && (super::validation::is_unique_violation(&e.to_string())
+                            || super::validation::solidb_foreign_key_error(&e.to_string())
+                                .is_some()
+                            || crate::db::error::Constraint::parse(&e.to_string()).is_some()) =>
                 {
                     let errors = build_persistence_errors(&class_name, e.to_string());
                     let mut answer = crate::interpreter::value::HashPairs::default();
@@ -663,4 +667,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             Ok(Value::Hash(Rc::new(RefCell::new(result))))
         })),
     );
+}
+
+/// A 409 that is the transaction's, not the row's: a write-write conflict,
+/// a transaction that is no longer active.
+fn refused_by_the_transaction(error: &str) -> bool {
+    let said = error.to_lowercase();
+    said.contains("write conflict")
+        || said.contains("modified after the transaction")
+        || said.contains("is not active")
+        || said.contains("transactionconflict")
 }

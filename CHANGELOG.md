@@ -16,6 +16,11 @@
   pre-read answered "not found" in band); a duplicate or a foreign key the
   database refuses to `Model.update(id, …)` is reported in `_errors`, as
   `record.update` reports it.
+  **`Model.find(id)` raises the database's failure**, not RecordNotFound:
+  a database that did not answer was a 404, and `Post.find(id) rescue nil`
+  took the row for gone. A subclass with dependents no longer deletes
+  another subclass's row through `Model.delete(id)`; a transaction's own
+  conflict is not reported as "has already been taken".
 - **auth: a sign-in link is claimed by one request only.** Opening it
   first rewrites the link's digest with a compare-and-swap; of two
   requests at once, one finds it changed. Deleting the row did not tell
