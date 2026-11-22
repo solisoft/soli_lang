@@ -39,7 +39,7 @@ class PasswordsController < Controller
     # the identity provider.
     # The mail leaves the request (`deliver_later`), and an address with no
     # account costs the same write: the answer and its timing say nothing.
-    if user.nil? || user.sso_only?
+    if user.nil? || user.sso_only? || user.reset_recently_sent?
       User.burn_write_work
     else
       token = user.start_password_reset

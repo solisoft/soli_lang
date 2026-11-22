@@ -292,38 +292,47 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
     // bulk DELETE via the query-builder path.
     native_static_methods.insert(
         "delete_all".to_string(),
-        Rc::new(NativeFunction::new("Model.delete_all", Some(1), |args| {
-            let class = get_class_rc_from_args(args)?;
-            let collection = class_name_to_collection(&class.name);
-            // Connection-aware: the bare `db::is_sql()` listed keys from the
-            // ambient default and then routed each delete to the model's own
-            // connection — two different databases in one operation.
-            // A `table "…"` model on a connection that cannot serve it must fail
-            // here rather than fall through to the document path below.
-            super::column_mode::ensure_supported(&collection)?;
-            if super::crud::collection_is_sql(&collection) {
-                let qb =
-                    QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
-                return Ok(super::query::execute_query_builder_delete_all(&qb));
-            }
-            let sdbql = format!(
-                "FOR doc IN {}{} RETURN doc._key",
-                collection,
-                sti_scope_clause(&class.name)
-            );
-            let results = match super::crud::exec_query(&collection, sdbql) {
-                Ok(r) => r,
-                Err(e) => return Err(format!("Model.delete_all() failed: {}", e)),
-            };
-            for key_json in &results {
-                let key = match key_json {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
+        // Auto-invocable, like `Model.all` and `Model.count`: written without
+        // parentheses — the house style for a zero-argument call — it used to
+        // evaluate to the function itself and delete nothing, in silence. A
+        // spec whose teardown was `Post.delete_all` ran against whatever the
+        // previous test left.
+        Rc::new(NativeFunction::new_auto_invocable(
+            "Model.delete_all",
+            Some(1),
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                let collection = class_name_to_collection(&class.name);
+                // Connection-aware: the bare `db::is_sql()` listed keys from the
+                // ambient default and then routed each delete to the model's own
+                // connection — two different databases in one operation.
+                // A `table "…"` model on a connection that cannot serve it must fail
+                // here rather than fall through to the document path below.
+                super::column_mode::ensure_supported(&collection)?;
+                if super::crud::collection_is_sql(&collection) {
+                    let qb =
+                        QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
+                    return Ok(super::query::execute_query_builder_delete_all(&qb));
+                }
+                let sdbql = format!(
+                    "FOR doc IN {}{} RETURN doc._key",
+                    collection,
+                    sti_scope_clause(&class.name)
+                );
+                let results = match super::crud::exec_query(&collection, sdbql) {
+                    Ok(r) => r,
+                    Err(e) => return Err(format!("Model.delete_all() failed: {}", e)),
                 };
-                let _ = super::crud::exec_delete(&collection, &key);
-            }
-            Ok(Value::Null)
-        })),
+                for key_json in &results {
+                    let key = match key_json {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    let _ = super::crud::exec_delete(&collection, &key);
+                }
+                Ok(Value::Null)
+            },
+        )),
     );
 
     // Model.transaction - Execute SDBQL or get transaction handle
@@ -477,27 +486,37 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
     // Model.with_deleted - Returns a QueryBuilder that includes soft-deleted records
     native_static_methods.insert(
         "with_deleted".to_string(),
-        Rc::new(NativeFunction::new("Model.with_deleted", Some(1), |args| {
-            let class = get_class_rc_from_args(args)?;
-            let class_name = class.name.clone();
-            let collection = class_name_to_collection(&class_name);
-            let mut qb = super::query::QueryBuilder::new_with_class(class_name, collection, class);
-            qb.soft_delete_mode = super::query::SoftDeleteMode::WithDeleted;
-            Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
-        })),
+        Rc::new(NativeFunction::new_auto_invocable(
+            "Model.with_deleted",
+            Some(1),
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.soft_delete_mode = super::query::SoftDeleteMode::WithDeleted;
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            },
+        )),
     );
 
     // Model.only_deleted - Returns a QueryBuilder with only soft-deleted records
     native_static_methods.insert(
         "only_deleted".to_string(),
-        Rc::new(NativeFunction::new("Model.only_deleted", Some(1), |args| {
-            let class = get_class_rc_from_args(args)?;
-            let class_name = class.name.clone();
-            let collection = class_name_to_collection(&class_name);
-            let mut qb = super::query::QueryBuilder::new_with_class(class_name, collection, class);
-            qb.soft_delete_mode = super::query::SoftDeleteMode::OnlyDeleted;
-            Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
-        })),
+        Rc::new(NativeFunction::new_auto_invocable(
+            "Model.only_deleted",
+            Some(1),
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                let class_name = class.name.clone();
+                let collection = class_name_to_collection(&class_name);
+                let mut qb =
+                    super::query::QueryBuilder::new_with_class(class_name, collection, class);
+                qb.soft_delete_mode = super::query::SoftDeleteMode::OnlyDeleted;
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            },
+        )),
     );
 
     // Model.offset(n) - Returns a QueryBuilder with offset

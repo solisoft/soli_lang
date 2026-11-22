@@ -10,14 +10,32 @@
 
 const MAGIC_LINK_TTL = 900  # a link lives 15 minutes
 
+# Links one account may have pending at once.
+const MAGIC_LINKS_PENDING = 5
+
 class MagicLink < Model
-  # A fresh link for `user`, replacing any earlier one. Returns the two
-  # secrets in plaintext, the only time they exist that way: `token` goes in
-  # the email, `nonce` in the browser's cookie.
+  # A fresh link for `user`. Returns the two secrets in plaintext, the only
+  # time they exist that way: `token` goes in the email, `nonce` in the
+  # browser's cookie.
+  #
+  # The links already pending stay good. Asking for one used to cancel the
+  # others, and anyone can ask for anyone: a request a second sent from
+  # elsewhere kept the owner's own link from ever working. The newest
+  # MAGIC_LINKS_PENDING are kept; expired ones go.
   static def issue(user)
     token = Crypto.random_hex(32)
     nonce = Crypto.random_hex(32)
-    MagicLink.where({"user_id": user._key}).delete_all
+    now = DateTime.utc.to_unix
+    pending = MagicLink.where({"user_id": user._key}).all
+    live = pending.filter { |link| link.expires_at > now }
+    pending.each do |link|
+      link.delete unless link.expires_at > now
+    end
+    ordered = live.sort_by { |link| link.expires_at }
+    while ordered.length >= MAGIC_LINKS_PENDING
+      ordered[0].delete
+      ordered = ordered.slice(1, ordered.length)
+    end
     MagicLink.create({
       "user_id": user._key,
       "token_digest": Crypto.sha256(token),

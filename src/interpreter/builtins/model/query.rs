@@ -2682,26 +2682,44 @@ fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
         query.push_str(&format!(" FILTER {}", aql_filter));
     }
 
-    query.push_str(&format!(" REMOVE doc IN {}", collection));
-
-    // The error was discarded and `Null` returned regardless, so a bulk delete
-    // that failed — a dropped connection, an auth failure, a rejected query —
-    // was indistinguishable from one that removed every matching row. Callers
-    // treating `delete_all` as "the rows are gone" were wrong, silently. The
-    // SQL branch already reported its errors; this one now does too.
-    let result = if bind_vars_str.is_empty() {
-        exec_auto_collection(query, &collection)
+    // In two steps: which documents match, then those documents, by key.
+    //
+    // It was one statement, `FOR doc … FILTER … REMOVE doc`. What that
+    // removes is decided by how the server evaluates a FILTER placed before a
+    // write, and a server that got it wrong emptied the collection. The keys
+    // come from a plain read — the path every `.all` takes — and bound what
+    // the second step can touch: a document that did not match is not in
+    // the list, whatever happens next.
+    query.push_str(" RETURN doc._key");
+    let bind_vars = if bind_vars_str.is_empty() {
+        None
     } else {
-        exec_auto_collection_with_binds(query, bind_vars_str, &collection)
+        Some(bind_vars_str)
     };
-
-    // `exec_auto_collection*` already encodes a failure as an "Error: …" string
-    // value; pass that through instead of discarding it.
-    match result {
-        Value::String(ref message) if message.starts_with("Error: ") => result,
-        _ => Value::Null,
+    // A failure is reported, not swallowed: a bulk delete that failed — a
+    // dropped connection, an auth failure, a rejected query — must not look
+    // like one that removed every matching row.
+    let keys = match super::crud::exec_with_auto_collection(query, bind_vars, &collection) {
+        Ok(rows) => rows,
+        Err(e) => return Value::String(format!("Error: {e}").into()),
+    };
+    let keys: Vec<serde_json::Value> = keys.into_iter().filter(|key| key.is_string()).collect();
+    for chunk in keys.chunks(DELETE_ALL_CHUNK) {
+        let mut binds = HashMap::new();
+        binds.insert(
+            "__soli_keys".to_string(),
+            serde_json::Value::Array(chunk.to_vec()),
+        );
+        let remove = format!("FOR key IN @__soli_keys REMOVE key IN {collection}");
+        if let Err(e) = super::crud::exec_with_auto_collection(remove, Some(binds), &collection) {
+            return Value::String(format!("Error: {e}").into());
+        }
     }
+    Value::Null
 }
+
+/// Keys removed per statement by a SoliDB `delete_all`.
+const DELETE_ALL_CHUNK: usize = 1_000;
 
 /// Execute a QueryBuilder as a bulk UPDATE — every row matching the
 /// accumulated filter / join clauses is patched with `update_data` in a

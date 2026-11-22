@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Security — follow-ups
+- **auth: a link someone else asks for no longer cancels the owner's.** A
+  reset or confirmation link sent in the last five minutes stays the valid
+  one (`AUTH_RESEND_SECONDS`); up to five sign-in links are pending at once
+  (`MAGIC_LINKS_PENDING`).
+- **models: `Model.delete_all` written without parentheses deleted
+  nothing** — it evaluated to the function. It is called, like `Model.all`;
+  so are `Model.with_deleted` and `Model.only_deleted`.
+- **models (SoliDB): `where(…).delete_all` removes by key.** The matching
+  keys are read, then removed a thousand at a time: what the delete can
+  reach is bounded by a plain read, not by how the server evaluates a
+  FILTER placed before a write.
+
 ### Security — updates, builds and the release pipeline
 The last lot of the same audit.
 

@@ -105,7 +105,7 @@ is `nil` (Soli's models.md says so; Soli's solidb-reference.md does not).
 | `Article.upsert(key, {...})` | `PUT /document/articles/{key}`; on 404 `POST` with `_key` (also creates the collection if needed) |
 | `Article.find_or_create_by("title", "Foc", {...})` | `find_by` query, then `POST` — two requests, not atomic |
 | `Article.where(…).update_all({"x": 1})` | `FOR doc IN articles FILTER … UPDATE doc WITH @__soli_update IN articles` |
-| `Article.where(…).delete_all` | `FOR doc IN articles FILTER … REMOVE doc IN articles` |
+| `Article.where(…).delete_all` | two steps: `FOR doc IN articles FILTER … RETURN doc._key`, then `FOR key IN @__soli_keys REMOVE key IN articles` (1000 keys per statement) |
 
 Because `UPDATE`/`PUT` merges only top-level fields, a nested-object field in
 `update_all` replaces the stored object (SoliDB default `mergeObjects: false`).

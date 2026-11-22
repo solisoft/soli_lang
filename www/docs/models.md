@@ -637,7 +637,7 @@ field or an aggregate alias).
 | `.first(n)` | Execute query, return the first `n` records as an **array**. Equivalent to `.limit(n).all`; an existing `.limit()` is overridden. Not available on aggregate or `exists` queries, which return a single value rather than rows. |
 | `.count` | Execute query, return count |
 | `.exists` | Returns a QueryBuilder; chain `.first` for the boolean (`User.where(...).exists.first`) |
-| `.delete_all` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
+| `.delete_all` | Bulk delete of every matching row: one `DELETE` on SQL; on SoliDB the matching keys are read, then removed by key (a thousand per statement), so nothing outside the match can be reached. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
 | `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement, applying [merge-patch semantics](#merge-patch-semantics). Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. On Postgres a patch containing a *nested object* is refused — merging into a stored object needs per-row recursion, which a bulk statement cannot do. |
 | `.sum(field)` | Sum of field (chain `.first`). **Currently always `nil`** — use `.aggregate({ "total": ["sum", field] }).first` |
 | `.avg(field)` | Average of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
@@ -1508,10 +1508,9 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
 
 > `record.save`, `record.update` and `record.delete` run every callback in
-> this table with or without parentheses. Bare **static** calls are the
-> exception (current limitation): `Model.delete_all`,
-> `Model.with_deleted` and `Model.only_deleted` without parentheses return
-> the function itself and do nothing — write `Model.delete_all()`.
+> this table with or without parentheses, and so do the static calls:
+> `Model.delete_all`, `Model.with_deleted` and `Model.only_deleted` (which,
+> written bare, used to evaluate to the function and do nothing).
 >
 > `instance.update(attrs)` and `instance.save(attrs)` run `before_save`, but
 > the hash's values are what gets written: a field the callback rewrites keeps

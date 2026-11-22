@@ -30,6 +30,10 @@ end
 const AUTH_ATTEMPTS_PER_IP = auth_env_int("AUTH_ATTEMPTS_PER_IP", 15)
 const AUTH_IP_WINDOW_SECONDS = auth_env_int("AUTH_IP_WINDOW_SECONDS", 300)
 
+# How long a reset or a confirmation link stays the only one: a new request
+# within this time sends nothing (the answer is the same either way).
+const AUTH_RESEND_SECONDS = auth_env_int("AUTH_RESEND_SECONDS", 300)
+
 # How recent a sign-in must be to add a way into the account (a passkey, an
 # API token, an authenticator app). A session left open on a shared machine,
 # or one restored from the remember-me cookie, signs in again first.
@@ -261,6 +265,19 @@ class User < Model
     @reset_sent_at = DateTime.utc.to_unix
     @_patch({"reset_token_digest": @reset_token_digest, "reset_sent_at": @reset_sent_at})
     token
+  end
+
+  # Was a reset link sent in the last AUTH_RESEND_SECONDS? Then it is still
+  # in the mailbox and stays the one that works: a second request — anyone
+  # can make one for any address — used to replace it, so a request sent a
+  # second after the owner's kept their link from ever working.
+  def reset_recently_sent?
+    @reset_token_digest.present? && DateTime.utc.to_unix - (@reset_sent_at ?? 0).to_i < AUTH_RESEND_SECONDS
+  end
+
+  def confirmation_recently_sent?
+    @confirmation_token_digest.present? &&
+      DateTime.utc.to_unix - (@confirmation_sent_at ?? 0).to_i < AUTH_RESEND_SECONDS
   end
 
   def reset_token_expired?

@@ -57,7 +57,7 @@ class ConfirmationsController < Controller
 
     email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
-    if !user.nil? && !user.confirmed?
+    if !user.nil? && !user.confirmed? && !user.confirmation_recently_sent?
       token = user.start_email_confirmation
       AuthMailer.confirm_email(user, token).deliver_later rescue nil
     else

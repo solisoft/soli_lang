@@ -179,7 +179,6 @@ the code you are writing — they are properties of the runtime.
 | A `before_*` callback returning `false` **aborts persistence** | `@flag \|\|= false` as the last line silently rejects every record | End every callback with an explicit `return true` |
 | `update(attrs)` / `save(attrs)` **skip callbacks** | Normalisation is lost on every update | Assign fields explicitly, then `save()` |
 | `_errors` is `nil` after a successful `create` but `[]` after a successful `save` | `if record._errors` is true after an update (`[]` is truthy) | Test `_errors.length > 0` |
-| `Model.delete_all` **without a scope** does not empty the collection | A spec that relies on it tests the wrong state and still passes | Loop and `delete()`, or scope it: `Model.where(...).delete_all` |
 | Two files declaring the **same top-level name** (a `def`, a `class`) | `soli serve` refuses to boot, naming both files (`soli lint`: `smell/duplicate-global`) — on older soli, one copy silently replaced the other | Put shared helpers on a base controller or a model, not in free functions |
 | Model classes are **not resolvable from `.slv` templates** | `Cart.total_of(...)` in a view raises and the page 500s | Compute in the controller, hand the view a plain value |
 | `setenv` was removed (SEC-033) | A spec cannot flip a mode read from the environment | Split the env read from the work — a named method the spec can call directly |

@@ -753,3 +753,69 @@ fn only_the_owner_at_the_keyboard_manages_the_second_factor() {
     assert!(model.contains("optimistic_lock"), "{model}");
     assert_eq!(model.matches("@update == true").count(), 2, "{model}");
 }
+
+/// Two requests that both read the record before either wrote it — the
+/// interleaving of two simultaneous posts — cannot both be accepted with the
+/// same code: the first to save wins, the other's save is refused as stale.
+#[test]
+fn the_same_code_cannot_pass_twice_from_two_copies_of_the_record() {
+    let dir = served_app();
+    let root = dir.path();
+    fs::write(
+        root.join("race.sl"),
+        r##"user = User.new
+user.email = "race@example.com"
+user.set_password("correct horse battery")
+user.save
+record = TwoFactor.start(user)
+code = Crypto.totp_generate(record.secret)
+print("enrolled #{!record.confirm(code).nil?}")
+
+# An authenticator code: both copies are read, then both verify.
+TwoFactor.where({"user_id": user._key}).update_all({"last_step": 0})
+first = TwoFactor.find(record._key)
+second = TwoFactor.find(record._key)
+print("totp #{first.verify(code)} #{second.verify(code)}")
+
+# A backup code, the same way.
+backup = TwoFactor.find(record._key).new_backup_codes[0]
+first = TwoFactor.find(record._key)
+second = TwoFactor.find(record._key)
+print("backup #{first.verify(backup)} #{second.verify(backup)}")
+print("left #{TwoFactor.find(record._key).backup_codes_left}")
+"##,
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["runner", "race.sl"])
+        .current_dir(root)
+        .env_remove("SOLI_ENGINE")
+        .env(
+            "SOLI_ENCRYPTION_KEY",
+            "two-factor-test-key-0123456789abcdef",
+        )
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env(
+            "DATABASE_URL",
+            format!("sqlite://{}/app.sqlite3", root.display()),
+        )
+        .output()
+        .expect("run soli");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let tail: Vec<&str> = lines.iter().rev().take(4).rev().copied().collect();
+    assert_eq!(
+        tail,
+        [
+            "enrolled true",
+            "totp true false",
+            "backup true false",
+            "left 9"
+        ],
+        "{text}"
+    );
+}
