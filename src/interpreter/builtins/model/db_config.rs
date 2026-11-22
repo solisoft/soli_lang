@@ -7,6 +7,9 @@ thread_local! {
     /// `SOLIDB_DATABASE` env value for the current thread. Used by the
     /// parallel test runner so each worker writes to its own database.
     static DB_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Set inside [`with_base_database`]: the application's own database,
+    /// whatever tenant the active connection would resolve to.
+    static FORCE_BASE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Install a per-thread DB name. Subsequent `get_database_name()` /
@@ -27,20 +30,55 @@ fn override_database() -> Option<String> {
 /// (`_live_bus`, `_rt_bus`) live there, so a publish and every subscriber
 /// agree on one database.
 pub fn with_base_database<R>(f: impl FnOnce() -> R) -> R {
-    struct Restore(Option<String>);
+    struct Restore(Option<String>, bool);
     impl Drop for Restore {
         fn drop(&mut self) {
             let previous = self.0.take();
             DB_OVERRIDE.with(|o| *o.borrow_mut() = previous);
+            FORCE_BASE.with(|f| f.set(self.1));
         }
     }
     let previous = override_database();
     let base = previous
         .clone()
         .unwrap_or_else(|| with_db_config(|cfg| cfg.database.clone()));
-    let _restore = Restore(previous);
+    let _restore = Restore(previous, FORCE_BASE.with(|f| f.get()));
     DB_OVERRIDE.with(|o| *o.borrow_mut() = Some(base));
+    FORCE_BASE.with(|f| f.set(true));
     f()
+}
+
+/// The SoliDB database of the current tenant, when the active connection
+/// holds one database per tenant.
+///
+/// It comes before the per-thread override: a test worker's override names
+/// the worker's *base* database, and a `with_tenant` block in a spec has to
+/// reach the tenant's, as it does in the test server. Under an override the
+/// tenant's name moves into that worker's namespace — the template was filled
+/// with `SOLIDB_DATABASE`, the base test database, so
+/// `app_test_site_acme` becomes `app_w1_test_site_acme` for worker 1 — which
+/// keeps parallel workers apart and matches the server children, whose
+/// `SOLIDB_DATABASE` is the worker's database.
+fn tenant_database() -> Option<String> {
+    if FORCE_BASE.with(|f| f.get()) {
+        return None;
+    }
+    let name = crate::db::tenancy::active_solidb_database()?;
+    let Some(worker) = override_database() else {
+        return Some(name);
+    };
+    let base = with_db_config(|cfg| cfg.database.clone());
+    Some(rename_into_worker(&name, &base, &worker))
+}
+
+/// `name` with its `base` prefix replaced by `worker` — see [`tenant_database`].
+/// A name that does not start with `base` is kept: its template does not
+/// derive from `SOLIDB_DATABASE`.
+fn rename_into_worker(name: &str, base: &str, worker: &str) -> String {
+    match name.strip_prefix(base) {
+        Some(rest) if worker != base => format!("{worker}{rest}"),
+        _ => name.to_string(),
+    }
 }
 
 /// Cached database configuration to avoid repeated env::var() lookups.
@@ -583,11 +621,11 @@ fn db_config_from_env() -> CachedDbConfig {
 }
 
 pub fn get_database_name() -> String {
-    if let Some(name) = override_database() {
+    // A connection with one database per tenant: this request's tenant's.
+    if let Some(name) = tenant_database() {
         return name;
     }
-    // A connection with one database per tenant: this request's tenant's.
-    if let Some(name) = crate::db::tenancy::active_solidb_database() {
+    if let Some(name) = override_database() {
         return name;
     }
     with_db_config(|cfg| cfg.database.clone())
@@ -601,7 +639,7 @@ pub fn get_database_name() -> String {
 /// committed data, not the block's own uncommitted writes; `find` (a key
 /// lookup) does.
 pub fn get_cursor_url() -> String {
-    if let Some(name) = override_database().or_else(crate::db::tenancy::active_solidb_database) {
+    if let Some(name) = tenant_database().or_else(override_database) {
         // SEC-027: per-thread DB-name override still uses the same
         // scheme `DbConfig::from_env` picked, not a hard-coded http://.
         let (scheme, host) = db_scheme_and_host();
@@ -825,6 +863,24 @@ mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Arc;
+
+    #[test]
+    fn a_tenant_database_moves_into_the_test_workers_namespace() {
+        assert_eq!(
+            rename_into_worker("app_test_site_acme", "app_test", "app_w1_test"),
+            "app_w1_test_site_acme"
+        );
+        // Worker 0 is the base database itself.
+        assert_eq!(
+            rename_into_worker("app_test_site_acme", "app_test", "app_test"),
+            "app_test_site_acme"
+        );
+        // A template that does not derive from SOLIDB_DATABASE is kept.
+        assert_eq!(
+            rename_into_worker("site_acme", "app_test", "app_w1_test"),
+            "site_acme"
+        );
+    }
 
     /// SEC-027: explicit schemes survive the parse round-trip.
     #[test]

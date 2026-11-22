@@ -2208,7 +2208,20 @@ fn on_model_connection(
                         Some(Value::Instance(instance)) => instance.borrow().class.name.clone(),
                         _ => return inner(args),
                     };
-                    super::registry::run_on_model_connection(&class_name, || inner(args))
+                    super::registry::run_on_model_connection(&class_name, || {
+                        // No tenant chosen: refuse here. The SQL adapters
+                        // fail on their own, but the SoliDB path would
+                        // query a database literally named `…{tenant}…` —
+                        // which SoliDB creates — and answer from it.
+                        if crate::db::tenancy::current().is_none()
+                            && crate::db::tenancy::active_is_template()
+                        {
+                            return Err(crate::db::tenancy::no_tenant_error(
+                                &crate::db::registry::active_connection_name(),
+                            ));
+                        }
+                        inner(args)
+                    })
                 },
             );
             (name, Rc::new(wrapped))
