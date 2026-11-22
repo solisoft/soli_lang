@@ -527,6 +527,10 @@ impl Value {
 #[derive(Debug, Default)]
 pub struct DeferredCell {
     pub resolved: Option<Value>,
+    /// Why this read has no value: its statement, or its own transform
+    /// (`find`'s "not found"), failed when the batch ran. Kept per cell, so
+    /// that a read is never taken for nil because another one failed.
+    pub failed: Option<String>,
 }
 
 /// Equality used by the `==` / `!=` operators in both engines. Enum values are
@@ -940,8 +944,13 @@ impl Value {
     pub fn force_deferred(&self) -> Value {
         match self {
             Value::Deferred(cell) => {
-                if cell.borrow().resolved.is_none() {
+                if cell.borrow().resolved.is_none() && cell.borrow().failed.is_none() {
                     crate::interpreter::builtins::model::batch::flush_current();
+                }
+                // No error channel here: the failure is kept for the block's
+                // end to raise (`batch::keep_failure`), and this read is nil.
+                if let Some(error) = cell.borrow().failed.clone() {
+                    crate::interpreter::builtins::model::batch::keep_failure(error);
                 }
                 cell.borrow().resolved.clone().unwrap_or(Value::Null)
             }

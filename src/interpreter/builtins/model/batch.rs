@@ -255,16 +255,26 @@ pub fn defer_on_d1(
 /// Resolve a deferred cell, flushing the pending batch first if needed.
 /// Propagates a flush/transform error (e.g. `find`'s `RecordNotFound`).
 pub fn force(cell: &Rc<RefCell<DeferredCell>>) -> Result<Value, String> {
-    if cell.borrow().resolved.is_none() {
-        flush_inner()?;
+    if cell.borrow().resolved.is_none() && cell.borrow().failed.is_none() {
+        // What failed is written on the cells it failed for: this reader
+        // answers for its own.
+        let _ = flush_inner();
     }
-    if cell.borrow().resolved.is_none() {
-        // Dropped by an earlier flush that failed (see [`FAILED`]): not nil.
-        if let Some(error) = FAILED.with(|f| f.borrow().clone()) {
-            return Err(error);
-        }
+    if let Some(error) = cell.borrow().failed.clone() {
+        return Err(error);
     }
     Ok(cell.borrow().resolved.clone().unwrap_or(Value::Null))
+}
+
+/// Keep a failure that a reader without an error channel met, for the
+/// block's end to raise (see [`FAILED`]).
+pub fn keep_failure(error: String) {
+    FAILED.with(|f| {
+        let mut slot = f.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(error);
+        }
+    });
 }
 
 /// Run the reads collected so far, now. A no-op outside a batch or with
@@ -278,16 +288,9 @@ pub fn flush() -> Result<(), String> {
 /// have no error channel. Errors are swallowed here — the real read sites use
 /// [`force`], which surfaces them.
 pub fn flush_current() {
-    // Only here: a failure `force` or `flush` hands to their caller has been
-    // delivered, and may have been handled — a `find` that missed, rescued.
-    if let Err(error) = flush_inner() {
-        FAILED.with(|f| {
-            let mut slot = f.borrow_mut();
-            if slot.is_none() {
-                *slot = Some(error);
-            }
-        });
-    }
+    // A failure is written on the cells it failed for; the reader that has
+    // no channel keeps it (`Value::force_deferred` → [`keep_failure`]).
+    let _ = flush_inner();
 }
 
 /// Combine all currently-pending queries into one statement, execute it in a
@@ -344,6 +347,7 @@ fn flush_d1(reads: Vec<PendingD1Read>) -> Result<(), String> {
         match result {
             Ok(value) => read.cell.borrow_mut().resolved = Some(value),
             Err(e) => {
+                read.cell.borrow_mut().failed = Some(e.clone());
                 first_error.get_or_insert(e);
             }
         }
@@ -367,10 +371,18 @@ fn flush_solidb(pending: Vec<PendingQuery>) -> Result<(), String> {
         } else {
             Some(pq.binds)
         };
-        let rows = super::crud::exec_async_query_with_binds(pq.aql, binds)?;
-        let value = (pq.transform)(rows)?;
-        pq.cell.borrow_mut().resolved = Some(value);
-        return Ok(());
+        let outcome = super::crud::exec_async_query_with_binds(pq.aql, binds)
+            .and_then(|rows| (pq.transform)(rows));
+        return match outcome {
+            Ok(value) => {
+                pq.cell.borrow_mut().resolved = Some(value);
+                Ok(())
+            }
+            Err(error) => {
+                pq.cell.borrow_mut().failed = Some(error.clone());
+                Err(error)
+            }
+        };
     }
 
     let (combined, merged_binds) = build_combined_query(&pending);
@@ -379,7 +391,16 @@ fn flush_solidb(pending: Vec<PendingQuery>) -> Result<(), String> {
     } else {
         Some(merged_binds)
     };
-    let result = super::crud::exec_async_query_with_binds(combined, binds_opt)?;
+    let result = match super::crud::exec_async_query_with_binds(combined, binds_opt) {
+        Ok(result) => result,
+        Err(error) => {
+            // One statement: it failed for every read in it.
+            for pq in &pending {
+                pq.cell.borrow_mut().failed = Some(error.clone());
+            }
+            return Err(error);
+        }
+    };
 
     // The top-level `RETURN [_b0, _b1, …]` yields a single row that is the
     // array of subquery results.
@@ -390,6 +411,7 @@ fn flush_solidb(pending: Vec<PendingQuery>) -> Result<(), String> {
         other => vec![other],
     };
 
+    let mut first_error = None;
     for (i, pq) in pending.into_iter().enumerate() {
         // Each subquery is wrapped in `(…)`, so its result is an array of the
         // subquery's RETURN rows.
@@ -398,10 +420,17 @@ fn flush_solidb(pending: Vec<PendingQuery>) -> Result<(), String> {
             Some(serde_json::Value::Null) | None => Vec::new(),
             Some(other) => vec![other],
         };
-        let value = (pq.transform)(rows)?;
-        pq.cell.borrow_mut().resolved = Some(value);
+        // Each read answers for itself: one whose transform refuses (a
+        // `find` that missed) does not take the reads after it with it.
+        match (pq.transform)(rows) {
+            Ok(value) => pq.cell.borrow_mut().resolved = Some(value),
+            Err(error) => {
+                pq.cell.borrow_mut().failed = Some(error.clone());
+                first_error.get_or_insert(error);
+            }
+        }
     }
-    Ok(())
+    first_error.map_or(Ok(()), Err)
 }
 
 /// Build the combined `LET … RETURN […]` statement and the merged bind map.

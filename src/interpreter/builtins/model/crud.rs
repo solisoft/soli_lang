@@ -2682,22 +2682,14 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
     }
 }
 
-/// Does a delete's refusal say the *document* was not there? Not any "not
-/// found": a missing collection, a database or an expired transaction say
-/// those words too, and none of them means the row is gone.
+/// Does a delete's refusal say the row was not there? SoliDB answers a
+/// missing document, a missing collection and an expired transaction with
+/// the same 404 and a body that is only a name, so the text cannot tell them
+/// apart: this is the test the `dependent: "delete"` cascade has always
+/// used, shared by the callers that mean the same thing.
 pub fn document_already_gone(error: &str) -> bool {
     let said = error.to_lowercase();
-    let something_else = [
-        "collectionnotfound",
-        "collection not found",
-        "databasenotfound",
-    ]
-    .iter()
-    .any(|other| said.contains(other))
-        || said.contains("transaction");
-    !something_else
-        && (said.contains("documentnotfound")
-            || (said.contains("document") && said.contains("not found")))
+    said.contains("not found") || said.contains("documentnotfound")
 }
 
 #[cfg(test)]

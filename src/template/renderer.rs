@@ -802,6 +802,7 @@ mod tests {
         Value::Deferred(Rc::new(RefCell::new(
             crate::interpreter::value::DeferredCell {
                 resolved: Some(Value::Array(Rc::new(RefCell::new(items)))),
+                failed: None,
             },
         )))
     }

@@ -15,8 +15,9 @@
   `dependent: "delete"` cascade skips only a child that is already gone.
   The soft-delete guard is applied whatever the filter names; "already
   gone" means the document, not any "not found" (a missing collection, an
-  expired transaction); a `find` that missed inside `grouped`, once
-  rescued, is not raised again by the block's end.
+  expired transaction); inside `grouped` each read answers for itself — a
+  `find` that missed no longer takes the reads coalesced with it down to
+  nil, and once rescued it is not raised again by the block's end.
 - **orm: `record.delete` raises on a refused delete** (it returned a
   truthy `"Error: …"` string: `link.delete` then went on to sign in with a
   link it had not used up); a `dependent: "delete"` cascade still skips a

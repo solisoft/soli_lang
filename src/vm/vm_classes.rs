@@ -1471,6 +1471,7 @@ mod deferred_force_tests {
     fn resolved_deferred(items: Vec<Value>) -> Value {
         Value::Deferred(Rc::new(RefCell::new(DeferredCell {
             resolved: Some(Value::Array(Rc::new(RefCell::new(items)))),
+            failed: None,
         })))
     }
 
