@@ -1701,7 +1701,20 @@ mod tests {
             .render(&mut view.vm, &data)
             .unwrap_or_else(|e| panic!("{e}"))
             .html;
-        assert_eq!(on_vm, tree);
+        // The form's spam timestamp is stamped to the second and signed: two
+        // renders that straddle a second differ there, and nowhere else.
+        fn without_timestamp(html: &str) -> String {
+            let marker = "name=\"_soli_ts\" value=\"";
+            match html.split_once(marker) {
+                Some((before, rest)) => {
+                    let after = rest.split_once('"').map(|(_, after)| after).unwrap_or("");
+                    format!("{before}{marker}…\"{after}")
+                }
+                None => html.to_string(),
+            }
+        }
+        assert_eq!(without_timestamp(&on_vm), without_timestamp(&tree));
+        assert!(on_vm.contains("_soli_ts"), "{on_vm}");
 
         drop(view);
         super::WORKER_GLOBALS.with(|slot| *slot.borrow_mut() = None);

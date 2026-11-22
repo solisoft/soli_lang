@@ -165,7 +165,10 @@ class SessionsController < Controller
     return false unless parts[0] == user._key.to_s
 
     digest = Crypto.sha256(parts[1].to_s)
-    stored = [user.remember_token_digest.to_s, user.remember_previous_digest.to_s]
+    # The replaced one for its minute only, as `remembered_by?` reads it:
+    # later it is a copy, not the holder's.
+    replaced_lately = DateTime.utc.to_unix - (user.remember_rotated_at ?? 0).to_i <= 60
+    stored = [user.remember_token_digest.to_s, replaced_lately ? user.remember_previous_digest.to_s : ""]
     stored.filter { |one| one.present? && Crypto.secure_compare(one, digest) }.length > 0
   end
 

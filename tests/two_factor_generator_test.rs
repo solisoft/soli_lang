@@ -1123,6 +1123,20 @@ print("token stored #{user.remember_token_digest.present?}")
         "the owner's logout left the remember-me token alive"
     );
 
+    // The account's current token, carried by a session that is at the
+    // challenge after the password ("remember me" ticked) and logs out
+    // before the code.
+    let mut waiting = Browser::new(&server);
+    let ticked = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
+    assert_eq!(waiting.post("/login", ticked).status, 302);
+    assert!(run("stored.sl", stored).ends_with("token stored true"));
+    let out = waiting.request("DELETE", "/logout", None);
+    assert_eq!(out.status, 302, "{}", out.body);
+    assert!(
+        run("stored.sl", stored).ends_with("token stored false"),
+        "a logout carrying the current token, before the code, left it alive"
+    );
+
     // Remembered again; then the session is gone and only the cookie is
     // left. Restored, it waits at the challenge — and a logout from there
     // still ends the token, because the request carries it.

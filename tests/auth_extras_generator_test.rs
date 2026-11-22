@@ -1009,12 +1009,17 @@ fn logout_ends_remember_me_for_every_copy_of_the_cookie() {
     assert!(out.status == 302 || out.status == 200, "{}", out.body);
     assert_eq!(ada.whoami(), "guest");
 
-    // The copy — the same token, which nothing replaced meanwhile — is dead.
-    let mut later = Client::browser(&server);
-    later.jar.insert("remember_token".to_string(), copied);
-    assert_eq!(
-        later.whoami(),
-        "guest",
-        "a copy of the remember-me cookie outlived the logout"
-    );
+    // Both are dead: the copy (replaced when it restored the thief's
+    // session, so the previous token by now) and the one that replaced it,
+    // which the thief's browser holds — the account's current token.
+    let replacement = thief.jar.get("remember_token").expect("no cookie").clone();
+    for cookie in [copied, replacement] {
+        let mut later = Client::browser(&server);
+        later.jar.insert("remember_token".to_string(), cookie);
+        assert_eq!(
+            later.whoami(),
+            "guest",
+            "a remember-me cookie outlived the logout"
+        );
+    }
 }

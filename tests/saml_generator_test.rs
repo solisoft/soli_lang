@@ -1474,19 +1474,22 @@ user.sso_only = true
 user.saml_link_pending = true
 user.save
 SamlIdentity.create({"user_id": user._key, "issuer": "IDP_ISSUER", "name_id": "ada-at-idp", "email": "ada@example.com"})
-print("ready")"##
+print("ready #{SamlIdentity.where({"user_id": user._key}).count}")"##
         .replace("IDP_ISSUER", IDP);
-    assert_eq!(runner(root, &state), "ready");
+    assert_eq!(runner(root, &state), "ready 1");
 
     let mut ada = Browser::new(&server);
     let id = ada.start("/saml/login");
     assert_eq!(ada.post_response(&issue(root, &id, json!({}))).status, 302);
     assert!(ada.whoami().starts_with("ada@example.com member "));
+    // Through the identity that was there — still the only one: the
+    // by-address path, which also clears the mark, would have added a row.
     assert_eq!(
         runner(
             root,
-            r##"print(User.find_by("email", "ada@example.com").saml_link_pending)"##
+            r##"user = User.find_by("email", "ada@example.com")
+print("#{user.saml_link_pending} #{SamlIdentity.where({"user_id": user._key}).count}")"##
         ),
-        "false"
+        "false 1"
     );
 }
