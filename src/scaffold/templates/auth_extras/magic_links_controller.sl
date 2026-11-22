@@ -28,18 +28,21 @@ class MagicLinksController < Controller
     # outlive the user's removal at the identity provider. A password
     # lockout does not stop a link — anyone can trip it, and the mailbox is
     # its own proof.
-    nonce = Crypto.random_hex(32)
+    # The cookie this browser holds is kept — asking again must not undo
+    # the link already in the mailbox — and every answer sets one.
+    held = (cookies[MAGIC_LINK_COOKIE] rescue nil).to_s
+    nonce = Regex.matches("^[0-9a-f]{64}$", held) ? held : Crypto.random_hex(32)
     if !user.nil? && !user.sso_only?
-      link = MagicLink.issue(user, client_ip(req))
+      link = MagicLink.issue(user, client_ip(req), nonce)
       unless link.nil?
-        nonce = link["nonce"]
         MagicLinkMailer.sign_in(user, link["token"]).deliver_later rescue nil
       end
     else
       # The write an account costs, on no row: same timing either way.
       User.burn_write_work
     end
-    set_cookie("magic_link", nonce, {
+    set_cookie(MAGIC_LINK_COOKIE, nonce, {
+      "path": "/",
       "max_age": MAGIC_LINK_TTL,
       "http_only": true,
       "same_site": "Lax",
@@ -55,7 +58,7 @@ class MagicLinksController < Controller
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
     return @_form("", "Too many attempts. Try again in a few minutes.", 429) unless limiter.allowed
 
-    user = MagicLink.redeem(params["token"], (cookies["magic_link"] rescue nil))
+    user = MagicLink.redeem(params["token"], (cookies[MAGIC_LINK_COOKIE] rescue nil))
     # A link issued before the account became single sign-on only is refused
     # like an expired one.
     if user.nil? || user.sso_only?
@@ -77,7 +80,8 @@ class MagicLinksController < Controller
       user.revoke_credentials if user.never_signed_in?
       user.confirm_email
     end
-    set_cookie("magic_link", "", {
+    set_cookie(MAGIC_LINK_COOKIE, "", {
+      "path": "/",
       "max_age": 0,
       "http_only": true,
       "same_site": "Lax",

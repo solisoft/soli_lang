@@ -321,8 +321,8 @@ class SamlSso
     user.confirmed_at = DateTime.utc.to_unix
     user.confirmation_token_digest = nil
     user.sso_only = true
-    user.save
-    throw "could not take over #{user.email}" if user._errors
+    saved = user.save
+    throw "could not take over #{user.email}" if saved != true || (user._errors ?? []).length > 0
   end
 
   # The account an assertion signs in. Known identity first. Otherwise the
@@ -404,7 +404,7 @@ class SamlSso
     unless SamlSso.link_existing? || directory || unconfirmed
       if !user.confirmed?
         throw "#{email} has an unconfirmed account that may be in use: confirm or delete it, " +
-          "or make `auth_require_confirmed_email` true so an unconfirmed account cannot be used"
+          "or set SAML_LINK_EXISTING=on to link accounts by address"
       end
       throw "#{email} has an account, and SAML_LINK_EXISTING is not on"
     end
@@ -414,8 +414,13 @@ class SamlSso
     linked = SamlIdentity.where({"user_id": user._key, "issuer": assertion["issuer"]}).first
     throw "#{email} is linked to another identity at #{assertion["issuer"]}" unless linked.nil?
 
-    if !user.confirmed?
+    if !user.confirmed? && user.never_signed_in?
       SamlSso.take_over_unconfirmed(user)
+    elsif !user.confirmed?
+      # In use, by whoever the administrator's setting (or the directory)
+      # says the identity provider speaks for: confirmed, and left with what
+      # its user set.
+      user.confirm_email
     elsif directory && user.password_digest.blank? && !user.sso_only?
       # A directory account with no password signs in through the identity
       # provider from now on — and whatever session it had open (a magic

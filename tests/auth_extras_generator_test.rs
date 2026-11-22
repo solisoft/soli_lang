@@ -405,7 +405,9 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
     let notice = "If that email has an account, a sign-in link is on its way.";
     assert!(unknown.body.contains(notice) && known.body.contains(notice));
     assert_eq!(unknown.body.len(), known.body.len());
-    assert!(stranger.jar.contains_key("magic_link") && ada.jar.contains_key("magic_link"));
+    assert!(
+        stranger.jar.contains_key("__Host-magic_link") && ada.jar.contains_key("__Host-magic_link")
+    );
     let link = mailed_link(&server);
 
     // Opened elsewhere — a mail scanner, another device — it signs nobody in
@@ -424,18 +426,20 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
         reply.body
     );
     assert_eq!(ada.whoami(), "ada@example.com admin");
-    assert!(!ada.jar.contains_key("magic_link"));
+    assert!(!ada.jar.contains_key("__Host-magic_link"));
     assert_eq!(ada.get(&link).status, 401, "the link worked twice");
 
-    // A second request retires the first link.
+    // Asking twice from one browser keeps the first link good: the browser
+    // keeps its cookie, and no link is removed for another. Whichever is
+    // opened signs in; the cookie goes with it, so the other is spent.
     let mut phone = Client::browser(&server);
     phone.post("/login/link", json!({"email": "ada@example.com"}));
     let first = mailed_link(&server);
     phone.post("/login/link", json!({"email": "ada@example.com"}));
     let second = mailed_link(&server);
     assert_ne!(first, second);
-    assert_eq!(phone.get(&first).status, 401);
-    assert_eq!(phone.get(&second).status, 302);
+    assert_eq!(phone.get(&first).status, 302);
+    assert_eq!(phone.get(&second).status, 401);
 
     // Ada never confirmed her address, but she has been using the account
     // (she was signed in when she created it): a link to her mailbox signs
@@ -464,7 +468,7 @@ print("#{sent["token"]} #{sent["nonce"]}")"##,
     let mut grace = Client::browser(&server);
     grace
         .jar
-        .insert("magic_link".to_string(), nonce.to_string());
+        .insert("__Host-magic_link".to_string(), nonce.to_string());
     let reply = grace.get(&format!("/login/link/{token}"));
     assert_eq!(reply.status, 302, "{}", reply.body);
     assert_eq!(grace.whoami(), "grace@example.com member");
@@ -478,19 +482,30 @@ print("#{sent["token"]} #{sent["nonce"]}")"##,
     );
 
     // Anyone can ask for a link to any address. Asking never removes a link
-    // that is waiting: the owner's still works after ten more requests.
+    // that is waiting — the owner's still works — and is refused instead:
+    // past three for one address, past a hundred for the account. Expired
+    // rows do not count, and a browser that asks again keeps its cookie.
     assert_eq!(
         runner(
             dir.path(),
             r##"user = User.find_by("email", "ada@example.com")
+MagicLink.where({"user_id": user._key}).delete_all
 owners = MagicLink.issue(user, "198.51.100.7")
-(0..10).each do |i|
-  MagicLink.issue(user, "203.0.113.9")
+again = MagicLink.issue(user, "198.51.100.7", owners["nonce"])
+refused = (0..10).map { |i| MagicLink.issue(user, "203.0.113.9") }.filter { |sent| sent.nil? }.length
+after_one_address = MagicLink.where({"user_id": user._key}).count
+(0..200).each do |i|
+  MagicLink.issue(user, "192.0.2.#{i}")
 end
-pending = MagicLink.where({"user_id": user._key}).count
-print("#{!MagicLink.redeem(owners["token"], owners["nonce"]).nil?} #{pending}")"##
+full = MagicLink.where({"user_id": user._key}).count
+at_ceiling = MagicLink.issue(user, "a new address").nil?
+both = !MagicLink.redeem(owners["token"], owners["nonce"]).nil? && !MagicLink.redeem(again["token"], owners["nonce"]).nil?
+MagicLink.where({"user_id": user._key}).update_all({"expires_at": 1})
+fresh = !MagicLink.issue(user, "a new address").nil?
+left = MagicLink.where({"user_id": user._key}).count
+print("#{again["nonce"] == owners["nonce"]} #{refused} #{after_one_address} #{full} #{at_ceiling} #{both} #{fresh} #{left}")"##
         ),
-        "true 12"
+        "true 7 5 100 true true true 1"
     );
 }
 
@@ -816,10 +831,43 @@ print("#{link["token"]} #{link["nonce"]}")"##,
     // A link issued before signs nobody in, even in the browser it was for.
     browser
         .jar
-        .insert("magic_link".to_string(), nonce.to_string());
+        .insert("__Host-magic_link".to_string(), nonce.to_string());
     assert_eq!(
         browser.get(&format!("/login/link/{link_token}")).status,
         401
     );
     assert_eq!(browser.whoami(), "guest");
+}
+
+/// "Nobody ever signed in to it" is what lets a proof of the address take an
+/// account over, so every way of using one has to mark it as used: a
+/// session that was already open when the mark did not exist yet (an app
+/// regenerated over its users), and an API token made outside the browser.
+/// Without the mark, a sign-in link to an unconfirmed account in use
+/// stripped it of its password and second factor.
+#[test]
+fn an_open_session_and_a_token_mark_the_account_as_used() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    let mut ada = sign_up(&server, "ada@example.com");
+    let forget = r##"user = User.find_by("email", "ada@example.com")
+User.where({"_key": user._key}).update_all({"signed_in_at": nil})
+print(User.find(user._key).never_signed_in?)"##;
+    assert_eq!(runner(dir.path(), forget), "true");
+    assert_eq!(ada.whoami(), "ada@example.com admin");
+    let used = r##"print(User.find_by("email", "ada@example.com").never_signed_in?)"##;
+    assert_eq!(runner(dir.path(), used), "false");
+
+    let minted = runner(
+        dir.path(),
+        r##"user = User.find_by("email", "ada@example.com")
+User.where({"_key": user._key}).update_all({"signed_in_at": nil})
+print(ApiToken.issue(user, "seed", [], 0)["token"])"##,
+    );
+    let reply = ureq::get(&format!("http://127.0.0.1:{}/whoami", server.1))
+        .set("Authorization", &format!("Bearer {minted}"))
+        .call()
+        .unwrap();
+    assert_eq!(reply.into_string().unwrap(), "ada@example.com admin");
+    assert_eq!(runner(dir.path(), used), "false");
 }

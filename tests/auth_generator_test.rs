@@ -759,7 +759,7 @@ fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
     let cookie = signed_up
         .all("set-cookie")
         .iter()
-        .find(|c| c.starts_with("signup="))
+        .find(|c| c.starts_with("__Host-signup="))
         .map(|c| c.split(';').next().unwrap().to_string())
         .expect("no sign-up cookie");
     let (_, token) = call(&server, "GET", "/fixture/token?email=bob@example.com", None);

@@ -222,6 +222,9 @@ class OauthSso
     linking = session_get("oauth_link_user").to_s
 
     if linking.present?
+      # A link is added to the account this session is signed in to, never
+      # to another one — checked before anything is stored.
+      OauthSso.refuse("sign in again before connecting an account") unless session_get("user_id").to_s == linking
       if !identity.nil? && identity.user_id != linking
         OauthSso.refuse("this #{provider.capitalize} account is linked to another user")
       end

@@ -79,6 +79,9 @@ def authenticate_api_token(req)
     }
   end
 
+  # An account its tokens are used on is in use (`User#never_signed_in?`),
+  # however the token was made. One write, the first time.
+  user.mark_signed_in if user.never_signed_in?
   req["current_user"] = user
   req["api_token"] = token
   req

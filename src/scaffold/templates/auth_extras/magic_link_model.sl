@@ -10,8 +10,15 @@
 
 const MAGIC_LINK_TTL = 900  # a link lives 15 minutes
 
-# Links one account may have pending at once.
+# Links one account may have pending at once, and how many of them one
+# requesting address may have asked for.
 const MAGIC_LINKS_PENDING = 100
+const MAGIC_LINKS_PER_REQUESTER = 3
+
+# The cookie that binds a link to the browser that asked. `__Host-`: a
+# browser accepts that name only from this very host over https, so a
+# sibling subdomain cannot plant one.
+const MAGIC_LINK_COOKIE = "__Host-magic_link"
 
 class MagicLink < Model
   # A fresh link for `user`, asked for from `requester` (an address, kept
@@ -22,23 +29,24 @@ class MagicLink < Model
   #
   # A link is never removed to make room for another. Anyone can ask for a
   # link to anyone: removing one — the oldest, the requester's own — always
-  # gave some way to cancel the link the owner was about to open. What
-  # bounds the table is the per-address limit on asking and the fifteen
-  # minutes a link lives; past the ceiling a request sends nothing.
-  static def issue(user, requester = "")
+  # gave some way to cancel the link the owner was about to open. Requests
+  # are refused instead: past MAGIC_LINKS_PER_REQUESTER for one address, so
+  # that filling the account's MAGIC_LINKS_PENDING takes many addresses, not
+  # three.
+  #
+  # `nonce`: the one the asking browser already holds, when it has one — a
+  # second request must not orphan the link the first one sent.
+  static def issue(user, requester = "", nonce = "")
     let now = DateTime.utc.to_unix
-    let pending = 0
-    MagicLink.where({"user_id": user._key}).all.each do |link|
-      if link.expires_at > now
-        pending += 1
-      else
-        link.delete
-      end
-    end
-    return nil if pending >= MAGIC_LINKS_PENDING
+    # Expired rows go in one write: one per row would make a request for an
+    # address someone parked links on slower than one for an unknown address.
+    auth_written(MagicLink.where({"user_id": user._key, "expires_at": {"lte": now}}).delete_all)
+    let live = MagicLink.where({"user_id": user._key}).all
+    return nil if live.length >= MAGIC_LINKS_PENDING
+    return nil if live.filter { |link| link.requester.to_s == requester.to_s }.length >= MAGIC_LINKS_PER_REQUESTER
 
     token = Crypto.random_hex(32)
-    nonce = Crypto.random_hex(32)
+    nonce = Crypto.random_hex(32) unless Regex.matches("^[0-9a-f]{64}$", nonce.to_s)
     MagicLink.create({
       "user_id": user._key,
       "requester": requester.to_s,

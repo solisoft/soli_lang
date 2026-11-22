@@ -48,6 +48,10 @@ def load_current_user(req)
         return {"continue": true, "request": req}
       end
     end
+    # An account with a session of its own is in use (`never_signed_in?`),
+    # whenever that session was opened — before this stamp existed too. One
+    # write, the first time.
+    user.mark_signed_in if !user.nil? && admin_id.blank? && user.never_signed_in?
     req["current_user"] = user
     return {"continue": true, "request": req}
   end

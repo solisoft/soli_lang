@@ -158,7 +158,7 @@ class TwoFactor < Model
 
     @locked_at = DateTime.utc.to_unix
     @failed_codes = 0
-    TwoFactor.where({"_key": @_key}).update_all({"locked_at": @locked_at, "failed_codes": 0})
+    auth_written(TwoFactor.where({"_key": @_key}).update_all({"locked_at": @locked_at, "failed_codes": 0}))
   end
 
   def _clear_failures

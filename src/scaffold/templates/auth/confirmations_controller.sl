@@ -57,7 +57,8 @@ class ConfirmationsController < Controller
     AuthMailer.reset_password(user, user.start_password_reset).deliver_later rescue nil
     @_form(
       "Email confirmed",
-      "Your email address is confirmed. We sent you a link to choose your password.",
+      "Your email address is confirmed. We sent you a link to choose your password — " +
+        "if it does not arrive, ask for one from “Forgot password” in a few minutes.",
       ""
     )
   end
@@ -95,7 +96,7 @@ class ConfirmationsController < Controller
   # Is this the browser the account was created from? Sign-up leaves a
   # cookie whose digest is kept on the account.
   def _signed_up_here?(user)
-    given = (cookies["signup"] rescue nil).to_s
+    given = (cookies[AUTH_SIGNUP_COOKIE] rescue nil).to_s
     kept = user.signup_nonce_digest.to_s
     given.present? && kept.present? && Crypto.secure_compare(kept, Crypto.sha256(given))
   end

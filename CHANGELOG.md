@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a fourth review.** An account is marked as used by an open
+  session and by an API token too, not only by a new sign-in (an account
+  from before the mark, or used through tokens alone, could still be
+  stripped by a mailbox). A provider account with no password and a second
+  factor can link and unlink again. Sign-in links: three per requesting
+  address, refused not evicted; a browser asking again keeps its cookie;
+  expired rows go in one write. The cookies are `__Host-signup` and
+  `__Host-magic_link`; a second sign-up keeps the cookie only for the same
+  browser and password. SAML links an unconfirmed account in use without
+  stripping it. A provider link is refused before it is stored. The
+  scaffold's bulk writes stop on a refused write (`auth_written`).
 - **auth: a third review.** The take-over of an unconfirmed account (its
   credentials revoked on a confirmation from another browser, a sign-in
   link, a provider) applied to accounts in use — where confirmation is not

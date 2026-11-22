@@ -96,6 +96,13 @@ end
 # (`User#never_signed_in?`).
 def auth_open_session(user, same_sign_in = false, by_owner = true)
   sign_in_ends = same_sign_in ? session_get("sign_in_expires_at") : nil
+  # A provider sign-in vouches for a moment (`OauthSso.mark_authenticated`):
+  # within the same sign-in, and for this same user, it stays — an account
+  # with no password has no other way to prove itself before linking.
+  vouched_at = nil
+  if same_sign_in && by_owner && session_get("oauth_reauth_user").to_s == user._key.to_s
+    vouched_at = session_get("oauth_reauth_at")
+  end
   session_regenerate()
   auth_forget_impersonation()
   session_delete("two_factor")
@@ -106,6 +113,10 @@ def auth_open_session(user, same_sign_in = false, by_owner = true)
   session_delete("oauth_reauth_user")
   session_delete("oauth_reauth_at")
   session_set("sign_in_expires_at", sign_in_ends) unless sign_in_ends.nil?
+  unless vouched_at.nil?
+    session_set("oauth_reauth_user", user._key)
+    session_set("oauth_reauth_at", vouched_at)
+  end
   session_set("user_id", user._key)
   # When this sign-in happened: the OIDC provider reads it for max_age /
   # auth_time, and adding a way into the account asks for a recent one.
@@ -195,6 +206,25 @@ end
 # answers the same for a free address and a taken one, and that only holds if
 # the account it may have created cannot be signed in to before its mailbox
 # answered — otherwise "sign up, then try to sign in" tells which it was.
+#
+# Do not make this false while strangers can sign up. An account signed in
+# to at sign-up counts as in use from its first second, so one created with
+# your address and someone else's password is no longer taken back when you
+# prove the address (`User#never_signed_in?`): its creator keeps their way
+# in.
+# A bulk write (`update_all`, `delete_all`) does not raise when the database
+# refuses it: it answers with an "Error: …" string. Where a write that did
+# not happen would leave a way into an account — a token not deleted, a
+# counter not reset — the action must stop there, not go on as if it had.
+def auth_written(result)
+  throw result if result.to_s.starts_with?("Error:")
+
+  result
+end
+
+# The cookie sign-up leaves in the browser that chose the password.
+const AUTH_SIGNUP_COOKIE = "__Host-signup"
+
 def auth_require_confirmed_email
   auth_signup_mode() == "open"
 end
@@ -361,7 +391,7 @@ class User < Model
     # (Linked providers and the authenticator app stay: they are the owner's.)
     ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
       model = const_get(name)
-      model.where({"user_id": @_key}).delete_all unless model.nil?
+      auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
     end
     @set_password(plaintext)
     @reset_token_digest = nil
@@ -395,7 +425,7 @@ class User < Model
   # and finished after it (Argon2 takes a tenth of a second) would put the
   # old password, and the old session version, back.
   def _patch(fields)
-    User.where({"_key": @_key}).update_all(fields)
+    auth_written(User.where({"_key": @_key}).update_all(fields))
     true
   end
 
@@ -427,7 +457,7 @@ class User < Model
       unless model.nil?
         owner = {}
         owner[entry[1]] = @_key
-        model.where(owner).delete_all
+        auth_written(model.where(owner).delete_all)
       end
     end
     @password_digest = nil

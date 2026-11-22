@@ -60,19 +60,30 @@ class RegistrationsController < Controller
     # a confirmation from this browser keeps the password chosen here, one
     # from elsewhere replaces it (`ConfirmationsController#confirm`). Set
     # whether an account is created or not, so the reply does not tell.
-    # (The one this browser already holds, when it has one: a second
-    # submission must not orphan the account the first one created.)
-    held = (cookies["signup"] rescue nil).to_s
-    signup_nonce = Regex.matches("^[0-9a-f]{64}$", held) ? held : Crypto.random_hex(32)
-    set_cookie("signup", signup_nonce, {
+    # `__Host-`: a browser accepts that name only from this very host over
+    # https, so a sibling subdomain cannot plant one.
+    existing = open_sign_up ? User.find_by("email", params["email"].to_s.trim.downcase) : nil
+    signup_nonce = Crypto.random_hex(32)
+    unless existing.nil?
+      # A second submission by the person who made the account — same
+      # browser, same password — keeps the cookie the first one left, or the
+      # account it created would be orphaned from its browser. Anyone else
+      # gets a new one: on a shared machine, the cookie of whoever signed up
+      # with this address before must not vouch for the next visitor.
+      held = (cookies[AUTH_SIGNUP_COOKIE] rescue nil).to_s
+      same_browser = held.present? && existing.signup_nonce_digest.present? &&
+        Crypto.secure_compare(existing.signup_nonce_digest.to_s, Crypto.sha256(held))
+      same_person = existing.authenticate(params["password"].to_s) == true
+      signup_nonce = held if same_browser && same_person
+    end
+    set_cookie(AUTH_SIGNUP_COOKIE, signup_nonce, {
       "max_age": AUTH_CONFIRMATION_TOKEN_TTL,
       "http_only": true,
       "same_site": "Lax",
-      "secure": true
+      "secure": true,
+      "path": "/"
     })
-    existing = open_sign_up ? User.find_by("email", params["email"].to_s.trim.downcase) : nil
     unless existing.nil?
-      User.burn_password_work(params["password"].to_s)
       User.burn_write_work
       AuthMailer.already_registered(existing).deliver_later rescue nil
       auth_uniform_wait(started)
