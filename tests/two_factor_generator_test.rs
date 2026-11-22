@@ -980,3 +980,71 @@ print("secret #{record.secret}")
     assert_eq!(ada.post("/login", creds).status, 302);
     assert_eq!(ada.post("/fixture/read", json!({})).body, "null false null");
 }
+
+/// Logging out drops the remember-me token — for a session past every step
+/// of signing in. One that only got as far as the password (the account has
+/// a second factor it did not pass) is not the owner's to end things with:
+/// its logout leaves the owner's token alone.
+#[test]
+fn a_logout_before_the_second_factor_leaves_the_owners_remember_me_alone() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root);
+    let creds = json!({"email": EMAIL, "password": PASSWORD});
+    let mut owner = Browser::new(&server);
+    assert_eq!(owner.post("/signup", creds.clone()).status, 200);
+    confirm_address(root, EMAIL);
+    // The owner signs in and is remembered, then turns two-factor on.
+    let remembered = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
+    assert_eq!(owner.post("/login", remembered).status, 302);
+    fs::write(
+        root.join("enrol.sl"),
+        r##"user = User.find_by("email", "ada@example.com")
+record = TwoFactor.start(user)
+record.confirm(Crypto.totp_generate(record.secret))
+print("token kept #{User.find(user._key).remember_token_digest.present?}")
+"##,
+    )
+    .unwrap();
+    let held = |script: &str| {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+            .args(["runner", script])
+            .current_dir(root)
+            .env_remove("SOLI_ENGINE")
+            .env(
+                "SOLI_ENCRYPTION_KEY",
+                "two-factor-test-key-0123456789abcdef",
+            )
+            .env("SOLI_DB_ADAPTER", "sqlite")
+            .env(
+                "DATABASE_URL",
+                format!("sqlite://{}/app.sqlite3", root.display()),
+            )
+            .output()
+            .expect("run soli");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    assert!(held("enrol.sl").ends_with("token kept true"));
+
+    // Someone who knows the password, and nothing else, signs in and logs out.
+    let mut stranger = Browser::new(&server);
+    assert_eq!(stranger.post("/login", creds).status, 302);
+    assert_eq!(
+        stranger.get("/two_factor").location,
+        "/two_factor/challenge",
+        "the stranger's session is not pending the second factor"
+    );
+    stranger.request("DELETE", "/logout", None);
+
+    fs::write(
+        root.join("after.sl"),
+        r##"user = User.find_by("email", "ada@example.com")
+print("token kept #{user.remember_token_digest.present?}")
+"##,
+    )
+    .unwrap();
+    assert!(
+        held("after.sl").ends_with("token kept true"),
+        "a session that never passed the second factor dropped the owner's remember-me"
+    );
+}
