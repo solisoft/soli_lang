@@ -1456,3 +1456,37 @@ taken.revoke_credentials
 print("#{marked} | #{User.find(user._key).saml_link_pending}")"##;
     assert_eq!(runner(root, code), "true true true true | false");
 }
+
+/// A link finished by hand — the identity row created by an administrator
+/// on an account the take-over had marked — is complete at its next
+/// sign-in: the mark goes, so that deleting the identity later does not
+/// leave an account that is linked again by its address alone.
+#[test]
+fn a_sign_in_through_a_known_identity_clears_the_take_overs_mark() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root, "on");
+    let state = r##"user = User.new
+user.email = "ada@example.com"
+user.role = "member"
+user.confirmed_at = DateTime.utc.to_unix
+user.sso_only = true
+user.saml_link_pending = true
+user.save
+SamlIdentity.create({"user_id": user._key, "issuer": "IDP_ISSUER", "name_id": "ada-at-idp", "email": "ada@example.com"})
+print("ready")"##
+        .replace("IDP_ISSUER", IDP);
+    assert_eq!(runner(root, &state), "ready");
+
+    let mut ada = Browser::new(&server);
+    let id = ada.start("/saml/login");
+    assert_eq!(ada.post_response(&issue(root, &id, json!({}))).status, 302);
+    assert!(ada.whoami().starts_with("ada@example.com member "));
+    assert_eq!(
+        runner(
+            root,
+            r##"print(User.find_by("email", "ada@example.com").saml_link_pending)"##
+        ),
+        "false"
+    );
+}

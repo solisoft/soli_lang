@@ -1087,15 +1087,20 @@ fn a_logout_past_the_second_factor_drops_the_remember_me_token() {
         "enrol.sl",
         r##"user = User.find_by("email", "ada@example.com")
 record = TwoFactor.start(user)
-record.confirm(Crypto.totp_generate(record.secret))
+codes = record.confirm(Crypto.totp_generate(record.secret))
 print("secret #{record.secret}")
+print("backup #{codes[0]}")
 "##,
     );
-    let secret = enrolled
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("secret "))
-        .unwrap_or_else(|| panic!("no secret: {enrolled}"))
-        .to_string();
+    let printed = |label: &str| {
+        enrolled
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(label))
+            .unwrap_or_else(|| panic!("no {label}: {enrolled}"))
+            .to_string()
+    };
+    let secret = printed("secret ");
+    let backup = printed("backup ");
 
     // Password with "remember me", then the challenge: a full session.
     let remembered = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
@@ -1116,5 +1121,28 @@ print("token stored #{user.remember_token_digest.present?}")
     assert!(
         run("stored.sl", stored).ends_with("token stored false"),
         "the owner's logout left the remember-me token alive"
+    );
+
+    // Remembered again; then the session is gone and only the cookie is
+    // left. Restored, it waits at the challenge — and a logout from there
+    // still ends the token, because the request carries it.
+    let mut again = Browser::new(&server);
+    let remembered = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
+    assert_eq!(again.post("/login", remembered).status, 302);
+    let passed = again.post(
+        "/two_factor/challenge",
+        // (A backup code: the app's code for this step is spent.)
+        json!({"code": backup}),
+    );
+    assert_eq!(passed.status, 302, "{}", passed.body);
+    assert!(run("stored.sl", stored).ends_with("token stored true"));
+    let cookie = again.jar.get("remember_token").expect("no cookie").clone();
+    let mut expired = Browser::new(&server);
+    expired.jar.insert("remember_token".to_string(), cookie);
+    let out = expired.request("DELETE", "/logout", None);
+    assert_eq!(out.status, 302, "{}", out.body);
+    assert!(
+        run("stored.sl", stored).ends_with("token stored false"),
+        "a logout carrying the token, from a session waiting at the challenge, left it alive"
     );
 }
