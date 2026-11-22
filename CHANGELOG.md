@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a sixth review** (nothing above low). The sign-up cookie is gone:
+  the confirmation page of an account nobody ever entered asks for the
+  password chosen at sign-up, which tells who signed up where a cookie on a
+  shared machine did not (this replaces the `__Host-signup` cookie of the
+  entries below). The password asked for by the two-factor pages counts
+  towards the lockout. Sign-up and sign-in fail alike for a known and an
+  unknown address when the database refuses writes. A sign-in link's
+  requester survives a proxy's `ip:port` / `[v6]:port`. SAML checks the
+  save of a provisioned or directory account.
 - **auth: a fifth review** (no way in found; three medium findings). A
   database that takes no writes answered 500 for a known address and 200
   for an unknown one: both now fail alike. The sign-up cookie is new on

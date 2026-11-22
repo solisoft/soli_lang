@@ -56,27 +56,7 @@ class RegistrationsController < Controller
     # Argon2 work is spent.
     started = clock()
     open_sign_up = auth_signup_mode() == "open"
-    # The browser that signs up keeps a cookie, and the account its digest:
-    # a confirmation from this browser keeps the password chosen here, one
-    # from elsewhere replaces it (`ConfirmationsController#confirm`). Set
-    # whether an account is created or not, so the reply does not tell.
-    # `__Host-`: a browser accepts that name only from this very host over
-    # https, so a sibling subdomain cannot plant one.
     existing = open_sign_up ? User.find_by("email", params["email"].to_s.trim.downcase) : nil
-    # A new one each time, never the one the browser holds: reusing it
-    # would let whoever sat at this browser before vouch for the next
-    # visitor, and checking the password first would tell a holder of the
-    # cookie whether a guess was right. The price: signing up twice from one
-    # browser orphans the first account from its cookie, and confirming it
-    # takes the "another browser" path — a link to choose a password.
-    signup_nonce = Crypto.random_hex(32)
-    set_cookie(AUTH_SIGNUP_COOKIE, signup_nonce, {
-      "max_age": AUTH_CONFIRMATION_TOKEN_TTL,
-      "http_only": true,
-      "same_site": "Lax",
-      "secure": true,
-      "path": "/"
-    })
     unless existing.nil?
       User.burn_password_work(params["password"].to_s)
       User.burn_write_work
@@ -84,7 +64,6 @@ class RegistrationsController < Controller
       auth_uniform_wait(started)
       return @_check_mailbox(existing.email)
     end
-    user.signup_nonce_digest = Crypto.sha256(signup_nonce)
 
     # The account that opens a `first_user` app runs it.
     user.role = "admin" if auth_signup_mode() == "first_user"
@@ -92,7 +71,10 @@ class RegistrationsController < Controller
     saved = user.save
     # `saved`, not only `_errors`: a write the database refused leaves no
     # validation error, and the visitor must not be told an account exists.
-    return @_reject(user, "Could not create your account", 422) if user._errors || saved != true
+    return @_reject(user, "Could not create your account", 422) if (user._errors ?? []).length > 0
+    # A write the database refused: an error, as on the taken-address side
+    # (`burn_write_work`) — not an answer that tells the two apart.
+    throw "could not create the account" if saved != true
 
     # Send the confirmation link. `rescue nil` keeps signup working before
     # SMTP is configured (set SOLI_MAIL_DELIVERY_METHOD=logger in dev to see

@@ -222,9 +222,6 @@ def auth_written(result)
   result
 end
 
-# The cookie sign-up leaves in the browser that chose the password.
-const AUTH_SIGNUP_COOKIE = "__Host-signup"
-
 def auth_require_confirmed_email
   auth_signup_mode() == "open"
 end
@@ -463,7 +460,6 @@ class User < Model
       end
     end
     @password_digest = nil
-    @signup_nonce_digest = nil
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil
@@ -503,14 +499,7 @@ class User < Model
     @confirmed_at = DateTime.utc.to_unix
     @confirmation_token_digest = nil
     @confirmation_sent_at = nil
-    # The sign-up cookie has done its work: it vouches for nothing later.
-    @signup_nonce_digest = nil
-    @_patch({
-      "confirmed_at": @confirmed_at,
-      "confirmation_token_digest": nil,
-      "confirmation_sent_at": nil,
-      "signup_nonce_digest": nil
-    })
+    @_patch({"confirmed_at": @confirmed_at, "confirmation_token_digest": nil, "confirmation_sent_at": nil})
   end
 
   def confirmed?
@@ -673,7 +662,12 @@ class User < Model
     # a directory-provisioned user) has nothing to lock, and counting wrong
     # passwords against it let anyone who knows the address lock its owner
     # out of the ways in that do work.
-    return true if @sso_only? || @password_digest.blank?
+    # (The write the others cost is spent all the same, so the answer takes
+    # as long and fails as they do when the database refuses writes.)
+    if @sso_only? || @password_digest.blank?
+      User.burn_write_work
+      return true
+    end
 
     # Counted in the database (`increment` is one atomic write): a read, +1
     # and save let parallel guesses overwrite each other's count, so a burst

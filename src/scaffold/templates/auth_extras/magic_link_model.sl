@@ -63,19 +63,27 @@ class MagicLink < Model
   # be as many requesters as it likes.
   static def requester_for(address)
     let text = address.to_s.trim.downcase
-    return text unless text.includes?(":")
-    # An IPv4 client seen through a dual-stack listener (::ffff:a.b.c.d).
-    if text.includes?(".")
-      let pieces = text.split(":")
-      return pieces[pieces.length - 1]
+    # What a proxy may write: "[2001:db8::1]:443", "192.0.2.1:5678".
+    let bracketed = Regex.matches("^\\[", text)
+    text = text.replace("[", "").split("]")[0].to_s if bracketed
+    if !bracketed && Regex.matches("^[0-9.]+:[0-9]+$", text)
+      text = text.split(":")[0]
     end
+    return text unless text.includes?(":")
+    # An IPv4 client seen through a dual-stack listener.
+    return text.replace("::ffff:", "") if Regex.matches("^::ffff:[0-9.]+$", text)
 
-    let halves = text.split("::")
+    let halves = text.split("%")[0].split("::")
     let head = halves[0].to_s.split(":").filter { |group| group.present? }
     let tail = halves.length > 1 ? halves[1].to_s.split(":").filter { |group| group.present? } : []
     let missing = halves.length > 1 ? 8 - head.length - tail.length : 0
     let zeros = (0..missing).map { |i| "0" }
     let groups = [...head, ...zeros, ...tail]
+    # Not an address after all: counted as written, never folded into
+    # someone else's network.
+    let odd = groups.filter { |group| !Regex.matches("^[0-9a-f]{1,4}$", group) }
+    return text if odd.length > 0 || groups.length != 8
+
     groups.slice(0, 4).map { |group| group.to_i(16).to_s }.join(":") + "::/64"
   end
 

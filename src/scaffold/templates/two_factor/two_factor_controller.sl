@@ -161,8 +161,20 @@ class TwoFactorController < Controller
   end
 
   # An account without a password (created through OAuth) has none to ask for.
+  #
+  # Counted like a sign-in: a session left open is not a place to guess the
+  # password from without the lockout, and a locked account's password is
+  # not checked at all.
   def _password_ok(user)
-    user.password_digest.blank? || user.authenticate(params["password"].to_s)
+    return true if user.password_digest.blank?
+    return false if user.locked?
+
+    if user.authenticate(params["password"].to_s) == true
+      user.clear_failed_attempts
+      return true
+    end
+    user.register_failed_attempt
+    false
   end
 
   def _render_index(user, error, status)

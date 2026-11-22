@@ -749,32 +749,39 @@ fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
     let (_, page) = call(&server, "POST", "/confirm_email", Some(&body));
     assert!(page.contains("invalid or was already used"), "{page}");
 
-    // From the browser that signed up (it kept the sign-up cookie), the
-    // confirmation keeps the password chosen there.
+    // With the password chosen at sign-up, the same person did both: the
+    // confirmation keeps it. The page asks for it (an account nobody ever
+    // entered), and no cookie stands in for it.
     let signed_up = agent
         .post(&format!("{origin}/signup"))
         .set("Content-Type", "application/json")
         .send_string(BOB)
         .unwrap();
-    let cookie = signed_up
+    assert!(!signed_up
         .all("set-cookie")
         .iter()
-        .find(|c| c.starts_with("__Host-signup="))
-        .map(|c| c.split(';').next().unwrap().to_string())
-        .expect("no sign-up cookie");
+        .any(|c| c.contains("signup")));
     let (_, token) = call(&server, "GET", "/fixture/token?email=bob@example.com", None);
+    let (_, page) = call(
+        &server,
+        "GET",
+        &format!("/confirm_email?token={token}"),
+        None,
+    );
+    assert!(page.contains(r#"name="password""#), "{page}");
     let confirmed_here = agent
         .post(&format!("{origin}/confirm_email"))
         .set("Content-Type", "application/json")
         .set("Origin", &origin)
-        .set("Cookie", &cookie)
-        .send_string(&format!(r#"{{"token": "{token}"}}"#))
+        .send_string(&format!(
+            r#"{{"token": "{token}", "password": "correct horse battery"}}"#
+        ))
         .unwrap();
     assert_eq!(confirmed_here.status(), 200);
     assert!(confirmed_here
         .into_string()
         .unwrap()
-        .contains("Your email address is confirmed"));
+        .contains("Your email address is confirmed. Sign in to continue."));
     assert_eq!(call(&server, "POST", "/login", Some(BOB)).0, 302);
 }
 

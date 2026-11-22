@@ -505,10 +505,10 @@ both = !MagicLink.redeem(owners["token"], held).nil? && !MagicLink.redeem(again[
 MagicLink.where({"user_id": user._key}).update_all({"expires_at": 1})
 fresh = !MagicLink.issue(user, "a new address").nil?
 left = MagicLink.where({"user_id": user._key}).count
-networks = ["2001:db8:0:1::5", "2001:0db8:0000:0001:ffff::9", "2001:db8:0:2::5", "::ffff:192.0.2.1", "192.0.2.1"].map { |address| MagicLink.requester_for(address) }
+networks = ["2001:db8:0:1::5", "2001:0db8:0000:0001:ffff::9", "2001:db8:0:2::5", "::ffff:192.0.2.1", "192.0.2.1", "192.0.2.1:5678", "[2001:DB8:0:1::7]:443", "fe80::1%eth0", "not:an:address"].map { |address| MagicLink.requester_for(address) }
 print("#{networks.join(" ")} #{again["nonce"] != owners["nonce"]} #{refused} #{after_one_address} #{full} #{at_ceiling} #{both} #{fresh} #{left}")"##
         ),
-        "8193:3512:0:1::/64 8193:3512:0:1::/64 8193:3512:0:2::/64 192.0.2.1 192.0.2.1 true 7 5 100 true true true 1"
+        "8193:3512:0:1::/64 8193:3512:0:1::/64 8193:3512:0:2::/64 192.0.2.1 192.0.2.1 192.0.2.1 8193:3512:0:1::/64 65152:0:0:0::/64 not:an:address true 7 5 100 true true true 1"
     );
 }
 

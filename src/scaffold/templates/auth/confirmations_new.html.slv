@@ -23,6 +23,16 @@
         <p class="text-sm text-slate-400">
           If you did not sign up, close this page: someone else used your address, and confirming would vouch for them.
         </p>
+        <% if ask_password %>
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-1" for="password">The password you chose when signing up</label>
+            <input id="password" name="password" type="password" autocomplete="current-password"
+                   class="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-indigo-500 focus:outline-none">
+            <p class="mt-1 text-xs text-slate-500">
+              Without it, or with another one, the address is confirmed and we mail you a link to choose a new password.
+            </p>
+          </div>
+        <% end %>
         <button type="submit"
                 class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
           Confirm my email

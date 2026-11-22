@@ -19,14 +19,12 @@ class ConfirmationsController < Controller
   # button posts to `confirm`, which is where the address is confirmed.
   def show
     token = params["token"].to_s
-    return @_invalid if @_pending(token).nil?
+    user = @_pending(token)
+    return @_invalid if user.nil?
 
-    @_page(
-      "Confirm your email",
-      "",
-      "",
-      token
-    )
+    # An account nobody ever entered is asked for the password it was
+    # created with (see `confirm`).
+    @_page("Confirm your email", "", "", token, user.never_signed_in?)
   end
 
   # POST /confirm_email — the button on that page
@@ -34,21 +32,29 @@ class ConfirmationsController < Controller
     user = @_pending(params["token"].to_s)
     return @_invalid if user.nil?
 
-    # From the browser that signed up, or for an account that has been in
-    # use (its user never clicked the link — most accounts, where the
-    # confirmation is not required): the address is confirmed, nothing else
-    # changes. Not signed in: whoever holds the link — a shared mailbox, the
-    # colleague the message was forwarded to — has not proved they hold the
-    # password.
-    if @_signed_up_here?(user) || !user.never_signed_in?
+    # An account that has been in use (its user never clicked the link —
+    # most accounts, where the confirmation is not required): the address is
+    # confirmed, nothing else changes. Not signed in: whoever holds the link
+    # — a shared mailbox, the colleague the message was forwarded to — has
+    # not proved they hold the password.
+    unless user.never_signed_in?
       user.confirm_email
       return @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
     end
 
-    # Another browser, and an account nobody ever entered. Whoever is here
-    # holds the mailbox; whoever signed up chose the password — and may be
-    # someone who created the account in wait for this confirmation, to sign
-    # in with that password afterwards. Everything the account could be
+    # An account nobody ever entered. Whoever is here holds the mailbox;
+    # whoever signed up chose the password — and may be someone else, who
+    # created the account in wait for this confirmation. The password is
+    # what tells: given here, the same person did both, and it stays. (A
+    # cookie left at sign-up would not tell — on a shared machine it is the
+    # next visitor's too.) One try: a wrong one takes the path below, which
+    # removes the password it was a guess at.
+    if user.authenticate(params["password"].to_s) == true
+      user.confirm_email
+      return @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
+    end
+
+    # No password, or not the one: everything the account could be
     # entered with goes, and a link to choose a password is mailed: sent to
     # the mailbox rather than handed to this browser, so that a confirmation
     # mail forwarded to someone is not a way into the account.
@@ -93,14 +99,6 @@ class ConfirmationsController < Controller
 
   private
 
-  # Is this the browser the account was created from? Sign-up leaves a
-  # cookie whose digest is kept on the account.
-  def _signed_up_here?(user)
-    given = (cookies[AUTH_SIGNUP_COOKIE] rescue nil).to_s
-    kept = user.signup_nonce_digest.to_s
-    given.present? && kept.present? && Crypto.secure_compare(kept, Crypto.sha256(given))
-  end
-
   # The account a confirmation token names, while the link is still good.
   # An expired link is indistinguishable from an invalid one to the visitor,
   # which is right: both mean "ask for a fresh one".
@@ -126,19 +124,20 @@ class ConfirmationsController < Controller
 
   # The confirmation page with a title, a notice and an error.
   def _form(title, notice, error)
-    @_page(title, notice, error, "")
+    @_page(title, notice, error, "", false)
   end
 
   # With a `token`, the page is the "confirm this address" button; without
   # one, the "send me a fresh link" form.
-  def _page(title, notice, error, token)
+  def _page(title, notice, error, token, ask_password)
     render(
       "confirmations/new",
       {
         "title": title,
         "notice": notice,
         "error": error,
-        "token": token
+        "token": token,
+        "ask_password": ask_password
       }
     )
   end

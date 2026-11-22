@@ -364,8 +364,8 @@ class SamlSso
       # Signs in through the identity provider only: see `User#sso_only?`
       # for what that blocks, and what it takes a SCIM deactivation to end.
       user.sso_only = true
-      user.save
-      throw "could not create the account for #{email}" if user._errors
+      saved = user.save
+      throw "could not create the account for #{email}" if saved != true || (user._errors ?? []).length > 0
       created = true
     else
       SamlSso.link_account(user, email, assertion)
@@ -429,8 +429,8 @@ class SamlSso
       # link's, which has no expiry of its own) closes.
       user.sso_only = true
       user.session_version = user.current_session_version + 1
-      user.save
-      throw "could not update #{email}" if user._errors
+      saved = user.save
+      throw "could not update #{email}" if saved != true || (user._errors ?? []).length > 0
     end
   end
 end
