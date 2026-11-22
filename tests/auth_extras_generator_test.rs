@@ -1023,3 +1023,56 @@ fn logout_ends_remember_me_for_every_copy_of_the_cookie() {
         );
     }
 }
+
+/// A logout that cannot reach the account does not say it is done. While
+/// the `users` table cannot be read (its column renamed under the running
+/// server), DELETE /logout answers an error and drops nothing: the session
+/// and the remember-me token are as they were. Once the database is back,
+/// the same logout goes through and the token is gone.
+#[test]
+fn a_logout_the_database_cannot_serve_fails_and_drops_nothing() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    drop(sign_up(&server, "ada@example.com"));
+    let mut ada = Client::browser(&server);
+    let reply = ada.post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD, "remember_me": "1"}),
+    );
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    let token = ada.jar.get("remember_token").expect("no cookie").clone();
+
+    let rename = |from: &str, to: &str| {
+        let conn = rusqlite::Connection::open(dir.path().join("app.sqlite3")).unwrap();
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        conn.execute_batch(&format!("ALTER TABLE users RENAME COLUMN {from} TO {to};"))
+            .unwrap_or_else(|e| panic!("rename {from} -> {to}: {e}"));
+    };
+    rename("doc", "doc_away");
+    let refused = ada.request("DELETE", "/logout", None);
+    assert_eq!(
+        refused.status, 500,
+        "a logout that could not read the account answered {}: {}",
+        refused.status, refused.body
+    );
+    assert_eq!(
+        ada.jar.get("remember_token"),
+        Some(&token),
+        "the cookie was expired by a logout that failed"
+    );
+    rename("doc_away", "doc");
+
+    // Nothing was dropped: the token still restores a session…
+    let mut copy = Client::browser(&server);
+    copy.jar.insert("remember_token".to_string(), token);
+    assert_eq!(copy.whoami(), "ada@example.com admin");
+    // …and with the database back, the logout goes through.
+    let out = ada.request("DELETE", "/logout", None);
+    assert!(out.status == 302 || out.status == 200, "{}", out.body);
+    assert_eq!(ada.whoami(), "guest");
+    let replacement = copy.jar.get("remember_token").expect("no cookie").clone();
+    let mut later = Client::browser(&server);
+    later.jar.insert("remember_token".to_string(), replacement);
+    assert_eq!(later.whoami(), "guest");
+}
