@@ -397,3 +397,38 @@ fn a_frame_points_at_the_declaration_too() {
     let text = String::from_utf8_lossy(&output.stderr);
     assert!(text.contains("--- declared here"), "{text}");
 }
+
+/// A file that does not parse is an issue `soli lint` reports and fails on.
+/// It printed the parse error and then left the file out of its count: the
+/// run ended "No issues found." with exit code 0 — on `i += 1 while i < 3`,
+/// a postfix `while` the language does not have.
+#[test]
+fn soli_lint_fails_on_a_file_that_does_not_parse() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "broken.sl",
+        "i = 0\ni += 1 while i < 3\nprint(i)\n",
+    );
+    write(dir.path(), "fine.sl", "total = 1\nprint(total)\n");
+
+    let plain = soli(dir.path(), &["lint", "broken.sl"]);
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&plain.stdout),
+        String::from_utf8_lossy(&plain.stderr)
+    );
+    assert_eq!(plain.status.code(), Some(1), "{said}");
+    assert!(said.contains("parse error"), "{said}");
+    assert!(!said.contains("No issues found"), "{said}");
+
+    let json = soli(dir.path(), &["lint", "--format=json", "broken.sl"]);
+    assert_eq!(json.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).expect("JSON");
+    assert_eq!(report["issues"], 1);
+    assert_eq!(report["diagnostics"][0]["code"], "parse/error");
+
+    // A file that parses is still clean.
+    let clean = soli(dir.path(), &["lint", "fine.sl"]);
+    assert_eq!(clean.status.code(), Some(0), "{}", stdout(&clean));
+}

@@ -41,7 +41,7 @@ soli lint app/main.sl</code></pre>
         <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
             <h4 class="text-base font-semibold text-amber-400 mb-2">Exit codes</h4>
             <p class="text-amber-200/80 text-sm">
-                <code>0</code> &mdash; no issues found. <code>1</code> &mdash; one or more issues found.
+                <code>0</code> &mdash; no issues found. <code>1</code> &mdash; one or more issues found. A file that does not parse counts as one (<code>parse/error</code> in <code>--format=json</code>): none of its rules ran.
             </p>
         </div>
 

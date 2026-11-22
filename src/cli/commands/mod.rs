@@ -1597,7 +1597,27 @@ pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
         let diagnostics = match solilang::lint_file(&source, &file.display().to_string()) {
             Ok(d) => d,
             Err(e) => {
+                // A file that does not parse is an issue, and the worst one:
+                // none of its rules ran. It was printed and then left out of
+                // the count, so the run ended "No issues found." with exit
+                // code 0 on a file that could not be read as Soli at all.
                 eprintln!("{}: parse error: {}", file.display(), e);
+                files_with_issues += 1;
+                total_issues += 1;
+                if format == OutputFormat::Json {
+                    json_findings.push(serde_json::json!({
+                        "severity": "error",
+                        "code": "parse/error",
+                        "name": null,
+                        "message": e.to_string(),
+                        "file": file.display().to_string(),
+                        "line": 1,
+                        "column": 1,
+                        "hint": null,
+                        "secondary": [],
+                        "notes": [],
+                    }));
+                }
                 continue;
             }
         };

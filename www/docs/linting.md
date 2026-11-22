@@ -9,7 +9,8 @@ soli lint src/             # a directory
 soli lint app/main.sl      # one file
 ```
 
-Exit code `0` when clean, `1` when anything was found.
+Exit code `0` when clean, `1` when anything was found — a file that does not
+parse counts (`parse/error` in `--format=json`): none of its rules ran.
 
 Each issue is one line — path, line, column, rule, message:
 
