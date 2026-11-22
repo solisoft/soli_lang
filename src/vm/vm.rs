@@ -12252,6 +12252,7 @@ result = [turned, label, peek(vault), forge(vault), rank_of(vault), vault.turn(0
                 Value::String("b".into()),
             ])))),
             failed: None,
+            delivered: false,
         })))
     }
 

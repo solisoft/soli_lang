@@ -56,4 +56,18 @@ describe("grouped: one read failing") do
     end
     assert_eq(outcome, "finished")
   end
+
+  test("a miss nobody read is raised by the block's end") do
+    let outcome = "finished"
+    try
+      grouped(fn() {
+        post = GrpNote.find("no-such-key")
+        total = GrpNote.where({"kind": "ban"}).count
+        pages = total / 1
+      })
+    catch error
+      outcome = "raised: #{error}"
+    end
+    assert_contains(outcome, "not found")
+  end
 end

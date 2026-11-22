@@ -45,8 +45,8 @@ class MagicLink < Model
     return nil if live.length >= MAGIC_LINKS_PENDING
     return nil if live.filter { |link| link.requester.to_s == requester.to_s }.length >= MAGIC_LINKS_PER_REQUESTER
 
-    token = Crypto.random_hex(32)
-    nonce = Crypto.random_hex(32)
+    let token = Crypto.random_hex(32)
+    let nonce = Crypto.random_hex(32)
     MagicLink.create({
       "user_id": user._key,
       "requester": requester.to_s,
@@ -114,7 +114,7 @@ class MagicLink < Model
   # Whom `token` would sign in from the browser holding `nonce`, or nil —
   # without using the link up: what the page that asks "sign in as …?" reads.
   static def peek(token, nonce)
-    link = MagicLink.find_by("token_digest", Crypto.sha256(token.to_s))
+    let link = MagicLink.find_by("token_digest", Crypto.sha256(token.to_s))
     return nil if link.nil? || DateTime.utc.to_unix > link.expires_at
 
     let matching = MagicLink.held_nonces(nonce).filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
@@ -128,28 +128,32 @@ class MagicLink < Model
   # time or not.
   static def redeem(token, nonce)
     let digest = Crypto.sha256(token.to_s)
-    link = MagicLink.find_by("token_digest", digest)
+    let link = MagicLink.find_by("token_digest", digest)
     return nil if link.nil?
     # The cookie holds the nonces of this browser's last few requests
     # (`MagicLink.cookie_with`): any of them opens its own link.
     let matching = MagicLink.held_nonces(nonce).filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
     return nil if matching.length == 0
+    return nil unless MagicLink.claim(link, digest)
 
-    # Claimed before it is used, by a write that names the digest it read:
-    # of two requests opening the same link at once, one finds it changed
-    # and signs nobody in. (A delete alone does not tell — removing a row
-    # that is already gone is a success on the SQL adapters.)
-    let claim = "claimed:#{Crypto.random_hex(16)}"
-    auth_written(MagicLink.where({"_key": link._key, "token_digest": digest}).update_all({"token_digest": claim}))
-    let claimed = MagicLink.find_by("_key", link._key)
-    return nil if claimed.nil? || claimed.token_digest != claim
-
-    expired = DateTime.utc.to_unix > link.expires_at
+    let expired = DateTime.utc.to_unix > link.expires_at
     # Used up, for certain: a delete that did not happen — refused (false),
     # or the row already gone (an "Error: …" string) — signs nobody in.
     let deleted = link.delete
     return nil if expired || deleted == false || type(deleted) == "string"
 
     User.find_by("_key", link.user_id)
+  end
+
+  # Take `link` for this request, or answer false when another one took it
+  # first. The write names the digest that was read: of two requests opening
+  # the same link at once, one finds it changed. A delete alone does not
+  # tell them apart on the SQL adapters, where removing a row that is
+  # already gone succeeds; on SoliDB the delete that follows decides too.
+  static def claim(link, digest)
+    let mark = "claimed:#{Crypto.random_hex(16)}"
+    auth_written(MagicLink.where({"_key": link._key, "token_digest": digest}).update_all({"token_digest": mark}))
+    let now_holds = MagicLink.find_by("_key", link._key)
+    !now_holds.nil? && now_holds.token_digest == mark
   end
 end

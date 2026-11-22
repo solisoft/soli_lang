@@ -302,11 +302,10 @@ impl Vm {
             "each" | "map" | "filter" | "reduce" | "find" | "any?" | "all?" | "sort_by"
                 if args.iter().any(Value::is_callable) =>
             {
-                let rows = crate::interpreter::builtins::model::raise_if_error_value(
-                    crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
-                        .force_deferred(),
-                )
-                .map_err(|e| RuntimeError::new(e, span))?;
+                let rows = crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
+                    .force_checked()
+                    .and_then(crate::interpreter::builtins::model::raise_if_error_value)
+                    .map_err(|e| RuntimeError::new(e, span))?;
                 if let Value::Array(arr) = &rows {
                     return self.vm_call_array_method(arr, name, &args, span);
                 }
@@ -1472,6 +1471,7 @@ mod deferred_force_tests {
         Value::Deferred(Rc::new(RefCell::new(DeferredCell {
             resolved: Some(Value::Array(Rc::new(RefCell::new(items)))),
             failed: None,
+            delivered: false,
         })))
     }
 

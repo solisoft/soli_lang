@@ -58,19 +58,13 @@ struct PendingD1Read {
 struct BatchState {
     pending: Vec<PendingQuery>,
     d1_reads: Vec<PendingD1Read>,
+    /// The cells of every read this block has run, for [`end`] to find the
+    /// failures nobody was told about.
+    flushed: Vec<Rc<RefCell<DeferredCell>>>,
 }
 
 crate::request_local! {
     static BATCH: RefCell<Option<BatchState>> = const { RefCell::new(None) };
-
-    /// The first flush of the current block that failed. A flush made on
-    /// behalf of a formatting or truthiness helper has no error channel
-    /// ([`flush_current`]): its reads were dropped and read as nil — a
-    /// database failure taken for "no such row" by `if Ban.where(…).first`
-    /// written inside the block. Kept here, the failure is raised by the
-    /// next read that has a channel and, at the latest, by the block's end:
-    /// the request cannot complete on that nil.
-    static FAILED: RefCell<Option<String>> = const { RefCell::new(None) };
 
     /// Nesting depth of `grouped(fn() { ... })` blocks executing on this thread.
     ///
@@ -135,7 +129,6 @@ pub fn in_block() -> bool {
 /// interrupted by a panic never ran its `end`, so the next request on the
 /// worker would defer its reads into the dead request's batch.
 pub fn discard_stale() {
-    FAILED.with(|f| *f.borrow_mut() = None);
     BATCH.with(|b| b.borrow_mut().take());
     GROUPED_DEPTH.with(|d| d.set(0));
     FLUSHING_D1.with(|f| f.set(false));
@@ -178,10 +171,10 @@ pub fn begin() -> bool {
         if slot.is_some() {
             false
         } else {
-            FAILED.with(|f| *f.borrow_mut() = None);
             *slot = Some(BatchState {
                 pending: Vec::new(),
                 d1_reads: Vec::new(),
+                flushed: Vec::new(),
             });
             true
         }
@@ -192,9 +185,19 @@ pub fn begin() -> bool {
 /// clear the context. Returns `Err` if the final flush failed.
 pub fn end() -> Result<(), String> {
     let res = flush_inner();
-    BATCH.with(|b| *b.borrow_mut() = None);
-    let failed = FAILED.with(|f| f.borrow_mut().take());
-    match failed {
+    let flushed = BATCH.with(|b| b.borrow_mut().take().map(|state| state.flushed));
+    // A read that failed and reached nobody who could raise it — never
+    // read, or read where there is no error channel (a condition, a view) —
+    // is raised here: the block does not finish on a nil that is a failure.
+    // One that was raised to its reader has been dealt with there.
+    let unheard = flushed.unwrap_or_default().into_iter().find_map(|cell| {
+        let cell = cell.borrow();
+        match (&cell.failed, cell.delivered) {
+            (Some(error), false) => Some(error.clone()),
+            _ => None,
+        }
+    });
+    match unheard {
         Some(error) => Err(error),
         None => res,
     }
@@ -260,21 +263,12 @@ pub fn force(cell: &Rc<RefCell<DeferredCell>>) -> Result<Value, String> {
         // answers for its own.
         let _ = flush_inner();
     }
-    if let Some(error) = cell.borrow().failed.clone() {
+    let failed = cell.borrow().failed.clone();
+    if let Some(error) = failed {
+        cell.borrow_mut().delivered = true;
         return Err(error);
     }
     Ok(cell.borrow().resolved.clone().unwrap_or(Value::Null))
-}
-
-/// Keep a failure that a reader without an error channel met, for the
-/// block's end to raise (see [`FAILED`]).
-pub fn keep_failure(error: String) {
-    FAILED.with(|f| {
-        let mut slot = f.borrow_mut();
-        if slot.is_none() {
-            *slot = Some(error);
-        }
-    });
 }
 
 /// Run the reads collected so far, now. A no-op outside a batch or with
@@ -288,8 +282,8 @@ pub fn flush() -> Result<(), String> {
 /// have no error channel. Errors are swallowed here — the real read sites use
 /// [`force`], which surfaces them.
 pub fn flush_current() {
-    // A failure is written on the cells it failed for; the reader that has
-    // no channel keeps it (`Value::force_deferred` → [`keep_failure`]).
+    // A failure is written on the cells it failed for, and stays
+    // undelivered: [`end`] raises it.
     let _ = flush_inner();
 }
 
@@ -317,6 +311,16 @@ fn flush_inner() -> Result<(), String> {
             std::mem::take(&mut state.d1_reads),
         ),
         None => (Vec::new(), Vec::new()),
+    });
+    BATCH.with(|b| {
+        if let Some(state) = b.borrow_mut().as_mut() {
+            state
+                .flushed
+                .extend(pending.iter().map(|pq| pq.cell.clone()));
+            state
+                .flushed
+                .extend(d1_reads.iter().map(|read| read.cell.clone()));
+        }
     });
     let d1 = flush_d1(d1_reads);
     flush_solidb(pending).and(d1)
@@ -411,6 +415,19 @@ fn flush_solidb(pending: Vec<PendingQuery>) -> Result<(), String> {
         other => vec![other],
     };
 
+    // One sub-result per read, or the answer is not the one that was asked
+    // for: a read left without its own would be read as "no rows".
+    if subresults.len() != pending.len() {
+        let error = format!(
+            "grouped: {} reads were sent and {} answers came back",
+            pending.len(),
+            subresults.len()
+        );
+        for pq in &pending {
+            pq.cell.borrow_mut().failed = Some(error.clone());
+        }
+        return Err(error);
+    }
     let mut first_error = None;
     for (i, pq) in pending.into_iter().enumerate() {
         // Each subquery is wrapped in `(…)`, so its result is an array of the

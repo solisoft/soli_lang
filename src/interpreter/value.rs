@@ -531,6 +531,9 @@ pub struct DeferredCell {
     /// (`find`'s "not found"), failed when the batch ran. Kept per cell, so
     /// that a read is never taken for nil because another one failed.
     pub failed: Option<String>,
+    /// The failure reached a reader that could raise it (`batch::force`).
+    /// One that reached nobody is raised by the block's end.
+    pub delivered: bool,
 }
 
 /// Equality used by the `==` / `!=` operators in both engines. Enum values are
@@ -935,6 +938,15 @@ impl Value {
         matches!(self, Value::Deferred(_))
     }
 
+    /// Resolve a deferred value where the caller can raise: a failed read
+    /// is an error here, never nil. Non-deferred values are a clone.
+    pub fn force_checked(&self) -> Result<Value, String> {
+        match self {
+            Value::Deferred(cell) => crate::interpreter::builtins::model::batch::force(cell),
+            other => Ok(other.clone()),
+        }
+    }
+
     /// If this is a `Deferred`, resolve it — flushing the active batch if the
     /// cell is still pending — and return the inner value. Non-deferred values
     /// are returned as a clone. This is the *best-effort* resolver used by the
@@ -947,11 +959,8 @@ impl Value {
                 if cell.borrow().resolved.is_none() && cell.borrow().failed.is_none() {
                     crate::interpreter::builtins::model::batch::flush_current();
                 }
-                // No error channel here: the failure is kept for the block's
-                // end to raise (`batch::keep_failure`), and this read is nil.
-                if let Some(error) = cell.borrow().failed.clone() {
-                    crate::interpreter::builtins::model::batch::keep_failure(error);
-                }
+                // No error channel here: a failed cell reads as nil and is
+                // left undelivered, so the block's end raises it.
                 cell.borrow().resolved.clone().unwrap_or(Value::Null)
             }
             other => other.clone(),

@@ -756,11 +756,10 @@ impl Interpreter {
                 )
                 .map_err(fail)?;
                 qb.set_limit(1);
-                let rows = crate::interpreter::builtins::model::raise_if_error_value(
-                    crate::interpreter::builtins::model::execute_query_builder(&qb)
-                        .force_deferred(),
-                )
-                .map_err(fail)?;
+                let rows = crate::interpreter::builtins::model::execute_query_builder(&qb)
+                    .force_checked()
+                    .and_then(crate::interpreter::builtins::model::raise_if_error_value)
+                    .map_err(fail)?;
                 Ok(match rows {
                     Value::Array(arr) => arr.borrow().first().cloned().unwrap_or(Value::Null),
                     _ => Value::Null,

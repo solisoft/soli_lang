@@ -926,6 +926,7 @@ mod tests {
             Value::Deferred(Rc::new(RefCell::new(DeferredCell {
                 resolved: Some(Value::Int(n)),
                 failed: None,
+                delivered: false,
             })))
         };
         let sig = |value: Value| data_signature(&hash(vec![("count", value)]));

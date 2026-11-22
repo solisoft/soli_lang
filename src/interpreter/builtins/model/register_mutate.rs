@@ -586,7 +586,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             // Forced: inside `grouped` the count comes back deferred, and the
             // page arithmetic needs the number.
             let total = match raise_if_error_value(
-                super::query::execute_query_builder_count(&qb).force_deferred(),
+                super::query::execute_query_builder_count(&qb).force_checked()?,
             )? {
                 Value::Int(n) => n as usize,
                 _ => 0,

@@ -176,15 +176,17 @@ fn load_cascade_children(
     if rel.relation_type == crate::interpreter::builtins::model::RelationType::HasOne {
         qb.set_limit(1);
     }
-    let rows = crate::interpreter::builtins::model::raise_if_error_value(
-        crate::interpreter::builtins::model::execute_query_builder(&qb).force_deferred(),
-    )
-    .map_err(|e| {
-        RuntimeError::new(
-            format!("dependent: \"delete\" on \"{}\" failed: {}", rel.name, e),
-            span,
-        )
-    })?;
+    // `force_checked`: a read that failed inside `grouped` is an error
+    // here — read as "no children", the owner was deleted and they stayed.
+    let rows = crate::interpreter::builtins::model::execute_query_builder(&qb)
+        .force_checked()
+        .and_then(crate::interpreter::builtins::model::raise_if_error_value)
+        .map_err(|e| {
+            RuntimeError::new(
+                format!("dependent: \"delete\" on \"{}\" failed: {}", rel.name, e),
+                span,
+            )
+        })?;
     Ok(match rows {
         Value::Array(arr) => arr.borrow().clone(),
         _ => Vec::new(),

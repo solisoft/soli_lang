@@ -119,11 +119,11 @@ impl Interpreter {
             | "to_array" => {
                 // A failed read raises here: its "Error: …" string would
                 // otherwise answer `length`, `each`… as if it were the rows.
-                let materialized = crate::interpreter::builtins::model::raise_if_error_value(
+                let materialized =
                     crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
-                        .force_deferred(),
-                )
-                .map_err(|message| RuntimeError::General { message, span })?;
+                        .force_checked()
+                        .and_then(crate::interpreter::builtins::model::raise_if_error_value)
+                        .map_err(|message| RuntimeError::General { message, span })?;
                 let method = Rc::new(crate::interpreter::value::ValueMethod {
                     receiver: Box::new(materialized),
                     method_name: method_name.to_string(),
@@ -1112,7 +1112,8 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             // result for ungrouped multi-aggregates, which yield one row).
             let rows = crate::interpreter::builtins::model::execute_query_builder_grouped(&qb_ref)
                 .map_err(|e| RuntimeError::General { message: e, span })?
-                .force_deferred();
+                .force_checked()
+                .map_err(|e| RuntimeError::General { message: e, span })?;
             if let Value::Array(arr) = &rows {
                 let first = arr.borrow().first().cloned();
                 return Ok(first.unwrap_or(Value::Null));
@@ -1251,7 +1252,8 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         // page arithmetic needs the number.
         let total_val =
             crate::interpreter::builtins::model::execute_query_builder_count(&qb.borrow())
-                .force_deferred();
+                .force_checked()
+                .map_err(|message| RuntimeError::General { message, span })?;
         let total = match total_val {
             Value::Int(n) => n as usize,
             _ => 0,

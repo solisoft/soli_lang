@@ -953,14 +953,24 @@ fn a_sign_in_link_is_claimed_by_one_request_only() {
     let dir = served_app();
     let server = serve(dir.path());
     drop(sign_up(&server, "ada@example.com"));
+    // Two requests that both read the link before either wrote: each holds
+    // the row as it was. The first claim takes it; the second finds the
+    // digest changed. (`redeem` would not get that far on a second call —
+    // it would not find the row — so the claim itself is what is called.)
     let code = r##"user = User.find_by("email", "ada@example.com")
 sent = MagicLink.issue(user, "198.51.100.7")
-first = MagicLink.redeem(sent["token"], sent["nonce"])
-second = MagicLink.redeem(sent["token"], sent["nonce"])
-again = MagicLink.issue(user, "198.51.100.7")
-row = MagicLink.find_by("token_digest", Crypto.sha256(again["token"]))
-MagicLink.where({"_key": row._key}).update_all({"token_digest": "claimed:by-another-request"})
-lost = MagicLink.redeem(again["token"], again["nonce"])
-print("#{first.email} #{second.nil?} #{lost.nil?}")"##;
-    assert_eq!(runner(dir.path(), code), "ada@example.com true true");
+digest = Crypto.sha256(sent["token"])
+one_request = MagicLink.find_by("token_digest", digest)
+another = MagicLink.find_by("token_digest", digest)
+took = MagicLink.claim(one_request, digest)
+lost = MagicLink.claim(another, digest)
+held = MagicLink.find_by("_key", one_request._key).token_digest.starts_with?("claimed:")
+gone = MagicLink.redeem(sent["token"], sent["nonce"])
+fresh = MagicLink.issue(user, "198.51.100.7")
+signed = MagicLink.redeem(fresh["token"], fresh["nonce"])
+print("#{took} #{lost} #{held} #{gone.nil?} #{signed.email}")"##;
+    assert_eq!(
+        runner(dir.path(), code),
+        "true false true true ada@example.com"
+    );
 }

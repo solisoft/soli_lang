@@ -23,6 +23,10 @@
   expired transaction); inside `grouped` each read answers for itself — a
   `find` that missed no longer takes the reads coalesced with it down to
   nil, and once rescued it is not raised again by the block's end.
+  A read that failed and reached nobody who could raise it — never read,
+  or read in a condition or a view — is raised by the block's end; the
+  builtins that can raise (a cascade's children, `paginate`, a relation)
+  no longer read it as empty.
 - **orm: `record.delete` raises on a refused delete** (it returned a
   truthy `"Error: …"` string: `link.delete` then went on to sign in with a
   link it had not used up); a `dependent: "delete"` cascade still skips a

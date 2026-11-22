@@ -192,9 +192,9 @@ check("first_by", fn() {{ Note.first_by("owner", "a") }})
 }
 
 /// A database that stops answering inside `grouped`: no read of the block is
-/// taken for nil. One read where nothing can raise (a condition) is raised
-/// by the block's end; one read rescued leaves the other still failing, not
-/// nil.
+/// taken for nil. A read where nothing can raise (a condition), and one
+/// nobody looked at, are raised by the block's end; one read rescued leaves
+/// the other still failing, not nil.
 #[test]
 fn a_database_failure_inside_grouped_is_never_read_as_nil() {
     let dir = tempfile::tempdir().unwrap();
@@ -209,6 +209,13 @@ check("condition", fn() {{
     print("condition read as", label)
   }})
   "the block finished"
+}})
+check("unread", fn() {{
+  let later = "unset"
+  grouped(fn() {{
+    later = Note.where({{"owner": "c"}}).first
+  }})
+  "the block finished on a read nobody looked at"
 }})
 check("sibling", fn() {{
   let seen = "unset"
@@ -235,11 +242,16 @@ check("sibling", fn() {{
         .output()
         .expect("run soli");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    for label in ["condition", "sibling"] {
+    for label in ["condition", "unread", "sibling"] {
         let line = stdout
             .lines()
             .find(|line| line.starts_with(label) && !line.starts_with("condition read as"))
             .unwrap_or_else(|| panic!("no line for {label}: {stdout}"));
         assert!(line.contains("raised:"), "{label} did not raise: {stdout}");
+        // The database's failure, not some other error.
+        assert!(
+            line.contains("127.0.0.1:9") || line.to_lowercase().contains("connect"),
+            "{label} raised something else: {stdout}"
+        );
     }
 }

@@ -713,7 +713,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     let qb =
                         QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
                     // Forced: inside `grouped` on D1 the read comes back deferred.
-                    let rows = super::query::execute_query_builder(&qb).force_deferred();
+                    let rows = super::query::execute_query_builder(&qb).force_checked()?;
                     // Mirror SoliDB all_json: return a JSON array string.
                     return Ok(match rows {
                         Value::Array(arr) => {
