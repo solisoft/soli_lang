@@ -60,7 +60,10 @@ class RegistrationsController < Controller
     # a confirmation from this browser keeps the password chosen here, one
     # from elsewhere replaces it (`ConfirmationsController#confirm`). Set
     # whether an account is created or not, so the reply does not tell.
-    signup_nonce = Crypto.random_hex(32)
+    # (The one this browser already holds, when it has one: a second
+    # submission must not orphan the account the first one created.)
+    held = (cookies["signup"] rescue nil).to_s
+    signup_nonce = Regex.matches("^[0-9a-f]{64}$", held) ? held : Crypto.random_hex(32)
     set_cookie("signup", signup_nonce, {
       "max_age": AUTH_CONFIRMATION_TOKEN_TTL,
       "http_only": true,

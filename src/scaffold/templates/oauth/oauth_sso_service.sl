@@ -280,7 +280,18 @@ class OauthSso
       OauthSso.refuse("this account is already linked to another #{provider.capitalize} account")
     end
 
-    OauthSso.take_over_unconfirmed(user) unless user.confirmed?
+    # An unconfirmed account nobody ever entered is taken over (everything it
+    # could be entered with is revoked: its creator may not be its owner).
+    # One that has been in use is linked like a confirmed one, and keeps what
+    # its user set — its second factor still stands between this identity
+    # and the account.
+    unless user.confirmed?
+      if user.never_signed_in?
+        OauthSso.take_over_unconfirmed(user)
+      else
+        user.confirm_email
+      end
+    end
     OauthSso.link(user, provider, uid, email, raw, true)
     user
   end
@@ -323,7 +334,8 @@ class OauthSso
     user.revoke_credentials
     user.confirmed_at = DateTime.utc.to_unix
     user.confirmation_token_digest = nil
-    user.save
+    saved = user.save
+    OauthSso.refuse("could not take over the account") if saved != true || (user._errors ?? []).length > 0
   end
 
   static def sign_in(user)
@@ -331,6 +343,8 @@ class OauthSso
     if linking
       # The session was already this user's, signed in before: a new id (a
       # link changes what the session can do), its stamps left as they were.
+      # It must *be* this user's: a link never moves a session to an account.
+      OauthSso.refuse("sign in again before connecting an account") unless session_get("user_id") == user._key
       session_regenerate()
       session_set("user_id", user._key)
       # So that it is not refused for predating a reset the link went through.

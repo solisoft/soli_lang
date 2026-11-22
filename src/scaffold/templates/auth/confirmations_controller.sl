@@ -34,22 +34,32 @@ class ConfirmationsController < Controller
     user = @_pending(params["token"].to_s)
     return @_invalid if user.nil?
 
-    if @_signed_up_here?(user)
+    # From the browser that signed up, or for an account that has been in
+    # use (its user never clicked the link — most accounts, where the
+    # confirmation is not required): the address is confirmed, nothing else
+    # changes. Not signed in: whoever holds the link — a shared mailbox, the
+    # colleague the message was forwarded to — has not proved they hold the
+    # password.
+    if @_signed_up_here?(user) || !user.never_signed_in?
       user.confirm_email
-      # Confirm, but do not sign in: whoever holds the link — a shared
-      # mailbox, the colleague the message was forwarded to — has not proved
-      # they hold the password. The visitor signs in normally.
       return @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
     end
 
-    # Another browser than the one that signed up. Whoever is here holds the
-    # mailbox; whoever signed up chose the password — and may be someone who
-    # created the account in wait for this confirmation, to sign in with
-    # that password afterwards. Everything the account could be entered with
-    # goes, and the mailbox's owner chooses a password of their own.
+    # Another browser, and an account nobody ever entered. Whoever is here
+    # holds the mailbox; whoever signed up chose the password — and may be
+    # someone who created the account in wait for this confirmation, to sign
+    # in with that password afterwards. Everything the account could be
+    # entered with goes, and a link to choose a password is mailed: sent to
+    # the mailbox rather than handed to this browser, so that a confirmation
+    # mail forwarded to someone is not a way into the account.
     user.revoke_credentials
     user.confirm_email
-    redirect("/password/edit?token=#{user.start_password_reset}")
+    AuthMailer.reset_password(user, user.start_password_reset).deliver_later rescue nil
+    @_form(
+      "Email confirmed",
+      "Your email address is confirmed. We sent you a link to choose your password.",
+      ""
+    )
   end
 
   # GET /confirmation/resend
@@ -98,6 +108,9 @@ class ConfirmationsController < Controller
 
     user = User.find_by("confirmation_token_digest", Crypto.sha256(token))
     return nil if user.nil? || user.confirmation_token_expired?
+    # Confirmed since the link was sent (a password reset, a provider): the
+    # link has nothing left to do, and must do nothing.
+    return nil if user.confirmed?
 
     user
   end

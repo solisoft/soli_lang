@@ -53,6 +53,11 @@ def link_provider(req)
   user = current_user()
   return redirect("/login") if user.nil?
 
+  # The account's own user, at the keyboard: not an API token, not an
+  # administrator acting as them — a provider linked then would be a way in
+  # for whoever linked it.
+  return {"status": 403, "body": "Forbidden"} unless auth_own_session?(req)
+
   provider = (req["params"]["provider"] || "").to_s.downcase
   return {"status": 404, "body": "Unknown OAuth provider"} if oauth_service_for(provider).nil?
   return redirect("/oauth/reauth?provider=#{provider}") if user.confirmed? && !OauthSso.recently_authenticated?(user)
@@ -143,6 +148,8 @@ def unlink(req)
   user = current_user()
   return redirect("/login") if user.nil?
 
+  return {"status": 403, "body": "Forbidden"} unless auth_own_session?(req)
+
   # Removing a way in is as sensitive as adding one: a session left open on
   # a shared machine must not be able to cut the owner's provider off.
   unless OauthSso.recently_authenticated?(user)
@@ -176,6 +183,7 @@ end
 def reauthenticate(req)
   user = current_user()
   return redirect("/login") if user.nil?
+  return {"status": 403, "body": "Forbidden"} unless auth_own_session?(req)
 
   provider = params["provider"].to_s.downcase
   # The sign-in form's per-address throttle covers the guesses made here too.

@@ -397,7 +397,10 @@ class SamlSso
     # (the default), "unconfirmed" is most real accounts — their owners never
     # clicked the link — and handing one to whoever the identity provider says
     # has that address is the takeover SAML_LINK_EXISTING=off exists to stop.
-    unconfirmed = !user.confirmed? && SamlSso.provision? && auth_require_confirmed_email()
+    # And only one nobody ever entered (`never_signed_in?`): an account made
+    # by an administrator and used since keeps what its user set.
+    unconfirmed = !user.confirmed? && SamlSso.provision? && auth_require_confirmed_email() &&
+      user.never_signed_in?
     unless SamlSso.link_existing? || directory || unconfirmed
       if !user.confirmed?
         throw "#{email} has an unconfirmed account that may be in use: confirm or delete it, " +

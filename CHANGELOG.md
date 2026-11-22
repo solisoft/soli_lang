@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a third review.** The take-over of an unconfirmed account (its
+  credentials revoked on a confirmation from another browser, a sign-in
+  link, a provider) applied to accounts in use — where confirmation is not
+  required that is most accounts — so a mailbox alone removed a password
+  and a second factor. It now applies only to an account nobody ever signed
+  in to (`User#never_signed_in?`, `signed_in_at`), and mails the link to
+  choose a password instead of handing it to the browser. A confirmation
+  link dies when the account is confirmed another way. Passing the
+  two-factor challenge or impersonating no longer lifts a SAML session's
+  end. Sign-in links are never evicted (a ceiling of 100 instead). Linking
+  or unlinking a provider needs the account's own session. A second sign-up
+  submission keeps the browser's `signup` cookie. The scrub of a delivered
+  mail writes the same row on SoliDB and SQL, and its failure is not
+  reported as a job failure.
 - **auth: a second review of the scaffold's own hardening.** Every sign-in
   opens its session through `auth_open_session`, which drops what the
   session held before — among it the two-factor answer: a browser that had

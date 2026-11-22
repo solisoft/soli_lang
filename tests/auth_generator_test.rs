@@ -721,8 +721,9 @@ fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
 
     // The button does, once. Pressed from another browser than the one
     // that signed up — the mailbox's owner, who may not be whoever chose the
-    // password: the address is confirmed, the password chosen at sign-up is
-    // gone, and the visitor is sent to choose one.
+    // password, for an account nobody ever entered: the address is
+    // confirmed, the password chosen at sign-up is gone, and a link to
+    // choose one is mailed.
     let body = format!(r#"{{"token": "{token}"}}"#);
     let agent = ureq::AgentBuilder::new().redirects(0).build();
     let origin = format!("http://127.0.0.1:{}", server.1);
@@ -731,9 +732,14 @@ fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
         .set("Content-Type", "application/json")
         .send_string(&body)
         .unwrap();
-    assert_eq!(pressed.status(), 302);
-    let location = pressed.header("location").unwrap_or_default().to_string();
-    assert!(location.starts_with("/password/edit?token="), "{location}");
+    // Not handed to this browser — a forwarded confirmation mail must not
+    // be a way in: the link to choose a password goes to the mailbox.
+    assert_eq!(pressed.status(), 200);
+    let page = pressed.into_string().unwrap();
+    assert!(
+        page.contains("We sent you a link to choose your password"),
+        "{page}"
+    );
     assert_eq!(confirmed(&server), "true");
     assert_eq!(
         call(&server, "POST", "/login", Some(ADA)).0,
@@ -851,4 +857,76 @@ print("reset #{late.nil?} #{after.remember_token_digest.nil?} #{after.authentica
         ["reset true true true", "rotation true true true true"],
         "{output}"
     );
+}
+
+/// A mailbox is not enough to strip an account that is in use. The first
+/// user of a `first_user` app is signed in at sign-up and never has to click
+/// the confirmation mail: pressed from another browser, the link confirms
+/// the address and nothing else — the password still works. (Taken for a
+/// placeholder, the account lost its password and its second factor to
+/// whoever could read that mail.) And a confirmation link is dead once the
+/// account is confirmed some other way.
+#[test]
+fn confirming_an_account_in_use_takes_nothing_from_it() {
+    let dir = servable_app();
+    let root = dir.path();
+    fs::create_dir_all(root.join("app/controllers")).unwrap();
+    fs::write(
+        root.join("app/controllers/fixture_controller.sl"),
+        "class FixtureController < Controller\n  # GET /fixture/token?email=\n  def token\n    \
+         user = User.find_by(\"email\", params[\"email\"].to_s)\n    render_text(user.start_email_confirmation)\n  end\nend\n",
+    )
+    .unwrap();
+    let mut routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
+    routes.push_str("get(\"/fixture/token\", \"fixture#token\")\n");
+    fs::write(root.join("config/routes.sl"), routes).unwrap();
+    let database = format!("sqlite://{}/app.sqlite3", root.display());
+    let db = [
+        ("SOLI_DB_ADAPTER", "sqlite"),
+        ("DATABASE_URL", database.as_str()),
+    ];
+    let (ok, output) = soli(root, &["db:migrate", "up", "."], &db);
+    assert!(ok, "{output}");
+    let server = serve(root, &[("APP_ENV", "test")]);
+
+    // The first user: signed in at once, unconfirmed.
+    assert_eq!(call(&server, "POST", "/signup", Some(ADA)).0, 302);
+    let (_, token) = call(&server, "GET", "/fixture/token?email=ada@example.com", None);
+    let body = format!(r#"{{"token": "{token}"}}"#);
+    let (status, page) = call(&server, "POST", "/confirm_email", Some(&body));
+    assert_eq!(status, 200);
+    assert!(
+        page.contains("Your email address is confirmed. Sign in to continue."),
+        "{page}"
+    );
+    assert_eq!(
+        call(&server, "POST", "/login", Some(ADA)).0,
+        302,
+        "a confirmation from another browser took the password of an account in use"
+    );
+
+    // A link sent before the account was confirmed another way does nothing.
+    let stale = runner_line(
+        root,
+        &db,
+        r##"user = User.new
+user.email = "bob@example.com"
+user.set_password("correct horse battery")
+user.save
+token = user.start_email_confirmation
+User.find(user._key).finish_password_reset("another horse battery 9")
+print(token)"##,
+    );
+    let body = format!(r#"{{"token": "{stale}"}}"#);
+    let (_, page) = call(&server, "POST", "/confirm_email", Some(&body));
+    assert!(page.contains("invalid or was already used"), "{page}");
+    let bob = r#"{"email": "bob@example.com", "password": "another horse battery 9"}"#;
+    assert_eq!(call(&server, "POST", "/login", Some(bob)).0, 302);
+}
+
+/// The last line `soli runner -e code` prints.
+fn runner_line(root: &Path, env: &[(&str, &str)], code: &str) -> String {
+    let (ok, output) = soli(root, &["runner", "-e", code], env);
+    assert!(ok, "{output}");
+    output.trim().lines().last().unwrap_or_default().to_string()
 }

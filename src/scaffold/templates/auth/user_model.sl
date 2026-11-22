@@ -85,17 +85,34 @@ end
 #
 # What the caller knows on top — a passkey that verified its user, a SAML
 # session's end — it sets afterwards.
-def auth_open_session(user)
+#
+# `same_sign_in`: the session is being re-opened inside the sign-in it
+# already belongs to — the second factor passed, an administrator starting
+# or stopping an impersonation. The end a SAML sign-in came with stays, or
+# passing the challenge would lift the only thing that ends such a session.
+#
+# `by_owner`: the account's own user is signing in (not an administrator
+# acting as them). The first time, the account is marked as used
+# (`User#never_signed_in?`).
+def auth_open_session(user, same_sign_in = false, by_owner = true)
+  sign_in_ends = same_sign_in ? session_get("sign_in_expires_at") : nil
   session_regenerate()
   auth_forget_impersonation()
   session_delete("two_factor")
   session_delete("sign_in_expires_at")
+  # Who re-authenticated to link a provider, and for whom: the previous
+  # occupant's, not this user's.
+  session_delete("oauth_link_user")
+  session_delete("oauth_reauth_user")
+  session_delete("oauth_reauth_at")
+  session_set("sign_in_expires_at", sign_in_ends) unless sign_in_ends.nil?
   session_set("user_id", user._key)
   # When this sign-in happened: the OIDC provider reads it for max_age /
   # auth_time, and adding a way into the account asks for a recent one.
   session_set("auth_time", DateTime.utc.to_unix)
   # Stamped so a later password reset can invalidate this session.
   session_set("session_version", user.current_session_version)
+  user.mark_signed_in if by_owner
 end
 
 # A sign-in is a new person: whatever impersonation the session carried is
@@ -359,6 +376,9 @@ class User < Model
     # only ever reset their password stayed "unconfirmed", and their first
     # provider sign-in treated the account as squatted and wiped it.
     @confirmed_at = DateTime.utc.to_unix if @confirmed_at.nil?
+    # A confirmation link still in the mailbox is spent with it.
+    @confirmation_token_digest = nil
+    @confirmation_sent_at = nil
     # Invalidate every session opened before this moment.
     #
     # Sessions are not indexed by user, so there is nothing to delete; instead
@@ -455,6 +475,24 @@ class User < Model
 
   def confirmed?
     !@confirmed_at.nil?
+  end
+
+  # Has anyone ever been signed in to this account? One that never was is a
+  # placeholder: created — by its owner, or by someone else with a password
+  # of their own, in wait — and not yet entered. Only such an account is
+  # *taken over* by a proof of its address (a confirmation from another
+  # browser, a sign-in link, a provider): everything it could be entered
+  # with is revoked first. An account that has been used keeps what its user
+  # set — its second factor above all, which a mailbox alone must not remove.
+  def never_signed_in?
+    @signed_in_at.nil?
+  end
+
+  def mark_signed_in
+    return true unless @signed_in_at.nil?
+
+    @signed_in_at = DateTime.utc.to_unix
+    @_patch({"signed_in_at": @signed_in_at})
   end
 
   # --- Remember me ------------------------------------------------------------

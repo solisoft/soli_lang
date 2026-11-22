@@ -31,8 +31,10 @@ class MagicLinksController < Controller
     nonce = Crypto.random_hex(32)
     if !user.nil? && !user.sso_only?
       link = MagicLink.issue(user, client_ip(req))
-      nonce = link["nonce"]
-      MagicLinkMailer.sign_in(user, link["token"]).deliver_later rescue nil
+      unless link.nil?
+        nonce = link["nonce"]
+        MagicLinkMailer.sign_in(user, link["token"]).deliver_later rescue nil
+      end
     else
       # The write an account costs, on no row: same timing either way.
       User.burn_write_work
@@ -68,8 +70,11 @@ class MagicLinksController < Controller
     # confirmed may have been created by someone else, with a password of
     # their choosing, in wait for this moment: everything it could be entered
     # with goes before it is confirmed (as a provider or SAML sign-in does).
+    # — but only an account nobody ever entered: one that has been in use
+    # keeps what its user set, its second factor above all, which a mailbox
+    # alone must not remove.
     unless user.confirmed?
-      user.revoke_credentials
+      user.revoke_credentials if user.never_signed_in?
       user.confirm_email
     end
     set_cookie("magic_link", "", {

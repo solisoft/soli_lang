@@ -140,8 +140,9 @@ class TwoFactorController < Controller
     return @_reject_challenge("That code is not valid.", 401) if record.nil? || !record.verify(params["code"])
 
     # A new session id once both factors passed, as after a password sign-in.
-    # A new session, the user's alone (see `auth_open_session`).
-    auth_open_session(user)
+    # A new session, the user's alone (see `auth_open_session`) — within the
+    # sign-in the password step began: an end it came with (SAML) stays.
+    auth_open_session(user, true)
     session_set("two_factor", "ok:#{user._key}")
     redirect("/")
   end

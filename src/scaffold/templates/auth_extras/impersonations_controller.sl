@@ -67,7 +67,11 @@ class ImpersonationsController < Controller
 
   # Make the session `user`'s, under a new session id.
   def _become(user)
-    auth_open_session(user)
+    # The same sign-in — the administrator's: its end, if it has one (SAML),
+    # bounds the impersonation and what follows it. And not a sign-in by the
+    # account's own user: an account an administrator looked into is still
+    # one its owner never entered.
+    auth_open_session(user, true, false)
     # Nobody signed in as this user just now: no auth_time for the OIDC
     # provider, and nothing that asks for a fresh sign-in.
     session_delete("auth_time")

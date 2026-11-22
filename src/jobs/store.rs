@@ -376,16 +376,23 @@ pub fn forget_delivered_mail(doc: &JobDoc) -> Result<(), String> {
     if doc.handler != "__MailDelivery" {
         return Ok(());
     }
+    // The whole `args`, rebuilt: what is kept, kept by name, and what goes,
+    // set to null. A patch of the three keys alone means two things on two
+    // stores — SoliDB replaces a top-level field with what it is given (the
+    // recipient and the subject would go too), the SQL adapters merge (and
+    // only a null removes a key). Written this way both end with the same
+    // row.
+    let mut args = match &doc.args {
+        serde_json::Value::Object(map) => map.clone(),
+        _ => serde_json::Map::new(),
+    };
+    for gone in ["html", "text", "attachments"] {
+        args.insert(gone.to_string(), serde_json::Value::Null);
+    }
+    args.insert("body_forgotten".to_string(), serde_json::Value::Bool(true));
     patch_job(
         &doc.key,
-        serde_json::json!({
-            "args": {
-                "html": serde_json::Value::Null,
-                "text": serde_json::Value::Null,
-                "attachments": serde_json::Value::Null,
-                "body_forgotten": true,
-            },
-        }),
+        serde_json::json!({ "args": serde_json::Value::Object(args) }),
     )
 }
 

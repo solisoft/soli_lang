@@ -437,20 +437,48 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
     assert_eq!(phone.get(&first).status, 401);
     assert_eq!(phone.get(&second).status, 302);
 
-    // The account had never confirmed its address when the link signed it
-    // in: whoever created it — its owner, or someone in wait with a password
-    // of their own — no longer gets in with that password.
+    // Ada never confirmed her address, but she has been using the account
+    // (she was signed in when she created it): a link to her mailbox signs
+    // in and confirms, and takes nothing away — her password still works.
+    // A mailbox alone must not strip an account in use of what its user set.
     let with_password = Client::browser(&server).post(
         "/login",
         json!({"email": "ada@example.com", "password": PASSWORD}),
     );
+    assert_eq!(with_password.status, 302, "{}", with_password.body);
+
+    // An account nobody ever entered is another matter: whoever created it
+    // may not be its owner. The first proof of its address — here, a link —
+    // takes it over, and the password it was created with opens nothing.
+    let issued = runner(
+        dir.path(),
+        r##"placeholder = User.new
+placeholder.email = "grace@example.com"
+placeholder.role = "member"
+placeholder.set_password("a squatter chose this one")
+placeholder.save
+sent = MagicLink.issue(placeholder, "198.51.100.7")
+print("#{sent["token"]} #{sent["nonce"]}")"##,
+    );
+    let (token, nonce) = issued.split_once(' ').expect("token and nonce");
+    let mut grace = Client::browser(&server);
+    grace
+        .jar
+        .insert("magic_link".to_string(), nonce.to_string());
+    let reply = grace.get(&format!("/login/link/{token}"));
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    assert_eq!(grace.whoami(), "grace@example.com member");
+    let squatter = Client::browser(&server).post(
+        "/login",
+        json!({"email": "grace@example.com", "password": "a squatter chose this one"}),
+    );
     assert_eq!(
-        with_password.status, 401,
-        "the sign-up password survived a mailbox sign-in to an unconfirmed account"
+        squatter.status, 401,
+        "the password a never-entered account was created with survived its takeover"
     );
 
-    // Anyone can ask for a link to any address. Ten requests from one
-    // address replace that address's own links, never the owner's.
+    // Anyone can ask for a link to any address. Asking never removes a link
+    // that is waiting: the owner's still works after ten more requests.
     assert_eq!(
         runner(
             dir.path(),
@@ -462,9 +490,7 @@ end
 pending = MagicLink.where({"user_id": user._key}).count
 print("#{!MagicLink.redeem(owners["token"], owners["nonce"]).nil?} #{pending}")"##
         ),
-        // Hers, the two the other address may hold, and one left by the
-        // browser above.
-        "true 4"
+        "true 12"
     );
 }
 
