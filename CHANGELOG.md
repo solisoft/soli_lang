@@ -4,13 +4,18 @@
 
 ### Security — follow-ups
 - **orm: the last writes that answered a refusal as a value raise.**
-  `Model.update(id, …)`, `Model.delete(id)` and the transaction handle
-  (`tx.get` / `create` / `update` / `delete` / `commit` / `rollback`,
-  `Model.transaction(sdbql)`) returned an `"Error: …"` string — truthy —
-  when the database refused. They raise; one answer stays in band as it
+  `Model.update(id, …)`, `Model.delete(id)` and `Model.transaction(sdbql)`
+  returned an `"Error: …"` string — truthy — when the database refused.
+  (So did the calls of the manual transaction handle, which cannot be
+  reached: `Model.transaction()` without a block answers the class.) They raise; one answer stays in band as it
   always was, "the row is not there" (a double submit). **views:** a read
   that failed inside `grouped` and reaches a view unread is that failure,
   not a nil the page is rendered on.
+  The static forms on a model with dependents, attachments or single-table
+  inheritance raise for a database that does not answer too (their own
+  pre-read answered "not found" in band); a duplicate or a foreign key the
+  database refuses to `Model.update(id, …)` is reported in `_errors`, as
+  `record.update` reports it.
 - **auth: a sign-in link is claimed by one request only.** Opening it
   first rewrites the link's digest with a compare-and-swap; of two
   requests at once, one finds it changed. Deleting the row did not tell

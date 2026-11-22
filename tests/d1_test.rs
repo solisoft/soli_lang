@@ -519,9 +519,10 @@ fn a_read_that_fails_in_a_grouped_block_on_d1_is_not_read_as_nil() {
         r##"
 verdict = "unset"
 grouped(fn() {
-  ban = Crate.where({"label": "a"}).first
   top = Fruit.order("views", "desc").first
-  verdict = ban ? "banned" : "nothing forbids it"
+  # Read straight into the condition: no variable read stands between the
+  # failed read and its truthiness, so nothing here can raise it.
+  verdict = Crate.where({"label": "a"}).first ? "banned" : "nothing forbids it"
 })
 throw "decided: #{verdict}"
 "##

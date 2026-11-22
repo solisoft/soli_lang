@@ -110,8 +110,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 || super::registry::is_sti_subclass(&class_name)
                 || has_validations
                 || locked;
+            // A row that is not there reads as none; a read that failed is
+            // its failure, not "not found".
             let old_doc = if needs_preread {
-                super::crud::exec_get(&collection, &id).ok()
+                match super::crud::exec_get(&collection, &id) {
+                    Ok(doc) => Some(doc),
+                    Err(e) if super::crud::document_already_gone(&e.to_string()) => None,
+                    Err(e) => return Err(e.to_string()),
+                }
             } else {
                 None
             };
@@ -199,6 +205,22 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     }
                     Ok(json_to_value(&result))
                 }
+                // A duplicate or a foreign key the database refused is a
+                // validation failure, as `record.update` reports it — not a
+                // 500 for editing a row into an address that is taken.
+                Err(e)
+                    if super::validation::is_unique_violation(&e.to_string())
+                        || super::validation::solidb_foreign_key_error(&e.to_string())
+                            .is_some() =>
+                {
+                    let errors = build_persistence_errors(&class_name, e.to_string());
+                    let mut answer = crate::interpreter::value::HashPairs::default();
+                    answer.insert(
+                        HashKey::String("_errors".into()),
+                        Value::Array(Rc::new(RefCell::new(errors))),
+                    );
+                    Ok(Value::Hash(Rc::new(RefCell::new(answer))))
+                }
                 Err(e) => in_band_if_gone(e),
             }
         })),
@@ -227,8 +249,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let class_name = get_class_name_from_class(args)?;
             let needs_preread = super::counter_cache::class_has_counter_caches(&class_name)
                 || super::registry::is_sti_subclass(&class_name);
+            // A row that is not there reads as none; a read that failed is
+            // its failure, not "not found".
             let old_doc = if needs_preread {
-                super::crud::exec_get(&collection, &id).ok()
+                match super::crud::exec_get(&collection, &id) {
+                    Ok(doc) => Some(doc),
+                    Err(e) if super::crud::document_already_gone(&e.to_string()) => None,
+                    Err(e) => return Err(e.to_string()),
+                }
             } else {
                 None
             };

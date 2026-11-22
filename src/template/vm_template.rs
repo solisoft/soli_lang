@@ -952,20 +952,20 @@ pub fn render_view(
         });
         return ViewRender::TreeWalker(None);
     }
-    let args = compiled.bind(data, inherited, &view_vm.names);
+    // A read that failed inside `grouped` and reaches the view unread is an
+    // error here, not the nil the page would be rendered on. The request's
+    // failure, not the view's: it is not rendered again on the tree-walker
+    // (which would bind only the names it reads, and render), and the view
+    // stays compiled.
+    let args = match compiled.bind(data, inherited, &view_vm.names) {
+        Ok(args) => args,
+        Err(message) => return ViewRender::Failed(message),
+    };
     view_vm.vm.tree_walk_env = Some(env.clone());
     view_vm.vm.template_content_before = None;
     let outcome = {
         let _cache = RenderingCache::set(cache);
-        // A read that failed inside `grouped` and reaches the view unread
-        // is an error here, not the nil the page would be rendered on.
-        match args {
-            Ok(args) => compiled.run(&mut view_vm.vm, args),
-            Err(message) => Err(RuntimeError::General {
-                message,
-                span: Span::default(),
-            }),
-        }
+        compiled.run(&mut view_vm.vm, args)
     };
     view_vm.vm.tree_walk_env = None;
     // What a failed render must take back: the tree-walker renders the view

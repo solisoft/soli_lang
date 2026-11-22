@@ -302,6 +302,7 @@ pub mod uploaders;
 pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
+pub use core::in_band_if_gone;
 pub use core::{
     build_safe_filter_from_hash, class_name_to_collection, db_host, db_scheme_and_host,
     duration_to_cutoff_rfc3339, ensure_scalar_bind_value, ensure_string_form_bind_value,

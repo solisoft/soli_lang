@@ -2166,9 +2166,12 @@ impl Vm {
             let doc = match crud::exec_get(&collection, &id) {
                 Ok(doc) => doc,
                 Err(e) => {
+                    // As the native answers: in band when the row is not
+                    // there, a raise for any other refusal.
+                    let answer = crate::interpreter::builtins::model::in_band_if_gone(e)
+                        .map_err(|message| RuntimeError::General { message, span })?;
                     self.stack.truncate(receiver_idx);
-                    self.stack
-                        .push(Value::String(format!("Error: {}", e).into()));
+                    self.stack.push(answer);
                     return Ok(true);
                 }
             };

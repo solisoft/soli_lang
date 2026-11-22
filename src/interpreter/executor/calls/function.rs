@@ -1396,8 +1396,14 @@ impl Interpreter {
         let collection = class_name_to_collection(&class.name);
         let doc = match crud::exec_get(&collection, &id) {
             Ok(doc) => doc,
-            // Mirror the native's miss behavior: an "Error: ..." string.
-            Err(e) => return Ok(Some(Value::String(format!("Error: {}", e).into()))),
+            // As the native answers: in band when the row is not there, a
+            // raise for any other refusal (it was a truthy string for a
+            // database that did not answer, and the action went on).
+            Err(e) => {
+                return crate::interpreter::builtins::model::in_band_if_gone(e)
+                    .map(Some)
+                    .map_err(|message| RuntimeError::General { message, span })
+            }
         };
         let model_class = get_model_class(&class.name).unwrap_or(class);
         let instance_value = crud::json_doc_to_instance(&model_class, &doc);

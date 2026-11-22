@@ -1512,7 +1512,7 @@ pub(super) fn build_uploader_config_from_args(
 /// happened. One answer stays in band, as it always was: the row is not
 /// there (a double submit, a record deleted meanwhile), which callers test
 /// for and the `dependent: "delete"` cascade skips.
-pub(crate) fn in_band_if_gone(error: impl ToString) -> Result<Value, String> {
+pub fn in_band_if_gone(error: impl ToString) -> Result<Value, String> {
     let message = error.to_string();
     if super::crud::document_already_gone(&message) {
         Ok(Value::String(format!("Error: {}", message).into()))

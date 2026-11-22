@@ -223,6 +223,11 @@ pub fn end() -> Result<(), String> {
         let cell = cell.borrow();
         match (&cell.failed, cell.delivered) {
             (Some(error), false) => Some(error.clone()),
+            // Neither answered nor failed: a read that was never run is not
+            // nil either.
+            (None, _) if cell.resolved.is_none() => {
+                Some("grouped: a read of the block was never answered".to_string())
+            }
             _ => None,
         }
     });
