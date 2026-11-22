@@ -208,11 +208,11 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
 soli db:migrate up</code></pre>
         <p class="text-gray-400 my-4">It adds <code class="text-amber-300">MagicLink</code> (model), <code class="text-amber-300">MagicLinksController</code> (<code>GET</code> and <code>POST /login/link</code>, <code>GET /login/link/:token</code> (a page naming the account; <code class="text-amber-300">POST</code> to the same path signs in)), <code class="text-amber-300">MagicLinkMailer</code> and its view, and edits nothing: link to <code>/login/link</code> from your sign-in view.</p>
         <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
-            <li><strong class="text-white">One use, fifteen minutes</strong> (<code>MAGIC_LINK_TTL</code>), and only the newest link of an account works.</li>
+            <li><strong class="text-white">One use, fifteen minutes</strong> (<code>MAGIC_LINK_TTL</code>). Asking again does not cancel a link already sent: links stay pending side by side, up to three per requester.</li>
             <li><strong class="text-white">Only in the browser that asked.</strong> Asking sets a cookie; the link needs it. A link opened by a mail scanner, forwarded, or opened on another device signs nobody in &mdash; and is not used up by the attempt.</li>
-            <li><strong class="text-white">No account probing.</strong> The answer, cookie included, is the same whether or not the address has an account. A locked account gets no link, nor does a single-sign-on-only one (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>), and a link issued to one before is refused like an expired one.</li>
+            <li><strong class="text-white">No account probing.</strong> The answer, cookie included, is the same whether or not the address has an account. A single-sign-on-only account gets no link (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>), and a link issued to one before is refused like an expired one.</li>
             <li>It shares the sign-in form&rsquo;s per-IP throttle, and only digests are stored.</li>
-            <li>Opening the link confirms the address. With <a href="#two-factor" class="text-amber-400 hover:text-amber-300">two-factor</a> on, the code challenge follows.</li>
+            <li>The link opens a page that names the account; its button signs in and confirms the address. A password lockout does not stop a link (anyone can trip one). With <a href="#two-factor" class="text-amber-400 hover:text-amber-300">two-factor</a> on, the code challenge follows.</li>
         </ul>
     </section>
 

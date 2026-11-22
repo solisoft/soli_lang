@@ -235,17 +235,19 @@ It adds `MagicLink` (model), `MagicLinksController` (`GET` and `POST
 /login/link`, `GET /login/link/:token` — a page naming the account — and `POST` to the same path, which signs in), `MagicLinkMailer` and its view, and
 edits nothing: link to `/login/link` from your sign-in view.
 
-- **One use, fifteen minutes** (`MAGIC_LINK_TTL`), and only the newest link of
-  an account works.
+- **One use, fifteen minutes** (`MAGIC_LINK_TTL`). Asking again does not
+  cancel a link already sent: links stay pending side by side, up to three
+  per requester.
 - **Only in the browser that asked.** Asking sets a cookie; the link needs it.
   A link opened by a mail scanner, forwarded, or opened on another device
   signs nobody in — and is not used up by the attempt.
 - **No account probing.** The answer, cookie included, is the same whether or
-  not the address has an account. A locked account gets no link, nor does
-  a single-sign-on-only one ([SAML](/docs/security/saml), `user.sso_only?`),
+  not the address has an account. A single-sign-on-only account gets no link ([SAML](/docs/security/saml), `user.sso_only?`),
   and a link issued to one before is refused like an expired one.
 - It shares the sign-in form's per-IP throttle, and only digests are stored.
-- Opening the link confirms the address. With
+- The link opens a page that names the account; its button signs in and
+  confirms the address. A password lockout does not stop a link (anyone can
+  trip one). With
   [two-factor](#two-factor) on, the code challenge follows.
 
 ## API tokens

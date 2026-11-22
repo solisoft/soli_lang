@@ -1060,7 +1060,7 @@ pub fn execute_query_builder(qb: &QueryBuilder) -> Value {
         let q = qb.clone();
         if let Some(deferred) =
             super::batch::defer_on_d1(qb.connection_name.as_deref(), move || {
-                Ok(execute_query_builder(&q))
+                raise_query_failure(execute_query_builder(&q), true)
             })
         {
             return deferred;
@@ -2525,6 +2525,29 @@ fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
     }
 }
 
+/// The soft-delete guard a SoliDB statement built outside `build_query`
+/// needs: `count`, `exists` and the aggregates build their own text, and
+/// left it out — `Order.sum("total")` added the deleted rows in, and an
+/// unfiltered `count` counted them. Empty when the filter already names the
+/// column (a `where` on a soft-delete model adds the guard itself).
+fn soft_delete_clause(qb: &QueryBuilder) -> &'static str {
+    if !qb.is_soft_delete_model {
+        return "";
+    }
+    if qb
+        .filter
+        .as_deref()
+        .is_some_and(|f| f.contains("deleted_at"))
+    {
+        return "";
+    }
+    match qb.soft_delete_mode {
+        SoftDeleteMode::Default => " FILTER doc.deleted_at == null",
+        SoftDeleteMode::OnlyDeleted => " FILTER doc.deleted_at != null",
+        SoftDeleteMode::WithDeleted => "",
+    }
+}
+
 /// How the terminals that hand back one value (`.first`, an aggregate) say
 /// "the database failed" in band, until they return a `Result`: a prefix no
 /// stored value carries. A plain "Error: …" could not tell a failure from a
@@ -2562,7 +2585,7 @@ pub fn execute_query_builder_count(qb: &QueryBuilder) -> Value {
         let q = qb.clone();
         if let Some(deferred) =
             super::batch::defer_on_d1(qb.connection_name.as_deref(), move || {
-                Ok(execute_query_builder_count(&q))
+                raise_query_failure(execute_query_builder_count(&q), true)
             })
         {
             return deferred;
@@ -2617,11 +2640,14 @@ fn execute_query_builder_count_inner(qb: &QueryBuilder) -> Value {
         query.push_str(&format!(" FILTER {}", aql_filter));
     }
 
+    let guard = soft_delete_clause(qb);
+    query.push_str(guard);
     let query = if qb.joins.is_empty()
         && qb.filter.is_none()
         && qb.traversal.is_none()
         && qb.through.is_none()
         && qb.sti_types.is_none()
+        && guard.is_empty()
     {
         format!("RETURN COLLECTION_COUNT(\"{}\")", collection)
     } else {
@@ -2918,6 +2944,7 @@ fn execute_query_builder_exists_inner(qb: &QueryBuilder) -> Value {
         let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
         query.push_str(&format!(" FILTER {}", aql_filter));
     }
+    query.push_str(soft_delete_clause(qb));
 
     query.push_str(" LIMIT 1 RETURN true");
 
@@ -3029,12 +3056,20 @@ pub fn build_aggregation_query(
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
+    for join in &qb.joins {
+        query.push_str(&QueryBuilder::build_join_existence_filter(
+            &join.relation,
+            &join.filter,
+        ));
+    }
+
     if let Some(filter) = &qb.filter {
         let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
         let aql_filter = QueryBuilder::normalize_equality_ops(&aql_filter);
         let aql_filter = QueryBuilder::prefix_bare_fields(&aql_filter);
         query.push_str(&format!(" FILTER {}", aql_filter));
     }
+    query.push_str(soft_delete_clause(qb));
 
     if func.is_list_stat() {
         // MEDIAN/STDDEV/VARIANCE are array functions — collect the values
@@ -3148,7 +3183,7 @@ pub fn execute_query_builder_group_by(
         );
         if let Some(deferred) =
             super::batch::defer_on_d1(qb.connection_name.as_deref(), move || {
-                Ok(execute_query_builder_group_by(&q, &g, f.clone(), &a))
+                raise_query_failure(execute_query_builder_group_by(&q, &g, f.clone(), &a), true)
             })
         {
             return deferred;

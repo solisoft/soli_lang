@@ -651,10 +651,18 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 // A `table "…"` model on a connection that cannot serve it must fail
                 // here rather than fall through to the document path below.
                 super::column_mode::ensure_supported(&collection)?;
-                if super::crud::collection_is_sql(&collection) {
+                // A soft-delete model goes the same way on SoliDB: the bare
+                // statement below has no `deleted_at` guard, so `Model.all`
+                // listed the rows `Model.where(…).all` hides.
+                if super::crud::collection_is_sql(&collection)
+                    || super::core::is_soft_delete(&class.name)
+                {
                     let qb =
                         QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
-                    return Ok(super::query::execute_query_builder(&qb));
+                    return super::query::raise_query_failure(
+                        super::query::execute_query_builder(&qb),
+                        true,
+                    );
                 }
                 let sdbql = format!(
                     "FOR doc IN {}{} RETURN doc",

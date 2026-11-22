@@ -98,9 +98,17 @@ class MagicLink < Model
   # mailbox. Never a held nonce reused for a new link: whoever sat at this
   # browser before knows it.
   static def cookie_with(held, nonce)
-    let kept = held.to_s.split(".").filter { |one| Regex.matches("^[0-9a-f]{64}$", one) }
+    let kept = MagicLink.held_nonces(held)
     kept = kept.slice(kept.length - 3, kept.length) if kept.length > 3
     [...kept, nonce].join(".")
+  end
+
+  # The nonces a cookie holds: well-formed ones, the last four at most — a
+  # cookie is the visitor's to write, and each piece costs a hash.
+  static def held_nonces(cookie)
+    let pieces = cookie.to_s.substring(0, 300).split(".").filter { |one| Regex.matches("^[0-9a-f]{64}$", one) }
+    pieces = pieces.slice(pieces.length - 4, pieces.length) if pieces.length > 4
+    pieces
   end
 
   # Whom `token` would sign in from the browser holding `nonce`, or nil —
@@ -109,7 +117,7 @@ class MagicLink < Model
     link = MagicLink.find_by("token_digest", Crypto.sha256(token.to_s))
     return nil if link.nil? || DateTime.utc.to_unix > link.expires_at
 
-    let matching = nonce.to_s.split(".").filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
+    let matching = MagicLink.held_nonces(nonce).filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
     return nil if matching.length == 0
 
     User.find_by("_key", link.user_id)
@@ -123,11 +131,13 @@ class MagicLink < Model
     return nil if link.nil?
     # The cookie holds the nonces of this browser's last few requests
     # (`MagicLink.cookie_with`): any of them opens its own link.
-    let matching = nonce.to_s.split(".").filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
+    let matching = MagicLink.held_nonces(nonce).filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
     return nil if matching.length == 0
 
     expired = DateTime.utc.to_unix > link.expires_at
-    link.delete
+    # Used up, for certain: a delete that did not happen — refused, or the
+    # row gone to a request that got here first — signs nobody in.
+    auth_written(link.delete)
     return nil if expired
 
     User.find_by("_key", link.user_id)

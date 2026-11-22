@@ -234,9 +234,8 @@ pub(crate) fn find_first_by_fields(
     // A `table "…"` model on a connection that cannot serve it must fail
     // here rather than fall through to the document path below.
     super::column_mode::ensure_supported(&collection)?;
-    // SQL connections can't run the raw-SDBQL form (and the document arm
-    // swallows an error into nil) — express the lookup as a portable
-    // eq-filter query instead.
+    // SQL connections can't run the raw-SDBQL form — express the lookup as
+    // a portable eq-filter query instead.
     if super::crud::collection_is_sql(&collection) {
         // In a `grouped` block on D1: run at flush time, in one batch with
         // the block's other reads.
@@ -280,7 +279,13 @@ pub(crate) fn find_first_by_fields(
         Ok(results) if !results.is_empty() => {
             Ok(super::crud::json_doc_to_instance(class, &results[0]))
         }
-        _ => Ok(Value::Null),
+        Ok(_) => Ok(Value::Null),
+        // A read that failed is not "no such record". Answered with nil, it
+        // was read as one by every guard of the shape "is there a row that
+        // says no?" — the second-factor gate asks `find_by("user_id", …)`
+        // whether an account has two-factor on, and one failed read parked
+        // "it has none" in the session for good.
+        Err(e) => Err(e),
     }
 }
 
@@ -1512,6 +1517,11 @@ pub fn raise_if_error_value(value: Value) -> Result<Value, String> {
     if let Value::String(text) = &value {
         if let Some(message) = text.strip_prefix("Error: ") {
             return Err(message.to_string());
+        }
+        // The refusals that carry no prefix ("Graph / through queries are
+        // SoliDB-only…"): a string where rows or a number belong.
+        if text.contains("SoliDB-only") {
+            return Err(text.to_string());
         }
     }
     Ok(value)

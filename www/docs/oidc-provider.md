@@ -145,7 +145,7 @@ session_set("auth_time", DateTime.utc.to_unix)
 | Sign-up | `RegistrationsController#create`, which signs the new account in |
 | Password reset | `PasswordsController#update`, which signs the user in with the new password |
 | Passkey | `PasskeySessionsController#create` (`--passkeys`) |
-| Magic link | `MagicLinksController#show` (`--magic-link`) |
+| Magic link | `MagicLinksController#redeem` (`--magic-link`) |
 | SAML | `SamlController#acs` (`soli generate saml`) |
 | OAuth provider | already done: `OauthSso.sign_in` ([OAuth Client](oauth-client.md)) |
 

@@ -330,7 +330,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                         serde_json::Value::String(s) => s.clone(),
                         other => other.to_string(),
                     };
-                    let _ = super::crud::exec_delete(&collection, &key);
+                    // Gone already is the wanted outcome; anything else is
+                    // a row `delete_all` said it removed and did not.
+                    if let Err(e) = super::crud::exec_delete(&collection, &key) {
+                        let said = e.to_string().to_lowercase();
+                        if !(said.contains("not found") || said.contains("documentnotfound")) {
+                            return Err(format!("Model.delete_all() failed: {}", e));
+                        }
+                    }
                 }
                 Ok(Value::Null)
             },
@@ -435,7 +442,12 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 // A `table "…"` model on a connection that cannot serve it must fail
                 // here rather than fall through to the document path below.
                 super::column_mode::ensure_supported(&collection)?;
-                if super::crud::collection_is_sql(&collection) {
+                // (And a soft-delete model on SoliDB: the bare count below
+                // has no `deleted_at` guard.)
+                let soft = get_class_name_from_class(args)
+                    .map(|name| super::core::is_soft_delete(&name))
+                    .unwrap_or(false);
+                if super::crud::collection_is_sql(&collection) || soft {
                     let class = get_class_rc_from_args(args)?;
                     let qb =
                         QueryBuilder::new_with_class(class.name.clone(), collection.clone(), class);

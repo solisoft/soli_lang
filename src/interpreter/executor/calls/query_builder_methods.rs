@@ -1061,18 +1061,23 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             crate::interpreter::builtins::model::execute_query_builder_grouped(&qb_ref)
                 .map_err(|e| RuntimeError::General { message: e, span })
         } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
-            Ok(execute_query_builder_group_by(
-                &qb_ref,
-                gf,
-                func.clone(),
-                af,
-            ))
+            // Rows, never a string: one is a failure, prefixed or not.
+            crate::interpreter::builtins::model::raise_query_failure(
+                execute_query_builder_group_by(&qb_ref, gf, func.clone(), af),
+                true,
+            )
+            .map_err(|message| RuntimeError::General { message, span })
         } else if qb_ref.time_bucket_info.is_some() {
-            Ok(crate::interpreter::builtins::model::execute_query_builder_time_bucket(&qb_ref))
+            crate::interpreter::builtins::model::raise_query_failure(
+                crate::interpreter::builtins::model::execute_query_builder_time_bucket(&qb_ref),
+                true,
+            )
+            .map_err(|message| RuntimeError::General { message, span })
         } else {
-            crate::interpreter::builtins::model::raise_if_error_value(execute_query_builder(
-                &qb_ref,
-            ))
+            crate::interpreter::builtins::model::raise_query_failure(
+                execute_query_builder(&qb_ref),
+                true,
+            )
             .map_err(|message| RuntimeError::General { message, span })
         }
     }

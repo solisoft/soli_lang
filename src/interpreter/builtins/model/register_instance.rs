@@ -527,7 +527,19 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                                 );
                                 Ok(Value::Bool(false))
                             }
-                            None => Err(e.to_string()),
+                            None => {
+                                // Gone already: the in-band answer the
+                                // `dependent: "delete"` cascade skips, as it
+                                // always was. Any other refusal raises — it
+                                // was a truthy string too, and code went on
+                                // as if the record were deleted.
+                                let said = e.to_string().to_lowercase();
+                                if said.contains("not found") || said.contains("documentnotfound") {
+                                    Ok(Value::String(format!("Error: {}", e).into()))
+                                } else {
+                                    Err(e.to_string())
+                                }
+                            }
                         }
                     }
                 }

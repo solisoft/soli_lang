@@ -223,4 +223,11 @@ pub fn print_auth_success_message() {
     println!();
     println!("  \x1b[2mSee app/policies/CLAUDE.md for the policy conventions.\x1b[0m");
     println!();
+    println!(
+        "  \x1b[2mAdding this over accounts that already exist, with open sign-up? Read\x1b[0m"
+    );
+    println!(
+        "  \x1b[2m`User#never_signed_in?` in app/models/user.sl: it has a one-off step.\x1b[0m"
+    );
+    println!();
 }

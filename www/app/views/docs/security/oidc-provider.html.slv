@@ -118,7 +118,7 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
             <li>Password: <code>SessionsController#create</code>, next to <code>session_regenerate()</code></li>
             <li>Two-factor: <code>TwoFactorController#verify</code>, the code check that finishes the sign-in</li>
             <li>Sign-up: <code>RegistrationsController#create</code>; password reset: <code>PasswordsController#update</code> (both sign the user in)</li>
-            <li>Passkey: <code>PasskeySessionsController#create</code>; magic link: <code>MagicLinksController#show</code>; SAML: <code>SamlController#acs</code></li>
+            <li>Passkey: <code>PasskeySessionsController#create</code>; magic link: <code>MagicLinksController#redeem</code>; SAML: <code>SamlController#acs</code></li>
             <li>OAuth provider: already done by <code>OauthSso.sign_in</code></li>
         </ul>
         <p class="text-gray-400 mb-3 leading-relaxed">

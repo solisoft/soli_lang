@@ -268,7 +268,7 @@ involved).
 - Soli `www/docs/solidb-reference.md`: recommends `@@name` collection binds
   (`{"@coll": "users"}`) — SoliDB rejects them; says `.exists` returns a
   Boolean and `.pluck` an Array, and lists `.sum/avg/min/max` as numeric
-  aggregates — they return QueryBuilders, and the sums are `nil`.
+  aggregates — they return QueryBuilders (`.first` answers the number).
 - Soli `www/docs/models.md` up to some 2.3x said SoliDB `ilike` is "also
   LIKE — no separate case-folding"; it compiles to `LIKE(x, p, true)`, which
   is case-insensitive. The 2.36.3 docs have it right.

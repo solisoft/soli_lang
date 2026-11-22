@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **orm: `find_by` / `first_by` raise on SoliDB when the read fails.**
+  They answered nil, and the two-factor gate asks `find_by` whether an
+  account has two-factor on: one failed read parked "it has none" in the
+  session for its whole life. Also: a read that fails inside `grouped` is
+  raised by the block's end at the latest instead of reading as nil;
+  `count`, `exists` and the aggregates apply the soft-delete guard and the
+  joins on SoliDB (an unfiltered `count` counted deleted rows); `.all`
+  raises on the refusals that carry no "Error: " prefix; the static
+  `Model.delete_all` on SoliDB reports a row it could not delete; a
+  `dependent: "delete"` cascade skips only a child that is already gone.
 - **orm: `record.delete` raises on a refused delete** (it returned a
   truthy `"Error: …"` string: `link.delete` then went on to sign in with a
   link it had not used up); a `dependent: "delete"` cascade still skips a

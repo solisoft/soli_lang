@@ -63,6 +63,15 @@ struct BatchState {
 crate::request_local! {
     static BATCH: RefCell<Option<BatchState>> = const { RefCell::new(None) };
 
+    /// The first flush of the current block that failed. A flush made on
+    /// behalf of a formatting or truthiness helper has no error channel
+    /// ([`flush_current`]): its reads were dropped and read as nil — a
+    /// database failure taken for "no such row" by `if Ban.where(…).first`
+    /// written inside the block. Kept here, the failure is raised by the
+    /// next read that has a channel and, at the latest, by the block's end:
+    /// the request cannot complete on that nil.
+    static FAILED: RefCell<Option<String>> = const { RefCell::new(None) };
+
     /// Nesting depth of `grouped(fn() { ... })` blocks executing on this thread.
     ///
     /// Tracked separately from [`BATCH`] because interactive `--dev` runs the
@@ -168,6 +177,7 @@ pub fn begin() -> bool {
         if slot.is_some() {
             false
         } else {
+            FAILED.with(|f| *f.borrow_mut() = None);
             *slot = Some(BatchState {
                 pending: Vec::new(),
                 d1_reads: Vec::new(),
@@ -182,7 +192,11 @@ pub fn begin() -> bool {
 pub fn end() -> Result<(), String> {
     let res = flush_inner();
     BATCH.with(|b| *b.borrow_mut() = None);
-    res
+    let failed = FAILED.with(|f| f.borrow_mut().take());
+    match failed {
+        Some(error) => Err(error),
+        None => res,
+    }
 }
 
 /// Register a query for coalescing and return its `Value::Deferred` placeholder.
@@ -243,6 +257,12 @@ pub fn force(cell: &Rc<RefCell<DeferredCell>>) -> Result<Value, String> {
     if cell.borrow().resolved.is_none() {
         flush_inner()?;
     }
+    if cell.borrow().resolved.is_none() {
+        // Dropped by an earlier flush that failed (see [`FAILED`]): not nil.
+        if let Some(error) = FAILED.with(|f| f.borrow().clone()) {
+            return Err(error);
+        }
+    }
     Ok(cell.borrow().resolved.clone().unwrap_or(Value::Null))
 }
 
@@ -286,7 +306,16 @@ fn flush_inner() -> Result<(), String> {
         None => (Vec::new(), Vec::new()),
     });
     let d1 = flush_d1(d1_reads);
-    flush_solidb(pending).and(d1)
+    let result = flush_solidb(pending).and(d1);
+    if let Err(error) = &result {
+        FAILED.with(|f| {
+            let mut slot = f.borrow_mut();
+            if slot.is_none() {
+                *slot = Some(error.clone());
+            }
+        });
+    }
+    result
 }
 
 /// Run the deferred D1 reads, their statements coalesced, and fill their

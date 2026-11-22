@@ -217,7 +217,8 @@ end
 # write that still would: where one that did not happen leaves a way into an
 # account — a token not deleted, a counter not reset — the action stops.
 def auth_written(result)
-  throw result if result.to_s.starts_with?("Error:")
+  # (`type`, not `.to_s`: on a hash — what a delete answers — a dot reads a key.)
+  throw result if type(result) == "string" && result.starts_with?("Error:")
 
   result
 end

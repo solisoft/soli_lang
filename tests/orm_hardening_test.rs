@@ -155,3 +155,38 @@ check("delete_all", fn() {{ Note.where({{"owner": "a"}}).delete_all }})
         );
     }
 }
+
+/// On SoliDB, `find_by` answered nil when the read failed — and the
+/// second-factor gate asks it whether an account has two-factor on. With no
+/// database answering, it raises.
+#[test]
+fn find_by_raises_when_solidb_does_not_answer() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = format!(
+        r#"{CHECK}
+class Note < Model
+end
+check("find_by", fn() {{ Note.find_by("owner", "a") }})
+check("first_by", fn() {{ Note.first_by("owner", "a") }})
+"#
+    );
+    std::fs::write(dir.path().join("script.sl"), script).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .arg("script.sl")
+        .current_dir(dir.path())
+        .env_remove("SOLI_DB_ADAPTER")
+        .env_remove("DATABASE_URL")
+        // A port nothing listens on.
+        .env("SOLIDB_HOST", "http://127.0.0.1:9")
+        .env("SOLIDB_DATABASE", "none")
+        .output()
+        .expect("run soli");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    for label in ["find_by", "first_by"] {
+        let line = stdout
+            .lines()
+            .find(|line| line.starts_with(label))
+            .unwrap_or_else(|| panic!("no line for {label}: {stdout}"));
+        assert!(line.contains("raised:"), "{label} did not raise: {line}");
+    }
+}

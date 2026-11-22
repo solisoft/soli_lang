@@ -391,7 +391,6 @@ describe("against SoliDB") do
     end
 
     test("Model.all and Model.count skip deleted rows") do
-      pending("bug: unfiltered Model.all / Model.count include soft-deleted rows (only where adds the guard)")
       AdvSoft.create({"name": "Kept"})
       AdvSoft.create({"name": "Gone"}).delete
       assert_eq(names_of(AdvSoft.all), ["Kept"])
