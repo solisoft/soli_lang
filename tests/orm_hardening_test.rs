@@ -190,3 +190,56 @@ check("first_by", fn() {{ Note.first_by("owner", "a") }})
         assert!(line.contains("raised:"), "{label} did not raise: {line}");
     }
 }
+
+/// A database that stops answering inside `grouped`: no read of the block is
+/// taken for nil. One read where nothing can raise (a condition) is raised
+/// by the block's end; one read rescued leaves the other still failing, not
+/// nil.
+#[test]
+fn a_database_failure_inside_grouped_is_never_read_as_nil() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = format!(
+        r#"{CHECK}
+class Note < Model
+end
+check("condition", fn() {{
+  grouped(fn() {{
+    row = Note.where({{"owner": "a"}}).first
+    label = row ? "found" : "nothing forbids it"
+    print("condition read as", label)
+  }})
+  "the block finished"
+}})
+check("sibling", fn() {{
+  let seen = "unset"
+  grouped(fn() {{
+    one = Note.where({{"owner": "a"}}).first
+    two = Note.where({{"owner": "b"}}).count
+    title = (one.title rescue "rescued")
+    seen = two.nil? ? "sibling read as nil" : "sibling has a value"
+  }})
+  seen
+}})
+"#
+    );
+    std::fs::write(dir.path().join("script.sl"), script).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .arg("script.sl")
+        .current_dir(dir.path())
+        .env_remove("SOLI_DB_ADAPTER")
+        .env_remove("DATABASE_URL")
+        .env("APP_ENV", "production")
+        // A port nothing listens on.
+        .env("SOLIDB_HOST", "http://127.0.0.1:9")
+        .env("SOLIDB_DATABASE", "none")
+        .output()
+        .expect("run soli");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    for label in ["condition", "sibling"] {
+        let line = stdout
+            .lines()
+            .find(|line| line.starts_with(label) && !line.starts_with("condition read as"))
+            .unwrap_or_else(|| panic!("no line for {label}: {stdout}"));
+        assert!(line.contains("raised:"), "{label} did not raise: {stdout}");
+    }
+}

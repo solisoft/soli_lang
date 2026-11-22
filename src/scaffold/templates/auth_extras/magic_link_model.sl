@@ -127,17 +127,26 @@ class MagicLink < Model
   # link opened elsewhere is left as it is; one opened here is used up, in
   # time or not.
   static def redeem(token, nonce)
-    link = MagicLink.find_by("token_digest", Crypto.sha256(token.to_s))
+    let digest = Crypto.sha256(token.to_s)
+    link = MagicLink.find_by("token_digest", digest)
     return nil if link.nil?
     # The cookie holds the nonces of this browser's last few requests
     # (`MagicLink.cookie_with`): any of them opens its own link.
     let matching = MagicLink.held_nonces(nonce).filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
     return nil if matching.length == 0
 
+    # Claimed before it is used, by a write that names the digest it read:
+    # of two requests opening the same link at once, one finds it changed
+    # and signs nobody in. (A delete alone does not tell — removing a row
+    # that is already gone is a success on the SQL adapters.)
+    let claim = "claimed:#{Crypto.random_hex(16)}"
+    auth_written(MagicLink.where({"_key": link._key, "token_digest": digest}).update_all({"token_digest": claim}))
+    let claimed = MagicLink.find_by("_key", link._key)
+    return nil if claimed.nil? || claimed.token_digest != claim
+
     expired = DateTime.utc.to_unix > link.expires_at
     # Used up, for certain: a delete that did not happen — refused (false),
-    # or the row gone to a request that got here first (an "Error: …"
-    # string) — signs nobody in.
+    # or the row already gone (an "Error: …" string) — signs nobody in.
     let deleted = link.delete
     return nil if expired || deleted == false || type(deleted) == "string"
 

@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a sign-in link is claimed by one request only.** Opening it
+  first rewrites the link's digest with a compare-and-swap; of two
+  requests at once, one finds it changed. Deleting the row did not tell
+  them apart on the SQL adapters, where removing a row that is already
+  gone succeeds.
 - **orm: `find_by` / `first_by` raise on SoliDB when the read fails.**
   They answered nil, and the two-factor gate asks `find_by` whether an
   account has two-factor on: one failed read parked "it has none" in the

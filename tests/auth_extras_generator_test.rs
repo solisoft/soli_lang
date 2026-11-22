@@ -943,3 +943,24 @@ fn parallel_requests_with_one_remember_me_cookie_get_one_replacement() {
     assert_eq!(later.whoami(), "ada@example.com admin");
     assert_eq!(ada.whoami(), "ada@example.com admin");
 }
+
+/// A sign-in link is claimed before it is used, by a write that names the
+/// digest it read. The second of two requests opening the same link finds it
+/// changed and signs nobody in — a delete alone would not tell them apart on
+/// the SQL adapters, where removing a row that is already gone succeeds.
+#[test]
+fn a_sign_in_link_is_claimed_by_one_request_only() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    drop(sign_up(&server, "ada@example.com"));
+    let code = r##"user = User.find_by("email", "ada@example.com")
+sent = MagicLink.issue(user, "198.51.100.7")
+first = MagicLink.redeem(sent["token"], sent["nonce"])
+second = MagicLink.redeem(sent["token"], sent["nonce"])
+again = MagicLink.issue(user, "198.51.100.7")
+row = MagicLink.find_by("token_digest", Crypto.sha256(again["token"]))
+MagicLink.where({"_key": row._key}).update_all({"token_digest": "claimed:by-another-request"})
+lost = MagicLink.redeem(again["token"], again["nonce"])
+print("#{first.email} #{second.nil?} #{lost.nil?}")"##;
+    assert_eq!(runner(dir.path(), code), "ada@example.com true true");
+}
