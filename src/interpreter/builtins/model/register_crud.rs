@@ -876,12 +876,6 @@ fn create_key_option(options: Option<&Value>) -> Result<Option<String>, String> 
     Ok(key)
 }
 
-/// Did the store refuse the key itself, before any read? `/orders/abc` on
-/// an integer key, a document key that normalizes to nothing.
-fn key_names_no_row(error: &str) -> bool {
-    error.contains("is not a number") || error.contains("invalid document key")
-}
-
 /// `Model.find(id)` outside the coalesced SoliDB path: the record, or the
 /// RecordNotFound error the request handler turns into a 404.
 fn find_by_key(
@@ -903,7 +897,7 @@ fn find_by_key(
         // key, an empty or dotted document key — names no row: a miss.)
         Err(e)
             if !super::crud::document_already_gone(&e.to_string())
-                && !key_names_no_row(&e.to_string()) =>
+                && !super::crud::key_names_no_row(&e.to_string()) =>
         {
             Err(e.to_string())
         }

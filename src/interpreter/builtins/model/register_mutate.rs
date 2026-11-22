@@ -115,7 +115,12 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let old_doc = if needs_preread {
                 match super::crud::exec_get(&collection, &id) {
                     Ok(doc) => Some(doc),
-                    Err(e) if super::crud::document_already_gone(&e.to_string()) => None,
+                    Err(e)
+                        if super::crud::document_already_gone(&e.to_string())
+                            || super::crud::key_names_no_row(&e.to_string()) =>
+                    {
+                        None
+                    }
                     Err(e) => return Err(e.to_string()),
                 }
             } else {
@@ -258,7 +263,12 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let old_doc = if needs_preread {
                 match super::crud::exec_get(&collection, &id) {
                     Ok(doc) => Some(doc),
-                    Err(e) if super::crud::document_already_gone(&e.to_string()) => None,
+                    Err(e)
+                        if super::crud::document_already_gone(&e.to_string())
+                            || super::crud::key_names_no_row(&e.to_string()) =>
+                    {
+                        None
+                    }
                     Err(e) => return Err(e.to_string()),
                 }
             } else {

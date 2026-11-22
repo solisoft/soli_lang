@@ -322,6 +322,8 @@ class SamlSso
     user.confirmed_at = DateTime.utc.to_unix
     user.confirmation_token_digest = nil
     user.sso_only = true
+    # Until its identity row is stored: see `link_account`.
+    user.saml_link_pending = true
     saved = user.save
     throw "could not take over #{user.email}" if saved != true || (user._errors ?? []).length > 0
   end
@@ -383,6 +385,8 @@ class SamlSso
       user.delete if created
       throw "could not link #{email} to its identity at #{assertion["issuer"]}"
     end
+    # The take-over is complete (see `link_account`).
+    User.where({"_key": user._key}).update_all({"saml_link_pending": false}) if user.saml_link_pending == true
     user
   end
 
@@ -406,8 +410,11 @@ class SamlSso
     # only, the identity row not written (the database, a blank NameID) —
     # left an account nothing could enter: confirmed, so not taken over
     # again; `sso_only`, so no password, link or provider. It is linked now.
-    half_taken = SamlSso.provision? && user.sso_only? &&
-      SamlIdentity.where({"user_id": user._key}).count == 0
+    # Marked by the take-over itself (`saml_link_pending`), not inferred
+    # from "single sign-on only, no identity": that is also what an account
+    # whose identity was revoked on purpose looks like, and one of those
+    # must not be linked again by its address.
+    half_taken = SamlSso.provision? && user.sso_only? && user.saml_link_pending == true
     unless SamlSso.link_existing? || directory || unconfirmed || half_taken
       if !user.confirmed?
         throw "#{email} has an unconfirmed account that may be in use: confirm or delete it, " +

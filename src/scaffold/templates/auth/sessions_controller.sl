@@ -118,7 +118,11 @@ class SessionsController < Controller
     # Written without reading the account first, and not rescued: a read
     # that failed would leave the token alive behind a logout that said it
     # was done — a copy of the cookie would still sign in.
-    if !user_id.blank? && auth_own_session?(req) && !current_user().nil?
+    # Decided on what the session and the request say, not on the user the
+    # middleware loaded: that load is rescued, and a database that did not
+    # answer it must not make this skip the write. (`two_factor_user`: the
+    # password step alone, set by the second-factor gate.)
+    if !user_id.blank? && auth_own_session?(req) && (req["two_factor_user"] rescue nil).nil?
       auth_written(User.where({"_key": user_id}).update_all({
         "remember_token_digest": nil,
         "remember_previous_digest": nil,

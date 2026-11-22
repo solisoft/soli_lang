@@ -469,6 +469,9 @@ class User < Model
     # no placeholder any more (and this whole-record write must not put back
     # a mark another request cleared meanwhile).
     @awaiting_owner = false
+    # (A SAML take-over sets it again after this; revoked on purpose, the
+    # account is not waiting to be linked.)
+    @saml_link_pending = false
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil

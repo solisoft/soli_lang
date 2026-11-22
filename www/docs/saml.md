@@ -123,7 +123,9 @@ and matched exactly.
    `(issuer, NameID)`; else the one with that email, linked from now on, when
    `SAML_LINK_EXISTING=on`, when a directory provisioned it and named this
    identity (or `SAML_LINK_DIRECTORY=on`), or when nobody
-   confirmed its address (see below); else a new one (see `SAML_PROVISION`).
+   confirmed its address (see below) — a take-over of that kind that stopped
+   before its identity was stored is finished by the next sign-in; else a new
+   one (see `SAML_PROVISION`).
    Otherwise an address that already has an account is refused: link it by
    hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`). The
    link must be stored, or the sign-in is refused (and an account just created

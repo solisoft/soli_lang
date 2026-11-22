@@ -2682,6 +2682,16 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
     }
 }
 
+/// Did the store refuse the key itself, before any read? `/orders/abc` on an
+/// integer or uuid key, a document key that normalizes to nothing: such a
+/// key names no row, which is a miss — not a failure of the database.
+pub fn key_names_no_row(error: &str) -> bool {
+    error.contains("is not a number")
+        || error.contains("invalid document key")
+        || error.contains("invalid input syntax for type")
+        || error.contains("lookup requires a primary-key value")
+}
+
 /// Does a delete's refusal say the row was not there? SoliDB answers a
 /// missing document, a missing collection and an expired transaction with
 /// the same 404 and a body that is only a name, so the text cannot tell them
