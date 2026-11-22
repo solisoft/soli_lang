@@ -113,6 +113,7 @@ const PRIVACY_USER_SECRETS = [
   "reset_sent_at",
   "confirmation_token_digest",
   "confirmation_sent_at",
+  "signup_nonce_digest",
   "remember_token_digest",
   "remember_previous_digest",
   "remember_created_at",

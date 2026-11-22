@@ -125,7 +125,7 @@ UserMailer.welcome(user).deliver_now
 
 # Enqueue for background delivery; returns immediately
 UserMailer.welcome(user).deliver_later</code></pre>
-            <p class="text-gray-400 mt-3"><code class="text-cyan-400">deliver_later</code> enqueues a <code class="text-cyan-400">__MailDelivery</code> job; if the queue is unavailable it logs and falls back to sending synchronously so a message is never dropped.</p>
+            <p class="text-gray-400 mt-3"><code class="text-cyan-400">deliver_later</code> enqueues a <code class="text-cyan-400">__MailDelivery</code> job; if the queue is unavailable it logs and falls back to sending synchronously so a message is never dropped. Once the mail is sent, its body and attachments are removed from the job row (the row stays for the retention window, with the recipient and the subject): the body of a password-reset or sign-in mail is its link.</p>
         </div>
     </section>
 

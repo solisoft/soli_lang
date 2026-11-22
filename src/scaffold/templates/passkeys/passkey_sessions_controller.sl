@@ -53,15 +53,8 @@ class PasskeySessionsController < Controller
 
     passkey.touch_used(result["sign_count"])
     user.clear_failed_attempts
-    # New session id after a successful login defeats session fixation. The
-    # challenge was consumed above, before this regenerates the session.
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
     # A passkey that verified its user (screen lock, PIN, biometrics) already
     # is two factors: with `soli generate auth --two-factor`, this sign-in
     # skips the code challenge.

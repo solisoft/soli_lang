@@ -21,7 +21,8 @@ const API_TOKEN_CLOSED_PATHS = [
   "/logout",
   "/signup",
   "/password",
-  "/confirm",
+  "/confirm_email",
+  "/confirmation",
   "/passkeys",
   "/two_factor",
   "/api_tokens",
@@ -29,7 +30,10 @@ const API_TOKEN_CLOSED_PATHS = [
   "/oauth",
   "/auth",
   "/saml",
-  "/privacy"
+  "/privacy",
+  # Push devices and the offline outbox are the signed-in person's own.
+  "/devices",
+  "/sync"
 ]
 
 # order: 7

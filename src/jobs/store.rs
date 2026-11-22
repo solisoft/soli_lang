@@ -366,6 +366,29 @@ pub fn complete(id: &str) -> Result<(), String> {
     )
 }
 
+/// Once a `deliver_later` mail has been sent, its body leaves the job row.
+///
+/// The row stays for the retention window (a week), and the body of a
+/// password-reset, confirmation or sign-in mail is its link — the one secret
+/// the application otherwise stores only as a digest. Who it went to and its
+/// subject stay, for whoever reads the job list.
+pub fn forget_delivered_mail(doc: &JobDoc) -> Result<(), String> {
+    if doc.handler != "__MailDelivery" {
+        return Ok(());
+    }
+    patch_job(
+        &doc.key,
+        serde_json::json!({
+            "args": {
+                "html": serde_json::Value::Null,
+                "text": serde_json::Value::Null,
+                "attachments": serde_json::Value::Null,
+                "body_forgotten": true,
+            },
+        }),
+    )
+}
+
 /// Record a failure: schedule the next retry, or bury the job when its retry
 /// budget is spent. Returns true when a retry was scheduled.
 pub fn fail(doc: &JobDoc, error: &str) -> Result<bool, String> {

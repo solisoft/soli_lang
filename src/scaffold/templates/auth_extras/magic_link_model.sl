@@ -10,34 +10,54 @@
 
 const MAGIC_LINK_TTL = 900  # a link lives 15 minutes
 
-# Links one account may have pending at once.
-const MAGIC_LINKS_PENDING = 5
+# Links one account may have pending at once, and how many of them one
+# requester (an address) may hold.
+const MAGIC_LINKS_PENDING = 20
+const MAGIC_LINKS_PER_REQUESTER = 2
 
 class MagicLink < Model
-  # A fresh link for `user`. Returns the two secrets in plaintext, the only
-  # time they exist that way: `token` goes in the email, `nonce` in the
-  # browser's cookie.
+  # A fresh link for `user`, asked for from `requester` (an address).
+  # Returns the two secrets in plaintext, the only time they exist that way:
+  # `token` goes in the email, `nonce` in the browser's cookie.
   #
   # The links already pending stay good. Asking for one used to cancel the
-  # others, and anyone can ask for anyone: a request a second sent from
-  # elsewhere kept the owner's own link from ever working. The newest
-  # MAGIC_LINKS_PENDING are kept; expired ones go.
-  static def issue(user)
+  # others, and anyone can ask for anyone: a request sent from elsewhere kept
+  # the owner's own link from ever working. A requester replaces only its own
+  # links (MAGIC_LINKS_PER_REQUESTER); past MAGIC_LINKS_PENDING in all, the
+  # oldest link of whoever holds the most goes — never the single link of
+  # someone who asked once.
+  static def issue(user, requester = "")
     token = Crypto.random_hex(32)
     nonce = Crypto.random_hex(32)
     now = DateTime.utc.to_unix
-    pending = MagicLink.where({"user_id": user._key}).all
-    live = pending.filter { |link| link.expires_at > now }
-    pending.each do |link|
-      link.delete unless link.expires_at > now
+    let live = []
+    MagicLink.where({"user_id": user._key}).all.each do |link|
+      if link.expires_at > now
+        live.push(link)
+      else
+        link.delete
+      end
     end
-    ordered = live.sort_by { |link| link.expires_at }
-    while ordered.length >= MAGIC_LINKS_PENDING
-      ordered[0].delete
-      ordered = ordered.slice(1, ordered.length)
+    live = live.sort_by { |link| link.expires_at }
+    let mine = live.filter { |link| link.requester.to_s == requester.to_s }
+    while mine.length >= MAGIC_LINKS_PER_REQUESTER
+      mine[0].delete
+      live = live.filter { |link| link._key != mine[0]._key }
+      mine = mine.slice(1, mine.length)
+    end
+    while live.length >= MAGIC_LINKS_PENDING
+      let counts = {}
+      live.each do |link|
+        counts[link.requester.to_s] = (counts[link.requester.to_s] ?? 0) + 1
+      end
+      let most = live.map { |link| counts[link.requester.to_s] }.max
+      let victim = live.filter { |link| counts[link.requester.to_s] == most }[0]
+      victim.delete
+      live = live.filter { |link| link._key != victim._key }
     end
     MagicLink.create({
       "user_id": user._key,
+      "requester": requester.to_s,
       "token_digest": Crypto.sha256(token),
       "nonce_digest": Crypto.sha256(nonce),
       "expires_at": DateTime.utc.to_unix + MAGIC_LINK_TTL

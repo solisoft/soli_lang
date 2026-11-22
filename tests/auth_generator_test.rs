@@ -719,14 +719,57 @@ fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
     assert!(page.contains("invalid or was already used"), "{page}");
     assert_eq!(confirmed(&server), "false");
 
-    // The button does, once.
+    // The button does, once. Pressed from another browser than the one
+    // that signed up — the mailbox's owner, who may not be whoever chose the
+    // password: the address is confirmed, the password chosen at sign-up is
+    // gone, and the visitor is sent to choose one.
     let body = format!(r#"{{"token": "{token}"}}"#);
-    let (status, page) = call(&server, "POST", "/confirm_email", Some(&body));
-    assert_eq!(status, 200);
-    assert!(page.contains("Your email address is confirmed"), "{page}");
+    let agent = ureq::AgentBuilder::new().redirects(0).build();
+    let origin = format!("http://127.0.0.1:{}", server.1);
+    let pressed = agent
+        .post(&format!("{origin}/confirm_email"))
+        .set("Content-Type", "application/json")
+        .send_string(&body)
+        .unwrap();
+    assert_eq!(pressed.status(), 302);
+    let location = pressed.header("location").unwrap_or_default().to_string();
+    assert!(location.starts_with("/password/edit?token="), "{location}");
     assert_eq!(confirmed(&server), "true");
+    assert_eq!(
+        call(&server, "POST", "/login", Some(ADA)).0,
+        401,
+        "the password chosen by whoever signed up still opens the account"
+    );
     let (_, page) = call(&server, "POST", "/confirm_email", Some(&body));
     assert!(page.contains("invalid or was already used"), "{page}");
+
+    // From the browser that signed up (it kept the sign-up cookie), the
+    // confirmation keeps the password chosen there.
+    let signed_up = agent
+        .post(&format!("{origin}/signup"))
+        .set("Content-Type", "application/json")
+        .send_string(BOB)
+        .unwrap();
+    let cookie = signed_up
+        .all("set-cookie")
+        .iter()
+        .find(|c| c.starts_with("signup="))
+        .map(|c| c.split(';').next().unwrap().to_string())
+        .expect("no sign-up cookie");
+    let (_, token) = call(&server, "GET", "/fixture/token?email=bob@example.com", None);
+    let confirmed_here = agent
+        .post(&format!("{origin}/confirm_email"))
+        .set("Content-Type", "application/json")
+        .set("Origin", &origin)
+        .set("Cookie", &cookie)
+        .send_string(&format!(r#"{{"token": "{token}"}}"#))
+        .unwrap();
+    assert_eq!(confirmed_here.status(), 200);
+    assert!(confirmed_here
+        .into_string()
+        .unwrap()
+        .contains("Your email address is confirmed"));
+    assert_eq!(call(&server, "POST", "/login", Some(BOB)).0, 302);
 }
 
 /// Completing a password reset proves the mailbox, as a confirmation does:

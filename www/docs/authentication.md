@@ -196,7 +196,7 @@ makes one), and link to `/two_factor` from your account page.
 - **Turning it off, new backup codes.** Both ask for the password (an account
   created through OAuth has none, and is not asked); turning it off also asks
   for a code.
-- **The owner, at the keyboard.** Setting it up needs a sign-in from the last 15 minutes (`AUTH_FRESH_SECONDS`), and none of setup, backup codes or turning it off answers to an API token or to an administrator acting as the user (`403`). Backup codes are 80 random bits each (`xxxxx-xxxxx-xxxxx-xxxxx`), and wrong codes are counted in the database, one atomic write each. The model declares `optimistic_lock`: recording a code as used is a compare-and-swap, so two requests carrying the same code cannot both pass.
+- **The owner, at the keyboard.** Setting it up, finishing an enrolment and getting new backup codes need a sign-in from the last 15 minutes (`AUTH_FRESH_SECONDS`), and none of setup, backup codes or turning it off answers to an API token or to an administrator acting as the user (`403`). Backup codes are 80 random bits each (`xxxxx-xxxxx-xxxxx-xxxxx`), and wrong codes are counted in the database, one atomic write each. The model declares `optimistic_lock`: recording a code as used is a compare-and-swap, so two requests carrying the same code cannot both pass.
 
 ### With remember-me, passkeys and OAuth
 

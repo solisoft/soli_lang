@@ -47,6 +47,11 @@ class TwoFactorController < Controller
 
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil? || record.confirmed?
+    # As for `setup`: an enrolment left half-way must not be finished — and
+    # its secret must not be shown again — from a session left open.
+    unless auth_fresh_sign_in?()
+      return @_render_index(user, "Sign in again to set up two-factor authentication.", 403)
+    end
     return @_render_setup(record, user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
 
     codes = record.confirm(params["code"])
@@ -60,8 +65,9 @@ class TwoFactorController < Controller
     end
 
     # Every other session of this account is signed out; this one stays.
-    user.session_version = user.current_session_version + 1
-    user.update
+    # One field, counted in the database: writing the whole account back
+    # here could undo a password reset that happened meanwhile.
+    user.increment("session_version")
     session_set("session_version", user.current_session_version)
     session_set("two_factor", "ok:#{user._key}")
     render(
@@ -80,10 +86,18 @@ class TwoFactorController < Controller
     return redirect("/two_factor") if record.nil? || !record.confirmed?
     return @_render_index(user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
     return @_render_index(user, "Wrong password.", 401) unless @_password_ok(user)
+    # New codes are a way past the second factor. An account without a
+    # password has none to ask for: a recent sign-in is asked of everyone.
+    unless auth_fresh_sign_in?()
+      return @_render_index(user, "Sign in again to get new backup codes.", 403)
+    end
+
+    codes = record.new_backup_codes
+    return @_render_index(user, "The codes could not be replaced. Try again.", 409) if codes.nil?
 
     render(
       "two_factor/backup_codes",
-      {"title": "Backup codes", "codes": record.new_backup_codes}
+      {"title": "Backup codes", "codes": codes}
     )
   end
 
@@ -126,12 +140,8 @@ class TwoFactorController < Controller
     return @_reject_challenge("That code is not valid.", 401) if record.nil? || !record.verify(params["code"])
 
     # A new session id once both factors passed, as after a password sign-in.
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
     session_set("two_factor", "ok:#{user._key}")
     redirect("/")
   end

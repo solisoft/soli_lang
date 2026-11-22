@@ -23,6 +23,7 @@ pub const MAILER_CONFIRM_EMAIL_VIEW: &str = include_str!("auth/mailer_confirm_em
 pub const MAILER_ACCOUNT_LOCKED_VIEW: &str = include_str!("auth/mailer_account_locked.html.slv");
 pub const MAILER_ALREADY_REGISTERED_VIEW: &str =
     include_str!("auth/mailer_already_registered.html.slv");
+pub const MAILER_SESSIONS_ENDED_VIEW: &str = include_str!("auth/mailer_sessions_ended.html.slv");
 pub const POLICIES_CLAUDE: &str = include_str!("auth/policies_claude.md");
 
 /// Migration creating the `users` collection with a unique index on `email`.

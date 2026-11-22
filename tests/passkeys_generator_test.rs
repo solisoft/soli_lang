@@ -691,6 +691,15 @@ fn served_app_registers_a_passkey_and_signs_in_with_it() {
     runner("User.where({\"email\": \"ada@example.com\"}).update_all({\"remember_created_at\": 1})");
     assert_eq!(again.request("GET", "/passkeys", None).0, 302);
 
+    // The reuse of a replaced token ended every session of the account —
+    // Ada's own included: she signs in again.
+    assert_eq!(ada.request("GET", "/passkeys", None).0, 302);
+    ada.csrf = None;
+    let login = json!({"email": "ada@example.com", "password": "correct horse battery"});
+    assert_eq!(ada.post("/login", login).0, 302);
+    let (_, page) = ada.request("GET", "/passkeys", None);
+    ada.csrf = Some(csrf_from(&page));
+
     // Sign in from a fresh browser with the passkey.
     let mut device = Browser::new(&server);
     // No options first: no challenge, uniform failure.

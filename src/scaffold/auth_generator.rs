@@ -38,7 +38,7 @@ pub fn create_auth_with(folder: &str, passkeys: bool) -> Result<(), String> {
 
     // (relative path, contents) — written only if absent so re-running never
     // clobbers a User model or policy you've already customized.
-    let files: [(&str, &str); 19] = [
+    let files: [(&str, &str); 20] = [
         ("app/models/user.sl", auth::USER_MODEL),
         (
             "app/policies/application_policy.sl",
@@ -93,6 +93,10 @@ pub fn create_auth_with(folder: &str, passkeys: bool) -> Result<(), String> {
         (
             "app/views/auth_mailer/already_registered.html.slv",
             auth::MAILER_ALREADY_REGISTERED_VIEW,
+        ),
+        (
+            "app/views/auth_mailer/sessions_ended.html.slv",
+            auth::MAILER_SESSIONS_ENDED_VIEW,
         ),
     ];
 

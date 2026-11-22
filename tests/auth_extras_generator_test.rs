@@ -436,6 +436,36 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
     assert_ne!(first, second);
     assert_eq!(phone.get(&first).status, 401);
     assert_eq!(phone.get(&second).status, 302);
+
+    // The account had never confirmed its address when the link signed it
+    // in: whoever created it — its owner, or someone in wait with a password
+    // of their own — no longer gets in with that password.
+    let with_password = Client::browser(&server).post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD}),
+    );
+    assert_eq!(
+        with_password.status, 401,
+        "the sign-up password survived a mailbox sign-in to an unconfirmed account"
+    );
+
+    // Anyone can ask for a link to any address. Ten requests from one
+    // address replace that address's own links, never the owner's.
+    assert_eq!(
+        runner(
+            dir.path(),
+            r##"user = User.find_by("email", "ada@example.com")
+owners = MagicLink.issue(user, "198.51.100.7")
+(0..10).each do |i|
+  MagicLink.issue(user, "203.0.113.9")
+end
+pending = MagicLink.where({"user_id": user._key}).count
+print("#{!MagicLink.redeem(owners["token"], owners["nonce"]).nil?} #{pending}")"##
+        ),
+        // Hers, the two the other address may hold, and one left by the
+        // browser above.
+        "true 4"
+    );
 }
 
 #[test]

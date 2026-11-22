@@ -32,6 +32,7 @@ class PasswordsController < Controller
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
     return @_request_form("", "Too many reset requests. Try again in a few minutes.", 429) unless limiter.allowed
 
+    started = clock()
     email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
     # An account that signs in through single sign-on only gets no reset link,
@@ -46,6 +47,7 @@ class PasswordsController < Controller
       AuthMailer.reset_password(user, token).deliver_later rescue nil
     end
 
+    auth_uniform_wait(started)
     @_request_form("If that email exists, a reset link is on its way.", "", 200)
   end
 
@@ -77,15 +79,12 @@ class PasswordsController < Controller
     return @_reject_edit(password_error) unless password_error.nil?
     return @_reject_edit("Passwords don't match.") if password != params["password_confirmation"].to_s
 
-    user.finish_password_reset(password)
+    unless user.finish_password_reset(password) == true
+      return @_reject_edit("The password could not be changed. Ask for a new link and try again.")
+    end
     # Sign the user straight in with a fresh session.
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
     redirect("/")
   end
 

@@ -177,6 +177,9 @@ UserMailer.welcome(user).deliver_later   # enqueue; returns immediately
 
 `deliver_later` enqueues a `__MailDelivery` job; if the queue is unavailable it
 logs and falls back to sending synchronously so a message is never dropped.
+Once the mail is sent, its body and attachments are removed from the job row
+(the row stays for the retention window, with the recipient and the subject):
+the body of a password-reset or sign-in mail is its link.
 
 ## `this.mail(...)`
 

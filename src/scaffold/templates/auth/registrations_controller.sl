@@ -54,14 +54,28 @@ class RegistrationsController < Controller
     # "could not create your account" told anyone which addresses are
     # registered. The owner of a taken one gets a mail instead, and the same
     # Argon2 work is spent.
+    started = clock()
     open_sign_up = auth_signup_mode() == "open"
+    # The browser that signs up keeps a cookie, and the account its digest:
+    # a confirmation from this browser keeps the password chosen here, one
+    # from elsewhere replaces it (`ConfirmationsController#confirm`). Set
+    # whether an account is created or not, so the reply does not tell.
+    signup_nonce = Crypto.random_hex(32)
+    set_cookie("signup", signup_nonce, {
+      "max_age": AUTH_CONFIRMATION_TOKEN_TTL,
+      "http_only": true,
+      "same_site": "Lax",
+      "secure": true
+    })
     existing = open_sign_up ? User.find_by("email", params["email"].to_s.trim.downcase) : nil
     unless existing.nil?
       User.burn_password_work(params["password"].to_s)
       User.burn_write_work
       AuthMailer.already_registered(existing).deliver_later rescue nil
+      auth_uniform_wait(started)
       return @_check_mailbox(existing.email)
     end
+    user.signup_nonce_digest = Crypto.sha256(signup_nonce)
 
     # The account that opens a `first_user` app runs it.
     user.role = "admin" if auth_signup_mode() == "first_user"
@@ -77,15 +91,13 @@ class RegistrationsController < Controller
     token = user.start_email_confirmation
     AuthMailer.confirm_email(user, token).deliver_later rescue nil
 
-    return @_check_mailbox(user.email) if auth_require_confirmed_email()
+    if auth_require_confirmed_email()
+      auth_uniform_wait(started)
+      return @_check_mailbox(user.email)
+    end
 
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
     redirect("/")
   end
 

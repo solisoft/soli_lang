@@ -29,6 +29,14 @@ class AuthMailer < Mailer
     @mail(to: user.email, subject: "You already have an account")
   end
 
+  # Sent when a remember-me cookie that had been replaced turns up again:
+  # two parties held it, so every session was ended.
+  def sessions_ended(user)
+    @user = user
+    @reset_url = "#{auth_base_url()}/password/reset"
+    @mail(to: user.email, subject: "You were signed out everywhere")
+  end
+
   # Sent once, when the lockout trips. The sign-in response deliberately says
   # nothing about the lock — telling the browser "this account is locked" also
   # tells whoever is guessing that they found the right password — so this is

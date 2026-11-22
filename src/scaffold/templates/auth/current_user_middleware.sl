@@ -63,18 +63,18 @@ def load_current_user(req)
     # let back in by an old cookie.
     allowed = !user.nil? && !user.sso_only? && (user.confirmed? || !auth_require_confirmed_email())
     if allowed && user.remembered_by?(parts[1])
-      session_regenerate()
-      auth_forget_impersonation()
+      auth_open_session(user)
       # No `auth_time`: nobody signed in just now.
       session_delete("auth_time")
-      session_set("user_id", user._key)
-      session_set("session_version", user.current_session_version)
       req["current_user"] = user
-      # Used once: replaced now, for whatever is left of its lifetime.
-      if user.remember_current?(parts[1])
+      # Used once: replaced now, for whatever is left of its lifetime. When
+      # another request of this browser replaced it first, that one's cookie
+      # stands and this one sets none.
+      replacement = user.remember_current?(parts[1]) ? user.rotate_remember_me : nil
+      unless replacement.nil?
         left = AUTH_REMEMBER_DAYS * 86400 - (DateTime.utc.to_unix - (user.remember_created_at ?? 0).to_i)
-        set_cookie("remember_token", "#{user._key}:#{user.rotate_remember_me}", {
-          "max_age": left,
+        set_cookie("remember_token", "#{user._key}:#{replacement}", {
+          "max_age": left > 60 ? left : 60,
           "http_only": true,
           "same_site": "Lax",
           "secure": true

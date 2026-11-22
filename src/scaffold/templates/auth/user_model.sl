@@ -59,6 +59,45 @@ def auth_fresh_sign_in?
   signed_in_at > 0 && DateTime.utc.to_unix - signed_in_at <= AUTH_FRESH_SECONDS
 end
 
+# How long the answers that must not tell a registered address from an
+# unknown one take, at least (seconds). The work behind them differs — a
+# token stored, a mail queued, or nothing — and `auth_uniform_wait` holds
+# the reply until this much time has passed either way.
+const AUTH_UNIFORM_SECONDS = 0.25
+
+# Hold a reply until AUTH_UNIFORM_SECONDS have passed since `started` (a
+# `clock()` reading taken when the action began).
+def auth_uniform_wait(started)
+  remaining = AUTH_UNIFORM_SECONDS - (clock() - started)
+  sleep(remaining) if remaining > 0
+end
+
+# Make the session `user`'s, as a sign-in that happened just now. Every action
+# that signs someone in goes through here.
+#
+# `session_regenerate` gives the session a new id and keeps its data: without
+# the deletions below, what the previous occupant of the session left behind
+# became the new user's. An impersonation, whose "stop" then returned the
+# administrator's session. A two-factor marker (`off:<user>`, `ok:<user>`)
+# parked in the session by an earlier sign-in to that same account, which
+# then skipped the challenge the account had since turned on. A SAML
+# session's expiry, cutting a password sign-in short.
+#
+# What the caller knows on top — a passkey that verified its user, a SAML
+# session's end — it sets afterwards.
+def auth_open_session(user)
+  session_regenerate()
+  auth_forget_impersonation()
+  session_delete("two_factor")
+  session_delete("sign_in_expires_at")
+  session_set("user_id", user._key)
+  # When this sign-in happened: the OIDC provider reads it for max_age /
+  # auth_time, and adding a way into the account asks for a recent one.
+  session_set("auth_time", DateTime.utc.to_unix)
+  # Stamped so a later password reset can invalidate this session.
+  session_set("session_version", user.current_session_version)
+end
+
 # A sign-in is a new person: whatever impersonation the session carried is
 # over. `session_regenerate` keeps the session's data, so every action that
 # opens a session calls this.
@@ -292,11 +331,27 @@ class User < Model
   # does when they think the account is compromised, and a remember-me cookie
   # outlives it by up to AUTH_REMEMBER_DAYS — leaving it valid means the reset
   # doesn't actually evict the attacker.
+  #
+  # Returns true when the new password is stored. The rows go first and the
+  # account's own secrets last, as in `revoke_credentials`: a failure on a
+  # row raises with the old password and the link still in place, so the
+  # reset can be tried again — the other order could change the password,
+  # burn the link, and leave a stranger's API token behind for good.
   def finish_password_reset(plaintext)
+    # A reset is what someone does when the account may be in other hands:
+    # the ways in that a visitor to the account could have added — API
+    # tokens, passkeys, pending sign-in links — go with the old password.
+    # (Linked providers and the authenticator app stay: they are the owner's.)
+    ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
+      model = const_get(name)
+      model.where({"user_id": @_key}).delete_all unless model.nil?
+    end
     @set_password(plaintext)
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil
+    @remember_previous_digest = nil
+    @remember_created_at = nil
     @failed_attempts = 0
     @locked_at = nil
     # The reset link went to the mailbox: whoever completes it holds the
@@ -312,16 +367,7 @@ class User < Model
     # who was already signed in stayed signed in through the victim's reset —
     # which is the one thing a password reset is supposed to stop.
     @session_version = (@session_version ?? 0) + 1
-    saved = @update
-    # A reset is what someone does when the account may be in other hands:
-    # the ways in that a visitor to the account could have added — API
-    # tokens, passkeys, pending sign-in links — go with the old password.
-    # (Linked providers and the authenticator app stay: they are the owner's.)
-    ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
-      model = const_get(name)
-      model.where({"user_id": @_key}).delete_all unless model.nil?
-    end
-    saved
+    @update == true
   end
 
   # Write these fields and no others. `@update` writes the whole record as
@@ -368,6 +414,8 @@ class User < Model
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil
+    @remember_previous_digest = nil
+    @remember_created_at = nil
     @session_version = @current_session_version + 1
     throw "could not revoke the credentials of #{@email}" unless @update
 
@@ -410,18 +458,26 @@ class User < Model
   end
 
   # --- Remember me ------------------------------------------------------------
+
+  # A token for the "Remember me" cookie, or nil when the password changed
+  # while this sign-in was being checked (Argon2 takes a tenth of a second):
+  # the write names the password it was checked against, so a sign-in that
+  # straddles a reset cannot leave a token behind for the old password.
   def start_remember_me
     token = uuid_v4()
-    @remember_token_digest = Crypto.sha256(token)
-    @remember_previous_digest = nil
-    @remember_rotated_at = nil
-    @remember_created_at = DateTime.utc.to_unix
-    @_patch({
-      "remember_token_digest": @remember_token_digest,
+    digest = Crypto.sha256(token)
+    now = DateTime.utc.to_unix
+    User.where({"_key": @_key, "password_digest": @password_digest}).update_all({
+      "remember_token_digest": digest,
       "remember_previous_digest": nil,
       "remember_rotated_at": nil,
-      "remember_created_at": @remember_created_at
+      "remember_created_at": now
     })
+    return nil unless @_remember_digest_is?(digest)
+
+    @remember_token_digest = digest
+    @remember_previous_digest = nil
+    @remember_created_at = now
     token
   end
 
@@ -439,17 +495,33 @@ class User < Model
   # stays good for a minute, for the requests a browser sent side by side;
   # after that, seeing it again means two parties hold the cookie — a copy —
   # and remember-me is ended for the account (`remembered_by?`).
+  #
+  # Returns the new token, or nil when the stored one is no longer the one
+  # this request read: another request replaced it first (its cookie
+  # stands), or a password reset cleared it. The write is a compare-and-swap
+  # on the digest, never an overwrite.
   def rotate_remember_me
     token = uuid_v4()
-    @remember_previous_digest = @remember_token_digest
-    @remember_rotated_at = DateTime.utc.to_unix
-    @remember_token_digest = Crypto.sha256(token)
-    @_patch({
-      "remember_token_digest": @remember_token_digest,
-      "remember_previous_digest": @remember_previous_digest,
-      "remember_rotated_at": @remember_rotated_at
+    digest = Crypto.sha256(token)
+    current = @remember_token_digest
+    now = DateTime.utc.to_unix
+    User.where({"_key": @_key, "remember_token_digest": current}).update_all({
+      "remember_token_digest": digest,
+      "remember_previous_digest": current,
+      "remember_rotated_at": now
     })
+    return nil unless @_remember_digest_is?(digest)
+
+    @remember_previous_digest = current
+    @remember_rotated_at = now
+    @remember_token_digest = digest
     token
+  end
+
+  # Is `digest` what the database holds now?
+  def _remember_digest_is?(digest)
+    stored = User.find_by("_key", @_key)
+    !stored.nil? && stored.remember_token_digest == digest
   end
 
   # Is `token` the current one (the caller then rotates it)?
@@ -462,7 +534,13 @@ class User < Model
   # issued, whatever the copy says.
   def remembered_by?(token)
     return false if @remember_token_digest.blank?
-    return false if DateTime.utc.to_unix - (@remember_created_at ?? 0).to_i > AUTH_REMEMBER_DAYS * 86400
+    # A token from before tokens had an age (an app regenerated over its
+    # users) is given one now, once, rather than refused.
+    if @remember_created_at.nil?
+      @remember_created_at = DateTime.utc.to_unix
+      @_patch({"remember_created_at": @remember_created_at})
+    end
+    return false if DateTime.utc.to_unix - @remember_created_at.to_i > AUTH_REMEMBER_DAYS * 86400
     return true if @remember_current?(token)
     return false if @remember_previous_digest.blank?
     return false unless Crypto.secure_compare(Crypto.sha256(token.to_s), @remember_previous_digest)
@@ -470,10 +548,13 @@ class User < Model
     # one that rotated it.
     return true if DateTime.utc.to_unix - (@remember_rotated_at ?? 0).to_i <= 60
 
-    # The replaced token, later: someone else holds a copy. Nobody is
-    # remembered any more; both parties sign in again.
-    Logger.warn("remember-me token of #{@email} reused after rotation: remember-me revoked")
+    # The replaced token, later: someone else holds a copy, and one of the
+    # two is signed in right now. Nobody is remembered any more, every
+    # session of the account ends, and the owner is told.
+    Logger.warn("remember-me token of #{@email} reused after rotation: sessions ended")
     @forget_me
+    @increment("session_version")
+    AuthMailer.sessions_ended(this).deliver_later rescue nil
     false
   end
 

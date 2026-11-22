@@ -67,11 +67,9 @@ class ImpersonationsController < Controller
 
   # Make the session `user`'s, under a new session id.
   def _become(user)
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    session_set("session_version", user.current_session_version)
-    # Nobody signed in as this user just now: no auth_time for the OIDC provider.
+    auth_open_session(user)
+    # Nobody signed in as this user just now: no auth_time for the OIDC
+    # provider, and nothing that asks for a fresh sign-in.
     session_delete("auth_time")
     # The administrator passed their own second factor; the user's is not
     # theirs to give.

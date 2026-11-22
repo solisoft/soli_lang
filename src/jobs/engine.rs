@@ -54,7 +54,9 @@ pub fn mark_finished(job_id: &str) {
 /// success. Keeps all state transitions in one place.
 pub fn report_outcome(job: &JobDoc, error: Option<&str>) {
     let result = match error {
-        None => store::complete(&job.key).map(|_| ()),
+        None => store::complete(&job.key)
+            .and_then(|_| store::forget_delivered_mail(job))
+            .map(|_| ()),
         Some(err) => store::fail(job, err).map(|retrying| {
             if retrying {
                 println!(

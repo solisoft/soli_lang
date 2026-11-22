@@ -1,0 +1,12 @@
+<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+  <h1 style="font-size: 20px;">You were signed out everywhere</h1>
+  <p>
+    A "remember me" cookie for <strong><%= user.email %></strong> was used
+    after it had already been replaced. That happens when the cookie was
+    copied: someone else may have been signed in to your account.
+  </p>
+  <p>
+    Every session was ended. Sign in again &mdash; and if you did not expect
+    this message, <a href="<%= reset_url %>">change your password</a>.
+  </p>
+</div>

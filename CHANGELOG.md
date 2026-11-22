@@ -3,6 +3,21 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a second review of the scaffold's own hardening.** Every sign-in
+  opens its session through `auth_open_session`, which drops what the
+  session held before — among it the two-factor answer: a browser that had
+  signed in before an account turned two-factor on skipped the challenge on
+  its next sign-in. A confirmation pressed in another browser than the one
+  that signed up (and a sign-in link to a never-confirmed account) replaces
+  the password instead of confirming the one a stranger may have chosen.
+  Sign-in links are replaced per requesting address. The remember-me
+  rotation is a compare-and-swap; a replaced token seen again ends every
+  session and mails the owner. `finish_password_reset` removes tokens and
+  passkeys before it changes the password, and reports failure. Finishing a
+  two-factor enrolment and getting backup codes need a recent sign-in.
+  Uniform answers are held to `AUTH_UNIFORM_SECONDS`.
+- **mailer: a delivered `deliver_later` mail leaves no body in its job
+  row** (the row is kept a week; a reset mail's body is its link).
 - **auth: a link someone else asks for no longer cancels the owner's.** A
   reset or confirmation link sent in the last five minutes stays the valid
   one (`AUTH_RESEND_SECONDS`); up to five sign-in links are pending at once

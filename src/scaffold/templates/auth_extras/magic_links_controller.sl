@@ -21,6 +21,7 @@ class MagicLinksController < Controller
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
     return @_form("", "Too many requests. Try again in a few minutes.", 429) unless limiter.allowed
 
+    started = clock()
     user = User.find_by("email", params["email"].to_s.trim.downcase)
     # An account that signs in through single sign-on only (`sso_only?`)
     # gets no link, and no different answer: a link in the mailbox would
@@ -29,7 +30,7 @@ class MagicLinksController < Controller
     # its own proof.
     nonce = Crypto.random_hex(32)
     if !user.nil? && !user.sso_only?
-      link = MagicLink.issue(user)
+      link = MagicLink.issue(user, client_ip(req))
       nonce = link["nonce"]
       MagicLinkMailer.sign_in(user, link["token"]).deliver_later rescue nil
     else
@@ -43,6 +44,7 @@ class MagicLinksController < Controller
       "secure": true
     })
 
+    auth_uniform_wait(started)
     @_form("If that email has an account, a sign-in link is on its way. Open it in this browser.", "", 200)
   end
 
@@ -62,22 +64,22 @@ class MagicLinksController < Controller
       )
     end
 
-    # Reading the mail proves the address.
-    user.confirm_email unless user.confirmed?
+    # Reading the mail proves the address. An account that was never
+    # confirmed may have been created by someone else, with a password of
+    # their choosing, in wait for this moment: everything it could be entered
+    # with goes before it is confirmed (as a provider or SAML sign-in does).
+    unless user.confirmed?
+      user.revoke_credentials
+      user.confirm_email
+    end
     set_cookie("magic_link", "", {
       "max_age": 0,
       "http_only": true,
       "same_site": "Lax",
       "secure": true
     })
-    # New session id after a successful login defeats session fixation.
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
     redirect("/")
   end
 

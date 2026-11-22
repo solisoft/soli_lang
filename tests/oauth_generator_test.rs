@@ -1331,7 +1331,9 @@ fn oauth_sso_clears_stale_links_and_stamps_auth_time() {
         "{begin_state}"
     );
     assert!(
-        service.contains(r#"session_set("auth_time", DateTime.utc.to_unix)"#),
+        // A sign-in opens the session through the one helper that stamps
+        // `auth_time` and drops what the previous occupant left.
+        service.contains("auth_open_session(user)"),
         "{service}"
     );
     assert!(service.contains(r#"respond_to?("sso_only?")"#), "{service}");

@@ -90,7 +90,10 @@ class TwoFactor < Model
     @backup_code_digests = codes.map do |code|
       Crypto.sha256(code)
     end
-    @update
+    # nil when the record changed since it was read: codes that were not
+    # stored must not be shown as if they were.
+    return nil unless @update == true
+
     codes.map do |code|
       [code.substring(0, 5), code.substring(5, 10), code.substring(10, 15), code.substring(15, 20)].join("-")
     end

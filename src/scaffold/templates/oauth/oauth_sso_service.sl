@@ -328,22 +328,21 @@ class OauthSso
 
   static def sign_in(user)
     linking = OauthSso.linking?
-    # New session id after a successful login defeats session fixation.
-    session_regenerate()
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # Stamped so a later password reset can invalidate this session — and so
-    # that this one is not refused for predating the last reset.
-    session_set("session_version", user.current_session_version)
-    OauthSso.clear_state
-    # A provider sign-in is a fresh proof of identity; linking one is not
-    # (the session was already signed in) and leaves the stamps as they were.
-    # `auth_time` is what an OIDC provider (`soli generate oidc_provider`)
-    # puts in its id_tokens and checks `max_age` against.
-    unless linking
-      OauthSso.mark_authenticated(user)
-      session_set("auth_time", DateTime.utc.to_unix)
+    if linking
+      # The session was already this user's, signed in before: a new id (a
+      # link changes what the session can do), its stamps left as they were.
+      session_regenerate()
+      session_set("user_id", user._key)
+      # So that it is not refused for predating a reset the link went through.
+      session_set("session_version", user.current_session_version)
+    else
+      # A provider sign-in is a fresh proof of identity: a new session, the
+      # user's alone (`auth_open_session` in app/models/user.sl), stamped
+      # with `auth_time` for an OIDC provider's `max_age`.
+      auth_open_session(user)
     end
+    OauthSso.clear_state
+    OauthSso.mark_authenticated(user) unless linking
     session_set("oauth_linked", "1") if linking
   end
 end

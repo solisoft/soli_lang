@@ -36,17 +36,8 @@ class SamlController < Controller
     # typed eleven wrong passwords for the address shut its owner out of
     # single sign-on for half an hour.
 
-    # New session id after a successful login defeats session fixation.
-    session_regenerate()
-    # `session_regenerate` keeps the session's data. A sign-in is a new
-    # person: an impersonation left in the session would let this user's
-    # "stop impersonating" become the admin who started it.
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
     # There is no single logout: this session would outlive the user's
     # removal at the identity provider. It ends at the identity provider's
     # SessionNotOnOrAfter, or after SAML_SESSION_TTL, whichever comes first.

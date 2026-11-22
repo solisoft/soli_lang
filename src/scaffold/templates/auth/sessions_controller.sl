@@ -61,6 +61,7 @@ class SessionsController < Controller
     # from this response.
     if !user.nil? && user.locked?
       User.burn_password_work(password)
+      User.burn_write_work
       return @_reject(@_failure_message, email, 401)
     end
 
@@ -79,33 +80,31 @@ class SessionsController < Controller
     # The same answer as a wrong password: a distinct "confirm your email"
     # appeared only once the password was right, which confirmed it.
     if auth_require_confirmed_email() && !user.confirmed?
+      # The write a counted wrong password costs: "sign up, then sign in"
+      # must not tell a right password on an unconfirmed account from a
+      # wrong one by its timing.
+      User.burn_write_work
       return @_reject(@_failure_message, email, 401)
     end
 
     user.clear_failed_attempts
-    # New session id after a successful login defeats session fixation.
-    session_regenerate()
-    # `session_regenerate` keeps the session's data. A sign-in is a new
-    # person: an impersonation left in the session would let this user's
-    # "stop impersonating" become the admin who started it.
-    auth_forget_impersonation()
-    session_set("user_id", user._key)
-    # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
-    session_set("auth_time", DateTime.utc.to_unix)
-    # Stamped so a later password reset can invalidate this session.
-    session_set("session_version", user.current_session_version)
+    # A new session, the user's alone (see `auth_open_session`).
+    auth_open_session(user)
 
     if params["remember_me"].to_s == "1"
+      # nil when the password changed while this sign-in was being checked.
       token = user.start_remember_me
       # `secure` matters more here than on the session cookie: this one is a
       # 30-day bearer credential, and without the flag a single plaintext
       # request to the same host hands it to anyone on the path.
-      set_cookie("remember_token", "#{user._key}:#{token}", {
-        "max_age": AUTH_REMEMBER_DAYS * 86400,
-        "http_only": true,
-        "same_site": "Lax",
-        "secure": true
-      })
+      unless token.nil?
+        set_cookie("remember_token", "#{user._key}:#{token}", {
+          "max_age": AUTH_REMEMBER_DAYS * 86400,
+          "http_only": true,
+          "same_site": "Lax",
+          "secure": true
+        })
+      end
     end
 
     redirect("/")
@@ -114,7 +113,9 @@ class SessionsController < Controller
   # DELETE /logout
   def destroy
     user_id = session_get("user_id")
-    unless user_id.blank?
+    # The remember-me token is its owner's to drop: not an administrator's
+    # acting as them, nor a visitor's who only got as far as the password.
+    if !user_id.blank? && auth_own_session?(req) && !current_user().nil?
       user = User.find_by("_key", user_id) rescue nil
       user&.forget_me
     end

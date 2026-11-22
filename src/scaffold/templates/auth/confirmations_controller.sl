@@ -34,11 +34,22 @@ class ConfirmationsController < Controller
     user = @_pending(params["token"].to_s)
     return @_invalid if user.nil?
 
+    if @_signed_up_here?(user)
+      user.confirm_email
+      # Confirm, but do not sign in: whoever holds the link — a shared
+      # mailbox, the colleague the message was forwarded to — has not proved
+      # they hold the password. The visitor signs in normally.
+      return @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
+    end
+
+    # Another browser than the one that signed up. Whoever is here holds the
+    # mailbox; whoever signed up chose the password — and may be someone who
+    # created the account in wait for this confirmation, to sign in with
+    # that password afterwards. Everything the account could be entered with
+    # goes, and the mailbox's owner chooses a password of their own.
+    user.revoke_credentials
     user.confirm_email
-    # Confirm, but do not sign in: whoever holds the link — a shared mailbox,
-    # the colleague the message was forwarded to — has not proved they hold
-    # the password. The visitor signs in normally.
-    @_form("Email confirmed", "Your email address is confirmed. Sign in to continue.", "")
+    redirect("/password/edit?token=#{user.start_password_reset}")
   end
 
   # GET /confirmation/resend
@@ -55,6 +66,7 @@ class ConfirmationsController < Controller
       return @_form("Confirm your email", "", "Too many requests. Try again in a few minutes.")
     end
 
+    started = clock()
     email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
     if !user.nil? && !user.confirmed? && !user.confirmation_recently_sent?
@@ -64,10 +76,19 @@ class ConfirmationsController < Controller
       User.burn_write_work
     end
 
+    auth_uniform_wait(started)
     @_form("Confirm your email", "If that email needs confirming, a fresh link is on its way.", "")
   end
 
   private
+
+  # Is this the browser the account was created from? Sign-up leaves a
+  # cookie whose digest is kept on the account.
+  def _signed_up_here?(user)
+    given = (cookies["signup"] rescue nil).to_s
+    kept = user.signup_nonce_digest.to_s
+    given.present? && kept.present? && Crypto.secure_compare(kept, Crypto.sha256(given))
+  end
 
   # The account a confirmation token names, while the link is still good.
   # An expired link is indistinguishable from an invalid one to the visitor,

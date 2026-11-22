@@ -751,7 +751,7 @@ fn only_the_owner_at_the_keyboard_manages_the_second_factor() {
     // Two requests carrying the same code cannot both record it as used:
     // the save is a compare-and-swap.
     assert!(model.contains("optimistic_lock"), "{model}");
-    assert_eq!(model.matches("@update == true").count(), 2, "{model}");
+    assert_eq!(model.matches("@update == true").count(), 3, "{model}");
 }
 
 /// Two requests that both read the record before either wrote it — the
@@ -817,5 +817,63 @@ print("left #{TwoFactor.find(record._key).backup_codes_left}")
             "left 9"
         ],
         "{text}"
+    );
+}
+
+/// A session remembers "this account has no second factor" so a signed-in
+/// request costs no query. That answer must not outlive the sign-in it was
+/// given to: a browser holding it, signing in again once the account has
+/// turned two-factor on, gets the challenge.
+#[test]
+fn a_parked_no_second_factor_answer_does_not_survive_a_new_sign_in() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root);
+    let creds = json!({"email": EMAIL, "password": PASSWORD});
+
+    // Someone who knows the password signs in while the account has no
+    // second factor: their session records that.
+    let mut parked = Browser::new(&server);
+    assert_eq!(parked.post("/signup", creds.clone()).status, 200);
+    confirm_address(root, EMAIL);
+    assert_eq!(parked.post("/login", creds.clone()).status, 302);
+    assert_eq!(parked.get("/two_factor").status, 200);
+
+    // The owner turns two-factor on.
+    fs::write(
+        root.join("enrol.sl"),
+        r##"user = User.find_by("email", "ada@example.com")
+record = TwoFactor.start(user)
+print("enrolled #{!record.confirm(Crypto.totp_generate(record.secret)).nil?}")
+"##,
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["runner", "enrol.sl"])
+        .current_dir(root)
+        .env_remove("SOLI_ENGINE")
+        .env(
+            "SOLI_ENCRYPTION_KEY",
+            "two-factor-test-key-0123456789abcdef",
+        )
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env(
+            "DATABASE_URL",
+            format!("sqlite://{}/app.sqlite3", root.display()),
+        )
+        .output()
+        .expect("run soli");
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    assert!(text.trim().ends_with("enrolled true"), "{text}");
+
+    // The same browser signs in again with the password. It holds the old
+    // answer; it must be asked for the code all the same.
+    assert_eq!(parked.post("/login", creds).status, 302);
+    let page = parked.get("/two_factor");
+    assert_eq!(
+        (page.status, page.location.as_str()),
+        (302, "/two_factor/challenge"),
+        "the second factor was skipped: {}",
+        page.body
     );
 }
