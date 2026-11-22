@@ -91,7 +91,93 @@ pub(super) fn authorize(
     let dev_local = dev_mode
         && super::dev_routes::is_trusted_dev_peer(peer_ip)
         && super::dev_routes::is_local_dev_host_header(headers);
-    authorize_with(headers, dev_local, &configured(prefix))
+    let creds = configured(prefix);
+    // Guessing is bounded per address: past the limit, that address is
+    // answered as if nothing matched until the window passes.
+    if !dev_local && failures::locked_out(peer_ip) {
+        return if creds.basic.is_empty() && creds.tokens.is_empty() {
+            DashAuth::Hidden
+        } else {
+            DashAuth::NeedAuth
+        };
+    }
+    let decision = authorize_with(headers, dev_local, &creds);
+    if matches!(decision, DashAuth::NeedAuth) && headers.contains_key(hyper::header::AUTHORIZATION)
+    {
+        failures::record(peer_ip);
+    }
+    decision
+}
+
+/// Wrong credentials presented to the operator pages, per address.
+///
+/// These pages (`/__soli/jobs`, `/errors`, `/slow_queries`…) took Basic or
+/// Bearer guesses at the server's full throughput. Twenty wrong ones in five
+/// minutes now close them to that address for the rest of the window. The
+/// address is the TCP peer: behind a proxy that is the proxy, which is why
+/// the limit is generous — it is there to make guessing pointless, not to
+/// punish a mistyped password.
+mod failures {
+    use std::collections::HashMap;
+    use std::net::IpAddr;
+    use std::sync::Mutex;
+    use web_time::{Duration, Instant};
+
+    const LIMIT: u32 = 20;
+    const WINDOW: Duration = Duration::from_secs(300);
+    const MAX_TRACKED: usize = 10_000;
+
+    static SEEN: Mutex<Option<HashMap<IpAddr, (u32, Instant)>>> = Mutex::new(None);
+
+    fn with<T>(body: impl FnOnce(&mut HashMap<IpAddr, (u32, Instant)>) -> T) -> T {
+        let mut guard = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+        body(guard.get_or_insert_with(HashMap::new))
+    }
+
+    pub(super) fn locked_out(peer: IpAddr) -> bool {
+        with(|seen| match seen.get(&peer) {
+            Some((count, since)) if since.elapsed() < WINDOW => *count >= LIMIT,
+            Some(_) => {
+                seen.remove(&peer);
+                false
+            }
+            None => false,
+        })
+    }
+
+    pub(super) fn record(peer: IpAddr) {
+        with(|seen| {
+            if seen.len() >= MAX_TRACKED {
+                seen.retain(|_, (_, since)| since.elapsed() < WINDOW);
+                if seen.len() >= MAX_TRACKED {
+                    seen.clear();
+                }
+            }
+            let entry = seen.entry(peer).or_insert((0, Instant::now()));
+            if entry.1.elapsed() >= WINDOW {
+                *entry = (0, Instant::now());
+            }
+            entry.0 += 1;
+        });
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn an_address_is_closed_after_the_limit_and_others_are_not() {
+            let guesser: IpAddr = "203.0.113.77".parse().unwrap();
+            let operator: IpAddr = "203.0.113.78".parse().unwrap();
+            for _ in 0..(LIMIT - 1) {
+                record(guesser);
+            }
+            assert!(!locked_out(guesser));
+            record(guesser);
+            assert!(locked_out(guesser));
+            assert!(!locked_out(operator));
+        }
+    }
 }
 
 pub(super) fn authorize_with(

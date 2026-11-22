@@ -7,7 +7,12 @@ pub const SYNC_CONTROLLER: &str = r#"# SyncController — offline outbox drain +
 # when the radio returns. Pull returns documents changed since `since`.
 
 def push(req)
-  let user_id = session_get("user_id")
+  # `current_user()`, not the session's `user_id`: the session holds that id
+  # as soon as the password passed, before a second factor and whatever a
+  # deactivation says — the middleware that enforce those clear
+  # `current_user()`, and this action must answer to them.
+  let user = current_user()
+  let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
   end
@@ -44,7 +49,12 @@ def push(req)
 end
 
 def pull(req)
-  let user_id = session_get("user_id")
+  # `current_user()`, not the session's `user_id`: the session holds that id
+  # as soon as the password passed, before a second factor and whatever a
+  # deactivation says — the middleware that enforce those clear
+  # `current_user()`, and this action must answer to them.
+  let user = current_user()
+  let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
   end
@@ -137,8 +147,9 @@ pub fn routes_snippet() -> String {
     format!(
         r#"
 {marker}
-# Outbox flush from a shell may lack Origin; session is required in the controller.
-skip_csrf("/sync/*");
+# No `skip_csrf` here: a page flushes its outbox with `fetch`, which names
+# its origin, and the same-origin gate is what keeps another site from
+# replaying writes as this user.
 post("/sync/push", "sync#push");
 get("/sync/pull", "sync#pull");
 # --- end soli generate offline ---

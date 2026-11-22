@@ -951,7 +951,9 @@ fn named_route_helpers_resolve_through_running_server() {
     let server = shared_server();
     let resp = ureq::get(&server.url("/named_routes"))
         .timeout(Duration::from_secs(3))
-        .set("Host", "test.example.com")
+        // A local name: with no SOLI_APP_HOSTS and no `--dev`, absolute
+        // URLs are built only from a host this machine answers to.
+        .set("Host", "myapp.test")
         .call()
         .expect("named-routes probe request");
     assert_eq!(resp.status(), 200);
@@ -970,9 +972,9 @@ fn named_route_helpers_resolve_through_running_server() {
 
     // *_url variants pull the scheme + host from the live request — Host
     // header we sent above plus http (no TLS / no X-Forwarded-Proto).
-    assert_eq!(parsed["posts_url"], "http://test.example.com/posts");
-    assert_eq!(parsed["post_url"], "http://test.example.com/posts/1");
-    assert_eq!(parsed["about_url"], "http://test.example.com/about");
+    assert_eq!(parsed["posts_url"], "http://myapp.test/posts");
+    assert_eq!(parsed["post_url"], "http://myapp.test/posts/1");
+    assert_eq!(parsed["about_url"], "http://myapp.test/about");
 }
 
 #[test]

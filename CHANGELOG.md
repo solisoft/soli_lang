@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+### Security — server, builtins, generators
+The rest of the same audit.
+
+- **generate devices / offline: the session's raw `user_id` and a blanket
+  `skip_csrf`.** The controllers answer to `current_user()` (a pending
+  two-factor challenge or a deactivated account is refused), and the routes
+  are no longer exempt from the same-origin check — a page on another site
+  could register its device for the signed-in user. The shells already send
+  `Origin`.
+- **generate client android: any installed app could load a URL into the
+  bridged WebView.** An https intent is accepted only for the app's hosts;
+  camera, microphone and location are granted to the app's own origins only.
+- **edge: the LiveView socket checks `Origin`**, as `soli serve` does; a boot
+  failure answers a generic 500 and logs its reason.
+- **server: absolute URLs from an undeclared `Host`.** Without `--dev` and
+  without `SOLI_APP_HOSTS`, only a local host is used for `*_url` helpers —
+  not only under `APP_ENV=production`.
+- **server:** `/_metrics` requires its token in production; the operator
+  pages close to an address after twenty wrong credentials; LiveView upload
+  quotas count unknown sessions together; a tus upload that never started
+  frees its slot after ten minutes; static files carry `nosniff` and
+  dotfiles are not served; a `controller#*` route does not reach a `_`
+  helper; a non-canonical method (`delete`) matches no route; an `http://`
+  Origin is refused for a request that arrived over https.
+- **Imap / Pop3: no SSRF guard, one lock for every connection.** They follow
+  the rules of `HTTP.*` (a private host needs `SOLI_HTTP_ALLOW_HOSTS`), each
+  connection has its own lock, and one idle for fifteen minutes is closed.
+  `X509` judges every address a name resolves to.
+- **Image: `resize` / `thumbnail` / `crop` hold to
+  `SOLI_IMAGE_MAX_DIMENSION_PX`** (a negative size wrapped to four billion);
+  `blur` to a sigma of 100.
+- **Spreadsheet.to_csv / csv_write quote their cells** and neutralise
+  formulas.
+- **RateLimiter: a key flood no longer evicts a bucket that is at its
+  limit.**
+- **views: `j()` escapes the backtick and `$`**, and writes `<` `>` `&` as
+  `\x3c` `\x3e` `\x26` instead of HTML entities; the form builder escapes
+  the `_method` value.
+- **pdf_from_markdown: a local image is a file of `public/`** — not any file
+  under the app root.
+
 ### Security — ORM and server
 From an audit of the rest of the framework (four independent readers; each
 item below reproduced by a test or a run before it was fixed).

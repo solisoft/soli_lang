@@ -280,16 +280,48 @@ fn extract_rows_for(
 fn to_csv_string(data: &Rc<RefCell<Vec<Value>>>) -> Result<String, String> {
     let (headers, rows) = extract_headers_and_rows(data)?;
 
+    let line = |cells: &[String]| {
+        cells
+            .iter()
+            .map(|cell| csv_field(cell))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
     let mut csv_content = String::new();
-    csv_content.push_str(&headers.join(","));
+    csv_content.push_str(&line(&headers));
     csv_content.push('\n');
 
     for row in rows {
-        csv_content.push_str(&row.join(","));
+        csv_content.push_str(&line(&row));
         csv_content.push('\n');
     }
 
     Ok(csv_content)
+}
+
+/// One cell of a CSV line.
+///
+/// Cells used to be joined as they were. A name holding a comma shifted its
+/// row's columns, one holding a line break forged a row (`x\nroot,admin` in
+/// an export an administrator opens), and a quote broke the file for other
+/// parsers. A cell with any of those is quoted, its quotes doubled.
+///
+/// A cell that starts as a formula (`=`, `+`, `-`, `@`, a tab or a carriage
+/// return) is what a spreadsheet runs when the file is opened: it gets a
+/// leading apostrophe, which makes it text. Plain numbers are left alone.
+fn csv_field(cell: &str) -> String {
+    let formula =
+        cell.starts_with(['=', '+', '-', '@', '\t', '\r']) && cell.parse::<f64>().is_err();
+    let cell = if formula {
+        std::borrow::Cow::Owned(format!("'{cell}"))
+    } else {
+        std::borrow::Cow::Borrowed(cell)
+    };
+    if cell.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", cell.replace('"', "\"\""))
+    } else {
+        cell.into_owned()
+    }
 }
 
 fn write_csv_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value, String> {
@@ -1045,5 +1077,23 @@ mod tests {
         }
         assert!(check_sheet_name("Ventes 2026 — T1").is_ok());
         assert!(check_sheet_name(&"é".repeat(31)).is_ok());
+    }
+
+    #[test]
+    fn a_csv_cell_cannot_shift_a_column_forge_a_row_or_run_a_formula() {
+        assert_eq!(csv_field("plain"), "plain");
+        assert_eq!(csv_field("x,admin"), "\"x,admin\"");
+        assert_eq!(csv_field("x\nroot,admin"), "\"x\nroot,admin\"");
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(
+            csv_field("=HYPERLINK(\"http://evil\")"),
+            "\"'=HYPERLINK(\"\"http://evil\"\")\""
+        );
+        assert_eq!(csv_field("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(csv_field("+cmd|x"), "'+cmd|x");
+        // Numbers stay numbers.
+        assert_eq!(csv_field("-12.5"), "-12.5");
+        assert_eq!(csv_field("+3"), "+3");
+        assert_eq!(csv_field(""), "");
     }
 }

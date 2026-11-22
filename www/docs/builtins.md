@@ -1772,6 +1772,9 @@ mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
 
 # Plaintext on a custom port (e.g. a local test server)
 mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })
+# ^ a private or loopback host must be named in SOLI_HTTP_ALLOW_HOSTS: Imap and
+#   Pop3 follow the rules of HTTP.* (a host from a form must not reach the
+#   server's own network). A connection idle for 15 minutes is closed.
 
 # OAuth instead of a password
 mail = Imap.new("imap.gmail.com", "me@work.com", "", { "xoauth2": access_token })
@@ -1986,8 +1989,9 @@ reinterpreted by the HTML parser.
 </script>
 ```
 
-`j()` is not an alternative here: it is an HTML escape, so it turns `&` into
-`&amp;` *inside* the JSON and corrupts the data.
+`j()` is not an alternative here: it escapes for a JavaScript *string
+literal* (`'…'`, `"…"` or a template literal — quotes, backtick, `$`, and
+`<` `>` `&` as `\x3c` `\x3e` `\x26`), which is not what a JSON document needs.
 
 ---
 
@@ -7794,6 +7798,8 @@ rows = Spreadsheet.csv("name,age\nAda,36")     # [{"name": "Ada", "age": "36"}] 
 rows = Spreadsheet.csv_file("people.csv")
 csv  = Spreadsheet.to_csv(rows)
 Spreadsheet.csv_write(rows, "out.csv")
+# ^ both quote a cell holding a comma, a quote or a line break, and prefix a
+#   formula cell (=, +, -, @) with an apostrophe; plain numbers are untouched
 
 rows   = Spreadsheet.excel("report.xlsx")              # the first sheet
 orders = Spreadsheet.excel("report.xlsx", "Commandes") # a sheet by name; an unknown name raises

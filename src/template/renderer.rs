@@ -682,36 +682,56 @@ pub fn html_escape(s: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-/// Escape for use in a JavaScript string literal context.
-/// Escapes backslash, quotes, and characters that would break out of the
-/// literal — including newlines (line-continuation breakouts), CR, and tab.
-/// `< > &` are also escaped so the embedded literal can't terminate the
-/// surrounding `<script>` block.
+/// Escape for use in a JavaScript string literal context — a `'…'`, a `"…"`
+/// or a template literal.
+///
+/// Backslash, the three quote characters, `$` (a `${…}` inside a template
+/// literal runs), and the line terminators. `<`, `>` and `&` become `\x3c`,
+/// `\x3e` and `\x26`: the literal then cannot close the surrounding
+/// `<script>` block, and — unlike the HTML entities this used to emit, which
+/// a script block does not decode — the string still holds the characters it
+/// was given.
 pub fn js_escape(s: &str) -> Cow<'_, str> {
-    if !s.bytes().any(|b| {
+    let needs = |c: char| {
         matches!(
-            b,
-            b'\\' | b'"' | b'\'' | b'<' | b'>' | b'&' | b'\n' | b'\r' | b'\t'
+            c,
+            '\\' | '"'
+                | '\''
+                | '`'
+                | '$'
+                | '<'
+                | '>'
+                | '&'
+                | '\n'
+                | '\r'
+                | '\t'
+                | '\u{2028}'
+                | '\u{2029}'
         )
-    }) {
+    };
+    if !s.chars().any(needs) {
         return Cow::Borrowed(s);
     }
-    let mut result: Vec<u8> = Vec::with_capacity(s.len() + 8);
-    for &b in s.as_bytes() {
-        match b {
-            b'\\' => result.extend_from_slice(b"\\\\"),
-            b'"' => result.extend_from_slice(b"\\\""),
-            b'\'' => result.extend_from_slice(b"\\'"),
-            b'\n' => result.extend_from_slice(b"\\n"),
-            b'\r' => result.extend_from_slice(b"\\r"),
-            b'\t' => result.extend_from_slice(b"\\t"),
-            b'<' => result.extend_from_slice(b"&lt;"),
-            b'>' => result.extend_from_slice(b"&gt;"),
-            b'&' => result.extend_from_slice(b"&amp;"),
-            _ => result.push(b),
+    let mut result = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        match c {
+            '\\' => result.push_str("\\\\"),
+            '"' => result.push_str("\\\""),
+            '\'' => result.push_str("\\'"),
+            '`' => result.push_str("\\x60"),
+            '$' => result.push_str("\\x24"),
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            '<' => result.push_str("\\x3c"),
+            '>' => result.push_str("\\x3e"),
+            '&' => result.push_str("\\x26"),
+            '\u{2028}' => result.push_str("\\u2028"),
+            '\u{2029}' => result.push_str("\\u2029"),
+            other => result.push(other),
         }
     }
-    Cow::Owned(unsafe { String::from_utf8_unchecked(result) })
+    Cow::Owned(result)
 }
 
 /// Escape for use in an HTML attribute value context.
@@ -1732,5 +1752,17 @@ mod tests {
         .unwrap();
         let result2 = render_nodes(&nodes2, &make_hash(vec![]), component_renderer).unwrap();
         assert_eq!(result2, "<div class=\"card\"><h3>Stats</h3>body here</div>");
+    }
+
+    #[test]
+    fn js_escape_holds_in_every_kind_of_string_literal() {
+        assert_eq!(js_escape("plain"), "plain");
+        assert_eq!(js_escape("a'b\"c"), "a\\'b\\\"c");
+        // A template literal: no backtick to close it, no `${` to run.
+        assert_eq!(js_escape("`${alert(1)}`"), "\\x60\\x24{alert(1)}\\x60");
+        // The script block cannot be closed, and the data is not turned
+        // into HTML entities a script would show as they are.
+        assert_eq!(js_escape("</script>&"), "\\x3c/script\\x3e\\x26");
+        assert_eq!(js_escape("a\nb\u{2028}c"), "a\\nb\\u2028c");
     }
 }

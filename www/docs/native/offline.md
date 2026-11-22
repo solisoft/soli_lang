@@ -27,7 +27,6 @@ That adds:
 | `GET /sync/pull?since=` | Pull recent `SyncEvent` rows for the signed-in user |
 | `app/models/sync_event.sl` | Optional audit log of drained items |
 | `public/js/soli_outbox.js` | Browser/shell outbox in `localStorage` + flush on `online` |
-| `skip_csrf("/sync/*")` | Shell flushes may lack Origin; session still required |
 
 ### Outbox payload
 

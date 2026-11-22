@@ -399,6 +399,23 @@ pub fn expand_wildcard_action(
     handler_name: &str,
     params: &HashMap<String, String>,
 ) -> Option<String> {
+    let expanded = expand_wildcard_action_unchecked(handler_name, params)?;
+    // The action of a `controller#*` route comes from the URL. A helper —
+    // a `_`-prefixed method, which is not an action anywhere else — is not
+    // reachable through it either.
+    if handler_name.ends_with("#*") {
+        let action = expanded.split_once('#').map_or("", |(_, action)| action);
+        if action.split('/').any(|segment| segment.starts_with('_')) {
+            return None;
+        }
+    }
+    Some(expanded)
+}
+
+fn expand_wildcard_action_unchecked(
+    handler_name: &str,
+    params: &HashMap<String, String>,
+) -> Option<String> {
     // Check if handler_name contains # (controller#action format)
     if let Some((controller, action)) = handler_name.split_once('#') {
         if action == "*" {
@@ -857,6 +874,21 @@ mod expand_wildcard_action_tests {
         assert_eq!(
             expand_wildcard_action("api#*", &params),
             Some("api#users".to_string())
+        );
+    }
+
+    #[test]
+    fn a_wildcard_route_does_not_reach_a_helper() {
+        for value in ["_load_posts", "/_load_posts", "guide/_private"] {
+            let mut params = HashMap::new();
+            params.insert("action".to_string(), value.to_string());
+            assert_eq!(expand_wildcard_action("posts#*", &params), None, "{value}");
+        }
+        let mut params = HashMap::new();
+        params.insert("action".to_string(), "load_posts".to_string());
+        assert_eq!(
+            expand_wildcard_action("posts#*", &params),
+            Some("posts#load_posts".to_string())
         );
     }
 

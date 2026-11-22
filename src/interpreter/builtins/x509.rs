@@ -443,10 +443,16 @@ fn fetch_peer_chain(
     let bare = host.trim_start_matches('[').trim_end_matches(']');
     // Every resolved address in turn: `localhost` answers `::1` first, and a
     // host whose IPv6 route is broken must still be read over IPv4.
-    let addrs: Vec<_> = (bare, port)
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed for {}:{}: {}", bare, port, e))?
-        .collect();
+    // With the guard on, every address the name resolves to is judged, not
+    // only the name: it could pass and then resolve to a private address.
+    let addrs: Vec<_> = if check_ssrf {
+        crate::interpreter::builtins::http_class::guarded_socket_addrs(bare, port, "X509")?
+    } else {
+        (bare, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("DNS resolution failed for {}:{}: {}", bare, port, e))?
+            .collect()
+    };
     if addrs.is_empty() {
         return Err(format!("no address found for {}:{}", bare, port));
     }

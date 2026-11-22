@@ -404,8 +404,12 @@ impl<'t> Builder<'t> {
             Tag::Link { dest_url, .. } => self.link = Some(dest_url.to_string()),
             Tag::Image { dest_url, .. } => {
                 self.flush_paragraph();
-                self.content
-                    .push(json!({ "type": "image", "value": dest_url.to_string() }));
+                // An image whose source is not allowed leaves no image, only
+                // its alt text.
+                if let Some(source) = markdown_image_source(&dest_url) {
+                    self.content
+                        .push(json!({ "type": "image", "value": source }));
+                }
                 self.in_image += 1;
             }
             _ => {}
@@ -575,5 +579,75 @@ mod tests {
         let span = &c[0]["spans"][0];
         assert_eq!(span["link"], "https://example.com");
         assert_eq!(span["text"], "click");
+    }
+}
+
+/// Where a Markdown image may come from: an `http(s)` URL (fetched through
+/// the SSRF-guarded client), or a file of the app's `public/` directory.
+///
+/// Markdown is often somebody's text. A local path used to be read from
+/// anywhere under the app root, so `![](storage/attachments/…/data)` put
+/// another user's private upload into the author's PDF. A local source is now
+/// a web path: `/images/logo.png`, `images/logo.png` and
+/// `public/images/logo.png` all name `public/images/logo.png`, and nothing
+/// with a `..` or a dot-segment is read.
+fn markdown_image_source(dest: &str) -> Option<String> {
+    let dest = dest.trim();
+    let lower = dest.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Some(dest.to_string());
+    }
+    // `data:`, `file:`, `C:\…` and the like are not sources.
+    if dest.is_empty() || dest.contains(':') || dest.contains('\\') {
+        return None;
+    }
+    let relative = dest.trim_start_matches('/');
+    let relative = relative.strip_prefix("public/").unwrap_or(relative);
+    if relative.is_empty()
+        || relative
+            .split('/')
+            .any(|segment| segment.is_empty() || segment.starts_with('.'))
+    {
+        return None;
+    }
+    Some(format!("public/{relative}"))
+}
+
+#[cfg(test)]
+mod image_source_tests {
+    use super::markdown_image_source;
+
+    #[test]
+    fn a_local_markdown_image_is_a_file_of_public() {
+        for (given, read) in [
+            ("/images/logo.png", "public/images/logo.png"),
+            ("images/logo.png", "public/images/logo.png"),
+            ("public/images/logo.png", "public/images/logo.png"),
+            ("https://cdn.example/a.png", "https://cdn.example/a.png"),
+        ] {
+            assert_eq!(
+                markdown_image_source(given).as_deref(),
+                Some(read),
+                "{given}"
+            );
+        }
+        for refused in [
+            "storage/attachments/x/../../../.env",
+            "../.env",
+            "/images/../../.env",
+            ".env",
+            "images/.hidden.png",
+            "file:///etc/passwd",
+            "data:image/png;base64,AAAA",
+            "C:\\secrets.png",
+            "",
+        ] {
+            assert_eq!(markdown_image_source(refused), None, "{refused}");
+        }
+        // A path outside public/ is read as one inside it, never as itself.
+        assert_eq!(
+            markdown_image_source("storage/attachments/a/b/data").as_deref(),
+            Some("public/storage/attachments/a/b/data")
+        );
     }
 }

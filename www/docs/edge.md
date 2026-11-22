@@ -664,7 +664,7 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 
 | Symptom | Cause |
 |---------|-------|
-| `Soli failed to boot: …` (500 on every request) | the app did not load: the message is the boot error (syntax error, missing `app/controllers`…) |
+| `The application failed to start.` (500 on every request) | the app did not load. The reason — a syntax error, a missing `app/controllers`… — is in the Worker's log (`wrangler tail`, `Soli failed to boot: …`), not in the response |
 | `501 Streaming responses are not available…` | the action streams (SSE, `stream`, `solidb_blob_response`) |
 | `… is not available on the edge (Cloudflare Workers) build` | a builtin that needs a socket, a thread, a subprocess or a disk |
 | `--pdf: the edge runtime in … was built without PDF` | build it with `scripts/build-edge.sh --pdf` |

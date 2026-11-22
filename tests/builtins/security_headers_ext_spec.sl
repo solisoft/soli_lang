@@ -237,9 +237,14 @@ describe("j() JavaScript escaping") do
     assert_eq(j("\n"), "\\n")
   end
 
-  test("escapes angle brackets and ampersand to entities") do
-    assert_eq(j("<script>"), "&lt;script&gt;")
-    assert_eq(j("&"), "&amp;")
+  test("writes angle brackets and ampersand as JavaScript escapes, not HTML entities") do
+    assert_eq(j("<script>"), "\\x3cscript\\x3e")
+    assert_eq(j("&"), "\\x26")
+  end
+
+  test("holds inside a template literal") do
+    assert_eq(j("`"), "\\x60")
+    assert_eq(j("${alert(1)}"), "\\x24{alert(1)}")
   end
 
   test("leaves safe text untouched") do

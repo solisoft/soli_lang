@@ -19,6 +19,28 @@ const MAX_STORED: usize = 64;
 /// Per-session slot cap. Without it one client fills the global map — 64 slots
 /// × 8 MiB ≈ 512 MiB of RSS — and locks every other user out of uploads.
 const MAX_PER_OWNER: usize = 8;
+
+/// Prefix of an owner the server does not know as a session: the cookie's
+/// value, taken at its word for *who may read the upload back*, but counted
+/// with every other unknown caller. The quotas below are per session; a
+/// caller inventing a new cookie value per request used to get a new quota
+/// each time, and sixty-four requests filled the store for everyone.
+pub const UNKNOWN_OWNER: &str = "anon:";
+
+/// The quota an owner counts against: its own for a known session, the
+/// shared one (`None`) for no cookie or an unknown one.
+fn quota_of(owner: &Option<String>) -> Option<&str> {
+    owner
+        .as_deref()
+        .filter(|owner| !owner.starts_with(UNKNOWN_OWNER))
+}
+
+/// Is `who` the session an upload belongs to?
+fn belongs_to(owner: &str, who: Option<&str>) -> bool {
+    let plain =
+        |id: &'_ str| -> String { id.strip_prefix(UNKNOWN_OWNER).unwrap_or(id).to_string() };
+    who.map(plain) == Some(plain(owner))
+}
 const TTL: Duration = Duration::from_secs(600);
 
 /// Global cap on *in-progress* chunked uploads. The completed-file store has
@@ -107,7 +129,10 @@ pub fn put(
     with_store(|map| {
         prune_locked(map);
         let owner_key = owner.map(|s| s.to_string());
-        let mine = map.values().filter(|v| v.owner == owner_key).count();
+        let mine = map
+            .values()
+            .filter(|v| quota_of(&v.owner) == quota_of(&owner_key))
+            .count();
         if mine >= MAX_PER_OWNER {
             return Err("too many pending LiveView uploads for this session".to_string());
         }
@@ -143,7 +168,7 @@ pub fn take(id: &str, taker: Option<&str>) -> Option<serde_json::Value> {
         prune_locked(map);
         let owner = map.get(id)?.owner.clone();
         if let Some(owner) = owner {
-            if taker != Some(owner.as_str()) {
+            if !belongs_to(&owner, taker) {
                 return None;
             }
         }
@@ -261,7 +286,10 @@ pub fn put_chunk(
         // new allocation and has to fit under every cap. A chunk for an upload
         // already in flight skips this — it consumes a slot that was granted.
         if !map.contains_key(upload_id) {
-            let mine = map.values().filter(|v| v.owner == owner_key).count();
+            let mine = map
+                .values()
+                .filter(|v| quota_of(&v.owner) == quota_of(&owner_key))
+                .count();
             if mine >= MAX_PARTIAL_PER_OWNER {
                 return Err("too many in-progress LiveView uploads for this session".to_string());
             }
@@ -300,7 +328,7 @@ pub fn put_chunk(
             return Err("chunk count changed mid-upload".to_string());
         }
         if let Some(owner_id) = &entry.owner {
-            if owner != Some(owner_id.as_str()) {
+            if !belongs_to(owner_id, owner) {
                 return Err("upload belongs to another session".to_string());
             }
         }
@@ -368,7 +396,7 @@ pub fn chunk_status(owner: Option<&str>, upload_id: &str) -> serde_json::Value {
             return serde_json::json!({ "exists": false });
         };
         if let Some(entry_owner) = &entry.owner {
-            if owner != Some(entry_owner.as_str()) {
+            if !belongs_to(entry_owner, owner) {
                 return serde_json::json!({ "exists": false });
             }
         }
@@ -719,5 +747,39 @@ mod tests {
             vec![0; 8]
         )
         .is_ok());
+    }
+
+    #[test]
+    fn unknown_sessions_share_one_quota() {
+        // A new cookie value per request is a new owner, not a new quota.
+        let mut stored = 0;
+        for i in 0..(MAX_PER_OWNER + 4) {
+            let owner = format!("{UNKNOWN_OWNER}invented-{i}-quota");
+            if put(Some(&owner), "f", "f.txt", "text/plain", vec![1]).is_ok() {
+                stored += 1;
+            }
+        }
+        assert!(
+            stored <= MAX_PER_OWNER,
+            "{stored} slots for invented sessions"
+        );
+        // A session the server knows still has its own.
+        assert!(put(
+            Some("sess-known-quota"),
+            "f",
+            "f.txt",
+            "text/plain",
+            vec![1]
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn an_unknown_session_still_reads_its_own_upload_back() {
+        let owner = format!("{UNKNOWN_OWNER}reader-own");
+        let meta = put(Some(&owner), "f", "f.txt", "text/plain", vec![1, 2]).expect("stored");
+        let id = meta["id"].as_str().unwrap().to_string();
+        assert!(take(&id, Some("someone-else")).is_none());
+        assert!(take(&id, Some("reader-own")).is_some());
     }
 }

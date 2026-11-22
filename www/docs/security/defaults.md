@@ -35,7 +35,7 @@ These are **not** implied by `soli serve` without env. Treat them as required fo
 
 | Control | Why |
 |---------|-----|
-| `SOLI_APP_HOSTS` | Required at production boot. CSRF origin checks use this list, not a forgeable `Host` / `X-Forwarded-Host` |
+| `SOLI_APP_HOSTS` | Required at production boot. CSRF origin checks use this list, not a forgeable `Host` / `X-Forwarded-Host`. Outside production too, a server not started with `--dev` builds absolute URLs (`*_url` helpers, a link in a mail) from the request's `Host` only when that host is declared here or is local (`localhost`, `*.localhost`, `*.test`, a loopback or private address): a deployment that set neither `APP_ENV=production` nor this used to mail links to whatever host the request named. |
 | `SOLI_SESSION_SECRET` | Required at production boot (32+ chars); sealed cookies and the cookie session driver derive keys from it |
 | `SOLI_CSRF_TOKENS=require` | Tokens are *verified when present*; this makes a missing token a 403 for browser form posts. **`soli new` writes this into `.env`.** Existing apps stay optional until they set it. |
 | `permit(...)` / `attr_accessible` | Mass assignment is not blocked on `Model.create(params)` unless you whitelist |

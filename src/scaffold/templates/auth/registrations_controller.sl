@@ -66,8 +66,10 @@ class RegistrationsController < Controller
     # The account that opens a `first_user` app runs it.
     user.role = "admin" if auth_signup_mode() == "first_user"
     user.set_password(params["password"].to_s)
-    user.save
-    return @_reject(user, "Could not create your account", 422) if user._errors
+    saved = user.save
+    # `saved`, not only `_errors`: a write the database refused leaves no
+    # validation error, and the visitor must not be told an account exists.
+    return @_reject(user, "Could not create your account", 422) if user._errors || saved != true
 
     # Send the confirmation link. `rescue nil` keeps signup working before
     # SMTP is configured (set SOLI_MAIL_DELIVERY_METHOD=logger in dev to see

@@ -32,6 +32,17 @@ public class MainActivity extends AppCompatActivity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.addJavascriptInterface(new Bridge(), "soliNativeHost");
         webView.setWebViewClient(new WebViewClient() {
+            // Only the app's own host stays in the WebView (it carries the
+            // native bridge and the session cookie); anything else opens in
+            // the browser.
+            @Override public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
+                android.net.Uri uri = request.getUrl();
+                android.net.Uri start = android.net.Uri.parse(START_URL);
+                if (uri.getHost() != null && uri.getHost().equals(start.getHost())) return false;
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, uri));
+                return true;
+            }
+
             @Override public void onPageFinished(WebView view, String url) {
                 registerTokenWhenReady();
             }
@@ -58,8 +69,8 @@ public class MainActivity extends AppCompatActivity {
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json");
             c.setRequestProperty("Cookie", cookie);
-            // Same-origin CSRF gate accepts a matching Origin; skip_csrf on
-            // /devices/* covers shells that omit it.
+            // The same-origin CSRF gate accepts a matching Origin, and
+            // nothing exempts this route from it: keep the header.
             c.setRequestProperty("Origin", base);
             c.setRequestProperty("Referer", base + "/");
             JSONObject body = new JSONObject();

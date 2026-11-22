@@ -110,6 +110,7 @@ sheets["Commandes"].length</code></pre>
                     <p class="text-gray-400 mb-3">Converts an array of hashes to a CSV string.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">data = [{"name": "Alice", "age": "30"}, {"name": "Bob", "age": "25"}]
 csv = Spreadsheet.to_csv(data)</code></pre>
+                    <p class="text-gray-400 mt-3">Cells are written as CSV fields: one holding a comma, a quote or a line break is quoted (it used to shift columns or forge a row), and one that starts as a formula (<code>=</code>, <code>+</code>, <code>-</code>, <code>@</code>) gets a leading apostrophe so a spreadsheet opens it as text. Plain numbers are left as they are.</p>
                 </div>
             </section>
 

@@ -94,7 +94,9 @@ export class FormBuilder
         extra = this.attributes_without(this.form_attrs, ["pow"])
         html = "<form action=\"#{action}\" method=\"#{browser_method}\"#{extra}>"
         if !["get", "post"].includes?(this.http_method)
-            override = this.http_method.upcase()
+            # Escaped like every other value here: the method may come from a
+            # record or a parameter.
+            override = attr(this.http_method.upcase())
             html = html + "<input type=\"hidden\" name=\"_method\" value=\"#{override}\">"
         end
         html = html + csrf_field() unless this.http_method == "get"
@@ -447,7 +449,7 @@ export def button_to(text, target_url, options = null)
     action = attr(_form_safe_url(target_url))
     html = "<form action=\"#{action}\" method=\"#{browser_method}\"#{form_class_attr}>"
     if !["get", "post"].includes?(http_method)
-        override = http_method.upcase()
+        override = attr(http_method.upcase())
         html = html + "<input type=\"hidden\" name=\"_method\" value=\"#{override}\">"
     end
     html = html + csrf_field() unless http_method == "get"

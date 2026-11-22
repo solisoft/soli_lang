@@ -136,7 +136,7 @@ function liveFrame(input, ctx) {
 export class SoliLiveObject extends DurableObject {
   async fetch(request) {
     ensureBooted(this.env);
-    if (bootError) return new Response(`Soli failed to boot: ${bootError}`, { status: 500 });
+    if (bootError) return bootFailure();
     const meta = {
       component: request.headers.get("x-soli-live-component"),
       session: request.headers.get("x-soli-live-session"),
@@ -232,6 +232,14 @@ export class SoliLiveObject extends DurableObject {
 
 // `/live/socket/<component>`: the Durable Object of that LiveView instance —
 // the room's when `?room=` names one, else the visitor's session's.
+// What a visitor sees when the app did not boot. The reason (a path, a
+// binding's name, a line of the app's code) goes to the Worker's log, where
+// `wrangler tail` shows it — not to whoever asks.
+function bootFailure() {
+  console.error(`Soli failed to boot: ${bootError}`);
+  return new Response("The application failed to start.", { status: 500 });
+}
+
 async function liveSocket(request, env, ctx, url) {
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("Expected a WebSocket upgrade", { status: 426 });
@@ -241,6 +249,24 @@ async function liveSocket(request, env, ctx, url) {
       'LiveView on the edge needs a Durable Object binding: add [[durable_objects.bindings]] name = "SOLI_LIVE", class_name = "SoliLiveObject" to wrangler.toml',
       { status: 501 },
     );
+  }
+  // A browser opens this socket from one of the app's own pages and says so
+  // (`Origin`). Another site's page can open it too — WebSockets are not held
+  // to the same-origin policy — and the visitor's cookie goes along: without
+  // this check it drove the visitor's LiveView and read what it rendered.
+  // `soli serve` refuses the same upgrade.
+  const origin = request.headers.get("origin");
+  if (origin) {
+    let originHost = null;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      originHost = null;
+    }
+    const allowed = [url.host, ...String(env.SOLI_APP_HOSTS || "").split(",").map((h) => h.trim())];
+    if (!originHost || !allowed.includes(originHost)) {
+      return new Response("Forbidden WebSocket origin", { status: 403 });
+    }
   }
   const component = decodeURIComponent(url.pathname.slice("/live/socket/".length));
   if (!/^[A-Za-z0-9_-]+$/.test(component)) return new Response("Bad component", { status: 400 });
@@ -254,7 +280,9 @@ async function liveSocket(request, env, ctx, url) {
   const headers = new Headers(request.headers);
   headers.set("x-soli-live-component", component);
   headers.set("x-soli-live-session", session);
+  // Set or removed, never left as the client sent it.
   if (room) headers.set("x-soli-live-room", room);
+  else headers.delete("x-soli-live-room");
   const stub = env.SOLI_LIVE.get(env.SOLI_LIVE.idFromName(name));
   return stub.fetch(new Request(request, { headers }));
 }
@@ -331,7 +359,7 @@ export default {
   async fetch(request, env, ctx) {
     ensureBooted(env);
     if (bootError) {
-      return new Response(`Soli failed to boot: ${bootError}`, { status: 500 });
+      return bootFailure();
     }
     const url = new URL(request.url);
     if (url.pathname.startsWith("/live/socket/")) return liveSocket(request, env, ctx, url);

@@ -21,7 +21,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::LazyLock;
@@ -53,8 +53,44 @@ struct Pop3Conn {
 }
 
 /// Process-global registry of open connections, keyed by instance id.
-static POP3_CONNS: LazyLock<Mutex<HashMap<usize, Pop3Conn>>> =
+///
+/// Each connection has a lock of its own. They used to share the registry's:
+/// every call held it across blocking socket reads, so one slow or hostile
+/// server stalled every other worker's mail call for as long as it liked.
+static POP3_CONNS: LazyLock<Mutex<HashMap<usize, Slot>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+struct Slot {
+    conn: std::sync::Arc<Mutex<Pop3Conn>>,
+    used: std::time::Instant,
+}
+
+/// A connection nobody used for this long is closed: a request that raised
+/// between opening one and closing it left the socket and its entry behind
+/// for the life of the process.
+const IDLE_LIMIT: std::time::Duration = std::time::Duration::from_secs(900);
+/// Open connections at once, past the idle sweep.
+const MAX_OPEN: usize = 256;
+
+/// Put a new connection in the registry, after dropping the idle ones.
+fn register_conn(conn: Pop3Conn) -> Result<usize, String> {
+    let mut conns = POP3_CONNS.lock().map_err(|e| e.to_string())?;
+    conns.retain(|_, slot| slot.used.elapsed() < IDLE_LIMIT);
+    if conns.len() >= MAX_OPEN {
+        return Err(format!(
+            "too many open POP3 connections ({MAX_OPEN}): close them when done"
+        ));
+    }
+    let id = POP3_NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    conns.insert(
+        id,
+        Slot {
+            conn: std::sync::Arc::new(Mutex::new(conn)),
+            used: std::time::Instant::now(),
+        },
+    );
+    Ok(id)
+}
 static POP3_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 // ---------------------------------------------------------------------------
@@ -83,13 +119,23 @@ fn tls_config() -> Result<Arc<ClientConfig>, String> {
 /// Open a TCP (optionally TLS-wrapped) connection to a mail server. Shared by
 /// the `Pop3` and `Imap` clients.
 pub(crate) fn connect(host: &str, port: u16, use_tls: bool) -> Result<Box<dyn Stream>, String> {
-    let addr = (host, port)
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed for {host}:{port}: {e}"))?
-        .next()
-        .ok_or_else(|| format!("No address found for {host}:{port}"))?;
-    let tcp = TcpStream::connect_timeout(&addr, DEFAULT_TIMEOUT)
-        .map_err(|e| format!("Connect to {host}:{port} failed: {e}"))?;
+    // Held to the rules of `HTTP.*`: a host taken from a form ("connect your
+    // mailbox") must not make this server dial its own network — the error
+    // text alone told an open port from a closed one, and a banner came back.
+    let addrs =
+        crate::interpreter::builtins::http_class::guarded_socket_addrs(host, port, "mail server")?;
+    let mut last_error = String::new();
+    let mut connected = None;
+    for addr in &addrs {
+        match TcpStream::connect_timeout(addr, DEFAULT_TIMEOUT) {
+            Ok(stream) => {
+                connected = Some(stream);
+                break;
+            }
+            Err(e) => last_error = e.to_string(),
+        }
+    }
+    let tcp = connected.ok_or_else(|| format!("Connect to {host}:{port} failed: {last_error}"))?;
     let _ = tcp.set_read_timeout(Some(DEFAULT_TIMEOUT));
     let _ = tcp.set_write_timeout(Some(DEFAULT_TIMEOUT));
 
@@ -213,11 +259,17 @@ fn with_conn<R>(
     id: usize,
     f: impl FnOnce(&mut Pop3Conn) -> Result<R, String>,
 ) -> Result<R, String> {
-    let mut conns = POP3_CONNS.lock().map_err(|e| e.to_string())?;
-    let conn = conns
-        .get_mut(&id)
-        .ok_or_else(|| "Pop3 connection is closed (call .quit() only once)".to_string())?;
-    f(conn)
+    // The registry's lock is held to find the connection, not to use it.
+    let conn = {
+        let mut conns = POP3_CONNS.lock().map_err(|e| e.to_string())?;
+        let slot = conns
+            .get_mut(&id)
+            .ok_or_else(|| "Pop3 connection is closed (call .quit() only once)".to_string())?;
+        slot.used = std::time::Instant::now();
+        std::sync::Arc::clone(&slot.conn)
+    };
+    let mut conn = conn.lock().map_err(|e| e.to_string())?;
+    f(&mut conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -304,11 +356,7 @@ fn pop3_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
     conn.command(&format!("PASS {pass}"))
         .map_err(|e| format!("POP3 authentication failed: {e}"))?;
 
-    let id = POP3_NEXT_ID.fetch_add(1, Ordering::SeqCst);
-    POP3_CONNS
-        .lock()
-        .map_err(|e| e.to_string())?
-        .insert(id, conn);
+    let id = register_conn(conn)?;
 
     let mut inst = Instance::new(class);
     inst.set("_id", Value::Int(id as i64));
@@ -402,10 +450,11 @@ fn pop3_delete(args: &[Value]) -> Result<Value, String> {
 
 fn pop3_quit(args: &[Value]) -> Result<Value, String> {
     let id = instance_id(args, "quit")?;
-    let mut conns = POP3_CONNS.lock().map_err(|e| e.to_string())?;
-    if let Some(mut conn) = conns.remove(&id) {
-        // Best-effort: tell the server to commit deletions and close.
-        let _ = conn.command("QUIT");
+    let removed = POP3_CONNS.lock().map_err(|e| e.to_string())?.remove(&id);
+    if let Some(slot) = removed {
+        if let Ok(mut conn) = slot.conn.lock() {
+            let _ = conn.command("QUIT");
+        }
     }
     Ok(Value::Bool(true))
 }

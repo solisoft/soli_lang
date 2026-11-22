@@ -137,7 +137,7 @@ On Kubernetes, the agent's host IP usually arrives as `DD_AGENT_HOST` through th
 
 ### Scraping
 
-Scrape from Prometheus / Grafana Alloy / Datadog agent like any other text exposition endpoint. Access: with `SOLI_METRICS_TOKEN` set, the endpoint wants `Authorization: Bearer <token>`. Unset, it answers only loopback and private-range peers — and **refuses (404) any request carrying `X-Forwarded-For`, `X-Real-IP` or `Forwarded`, or any request while `trust_proxy` is on**, since behind a reverse proxy every peer looks local. A deployment behind a proxy must set `SOLI_METRICS_TOKEN` and configure the scraper to send it.
+Scrape from Prometheus / Grafana Alloy / Datadog agent like any other text exposition endpoint. Access: with `SOLI_METRICS_TOKEN` set, the endpoint wants `Authorization: Bearer <token>`. Unset, it answers only loopback and private-range peers — and **refuses (404) any request carrying `X-Forwarded-For`, `X-Real-IP` or `Forwarded`, or any request while `trust_proxy` is on**, since behind a reverse proxy every peer looks local. **In production (`APP_ENV=production`) the token is required**: a reverse proxy that adds no forwarding header (nginx with a bare `proxy_pass`) makes every internet client look like a private peer. A deployment behind a proxy must set `SOLI_METRICS_TOKEN` and configure the scraper to send it.
 
 ## Structured logs
 

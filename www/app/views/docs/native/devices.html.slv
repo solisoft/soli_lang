@@ -24,7 +24,6 @@ soli db:migrate up</code></pre>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">POST /devices</code></td><td class="py-2">Register after login (session required)</td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">push_targets_for</code> / <code class="text-cyan-400">prune_tokens</code></td><td class="py-2">Wire into <code class="text-cyan-400">Push.deliver</code></td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">deliver_to_user</code></td><td class="py-2">Deliver + prune in one helper</td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">skip_csrf("/devices/*")</code></td><td class="py-2">Shell POSTs often lack Origin</td></tr>
             </tbody>
         </table>
     </div>
@@ -44,7 +43,7 @@ X-CSRF-Token: &lt;from csrf_meta_tag, when posting from a page&gt;
     <p class="text-gray-400 mb-6">Platforms: <code class="text-cyan-400">ios</code>, <code class="text-cyan-400">android</code>, <code class="text-cyan-400">web</code>, <code class="text-cyan-400">macos</code>, <code class="text-cyan-400">apple</code>, <code class="text-cyan-400">fcm</code>. Returns <code class="text-cyan-400">201</code>.</p>
 
     <h3 id="csrf" class="text-xl font-semibold text-white mb-3 scroll-mt-24">CSRF</h3>
-    <p class="text-gray-400 mb-4">Native shells often send a session cookie without Origin. The generator adds <code class="text-cyan-400">skip_csrf("/devices/*")</code>; the controller still requires login. Generated shells also set Origin/Referer. From a page:</p>
+    <p class="text-gray-400 mb-4">The route is not exempt from the same-origin check: the generated shells send <code class="text-cyan-400">Origin</code> / <code class="text-cyan-400">Referer</code> with their token POST, and the check is what keeps a page on another site from registering its own device for the signed-in user. A shell of your own must send <code class="text-cyan-400">Origin</code> too. The controller answers to <code class="text-cyan-400">current_user()</code>, so a pending two-factor challenge or a deactivated account gets <code>401</code>. From a page:</p>
     <pre class="mb-12"><code class="language-js text-sm">await soli.nativeBridge.registerDevice({
   platform: "web",
   subscription: pushSubscriptionJson

@@ -24,7 +24,6 @@ That adds:
 | `Device.push_targets_for(user_id)` | Array for `Push.deliver` options |
 | `Device.prune_tokens(tokens)` | Delete rows the push service reported gone |
 | `deliver_to_user(user_id, payload, options)` | Deliver + prune in one helper |
-| `skip_csrf("/devices/*")` | Shell token POSTs often lack Origin (see below) |
 
 Migrations use `begin`/`rescue` so a re-run or an auto-created collection is not
 a hard failure.
@@ -68,15 +67,13 @@ X-CSRF-Token: <csrf_meta_tag content>
 
 ### CSRF
 
-Native shells often POST with a **session cookie but no Origin** (plain
-`HttpURLConnection` / `URLSession`). The generator therefore adds:
-
-```soli
-skip_csrf("/devices/*");
-```
-
-The controller still requires a logged-in session. Generated iOS and Android-FCM
-clients also set `Origin` / `Referer` to your app origin.
+The route is **not** exempt from the same-origin check: the generated iOS and
+Android-FCM shells send `Origin` / `Referer` with their token POST, and the
+check is what keeps a page on another site from registering *its* device for
+the signed-in user (and receiving their notifications). A shell of your own
+must send `Origin: <your app origin>` too. The controller answers to
+`current_user()` — so a pending two-factor challenge or a deactivated account
+gets `401`, which the session's raw `user_id` did not.
 
 From a page inside the WebView (same origin), prefer the bridge helper:
 

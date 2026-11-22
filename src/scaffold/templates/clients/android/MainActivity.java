@@ -90,12 +90,7 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                String host = uri.getHost();
-                if (host != null) {
-                    for (String h : IN_APP_HOSTS) {
-                        if (host.equals(h) || host.endsWith("." + h)) return false;
-                    }
-                }
+                if (isInAppUrl(uri)) return false;
                 if (SCHEME.equals(uri.getScheme())) {
                     view.loadUrl(mapScheme(uri));
                     return true;
@@ -122,6 +117,12 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
+                // Camera and microphone are the app's own pages' to ask for:
+                // a frame or a page from elsewhere gets no answer but no.
+                if (!isInAppUrl(request.getOrigin())) {
+                    request.deny();
+                    return;
+                }
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -132,6 +133,10 @@ public class MainActivity extends Activity {
 
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                if (origin == null || !isInAppUrl(Uri.parse(origin))) {
+                    callback.invoke(origin, false, false);
+                    return;
+                }
                 pendingLocationOrigin = origin;
                 pendingLocationCallback = callback;
                 requestPermissions(new String[]{"android.permission.ACCESS_FINE_LOCATION"}, 4);
@@ -176,9 +181,29 @@ public class MainActivity extends Activity {
         Uri uri = intent.getData();
         if (SCHEME.equals(uri.getScheme())) {
             pendingDeepLink = mapScheme(uri);
-        } else if ("https".equals(uri.getScheme())) {
+        } else if (isInAppUrl(uri)) {
+            // Only the app's own hosts. This activity is exported: any
+            // installed app can send it an intent, and an explicit one skips
+            // the manifest's host filter. Loading whatever https URL it
+            // carried put a hostile page inside the WebView, with the native
+            // bridge (clipboard, share, notifications, biometrics, NFC) and
+            // the app's permissions.
             pendingDeepLink = uri.toString();
         }
+    }
+
+    /** A URL on one of the app's hosts (or a subdomain of one). */
+    private boolean isInAppUrl(Uri uri) {
+        if (uri == null) return false;
+        // https, or the start URL's own scheme (a development build on http).
+        String scheme = uri.getScheme();
+        if (!"https".equals(scheme) && !Uri.parse(START_URL).getScheme().equals(scheme)) return false;
+        String host = uri.getHost();
+        if (host == null) return false;
+        for (String h : IN_APP_HOSTS) {
+            if (host.equals(h) || host.endsWith("." + h)) return true;
+        }
+        return false;
     }
 
     private String mapScheme(Uri uri) {

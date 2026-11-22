@@ -2562,7 +2562,10 @@ async fn handle_hyper_request(
         hyper::Method::PATCH => Cow::Borrowed("PATCH"),
         hyper::Method::HEAD => Cow::Borrowed("HEAD"),
         hyper::Method::OPTIONS => Cow::Borrowed("OPTIONS"),
-        _ => Cow::Owned(req.method().to_string().to_uppercase()),
+        // As sent, not upper-cased: `delete` is not `DELETE` (methods are
+        // case-sensitive), and routing it as one walked past a method rule
+        // on a proxy or a firewall in front. It matches no route.
+        _ => Cow::Owned(req.method().to_string()),
     };
     let path = req.uri().path().to_string();
     // Owned so no borrow of `req` outlives this line: the blocks below hand
@@ -3537,13 +3540,24 @@ fn handle_websocket_event(
     }
 }
 
+/// Who an upload belongs to: the session cookie's value — marked as unknown
+/// when it names no session this server has, so that inventing one per
+/// request buys no quota (see `live::upload::UNKNOWN_OWNER`).
+fn live_upload_owner(data: &RequestData) -> Option<String> {
+    let cookie = data.headers.get("cookie").and_then(|v| v.to_str().ok());
+    let raw = crate::interpreter::builtins::session::extract_session_id_from_cookie(cookie)?;
+    if crate::interpreter::builtins::session::existing_session_id_from_cookie(cookie).is_some() {
+        Some(raw)
+    } else {
+        Some(format!("{}{raw}", crate::live::upload::UNKNOWN_OWNER))
+    }
+}
+
 /// `POST /live/upload` — stash multipart files and return their ids.
 fn handle_live_upload(data: &RequestData) -> ResponseData {
     // Bind each file to the uploading session so only that session's LiveView
     // can hydrate it, and so the per-session slot cap applies.
-    let owner = crate::interpreter::builtins::session::extract_session_id_from_cookie(
-        data.headers.get("cookie").and_then(|v| v.to_str().ok()),
-    );
+    let owner = live_upload_owner(data);
     let files = data.multipart_files.as_deref().unwrap_or(&[]);
     if files.is_empty() {
         return ResponseData {
@@ -3608,9 +3622,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
 /// upload the server already has, so a paused or interrupted upload resumes
 /// instead of starting over. Scoped to the uploading session.
 fn handle_live_upload_status(data: &RequestData) -> ResponseData {
-    let owner = crate::interpreter::builtins::session::extract_session_id_from_cookie(
-        data.headers.get("cookie").and_then(|v| v.to_str().ok()),
-    );
+    let owner = live_upload_owner(data);
     let id = data
         .query
         .iter()
@@ -7031,6 +7043,13 @@ fn metrics_request_allowed(headers: &hyper::HeaderMap, peer: std::net::IpAddr) -
         }
     }
     if metrics_request_is_proxied(headers) {
+        return false;
+    }
+    // In production the token is the only way in. A reverse proxy that adds
+    // no forwarding header (nginx with a bare `proxy_pass`, a container's
+    // userland proxy) makes every internet client look like a private peer
+    // with nothing to tell it from a local scraper.
+    if server_constants::is_production_env() {
         return false;
     }
     if crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.read(|on| *on) {

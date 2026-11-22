@@ -275,6 +275,28 @@ fn generated_passkeys_follow_the_house_style() {
 const ORIGIN: &str = "https://app.test";
 const RP_ID: &str = "app.test";
 
+/// A port for a test server, never handed out twice by this test binary.
+///
+/// Binding port 0 and releasing it gives a free port — which the kernel may
+/// give again to the next test that asks before the first server has bound
+/// it. The second server then failed to start, and its test talked to the
+/// first one: another app, another database ("sign-up is closed" on a fresh
+/// app, a table that does not exist).
+fn unused_port() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|l| l.local_addr())
+            .map(|a| a.port())
+            .unwrap();
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
+}
+
 struct Server(std::process::Child, u16);
 
 impl Drop for Server {
@@ -285,10 +307,7 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .unwrap();
+    let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
@@ -503,14 +522,25 @@ impl Authenticator {
 /// database: open sign-up answers "check your mailbox" and signs nobody in
 /// until the address is confirmed.
 fn confirm_address(root: &Path, email: &str) {
-    let conn = rusqlite::Connection::open(root.join("app.sqlite3")).unwrap();
-    let changed = conn
-        .execute(
-            "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
-             WHERE json_extract(doc, '$.email') = ?1",
-            [email],
-        )
-        .unwrap();
+    // The server's write may not be visible to a second connection the
+    // instant its response arrives (the table itself is created by the first
+    // sign-up): retry briefly.
+    let mut changed = 0;
+    for _ in 0..60 {
+        changed = rusqlite::Connection::open(root.join("app.sqlite3"))
+            .and_then(|conn| {
+                conn.execute(
+                    "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
+                     WHERE json_extract(doc, '$.email') = ?1",
+                    [email],
+                )
+            })
+            .unwrap_or(0);
+        if changed == 1 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     assert_eq!(changed, 1, "no account for {email}");
 }
 

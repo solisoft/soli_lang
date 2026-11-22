@@ -136,12 +136,21 @@ impl RateLimitStore {
             // another client's — so filling the map was itself a way past the
             // throttle.
             while !self.buckets.contains_key(key) && self.buckets.len() >= MAX_BUCKETS {
-                let Some(victim) = self
-                    .buckets
-                    .iter()
-                    .min_by_key(|(_, bucket)| bucket.last_activity())
-                    .map(|(k, _)| k.clone())
-                else {
+                // Among the buckets that still have requests left: one that
+                // is at its limit is a limiter doing its work, and evicting
+                // it hands its key a fresh budget. Five guesses at a victim's
+                // address, then ten thousand requests under random keys, used
+                // to make the victim's (now the least recently active) the
+                // one that went — a lockout became "five guesses per flood".
+                // Only when every bucket is spent is the oldest taken anyway.
+                let oldest = |spent_too: bool| {
+                    self.buckets
+                        .iter()
+                        .filter(|(_, bucket)| spent_too || bucket.status().1 > 0)
+                        .min_by_key(|(_, bucket)| bucket.last_activity())
+                        .map(|(k, _)| k.clone())
+                };
+                let Some(victim) = oldest(false).or_else(|| oldest(true)) else {
                     break;
                 };
                 self.buckets.remove(&victim);

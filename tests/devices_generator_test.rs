@@ -47,9 +47,21 @@ fn create_devices_writes_model_controller_and_routes() {
     let routes = fs::read_to_string(dir.path().join("config/routes.sl")).unwrap();
     assert!(routes.contains("devices#create"));
     assert!(routes.contains("devices#destroy"));
+    // The shells send `Origin` with their token POST: nothing exempts the
+    // route from the same-origin gate, which is what keeps another site from
+    // registering its device for this user.
+    assert!(!routes.contains("skip_csrf("), "{routes}");
+    let controller =
+        fs::read_to_string(dir.path().join("app/controllers/devices_controller.sl")).unwrap();
+    // The signed-in user as the middleware left it (two-factor, deactivation),
+    // not the session's raw id.
     assert!(
-        routes.contains("skip_csrf(\"/devices/*\")"),
-        "devices routes should skip CSRF for shell token POSTs: {routes}"
+        controller.contains("let user = current_user()"),
+        "{controller}"
+    );
+    assert!(
+        !controller.contains("session_get(\"user_id\")"),
+        "{controller}"
     );
 
     // Idempotent
@@ -160,7 +172,17 @@ fn create_offline_writes_sync_and_outbox() {
     let routes = fs::read_to_string(dir.path().join("config/routes.sl")).unwrap();
     assert!(routes.contains("sync#push"));
     assert!(routes.contains("sync#pull"));
-    assert!(routes.contains("skip_csrf(\"/sync/*\")"));
+    assert!(!routes.contains("skip_csrf("), "{routes}");
+    let controller =
+        fs::read_to_string(dir.path().join("app/controllers/sync_controller.sl")).unwrap();
+    assert!(
+        controller.contains("let user = current_user()"),
+        "{controller}"
+    );
+    assert!(
+        !controller.contains("session_get(\"user_id\")"),
+        "{controller}"
+    );
 
     let migration_names: Vec<_> = fs::read_dir(dir.path().join("db/migrations"))
         .unwrap()

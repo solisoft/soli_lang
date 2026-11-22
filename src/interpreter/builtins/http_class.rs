@@ -410,6 +410,49 @@ fn host_is_allowlisted(url: &reqwest::Url) -> bool {
 /// [`host_is_allowlisted`] for a bare `host` and `port` rather than a URL —
 /// for callers that dial a socket themselves (`TCP.check`).
 #[cfg(not(target_arch = "wasm32"))]
+/// The addresses of `host:port` a builtin may dial, by the rules `HTTP.*`
+/// follows: the name is judged first, then every address it resolves to —
+/// a name that passes and then resolves to a private address (DNS rebinding,
+/// or simply an internal host) is refused unless `SOLI_HTTP_ALLOW_HOSTS`
+/// names it. `what` prefixes the error (`Imap.new()`).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn guarded_socket_addrs(
+    host: &str,
+    port: u16,
+    what: &str,
+) -> Result<Vec<std::net::SocketAddr>, String> {
+    use std::net::ToSocketAddrs;
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    let authority = |name: &str| {
+        if name.contains(':') {
+            format!("https://[{name}]:{port}/")
+        } else {
+            format!("https://{name}:{port}/")
+        }
+    };
+    validate_url_for_ssrf(&authority(bare)).map_err(|e| format!("{what}: {e}"))?;
+    let addrs: Vec<_> = (bare, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("{what}: DNS resolution failed for {bare}:{port}: {e}"))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("{what}: no address found for {bare}:{port}"));
+    }
+    for addr in &addrs {
+        if is_blocked_ip(addr.ip())
+            && validate_url_for_ssrf(&authority(&addr.ip().to_string())).is_err()
+            && !host_is_allowlisted_str(bare, port)
+        {
+            return Err(format!(
+                "{what}: {bare} resolved to {}, a private/localhost address, which is not allowed \
+                 (name the host in SOLI_HTTP_ALLOW_HOSTS to reach it)",
+                addr.ip()
+            ));
+        }
+    }
+    Ok(addrs)
+}
+
 pub(crate) fn host_is_allowlisted_str(host: &str, port: u16) -> bool {
     let bare = host.trim_start_matches('[').trim_end_matches(']');
     let url = if bare.contains(':') {

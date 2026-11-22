@@ -234,6 +234,11 @@ fn publish_request_host(data: &RequestData, scheme: &Scheme) {
     } else {
         let fallback = crate::serve::csrf::primary_declared_host().unwrap_or_default();
         match undeclared_host_warning(&req_host) {
+            HostWarning::First if fallback.is_empty() => eprintln!(
+                "[WARN] request Host {req_host:?}: no SOLI_APP_HOSTS is set, so absolute URLs \
+                 (`*_url` helpers) are not built from it. Set SOLI_APP_HOSTS to this app's \
+                 public host name(s)."
+            ),
             HostWarning::First => eprintln!(
                 "[WARN] request Host {req_host:?} is not in SOLI_APP_HOSTS; \
                  building URLs with {fallback:?} instead"

@@ -24,7 +24,6 @@ soli db:migrate up</code></pre>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">GET /sync/pull</code></td><td class="py-2">Pull recent events for the user</td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">SyncEvent</code></td><td class="py-2">Optional audit log</td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">public/js/soli_outbox.js</code></td><td class="py-2">localStorage queue + flush on <code class="text-cyan-400">online</code></td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">skip_csrf("/sync/*")</code></td><td class="py-2">Shell flushes may lack Origin</td></tr>
             </tbody>
         </table>
     </div>

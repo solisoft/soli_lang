@@ -73,7 +73,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.setValue(header, forHTTPHeaderField: "Cookie")
-            // Origin helps the same-origin CSRF gate; routes also skip_csrf /devices/*.
+            // The same-origin CSRF gate accepts a matching Origin, and nothing
+            // exempts this route from it: keep the header.
             req.setValue(base, forHTTPHeaderField: "Origin")
             req.setValue(base + "/", forHTTPHeaderField: "Referer")
             let body: [String: String] = ["platform": "ios", "token": token]

@@ -586,3 +586,11 @@ describe("form builder output safety") do
     assert_contains(html, "data-role=\"delete\"")
   end
 end
+
+describe("the _method override is escaped") do
+  test("a method taken from data cannot close the attribute") do
+    html = button_to("Go", "/posts/1", {"method": "x\"><script>alert(1)</script>"})
+    assert(!html.includes?("<script>"))
+    assert(!html.includes?("value=\"X\">"))
+  end
+end

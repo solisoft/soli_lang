@@ -57,12 +57,17 @@ pub const DEVICES_CONTROLLER: &str = r#"# DevicesController — register push to
 # DELETE /devices/:id
 
 def create(req)
-  let user_id = session_get("user_id")
+  # `current_user()`, not the session's `user_id`: the session holds that id
+  # as soon as the password passed, before a second factor and whatever a
+  # deactivation says — the middleware that enforce those clear
+  # `current_user()`, and this action must answer to them.
+  let user = current_user()
+  let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
   end
 
-  let params = req["json"] || req["params"] || {}
+  let params = req["json"] || {}
   let platform = (params["platform"] || "").to_s().downcase()
   let token = params["token"]
   let subscription = params["subscription"]
@@ -93,7 +98,12 @@ def create(req)
 end
 
 def destroy(req)
-  let user_id = session_get("user_id")
+  # `current_user()`, not the session's `user_id`: the session holds that id
+  # as soon as the password passed, before a second factor and whatever a
+  # deactivation says — the middleware that enforce those clear
+  # `current_user()`, and this action must answer to them.
+  let user = current_user()
+  let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
   end
@@ -125,11 +135,10 @@ pub fn routes_snippet() -> String {
     format!(
         r#"
 {marker}
-# Shell token POSTs (iOS/Android native code) often send a session cookie without
-# Origin/Referer — the same-origin CSRF gate would reject them. Session auth is
-# required in the controller; browser pages should still send X-CSRF-Token via
-# soli.nativeBridge.registerDevice() when the meta tag is present.
-skip_csrf("/devices/*");
+# No `skip_csrf` here: the generated shells send `Origin` with their token
+# POST, so the same-origin gate lets them through — and keeps out a page on
+# another site registering its own device (and so receiving this user's
+# notifications).
 post("/devices", "devices#create");
 delete("/devices/:id", "devices#destroy");
 # --- end soli generate devices ---

@@ -136,6 +136,32 @@ fn image_max_dimension_px() -> u32 {
     })
 }
 
+/// A width or a height an image is asked to *become*: at least one pixel and
+/// at most `SOLI_IMAGE_MAX_DIMENSION_PX`.
+///
+/// The cap used to hold for decoding only. `Image.new(path).resize(w, h)`
+/// with numbers from a query string asked for a buffer of tens of gigabytes
+/// (and a negative one wrapped to four billion): the worker was killed.
+fn output_dimension(n: i64, who: &str) -> Result<u32, String> {
+    let cap = image_max_dimension_px();
+    if n < 1 || n > cap as i64 {
+        return Err(format!(
+            "{who}: a dimension must be between 1 and {cap} pixels (SOLI_IMAGE_MAX_DIMENSION_PX), got {n}"
+        ));
+    }
+    Ok(n as u32)
+}
+
+/// A blur radius: the cost of a blur grows with it, without bound.
+fn blur_sigma(sigma: f32, who: &str) -> Result<f32, String> {
+    if !sigma.is_finite() || !(0.0..=100.0).contains(&sigma) {
+        return Err(format!(
+            "{who}: sigma must be between 0 and 100, got {sigma}"
+        ));
+    }
+    Ok(sigma)
+}
+
 pub(crate) fn safe_image_limits() -> image::Limits {
     let mut limits = image::Limits::default();
     limits.max_alloc = Some(image_max_alloc_bytes());
@@ -485,11 +511,11 @@ fn build_image_class() -> Rc<Class> {
         "resize".to_string(),
         Rc::new(NativeFunction::new("Image.resize", Some(2), |args| {
             let width = match &args[1] {
-                Value::Int(n) => *n as u32,
+                Value::Int(n) => output_dimension(*n, "Image.resize")?,
                 _ => return Err("Image.resize requires integer width".to_string()),
             };
             let height = match &args[2] {
-                Value::Int(n) => *n as u32,
+                Value::Int(n) => output_dimension(*n, "Image.resize")?,
                 _ => return Err("Image.resize requires integer height".to_string()),
             };
             transform_image(args, |data| {
@@ -504,7 +530,7 @@ fn build_image_class() -> Rc<Class> {
         "thumbnail".to_string(),
         Rc::new(NativeFunction::new("Image.thumbnail", Some(1), |args| {
             let max_size = match &args[1] {
-                Value::Int(n) => *n as u32,
+                Value::Int(n) => output_dimension(*n, "Image.thumbnail")?,
                 _ => return Err("Image.thumbnail requires integer size".to_string()),
             };
             transform_image(args, |data| Ok(data.image.thumbnail(max_size, max_size)))
@@ -525,11 +551,11 @@ fn build_image_class() -> Rc<Class> {
                 _ => return Err("Image.crop requires integer y".to_string()),
             };
             let width = match &args[3] {
-                Value::Int(n) => *n as u32,
+                Value::Int(n) => output_dimension(*n, "Image.crop")?,
                 _ => return Err("Image.crop requires integer width".to_string()),
             };
             let height = match &args[4] {
-                Value::Int(n) => *n as u32,
+                Value::Int(n) => output_dimension(*n, "Image.crop")?,
                 _ => return Err("Image.crop requires integer height".to_string()),
             };
             transform_image(args, |data| {
@@ -638,8 +664,8 @@ fn build_image_class() -> Rc<Class> {
         "blur".to_string(),
         Rc::new(NativeFunction::new("Image.blur", Some(1), |args| {
             let sigma = match &args[1] {
-                Value::Float(f) => *f as f32,
-                Value::Int(n) => *n as f32,
+                Value::Float(f) => blur_sigma(*f as f32, "Image.blur")?,
+                Value::Int(n) => blur_sigma(*n as f32, "Image.blur")?,
                 _ => return Err("Image.blur requires number".to_string()),
             };
             transform_image(args, |data| {
@@ -943,6 +969,13 @@ fn build_image_plan_class() -> Rc<Class> {
         }
     }
 
+    fn plan_dimension(args: &[Value], idx: usize, who: &str) -> Result<u32, String> {
+        match args.get(idx) {
+            Some(Value::Int(n)) => output_dimension(*n, who),
+            _ => Err(format!("{} requires integer", who)),
+        }
+    }
+
     fn float_arg(args: &[Value], idx: usize, who: &str) -> Result<f32, String> {
         match args.get(idx) {
             Some(Value::Float(f)) => Ok(*f as f32),
@@ -954,8 +987,8 @@ fn build_image_plan_class() -> Rc<Class> {
     native_methods.insert(
         "resize".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.resize", Some(2), |args| {
-            let w = nonneg_u32(args, 1, "ImagePlan.resize")?;
-            let h = nonneg_u32(args, 2, "ImagePlan.resize")?;
+            let w = plan_dimension(args, 1, "ImagePlan.resize")?;
+            let h = plan_dimension(args, 2, "ImagePlan.resize")?;
             record_op(args, PlanOp::Resize(w, h))
         })),
     );
@@ -965,7 +998,7 @@ fn build_image_plan_class() -> Rc<Class> {
             "ImagePlan.thumbnail",
             Some(1),
             |args| {
-                let s = nonneg_u32(args, 1, "ImagePlan.thumbnail")?;
+                let s = plan_dimension(args, 1, "ImagePlan.thumbnail")?;
                 record_op(args, PlanOp::Thumbnail(s))
             },
         )),
@@ -975,8 +1008,8 @@ fn build_image_plan_class() -> Rc<Class> {
         Rc::new(NativeFunction::new("ImagePlan.crop", Some(4), |args| {
             let x = nonneg_u32(args, 1, "ImagePlan.crop")?;
             let y = nonneg_u32(args, 2, "ImagePlan.crop")?;
-            let w = nonneg_u32(args, 3, "ImagePlan.crop")?;
-            let h = nonneg_u32(args, 4, "ImagePlan.crop")?;
+            let w = plan_dimension(args, 3, "ImagePlan.crop")?;
+            let h = plan_dimension(args, 4, "ImagePlan.crop")?;
             record_op(args, PlanOp::Crop(x, y, w, h))
         })),
     );
@@ -1029,7 +1062,7 @@ fn build_image_plan_class() -> Rc<Class> {
     native_methods.insert(
         "blur".to_string(),
         Rc::new(NativeFunction::new("ImagePlan.blur", Some(1), |args| {
-            let sigma = float_arg(args, 1, "ImagePlan.blur")?;
+            let sigma = blur_sigma(float_arg(args, 1, "ImagePlan.blur")?, "ImagePlan.blur")?;
             record_op(args, PlanOp::Blur(sigma))
         })),
     );
@@ -1176,5 +1209,19 @@ mod tests {
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(16_384);
         assert_eq!(image_max_dimension_px(), expected);
+    }
+
+    #[test]
+    fn an_output_dimension_is_held_to_the_cap() {
+        let cap = image_max_dimension_px() as i64;
+        assert_eq!(output_dimension(1, "t"), Ok(1));
+        assert_eq!(output_dimension(cap, "t"), Ok(cap as u32));
+        for bad in [0, -1, -4_000_000_000, cap + 1, 60_000_000] {
+            assert!(output_dimension(bad, "t").is_err(), "{bad}");
+        }
+        assert!(blur_sigma(2.5, "t").is_ok());
+        for bad in [-1.0, 100.5, f32::INFINITY, f32::NAN] {
+            assert!(blur_sigma(bad, "t").is_err(), "{bad}");
+        }
     }
 }

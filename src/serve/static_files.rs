@@ -293,6 +293,10 @@ fn respond(
             Response::builder()
                 .status(StatusCode::PARTIAL_CONTENT)
                 .header("Content-Type", content_type)
+                // The type above is the answer: a browser must not guess
+                // another one from the bytes (an upload served from
+                // `public/` that sniffs as HTML runs as the site's own page).
+                .header("X-Content-Type-Options", "nosniff")
                 .header(
                     "Content-Range",
                     format!("bytes {}-{}/{}", start, end, total_size),
@@ -325,6 +329,10 @@ fn respond(
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", content_type)
+                // The type above is the answer: a browser must not guess
+                // another one from the bytes (an upload served from
+                // `public/` that sniffs as HTML runs as the site's own page).
+                .header("X-Content-Type-Options", "nosniff")
                 .header("Content-Length", length.to_string())
                 .header("Accept-Ranges", "bytes"),
             etag,
@@ -426,6 +434,15 @@ fn sanitized_relative_path(path: &str) -> Option<std::borrow::Cow<'_, str>> {
     };
     // Do not allow directory traversal or absolute paths in URL
     if decoded_path.contains("..") || decoded_path.starts_with('/') {
+        return None;
+    }
+    // No dotfile: a `.env`, a `.git/config` or an editor's swap file left in
+    // `public/` is not something to serve. `.well-known/` is the exception
+    // the web itself makes.
+    if decoded_path
+        .split('/')
+        .any(|segment| segment.starts_with('.') && segment != ".well-known")
+    {
         return None;
     }
     Some(decoded_path)
@@ -1121,5 +1138,21 @@ mod tests {
         assert!(canon_secret
             .to_string_lossy()
             .starts_with(&*canon_public.to_string_lossy()));
+    }
+
+    #[test]
+    fn a_dotfile_is_not_a_static_file() {
+        for path in [
+            "/.env",
+            "/.git/config",
+            "/css/.app.css.swp",
+            "/%2eenv",
+            "/a/.hidden/b.txt",
+        ] {
+            assert!(sanitized_relative_path(path).is_none(), "{path}");
+        }
+        for path in ["/.well-known/security.txt", "/css/app.css", "/a.b/c.d.js"] {
+            assert!(sanitized_relative_path(path).is_some(), "{path}");
+        }
     }
 }

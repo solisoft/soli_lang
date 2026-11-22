@@ -217,15 +217,45 @@ pub fn primary_declared_host() -> Option<String> {
 
 /// Is `candidate` one of the declared application hosts?
 ///
-/// `None` from [`primary_declared_host`] means nothing was declared, in which
-/// case every host is accepted — the pre-existing behaviour, kept so a
-/// development server with no configuration still works.
+/// With nothing declared, a development server (`--dev`) accepts every host
+/// and any other accepts the local ones — `localhost`, `*.localhost`,
+/// `*.test`, loopback and private addresses. It used to accept everything
+/// whenever `APP_ENV` was not exactly `production`: a deployment that forgot
+/// both that and `SOLI_APP_HOSTS` built its absolute URLs — a password-reset
+/// link in a mail — from whatever `Host` the request carried.
 pub fn is_declared_host(candidate: &str) -> bool {
     match app_hosts_env() {
         Some(raw) if raw.split(',').any(|h| !h.trim().is_empty()) => {
             host_matches_declared(&raw, candidate)
         }
-        _ => true,
+        _ => crate::interpreter::builtins::template::is_dev_mode() || is_local_host(candidate),
+    }
+}
+
+/// A host name only this machine or its own network answers to.
+fn is_local_host(authority: &str) -> bool {
+    let authority = authority.trim();
+    // `[::1]:5011` → `::1`; `localhost:5011` → `localhost`.
+    let host = match authority.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or(""),
+        None => authority
+            .rsplit_once(':')
+            .map_or(authority, |(host, port)| {
+                if port.bytes().all(|b| b.is_ascii_digit()) {
+                    host
+                } else {
+                    authority
+                }
+            }),
+    };
+    let host = host.to_ascii_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".test") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+        Err(_) => false,
     }
 }
 
@@ -420,6 +450,16 @@ pub(crate) fn verify_csrf_token(
 ///
 /// The intent matches `websocket_origin_allowed`'s authority semantics so
 /// the two surfaces (HTTP + WebSocket) reject under the same rules.
+/// Did a trusted proxy say this request arrived over https?
+fn forwarded_as_https(headers: &hyper::HeaderMap) -> bool {
+    crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled()
+        && headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .is_some_and(|proto| proto.trim().eq_ignore_ascii_case("https"))
+}
+
 pub(crate) fn check_csrf_origin(
     headers: &hyper::HeaderMap,
     method: &str,
@@ -461,6 +501,18 @@ pub(crate) fn check_csrf_origin(
         let Some(origin_auth) = origin_authority(origin) else {
             return Err(format!("malformed Origin header: {}", origin));
         };
+        // The same host over plain http is not the same origin as the https
+        // site: whoever sits on the network can serve `http://app.example`
+        // and post from it. Known only behind a trusted proxy that says the
+        // request came in over https.
+        if origin.len() >= 7
+            && origin.as_bytes()[..7].eq_ignore_ascii_case(b"http://")
+            && forwarded_as_https(headers)
+        {
+            return Err(format!(
+                "Origin {origin} is plain http, but this request arrived over https"
+            ));
+        }
         if origin_auth == request_authority || origin_matches_declared_host(&origin_auth) {
             return Ok(());
         }
@@ -753,12 +805,31 @@ mod app_host_validation_tests {
         });
     }
 
-    /// Nothing declared (a dev server) accepts any host, as before.
+    /// Nothing declared, and not `--dev`: the local names, and no other —
+    /// a `Host` an attacker chose does not end up in a mailed link.
     #[test]
-    fn an_unconfigured_server_accepts_any_host() {
+    fn an_unconfigured_server_accepts_local_hosts_only() {
         with_hosts(None, || {
-            assert!(is_declared_host("localhost:5011"));
-            assert!(is_declared_host("anything"));
+            for local in [
+                "localhost:5011",
+                "localhost",
+                "app.localhost:3000",
+                "myapp.test",
+                "127.0.0.1:5011",
+                "192.168.1.20:5011",
+                "10.0.0.5",
+                "[::1]:5011",
+            ] {
+                assert!(is_declared_host(local), "{local}");
+            }
+            for remote in [
+                "evil.example",
+                "app.example.com:443",
+                "localhost.evil.example",
+                "8.8.8.8",
+            ] {
+                assert!(!is_declared_host(remote), "{remote}");
+            }
             assert!(primary_declared_host().is_none());
         });
     }

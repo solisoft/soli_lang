@@ -453,7 +453,7 @@ end</code></pre>
         <table class="w-full text-sm text-left">
             <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Symptom</th><th class="py-3 px-4">Cause</th></tr></thead>
             <tbody class="text-gray-400">
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>Soli failed to boot: …</code> (500 on every request)</td><td class="py-3 px-4">the app did not load; the message is the boot error (syntax error, missing <code>app/controllers</code>…)</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>The application failed to start.</code> (500 on every request)</td><td class="py-3 px-4">The app did not load. The reason &mdash; a syntax error, a missing <code>app/controllers</code>&hellip; &mdash; is in the Worker&rsquo;s log (<code>wrangler tail</code>, <code>Soli failed to boot: &hellip;</code>), not in the response.</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>501 Streaming responses are not available…</code></td><td class="py-3 px-4">the action streams (SSE, <code>stream</code>, <code>solidb_blob_response</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not available on the edge (Cloudflare Workers) build</code></td><td class="py-3 px-4">a builtin that needs a socket, a thread, a subprocess or a disk</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>--pdf: the edge runtime in &hellip; was built without PDF</code></td><td class="py-3 px-4">build it with <code>scripts/build-edge.sh --pdf</code></td></tr>

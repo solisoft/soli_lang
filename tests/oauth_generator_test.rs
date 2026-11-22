@@ -386,6 +386,28 @@ fn start_providers(state: Arc<Mutex<Provider>>) -> u16 {
     port
 }
 
+/// A port for a test server, never handed out twice by this test binary.
+///
+/// Binding port 0 and releasing it gives a free port — which the kernel may
+/// give again to the next test that asks before the first server has bound
+/// it. The second server then failed to start, and its test talked to the
+/// first one: another app, another database ("sign-up is closed" on a fresh
+/// app, a table that does not exist).
+fn unused_port() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|l| l.local_addr())
+            .map(|a| a.port())
+            .unwrap();
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
+}
+
 struct Server(std::process::Child, u16);
 
 impl Drop for Server {
@@ -400,10 +422,7 @@ fn database_url(root: &Path) -> String {
 }
 
 fn serve(root: &Path, providers: u16, signup: &str) -> Server {
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .unwrap();
+    let port = unused_port();
     let fake = format!("http://127.0.0.1:{providers}");
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command

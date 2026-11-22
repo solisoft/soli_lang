@@ -34,6 +34,8 @@ use super::{header_str, RequestData, ResponseData};
 
 pub const TUS_VERSION: &str = "1.0.0";
 const OFFSET_CONTENT_TYPE: &str = "application/offset+octet-stream";
+/// How long an upload may exist without receiving its first byte.
+const UNSTARTED_GRACE_SECS: i64 = 600;
 
 const DEFAULT_PREFIX: &str = "/tus";
 const DEFAULT_MAX_SIZE: u64 = 1024 * 1024 * 1024;
@@ -156,6 +158,17 @@ fn list_uploads(dir: &Path) -> Vec<Meta> {
             continue;
         };
         match read_meta(dir, id) {
+            // Announced, and not one byte sent in ten minutes: a reservation
+            // nobody is using. Left to its full lifetime (a day), twenty
+            // bodiless creations from each of a few sessions held every slot
+            // and all the disk they declared.
+            Some(meta)
+                if now - meta.created_at > UNSTARTED_GRACE_SECS
+                    && meta.length > 0
+                    && offset_of(dir, &meta.id) == 0 =>
+            {
+                remove_upload(dir, &meta.id)
+            }
             Some(meta) if meta.expires_at > now => live.push(meta),
             Some(meta) => remove_upload(dir, &meta.id),
             None => {}
@@ -727,6 +740,40 @@ mod tests {
         )
         .unwrap();
         meta
+    }
+
+    #[test]
+    fn an_upload_that_never_started_gives_its_slot_back() {
+        let config = scratch_config();
+        let fresh = meta_for(&config, 10, None);
+        let mut stale = meta_for(&config, 10, None);
+        stale.created_at = now() - UNSTARTED_GRACE_SECS - 1;
+        fs::write(
+            meta_path(&config.dir, &stale.id),
+            serde_json::to_vec(&stale).unwrap(),
+        )
+        .unwrap();
+        // One that started long ago keeps its slot: bytes were sent.
+        let mut started = meta_for(&config, 10, None);
+        started.created_at = stale.created_at;
+        fs::write(
+            meta_path(&config.dir, &started.id),
+            serde_json::to_vec(&started).unwrap(),
+        )
+        .unwrap();
+        fs::write(part_path(&config.dir, &started.id), b"abc").unwrap();
+
+        let live: Vec<String> = list_uploads(&config.dir)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert!(live.contains(&fresh.id));
+        assert!(live.contains(&started.id));
+        assert!(
+            !live.contains(&stale.id),
+            "an unstarted upload kept its slot"
+        );
+        let _ = fs::remove_dir_all(&config.dir);
     }
 
     #[test]

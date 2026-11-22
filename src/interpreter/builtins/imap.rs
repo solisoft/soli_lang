@@ -52,8 +52,44 @@ struct ImapConn {
 }
 
 /// Process-global registry of open connections, keyed by instance id.
-static IMAP_CONNS: LazyLock<Mutex<HashMap<usize, ImapConn>>> =
+///
+/// Each connection has a lock of its own. They used to share the registry's:
+/// every call held it across blocking socket reads, so one slow or hostile
+/// server stalled every other worker's mail call for as long as it liked.
+static IMAP_CONNS: LazyLock<Mutex<HashMap<usize, Slot>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+struct Slot {
+    conn: std::sync::Arc<Mutex<ImapConn>>,
+    used: std::time::Instant,
+}
+
+/// A connection nobody used for this long is closed: a request that raised
+/// between opening one and closing it left the socket and its entry behind
+/// for the life of the process.
+const IDLE_LIMIT: std::time::Duration = std::time::Duration::from_secs(900);
+/// Open connections at once, past the idle sweep.
+const MAX_OPEN: usize = 256;
+
+/// Put a new connection in the registry, after dropping the idle ones.
+fn register_conn(conn: ImapConn) -> Result<usize, String> {
+    let mut conns = IMAP_CONNS.lock().map_err(|e| e.to_string())?;
+    conns.retain(|_, slot| slot.used.elapsed() < IDLE_LIMIT);
+    if conns.len() >= MAX_OPEN {
+        return Err(format!(
+            "too many open IMAP connections ({MAX_OPEN}): close them when done"
+        ));
+    }
+    let id = IMAP_NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    conns.insert(
+        id,
+        Slot {
+            conn: std::sync::Arc::new(Mutex::new(conn)),
+            used: std::time::Instant::now(),
+        },
+    );
+    Ok(id)
+}
 static IMAP_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 // ---------------------------------------------------------------------------
@@ -319,11 +355,17 @@ fn with_conn<R>(
     id: usize,
     f: impl FnOnce(&mut ImapConn) -> Result<R, String>,
 ) -> Result<R, String> {
-    let mut conns = IMAP_CONNS.lock().map_err(|e| e.to_string())?;
-    let conn = conns
-        .get_mut(&id)
-        .ok_or_else(|| "Imap connection is closed (call .logout() only once)".to_string())?;
-    f(conn)
+    // The registry's lock is held to find the connection, not to use it.
+    let conn = {
+        let mut conns = IMAP_CONNS.lock().map_err(|e| e.to_string())?;
+        let slot = conns
+            .get_mut(&id)
+            .ok_or_else(|| "Imap connection is closed (call .logout() only once)".to_string())?;
+        slot.used = std::time::Instant::now();
+        std::sync::Arc::clone(&slot.conn)
+    };
+    let mut conn = conn.lock().map_err(|e| e.to_string())?;
+    f(&mut conn)
 }
 
 fn message_id_arg(args: &[Value], method: &str, label: &str) -> Result<i64, String> {
@@ -744,11 +786,7 @@ fn imap_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
         }
     }
 
-    let id = IMAP_NEXT_ID.fetch_add(1, Ordering::SeqCst);
-    IMAP_CONNS
-        .lock()
-        .map_err(|e| e.to_string())?
-        .insert(id, conn);
+    let id = register_conn(conn)?;
 
     let mut inst = Instance::new(class);
     inst.set("_id", Value::Int(id as i64));
@@ -1447,9 +1485,11 @@ fn imap_move(args: &[Value]) -> Result<Value, String> {
 
 fn imap_logout(args: &[Value]) -> Result<Value, String> {
     let id = instance_id(args, "logout")?;
-    let mut conns = IMAP_CONNS.lock().map_err(|e| e.to_string())?;
-    if let Some(mut conn) = conns.remove(&id) {
-        let _ = conn.command("LOGOUT");
+    let removed = IMAP_CONNS.lock().map_err(|e| e.to_string())?.remove(&id);
+    if let Some(slot) = removed {
+        if let Ok(mut conn) = slot.conn.lock() {
+            let _ = conn.command("LOGOUT");
+        }
     }
     Ok(Value::Bool(true))
 }
