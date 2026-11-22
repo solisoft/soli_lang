@@ -2722,6 +2722,52 @@ mod tests {
     }
 
     use super::*;
+
+    /// A key the store cannot address names no row — a miss. A value the
+    /// store cannot store is not that: on a write, Postgres's "invalid
+    /// input syntax" is as likely a bad date in the patch, on a row that is
+    /// there, and must not be answered "not found".
+    #[test]
+    fn a_refused_key_is_a_miss_and_a_refused_value_is_not() {
+        let integer_key = r#""orders" has an integer primary key (id); "abc" is not a number"#;
+        let uuid_text = r#"db error: ERROR: invalid input syntax for type uuid: "abc""#;
+        let date_value = r#"db error: ERROR: invalid input syntax for type date: "tomorrow""#;
+        let nothing_bound = "lookup requires a primary-key value";
+        let empty_key = r#"invalid document key "": empty, "." and ".." are not valid keys"#;
+
+        // A read by key: the key is all that was bound.
+        for refusal in [integer_key, uuid_text, nothing_bound, empty_key] {
+            assert!(key_names_no_row(refusal), "{refusal}");
+        }
+        // A write binds its values too: only what can only be the key.
+        for refusal in [integer_key, nothing_bound, empty_key] {
+            assert!(key_refused(refusal), "{refusal}");
+        }
+        assert!(!key_refused(uuid_text));
+        assert!(!key_refused(date_value));
+        // A database that did not answer is neither.
+        for failure in [
+            "HTTP error: error sending request for url (http://db:6745/…)",
+            "sqlite pool (primary): file is not a database",
+            r#"column "total" is integer — cannot store a string"#,
+        ] {
+            assert!(
+                !key_names_no_row(failure) && !key_refused(failure),
+                "{failure}"
+            );
+            assert!(!document_already_gone(failure), "{failure}");
+        }
+
+        use super::super::core::in_band_if_gone;
+        // In band: the row is not there, or the key names none.
+        let missing = "HTTP 404 Not Found http://db:6745/_api/database/app/document/orders/k: …";
+        assert!(matches!(in_band_if_gone(missing), Ok(Value::String(_))));
+        assert!(matches!(in_band_if_gone(integer_key), Ok(Value::String(_))));
+        // Raised: a bad value, a database that did not answer.
+        assert!(in_band_if_gone(date_value).is_err());
+        assert!(in_band_if_gone("HTTP 500 Internal Server Error …").is_err());
+        assert!(in_band_if_gone("HTTP error: error sending request …").is_err());
+    }
     use crate::interpreter::builtins::model::registry::{
         clear_model_classes, register_model_class,
     };

@@ -322,3 +322,54 @@ check("find", fn() {{ Line.find("no-such-key") }})
         }
     }
 }
+
+/// On a table with an integer key, `/orders/abc` names no row: `find` says
+/// RecordNotFound (a 404), and the static update and delete answer the
+/// in-band "not there" a double submit gets — not a 500 any visitor can
+/// cause. A value the column cannot hold is another matter: the row is
+/// there, nothing was written, and that raises.
+#[test]
+fn a_key_that_names_no_row_is_a_miss_and_a_value_the_column_refuses_raises() {
+    let dir = tempfile::tempdir().unwrap();
+    let conn = rusqlite::Connection::open(dir.path().join("app.sqlite3")).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, \
+         total INTEGER NOT NULL DEFAULT 0);",
+    )
+    .unwrap();
+    drop(conn);
+    let script = format!(
+        r#"{CHECK}
+class Order < Model
+  table "orders"
+end
+order = Order.create({{"number": "C-1", "total": 5}})
+check("find", fn() {{ Order.find("abc") }})
+check("update", fn() {{ type(Order.update("abc", {{"number": "C-2"}})) }})
+check("delete", fn() {{ type(Order.delete("abc")) }})
+check("value", fn() {{ Order.update(order.id, {{"total": "five"}}) }})
+check("kept", fn() {{ Order.find(order.id).total }})
+"#
+    );
+    let lines = sqlite_script(dir.path(), &script);
+    let line = |label: &str| {
+        lines
+            .iter()
+            .find(|line| line.starts_with(label))
+            .unwrap_or_else(|| panic!("no line for {label}: {lines:?}"))
+            .clone()
+    };
+    assert!(
+        line("find").contains("raised:") && line("find").contains("not found"),
+        "{}",
+        line("find")
+    );
+    assert_eq!(line("update"), "update string");
+    assert_eq!(line("delete"), "delete string");
+    assert!(
+        line("value").contains("raised:") && !line("value").contains("not found"),
+        "{}",
+        line("value")
+    );
+    assert_eq!(line("kept"), "kept 5");
+}

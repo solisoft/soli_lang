@@ -1434,3 +1434,25 @@ print("#{half.saml_link_pending} #{SamlIdentity.where({"user_id": half._key}).co
         "false 1 0"
     );
 }
+
+/// The mark the previous test writes by hand is the take-over's own: set by
+/// `SamlSso.take_over_unconfirmed`, with the account made single sign-on
+/// only, and cleared by `revoke_credentials` — an account whose identity is
+/// taken away on purpose is not waiting to be linked.
+#[test]
+fn the_take_over_sets_its_mark_and_a_revocation_clears_it() {
+    let dir = served_app();
+    let root = dir.path();
+    let code = r##"user = User.new
+user.email = "placeholder@example.com"
+user.role = "member"
+user.set_password("a squatter chose this one")
+user.awaiting_owner = true
+user.save
+SamlSso.take_over_unconfirmed(user)
+taken = User.find(user._key)
+marked = "#{taken.saml_link_pending} #{taken.sso_only?} #{taken.password_digest.nil?} #{taken.confirmed?}"
+taken.revoke_credentials
+print("#{marked} | #{User.find(user._key).saml_link_pending}")"##;
+    assert_eq!(runner(root, code), "true true true true | false");
+}
