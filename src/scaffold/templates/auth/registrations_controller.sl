@@ -69,12 +69,14 @@ class RegistrationsController < Controller
     user.role = "admin" if auth_signup_mode() == "first_user"
     user.set_password(params["password"].to_s)
     saved = user.save
-    # `saved`, not only `_errors`: a write the database refused leaves no
-    # validation error, and the visitor must not be told an account exists.
-    return @_reject(user, "Could not create your account", 422) if (user._errors ?? []).length > 0
-    # A write the database refused: an error, as on the taken-address side
-    # (`burn_write_work`) — not an answer that tells the two apart.
-    throw "could not create the account" if saved != true
+    if saved != true || (user._errors ?? []).length > 0
+      # A validation said no, or the database refused the write — `_errors`
+      # holds both. The second must fail as the taken-address side does
+      # (`burn_write_work` throws on a refused write), or a database that
+      # takes no writes tells a free address from a taken one.
+      User.burn_write_work
+      return @_reject(user, "Could not create your account", 422)
+    end
 
     # Send the confirmation link. `rescue nil` keeps signup working before
     # SMTP is configured (set SOLI_MAIL_DELIVERY_METHOD=logger in dev to see

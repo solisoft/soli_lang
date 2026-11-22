@@ -83,6 +83,12 @@ class MagicLink < Model
     # someone else's network.
     let odd = groups.filter { |group| !Regex.matches("^[0-9a-f]{1,4}$", group) }
     return text if odd.length > 0 || groups.length != 8
+    # An IPv4 client written in hex (::ffff:c000:201): its own address, not
+    # the one network every such client would share.
+    let numbers = groups.map { |group| group.to_i(16) }
+    if numbers.slice(0, 5).filter { |n| n != 0 }.length == 0 && numbers[5] == 65535
+      return "#{numbers[6] / 256}.#{numbers[6] % 256}.#{numbers[7] / 256}.#{numbers[7] % 256}"
+    end
 
     groups.slice(0, 4).map { |group| group.to_i(16).to_s }.join(":") + "::/64"
   end

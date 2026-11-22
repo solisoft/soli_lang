@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a seventh review** (nothing above low). Sign-up fails alike for
+  a free and a taken address when the database refuses writes (the check
+  added the round before could not fire). The two-factor pages say that
+  password sign-in is locked rather than "wrong password". The
+  confirmation page asks only for a password its reader chose. A sign-in
+  link's requester reads an IPv4 client written in hex.
 - **auth: a sixth review** (nothing above low). The sign-up cookie is gone:
   the confirmation page of an account nobody ever entered asks for the
   password chosen at sign-up, which tells who signed up where a cookie on a

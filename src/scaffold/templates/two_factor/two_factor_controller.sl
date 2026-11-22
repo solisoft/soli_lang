@@ -85,6 +85,7 @@ class TwoFactorController < Controller
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil? || !record.confirmed?
     return @_render_index(user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
+    return @_render_index(user, @_password_locked, 423) if @_password_locked?(user)
     return @_render_index(user, "Wrong password.", 401) unless @_password_ok(user)
     # New codes are a way past the second factor. An account without a
     # password has none to ask for: a recent sign-in is asked of everyone.
@@ -110,6 +111,8 @@ class TwoFactorController < Controller
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil?
     return @_render_index(user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
+
+    return @_render_index(user, @_password_locked, 423) if @_password_locked?(user)
 
     unless @_password_ok(user) && record.verify(params["code"])
       return @_render_index(user, "Wrong password or code.", 401)
@@ -160,12 +163,24 @@ class TwoFactorController < Controller
     rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS).allowed
   end
 
+  # Wrong passwords at the sign-in form lock the password — here too, and
+  # anyone who knows the address can cause it. The owner is told what it is,
+  # not that their password is wrong.
+  def _password_locked?(user)
+    user.password_digest.present? && user.locked?
+  end
+
+  def _password_locked
+    "Password sign-in is locked after too many wrong passwords. Try again in a few minutes."
+  end
+
   # An account without a password (created through OAuth) has none to ask for.
   #
   # Counted like a sign-in: a session left open is not a place to guess the
   # password from without the lockout, and a locked account's password is
   # not checked at all.
   def _password_ok(user)
+    # (`_password_locked?` answered first, with a message that says so.)
     return true if user.password_digest.blank?
     return false if user.locked?
 

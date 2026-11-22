@@ -509,8 +509,8 @@ class User < Model
   # Has anyone ever been signed in to this account? One that never was is a
   # placeholder: created — by its owner, or by someone else with a password
   # of their own, in wait — and not yet entered. Only such an account is
-  # *taken over* by a proof of its address (a confirmation from another
-  # browser, a sign-in link, a provider): everything it could be entered
+  # *taken over* by a proof of its address (a confirmation without the
+  # sign-up password, a sign-in link, a provider): everything it could be entered
   # with is revoked first. An account that has been used keeps what its user
   # set — its second factor above all, which a mailbox alone must not remove.
   #

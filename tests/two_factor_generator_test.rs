@@ -638,8 +638,23 @@ fn served_app_enrols_challenges_and_refuses_replays() {
     // New backup codes need the password, and retire the old ones.
     let refused = ada.post("/two_factor/backup_codes", json!({"password": "nope"}));
     assert_eq!(refused.status, 401, "{}", refused.body);
+    // That guess counts towards the lockout, as one at the sign-in form
+    // does: a session left open is not a place to guess the password from.
+    let attempts = r##"print(User.find_by("email", "ada@example.com").failed_attempts.to_i)"##;
+    let counted = soli_with_database(dir.path(), attempts);
+    assert!(
+        counted.0 && counted.1.lines().any(|line| line.trim() == "1"),
+        "{}",
+        counted.1
+    );
     let fresh = ada.post("/two_factor/backup_codes", json!({"password": PASSWORD}));
     assert_eq!(fresh.status, 200, "{}", fresh.body);
+    let counted = soli_with_database(dir.path(), attempts);
+    assert!(
+        counted.0 && counted.1.lines().any(|line| line.trim() == "0"),
+        "{}",
+        counted.1
+    );
     let fresh = marked(&fresh.body, "data-backup-code");
     assert_eq!(fresh.len(), 10);
     assert!(!fresh.contains(&backup[1]));
