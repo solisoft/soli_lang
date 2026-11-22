@@ -259,3 +259,49 @@ check("sibling", fn() {{
         );
     }
 }
+
+/// `Model.delete(id)` / `Model.update(id, …)` on a class that needs a read
+/// first — dependents, single-table inheritance — did that read themselves,
+/// and answered a database that did not reply with a truthy "… not found"
+/// string: the action went on as if the row were handled. They raise.
+#[test]
+fn the_static_forms_raise_when_their_own_pre_read_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = format!(
+        r#"{CHECK}
+class Line < Model
+end
+class Order < Model
+  has_many("lines", dependent: "delete")
+end
+class Animal < Model
+end
+class Dog < Animal
+end
+check("dependents", fn() {{ Order.delete("no-such-key") }})
+check("plain", fn() {{ Line.delete("no-such-key") }})
+check("sti delete", fn() {{ Dog.delete("no-such-key") }})
+check("sti update", fn() {{ Dog.update("no-such-key", {{"name": "x"}}) }})
+"#
+    );
+    std::fs::write(dir.path().join("script.sl"), script).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .arg("script.sl")
+        .current_dir(dir.path())
+        .env_remove("SOLI_DB_ADAPTER")
+        .env_remove("DATABASE_URL")
+        // A port nothing listens on.
+        .env("SOLIDB_HOST", "http://127.0.0.1:9")
+        .env("SOLIDB_DATABASE", "none")
+        .output()
+        .expect("run soli");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    for label in ["dependents", "plain", "sti delete", "sti update"] {
+        let line = stdout
+            .lines()
+            .find(|line| line.starts_with(label))
+            .unwrap_or_else(|| panic!("no line for {label}: {stdout}{stderr}"));
+        assert!(line.contains("raised:"), "{label} did not raise: {line}");
+    }
+}
