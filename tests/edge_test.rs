@@ -524,3 +524,45 @@ fn refuses_to_boot_a_folder_that_is_not_an_app() {
     let err = edge::boot(Path::new("/definitely/not/a/soli/app")).unwrap_err();
     assert!(err.to_string().contains("not a Soli app"), "{err}");
 }
+
+/// The Worker's LiveView socket answers the app's own origin and no other:
+/// WebSockets are not held to the same-origin policy, and the visitor's
+/// cookie goes along with an upgrade another site starts. The script runs
+/// `liveSocket` as it is written in edge/js/worker.js, under Node.
+#[test]
+fn the_edge_live_socket_refuses_another_sites_origin() {
+    let script = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/edge/live_socket_origin.mjs"
+    );
+    let Ok(output) = std::process::Command::new("node").arg(script).output() else {
+        // Skipped where there is no Node (the build server); CI has it, and
+        // there a missing Node must not let this pass unrun.
+        assert!(
+            std::env::var("CI").is_err(),
+            "node is required to run this test in CI"
+        );
+        eprintln!("node is not installed: skipping");
+        return;
+    };
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    assert!(
+        output.status.success(),
+        "{text}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines,
+        [
+            "same origin: 200 room=null",
+            "another site: 403 room=-",
+            "a look-alike host: 403 room=-",
+            "a malformed origin: 403 room=-",
+            "a declared second host: 200 room=null",
+            "no origin (not a browser): 200 room=null",
+            "a client-written room header: 200 room=null",
+        ],
+        "{text}"
+    );
+}
