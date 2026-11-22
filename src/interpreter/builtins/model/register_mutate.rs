@@ -333,8 +333,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     // Gone already is the wanted outcome; anything else is
                     // a row `delete_all` said it removed and did not.
                     if let Err(e) = super::crud::exec_delete(&collection, &key) {
-                        let said = e.to_string().to_lowercase();
-                        if !(said.contains("not found") || said.contains("documentnotfound")) {
+                        if !super::crud::document_already_gone(&e.to_string()) {
                             return Err(format!("Model.delete_all() failed: {}", e));
                         }
                     }

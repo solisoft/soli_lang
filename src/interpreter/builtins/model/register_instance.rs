@@ -533,8 +533,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                                 // always was. Any other refusal raises — it
                                 // was a truthy string too, and code went on
                                 // as if the record were deleted.
-                                let said = e.to_string().to_lowercase();
-                                if said.contains("not found") || said.contains("documentnotfound") {
+                                if super::crud::document_already_gone(&e.to_string()) {
                                     Ok(Value::String(format!("Error: {}", e).into()))
                                 } else {
                                     Err(e.to_string())

@@ -2682,6 +2682,24 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
     }
 }
 
+/// Does a delete's refusal say the *document* was not there? Not any "not
+/// found": a missing collection, a database or an expired transaction say
+/// those words too, and none of them means the row is gone.
+pub fn document_already_gone(error: &str) -> bool {
+    let said = error.to_lowercase();
+    let something_else = [
+        "collectionnotfound",
+        "collection not found",
+        "databasenotfound",
+    ]
+    .iter()
+    .any(|other| said.contains(other))
+        || said.contains("transaction");
+    !something_else
+        && (said.contains("documentnotfound")
+            || (said.contains("document") && said.contains("not found")))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -195,8 +195,7 @@ fn load_cascade_children(
 fn child_already_gone(result: &Value) -> bool {
     match result {
         Value::String(error) if error.starts_with("Error:") => {
-            let error = error.to_lowercase();
-            error.contains("not found") || error.contains("documentnotfound")
+            crate::interpreter::builtins::model::crud::document_already_gone(error)
         }
         _ => false,
     }

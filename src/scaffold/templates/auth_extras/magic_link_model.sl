@@ -135,10 +135,11 @@ class MagicLink < Model
     return nil if matching.length == 0
 
     expired = DateTime.utc.to_unix > link.expires_at
-    # Used up, for certain: a delete that did not happen — refused, or the
-    # row gone to a request that got here first — signs nobody in.
-    auth_written(link.delete)
-    return nil if expired
+    # Used up, for certain: a delete that did not happen — refused (false),
+    # or the row gone to a request that got here first (an "Error: …"
+    # string) — signs nobody in.
+    let deleted = link.delete
+    return nil if expired || deleted == false || type(deleted) == "string"
 
     User.find_by("_key", link.user_id)
   end

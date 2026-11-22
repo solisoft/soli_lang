@@ -2528,17 +2528,10 @@ fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
 /// The soft-delete guard a SoliDB statement built outside `build_query`
 /// needs: `count`, `exists` and the aggregates build their own text, and
 /// left it out — `Order.sum("total")` added the deleted rows in, and an
-/// unfiltered `count` counted them. Empty when the filter already names the
-/// column (a `where` on a soft-delete model adds the guard itself).
+/// unfiltered `count` counted them. Appended whatever the filter says, as
+/// `build_query` does.
 fn soft_delete_clause(qb: &QueryBuilder) -> &'static str {
     if !qb.is_soft_delete_model {
-        return "";
-    }
-    if qb
-        .filter
-        .as_deref()
-        .is_some_and(|f| f.contains("deleted_at"))
-    {
         return "";
     }
     match qb.soft_delete_mode {

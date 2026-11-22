@@ -135,6 +135,7 @@ pub fn in_block() -> bool {
 /// interrupted by a panic never ran its `end`, so the next request on the
 /// worker would defer its reads into the dead request's batch.
 pub fn discard_stale() {
+    FAILED.with(|f| *f.borrow_mut() = None);
     BATCH.with(|b| b.borrow_mut().take());
     GROUPED_DEPTH.with(|d| d.set(0));
     FLUSHING_D1.with(|f| f.set(false));
@@ -277,7 +278,16 @@ pub fn flush() -> Result<(), String> {
 /// have no error channel. Errors are swallowed here — the real read sites use
 /// [`force`], which surfaces them.
 pub fn flush_current() {
-    let _ = flush_inner();
+    // Only here: a failure `force` or `flush` hands to their caller has been
+    // delivered, and may have been handled — a `find` that missed, rescued.
+    if let Err(error) = flush_inner() {
+        FAILED.with(|f| {
+            let mut slot = f.borrow_mut();
+            if slot.is_none() {
+                *slot = Some(error);
+            }
+        });
+    }
 }
 
 /// Combine all currently-pending queries into one statement, execute it in a
@@ -306,16 +316,7 @@ fn flush_inner() -> Result<(), String> {
         None => (Vec::new(), Vec::new()),
     });
     let d1 = flush_d1(d1_reads);
-    let result = flush_solidb(pending).and(d1);
-    if let Err(error) = &result {
-        FAILED.with(|f| {
-            let mut slot = f.borrow_mut();
-            if slot.is_none() {
-                *slot = Some(error.clone());
-            }
-        });
-    }
-    result
+    flush_solidb(pending).and(d1)
 }
 
 /// Run the deferred D1 reads, their statements coalesced, and fill their
