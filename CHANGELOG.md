@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+### Security — ORM and server
+From an audit of the rest of the framework (four independent readers; each
+item below reproduced by a test or a run before it was fixed).
+
+- **models (SQL adapters): a client-sent `id` replaced another row.** An
+  insert is an upsert and the key was read from the document's `id`:
+  `Post.create(params)` with `{"id": "<victim key>"}` overwrote the victim's
+  row. A key now comes only from `create`'s options hash. `create_many`,
+  `find_or_create_by`, `upsert`, `update_all` and `update(hash)` drop `_key`,
+  the other `_` fields and an STI `type`, as `create` did.
+- **models (SoliDB): SDBQL injection through `includes(rel, {"fields": …})`.**
+  The names were written into the query unvalidated. They are held to the
+  rule of `select`; a value that is not a name raises.
+- **models: a hash filter on `join` / `includes` could take the bind of an
+  earlier `.where`** on the same field (the ownership condition was then
+  evaluated with the other value), tested the parent instead of the related
+  record on a SoliDB `join`, and was ignored by a SoliDB `includes`.
+- **models (SoliDB): `exists`, `delete_all` and `update_all` ignored the
+  builder's scope** — the STI subclass, a `through:` membership, a traversal.
+  `Admin.where(…).delete_all` reached every type of the collection.
+- **models: request values as operators.** The guard against
+  `{"ne": null}` now reaches conditions inside `or` / `and` groups, the
+  `includes` shorthand, and LiveView / EUI event params. Bind maps cannot
+  replace `__soli_*` binds. A tenant `database` option is held to a name.
+- **sessions (cookie driver): a WebSocket or LiveView frame read the previous
+  request's session** on its worker — `session_get("user_id")` answered for
+  another visitor. A frame now loads the session of its own socket's cookie,
+  and the state is cleared when a request or a frame ends.
+- **response cache: a reply that sets a cookie is never kept.** Only the
+  cookie named `session_id` stopped it; `__Host-session_id` or a remember-me
+  token was replayed to every visitor.
+- **csrf: `SOLI_CSRF_TOKENS=require` was skipped by the casing of
+  `Content-Type`** (`Application/X-WWW-Form-Urlencoded`).
+- **trust proxy: an entry of `SOLI_TRUSTED_PROXIES` that does not parse
+  trusts nobody** — it used to leave the list empty, which trusts everyone.
+- **prefetch no longer overrides an application's `Cache-Control: no-store`.**
+
 ### Security — `soli generate auth`
 An audit of the base scaffold and its options. As for the others, an app
 generated earlier keeps its files.

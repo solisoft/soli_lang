@@ -802,6 +802,8 @@ User.create({
 
 Filtering applies to every mass-assign path: `Model.create(hash)`, `Model.update(id, hash)`, `instance.update(hash)`, `instance.save(hash)`. Non-permitted keys are dropped before validation runs and before the document is written, so they cannot be probed via validation errors either.
 
+**What a hash of attributes never sets, with or without a whitelist.** The record's key and the other `_`-prefixed fields (`_key`, `_id`, `_rev`, an edge's `_from` / `_to`), and on a single-table-inheritance model its `type`: `create`, `create_many`, `find_or_create_by`, `upsert`, `update(hash)` / `save(hash)` and `update_all` drop them. Nor is an `id` field read as the key — on the SQL adapters an insert is an upsert, and `Post.create(params)` with `{"id": "<another row's key>"}` replaced that row. Choose a key with the options hash: `Post.create(attrs, {"key": "…"})`.
+
 **Empty list = full lock-down.** `attr_accessible([])` declares that the model accepts no mass-assigned attributes; everything must be set by trusted server code via direct field assignment (`user.role = "admin"`).
 
 **Models without a declaration keep the legacy "all keys accepted" behaviour** for backwards compatibility. New models that take request data should always declare `attr_accessible`. The CLAUDE.md security guidance recommends auditing every `Model.create`/`Model.update` call site against an explicit whitelist.
@@ -1926,6 +1928,8 @@ recent  = User.includes("posts", { "where": { "views": { "gt": 10 } } }).all
 print(User.includes("posts", "published = @p", { "p": true }).to_query)
 # => ... LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel) ...
 ```
+
+A hash filter here is about the **related** record: `{"published": true}` tests the post, on SoliDB as on SQL (it used to test the parent on a `join`, and to be ignored by a SoliDB `includes`). Its bind values live apart from those of `.where`, so the same field on both sides keeps both values. Values that arrived with the request cannot act as operators (`{"ne": null}`), including inside an `or` / `and` group. `fields` takes field names only — each is validated like a `select` column, and anything else raises.
 
 When a hash filter on `includes` is evaluated in memory, `like` / `ilike` use a
 linear-time matcher (a pattern like `%a%a%a%…` can no longer blow up), and `_`

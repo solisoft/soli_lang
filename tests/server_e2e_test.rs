@@ -2931,3 +2931,124 @@ fn inspect_needs_dev_and_loopback() {
     assert!(!remote.status.success());
     assert!(String::from_utf8_lossy(&remote.stderr).contains("loopback"));
 }
+
+/// With the cookie session driver the session lives on the worker's thread
+/// for the length of a request. A WebSocket frame handled next on that worker
+/// read it: a socket opened with no session answered as the last visitor.
+#[test]
+fn a_websocket_does_not_read_the_last_requests_cookie_session() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let server = serve_app_in(
+        app.path(),
+        &[
+            (
+                "config/routes.sl",
+                "get(\"/ping\", \"home#ping\")
+get(\"/login\", \"home#login\")
+router_websocket(\"/ws/who\", \"who#handle\")
+",
+            ),
+            (
+                "app/controllers/home_controller.sl",
+                "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /login
+  def login(req)
+    session_set(\"user_id\", \"alice\")
+    {\"status\": 200, \"body\": \"signed in\"}
+  end
+end
+",
+            ),
+            (
+                "app/controllers/who_controller.sl",
+                "def handle(event)
+  return {} unless event[\"type\"] == \"message\"
+
+  {\"send\": \"user=#{session_get(\"user_id\") ?? \"nobody\"}\"}
+end
+",
+            ),
+        ],
+        &[
+            ("SOLI_SESSION_DRIVER", "cookie"),
+            (
+                "SOLI_SESSION_SECRET",
+                "e2e-cookie-session-secret-0123456789abcdef",
+            ),
+        ],
+    );
+
+    let open = |cookie: Option<&str>| {
+        use tungstenite::client::IntoClientRequest;
+        let mut request = format!("ws://127.0.0.1:{}/ws/who", server.port)
+            .into_client_request()
+            .unwrap();
+        // A browser names its origin; a socket that carries a cookie
+        // without one is refused.
+        request.headers_mut().insert(
+            "Origin",
+            format!("http://127.0.0.1:{}", server.port).parse().unwrap(),
+        );
+        if let Some(cookie) = cookie {
+            request
+                .headers_mut()
+                .insert("Cookie", cookie.parse().unwrap());
+        }
+        let (socket, _) = tungstenite::connect(request).expect("WebSocket handshake");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_ref() {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+        }
+        socket
+    };
+    let ask = |socket: &mut tungstenite::WebSocket<_>| -> String {
+        socket
+            .send(tungstenite::Message::Text("who".into()))
+            .expect("send frame");
+        socket
+            .read()
+            .expect("a reply")
+            .to_text()
+            .unwrap()
+            .to_string()
+    };
+    let sign_in = || {
+        let login = ureq::get(&server.url("/login"))
+            .timeout(Duration::from_secs(10))
+            .call()
+            .expect("GET /login");
+        login
+            .header("set-cookie")
+            .expect("the cookie driver sets its session cookie")
+            .split(';')
+            .next()
+            .unwrap()
+            .to_string()
+    };
+
+    // Bob's socket is open, with a session cookie that is nobody's (any
+    // value will do). Then the one worker serves Alice's request — and
+    // Bob's next frame runs on it.
+    let mut bob = open(Some("session_id=not-a-session"));
+    let cookie = sign_in();
+    assert_eq!(
+        ask(&mut bob),
+        "user=nobody",
+        "a socket read another visitor's session"
+    );
+    // Alice's own socket reads hers, from the cookie it was opened with...
+    let mut alice = open(Some(&cookie));
+    assert_eq!(ask(&mut alice), "user=alice");
+    // ...and Bob's is still nobody's, right after her frame and after
+    // another of her requests.
+    assert_eq!(ask(&mut bob), "user=nobody");
+    sign_in();
+    assert_eq!(ask(&mut bob), "user=nobody");
+    assert_eq!(ask(&mut alice), "user=alice");
+}

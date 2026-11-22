@@ -826,6 +826,7 @@ pub fn parse_hash_filter(
             return Err(format!("{method}() Hash filter keys must be strings"));
         };
         reject_client_supplied_operator(v, key.as_ref(), method)?;
+        reject_client_operators_in_groups(key.as_ref(), v, method)?;
         map.insert(
             key.to_string(),
             value_to_json(v).map_err(|e| e.to_string())?,
@@ -882,23 +883,153 @@ type JoinFilterArgs = (
     Option<crate::db::hash_filter::HashFilter>,
 );
 
+/// A hash filter on a *related* record — the second argument of `join`, the
+/// `where` option or the shorthand of `includes`.
+///
+/// Two things set it apart from a `.where` hash. Its conditions are about the
+/// related record, so the SDBQL names `rel`, not `doc`: rendered against
+/// `doc`, `User.join("posts", {"published": true})` tested the user. And its
+/// binds live in a namespace of their own: sharing the `.where` namespace,
+/// `Post.where({"author_id": me}).join("comments", {"author_id": theirs})`
+/// bound `author_id__eq_1` twice and the later value won — the ownership
+/// condition was evaluated with the other one's value.
+pub fn related_hash_filter(
+    hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+    method: &str,
+    slot: u32,
+) -> Result<JoinFilterArgs, String> {
+    let (pred, _, _) = parse_hash_filter(hash, method)?;
+    if pred.is_empty() {
+        return Ok((None, std::collections::HashMap::new(), None));
+    }
+    // The position of the clause on its builder picks the namespace, so the
+    // same code always produces the same query text (a counter would give
+    // the server a new statement on every call).
+    let generation = RELATED_GENERATION_FLOOR + slot;
+    let (sdbql, binds) = pred.to_sdbql_in_generation(generation);
+    Ok((Some(retarget_doc_alias(&sdbql, "rel")), binds, Some(pred)))
+}
+
+/// Bind generations of related-record filters: far above the handful
+/// `parse_hash_filter_avoiding` walks for `.where`, so the two never meet.
+const RELATED_GENERATION_FLOOR: u32 = 1_000;
+/// Includes take their slots after the joins'.
+const INCLUDE_SLOT_OFFSET: u32 = 10_000;
+
+/// `doc.field` → `<alias>.field` in SDBQL a [`HashFilter`] rendered. Only a
+/// `doc.` that starts a path: a field called `doc` further down one
+/// (`meta.doc.x`) is left alone, and so is anything in a bind name.
+fn retarget_doc_alias(sdbql: &str, alias: &str) -> String {
+    let mut out = String::with_capacity(sdbql.len());
+    let mut previous: Option<char> = None;
+    let mut rest = sdbql;
+    while !rest.is_empty() {
+        let starts_path =
+            !matches!(previous, Some(c) if c.is_alphanumeric() || matches!(c, '_' | '.' | '@'));
+        if starts_path && rest.starts_with("doc.") {
+            out.push_str(alias);
+            out.push('.');
+            rest = &rest[4..];
+            previous = Some('.');
+            continue;
+        }
+        let c = rest.chars().next().unwrap_or(' ');
+        out.push(c);
+        previous = Some(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out
+}
+
+/// What the options hash of `includes(rel, [filter,] {…})` says.
+pub struct IncludeOptions {
+    pub filter: Option<String>,
+    pub bind_vars: std::collections::HashMap<String, serde_json::Value>,
+    pub fields: Option<Vec<String>>,
+    pub hash_filter: Option<crate::db::hash_filter::HashFilter>,
+}
+
+/// Read the options of a filtered `includes`: `where` (a hash filter on the
+/// related record), `fields`, and either bind values for a string filter or
+/// — with no filter at all — a shorthand hash filter (`{"published": true}`).
+pub fn parse_include_options(
+    string_filter: Option<String>,
+    options: &crate::interpreter::value::HashPairs,
+    slot: usize,
+) -> Result<IncludeOptions, String> {
+    let slot = INCLUDE_SLOT_OFFSET + slot as u32;
+    use crate::interpreter::value::{HashKey, HashPairs};
+    let mut parsed = IncludeOptions {
+        filter: string_filter,
+        bind_vars: std::collections::HashMap::new(),
+        fields: None,
+        hash_filter: None,
+    };
+    let mut hash_sdbql: Option<String> = None;
+    let mut rest = HashPairs::default();
+    for (k, v) in options.iter() {
+        let HashKey::String(key) = k else { continue };
+        if **key == *"where" {
+            if let Value::Hash(inner) = v {
+                let (sdbql, binds, pred) = related_hash_filter(inner, "includes", slot)?;
+                hash_sdbql = sdbql;
+                parsed.hash_filter = pred;
+                parsed.bind_vars.extend(binds);
+            }
+        } else if **key == *"fields" {
+            parsed.fields = include_field_names(v)?;
+        } else {
+            rest.insert(k.clone(), v.clone());
+        }
+    }
+    if parsed.hash_filter.is_none() && parsed.filter.is_none() && !rest.is_empty() {
+        // The shorthand: the remaining keys are the conditions. Held to the
+        // rules of any hash filter — field names, and no operator map that
+        // arrived with the request.
+        let (sdbql, binds, pred) =
+            related_hash_filter(&Rc::new(RefCell::new(rest)), "includes", slot)?;
+        hash_sdbql = sdbql;
+        parsed.hash_filter = pred;
+        parsed.bind_vars.extend(binds);
+    } else {
+        for (k, v) in rest.iter() {
+            let HashKey::String(key) = k else { continue };
+            reject_reserved_bind_name(key, "includes")?;
+            parsed.bind_vars.insert(
+                key.to_string(),
+                crate::interpreter::value::value_to_json(v).map_err(|e| e.to_string())?,
+            );
+        }
+    }
+    // On SoliDB the include subquery is filtered by text: the hash filter
+    // goes there too (it used to reach the SQL adapters only, so a
+    // "published only" eager load returned every related row).
+    parsed.filter = match (parsed.filter.take(), hash_sdbql) {
+        (Some(text), Some(hash)) => Some(format!("({text}) AND ({hash})")),
+        (text, hash) => text.or(hash),
+    };
+    Ok(parsed)
+}
+
+/// Bind names the framework keeps for itself (`__soli_through_fk`, the
+/// traversal start…): a bind map handed over by the app — sometimes the
+/// request's own hash — must not be able to replace them.
+pub fn reject_reserved_bind_name(name: &str, method: &str) -> Result<(), String> {
+    if name.starts_with("__soli_") {
+        return Err(format!(
+            "{method}(): bind names starting with `__soli_` are reserved (got `{name}`)"
+        ));
+    }
+    Ok(())
+}
+
 pub fn parse_join_filter_args(
     filter_arg: Option<&Value>,
     binds_arg: Option<&Value>,
+    slot: usize,
 ) -> Result<JoinFilterArgs, String> {
     match filter_arg {
-        Some(Value::Hash(hash)) => {
-            let (pred, sdbql, binds) = parse_hash_filter(hash, "join")?;
-            Ok((
-                if sdbql.trim().is_empty() {
-                    None
-                } else {
-                    Some(sdbql)
-                },
-                binds,
-                if pred.is_empty() { None } else { Some(pred) },
-            ))
-        }
+        Some(Value::Hash(hash)) => related_hash_filter(hash, "join", slot as u32),
         Some(Value::String(s)) => {
             let binds = match binds_arg {
                 Some(Value::Hash(hash)) => {
@@ -942,6 +1073,35 @@ pub fn parse_join_filter_args(
 /// Rather than removing the operator syntax, we ask the one question that
 /// actually separates the two cases: did this container arrive with the
 /// request? A literal written in a `.sl` file never did.
+/// The same question for the conditions inside an `or` / `and` / `not`
+/// group. The group itself is a literal of the app's, so the check above
+/// passes it — and `{"or": [{"email": params["login"]}, …]}` then took
+/// `{"ne": null}` from the request as an operator.
+fn reject_client_operators_in_groups(key: &str, value: &Value, method: &str) -> Result<(), String> {
+    use crate::interpreter::value::HashKey;
+    if !matches!(key, "or" | "and" | "not") {
+        return Ok(());
+    }
+    let conditions: Vec<Value> = match value {
+        Value::Array(items) => items.borrow().iter().cloned().collect(),
+        hash @ Value::Hash(_) => vec![hash.clone()],
+        _ => return Ok(()),
+    };
+    for condition in &conditions {
+        let Value::Hash(pairs) = condition else {
+            continue;
+        };
+        for (inner_key, inner) in pairs.borrow().iter() {
+            let HashKey::String(inner_key) = inner_key else {
+                continue;
+            };
+            reject_client_supplied_operator(inner, inner_key.as_ref(), method)?;
+            reject_client_operators_in_groups(inner_key.as_ref(), inner, method)?;
+        }
+    }
+    Ok(())
+}
+
 fn reject_client_supplied_operator(value: &Value, key: &str, method: &str) -> Result<(), String> {
     let shape = match value {
         Value::Hash(_) => "an operator map",
@@ -1040,6 +1200,36 @@ pub const MAX_FIELD_NAME_LEN: usize = 128;
 ///
 /// `method` is the user-facing call name (e.g. `"find_by"`) so the error
 /// message points the developer at the right line.
+/// The `fields` option of `includes(rel, {"fields": [...]})`: the names of
+/// the related record's fields to return.
+///
+/// Each one is written into the query text (`RETURN {name: rel.name}`), so
+/// each is held to the rule `select` and `pluck` apply. They were not: a
+/// list taken from a request (`{"fields": params["fields"]}`) could close the
+/// object and run a subquery over any collection. A value that is not a
+/// string is an error rather than dropped — a silently shorter list returns
+/// the whole record.
+pub fn include_field_names(value: &Value) -> Result<Option<Vec<String>>, String> {
+    let Value::Array(items) = value else {
+        return Err(format!(
+            "includes() expects `fields` to be an array of field names, got {}",
+            value.type_name()
+        ));
+    };
+    let mut names = Vec::new();
+    for item in items.borrow().iter() {
+        let Value::String(name) = item else {
+            return Err(format!(
+                "includes() field names must be strings, got {}",
+                item.type_name()
+            ));
+        };
+        validate_field_name(name, "includes")?;
+        names.push(name.to_string());
+    }
+    Ok(if names.is_empty() { None } else { Some(names) })
+}
+
 pub fn validate_field_name(field: &str, method: &str) -> Result<(), String> {
     // A field name is often a request parameter (`Post.order(params["sort"])`)
     // and ends up in query text, logs and caches; no real field is this long.
@@ -1662,7 +1852,7 @@ pub(super) fn merge_json_documents(
     serde_json::Value::Object(merged)
 }
 
-pub(super) fn strip_reserved_document_keys(data: &mut serde_json::Value, class_name: &str) {
+pub(crate) fn strip_reserved_document_keys(data: &mut serde_json::Value, class_name: &str) {
     let serde_json::Value::Object(map) = data else {
         return;
     };
@@ -1742,10 +1932,15 @@ pub(super) fn apply_hash_to_instance(
         // we already early-returned above for that case.
         _ => unreachable!(),
     };
+    // On a single-table-inheritance model `type` chooses the class the row
+    // is read back as: a hash of attributes never sets it (it would re-type
+    // a record into another, possibly privileged, subclass).
+    let sti =
+        super::registry::is_sti_subclass(&class_name) || super::registry::is_sti_base(&class_name);
     let mut inst_mut = inst.borrow_mut();
     for (k, v) in pairs.borrow().iter() {
         if let HashKey::String(field) = k {
-            if field.starts_with('_') {
+            if field.starts_with('_') || (sti && **field == *"type") {
                 continue;
             }
             inst_mut.set(field.clone().to_string(), v.clone());

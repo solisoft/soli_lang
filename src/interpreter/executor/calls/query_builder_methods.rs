@@ -335,6 +335,13 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             new_qb.filter = Some(filter);
         }
         for (k, v) in bind_vars {
+            // The bind map of a string filter is the app's — sometimes the
+            // request's own hash. It never replaces a bind the framework
+            // set (the owner of a `through:` relation, a traversal's start).
+            if new_pred.is_none() {
+                crate::interpreter::builtins::model::core::reject_reserved_bind_name(&k, "where")
+                    .map_err(|message| RuntimeError::General { message, span })?;
+            }
             new_qb.bind_vars.insert(k, v);
         }
         if let Some(pred) = new_pred {
@@ -577,66 +584,21 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                 _ => unreachable!(),
             };
 
-            let mut bind_vars = std::collections::HashMap::new();
-            let mut fields: Option<Vec<String>> = None;
-            let mut hash_filter = None;
-
-            for (k, v) in options_hash.iter() {
-                if let crate::interpreter::value::HashKey::String(key) = k {
-                    if **key == *"where" {
-                        if let Value::Hash(inner) = v {
-                            let (pred, _, binds) =
-                                crate::interpreter::builtins::model::parse_hash_filter(
-                                    inner, "includes",
-                                )
-                                .map_err(|e| RuntimeError::General { message: e, span })?;
-                            if !pred.is_empty() {
-                                hash_filter = Some(pred);
-                            }
-                            bind_vars.extend(binds);
-                        }
-                    } else if **key == *"fields" {
-                        if let Value::Array(arr) = v {
-                            let field_names: Vec<String> = arr
-                                .borrow()
-                                .iter()
-                                .filter_map(|v| {
-                                    if let Value::String(s) = v {
-                                        Some(s.to_string())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            if !field_names.is_empty() {
-                                fields = Some(field_names);
-                            }
-                        }
-                    } else {
-                        bind_vars.insert(
-                            key.to_string(),
-                            crate::interpreter::builtins::model::value_to_json(v)
-                                .map_err(|e| RuntimeError::General { message: e, span })?,
-                        );
-                    }
-                }
-            }
-
-            if hash_filter.is_none() && filter.is_none() && !bind_vars.is_empty() {
-                let mut map = serde_json::Map::new();
-                for (k, v) in &bind_vars {
-                    map.insert(k.clone(), v.clone());
-                }
-                if let Ok(pred) =
-                    crate::db::hash_filter::HashFilter::from_json_map(&map, "includes")
-                {
-                    if !pred.is_empty() {
-                        hash_filter = Some(pred);
-                    }
-                }
-            }
-
-            new_qb.add_include(rel_name.to_string(), rel, filter, bind_vars, fields);
+            let options = crate::interpreter::builtins::model::core::parse_include_options(
+                filter,
+                &options_hash,
+                new_qb.includes.len(),
+            )
+            .map_err(|e| RuntimeError::General { message: e, span })?;
+            drop(options_hash);
+            let hash_filter = options.hash_filter;
+            new_qb.add_include(
+                rel_name.to_string(),
+                rel,
+                options.filter,
+                options.bind_vars,
+                options.fields,
+            );
             if let Some(pred) = hash_filter {
                 if let Some(last) = new_qb.includes.last_mut() {
                     last.hash_filter = Some(pred);
@@ -798,6 +760,7 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             crate::interpreter::builtins::model::parse_join_filter_args(
                 arguments.get(1),
                 arguments.get(2),
+                new_qb.joins.len(),
             )
             .map_err(|e| RuntimeError::General { message: e, span })?;
 
@@ -1380,8 +1343,20 @@ through relation's records instead"
             }
         }
         let update_data = match &arguments[0] {
-            hash @ Value::Hash(_) => crate::interpreter::value::value_to_json(hash)
-                .map_err(|e| RuntimeError::type_error(e, span))?,
+            hash @ Value::Hash(_) => {
+                let mut data = crate::interpreter::value::value_to_json(hash)
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
+                // A patch never rewrites a row's key, an edge's endpoints or
+                // an STI `type`, on any number of rows at once.
+                let class_name = crate::interpreter::symbol_string(qb.borrow().class_name)
+                    .unwrap_or_default()
+                    .to_string();
+                crate::interpreter::builtins::model::core::strip_reserved_document_keys(
+                    &mut data,
+                    &class_name,
+                );
+                data
+            }
             other => {
                 return Err(RuntimeError::type_error(
                     format!("update_all() expects a hash, got {}", other.type_name()),

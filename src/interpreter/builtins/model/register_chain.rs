@@ -119,60 +119,17 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     _ => unreachable!(),
                 };
 
-                let mut bind_vars = std::collections::HashMap::new();
-                let mut fields: Option<Vec<String>> = None;
-                let mut hash_filter = None;
-
-                for (k, v) in options_hash.iter() {
-                    if let HashKey::String(key) = k {
-                        if **key == *"where" {
-                            if let Value::Hash(inner) = v {
-                                let (pred, _, binds) = parse_hash_filter(inner, "includes")?;
-                                if !pred.is_empty() {
-                                    hash_filter = Some(pred);
-                                }
-                                bind_vars.extend(binds);
-                            }
-                        } else if **key == *"fields" {
-                            if let Value::Array(arr) = v {
-                                let names: Vec<String> = arr
-                                    .borrow()
-                                    .iter()
-                                    .filter_map(|v| {
-                                        if let Value::String(s) = v {
-                                            Some(s.to_string())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect();
-                                if !names.is_empty() {
-                                    fields = Some(names);
-                                }
-                            }
-                        } else {
-                            bind_vars.insert(
-                                key.to_string(),
-                                crate::interpreter::value::value_to_json(v)?,
-                            );
-                        }
-                    }
-                }
-
-                if hash_filter.is_none() && filter.is_none() && !bind_vars.is_empty() {
-                    let mut map = serde_json::Map::new();
-                    for (k, v) in &bind_vars {
-                        map.insert(k.clone(), v.clone());
-                    }
-                    if let Ok(pred) =
-                        crate::db::hash_filter::HashFilter::from_json_map(&map, "includes")
-                    {
-                        if !pred.is_empty() {
-                            hash_filter = Some(pred);
-                        }
-                    }
-                }
-                qb.add_include(rel_name.to_string(), rel, filter, bind_vars, fields);
+                let options =
+                    super::core::parse_include_options(filter, &options_hash, qb.includes.len())?;
+                drop(options_hash);
+                let hash_filter = options.hash_filter;
+                qb.add_include(
+                    rel_name.to_string(),
+                    rel,
+                    options.filter,
+                    options.bind_vars,
+                    options.fields,
+                );
                 if let Some(pred) = hash_filter {
                     if let Some(last) = qb.includes.last_mut() {
                         last.hash_filter = Some(pred);
@@ -307,7 +264,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             super::relations::reject_polymorphic_relation("join", &rel)?;
 
             let (filter, bind_vars, hash_filter) =
-                parse_join_filter_args(args.get(2), args.get(3))?;
+                parse_join_filter_args(args.get(2), args.get(3), 0)?;
 
             let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
             qb.add_join(rel_name.to_string(), rel, filter, bind_vars);

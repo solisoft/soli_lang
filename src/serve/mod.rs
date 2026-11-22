@@ -3018,6 +3018,9 @@ struct RealtimeSessionGuard;
 impl Drop for RealtimeSessionGuard {
     fn drop(&mut self) {
         set_current_session_id(None);
+        // The cookie driver keeps the session itself on the thread: it goes
+        // with the frame, or the next one on this worker would read it.
+        crate::interpreter::builtins::session_cookie::clear_request_state();
     }
 }
 
@@ -3215,7 +3218,11 @@ fn handle_websocket_event(
     // instead of returning null. Cleared again below on every exit path — a
     // worker thread is reused, and a leaked session would be read by the next
     // request it serves.
-    set_current_session_id(data.context.session_id.clone());
+    set_current_session_id(
+        crate::interpreter::builtins::session::resolve_realtime_session(
+            data.context.session_id.as_deref(),
+        ),
+    );
     let _session_guard = RealtimeSessionGuard;
 
     // Build event hash: {type, connection_id, message, channel?, headers,
@@ -3791,7 +3798,9 @@ fn handle_liveview_event(
         .as_deref()
         .filter(|id| !id.starts_with("sess-"))
         .map(|id| id.to_string());
-    set_current_session_id(socket_session);
+    set_current_session_id(
+        crate::interpreter::builtins::session::resolve_realtime_session(socket_session.as_deref()),
+    );
     let _session_guard = RealtimeSessionGuard;
     // A frame renders on a worker that served HTTP requests: its helpers must
     // not read the last request's `req`.
@@ -3892,6 +3901,9 @@ fn handle_liveview_event(
         Some(taker_session.as_str()),
     ));
     let params_value = json_to_value(&event_params);
+    // The socket's client wrote these, as a request's client writes `params`:
+    // a hash or an array among them is not an operator map for `.where`.
+    crate::interpreter::taint::mark_request_value(&params_value);
 
     let mut event_map: HashPairs = HashPairs::default();
     event_map.insert(

@@ -383,12 +383,8 @@ fn resolve_key(key: Option<&str>, document: &serde_json::Value) -> String {
                 .and_then(|v| v.as_str())
                 .map(str::to_string)
         })
-        .or_else(|| {
-            document
-                .get("id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string)
-        })
+        // Never an `id` field of the document: see `resolve_key` in
+        // `postgres.rs` — a client-sent `id` replaced another row.
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 

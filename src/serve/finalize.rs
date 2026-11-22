@@ -90,6 +90,10 @@ pub(super) fn finish(
 
     // Clear session context
     set_current_session_id(None);
+    // The cookie driver's session lived on this thread for the request (its
+    // cookie was written above): nothing of it stays for whatever the worker
+    // runs next — a WebSocket or LiveView frame read it.
+    crate::interpreter::builtins::session_cookie::clear_request_state();
     crate::interpreter::builtins::flash::clear_request_flashes();
     crate::interpreter::builtins::trust_proxy::set_current_peer_ip(None);
     resp

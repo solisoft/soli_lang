@@ -210,7 +210,7 @@ pub(super) async fn intake(
         // Check if this is a multipart form
         let content_type = req_content_type.as_deref();
         if let Some(ct) = content_type {
-            if ct.starts_with("multipart/form-data") {
+            if crate::serve::csrf::has_media_type(ct, "multipart/form-data") {
                 // Structured view only: form fields + files. Do not also
                 // allocate a lossy UTF-8 `String` of the raw multipart
                 // bytes (binary boundary noise) — that triple-buffered
@@ -716,7 +716,14 @@ pub(super) fn assemble(
     // conditional GET, so a CDN that won't relay a 304 (Cloudflare et
     // al.) can't break instant navigation. The ETag still rides along
     // for revalidation once the window lapses.
+    // An application that said `no-store` meant it: a prefetched copy of a
+    // sensitive page must not sit in the browser cache, readable after
+    // sign-out on a shared machine.
+    let app_forbids_storing = resp_data.headers.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("cache-control") && v.to_ascii_lowercase().contains("no-store")
+    });
     let prefetch_cache_control = if is_prefetch
+        && !app_forbids_storing
         && resp_data
             .headers
             .iter()

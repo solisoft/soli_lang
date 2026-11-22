@@ -1668,9 +1668,11 @@ fn resolve_key(key: Option<&str>, document: &mut serde_json::Value) -> Result<St
     if let Some(k) = document.get("_key").and_then(|v| v.as_str()) {
         return Ok(k.to_string());
     }
-    if let Some(k) = document.get("id").and_then(|v| v.as_str()) {
-        return Ok(k.to_string());
-    }
+    // Not from an `id` field of the document. A document is what the caller
+    // was given — often request data — and inserts are upserts: a client
+    // sending `{"id": "<someone's key>"}` to a `Model.create(params)` replaced
+    // that row, owner field and all. A key is chosen through `key` (the
+    // options hash of `create`) or a `_key` the framework set itself.
     Ok(uuid::Uuid::new_v4().to_string())
 }
 

@@ -71,6 +71,15 @@ struct TrustedProxyEntry {
 }
 
 impl TrustedProxyEntry {
+    /// An entry no peer matches (the limited-broadcast address, which no
+    /// connection comes from): what a list that failed to parse becomes.
+    fn nobody() -> Self {
+        TrustedProxyEntry {
+            network: std::net::IpAddr::V4(std::net::Ipv4Addr::BROADCAST),
+            prefix_len: 32,
+        }
+    }
+
     fn contains(&self, addr: std::net::IpAddr) -> bool {
         match (self.network, addr) {
             (std::net::IpAddr::V4(net), std::net::IpAddr::V4(ip)) => {
@@ -144,12 +153,33 @@ static TRUSTED_PROXIES: TenantValue<Vec<TrustedProxyEntry>> =
 fn read_trusted_proxies() -> Vec<TrustedProxyEntry> {
     crate::platform::env::var("SOLI_TRUSTED_PROXIES")
         .ok()
-        .map(|raw| {
-            raw.split(',')
-                .filter_map(parse_trusted_proxy_entry)
-                .collect()
-        })
+        .map(|raw| parse_trusted_proxies(&raw))
         .unwrap_or_default()
+}
+
+/// The entries of a `SOLI_TRUSTED_PROXIES` value.
+fn parse_trusted_proxies(raw: &str) -> Vec<TrustedProxyEntry> {
+    let mut entries = Vec::new();
+    let mut invalid = Vec::new();
+    for part in raw.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        match parse_trusted_proxy_entry(part) {
+            Some(entry) => entries.push(entry),
+            None => invalid.push(part.to_string()),
+        }
+    }
+    // An empty list means "trust every peer". A list that was set
+    // but did not parse must not end up there: an entry that is a
+    // hostname or a typo would silently let any direct client write
+    // `X-Forwarded-*`. It trusts nobody instead, and says so.
+    if !invalid.is_empty() {
+        eprintln!(
+            "[soli] SOLI_TRUSTED_PROXIES: not an address or a CIDR block: {} — \
+             no proxy is trusted until this is fixed",
+            invalid.join(", ")
+        );
+        return vec![TrustedProxyEntry::nobody()];
+    }
+    entries
 }
 
 /// Whether the server should honor `X-Forwarded-Proto` / `X-Forwarded-Host`
@@ -325,6 +355,29 @@ mod trusted_proxy_tests {
         assert!(parse_trusted_proxy_entry("not-an-ip").is_none());
         assert!(parse_trusted_proxy_entry("10.0.0.0/33").is_none());
         assert!(parse_trusted_proxy_entry("::1/129").is_none());
+    }
+
+    #[test]
+    fn a_list_that_does_not_parse_trusts_nobody() {
+        let peers: [std::net::IpAddr; 3] = [
+            "127.0.0.1".parse().unwrap(),
+            "10.0.0.7".parse().unwrap(),
+            "::1".parse().unwrap(),
+        ];
+        // One bad entry among good ones: the whole list is distrusted, so a
+        // typo cannot widen it — and it is never empty, which would mean
+        // "trust every peer".
+        for raw in ["proxy.internal", "10.0.0.0/8, lb.example", "10.0.0.0/33"] {
+            let entries = parse_trusted_proxies(raw);
+            assert!(!entries.is_empty(), "{raw}");
+            for peer in peers {
+                assert!(!entries.iter().any(|e| e.contains(peer)), "{raw}: {peer}");
+            }
+        }
+        let entries = parse_trusted_proxies("10.0.0.0/8, ::1");
+        assert!(entries.iter().any(|e| e.contains(peers[1])));
+        assert!(entries.iter().any(|e| e.contains(peers[2])));
+        assert!(!entries.iter().any(|e| e.contains(peers[0])));
     }
 
     #[test]

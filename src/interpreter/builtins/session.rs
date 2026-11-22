@@ -1135,6 +1135,25 @@ pub fn ensure_session(cookie_session_id: Option<&str>) -> String {
 ///
 /// Returning `None` here puts an unknown cookie on the same lazy path as no
 /// cookie at all: it costs nothing until the app actually stores something.
+/// The session a WebSocket or LiveView frame runs under, from the session
+/// cookie its socket was opened with.
+///
+/// With the cookie driver the session *is* the sealed cookie, and its state
+/// lives in a thread-local for the length of a request: a realtime frame has
+/// to put its own there, and take whatever the last request left away —
+/// otherwise the handler read the previous visitor's session on that worker
+/// (`session_get("user_id")` answered for somebody else). The other drivers
+/// look a session up by id on each read, so the id is held to its format
+/// here and nothing is fetched per frame.
+pub fn resolve_realtime_session(cookie_session_id: Option<&str>) -> Option<String> {
+    crate::interpreter::builtins::session_cookie::clear_request_state();
+    let cookie_session_id = cookie_session_id?;
+    if get_current_store().driver_name() == "cookie" {
+        return resolve_existing_session(Some(cookie_session_id));
+    }
+    is_valid_session_id(cookie_session_id).then(|| cookie_session_id.to_string())
+}
+
 pub fn resolve_existing_session(cookie_session_id: Option<&str>) -> Option<String> {
     let cookie_session_id = cookie_session_id?;
     let store = get_current_store();

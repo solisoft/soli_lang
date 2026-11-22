@@ -48,7 +48,22 @@ pub fn tenant_from_args(args: &[Value], what: &str) -> Result<Option<Tenant>, St
                 };
                 match name.as_ref() {
                     "url" => tenant.url = Some(text),
-                    "database" => tenant.database = Some(text),
+                    "database" => {
+                        // It goes into the SoliDB URL path as it is: a name,
+                        // not `x/../other` or `x?…` from a site record a
+                        // tenant can edit.
+                        let named = !text.is_empty()
+                            && text.len() <= 64
+                            && text
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
+                        if !named {
+                            return Err(format!(
+                                "{what}: \"database\" must be 1-64 letters, digits, `_` or `-`"
+                            ));
+                        }
+                        tenant.database = Some(text)
+                    }
                     other => {
                         return Err(format!(
                             "{what}: unknown option {other:?} (use \"url\" or \"database\")"

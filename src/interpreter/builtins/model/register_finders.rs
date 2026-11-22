@@ -184,7 +184,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                         }
                     }
                 }
-                let mut doc = defaults;
+                let doc = defaults;
+                // As `create` does: the defaults never choose the key or
+                // the STI `type`.
+                let mut stripped = serde_json::Value::Object(doc);
+                super::core::strip_reserved_document_keys(&mut stripped, &class_name);
+                let serde_json::Value::Object(mut doc) = stripped else {
+                    unreachable!("strip keeps an object an object")
+                };
                 doc.insert(field.clone().to_string(), json_val.clone());
                 if super::registry::is_sti_subclass(&class_name) {
                     doc.insert(
@@ -262,7 +269,11 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                             }
                         }
                     }
-                    serde_json::Value::Object(map)
+                    let mut data = serde_json::Value::Object(map);
+                    // The key is the first argument; the attributes never
+                    // carry another, nor an STI `type`.
+                    super::core::strip_reserved_document_keys(&mut data, &class_name);
+                    data
                 }
                 _ => return Err("upsert() expects hash data".to_string()),
             };
@@ -369,19 +380,19 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                                 }
                             }
                         }
-                        serde_json::Value::Object(map)
+                        let mut doc = serde_json::Value::Object(map);
+                        // As `create` does: the attributes never choose the
+                        // key, an edge's endpoints or an STI `type`. A bulk
+                        // insert is an upsert, so a `_key` or an `id` taken
+                        // from the items replaced existing rows.
+                        super::core::strip_reserved_document_keys(&mut doc, &class_name);
+                        doc
                     }
                     _ => continue,
                 };
                 if bulk_sql {
-                    // The key the document already carries, else a fresh one
-                    // — the same rule single-row insert applies.
-                    let key = doc
-                        .get("_key")
-                        .and_then(|v| v.as_str())
-                        .or_else(|| doc.get("id").and_then(|v| v.as_str()))
-                        .map(str::to_string)
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                    // Always a fresh key (the items carry none, see above).
+                    let key = uuid::Uuid::new_v4().to_string();
                     let mut doc = doc;
                     if let Some(obj) = doc.as_object_mut() {
                         obj.insert("_key".to_string(), serde_json::json!(key));

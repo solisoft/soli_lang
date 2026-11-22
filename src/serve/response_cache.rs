@@ -360,20 +360,18 @@ fn keepable(response: &ResponseData) -> bool {
         if k.eq_ignore_ascii_case("cache-control") {
             cache_control.push(v.as_str());
         }
-        // A new framework session (a flash consumed, a token rotated) belongs
-        // to this one response, not to the requests that would replay it.
-        if k.eq_ignore_ascii_case("set-cookie") && cookie_name(v).eq_ignore_ascii_case("session_id")
-        {
+        // A cookie belongs to the one visitor it was set for. Only the
+        // cookie literally named `session_id` used to stop the caching: a
+        // `__Host-session_id` (SOLI_SESSION_HOST_PREFIX), a remember-me
+        // token or a signed id went into the cache and out to every visitor
+        // the response was replayed to — one session for all of them.
+        if k.eq_ignore_ascii_case("set-cookie") {
             return false;
         }
     }
     !cache_control
         .iter()
         .any(|v| has_directive(v, &["no-store", "no-transform"]))
-}
-
-fn cookie_name(set_cookie: &str) -> &str {
-    set_cookie.split(['=', ';']).next().unwrap_or("").trim()
 }
 
 fn directives<'a>(
@@ -530,15 +528,21 @@ mod tests {
 
     #[test]
     fn only_a_reusable_200_is_kept() {
-        assert!(keepable(&reply(
-            200,
-            &[("Set-Cookie", "last_room=1; Path=/")]
-        )));
+        assert!(keepable(&reply(200, &[("Content-Type", "text/html")])));
         assert!(!keepable(&reply(302, &[])));
-        assert!(!keepable(&reply(
-            200,
-            &[("Set-Cookie", "session_id=abc; Path=/")]
-        )));
+        // A cookie is one visitor's: whatever its name, the reply that sets
+        // it is not replayed to others.
+        for cookie in [
+            "session_id=abc; Path=/",
+            "__Host-session_id=abc; Path=/; Secure",
+            "remember_token=u:t; Path=/",
+            "last_room=1; Path=/",
+        ] {
+            assert!(
+                !keepable(&reply(200, &[("Set-Cookie", cookie)])),
+                "{cookie}"
+            );
+        }
         assert!(!keepable(&reply(
             200,
             &[("Cache-Control", "private, no-store")]

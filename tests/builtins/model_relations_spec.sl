@@ -196,3 +196,39 @@ describe("has_and_belongs_to_many") do
     assert_eq(query_of(Journal.includes("stickers")), expected)
   end
 end
+
+describe("a hash filter on a related record") do
+  test("join tests the related record, not the parent") do
+    query = query_of(Writer.join("essays", {"published": true}))
+    assert_contains(query, "FILTER rel.writer_id == doc._key AND rel.published == @")
+    assert(!query.includes?("doc.published"))
+  end
+
+  test("the includes shorthand filters the related rows") do
+    query = query_of(Writer.includes("essays", {"published": true}))
+    assert_contains(query, "FILTER rel.writer_id == doc._key AND rel.published == @")
+  end
+
+  test("the where option of includes filters the related rows") do
+    query = query_of(Writer.includes("essays", {"where": {"published": true}}))
+    assert_contains(query, "FILTER rel.writer_id == doc._key AND rel.published == @")
+  end
+
+  test("does not take the bind of an earlier where on the same field") do
+    text = Writer.where({"owner_id": "mine"}).join("essays", {"owner_id": "theirs"}).to_query
+    assert_contains(text, "mine")
+    assert_contains(text, "theirs")
+  end
+
+  test("a field name in fields is held to the rule of select") do
+    assert_raises("includes() field name") do
+      Writer.includes("essays", {"fields": ["x: (FOR u IN users RETURN u), y: \""]}).to_query
+    end
+  end
+
+  test("a value that is not a name is an error, not dropped") do
+    assert_raises("field names must be strings") do
+      Writer.includes("essays", {"fields": [1]}).to_query
+    end
+  end
+end

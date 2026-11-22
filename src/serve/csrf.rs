@@ -263,8 +263,21 @@ fn csrf_tokens_required() -> bool {
 
 /// Does this content type mark a browser form submission?
 fn is_form_content_type(content_type: &str) -> bool {
-    content_type.starts_with("application/x-www-form-urlencoded")
-        || content_type.starts_with("multipart/form-data")
+    has_media_type(content_type, "application/x-www-form-urlencoded")
+        || has_media_type(content_type, "multipart/form-data")
+}
+
+/// Does `content_type` name `media`, whatever its casing?
+///
+/// Media types are case-insensitive, and the body parser lowercases before it
+/// decides how to read a body. A comparison that did not let
+/// `Application/X-WWW-Form-Urlencoded` through as "not a form": the token
+/// requirement was skipped, and the body was still parsed into `params`.
+pub(crate) fn has_media_type(content_type: &str, media: &str) -> bool {
+    content_type
+        .as_bytes()
+        .get(..media.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(media.as_bytes()))
 }
 
 /// Extract a single field from an `application/x-www-form-urlencoded` body
@@ -291,10 +304,10 @@ pub(crate) fn apply_form_method_override(
         return method;
     }
     let requested = match content_type {
-        Some(ct) if ct.starts_with("application/x-www-form-urlencoded") => {
+        Some(ct) if has_media_type(ct, "application/x-www-form-urlencoded") => {
             form_body_param(body, "_method")
         }
-        Some(ct) if ct.starts_with("multipart/form-data") => multipart_form
+        Some(ct) if has_media_type(ct, "multipart/form-data") => multipart_form
             .and_then(|form| form.iter().find(|(k, _)| k == "_method"))
             .map(|(_, v)| v.clone()),
         _ => None,
@@ -337,9 +350,9 @@ pub(crate) fn verify_csrf_token(
         .filter(|t| !t.is_empty())
         .map(str::to_string)
         .or_else(|| {
-            if content_type.starts_with("application/x-www-form-urlencoded") {
+            if has_media_type(content_type, "application/x-www-form-urlencoded") {
                 form_body_param(&data.body, "_csrf_token")
-            } else if content_type.starts_with("multipart/form-data") {
+            } else if has_media_type(content_type, "multipart/form-data") {
                 data.multipart_form
                     .as_ref()
                     .and_then(|form| form.iter().find(|(k, _)| k == "_csrf_token"))
@@ -772,5 +785,19 @@ mod app_host_validation_tests {
             None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },
         }
         out
+    }
+
+    #[test]
+    fn a_form_is_a_form_whatever_the_casing_of_its_media_type() {
+        for content_type in [
+            "application/x-www-form-urlencoded",
+            "Application/X-WWW-Form-Urlencoded; charset=utf-8",
+            "MULTIPART/FORM-DATA; boundary=x",
+        ] {
+            assert!(is_form_content_type(content_type), "{content_type}");
+        }
+        assert!(!is_form_content_type("application/json"));
+        assert!(!is_form_content_type("app"));
+        assert!(!is_form_content_type(""));
     }
 }

@@ -2659,7 +2659,12 @@ fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
             Err(e) => Value::String(format!("Error: {e}").into()),
         };
     }
-    let mut query = format!("FOR doc IN {}", collection);
+    // `for_head`, not a bare `FOR doc IN <collection>`: it carries the
+    // builder's scope — a `through:` membership, the STI subclass, a graph
+    // traversal. Without it `Admin.where(…).delete_all` reached every type
+    // of the shared collection, and `user.projects.where(…).exists` answered
+    // for any project.
+    let mut query = qb.for_head();
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
@@ -2747,7 +2752,12 @@ fn execute_query_builder_update_all_inner(
             Err(e) => Value::String(format!("Error: {e}").into()),
         };
     }
-    let mut query = format!("FOR doc IN {}", collection);
+    // `for_head`, not a bare `FOR doc IN <collection>`: it carries the
+    // builder's scope — a `through:` membership, the STI subclass, a graph
+    // traversal. Without it `Admin.where(…).delete_all` reached every type
+    // of the shared collection, and `user.projects.where(…).exists` answered
+    // for any project.
+    let mut query = qb.for_head();
 
     let mut bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
@@ -2827,7 +2837,12 @@ fn execute_query_builder_exists_inner(qb: &QueryBuilder) -> Value {
             Err(e) => Value::String(format!("Error: {e}").into()),
         };
     }
-    let mut query = format!("FOR doc IN {}", collection);
+    // `for_head`, not a bare `FOR doc IN <collection>`: it carries the
+    // builder's scope — a `through:` membership, the STI subclass, a graph
+    // traversal. Without it `Admin.where(…).delete_all` reached every type
+    // of the shared collection, and `user.projects.where(…).exists` answered
+    // for any project.
+    let mut query = qb.for_head();
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
@@ -3080,7 +3095,12 @@ pub fn execute_query_builder_group_by(
     let collection = crate::interpreter::symbol_string(qb.collection)
         .unwrap_or("unknown")
         .to_string();
-    let mut query = format!("FOR doc IN {}", collection);
+    // `for_head`, not a bare `FOR doc IN <collection>`: it carries the
+    // builder's scope — a `through:` membership, the STI subclass, a graph
+    // traversal. Without it `Admin.where(…).delete_all` reached every type
+    // of the shared collection, and `user.projects.where(…).exists` answered
+    // for any project.
+    let mut query = qb.for_head();
 
     let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 

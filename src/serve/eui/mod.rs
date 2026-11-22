@@ -772,7 +772,11 @@ fn run_eui_event(
         let mut event_map = crate::interpreter::value::HashPairs::default();
         let key = |k: &str| crate::interpreter::value::HashKey::String(k.into());
         event_map.insert(key("event"), Value::String(data.event.clone().into()));
-        event_map.insert(key("params"), json_to_value(&data.params));
+        let params_value = json_to_value(&data.params);
+        // Written by the client, as a request's `params` are: a container
+        // among them is not an operator map for `.where`.
+        crate::interpreter::taint::mark_request_value(&params_value);
+        event_map.insert(key("params"), params_value);
         event_map.insert(key("state"), json_to_value(&instance.state));
         let event_value = Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(event_map)));
 
