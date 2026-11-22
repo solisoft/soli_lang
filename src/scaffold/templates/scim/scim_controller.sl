@@ -185,15 +185,19 @@ class ScimController < Controller
     return @_error(404, "User #{params["id"]} not found", nil) if user.nil?
 
     @_take_charge(user)
-    operations = @_body["Operations"] ?? []
+    operations = @_body["Operations"]
+    return @_error(400, "Operations must be a list", "invalidSyntax") unless type(operations) == "array"
+
     operations.each do |operation|
+      next unless type(operation) == "hash"
+
       path = operation["path"].to_s
-      value = operation["op"].to_s.downcase == "remove" ? nil : operation["value"]
+      removing = operation["op"].to_s.downcase == "remove"
       if path.blank?
         # Okta's shape: no path, the attributes in the value.
-        @_assign(user, value ?? {})
+        @_assign(user, operation["value"]) if type(operation["value"]) == "hash"
       else
-        @_set(user, path, value)
+        @_set(user, path, removing ? nil : operation["value"], removing)
       end
     end
     return @_error(409, "A user with that userName exists", "uniqueness") if @_taken?(user.email, user)
@@ -305,10 +309,16 @@ class ScimController < Controller
     single = getenv("SCIM_TOKEN").to_s.trim
     tokens["default"] = single if single.length >= 32
     getenv("SCIM_TOKENS").to_s.split(",").each do |pair|
-      parts = pair.trim.split("=")
-      next unless parts.length == 2 && parts[1].trim.length >= 32
+      # Cut at the first `=` only: a base64 token ends with some.
+      entry = pair.trim
+      cut = entry.index_of("=")
+      next if cut.nil? || cut < 1
 
-      tokens[parts[0].trim] = parts[1].trim
+      name = entry.substring(0, cut).trim
+      token = entry.substring(cut + 1, entry.length).trim
+      next unless name.present? && name != "default" && token.length >= 32
+
+      tokens[name] = token
     end
     tokens
   end
@@ -333,47 +343,77 @@ class ScimController < Controller
   def _body
     body = req["json"]
     body = json_parse(req["body"].to_s) rescue nil if body.nil?
-    body ?? {}
+    # Anything but an object — an array, a string — is read as an empty one.
+    type(body) == "hash" ? body : {}
   end
 
   # The address a resource names: its userName, else its primary email.
   def _email_of(body)
-    name = body["userName"].to_s.trim.downcase
+    name = type(body["userName"]) == "string" ? body["userName"].trim.downcase : ""
     return name if name.present?
 
-    emails = body["emails"] ?? []
-    emails.length > 0 ? emails[0]["value"].to_s.trim.downcase : ""
+    emails = body["emails"]
+    return "" unless type(emails) == "array"
+
+    entries = emails.filter { |entry| type(entry) == "hash" && type(entry["value"]) == "string" }
+    primary = entries.filter { |entry| entry["primary"].to_s.downcase == "true" }
+    chosen = primary.length > 0 ? primary[0] : entries[0]
+    chosen.nil? ? "" : chosen["value"].trim.downcase
   end
 
   # Take what a whole resource (or a path-less patch) says about the user.
   def _assign(user, body)
-    user.scim_external_id = body["externalId"] if body.has_key("externalId")
-    user.email = body["userName"].to_s.trim.downcase if body["userName"].to_s.present?
-    user.name = body["displayName"] if body.has_key("displayName")
+    # A directory sends strings here; anything else (a hash, an array) is
+    # not stored as a name or an address.
+    user.scim_external_id = @_text(body["externalId"]) if @_text?(body["externalId"])
+    user.email = @_address(body["userName"]) if @_address(body["userName"]).present?
+    user.name = @_text(body["displayName"]) if @_text?(body["displayName"])
     name = body["name"]
-    unless name.nil?
-      user.scim_given_name = name["givenName"] if name.has_key("givenName")
-      user.scim_family_name = name["familyName"] if name.has_key("familyName")
-      user.name = name["formatted"] if name["formatted"].to_s.present?
+    if type(name) == "hash"
+      user.scim_given_name = @_text(name["givenName"]) if @_text?(name["givenName"])
+      user.scim_family_name = @_text(name["familyName"]) if @_text?(name["familyName"])
+      user.name = @_text(name["formatted"]) if @_text?(name["formatted"]) && name["formatted"].present?
     end
     @_set_active(user, body["active"]) if body.has_key("active")
   end
 
   # Apply one patch operation that names its attribute.
-  def _set(user, path, value)
+  def _set(user, path, value, removing = false)
     attribute = path.downcase
     # `urn:ietf:params:scim:schemas:core:2.0:User:active` is `active`.
     attribute = attribute.split(":").last if attribute.starts_with?("urn:")
     return @_set_active(user, value) if attribute == "active"
 
-    user.scim_external_id = value if attribute == "externalid"
-    user.name = value if attribute == "displayname" || attribute == "name.formatted"
-    user.scim_given_name = value if attribute == "name.givenname"
-    user.scim_family_name = value if attribute == "name.familyname"
-    # `userName`, or an email path such as `emails[type eq "work"].value`.
-    if (attribute == "username" || attribute.starts_with?("emails")) && value.to_s.present?
-      user.email = value.to_s.trim.downcase
+    # `userName`, or the work / primary address — never another entry
+    # (`emails[type eq "home"].value`) nor another field of one (`.display`).
+    if attribute == "username" || Regex.matches("^emails(\\[(type eq \"work\"|primary eq true)\\])?\\.value$", attribute)
+      user.email = @_address(value) if @_address(value).present?
+      return
     end
+    # A value that is not a string changes nothing; only `remove` clears.
+    return unless removing || @_text?(value)
+
+    stored = removing ? nil : @_text(value)
+    user.scim_external_id = stored if attribute == "externalid"
+    user.name = stored if attribute == "displayname" || attribute == "name.formatted"
+    user.scim_given_name = stored if attribute == "name.givenname"
+    user.scim_family_name = stored if attribute == "name.familyname"
+  end
+
+  def _text?(value)
+    type(value) == "string"
+  end
+
+  # A string, cut at 255 characters.
+  def _text(value)
+    value.length > 255 ? value.substring(0, 255) : value
+  end
+
+  # A login address from a string of at most 255 characters, else "".
+  def _address(value)
+    return "" unless type(value) == "string" && value.length <= 255
+
+    value.trim.downcase
   end
 
   # Deactivate or reactivate. A deactivated account's sessions are closed and
@@ -439,7 +479,17 @@ class ScimController < Controller
     @_json(status, body)
   end
 
+  # A request with the right token is never refused for what others sent
+  # from its address — that would let anyone switch a directory's
+  # provisioning off. Only the wrong ones are slowed: past twenty in five
+  # minutes they are answered 429 without being looked at.
   def _unauthorized
+    unless RateLimiter("scim_auth:" + client_ip(req).to_s, 20, 300).allowed
+      response = @_error(429, "Too many requests without a valid bearer token", nil)
+      response["headers"]["Retry-After"] = "300"
+      return response
+    end
+
     response = @_error(401, "A valid bearer token is required", nil)
     response["headers"]["WWW-Authenticate"] = "Bearer"
     response

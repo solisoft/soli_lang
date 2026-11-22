@@ -551,12 +551,65 @@ fn the_fourth_audit_s_guards_are_in_the_generated_files() {
     has(&tokens, r#""sv": (session_version ?? 0).to_i"#);
     has(&tokens, r#""cid": chain_id.to_s"#);
     assert_eq!(
-        tokens.matches("oidc_within_rate_limit(req,").count(),
+        tokens.matches("this._refused(").count(),
         4,
-        "token, revoke, device_authorization and introspect are throttled:\n{tokens}"
+        "token, revoke, device_authorization and introspect are guarded:\n{tokens}"
     );
+    // The guard: the budget, and no credential in the URL.
+    has(&tokens, "oidc_within_rate_limit(req, bucket, limit)");
+    has(&tokens, "must be sent in the request body, not the URL");
+    // Whose code or token it is comes before anything is consumed or revoked.
+    let peek = tokens
+        .find("OauthAuthorizationCode.peek(code)")
+        .expect("no peek");
+    let burn = tokens
+        .find("OauthAuthorizationCode.burn(code)")
+        .expect("no burn");
+    assert!(
+        peek < burn,
+        "the client is checked after the code is burned"
+    );
+    let owner = tokens
+        .find("Refresh token belongs to a different client")
+        .unwrap();
+    let reuse = tokens.find("if token.reused?()").unwrap();
+    assert!(
+        owner < reuse,
+        "another client can revoke the family by replaying"
+    );
+    has(&tokens, r#"client.supports_grant?("refresh_token")"#);
+    has(&tokens, "client.public?() || client.require_pkce == true");
+    has(
+        &tokens,
+        r#"OauthRevocation.revoke(claims["jti"], "client_revoked")"#,
+    );
+    has(&refresh, "OIDC_REFRESH_CHAIN_TTL");
+    has(&refresh, r#""chain_expires_at": ceiling.to_i"#);
+    let config = read("app/services/oidc_config.sl");
+    has(&config, "token.length >= 32");
+    has(&config, r#"getenv("APP_BASE_URL")"#);
+    has(&helper, "&iss=#{url_encode(oidc_issuer())}");
+    has(&helper, "oidc_previous_public_key()");
 
     let authorize = read("app/controllers/oauth_authorizations_controller.sl");
+    has(
+        &authorize,
+        "client.public?() || client.require_pkce == true",
+    );
+    has(&authorize, "This client must send a signed request object.");
+    // The consent POST of a signed request reads what the GET validated.
+    has(&authorize, r#""oidc_consent""#);
+    has(&authorize, "effective = this._pending_consent(client)");
+    has(&tokens, "The sign-in this grant came from has ended");
+    has(
+        &authorize,
+        "The request object expires too far in the future",
+    );
+    has(
+        &authorize,
+        r#""session_expires_at": session_get("sign_in_expires_at")"#,
+    );
+    has(&authorize, "&iss=#{url_encode(oidc_issuer())}");
     assert_eq!(
         authorize
             .matches("return this._impersonating() if this._impersonating?()")

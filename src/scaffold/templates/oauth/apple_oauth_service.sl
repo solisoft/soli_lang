@@ -63,7 +63,8 @@ class AppleOauth
       "scope=#{url_encode("name email")}",
       "state=#{url_encode(state)}",
       "code_challenge=#{url_encode(code_challenge.to_s)}",
-      "code_challenge_method=S256"
+      "code_challenge_method=S256",
+      "nonce=#{url_encode(OauthSso.begin_nonce)}"
     ]
 
     "#{AppleOauth.base_url}/auth/authorize?#{query.join("&")}"
@@ -105,6 +106,7 @@ class AppleOauth
     throw "Apple id_token: wrong issuer" unless claims["iss"] == APPLE_ISSUER
     throw "Apple id_token: issued for another client" unless claims["aud"] == getenv("APPLE_CLIENT_ID").to_s
     throw "Apple id_token: expired" unless claims["exp"].to_i > DateTime.utc.to_unix
+    OauthSso.check_nonce(claims["nonce"], "Apple")
 
     claims
   end

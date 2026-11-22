@@ -57,7 +57,52 @@ class OauthSso
     session_delete("oauth_state")
     session_delete("oauth_provider")
     session_delete("oauth_pkce_verifier")
+    session_delete("oauth_nonce")
     session_delete("oauth_link_user")
+  end
+
+  # OpenID Connect `nonce`, for the providers whose id_token is read (Apple,
+  # Microsoft): a random value sent with the authorization request and found
+  # again in the token. State and PKCE already tie the code to this browser;
+  # the nonce ties the *token* to this request, so one issued for another
+  # sign-in cannot be slipped in.
+  static def begin_nonce
+    nonce = Crypto.random_hex(32)
+    session_set("oauth_nonce", nonce)
+    nonce
+  end
+
+  # Refuse a token whose `nonce` is not the one this sign-in sent.
+  static def check_nonce(claimed, provider)
+    expected = session_get("oauth_nonce").to_s
+    return if expected.present? && claimed.to_s.present? && Crypto.secure_compare(expected, claimed.to_s)
+
+    OauthSso.refuse("the #{provider} token does not answer this sign-in")
+  end
+
+  # A provider's or a visitor's words, safe to put on one log line: control
+  # characters (a line break forging a second entry) become spaces, and the
+  # whole is cut at 2000 characters.
+  static def log_safe(text)
+    clean = Regex.replace_all("[\\x00-\\x1f\\x7f\\x{85}\\x{2028}\\x{2029}]", text.to_s, " ")
+    clean.length > 2000 ? clean.substring(0, 2000) : clean
+  end
+
+  # The base URL of a self-hosted provider (GitHub Enterprise, GitLab): the
+  # official one when `env_name` is unset, else that URL — over https, or
+  # plain http only to this machine. Over plain http to another host the
+  # client secret, the code and the profile would cross the network in clear.
+  static def instance_base(env_name, official)
+    url = getenv(env_name).to_s.trim
+    return official if url.blank?
+
+    while url.ends_with?("/")
+      url = url.substring(0, url.length - 1)
+    end
+    local = Regex.matches("^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?(/|$)", url)
+    throw "#{env_name} must be an https:// URL (plain http only for this machine)" unless url.starts_with?("https://") || local
+
+    url
   end
 
   # PKCE (S256): store the verifier, return the code_challenge for the

@@ -379,6 +379,22 @@ taken code is drawn again), the approval updates that request by its key, and
 a poll writes only its own two fields — it cannot put a decided request back
 to pending or un-consume one.
 
+**A refresh-token family has a ceiling.** Rotation used to buy 30 more days each time, for ever. A family now ends `OIDC_REFRESH_CHAIN_TTL` (90 days) after its first token, or when the sign-in it came from does (a SAML session's expiry) if that is sooner: a token never outlives the ceiling, and past it the client sends the user through `/oauth/authorize` again.
+
+**A code and a refresh token belong to one client.** The token endpoint looks at whose code or refresh token it was handed before it does anything with it. Another client presenting one gets `invalid_grant` and changes nothing — it cannot burn a code it intercepted, nor, by replaying a used code or a rotated token, revoke the tokens of the client it belongs to. A client whose `grant_types` lost `refresh_token` can no longer refresh.
+
+**PKCE for every public client.** A public client has no secret, so PKCE is what binds a code to it. It is required whatever the stored `require_pkce` flag says; the flag only matters for confidential clients.
+
+**No credential in the URL.** `/oauth/token`, `/oauth/revoke`, `/oauth/introspect` and `/oauth/device_authorization` answer `invalid_request` to a `client_secret`, `code`, `code_verifier`, `refresh_token`, `device_code` or `token` sent in the query string: it would work, and stay in access logs, proxies and histories.
+
+**`/oauth/revoke` revokes access tokens too.** Handed one of its own access tokens, a client gets it denylisted by `jti` — userinfo and introspection refuse it from then on. It used to answer `200` and leave the token valid.
+
+**`iss` in the authorization response.** Every redirect back to a client — a code or an error — carries `iss`, and discovery says so (`authorization_response_iss_parameter_supported`, RFC 9207): a client talking to several providers can tell which one answered.
+
+**A client with a request-object key signs every request.** Registering `request_object_key` used to make signed requests possible, not required: plain parameters still worked, so the signature protected nothing. Such a client now gets an error page without `request=`, and a request object is refused when it expires more than ten minutes ahead. The consent form of a signed request carries only a reference: what the signature covered is kept in the session for ten minutes and read back from there, so the form cannot change it and a short-lived object does not expire under the person reading the page.
+
+**Smaller things.** `SOLI_OIDC_REGISTRATION_TOKEN` under 32 characters is ignored (registration answers `404`). An access token signed with the previous key verifies until it expires, as an id_token hint already did. The logout confirmation names the application asking and where the browser goes next. Outside production, an unset `SOLI_OIDC_ISSUER` falls back to `APP_BASE_URL` before `localhost`. Device requests an hour past their expiry are swept as new ones start. A code whose sign-in has ended by the time it is exchanged (a SAML session's expiry) issues nothing.
+
 **Throttled.** `/oauth/token`, `/oauth/introspect`, `/oauth/revoke` and
 registration share `OIDC_REQUESTS_PER_IP` (300 a minute) per address — each
 verifies a client secret, an Argon2 hash, for anyone naming a client id;

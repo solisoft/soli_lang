@@ -30,7 +30,10 @@ class OauthAuthorizationCode < Model
       "expires_at": now + OIDC_CODE_TTL,
       "used_at": null,
       "refresh_chain_id": uuid_v4(),
-      "session_version": attributes["session_version"] ?? 0
+      "session_version": attributes["session_version"] ?? 0,
+      # When the sign-in this grant comes from ends (a SAML session's
+      # expiry), or nil: the refresh-token family ends with it.
+      "session_expires_at": attributes["session_expires_at"]
     })
     # Minted here rather than at first exchange: if this code is later
     # replayed, we need to know which token family the *first* exchange
@@ -66,6 +69,15 @@ class OauthAuthorizationCode < Model
     return null unless rows.is_a?("array")
 
     return rows.first()
+  end
+
+  # The row a code names, used or not, without consuming it — so the token
+  # endpoint can refuse a caller the code was not issued to before it burns
+  # the code or treats the attempt as a replay.
+  static def peek(code)
+    return null if code.to_s.blank?
+
+    return OauthAuthorizationCode.find_by("code_digest", Crypto.sha256(code.to_s))
   end
 
   # A code presented after it was already burned. That is either a replay

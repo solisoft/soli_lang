@@ -1114,3 +1114,68 @@ fn a_directory_cannot_reach_another_directory_s_accounts() {
         "ada@example.com password=false active=false directory=okta"
     );
 }
+
+/// A token that ends with `=` (base64 padding) is one token, a value that is
+/// not a string is not stored, and an address that keeps guessing is refused
+/// even once it guesses right.
+#[test]
+fn padded_tokens_work_odd_values_are_not_stored_and_guessing_is_throttled() {
+    let dir = served_app();
+    let padded = "b2t0YS10b2tlbi0wMTIzNDU2Nzg5YWJjZGVmMDEyMw==";
+    let tokens = format!("okta={padded}");
+    let server = serve_with(dir.path(), &[("SCIM_TOKENS", &tokens)]);
+    let ada = create_user(&server, "ada@example.com", padded);
+    let path = format!("/Users/{ada}");
+
+    let odd = json!({"Operations": [
+        {"op": "replace", "path": "userName", "value": {"evil": true}},
+        {"op": "replace", "path": "displayName", "value": ["a", "b"]}
+    ]});
+    let (status, body) = scim(&server, "PATCH", &path, Some(odd), padded);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["userName"], json!("ada@example.com"), "{body}");
+    assert!(body["displayName"].as_str().is_none(), "{body}");
+    let odd = json!({"userName": ["x@example.com"], "name": "not a hash"});
+    let (status, body) = scim(&server, "PUT", &path, Some(odd), padded);
+    assert_eq!(status, 400, "{body}");
+    assert!(
+        account(&server, "ada@example.com")
+            .0
+            .starts_with("ada@example.com "),
+        "the refused PUT moved the address"
+    );
+
+    // A number where a string goes changes nothing — the id is not erased.
+    let keep = json!({"Operations": [{"op": "replace", "path": "externalId", "value": "ext-1"}]});
+    assert_eq!(scim(&server, "PATCH", &path, Some(keep), padded).0, 200);
+    let odd = json!({"Operations": [
+        {"op": "replace", "path": "externalId", "value": 12345},
+        {"op": "replace", "path": "emails[type eq \"home\"].value", "value": "home@example.com"},
+        {"op": "replace", "value": "not a hash"},
+        "not an operation"
+    ]});
+    let (status, body) = scim(&server, "PATCH", &path, Some(odd), padded);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["externalId"], json!("ext-1"), "{body}");
+    assert_eq!(body["userName"], json!("ada@example.com"), "{body}");
+    let not_a_list = json!({"Operations": "x"});
+    assert_eq!(
+        scim(&server, "PATCH", &path, Some(not_a_list), padded).0,
+        400
+    );
+    // The work address is the login address.
+    let work = json!({"Operations": [
+        {"op": "replace", "path": "emails[type eq \"work\"].value", "value": "Ada.L@Example.com"}
+    ]});
+    let (status, body) = scim(&server, "PATCH", &path, Some(work), padded);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["userName"], json!("ada.l@example.com"), "{body}");
+
+    // Wrong tokens are slowed, the right one never: nobody can switch a
+    // directory's provisioning off by guessing from its address.
+    for _ in 0..20 {
+        assert_eq!(scim(&server, "GET", "/Users", None, "a-wrong-token").0, 401);
+    }
+    assert_eq!(scim(&server, "GET", "/Users", None, "a-wrong-token").0, 429);
+    assert_eq!(scim(&server, "GET", "/Users", None, padded).0, 200);
+}

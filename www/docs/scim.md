@@ -96,6 +96,8 @@ A write that cannot be saved — a `userName` that is another account's, an
 address the model refuses — answers `409` or `400`, never `200`: a directory
 that reads `200` records the change, a deactivation included, as made.
 
+Past twenty requests without a valid bearer token from one address in five minutes, the next ones are answered `429`; a request with the right token is always served, so nobody can switch a directory's provisioning off from its address. A token in `SCIM_TOKENS` may contain `=` (the pair is cut at the first one). A value that is not a string — a number, a hash, an array where a name or an address goes — changes nothing (only `remove` clears a field), and a `PUT` whose `userName` is not a string answers `400`. The login address follows `userName`, or the work or primary entry of `emails` — never another entry.
+
 Both shapes of `PATCH` are understood: Okta's, with no path and the attributes
 in the value (`{"op": "replace", "value": {"active": false}}`), and Entra's,
 with a path and — for `active` — the string `"False"`

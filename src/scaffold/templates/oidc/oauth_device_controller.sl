@@ -49,7 +49,8 @@ class OauthDeviceController < Controller
       params["approve"].to_s == "1",
       user["_key"],
       session_get("auth_time"),
-      user.current_session_version
+      user.current_session_version,
+      session_get("sign_in_expires_at")
     )
     return this._enter_step("That code is invalid, expired or already used.") if row.nil?
 

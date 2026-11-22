@@ -22,6 +22,12 @@ class OauthDeviceCode < Model
   static def issue(client_id, scopes)
     device_code = Crypto.random_token()
     now = DateTime.utc().to_unix()
+    # Requests an hour past their expiry are of no use to anyone: without
+    # this the collection only grows, one row per device that ever asked.
+    # One start in sixteen does it, so the endpoint is not a delete per call.
+    if Crypto.random_hex(1).starts_with?("0")
+      OauthDeviceCode.where({"expires_at": {"lt": now - 3600}}).delete_all
+    end
     user_code = nil
     attempts = 0
     while user_code.nil? && attempts < 5
@@ -102,7 +108,7 @@ class OauthDeviceCode < Model
 
   # Record the person's decision. Only a still-pending code can be decided, so
   # a second tab cannot flip an answer already given.
-  static def decide(user_code, approved, user_key, auth_time, session_version = 0)
+  static def decide(user_code, approved, user_key, auth_time, session_version = 0, session_expires_at = nil)
     # The one request the person was shown, by its key — not every row that
     # happens to carry the code.
     shown = OauthDeviceCode.find_by_user_code(user_code)
@@ -115,7 +121,8 @@ class OauthDeviceCode < Model
       FOR d IN oauth_device_codes
         FILTER d._key == #{key} AND d.status == "pending" AND d.expires_at > #{now}
         UPDATE d WITH {
-          status: #{status}, user_key: #{user_key}, auth_time: #{auth_time}, session_version: #{session_version}
+          status: #{status}, user_key: #{user_key}, auth_time: #{auth_time},
+          session_version: #{session_version}, session_expires_at: #{session_expires_at}
         } IN oauth_device_codes
         RETURN NEW
     }

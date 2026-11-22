@@ -38,6 +38,7 @@ class OidcDiscoveryController < Controller
         "none"
       ],
       "code_challenge_methods_supported": ["S256"],
+      "authorization_response_iss_parameter_supported": true,
       "claims_supported": [
         "sub",
         "iss",

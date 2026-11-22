@@ -11,9 +11,25 @@ class OauthRefreshToken < Model
   # expires_at, rotated_at, revoked_at, revoked_reason, access_jti,
   # session_version (the user's, at issue: a refresh after it moved — a
   # password reset — is refused and ends the chain).
-  static def issue(chain_id, client_id, user_key, scopes, access_jti, session_version = 0)
+  #
+  # `chain_expires_at` is the family's ceiling: the previous token's when
+  # rotating, the sign-in's own expiry (or nil) for the first one. A family
+  # never outlives OIDC_REFRESH_CHAIN_TTL from its first token, and past its
+  # ceiling no token is issued (nil is returned).
+  static def issue(chain_id, client_id, user_key, scopes, access_jti, session_version = 0, chain_expires_at = nil, first = true)
     token = Crypto.random_token()
     now = DateTime.utc().to_unix()
+    ceiling = chain_expires_at
+    if first
+      ceiling = now + OIDC_REFRESH_CHAIN_TTL
+      ceiling = chain_expires_at.to_i if !chain_expires_at.nil? && chain_expires_at.to_i < ceiling
+    end
+    # A row from before families had a ceiling gets one now.
+    ceiling = now + OIDC_REFRESH_CHAIN_TTL if ceiling.nil?
+    return nil if ceiling.to_i <= now
+
+    expires_at = now + OIDC_REFRESH_TOKEN_TTL
+    expires_at = ceiling.to_i if ceiling.to_i < expires_at
 
     record = OauthRefreshToken.create({
       "token_digest": Crypto.sha256(token),
@@ -22,7 +38,8 @@ class OauthRefreshToken < Model
       "user_key": user_key,
       "scope": scopes.join(" "),
       "issued_at": now,
-      "expires_at": now + OIDC_REFRESH_TOKEN_TTL,
+      "expires_at": expires_at,
+      "chain_expires_at": ceiling.to_i,
       "rotated_at": null,
       "revoked_at": null,
       "revoked_reason": null,

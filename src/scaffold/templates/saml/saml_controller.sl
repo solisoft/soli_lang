@@ -26,7 +26,9 @@ class SamlController < Controller
       user = SamlSso.user_for(result["assertion"])
     catch error
       # The reason goes to the log, not to the browser.
-      Logger.warn("SAML sign-in refused: #{error}")
+      # On one line: the reason quotes what the response said.
+      reason = Regex.replace_all("[\\x00-\\x1f\\x7f\\x{85}\\x{2028}\\x{2029}]", error.to_s, " ")
+      Logger.warn("SAML sign-in refused: #{reason}")
       return @_reject
     end
     # No `user.locked?` here: that lock counts wrong passwords, and the

@@ -44,6 +44,8 @@ def oidc_authorize_error(redirect_uri, code, description, state)
   location = "#{redirect_uri}#{oidc_query_separator(redirect_uri)}error=#{url_encode(code)}"
   location = "#{location}&error_description=#{url_encode(description)}" unless description.blank?
   location = "#{location}&state=#{url_encode(state.to_s)}" unless state.blank?
+  # RFC 9207: which authorization server answered, against a mix-up.
+  location = "#{location}&iss=#{url_encode(oidc_issuer())}"
 
   redirect_external(location)
 end
@@ -161,13 +163,20 @@ def oidc_verify_access_token(token)
   # the token is malformed enough that the header will not parse — which is
   # exactly what an attacker sends. Both have to be caught, or a garbage bearer
   # token becomes a 500 instead of a 401.
-  claims = jwt_verify(token, "", {
-    "algorithm": "RS256",
-    "key": oidc_public_key(),
-    "issuer": oidc_issuer()
-  }) rescue null
+  # The active key, then the previous one: a token signed just before a key
+  # rotation stays good for the ten minutes it has left.
+  claims = null
+  for key in [oidc_public_key(), oidc_previous_public_key()]
+    next if key.blank? || !claims.nil?
+
+    verified = jwt_verify(token, "", {
+      "algorithm": "RS256",
+      "key": key,
+      "issuer": oidc_issuer()
+    }) rescue null
+    claims = verified unless verified.nil? || verified["error"] == true
+  end
   return null if claims.nil?
-  return null if claims["error"] == true
 
   # An id_token must not pass as an access token.
   #

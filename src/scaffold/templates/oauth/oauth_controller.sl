@@ -96,7 +96,8 @@ def callback(req)
   # the page: they are whatever the query string says.
   if answer["error"].present?
     OauthSso.clear_state
-    Logger.warn("OAuth #{provider}: authorization refused: #{answer["error"]} #{answer["error_description"]}")
+    refused = OauthSso.log_safe("#{answer["error"]} #{answer["error_description"]}")
+    Logger.warn("OAuth #{provider}: authorization refused: #{refused}")
     return {"status": 401, "body": "Sign-in was cancelled or refused by the provider."}
   end
 
@@ -111,8 +112,8 @@ def callback(req)
     service.complete!(code)
   catch error
     OauthSso.clear_state
-    # Logged in full; the page gets only the refusals written for it.
-    Logger.warn("OAuth #{provider} sign-in failed: #{error}")
+    # Logged (on one line); the page gets only the refusals written for it.
+    Logger.warn("OAuth #{provider} sign-in failed: #{OauthSso.log_safe(error)}")
     return {"status": 401, "body": OauthSso.public_message(error)}
   end
 
@@ -142,6 +143,17 @@ def unlink(req)
   user = current_user()
   return redirect("/login") if user.nil?
 
+  # Removing a way in is as sensitive as adding one: a session left open on
+  # a shared machine must not be able to cut the owner's provider off.
+  unless OauthSso.recently_authenticated?(user)
+    return redirect("/oauth/reauth") if user.password_digest.present?
+
+    return {
+      "status": 403,
+      "body": "Sign out, sign back in, then disconnect the account within ten minutes."
+    }
+  end
+
   identity = OauthIdentity.find_by("_key", req["params"]["id"])
   linked = OauthIdentity.for_user(user)
   # Never the last way in: an account with no password keeps one provider.
@@ -166,6 +178,9 @@ def reauthenticate(req)
   return redirect("/login") if user.nil?
 
   provider = params["provider"].to_s.downcase
+  # The sign-in form's per-address throttle covers the guesses made here too.
+  limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
+  return _render_reauth(user, provider, "Too many attempts. Try again in a few minutes.", 429) unless limiter.allowed
   # The sign-in form's lockout counts the guesses made here too.
   if user.locked? || !user.authenticate(params["password"].to_s)
     user.register_failed_attempt unless user.password_digest.blank?

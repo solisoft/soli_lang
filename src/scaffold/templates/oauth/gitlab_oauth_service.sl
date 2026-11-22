@@ -6,12 +6,7 @@
 
 class GitlabOauth
   static def base_url
-    url = (getenv("GITLAB_BASE_URL") ?? "https://gitlab.com").to_s.trim
-    while url.ends_with?("/")
-      url = url.substring(0, url.length - 1)
-    end
-
-    url
+    OauthSso.instance_base("GITLAB_BASE_URL", "https://gitlab.com")
   end
 
   static def authorize_url(state, code_challenge = nil)

@@ -83,7 +83,7 @@ does not document it, and LinkedIn offers it only to native apps it approves.
 MICROSOFT_CLIENT_ID=…
 MICROSOFT_CLIENT_SECRET=…
 MICROSOFT_REDIRECT_URI=http://localhost:3000/auth/microsoft/callback
-MICROSOFT_TENANT=<tenant id or domain>
+MICROSOFT_TENANT=<tenant id>
 
 # several tenants (your customers' directories):
 MICROSOFT_TENANT=organizations
@@ -114,7 +114,7 @@ Apps generated before that stored the bare `sub`. **Upgrading:** delete
 generator notes an old file). The new service rewrites an old row to
 `<tid>:<sub>` the first time its owner signs in — when the `tid` recorded with
 the row (its `raw` claims) is the token's, or, for a row that recorded none, only
-in a single-tenant app (`MICROSOFT_TENANT` a tenant id or domain): in a
+in a single-tenant app (`MICROSOFT_TENANT` a tenant id): in a
 multi-tenant app the same `sub` may belong to a user of another directory. A row
 it does not adopt stays as it is, and its owner links Microsoft again from
 `/oauth/identities`.
@@ -178,6 +178,8 @@ sign-in when the identity cannot be stored. An address that is not plain ASCII
 is never matched to an account: lowercasing folds letters such as the Kelvin
 sign into ASCII ones, so a look-alike address a provider verified would open
 someone else's account.
+
+Apple and Microsoft sign-ins carry a `nonce`: a random value sent with the authorization request and required in the id_token, so a token issued for another sign-in is refused. `MICROSOFT_TENANT` is a tenant id (a GUID) or `organizations` — no longer a domain, which could not be compared with the token — and the token's `tid` must be that id. `GITHUB_BASE_URL`, `GITHUB_API_URL` and `GITLAB_BASE_URL` must be `https://` (plain http only to this machine): over plain http the client secret and the code cross the network in clear. Disconnecting a provider needs a sign-in from the last ten minutes, like connecting one; the password check at `/oauth/reauth` shares the sign-in form's per-address limit; and what a provider or a query string says is logged on one line, without control characters.
 
 Rule 3 hands an existing account to whoever proves the address at the provider.
 If that account never confirmed its email, someone else may have created it in

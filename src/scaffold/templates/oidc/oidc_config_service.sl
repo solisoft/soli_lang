@@ -21,6 +21,10 @@
 const OIDC_ACCESS_TOKEN_TTL = 600  # 10 minutes — see the note below
 const OIDC_ID_TOKEN_TTL = 600
 const OIDC_REFRESH_TOKEN_TTL = 2592000  # 30 days
+# How long a refresh-token family lives however often it rotates: without a
+# ceiling every rotation bought 30 more days, for ever. A family also ends
+# when the sign-in it came from does (a SAML session's expiry).
+const OIDC_REFRESH_CHAIN_TTL = 7776000  # 90 days
 const OIDC_CODE_TTL = 60  # authorization codes are short-lived
 const OIDC_DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 const OIDC_DEVICE_CODE_TTL = 600  # how long a device has to be approved (RFC 8628)
@@ -62,6 +66,12 @@ def oidc_issuer
   if getenv("APP_ENV").to_s.trim.downcase == "production"
     throw "SOLI_OIDC_ISSUER is not set: set it to this provider's public https:// origin"
   end
+  # The app's own public origin, when it has one: a deployment that forgot
+  # APP_ENV as well still does not publish localhost.
+  base = getenv("APP_BASE_URL").to_s.trim
+  if base.present?
+    return base.ends_with?("/") ? base.substring(0, base.length - 1) : base
+  end
 
   "http://localhost:5011"
 end
@@ -69,7 +79,10 @@ end
 # Initial access token for dynamic client registration (RFC 7591). Empty
 # disables `POST /oauth/register` entirely (it answers 404).
 def oidc_registration_token
-  getenv("SOLI_OIDC_REGISTRATION_TOKEN").to_s
+  token = getenv("SOLI_OIDC_REGISTRATION_TOKEN").to_s
+  # Under 32 characters it is ignored, so a forgotten placeholder opens
+  # nothing — registration answers 404, as with no token.
+  token.length >= 32 ? token : ""
 end
 
 def oidc_private_key

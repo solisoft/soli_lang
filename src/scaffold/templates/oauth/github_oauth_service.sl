@@ -12,13 +12,11 @@
 
 class GithubOauth
   static def base_url
-    url = getenv("GITHUB_BASE_URL").to_s.trim
-    url.present? ? url : "https://github.com"
+    OauthSso.instance_base("GITHUB_BASE_URL", "https://github.com")
   end
 
   static def api_url
-    url = getenv("GITHUB_API_URL").to_s.trim
-    url.present? ? url : "https://api.github.com"
+    OauthSso.instance_base("GITHUB_API_URL", "https://api.github.com")
   end
 
   static def authorize_url(state, code_challenge = nil)

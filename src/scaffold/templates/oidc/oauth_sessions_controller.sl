@@ -20,7 +20,12 @@ class OauthSessionsController < Controller
     if current_user().nil?
       return render(
         "oauth/logout_confirm",
-        {"signed_out": true, "post_logout_redirect_uri": destination, "id_token_hint": ""}
+        {
+          "signed_out": true,
+          "post_logout_redirect_uri": destination,
+          "id_token_hint": "",
+          "client_name": @_client_name(hint)
+        }
       )
     end
 
@@ -39,7 +44,8 @@ class OauthSessionsController < Controller
         {
           "signed_out": false,
           "post_logout_redirect_uri": destination.blank? ? "" : destination,
-          "id_token_hint": destination.blank? ? "" : params["id_token_hint"].to_s
+          "id_token_hint": destination.blank? ? "" : params["id_token_hint"].to_s,
+          "client_name": @_client_name(hint)
         }
       )
     end
@@ -107,6 +113,15 @@ class OauthSessionsController < Controller
     end
 
     nil
+  end
+
+  # The application asking for the sign-out, for the confirmation page to
+  # name: a person should see who sends them where before they agree.
+  def _client_name(hint)
+    return "" if hint.nil?
+
+    client = OauthClient.find_active(hint["aud"].to_s)
+    client.nil? ? "" : client.name.to_s
   end
 
   def _post_logout_destination(hint)

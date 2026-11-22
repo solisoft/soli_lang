@@ -228,6 +228,38 @@ SOLI_OIDC_PUBLIC_KEY="$(cat new.pub.pem)"
                 <p class="text-gray-400 text-sm">A user code names one pending request (a unique index; a taken code is drawn again), the approval updates that request by its key, and a poll writes only its own two fields &mdash; it cannot put a decided request back to pending or un-consume one.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">A refresh-token family has a ceiling</h4>
+                <p class="text-gray-400 text-sm">Rotation used to buy 30 more days each time, for ever. A family now ends <code>OIDC_REFRESH_CHAIN_TTL</code> (90 days) after its first token, or when the sign-in it came from does (a SAML session&rsquo;s expiry) if that is sooner: a token never outlives the ceiling, and past it the client sends the user through <code>/oauth/authorize</code> again.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">A code and a refresh token belong to one client</h4>
+                <p class="text-gray-400 text-sm">The token endpoint looks at whose code or refresh token it was handed before it does anything with it. Another client presenting one gets <code>invalid_grant</code> and changes nothing &mdash; it cannot burn a code it intercepted, nor, by replaying a used code or a rotated token, revoke the tokens of the client it belongs to. A client whose <code>grant_types</code> lost <code>refresh_token</code> can no longer refresh.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">PKCE for every public client</h4>
+                <p class="text-gray-400 text-sm">A public client has no secret, so PKCE is what binds a code to it. It is required whatever the stored <code>require_pkce</code> flag says; the flag only matters for confidential clients.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">No credential in the URL</h4>
+                <p class="text-gray-400 text-sm"><code>/oauth/token</code>, <code>/oauth/revoke</code>, <code>/oauth/introspect</code> and <code>/oauth/device_authorization</code> answer <code>invalid_request</code> to a <code>client_secret</code>, <code>code</code>, <code>code_verifier</code>, <code>refresh_token</code>, <code>device_code</code> or <code>token</code> sent in the query string: it would work, and stay in access logs, proxies and histories.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2"><code>/oauth/revoke</code> revokes access tokens too</h4>
+                <p class="text-gray-400 text-sm">Handed one of its own access tokens, a client gets it denylisted by <code>jti</code> &mdash; userinfo and introspection refuse it from then on. It used to answer <code>200</code> and leave the token valid.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2"><code>iss</code> in the authorization response</h4>
+                <p class="text-gray-400 text-sm">Every redirect back to a client &mdash; a code or an error &mdash; carries <code>iss</code>, and discovery says so (<code>authorization_response_iss_parameter_supported</code>, RFC 9207): a client talking to several providers can tell which one answered.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">A client with a request-object key signs every request</h4>
+                <p class="text-gray-400 text-sm">Registering <code>request_object_key</code> used to make signed requests possible, not required: plain parameters still worked, so the signature protected nothing. Such a client now gets an error page without <code>request=</code>, and a request object is refused when it expires more than ten minutes ahead. The consent form of a signed request carries only a reference: what the signature covered is kept in the session for ten minutes and read back from there, so the form cannot change it and a short-lived object does not expire under the person reading the page.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h4 class="font-semibold text-white mb-2">Smaller things</h4>
+                <p class="text-gray-400 text-sm"><code>SOLI_OIDC_REGISTRATION_TOKEN</code> under 32 characters is ignored (registration answers <code>404</code>). An access token signed with the previous key verifies until it expires, as an id_token hint already did. The logout confirmation names the application asking and where the browser goes next. Outside production, an unset <code>SOLI_OIDC_ISSUER</code> falls back to <code>APP_BASE_URL</code> before <code>localhost</code>. Device requests an hour past their expiry are swept as new ones start. A code whose sign-in has ended by the time it is exchanged (a SAML session&rsquo;s expiry) issues nothing.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h4 class="font-semibold text-white mb-2">Throttled</h4>
                 <p class="text-gray-400 text-sm"><code>/oauth/token</code>, <code>/oauth/introspect</code>, <code>/oauth/revoke</code> and registration share <code>OIDC_REQUESTS_PER_IP</code> (300 a minute) per address &mdash; each verifies a client secret, an Argon2 hash, for anyone naming a client id; starting a device flow has <code>OIDC_DEVICE_STARTS_PER_IP</code> (30), and typing user codes <code>OIDC_USER_CODE_ATTEMPTS_PER_IP</code> (20). The constants are in <code>app/services/oidc_config.sl</code>.</p>
             </div>

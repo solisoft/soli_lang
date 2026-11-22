@@ -317,7 +317,7 @@ fn print_success(provider: &str) {
         "microsoft" => (
             "Microsoft",
             "MICROSOFT",
-            "Register an Entra ID app with the optional ID-token claims email, xms_edov and verified_primary_email (Token configuration); also set MICROSOFT_TENANT to your tenant, or to `organizations` with MICROSOFT_ALLOWED_TENANTS (a list of tenant ids)",
+            "Register an Entra ID app with the optional ID-token claims email, xms_edov and verified_primary_email (Token configuration); also set MICROSOFT_TENANT to your tenant id (a GUID), or to `organizations` with MICROSOFT_ALLOWED_TENANTS (a list of tenant ids)",
         ),
         _ => (provider, "PROVIDER", "Create an OAuth application"),
     };

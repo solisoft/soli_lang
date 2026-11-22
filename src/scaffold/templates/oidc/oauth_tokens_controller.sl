@@ -12,7 +12,8 @@
 class OauthTokensController < Controller
   # POST /oauth/token
   def create
-    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
+    refused = this._refused("token", OIDC_REQUESTS_PER_IP)
+    return refused unless refused.nil?
 
     grant_type = params["grant_type"].to_s
 
@@ -32,14 +33,24 @@ class OauthTokensController < Controller
   # Always answers 200, even for an unknown token: telling a caller whether a
   # token existed is an oracle, and the RFC requires success either way.
   def revoke
-    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
+    refused = this._refused("token", OIDC_REQUESTS_PER_IP)
+    return refused unless refused.nil?
 
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
 
-    token = OauthRefreshToken.find_by_token(params["token"].to_s)
+    presented = params["token"].to_s
+    token = OauthRefreshToken.find_by_token(presented)
     if !token.nil? && token["client_id"] == auth["client"].client_id
       OauthRefreshToken.revoke_chain(token["chain_id"], "client_revoked")
+    end
+    # An access token of this client's is denylisted: answering 200 while
+    # leaving it valid told the client a revocation had happened.
+    if token.nil?
+      claims = oidc_verify_access_token(presented)
+      if !claims.nil? && claims["aud"].to_s == auth["client"].client_id
+        OauthRevocation.revoke(claims["jti"], "client_revoked")
+      end
     end
 
     oidc_json({}, 200)
@@ -51,7 +62,8 @@ class OauthTokensController < Controller
   # device grant in its `grant_types`; public clients are fine, since a TV
   # cannot keep a secret.
   def device_authorization
-    return oidc_rate_limited() unless oidc_within_rate_limit(req, "device_start", OIDC_DEVICE_STARTS_PER_IP)
+    refused = this._refused("device_start", OIDC_DEVICE_STARTS_PER_IP)
+    return refused unless refused.nil?
 
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
@@ -95,7 +107,8 @@ class OauthTokensController < Controller
   # must check tokens issued to other clients is registered by an admin with
   # `"introspect_any": true` (never through dynamic registration).
   def introspect
-    return oidc_rate_limited() unless oidc_within_rate_limit(req, "token", OIDC_REQUESTS_PER_IP)
+    refused = this._refused("token", OIDC_REQUESTS_PER_IP)
+    return refused unless refused.nil?
 
     auth = this._authenticate_client()
     return auth["response"] unless auth["response"].nil?
@@ -163,6 +176,14 @@ class OauthTokensController < Controller
     code = params["code"].to_s
     redirect_uri = params["redirect_uri"].to_s
 
+    # Whose code is it? Checked before anything is consumed: a caller the
+    # code was not issued to must not be able to burn it, nor — by presenting
+    # a used one — to revoke the tokens of the client that redeemed it.
+    issued = OauthAuthorizationCode.peek(code)
+    if !issued.nil? && issued["client_id"] != client.client_id
+      return oidc_token_error("invalid_grant", "Code was issued to a different client", 400)
+    end
+
     row = OauthAuthorizationCode.burn(code)
     return this._handle_replay(code) if row.nil?
 
@@ -185,7 +206,9 @@ class OauthTokensController < Controller
       row["refresh_chain_id"],
       row["nonce"],
       row["auth_time"],
-      row["session_version"]
+      row["session_version"],
+      row["session_expires_at"],
+      true
     )
   end
 
@@ -220,7 +243,9 @@ class OauthTokensController < Controller
 
     challenge = row["code_challenge"].to_s
     if challenge.blank?
-      return null unless client.require_pkce == true
+      # A public client has no secret: PKCE is what binds the code to it,
+      # whatever its stored flag says.
+      return null unless client.public?() || client.require_pkce == true
       return oidc_token_error("invalid_grant", "PKCE is required for this client", 400)
     end
 
@@ -236,8 +261,17 @@ class OauthTokensController < Controller
 
   def _refresh_token_grant(client)
     presented = params["refresh_token"].to_s
+    unless client.supports_grant?("refresh_token")
+      return oidc_token_error("unauthorized_client", "This client may not use the refresh_token grant", 400)
+    end
+
     token = OauthRefreshToken.find_by_token(presented)
     return oidc_token_error("invalid_grant", "Unknown refresh token", 400) if token.nil?
+    # Whose token is it? Before the reuse check: another client presenting a
+    # rotated token must not be able to revoke this family.
+    if token["client_id"] != client.client_id
+      return oidc_token_error("invalid_grant", "Refresh token belongs to a different client", 400)
+    end
 
     # A rotated token being presented again means it leaked. We cannot tell the
     # legitimate holder from the attacker, so the whole family is revoked.
@@ -246,9 +280,6 @@ class OauthTokensController < Controller
       return oidc_token_error("invalid_grant", "Refresh token was already used", 400)
     end
     return oidc_token_error("invalid_grant", "Refresh token is expired or revoked", 400) if !(token.active?())
-    if token["client_id"] != client.client_id
-      return oidc_token_error("invalid_grant", "Refresh token belongs to a different client", 400)
-    end
 
     scopes = this._refresh_scopes(token)
     return scopes["response"] unless scopes["response"].nil?
@@ -276,7 +307,17 @@ class OauthTokensController < Controller
       return oidc_token_error("invalid_grant", "Refresh token was already used", 400)
     end
 
-    this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null, token["session_version"])
+    this._issue_tokens(
+      client,
+      user,
+      scopes["scopes"],
+      token["chain_id"],
+      null,
+      null,
+      token["session_version"],
+      token["chain_expires_at"],
+      false
+    )
   end
 
   # RFC 8628 §3.4-3.5: the device polls until the person decides. Every answer
@@ -308,7 +349,9 @@ class OauthTokensController < Controller
       row["refresh_chain_id"],
       nil,
       row["auth_time"],
-      row["session_version"]
+      row["session_version"],
+      row["session_expires_at"],
+      true
     )
   end
 
@@ -372,7 +415,17 @@ class OauthTokensController < Controller
   # code, the device approval, the refresh token), never the user's current
   # one: stamping the current version would let a grant made before a reset
   # mint refresh tokens that look newer than it.
-  def _issue_tokens(client, user, scopes, chain_id, nonce, auth_time, session_version)
+  #
+  # `chain_expires_at` and `first` are the refresh family's ceiling (see
+  # `OauthRefreshToken.issue`): the sign-in's expiry for a first token, the
+  # previous token's ceiling when rotating.
+  def _issue_tokens(client, user, scopes, chain_id, nonce, auth_time, session_version, chain_expires_at = nil, first = true)
+    # The sign-in this grant comes from has ended (a SAML session's expiry
+    # passed between the consent and the exchange): nothing is issued.
+    if first && !chain_expires_at.nil? && chain_expires_at.to_i <= DateTime.utc().to_unix()
+      return oidc_token_error("invalid_grant", "The sign-in this grant came from has ended", 400)
+    end
+
     jti = uuid_v4()
     # `sv` and `cid` let the token be refused once the session version moves
     # or its family is revoked (`oidc_verify_access_token`).
@@ -398,17 +451,41 @@ class OauthTokensController < Controller
     # Only hand out a refresh token when the client asked for offline access —
     # a long-lived credential nobody requested is pure liability.
     if scopes.includes?("offline_access") && client.supports_grant?("refresh_token")
-      body["refresh_token"] = OauthRefreshToken.issue(
+      refresh = OauthRefreshToken.issue(
         chain_id,
         client.client_id,
         user["_key"],
         scopes,
         jti,
-        (session_version ?? 0).to_i
+        (session_version ?? 0).to_i,
+        chain_expires_at,
+        first
       )
+      # nil: the family reached its ceiling — the client sends the user back
+      # through the authorization endpoint.
+      body["refresh_token"] = refresh unless refresh.nil?
     end
 
     oidc_json(body, 200)
+  end
+
+  # --- guards ----------------------------------------------------------------
+
+  # What every endpoint here checks first: the caller's budget, and that no
+  # credential travels in the URL. `params` merges the query string with the
+  # body, so `?client_secret=…` or `?refresh_token=…` would work — and land in
+  # access logs, proxies and browser history (RFC 6749 §2.3.1 forbids it).
+  def _refused(bucket, limit)
+    return oidc_rate_limited() unless oidc_within_rate_limit(req, bucket, limit)
+
+    query = req["query"] ?? {}
+    for name in ["client_secret", "code", "code_verifier", "refresh_token", "device_code", "token"]
+      next if query[name].to_s.blank?
+
+      return oidc_token_error("invalid_request", "#{name} must be sent in the request body, not the URL", 400)
+    end
+
+    nil
   end
 
   # --- client authentication -------------------------------------------------

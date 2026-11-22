@@ -69,7 +69,7 @@ class OauthAuthorizationsController < Controller
           "name": scope,
           "description": scope_description(scope)
         } }),
-        "params": context["params"]
+        "params": this._consent_fields(client, context["params"])
       }
     )
   end
@@ -91,6 +91,7 @@ class OauthAuthorizationsController < Controller
 
     client = context["client"]
     scopes = context["scopes"]
+    session_delete("oidc_consent")
 
     if params["approve"].to_s != "1"
       return oidc_authorize_error(
@@ -132,11 +133,26 @@ class OauthAuthorizationsController < Controller
     # A signed request object (RFC 9101) replaces the query parameters wholesale:
     # the point is that nothing outside the signature can steer the request.
     effective = params
-    if params["request"].to_s.present?
+    signed_request = params["request"].to_s
+    if req["method"].to_s.upcase == "POST" && client.request_object_key.to_s.present?
+      # The consent decision of a signed request: what the signature covered
+      # was kept in the session by the GET, and is read back from there —
+      # not from the form, and not by verifying the object a second time
+      # (it is good for minutes; reading a consent page takes as long).
+      effective = this._pending_consent(client)
+      if effective.nil?
+        return {"response": oidc_authorize_fatal("This consent request has expired. Start again from the application.")}
+      end
+    elsif signed_request.present?
       request_object = this._request_object(client)
       return {"response": request_object["response"]} unless request_object["response"].nil?
 
       effective = request_object["claims"]
+    elsif client.request_object_key.to_s.present?
+      # A client that registered a request-object key signs every request.
+      # Accepting plain parameters as well would leave the signature optional
+      # — for whoever builds the URL, the attacker included.
+      return {"response": oidc_authorize_fatal("This client must send a signed request object.")}
     end
     redirect_uri = effective["redirect_uri"].to_s
     state = effective["state"].to_s
@@ -178,6 +194,36 @@ class OauthAuthorizationsController < Controller
         "max_age": effective["max_age"].to_s
       }
     }
+  end
+
+  # The hidden fields of the consent form. For a client that signs its
+  # requests they are only a reference: the validated request stays in the
+  # session for ten minutes, under an id the form sends back.
+  def _consent_fields(client, validated)
+    return validated if client.request_object_key.to_s.blank?
+
+    id = Crypto.random_token()
+    session_set("oidc_consent", {
+      "id": id,
+      "client_id": client.client_id,
+      "expires_at": DateTime.utc().to_unix() + 600,
+      "params": validated
+    })
+
+    {"client_id": client.client_id, "consent": id}
+  end
+
+  # The request the GET validated for this client and this form, or nil.
+  def _pending_consent(client)
+    pending = session_get("oidc_consent")
+    return nil unless type(pending) == "hash" && pending["client_id"] == client.client_id
+    return nil unless pending["expires_at"].to_i > DateTime.utc().to_unix()
+    return nil if pending["id"].to_s.blank? || params["consent"].to_s.blank?
+    return nil unless Crypto.secure_compare(pending["id"].to_s, params["consent"].to_s)
+
+    validated = pending["params"]
+    validated["response_type"] = "code"
+    validated
   end
 
   # `prompt=login` and `max_age` (OIDC Core §3.1.2.1) ask for a sign-in that
@@ -224,7 +270,9 @@ class OauthAuthorizationsController < Controller
     method = effective["code_challenge_method"].to_s
 
     if challenge.blank?
-      return null unless client.require_pkce == true
+      # A public client has no secret: PKCE is what binds the code to it,
+      # whatever its stored flag says.
+      return null unless client.public?() || client.require_pkce == true
       return {"code": "invalid_request", "description": "code_challenge is required"}
     end
 
@@ -260,6 +308,12 @@ class OauthAuthorizationsController < Controller
       return {"response": oidc_authorize_fatal("The request object is invalid or its signature does not verify.")}
     end
 
+    # A request object is good for minutes, not for as long as its signer
+    # liked: a captured one is replayable until `exp`.
+    if claims["exp"].to_i - DateTime.utc().to_unix() > 600
+      return {"response": oidc_authorize_fatal("The request object expires too far in the future (10 minutes at most).")}
+    end
+
     # RFC 9101 §6.3: client_id inside the object must agree with the outside.
     if claims["client_id"].to_s != client.client_id
       return {"response": oidc_authorize_fatal("The request object was issued for a different client.")}
@@ -284,7 +338,10 @@ class OauthAuthorizationsController < Controller
       "auth_time": session_get("auth_time"),
       # A password reset or an account takeover before the exchange voids
       # the code: the token endpoint compares this with the user's version.
-      "session_version": user.current_session_version
+      "session_version": user.current_session_version,
+      # When this sign-in ends by itself (a SAML session): the refresh
+      # tokens this code leads to end with it.
+      "session_expires_at": session_get("sign_in_expires_at")
     })
 
     separator = oidc_query_separator(context["redirect_uri"])
@@ -292,6 +349,8 @@ class OauthAuthorizationsController < Controller
     # `state` is opaque to us and echoed verbatim — it is the client's CSRF
     # defense, and rewriting it in any way would break that.
     location = "#{location}&state=#{url_encode(context["state"])}" unless context["state"].blank?
+    # RFC 9207: which authorization server answered, against a mix-up.
+    location = "#{location}&iss=#{url_encode(oidc_issuer())}"
 
     redirect_external(location)
   end

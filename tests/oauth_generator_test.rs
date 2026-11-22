@@ -284,6 +284,35 @@ struct Provider {
     claims: Json,
     /// The form body of the last token request.
     last_token_request: String,
+    /// The nonce of each authorization request, by its PKCE challenge — which
+    /// is how the token request (it carries the verifier) finds its own.
+    nonces: BTreeMap<String, String>,
+    /// Answer with a nonce from some other sign-in.
+    forge_nonce: bool,
+}
+
+/// One parameter of a query string or a form body, percent-decoded.
+fn parameter(text: &str, name: &str) -> Option<String> {
+    let query = text.split_once('?').map_or(text, |(_, query)| query);
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == name).then(|| urlencoding::decode(value).unwrap_or_default().into_owned())
+    })
+}
+
+/// The id_token claims a token request is answered with: the provider's, and
+/// the nonce of the authorization request the code came from.
+fn claims_for(state: &Provider, token_request: &str) -> Json {
+    use sha2::Digest;
+    let mut claims = state.claims.clone();
+    let verifier = parameter(token_request, "code_verifier").unwrap_or_default();
+    let challenge = URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(verifier.as_bytes()));
+    if state.forge_nonce {
+        claims["nonce"] = json!("the-nonce-of-another-sign-in");
+    } else if let Some(nonce) = state.nonces.get(&challenge) {
+        claims["nonce"] = json!(nonce);
+    }
+    claims
 }
 
 /// An id_token as a token endpoint returns it. The services read it without
@@ -324,6 +353,13 @@ fn start_providers(state: Arc<Mutex<Provider>>) -> u16 {
             let path = request_line.split_whitespace().nth(1).unwrap_or_default();
 
             let mut state = state.lock().unwrap();
+            if path.contains("/authorize?") {
+                if let (Some(challenge), Some(nonce)) =
+                    (parameter(path, "code_challenge"), parameter(path, "nonce"))
+                {
+                    state.nonces.insert(challenge, nonce);
+                }
+            }
             let answer = if path == "/oauth/userinfo" {
                 state.profile.clone()
             } else if path.ends_with("/token") {
@@ -331,7 +367,8 @@ fn start_providers(state: Arc<Mutex<Provider>>) -> u16 {
                 if path == "/oauth/token" {
                     json!({"access_token": "gitlab-token", "token_type": "bearer"})
                 } else {
-                    json!({"access_token": "t", "id_token": id_token(&state.claims)})
+                    let claims = claims_for(&state, &state.last_token_request);
+                    json!({"access_token": "t", "id_token": id_token(&claims)})
                 }
             } else {
                 json!({"error": "not_found"})
@@ -489,9 +526,15 @@ impl Browser {
                 }
             }
         }
+        let location = response.header("location").unwrap_or_default().to_string();
+        // Sent to a provider: go there, as a browser would, so the stand-in
+        // sees the authorization request (and its nonce).
+        if location.starts_with("http://127.0.0.1") && location.contains("/authorize?") {
+            let _ = ureq::get(&location).call();
+        }
         Reply {
             status: response.status(),
-            location: response.header("location").unwrap_or_default().to_string(),
+            location,
             body: response.into_string().unwrap_or_default(),
         }
     }
@@ -952,6 +995,23 @@ fn served_app_signs_in_links_and_refuses() {
         .expect("no disconnect button")
         + 8;
     let path = page.body[start..].split('"').next().unwrap().to_string();
+    // Hopper signed in with a password a while ago as far as this scaffold
+    // knows: disconnecting asks for the password again, and removes nothing.
+    let mut stale = Browser::new(&server);
+    let login = stale.request(
+        "POST",
+        "/login",
+        Some(json!({"email": "hopper@example.com", "password": "hopper password 1"})),
+        true,
+    );
+    assert_eq!(login.status, 302, "{}", login.body);
+    let asked = stale.request("DELETE", &path, Some(json!({})), true);
+    assert_eq!(
+        (asked.status, asked.location.as_str()),
+        (302, "/oauth/reauth"),
+        "{}",
+        asked.body
+    );
     assert_eq!(
         ada.request("DELETE", &path, Some(json!({})), true).status,
         302
@@ -1015,6 +1075,29 @@ fn served_app_signs_in_links_and_refuses() {
         "{}",
         refused.body
     );
+
+    // A token that answers another sign-in's nonce — or none — is refused,
+    // from Microsoft and from Apple alike.
+    set_claims(microsoft("tenant-good", "tenant-good"));
+    state.lock().unwrap().forge_nonce = true;
+    for provider in ["microsoft", "apple"] {
+        if provider == "apple" {
+            set_claims(json!({
+                "iss": "https://appleid.apple.com", "aud": "com.example.web",
+                "exp": 4102444800u64, "sub": "apple-nonce",
+            }));
+        }
+        let refused = Browser::new(&server).sign_in_with(provider);
+        assert_eq!(refused.status, 401, "{provider}: {}", refused.body);
+        assert!(
+            refused.body.contains("does not answer this sign-in"),
+            "{provider}: {}",
+            refused.body
+        );
+    }
+    state.lock().unwrap().forge_nonce = false;
+    set_claims(microsoft("tenant-good", "tenant-good"));
+    assert_eq!(Browser::new(&server).sign_in_with("microsoft").status, 302);
 }
 
 /// With sign-up closed, a provider signs in the accounts that exist and
@@ -1273,4 +1356,49 @@ fn unsigned_id_token_providers_are_reached_only_at_their_own_host() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+/// The guards the served tests cannot reach: a self-hosted provider over
+/// plain http, a token from another Microsoft tenant, a guessed password.
+#[test]
+fn the_generated_services_hold_their_configuration_to_account() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    for provider in ["github", "gitlab", "microsoft", "apple"] {
+        create_oauth(dir.path().to_str().unwrap(), provider).unwrap();
+    }
+    let read = |path: &str| fs::read_to_string(dir.path().join(path)).unwrap();
+    let sso = read("app/services/oauth_sso.sl");
+    assert!(sso.contains("must be an https:// URL (plain http only for this machine)"));
+    for (file, names) in [
+        (
+            "app/services/github_oauth.sl",
+            vec!["GITHUB_BASE_URL", "GITHUB_API_URL"],
+        ),
+        ("app/services/gitlab_oauth.sl", vec!["GITLAB_BASE_URL"]),
+    ] {
+        let service = read(file);
+        for name in names {
+            assert!(
+                service.contains(&format!(r#"OauthSso.instance_base("{name}""#)),
+                "{file}: {name} is not held to https\n{service}"
+            );
+        }
+    }
+    let microsoft = read("app/services/microsoft_oauth.sl");
+    assert!(microsoft.contains("tenant_id != configured"), "{microsoft}");
+    assert!(
+        microsoft.contains("MICROSOFT_TENANT must be a tenant id (a GUID)"),
+        "{microsoft}"
+    );
+    assert!(microsoft.contains(r#"OauthSso.check_nonce(claims["nonce"], "Microsoft")"#));
+    assert!(read("app/services/apple_oauth.sl")
+        .contains(r#"OauthSso.check_nonce(claims["nonce"], "Apple")"#));
+    let controller = read("app/controllers/oauth_controller.sl");
+    assert!(
+        controller
+            .contains("rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)"),
+        "{controller}"
+    );
+    assert!(controller.contains("OauthSso.log_safe("), "{controller}");
 }

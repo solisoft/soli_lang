@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+### Security — hardening
+Defence in depth for the same scaffolds, each item with a test or a run
+against a live provider. As above, an app generated earlier keeps its files.
+
+- **oidc_provider: a refresh-token family has a ceiling.** Rotation bought 30
+  more days each time, for ever. A family ends `OIDC_REFRESH_CHAIN_TTL`
+  (90 days) after its first token, or with the sign-in it came from (a SAML
+  session's expiry) if sooner.
+- **oidc_provider: a code and a refresh token are checked against the caller
+  first.** Another client presenting one gets `invalid_grant` and changes
+  nothing: it could burn an intercepted code, and — replaying a used code or a
+  rotated token — revoke the rightful client's tokens. A client without the
+  `refresh_token` grant can no longer refresh.
+- **oidc_provider: PKCE for every public client**, whatever `require_pkce`
+  says in its row.
+- **oidc_provider: no credential in the URL.** The token, revocation,
+  introspection and device-authorization endpoints answer `invalid_request`
+  to a secret, code, verifier or token in the query string.
+- **oidc_provider: `/oauth/revoke` denylists an access token** of the calling
+  client (it answered `200` and left it valid).
+- **oidc_provider: `iss` in every authorization response** (RFC 9207), and in
+  discovery.
+- **oidc_provider: a client with a `request_object_key` must sign every
+  request**; a request object expiring more than ten minutes ahead is refused.
+- **oidc_provider:** a registration token under 32 characters is ignored;
+  access tokens verify against the previous key until they expire; the logout
+  confirmation names the application and the destination; `APP_BASE_URL`
+  before `localhost` as the issuer outside production; expired device
+  requests are swept.
+- **oauth: `nonce` for Apple and Microsoft.** The id_token must carry the
+  nonce this sign-in sent. `MICROSOFT_TENANT` must be a tenant id (a GUID) or
+  `organizations`, no longer a domain, and the token's `tid` must be it.
+- **oauth: self-hosted GitHub / GitLab URLs must be https** (plain http only
+  to this machine).
+- **oauth: disconnecting a provider needs a recent sign-in**; the password
+  check at `/oauth/reauth` is throttled per address; provider errors are
+  logged without control characters.
+- **oidc_provider: the consent of a signed request reads what the GET
+  validated** (kept in the session ten minutes), not the form and not the
+  object a second time. A code whose sign-in has ended issues nothing.
+- **scim: requests without a valid token are slowed** — past twenty in five
+  minutes from one address they get `429`; the right token is always served.
+  `SCIM_TOKENS` values may contain `=`. A value that is not a string changes
+  nothing; the login address follows `userName` or the work / primary email
+  only; a malformed `Operations` answers `400`.
+- **saml:** the refusal reason is logged on one line.
+
 ### Security
 A fourth audit of SAML, SCIM, the OAuth client and the OIDC provider. The
 native verifier held; the fixes are in the scaffolds, so they reach apps
