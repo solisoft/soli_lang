@@ -810,3 +810,45 @@ fn a_deployment_that_names_no_environment_still_asks_for_the_setup_token() {
         .unwrap_or(0);
     assert_eq!(users, 0);
 }
+
+/// The remember-me writes are compare-and-swaps. Two requests that both read
+/// the account before either wrote — a browser restoring several tabs — do
+/// not both replace the token: the second finds it changed and sets no
+/// cookie, so the first one's stands. And a sign-in checked against a
+/// password that was reset meanwhile leaves no token behind.
+#[test]
+fn remember_me_writes_do_not_overwrite_what_changed_meanwhile() {
+    let dir = servable_app();
+    let root = dir.path();
+    let code = r##"account = User.new
+account.email = "ada@example.com"
+account.set_password("correct horse battery")
+account.save
+first_token = account.start_remember_me
+
+one_tab = User.find(account._key)
+other_tab = User.find(account._key)
+replaced = one_tab.rotate_remember_me
+lost = other_tab.rotate_remember_me
+stored = User.find(account._key)
+print("rotation #{!replaced.nil?} #{lost.nil?} #{stored.remembered_by?(replaced)} #{stored.remembered_by?(first_token)}")
+
+signing_in = User.find(account._key)
+User.find(account._key).finish_password_reset("another horse battery")
+late = signing_in.start_remember_me
+after = User.find(account._key)
+print("reset #{late.nil?} #{after.remember_token_digest.nil?} #{after.authenticate("another horse battery")}")"##;
+    let database = format!("sqlite://{}/app.sqlite3", root.display());
+    let (ok, output) = soli(
+        root,
+        &["runner", "-e", code],
+        &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
+    );
+    assert!(ok, "{output}");
+    let lines: Vec<&str> = output.trim_end().lines().rev().take(2).collect();
+    assert_eq!(
+        lines,
+        ["reset true true true", "rotation true true true true"],
+        "{output}"
+    );
+}
