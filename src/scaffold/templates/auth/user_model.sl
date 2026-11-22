@@ -212,10 +212,10 @@ end
 # your address and someone else's password is no longer taken back when you
 # prove the address (`User#never_signed_in?`): its creator keeps their way
 # in.
-# A bulk write (`update_all`, `delete_all`) does not raise when the database
-# refuses it: it answers with an "Error: …" string. Where a write that did
-# not happen would leave a way into an account — a token not deleted, a
-# counter not reset — the action must stop there, not go on as if it had.
+# A bulk write (`update_all`, `delete_all`) the database refuses raises. It
+# used to answer with an "Error: …" string, and this guard is kept for a
+# write that still would: where one that did not happen leaves a way into an
+# account — a token not deleted, a counter not reset — the action stops.
 def auth_written(result)
   throw result if result.to_s.starts_with?("Error:")
 
@@ -405,6 +405,10 @@ class User < Model
     # only ever reset their password stayed "unconfirmed", and their first
     # provider sign-in treated the account as squatted and wiped it.
     @confirmed_at = DateTime.utc.to_unix if @confirmed_at.nil?
+    # Whoever resets the password holds the mailbox: no placeholder any
+    # more. (Written here too, so that this whole-record write cannot put
+    # back a mark another request cleared meanwhile.)
+    @awaiting_owner = false
     # A confirmation link still in the mailbox is spent with it.
     @confirmation_token_digest = nil
     @confirmation_sent_at = nil
@@ -460,6 +464,10 @@ class User < Model
       end
     end
     @password_digest = nil
+    # Taken back from whoever made it, or revoked by its owner: either way
+    # no placeholder any more (and this whole-record write must not put back
+    # a mark another request cleared meanwhile).
+    @awaiting_owner = false
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil
@@ -506,28 +514,32 @@ class User < Model
     !@confirmed_at.nil?
   end
 
-  # Has anyone ever been signed in to this account? One that never was is a
-  # placeholder: created — by its owner, or by someone else with a password
-  # of their own, in wait — and not yet entered. Only such an account is
-  # *taken over* by a proof of its address (a confirmation without the
-  # sign-up password, a sign-in link, a provider): everything it could be entered
-  # with is revoked first. An account that has been used keeps what its user
-  # set — its second factor above all, which a mailbox alone must not remove.
+  # Is this account a placeholder — created at the sign-up form, by its
+  # owner or by someone else with a password of their own, in wait — that
+  # nobody has entered yet? Only such an account is *taken over* by a proof
+  # of its address (a confirmation without the sign-up password, a sign-in
+  # link, a provider): everything it could be entered with is revoked first.
+  # An account that has been used keeps what its user set — its second
+  # factor above all, which a mailbox alone must not remove.
   #
-  # Adding this scaffold over accounts that already exist? They carry no
-  # `signed_in_at`, and count as never entered until their next request or
-  # sign-in: set it on them once (`User.where({}).update_all({"signed_in_at":
-  # DateTime.utc.to_unix})`), or a proof of the address takes over an
-  # account that is in use.
+  # The sign-up form marks it (`awaiting_owner`); the first session or API
+  # token of its own clears the mark. Marked, not inferred: an account made
+  # any other way — by an administrator, a directory, a seed, or before this
+  # mark existed — is never one, so nothing has to be set on existing
+  # accounts and a missing field fails towards leaving the account alone.
+  # (An open-sign-up app that already held unconfirmed accounts nobody
+  # entered can mark them once: `User.where({"confirmed_at": nil}).update_all(
+  # {"awaiting_owner": true})` — leave out any you know to be in use.)
   def never_signed_in?
-    @signed_in_at.nil?
+    @awaiting_owner == true
   end
 
   def mark_signed_in
-    return true unless @signed_in_at.nil?
+    return true unless @awaiting_owner == true
 
+    @awaiting_owner = false
     @signed_in_at = DateTime.utc.to_unix
-    @_patch({"signed_in_at": @signed_in_at})
+    @_patch({"awaiting_owner": false, "signed_in_at": @signed_in_at})
   end
 
   # --- Remember me ------------------------------------------------------------

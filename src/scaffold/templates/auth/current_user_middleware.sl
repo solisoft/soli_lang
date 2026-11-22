@@ -48,11 +48,10 @@ def load_current_user(req)
         return {"continue": true, "request": req}
       end
     end
-    # An account with a session of its own is in use (`never_signed_in?`),
-    # whenever that session was opened — before this stamp existed too. One
-    # write, the first time.
+    # An account with a session of its own is no placeholder any more
+    # (`never_signed_in?`). One write, the first time.
     # Best effort: a database that takes no writes must not end the request.
-    (user.mark_signed_in rescue nil) if !user.nil? && admin_id.blank? && user.signed_in_at.nil?
+    (user.mark_signed_in rescue nil) if !user.nil? && admin_id.blank? && user.never_signed_in?
     req["current_user"] = user
     return {"continue": true, "request": req}
   end

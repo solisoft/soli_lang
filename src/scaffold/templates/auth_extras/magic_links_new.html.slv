@@ -13,6 +13,21 @@
       </div>
     <% end %>
 
+    <% if token.present? %>
+      <form action="/login/link/<%= token %>" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <%- csrf_field() %>
+        <p class="text-sm text-slate-300">
+          This link signs you in as <strong class="text-white"><%= account %></strong>.
+        </p>
+        <p class="text-sm text-slate-400">
+          Not your address? Close this page: someone else asked for this link.
+        </p>
+        <button type="submit"
+                class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+          Sign in as <%= account %>
+        </button>
+      </form>
+    <% else %>
     <form action="/login/link" method="POST" class="space-y-4 bg-slate-900 border border-slate-800 rounded-xl p-6">
       <%- csrf_field() %>
       <div>
@@ -25,6 +40,7 @@
         Email me a sign-in link
       </button>
     </form>
+    <% end %>
 
     <p class="mt-4 text-center text-sm text-slate-400">
       Prefer your password? <a href="/login" class="text-indigo-400 hover:text-indigo-300">Sign in</a>

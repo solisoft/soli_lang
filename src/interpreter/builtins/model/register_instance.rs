@@ -507,7 +507,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                         }
                         Ok(Value::Bool(true))
                     }
-                    Err(e) => Ok(Value::String(format!("Error: {}", e).into())),
+                    Err(e) => Err(e.to_string()),
                 }
             } else {
                 // Hard delete: remove document
@@ -527,7 +527,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                                 );
                                 Ok(Value::Bool(false))
                             }
-                            None => Ok(Value::String(format!("Error: {}", e).into())),
+                            None => Err(e.to_string()),
                         }
                     }
                 }

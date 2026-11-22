@@ -76,6 +76,7 @@ fn each_flag_writes_its_files_and_edits_none_of_the_auth_scaffold() {
     let routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
     for route in [
         "magic_links#show",
+        "magic_links#redeem",
         "api_tokens#destroy",
         "impersonations#create",
     ] {
@@ -418,7 +419,19 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
     assert_eq!(scanner.whoami(), "guest");
 
     // In the browser that asked, it signs in. Once.
-    let reply = ada.get(&link);
+    // The link itself signs nobody in: it names the account and waits for
+    // the button — on a shared browser, a link someone else asked for and
+    // sent along would otherwise sign the visitor in to that someone's
+    // account.
+    let page = ada.get(&link);
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert!(
+        page.body.contains("Sign in as ada@example.com"),
+        "{}",
+        page.body
+    );
+    assert_eq!(ada.whoami(), "guest");
+    let reply = ada.post(&link, json!({}));
     assert_eq!(
         (reply.status, reply.location.as_str()),
         (302, "/"),
@@ -438,7 +451,7 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
     phone.post("/login/link", json!({"email": "ada@example.com"}));
     let second = mailed_link(&server);
     assert_ne!(first, second);
-    assert_eq!(phone.get(&first).status, 302);
+    assert_eq!(phone.post(&first, json!({})).status, 302);
     assert_eq!(phone.get(&second).status, 401);
 
     // Ada never confirmed her address, but she has been using the account
@@ -460,6 +473,7 @@ fn a_magic_link_signs_in_the_browser_that_asked_once() {
 placeholder.email = "grace@example.com"
 placeholder.role = "member"
 placeholder.set_password("a squatter chose this one")
+placeholder.awaiting_owner = true
 placeholder.save
 sent = MagicLink.issue(placeholder, "198.51.100.7")
 print("#{sent["token"]} #{sent["nonce"]}")"##,
@@ -469,7 +483,7 @@ print("#{sent["token"]} #{sent["nonce"]}")"##,
     grace
         .jar
         .insert("__Host-magic_link".to_string(), nonce.to_string());
-    let reply = grace.get(&format!("/login/link/{token}"));
+    let reply = grace.post(&format!("/login/link/{token}"), json!({}));
     assert_eq!(reply.status, 302, "{}", reply.body);
     assert_eq!(grace.whoami(), "grace@example.com member");
     let squatter = Client::browser(&server).post(
@@ -854,7 +868,7 @@ fn an_open_session_and_a_token_mark_the_account_as_used() {
     let server = serve(dir.path());
     let mut ada = sign_up(&server, "ada@example.com");
     let forget = r##"user = User.find_by("email", "ada@example.com")
-User.where({"_key": user._key}).update_all({"signed_in_at": nil})
+User.where({"_key": user._key}).update_all({"awaiting_owner": true})
 print(User.find(user._key).never_signed_in?)"##;
     assert_eq!(runner(dir.path(), forget), "true");
     assert_eq!(ada.whoami(), "ada@example.com admin");
@@ -864,7 +878,7 @@ print(User.find(user._key).never_signed_in?)"##;
     let minted = runner(
         dir.path(),
         r##"user = User.find_by("email", "ada@example.com")
-User.where({"_key": user._key}).update_all({"signed_in_at": nil})
+User.where({"_key": user._key}).update_all({"awaiting_owner": true})
 print(ApiToken.issue(user, "seed", [], 0)["token"])"##,
     );
     let reply = ureq::get(&format!("http://127.0.0.1:{}/whoami", server.1))

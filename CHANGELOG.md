@@ -3,6 +3,27 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **orm: `record.delete` raises on a refused delete** (it returned a
+  truthy `"Error: …"` string: `link.delete` then went on to sign in with a
+  link it had not used up); a `dependent: "delete"` cascade still skips a
+  child that is already gone. A failure is told from a value out of band,
+  so a title that starts with "Error: " is a title; `.exists.first` on
+  SoliDB raises instead of answering false; `Model.delete_all` raises on
+  the SQL adapters too. The transaction calls and the static
+  `Model.update(id, …)` / `Model.delete(id)` keep their in-band errors.
+- **orm: `sum` / `avg` / `min` / `max` work on SoliDB.** They generated
+  `FOR doc … RETURN SUM(doc.x)`, which SoliDB refuses, and answered nil.
+  They fold with `COLLECT AGGREGATE` now.
+- **auth: a placeholder is marked, not inferred.** The sign-up form sets
+  `awaiting_owner`; only such an account is taken over by a proof of its
+  address. Existing accounts need nothing set (this replaces
+  `signed_in_at` as the test). **A sign-in link opens a page naming the
+  account**, and its button signs in (`POST /login/link/:token`): on a
+  shared browser a link someone else asked for no longer signs the next
+  visitor in to that someone's account, and a GET changes nothing.
+  A reset or a take-over clears the mark in the same write; an open-sign-up
+  app that already held never-entered unconfirmed accounts can mark them
+  once (see `User#never_signed_in?`).
 - **orm: a read or a bulk write the database failed raises.**
   `.where(...).first` answered nil — "no such row" — and `.exists.first`
   and the aggregates a truthy `"Error: …"` string; `update_all` and

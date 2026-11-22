@@ -68,6 +68,9 @@ class RegistrationsController < Controller
     # The account that opens a `first_user` app runs it.
     user.role = "admin" if auth_signup_mode() == "first_user"
     user.set_password(params["password"].to_s)
+    # Made at this form, by whoever typed the address: a placeholder until
+    # someone is signed in to it (`User#never_signed_in?`).
+    user.awaiting_owner = true
     saved = user.save
     if saved != true || (user._errors ?? []).length > 0
       # A validation said no, or the database refused the write — `_errors`

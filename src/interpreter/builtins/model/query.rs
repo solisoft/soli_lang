@@ -1960,6 +1960,21 @@ fn execute_sql_aggregate(
     func: &AggregationFunc,
     field: &str,
 ) -> Value {
+    // The in-band form its callers in the list paths test for.
+    match sql_aggregate(qb, collection, func, field) {
+        Ok(value) => value,
+        Err(message) => Value::String(message.into()),
+    }
+}
+
+/// The same, with a failure told apart from a value: `min` of a text column
+/// is a string too.
+fn sql_aggregate(
+    qb: &QueryBuilder,
+    collection: &str,
+    func: &AggregationFunc,
+    field: &str,
+) -> Result<Value, String> {
     let sql_func = match func {
         AggregationFunc::Sum => crate::db::SqlAgg::Sum,
         AggregationFunc::Avg => crate::db::SqlAgg::Avg,
@@ -1967,14 +1982,11 @@ fn execute_sql_aggregate(
         AggregationFunc::Max => crate::db::SqlAgg::Max,
         AggregationFunc::Count => crate::db::SqlAgg::Count,
         other => {
-            return Value::String(
-                format!(
-                    "Aggregate {:?} is SoliDB-only on SQL adapters. \
-                     Supported: sum, avg, min, max, count. See docs/sql-adapter-design.md.",
-                    other
-                )
-                .into(),
-            );
+            return Err(format!(
+                "Aggregate {:?} is SoliDB-only on SQL adapters. \
+                 Supported: sum, avg, min, max, count. See docs/sql-adapter-design.md.",
+                other
+            ));
         }
     };
     if super::column_mode::is_column_mode(collection) {
@@ -1983,16 +1995,16 @@ fn execute_sql_aggregate(
             collection,
             ColumnScalarOp::Aggregate(sql_func, field.to_string()),
         ) {
-            Ok(value) => value,
-            Err(e) => Value::String(format!("Error: {e}").into()),
+            Ok(value) => Ok(value),
+            Err(e) => Err(format!("Error: {e}")),
         };
     }
     match list_query_from_qb(qb, collection) {
         Ok(lq) => match crate::db::sql::aggregate(&lq, sql_func, field) {
-            Ok(v) => super::crud::json_to_value(&v),
-            Err(e) => Value::String(format!("Error: {e}").into()),
+            Ok(v) => Ok(super::crud::json_to_value(&v)),
+            Err(e) => Err(format!("Error: {e}")),
         },
-        Err(e) => Value::String(format!("Error: {e}").into()),
+        Err(e) => Err(format!("Error: {e}")),
     }
 }
 
@@ -2454,7 +2466,7 @@ pub fn execute_query_builder_first(qb: &QueryBuilder) -> Value {
         let q = qb.clone();
         if let Some(deferred) =
             super::batch::defer_on_d1(qb.connection_name.as_deref(), move || {
-                Ok(execute_query_builder_first(&q))
+                raise_query_failure(execute_query_builder_first(&q), false)
             })
         {
             return deferred;
@@ -2503,13 +2515,40 @@ fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
 
     match execute_query_builder_inner(qb) {
         Value::Array(arr) => arr.borrow().first().cloned().unwrap_or(Value::Null),
-        // Exec failures surface as strings from the query paths, and this
-        // one is handed on as it is: `qb_first` raises it. It was answered
-        // with nil — "no such row" — which is the wrong way to fail for the
-        // reads that ask "is there a row that forbids this?": a transient
-        // database error read as permission.
+        // Not an array: the read failed, and the string says why (prefixed
+        // "Error: " or not — "… is SoliDB-only" is not). Marked as a failure
+        // for `qb_first` to raise. It was answered with nil — "no such row"
+        // — which is the wrong way to fail for the reads that ask "is there
+        // a row that forbids this?": a database error read as permission.
+        Value::String(message) => query_failed(&message),
         other => other,
     }
+}
+
+/// How the terminals that hand back one value (`.first`, an aggregate) say
+/// "the database failed" in band, until they return a `Result`: a prefix no
+/// stored value carries. A plain "Error: …" could not tell a failure from a
+/// title that starts with those words.
+pub(crate) const QUERY_FAILED: &str = "\u{1}query failed\u{1}";
+
+pub(crate) fn query_failed(message: &str) -> Value {
+    let message = message.strip_prefix("Error: ").unwrap_or(message);
+    Value::String(format!("{QUERY_FAILED}{message}").into())
+}
+
+/// A terminal's value, or the failure it carries (see `QUERY_FAILED`).
+/// `any_string`: this terminal never answers a string (`exists`, a grouped
+/// result), so one is a failure whatever it says.
+pub fn raise_query_failure(value: Value, any_string: bool) -> Result<Value, String> {
+    if let Value::String(text) = &value {
+        if let Some(message) = text.strip_prefix(QUERY_FAILED) {
+            return Err(message.to_string());
+        }
+        if any_string {
+            return Err(text.strip_prefix("Error: ").unwrap_or(text).to_string());
+        }
+    }
+    Ok(value)
 }
 
 /// Execute a QueryBuilder for count.
@@ -2820,7 +2859,7 @@ pub fn execute_query_builder_exists(qb: &QueryBuilder) -> Value {
         let q = qb.clone();
         if let Some(deferred) =
             super::batch::defer_on_d1(qb.connection_name.as_deref(), move || {
-                Ok(execute_query_builder_exists(&q))
+                raise_query_failure(execute_query_builder_exists(&q), true)
             })
         {
             return deferred;
@@ -2896,11 +2935,12 @@ fn execute_query_builder_exists_inner(qb: &QueryBuilder) -> Value {
         exec_auto_collection_with_binds(query, bind_vars_str, &collection)
     };
 
-    // Return true if any result, false otherwise
-    if let Value::Array(arr) = &result {
-        Value::Bool(!arr.borrow().is_empty())
-    } else {
-        Value::Bool(false)
+    // True if any row. Not an array: the read failed — it was answered
+    // with false, "no such row".
+    match &result {
+        Value::Array(arr) => Value::Bool(!arr.borrow().is_empty()),
+        Value::String(message) => query_failed(message),
+        _ => Value::Bool(false),
     }
 }
 
@@ -3013,7 +3053,13 @@ pub fn build_aggregation_query(
             func.to_sdbql(field)
         ));
     } else {
-        query.push_str(&format!(" RETURN {}", func.to_sdbql(field)));
+        // Folded over the rows. A bare `RETURN SUM(doc.x)` is evaluated per
+        // row, on a number where SUM wants a list: SoliDB refused the query
+        // and the aggregate answered nil.
+        query.push_str(&format!(
+            " COLLECT AGGREGATE __soli_agg = {} RETURN __soli_agg",
+            func.to_sdbql(field)
+        ));
     }
 
     (query, bind_vars_str)
@@ -3031,7 +3077,7 @@ pub fn execute_query_builder_aggregate(
         let (q, f, fld) = (qb.clone(), func.clone(), field.to_string());
         if let Some(deferred) =
             super::batch::defer_on_d1(qb.connection_name.as_deref(), move || {
-                Ok(execute_query_builder_aggregate(&q, f.clone(), &fld))
+                raise_query_failure(execute_query_builder_aggregate(&q, f.clone(), &fld), false)
             })
         {
             return deferred;
@@ -3044,7 +3090,10 @@ pub fn execute_query_builder_aggregate(
         .unwrap_or("unknown")
         .to_string();
     if crate::db::is_sql() {
-        return execute_sql_aggregate(qb, &collection, &func, field);
+        return match sql_aggregate(qb, &collection, &func, field) {
+            Ok(value) => value,
+            Err(message) => query_failed(&message),
+        };
     }
 
     let (query, bind_vars_str) = build_aggregation_query(qb, func, field);
@@ -3072,6 +3121,11 @@ pub fn execute_query_builder_aggregate(
         if let Some(val) = arr.borrow().first() {
             return val.clone();
         }
+    }
+    // Not an array: the read failed. It was answered with nil, which a sum
+    // or a maximum over no rows also is.
+    if let Value::String(message) = &result {
+        return query_failed(message);
     }
     Value::Null
 }

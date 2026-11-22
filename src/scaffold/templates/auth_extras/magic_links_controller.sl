@@ -55,20 +55,40 @@ class MagicLinksController < Controller
   end
 
   # GET /login/link/:token — the emailed link
+  #
+  # Signs nobody in: it shows whose link this is, and a button. The address
+  # is the point — on a shared browser, someone can ask for a link to their
+  # own account, leave, and send the next visitor that link: opened, it
+  # would sign the visitor in to the sender's account, there to be watched.
+  # Named on the page, the account is the visitor's to refuse. (And a GET
+  # changes nothing, whatever fetches it.)
   def show
+    # Not counted against the per-address limit: nothing here can be guessed
+    # (a 256-bit token, and the browser's cookie), and the button is.
+    user = MagicLink.peek(params["token"], (cookies[MAGIC_LINK_COOKIE] rescue nil))
+    return @_refused if user.nil? || user.sso_only?
+
+    render(
+      "magic_links/new",
+      {
+        "title": "Sign in with a link",
+        "notice": "",
+        "error": "",
+        "token": params["token"].to_s,
+        "account": user.email
+      }
+    )
+  end
+
+  # POST /login/link/:token — the button on that page
+  def redeem
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
     return @_form("", "Too many attempts. Try again in a few minutes.", 429) unless limiter.allowed
 
     user = MagicLink.redeem(params["token"], (cookies[MAGIC_LINK_COOKIE] rescue nil))
     # A link issued before the account became single sign-on only is refused
     # like an expired one.
-    if user.nil? || user.sso_only?
-      return @_form(
-        "",
-        "This link is invalid, has expired, or was opened in another browser than the one that asked for it.",
-        401
-      )
-    end
+    return @_refused if user.nil? || user.sso_only?
 
     # Reading the mail proves the address. An account that was never
     # confirmed may have been created by someone else, with a password of
@@ -95,13 +115,23 @@ class MagicLinksController < Controller
 
   private
 
+  def _refused
+    @_form(
+      "",
+      "This link is invalid, has expired, or was opened in another browser than the one that asked for it.",
+      401
+    )
+  end
+
   def _form(notice, error, status)
     render(
       "magic_links/new",
       {
         "title": "Sign in with a link",
         "notice": notice,
-        "error": error
+        "error": error,
+        "token": "",
+        "account": ""
       },
       {"status": status}
     )

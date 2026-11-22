@@ -103,6 +103,18 @@ class MagicLink < Model
     [...kept, nonce].join(".")
   end
 
+  # Whom `token` would sign in from the browser holding `nonce`, or nil —
+  # without using the link up: what the page that asks "sign in as …?" reads.
+  static def peek(token, nonce)
+    link = MagicLink.find_by("token_digest", Crypto.sha256(token.to_s))
+    return nil if link.nil? || DateTime.utc.to_unix > link.expires_at
+
+    let matching = nonce.to_s.split(".").filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
+    return nil if matching.length == 0
+
+    User.find_by("_key", link.user_id)
+  end
+
   # The user `token` signs in from the browser holding `nonce`, or nil. A
   # link opened elsewhere is left as it is; one opened here is used up, in
   # time or not.

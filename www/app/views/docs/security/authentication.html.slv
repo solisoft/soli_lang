@@ -206,7 +206,7 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
         <p class="text-gray-400 mb-4">Sign in with a link sent by email, no password typed.</p>
         <pre data-filename="Terminal"><code class="language-bash text-sm">soli generate auth --magic-link
 soli db:migrate up</code></pre>
-        <p class="text-gray-400 my-4">It adds <code class="text-amber-300">MagicLink</code> (model), <code class="text-amber-300">MagicLinksController</code> (<code>GET</code> and <code>POST /login/link</code>, <code>GET /login/link/:token</code>), <code class="text-amber-300">MagicLinkMailer</code> and its view, and edits nothing: link to <code>/login/link</code> from your sign-in view.</p>
+        <p class="text-gray-400 my-4">It adds <code class="text-amber-300">MagicLink</code> (model), <code class="text-amber-300">MagicLinksController</code> (<code>GET</code> and <code>POST /login/link</code>, <code>GET /login/link/:token</code> (a page naming the account; <code class="text-amber-300">POST</code> to the same path signs in)), <code class="text-amber-300">MagicLinkMailer</code> and its view, and edits nothing: link to <code>/login/link</code> from your sign-in view.</p>
         <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
             <li><strong class="text-white">One use, fifteen minutes</strong> (<code>MAGIC_LINK_TTL</code>), and only the newest link of an account works.</li>
             <li><strong class="text-white">Only in the browser that asked.</strong> Asking sets a cookie; the link needs it. A link opened by a mail scanner, forwarded, or opened on another device signs nobody in &mdash; and is not used up by the attempt.</li>

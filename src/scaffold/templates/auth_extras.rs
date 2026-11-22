@@ -28,6 +28,7 @@ pub fn magic_link_routes() -> String {
 get("/login/link", "magic_links#new")
 post("/login/link", "magic_links#create")
 get("/login/link/:token", "magic_links#show")
+post("/login/link/:token", "magic_links#redeem")
 "#
     )
 }

@@ -322,8 +322,8 @@ pub use query::{
     execute_query_builder_count, execute_query_builder_delete_all, execute_query_builder_exists,
     execute_query_builder_first, execute_query_builder_group_by, execute_query_builder_grouped,
     execute_query_builder_time_bucket, execute_query_builder_update_all, parse_aggregate_spec_hash,
-    AggregateSpec, AggregationFunc, IncludeClause, IncludeCountClause, JoinClause, QueryBuilder,
-    ThroughClause, TimeBucketSpec, THROUGH_FK_BIND,
+    raise_query_failure, AggregateSpec, AggregationFunc, IncludeClause, IncludeCountClause,
+    JoinClause, QueryBuilder, ThroughClause, TimeBucketSpec, THROUGH_FK_BIND,
 };
 pub(crate) use register_crud::hydrate_value_fields;
 pub use registry::{

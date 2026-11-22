@@ -82,7 +82,7 @@ def authenticate_api_token(req)
   # An account its tokens are used on is in use (`User#never_signed_in?`),
   # however the token was made. One write, the first time.
   # Best effort: a database that takes no writes must not refuse the token.
-  (user.mark_signed_in rescue nil) if user.signed_in_at.nil?
+  (user.mark_signed_in rescue nil) if user.never_signed_in?
   req["current_user"] = user
   req["api_token"] = token
   req

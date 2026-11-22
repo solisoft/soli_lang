@@ -16,9 +16,6 @@ def query_of(builder)
   builder.to_query.split(" | bind_vars:")[0]
 end
 
-const AGGREGATE_BUG = "bug: Model.sum/avg/min/max emit `FOR doc IN c RETURN SUM(doc.f)`, which SoliDB rejects " +
-  "(Unknown function: SUM); the error is swallowed and .first is nil"
-
 def create_then_throw(name)
   AdvUser.transaction do
     AdvUser.create({"name": name})
@@ -315,12 +312,10 @@ describe("against SoliDB") do
     end
 
     test("sum adds the field over the filtered rows") do
-      pending(AGGREGATE_BUG)
       assert_eq(AdvUser.where("value > @v", {"v": 10}).sum("value").first, 50)
     end
 
     test("avg, min and max") do
-      pending(AGGREGATE_BUG)
       assert_eq(AdvUser.avg("value").first, 20)
       assert_eq(AdvUser.min("value").first, 10)
       assert_eq(AdvUser.max("value").first, 30)

@@ -237,13 +237,12 @@ involved).
 
 ## Soli ORM
 
-29. **Invalid SDBQL fails differently per terminator:** `.all`/`.count`
-    raise; `.first` returns `nil`; `@sdbql{}` returns an `"Error: Query
+29. **Invalid SDBQL fails differently per terminator:** `.all`/`.count`/
+    `.first`/`.exists.first` raise; `@sdbql{}` returns an `"Error: Query
     failed: …"` **String**; an unknown function in a `where` string gives `[]`.
-30. **`.sum/.avg/.min/.max(field)` return `nil`** — they generate
-    `RETURN SUM(doc.field)` per row. Use
-    `.aggregate({"total": ["sum", "field"]}).first`. (On Soli 2.36.3 with the
-    SQLite adapter `.sum("f").first` returned the total; SoliDB not rechecked.)
+30. **`.sum/.avg/.min/.max(field)` return a QueryBuilder** — `.first` runs
+    it: `Post.where({...}).sum("views").first` (0 over no rows). They fold
+    with `COLLECT AGGREGATE __soli_agg = SUM(doc.views) RETURN __soli_agg`.
 31. **`.exists` and `.pluck` return QueryBuilders** — `.exists.first`,
     `.pluck("f").all`.
 32. **`record.id` is `nil` on loaded records** — use `record._key`. On an

@@ -167,7 +167,7 @@ by_country = User.group_by("country", "sum", "balance").all
             </p>
             <pre><code class="language-soli text-sm"># Inspect the generated query
 q = User.where("active = @a", { "a": true }).sum("balance").to_query
-# => FOR doc IN users FILTER doc.active == @a RETURN SUM(doc.balance)</code></pre>
+# => FOR doc IN users FILTER doc.active == @a COLLECT AGGREGATE __soli_agg = SUM(doc.balance) RETURN __soli_agg</code></pre>
         </div>
     </div>
 
@@ -221,7 +221,7 @@ exists = User.where("role = @r", { "r": "admin" }).exists.first
 # Inspect the generated query
 q = User.where("role = @r", { "r": "admin" }).exists.to_query
 # => FOR doc IN users FILTER doc.role == @r LIMIT 1 RETURN true</code></pre>
-            <p class="text-gray-400 mt-4">A read the database fails <strong class="text-white">raises</strong> &mdash; <code>.first</code>, <code>.exists.first</code>, the aggregates, like <code>.all</code> and <code>.count</code> &mdash; and so does a refused <code>update_all</code> or <code>delete_all</code>. None of them answers <code>nil</code>, <code>false</code> or an error string: a database error is never read as &ldquo;no such row&rdquo;.</p>
+            <p class="text-gray-400 mt-4">A read the database fails <strong class="text-white">raises</strong> &mdash; <code>.first</code>, <code>.exists.first</code>, the aggregates, like <code>.all</code> and <code>.count</code> &mdash; and so does a refused <code>update_all</code>, <code>delete_all</code> or <code>record.delete</code>. None of them answers <code>nil</code>, <code>false</code> or an error string: a database error is never read as &ldquo;no such row&rdquo;.</p>
         </div>
     </div>
 

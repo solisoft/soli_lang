@@ -110,7 +110,7 @@ describe("through: query shape") do
   end
 
   test("aggregations carry the through filter") do
-    assert_eq(query_of(ThrUser.new({}).thr_teams.sum("budget")), "#{TEAMS_QUERY} RETURN SUM(doc.budget)")
+    assert_eq(query_of(ThrUser.new({}).thr_teams.sum("budget")), "#{TEAMS_QUERY} COLLECT AGGREGATE __soli_agg = SUM(doc.budget) RETURN __soli_agg")
   end
 end
 

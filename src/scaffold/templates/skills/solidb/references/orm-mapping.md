@@ -87,10 +87,10 @@ bind every external value.
 | `Sale.where(…).group_by(["country"]).aggregate({"total": ["sum","amount"], "n": ["count"]}).having("total > @m", {"m": 1}).all` | `FOR doc IN sales FILTER … COLLECT country = doc.country AGGREGATE total = SUM(doc.amount), n = COUNT() FILTER total > @m RETURN {country: country, total: total, n: n}` ✓ |
 | `Sale.count_distinct("country").first` | `COLLECT AGGREGATE __soli_agg = COUNT_DISTINCT(doc.country) RETURN __soli_agg` → `2` ✓ |
 | `Sale.median("amount").first` | `COLLECT AGGREGATE __soli_vals = COLLECT_LIST(doc.amount) RETURN MEDIAN(__soli_vals)` → `10` ✓ |
-| `Article.where(…).sum("views")` (`.first` / `.all`) | `… RETURN SUM(doc.views)` (one SUM per row) → **`nil`**. Use `.aggregate({"total": ["sum", "views"]}).first` |
+| `Article.where(…).sum("views").first` | `… COLLECT AGGREGATE __soli_agg = SUM(doc.views) RETURN __soli_agg` → the total (0 over no rows) ✓ |
 
-`.sum`, `.avg`, `.min`, `.max` return a QueryBuilder whose `.first`/`.all`
-is `nil` (Soli's models.md says so; Soli's solidb-reference.md does not).
+`.sum`, `.avg`, `.min`, `.max` return a QueryBuilder: `.first` runs it and
+answers the value.
 
 ## Writes
 

@@ -194,12 +194,15 @@ fn load_cascade_children(
 /// Whether a child's delete failed only because the row is no longer there.
 fn child_already_gone(result: &Value) -> bool {
     match result {
-        Value::String(error) if error.starts_with("Error:") => {
-            let error = error.to_lowercase();
-            error.contains("not found") || error.contains("documentnotfound")
-        }
+        Value::String(error) if error.starts_with("Error:") => already_gone_message(error),
         _ => false,
     }
+}
+
+/// Does a delete's refusal say the document was not there?
+fn already_gone_message(error: &str) -> bool {
+    let error = error.to_lowercase();
+    error.contains("not found") || error.contains("documentnotfound")
 }
 
 /// Run every `dependent:` strategy. `delete_child` is the instance-delete
@@ -275,7 +278,13 @@ pub(crate) fn run_dependent_cascades_with(
             DependentStrategy::Delete => {
                 let children = load_cascade_children(&rel, &owner_key, span)?;
                 for child in &children {
-                    let result = delete_child(child, span)?;
+                    // A refused delete raises now; "not found" is still the
+                    // answer the cascade is glad of.
+                    let result = match delete_child(child, span) {
+                        Ok(result) => result,
+                        Err(error) if already_gone_message(&error.to_string()) => continue,
+                        Err(error) => return Err(error),
+                    };
                     // Already gone is what the cascade wants. It happens inside
                     // a transaction on a SoliDB up to 2.10.1, whose queries
                     // read committed data: a child the transaction deleted a

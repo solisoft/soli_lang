@@ -232,7 +232,7 @@ soli db:migrate up
 ```
 
 It adds `MagicLink` (model), `MagicLinksController` (`GET` and `POST
-/login/link`, `GET /login/link/:token`), `MagicLinkMailer` and its view, and
+/login/link`, `GET /login/link/:token` — a page naming the account — and `POST` to the same path, which signs in), `MagicLinkMailer` and its view, and
 edits nothing: link to `/login/link` from your sign-in view.
 
 - **One use, fifteen minutes** (`MAGIC_LINK_TTL`), and only the newest link of

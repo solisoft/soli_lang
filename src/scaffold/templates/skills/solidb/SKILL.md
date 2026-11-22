@@ -136,7 +136,7 @@ must be validated against a whitelist and spliced into the query text.
    (`OLD` *is* available in the trailing `RETURN`).
 3. **`NOT a == b` is `(NOT a) == b`.** Write `a != b` or `!(a == b)`.
 4. **Soli ORM failure modes differ by terminator.** An invalid SDBQL string
-   raises from `.all` / `.count`, but `.first` returns `nil`, and an
+   raises from `.all` / `.count` / `.first` / `.exists.first`, but an
    `@sdbql{ … }` block returns a **String** `"Error: Query failed: 400 …"`
    instead of raising. An unknown function inside a `where` string matches
    nothing (`[]`).

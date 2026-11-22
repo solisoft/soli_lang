@@ -1046,13 +1046,17 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         }
         let qb_ref = qb.borrow();
         if qb_ref.exists_mode {
-            Ok(execute_query_builder_exists(&qb_ref))
+            crate::interpreter::builtins::model::raise_query_failure(
+                execute_query_builder_exists(&qb_ref),
+                true,
+            )
+            .map_err(|message| RuntimeError::General { message, span })
         } else if let Some((ref func, ref field)) = qb_ref.aggregation {
-            Ok(execute_query_builder_aggregate(
-                &qb_ref,
-                func.clone(),
-                field,
-            ))
+            crate::interpreter::builtins::model::raise_query_failure(
+                execute_query_builder_aggregate(&qb_ref, func.clone(), field),
+                false,
+            )
+            .map_err(|message| RuntimeError::General { message, span })
         } else if !qb_ref.group_fields.is_empty() || !qb_ref.aggregate_specs.is_empty() {
             crate::interpreter::builtins::model::execute_query_builder_grouped(&qb_ref)
                 .map_err(|e| RuntimeError::General { message: e, span })
@@ -1116,21 +1120,21 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         } else {
             execute_query_builder_first(&qb_ref)
         };
-        // A read the database failed comes back from these paths as an
-        // "Error: …" string. It is raised, as `.all` and `.count` raise it:
-        // handed on, it read as nil ("no such row") from a plain `.first`
-        // and as a truthy value from `.exists.first` — a database error
-        // taken for an answer, in whichever direction the caller's test
-        // happened to fail open.
-        match found {
-            Value::String(message) if message.starts_with("Error: ") => {
-                Err(RuntimeError::General {
-                    message: message["Error: ".len()..].to_string(),
-                    span,
-                })
-            }
-            found => Ok(found),
-        }
+        // A read the database failed is raised, as `.all` and `.count` raise
+        // it. Handed on, it read as nil ("no such row") from a plain
+        // `.first` and as a truthy string from `.exists.first` — a database
+        // error taken for an answer, in whichever direction the caller's
+        // test happened to fail open. Only `.first` on rows and an aggregate
+        // can answer a string of their own (a plucked title, the `min` of a
+        // text column): those mark a failure (`QUERY_FAILED`); from the
+        // others any string is one.
+        let rows_or_aggregate = !qb_ref.exists_mode
+            && qb_ref.group_by_info.is_none()
+            && qb_ref.time_bucket_info.is_none()
+            && qb_ref.group_fields.is_empty()
+            && qb_ref.aggregate_specs.is_empty();
+        crate::interpreter::builtins::model::raise_query_failure(found, !rows_or_aggregate)
+            .map_err(|message| RuntimeError::General { message, span })
     }
 
     /// `.first(n)` — the first `n` rows as an array, i.e. `.limit(n).all`.

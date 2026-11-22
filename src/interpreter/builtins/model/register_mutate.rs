@@ -312,7 +312,9 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 if super::crud::collection_is_sql(&collection) {
                     let qb =
                         QueryBuilder::new_with_class(class.name.clone(), collection, class.clone());
-                    return Ok(super::query::execute_query_builder_delete_all(&qb));
+                    return raise_if_error_value(super::query::execute_query_builder_delete_all(
+                        &qb,
+                    ));
                 }
                 let sdbql = format!(
                     "FOR doc IN {}{} RETURN doc._key",

@@ -638,11 +638,11 @@ field or an aggregate alias).
 | `.count` | Execute query, return count |
 | `.exists` | Returns a QueryBuilder; chain `.first` for the boolean (`User.where(...).exists.first`) |
 | `.delete_all` | Bulk delete of every matching row: one `DELETE` on SQL; on SoliDB the matching keys are read, then removed by key (a thousand per statement), so nothing outside the match can be reached. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
-| `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement, applying [merge-patch semantics](#merge-patch-semantics). Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. A write the database refuses raises (as a failed `.first`, `.exists.first` or `delete_all` does) — it is never returned as a value. On Postgres a patch containing a *nested object* is refused — merging into a stored object needs per-row recursion, which a bulk statement cannot do. |
-| `.sum(field)` | Sum of field (chain `.first`). **Currently always `nil`** — use `.aggregate({ "total": ["sum", field] }).first` |
-| `.avg(field)` | Average of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
-| `.min(field)` | Minimum of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
-| `.max(field)` | Maximum of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
+| `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement, applying [merge-patch semantics](#merge-patch-semantics). Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. A write the database refuses raises (as a failed `.first`, `.exists.first` or `delete_all` does) — it is never returned as a value. The same holds for `record.delete`. On Postgres a patch containing a *nested object* is refused — merging into a stored object needs per-row recursion, which a bulk statement cannot do. |
+| `.sum(field)` | Sum of field (chain `.first`). |
+| `.avg(field)` | Average of field (chain `.first`). |
+| `.min(field)` | Minimum of field (chain `.first`). |
+| `.max(field)` | Maximum of field (chain `.first`). |
 | `.group_by(field, func, agg_field)` | Legacy grouping aggregation — returns `[{group, result}]` (chain `.all`) |
 | `.group_by(fields)` | Grouped mode — field name or array of names; combine with `.aggregate` (alone: implicit count per group as `n`). Chain `.all`. See [Analytics](analytics.md#rich-aggregation-document-models). |
 | `.aggregate(spec)` | Multi-aggregate spec `{ alias: [func, field] }` or `{ alias: ["count"] }` — funcs: sum, avg, min, max, count, count_distinct, median, stddev, variance |

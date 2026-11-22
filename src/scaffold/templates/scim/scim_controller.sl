@@ -281,6 +281,8 @@ class ScimController < Controller
   # that reads 200 records the change as made: a deactivation that did not
   # save must not look like one that did.
   def _saved(user)
+    # A directory's account is nobody's placeholder (`User#never_signed_in?`).
+    user.awaiting_owner = false
     user.save
     if (user._errors ?? []).length > 0
       return @_error(400, "The user could not be saved: #{user._errors}", "invalidValue")
