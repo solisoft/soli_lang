@@ -1063,7 +1063,13 @@ fn a_logout_the_database_cannot_serve_fails_and_drops_nothing() {
     );
     rename("doc_away", "doc");
 
-    // Nothing was dropped: the token still restores a session…
+    // Nothing was dropped. The session is still hers (asked without the
+    // remember cookie, which would restore one and hide its loss)…
+    let mut session_only = Client::browser(&server);
+    session_only.jar = ada.jar.clone();
+    session_only.jar.remove("remember_token");
+    assert_eq!(session_only.whoami(), "ada@example.com admin");
+    // …and the token still restores a session…
     let mut copy = Client::browser(&server);
     copy.jar.insert("remember_token".to_string(), token);
     assert_eq!(copy.whoami(), "ada@example.com admin");

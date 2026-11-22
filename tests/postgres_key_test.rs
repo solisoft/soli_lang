@@ -14,7 +14,7 @@ fn skip(reason: &str) {
     eprintln!("skip: {reason}");
 }
 
-const SCRIPT: &str = r#"
+const SCRIPT: &str = r##"
 def check(label, action)
   try
     print(label, action())
@@ -29,9 +29,13 @@ end
 row = KeyProbe.create({"id": "3f2b8c1e-4d5a-4e6f-8a9b-0c1d2e3f4a5b", "title": "kept"})
 check("find", fn() { KeyProbe.find("not-a-uuid") })
 check("delete", fn() { type(KeyProbe.delete("not-a-uuid")) })
-check("value", fn() { KeyProbe.update("3f2b8c1e-4d5a-4e6f-8a9b-0c1d2e3f4a5b", {"due_on": "tomorrow"}) })
-check("kept", fn() { KeyProbe.find("3f2b8c1e-4d5a-4e6f-8a9b-0c1d2e3f4a5b").title })
-"#;
+# ("tomorrow" would not do: Postgres reads it as a date.)
+check("value", fn() { KeyProbe.update("3f2b8c1e-4d5a-4e6f-8a9b-0c1d2e3f4a5b", {"due_on": "not-a-date"}) })
+check("kept", fn() {
+  row = KeyProbe.find("3f2b8c1e-4d5a-4e6f-8a9b-0c1d2e3f4a5b")
+  "#{row.title} #{row.due_on.nil?}"
+})
+"##;
 
 #[test]
 fn a_malformed_uuid_key_is_a_miss_and_a_malformed_date_value_raises() {
@@ -88,5 +92,6 @@ fn a_malformed_uuid_key_is_a_miss_and_a_malformed_date_value_raises() {
         "{}",
         line("value")
     );
-    assert_eq!(line("kept"), "kept kept");
+    // Its title as it was, and the date the patch named still unset.
+    assert_eq!(line("kept"), "kept kept true");
 }
