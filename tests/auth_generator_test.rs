@@ -441,7 +441,7 @@ const BOB: &str = r#"{"email": "bob@example.com", "password": "correct horse bat
 #[test]
 fn served_signup_closes_after_the_first_account_by_default() {
     let dir = servable_app();
-    let server = serve(dir.path(), &[]);
+    let server = serve(dir.path(), &[("APP_ENV", "test")]);
 
     let (status, body) = call(&server, "GET", "/login", None);
     assert_eq!(status, 200, "{body}");
@@ -543,8 +543,8 @@ fn served_signup_and_throttle_follow_the_environment() {
         dir.path(),
         &[("AUTH_SIGNUP", "open"), ("AUTH_ATTEMPTS_PER_IP", "3")],
     );
-    assert_eq!(call(&server, "POST", "/signup", Some(ADA)).0, 302);
-    assert_eq!(call(&server, "POST", "/signup", Some(BOB)).0, 302);
+    assert_eq!(call(&server, "POST", "/signup", Some(ADA)).0, 200);
+    assert_eq!(call(&server, "POST", "/signup", Some(BOB)).0, 200);
     let wrong = r#"{"email": "ada@example.com", "password": "wrong password!"}"#;
     // Two sign-ups spent two of the three; the next request is the last.
     assert_eq!(call(&server, "POST", "/login", Some(wrong)).0, 401);
@@ -603,6 +603,17 @@ print("#{user.password_digest.nil?} #{user.remember_token_digest.nil?} #{user.cu
     }
 }
 
+/// A page without what changes on every render (the CSRF token, the form's
+/// timestamp), so two answers can be compared.
+fn without_form_values(page: &str) -> String {
+    let mut parts = page.split("value=\"");
+    let mut out = parts.next().unwrap_or_default().to_string();
+    for part in parts {
+        out.push_str(part.split_once('"').map_or("", |(_, rest)| rest));
+    }
+    out
+}
+
 /// The link in the confirmation email shows a button; only the button
 /// confirms. A mail scanner or a link preview that fetches the URL must not
 /// turn an account someone else opened with an address into a confirmed one —
@@ -636,7 +647,22 @@ fn the_confirmation_link_confirms_nothing_until_its_button_is_pressed() {
     );
     assert!(ok, "{output}");
     let server = serve(root, &[("AUTH_SIGNUP", "open")]);
-    assert_eq!(call(&server, "POST", "/signup", Some(ADA)).0, 302);
+    // Open sign-up: one answer, whether the address was free or is taken,
+    // and no session until the mailbox answered.
+    let first = call(&server, "POST", "/signup", Some(ADA));
+    assert_eq!(first.0, 200, "{}", first.1);
+    assert!(first.1.contains("Check your mailbox"), "{}", first.1);
+    let taken = call(&server, "POST", "/signup", Some(ADA));
+    assert_eq!(
+        (taken.0, without_form_values(&taken.1)),
+        (first.0, without_form_values(&first.1)),
+        "a taken address answers differently"
+    );
+    assert_eq!(
+        call(&server, "POST", "/login", Some(ADA)).0,
+        401,
+        "signed in before the address was confirmed"
+    );
     let confirmed = |server: &Server| {
         call(
             server,
@@ -705,4 +731,20 @@ print("#{before} #{User.find_by("email", "ada@example.com").confirmed?}")"##;
     );
     assert!(ok, "{output}");
     assert!(output.trim_end().ends_with("false true"), "{output}");
+}
+
+/// A deployment that never said APP_ENV=production is not a development run:
+/// its first account — the admin — still needs AUTH_SETUP_TOKEN.
+#[test]
+fn a_deployment_that_names_no_environment_still_asks_for_the_setup_token() {
+    let dir = servable_app();
+    let server = serve(dir.path(), &[]);
+    let (status, body) = call(&server, "POST", "/signup", Some(ADA));
+    assert_ne!(status, 302, "the first visitor became the admin: {body}");
+    drop(server);
+    let conn = rusqlite::Connection::open(dir.path().join("app.sqlite3")).unwrap();
+    let users: i64 = conn
+        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+        .unwrap_or(0);
+    assert_eq!(users, 0);
 }

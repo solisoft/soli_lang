@@ -6306,11 +6306,15 @@ consulted **only** when `enable_trust_proxy()` / `SOLI_TRUST_PROXY` is on —
 on a directly-exposed app the client controls that header, so trusting it
 would let a rotating value defeat the limiter entirely.
 
-The bucket key is the address alone (`ip:<addr>`), with no per-route
-component. Two call sites with the same limit therefore share one budget: the
-scaffolded auth controllers rely on this, so `AUTH_ATTEMPTS_PER_IP` is the
-total across sign-in, sign-up and reset rather than that many each. When you
-want a separate budget per action, build the key yourself with
+The bucket key is the address with the limit and the window
+(`ip:<addr>:<limit>:<window>`), with no per-route component. Two call sites
+with the same limit and window therefore share one budget: the scaffolded auth
+controllers rely on this, so `AUTH_ATTEMPTS_PER_IP` is the total across
+sign-in, sign-up and reset rather than that many each. Two call sites with
+different limits each get their own — before, they shared one bucket, which
+kept the limit of whichever ran first, so a generous API limiter could raise
+the budget of the sign-in form. When you want a separate budget per action
+with the same limit, build the key yourself with
 `RateLimiter("login:" + key, limit, window)`.
 
 ---

@@ -209,6 +209,8 @@ fn serve_with(root: &Path, provision: &str, extra: &[(&str, &str)]) -> Server {
         .env_remove("SAML_IDP_METADATA_FILE")
         .env_remove("SAML_SP_ENTITY_ID")
         .env("AUTH_SIGNUP", "open")
+        // A test run: the first account needs no AUTH_SETUP_TOKEN.
+        .env("APP_ENV", "test")
         .env("AUTH_ATTEMPTS_PER_IP", "1000")
         .env("APP_BASE_URL", ORIGIN)
         .env("SAML_IDP_ENTITY_ID", IDP)
@@ -526,14 +528,7 @@ fn served_app_signs_in_through_the_identity_provider() {
     // With SAML_LINK_EXISTING=on, an account that already exists is linked by
     // its email, and keeps its role.
     let mut grace = Browser::new(&server);
-    let signup = grace.request(
-        "POST",
-        "/signup",
-        Some(json!({"email": "grace@example.com", "password": "correct horse battery"})),
-        &format!("http://127.0.0.1:{}", server.1),
-    );
-    assert_eq!(signup.status, 302, "{}", signup.body);
-    let existing = grace.whoami();
+    sign_up(&mut grace, "grace@example.com");
     let mut sso = Browser::new(&server);
     let id = sso.start("/saml/login");
     let response = issue(
@@ -544,7 +539,8 @@ fn served_app_signs_in_through_the_identity_provider() {
                "attributes": {}}),
     );
     assert_eq!(sso.post_response(&response).status, 302);
-    assert_eq!(sso.whoami(), existing);
+    let who = sso.whoami();
+    assert!(who.starts_with("grace@example.com member"), "{who}");
     // Grace never confirmed her address, so whoever signed up with it may not
     // be Grace: linking it to the identity provider drops that password, and
     // the session opened with it.
@@ -646,7 +642,32 @@ fn sign_up(browser: &mut Browser, email: &str) {
         Some(json!({"email": email, "password": "correct horse battery"})),
         &origin,
     );
-    assert_eq!(signup.status, 302, "{}", signup.body);
+    // Open sign-up answers "check your mailbox": the account exists,
+    // unconfirmed, and nobody is signed in to it.
+    assert_eq!(signup.status, 200, "{}", signup.body);
+}
+
+/// `sign_up`, then what the mailed link does (written straight to the
+/// database), then a sign-in: a confirmed account with a session.
+fn join(browser: &mut Browser, root: &Path, email: &str) {
+    sign_up(browser, email);
+    let conn = rusqlite::Connection::open(root.join("app.sqlite3")).unwrap();
+    let changed = conn
+        .execute(
+            "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
+             WHERE json_extract(doc, '$.email') = ?1",
+            [email],
+        )
+        .unwrap();
+    assert_eq!(changed, 1, "no account for {email}");
+    let origin = format!("http://127.0.0.1:{}", browser.port);
+    let login = browser.request(
+        "POST",
+        "/login",
+        Some(json!({"email": email, "password": "correct horse battery"})),
+        &origin,
+    );
+    assert_eq!(login.status, 302, "{}", login.body);
 }
 
 /// Linking an existing (confirmed) account by its email is opt-in: unset or
@@ -661,7 +682,7 @@ fn existing_accounts_are_linked_only_with_link_existing_on() {
             .unwrap_or_default();
         let server = serve_with(root, "on", &extra);
         let mut grace = Browser::new(&server);
-        sign_up(&mut grace, "grace@example.com");
+        join(&mut grace, root, "grace@example.com");
         let existing = grace.whoami();
         // Confirmed: an unconfirmed account is taken over even so (see
         // `an_unconfirmed_account_is_taken_over_with_linking_off`).
@@ -732,7 +753,7 @@ fn only_an_email_nameid_or_an_ascii_address_is_an_email() {
     let root = dir.path();
     let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "on")]);
     let mut kim = Browser::new(&server);
-    sign_up(&mut kim, "kim@kk.test");
+    join(&mut kim, root, "kim@kk.test");
 
     let mut eve = Browser::new(&server);
     let id = eve.start("/saml/login");
@@ -989,16 +1010,6 @@ fn the_identities_migration_holds_one_identity_per_account_and_issuer() {
 /// accounts at all.
 #[test]
 fn an_unconfirmed_account_is_taken_over_only_where_it_cannot_have_been_used() {
-    let require_confirmation = |root: &Path| {
-        let model = root.join("app/models/user.sl");
-        let source = fs::read_to_string(&model).unwrap();
-        let on = source.replace(
-            "def auth_require_confirmed_email\n  false\nend",
-            "def auth_require_confirmed_email\n  true\nend",
-        );
-        assert_ne!(on, source, "auth_require_confirmed_email not found");
-        fs::write(model, on).unwrap();
-    };
     let squat = |server: &Server| {
         let mut squatter = Browser::new(server);
         let origin = format!("http://127.0.0.1:{}", server.1);
@@ -1015,7 +1026,6 @@ fn an_unconfirmed_account_is_taken_over_only_where_it_cannot_have_been_used() {
 
     let dir = served_app();
     let root = dir.path();
-    require_confirmation(root);
     let server = serve(root, "on");
     let mut squatter = squat(&server);
     assert_eq!(
@@ -1036,13 +1046,31 @@ fn an_unconfirmed_account_is_taken_over_only_where_it_cannot_have_been_used() {
     assert_eq!(attempt.status, 401, "the squatter's password still works");
     drop(server);
 
-    // The default: an unconfirmed account signs in, so it may be somebody's.
-    // The identity provider's word for an address does not hand it over —
-    // the account, its session and its password stay as they were.
+    // Where an unconfirmed account does sign in — sign-up is not open, the
+    // account was made by an administrator — it may be somebody's. The
+    // identity provider's word for an address does not hand it over: the
+    // account, its session and its password stay as they were.
     let dir = served_app();
     let root = dir.path();
-    let server = serve(root, "on");
-    let mut owner = squat(&server);
+    let server = serve_with(root, "on", &[("AUTH_SIGNUP", "closed")]);
+    runner(
+        root,
+        r##"user = User.new
+user.email = "hire@corp.test"
+user.role = "member"
+user.set_password("correct horse battery")
+user.save
+print(user.confirmed?)"##,
+    );
+    let origin = format!("http://127.0.0.1:{}", server.1);
+    let mut owner = Browser::new(&server);
+    assert_eq!(
+        owner
+            .request("POST", "/login", Some(login.clone()), &origin)
+            .status,
+        302,
+        "an administrator-made account could not sign in"
+    );
     let account = owner.whoami();
     assert!(account.starts_with("hire@corp.test member"), "{account}");
     let mut claimant = Browser::new(&server);
@@ -1056,7 +1084,6 @@ fn an_unconfirmed_account_is_taken_over_only_where_it_cannot_have_been_used() {
     assert_eq!(claimant.whoami(), "guest");
     assert_eq!(owner.whoami(), account, "the account's session was closed");
     let mut again = Browser::new(&server);
-    let origin = format!("http://127.0.0.1:{}", server.1);
     assert_eq!(
         again.request("POST", "/login", Some(login), &origin).status,
         302,
@@ -1067,7 +1094,6 @@ fn an_unconfirmed_account_is_taken_over_only_where_it_cannot_have_been_used() {
     // Provisioning off: nobody new signs in, an unconfirmed account neither.
     let dir = served_app();
     let root = dir.path();
-    require_confirmation(root);
     let server = serve(root, "off");
     squat(&server);
     let mut hire = Browser::new(&server);

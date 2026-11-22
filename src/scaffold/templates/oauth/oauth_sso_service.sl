@@ -330,6 +330,7 @@ class OauthSso
     linking = OauthSso.linking?
     # New session id after a successful login defeats session fixation.
     session_regenerate()
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # Stamped so a later password reset can invalidate this session — and so
     # that this one is not refused for predating the last reset.

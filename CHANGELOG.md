@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### Security — `soli generate auth`
+An audit of the base scaffold and its options. As for the others, an app
+generated earlier keeps its files.
+
+- **auth --api-tokens: a token could become a browser session.** Any token,
+  even with no scope, could register a passkey or an authenticator, or (an
+  admin's) start an impersonation, and so obtain a full session marked
+  two-factor-ok. The account's own pages (`API_TOKEN_CLOSED_PATHS`) now
+  answer `403` to a token, and the passkey, two-factor and impersonation
+  controllers ask for the owner's own session (`auth_own_session?`).
+- **auth --impersonation: an impersonation outlived the administrator.** It
+  ends when the administrator's sessions do (password reset, demotion,
+  revocation) and after `AUTH_IMPERSONATION_SECONDS` (an hour); stopping it
+  then returns no administrator session. While it lasts, the user's
+  passkeys, two-factor and tokens cannot be changed.
+- **auth: the first account asks for `AUTH_SETUP_TOKEN` outside development**
+  — not only when `APP_ENV=production`, which a deployment can forget.
+  `soli serve --dev` and `APP_ENV=development` / `test` go without.
+- **auth: a password lockout closed every way in.** Ten wrong passwords from
+  anyone locked passkeys, sign-in links and API tokens too. It closes the
+  password only.
+- **auth: the remember-me cookie had no end on the server.** A copied one
+  worked until the next logout. It expires `AUTH_REMEMBER_DAYS` after it was
+  issued, and honours the sign-in gates (confirmed address, not SSO-only).
+- **auth: adding a way in needs a recent sign-in** (`AUTH_FRESH_SECONDS`,
+  15 minutes): a passkey, an API token, an authenticator. A password reset
+  deletes the account's API tokens, passkeys and pending sign-in links.
+- **auth: a sign-in straddling a password reset could restore the old
+  password.** Small writes to the user (remember-me, failed attempts,
+  confirmation, reset token) now touch only their own fields.
+- **auth --two-factor:** wrong codes are counted atomically; backup codes are
+  80 bits. **auth:** `/confirmation/resend` is throttled; every sign-in path
+  drops a leftover impersonation.
+- **auth: open sign-up told which addresses are registered.** `/signup`
+  with `AUTH_SIGNUP=open` now gives one answer ("check your mailbox") for a
+  free address and a taken one, and signs in only once the address is
+  confirmed (`auth_require_confirmed_email` is true in open mode). The owner
+  of a taken address gets `AuthMailer.already_registered`.
+- **auth: answers timed alike.** Reset, confirmation, sign-in-link and
+  lockout mails leave the request (`deliver_later`); an unknown address costs
+  the same write and the same hashing as a known one.
+- **auth: the remember-me token rotates** on every restored session; a
+  replaced token seen again after a minute revokes remember-me for the
+  account.
+- **auth --two-factor: a code cannot be accepted twice by two simultaneous
+  requests** (`optimistic_lock` on `TwoFactor`).
+- **trust proxy: a warning when a forwarding header arrives with it off** —
+  behind a proxy every visitor then shares one rate-limit budget.
+- **rate_limiter_from_ip: the limit and window are part of the bucket key.**
+  Two call sites with different limits shared one bucket, which kept the
+  limit of whichever ran first — an API limiter at 300 a minute raised the
+  budget of the sign-in form.
+
 ### Security — hardening
 Defence in depth for the same scaffolds, each item with a test or a run
 against a live provider. As above, an app generated earlier keeps its files.

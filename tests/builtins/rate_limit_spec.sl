@@ -107,14 +107,25 @@ describe("RateLimiter") do
   describe("rate_limiter_from_ip") do
     test("keys the bucket on the TCP peer address") do
       limiter = rate_limiter_from_ip({"remote_addr": "10.55.0.1"}, 2, 60)
-      assert_eq(limiter.key, "ip:10.55.0.1")
+      assert_eq(limiter.key, "ip:10.55.0.1:2:60")
       assert_eq(limiter.status["limit"], 2)
       assert_eq(limiter.status["window"], 60)
     end
 
     test("ignores X-Forwarded-For when the proxy is not trusted") do
       request = {"remote_addr": "10.55.0.2", "headers": {"x-forwarded-for": "1.2.3.4"}}
-      assert_eq(rate_limiter_from_ip(request, 2, 60).key, "ip:10.55.0.2")
+      assert_eq(rate_limiter_from_ip(request, 2, 60).key, "ip:10.55.0.2:2:60")
+    end
+
+    test("two limits on one address are two budgets") do
+      request = {"remote_addr": "10.55.0.9"}
+      generous = rate_limiter_from_ip(request, 300, 60)
+      assert_eq(generous.allowed, true)
+      strict = rate_limiter_from_ip(request, 1, 60)
+      assert_eq(strict.allowed, true)
+      assert_eq(strict.allowed, false)
+      assert_eq(rate_limiter_from_ip(request, 1, 60).allowed, false)
+      assert_eq(generous.allowed, true)
     end
 
     test("defaults the window to 60 seconds") do

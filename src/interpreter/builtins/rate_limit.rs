@@ -536,7 +536,13 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 };
 
                 let ip = extract_client_ip(req).unwrap_or_default();
-                let key = format!("ip:{}", rate_limit_ip_key(&ip));
+                // The limit and the window are part of the key. A bucket keeps
+                // the limit it was created with, so two call sites with
+                // different limits sharing `ip:<addr>` meant whichever ran
+                // first set the budget of the other: an API limiter at 300
+                // a minute, touched first, let sign-in guesses run at 300 a
+                // minute too. Same limit and window still share one budget.
+                let key = format!("ip:{}:{}:{}", rate_limit_ip_key(&ip), limit, window);
 
                 let mut inst = Instance::new(Rc::clone(&class_for_from_ip));
                 inst.set("key", Value::String(key.into()));
@@ -671,6 +677,40 @@ pub(crate) fn rate_limit_ip_key(ip: &str) -> String {
 /// the client address on its own, read before `X-Forwarded-For`: Cloudflare's
 /// `CF-Connecting-IP`, or `X-Real-IP` from an nginx that sets it. Without trust
 /// proxy it is ignored like `X-Forwarded-For`, since a client can send it.
+/// Say once, in the log, that a forwarding header arrived while trust proxy
+/// is off.
+///
+/// That is what a reverse proxy in front of the app looks like, and there
+/// every visitor has the proxy's address: one rate-limit bucket for the
+/// whole site, so fifteen requests from anyone close the sign-in form for
+/// everyone. It is not turned on for the operator — on a directly exposed
+/// app the header is the client's to write, and trusting it would let a
+/// rotating value defeat every limiter — but a silent misconfiguration this
+/// costly should not stay silent.
+fn warn_once_if_forwarded(req: &HashPairs) {
+    static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if WARNED.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let forwarded = req.iter().any(|(key, value)| {
+        matches!(key, HashKey::String(name) if **name == *"headers")
+            && matches!(value, Value::Hash(headers) if headers.borrow().iter().any(|(header, _)| {
+                matches!(header, HashKey::String(name) if {
+                    let name = name.to_ascii_lowercase();
+                    name == "x-forwarded-for" || name == "forwarded" || name == "x-real-ip"
+                })
+            }))
+    });
+    if forwarded && !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        eprintln!(
+            "[soli] warning: a request carries a forwarding header (X-Forwarded-For / Forwarded) \
+             but trust proxy is off, so client addresses are the proxy's: every visitor shares \
+             one rate-limit budget. Behind a reverse proxy set SOLI_TRUST_PROXY=1 (and \
+             SOLI_TRUSTED_PROXIES to its address); on a directly exposed server leave it off."
+        );
+    }
+}
+
 pub(crate) fn extract_client_ip(req: &Value) -> Option<String> {
     let hash = match req {
         Value::Hash(h) => h,
@@ -678,6 +718,9 @@ pub(crate) fn extract_client_ip(req: &Value) -> Option<String> {
     };
     let borrowed = hash.borrow();
 
+    if !super::trust_proxy::is_trust_proxy_enabled() {
+        warn_once_if_forwarded(&borrowed);
+    }
     if super::trust_proxy::is_trust_proxy_enabled() {
         if let Some(ip) = client_ip_header_value(&borrowed) {
             return Some(ip);

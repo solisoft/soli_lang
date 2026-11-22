@@ -164,6 +164,7 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
             <li><strong class="text-white">Codes.</strong> A code is accepted once: the record keeps the time step of the last accepted code and refuses that step and earlier ones (<a href="/docs/builtins/crypto#def-totp-step" class="text-amber-400 hover:text-amber-300">Crypto.totp_step</a>). A backup code works once, typed with or without its dash. Codes may be typed with spaces.</li>
             <li><strong class="text-white">Wrong codes.</strong> The endpoints share the sign-in form&rsquo;s per-IP throttle. <code class="text-amber-300">AUTH_MAX_FAILED_ATTEMPTS</code> wrong codes in a row lock the second factor for <code class="text-amber-300">AUTH_LOCKOUT_SECONDS</code>; while locked, a right code is answered like a wrong one. The counter lives on the <code>TwoFactor</code> record, not the user: the password step clears the user&rsquo;s own counter, so anyone holding the password could otherwise reset it between guesses.</li>
             <li><strong class="text-white">Turning it off, new backup codes.</strong> Both ask for the password (an account created through OAuth has none, and is not asked); turning it off also asks for a code.</li>
+            <li><strong class="text-white">The owner, at the keyboard.</strong> Setting it up needs a sign-in from the last 15 minutes (<code>AUTH_FRESH_SECONDS</code>), and none of setup, backup codes or turning it off answers to an API token or to an administrator acting as the user (<code>403</code>). Backup codes are 80 random bits each (<code>xxxxx-xxxxx-xxxxx-xxxxx</code>), and wrong codes are counted in the database, one atomic write each. The model declares <code>optimistic_lock</code>: recording a code as used is a compare-and-swap, so two requests carrying the same code cannot both pass.</li>
         </ul>
 
         <h3 id="two-factor-others" class="text-xl font-semibold text-white mt-8 mb-3">With remember-me, passkeys and OAuth</h3>
@@ -231,6 +232,9 @@ curl -H "Authorization: Bearer soli_pat_…" https://app.example.com/invoices</c
             <li><strong class="text-white">A request with a token runs as its user</strong>: <code>current_user()</code> is them, and <code>req["api_token"]</code> is the token. An unknown or expired token is a <code>401</code>, never a fall back to the session.</li>
             <li><strong class="text-white">Scopes are yours.</strong> <code class="text-amber-300">API_TOKEN_SCOPES</code> in <code>app/models/api_token.sl</code> lists them (<code>read</code>, <code>write</code> to start with); guard an action with <code class="text-amber-300">api_scope?</code>. A request signed in with the session is not limited by scopes.</li>
             <li><strong class="text-white">Managing tokens takes a person in a browser</strong>: a request made with a token cannot list, create or revoke tokens.</li>
+            <li><strong class="text-white">The account&rsquo;s own pages are closed to tokens</strong>, whatever their scopes: <code>/login</code>, <code>/password</code>, <code>/passkeys</code>, <code>/two_factor</code>, <code>/api_tokens</code>, <code>/impersonate</code>, <code>/oauth</code>, <code>/saml</code>, <code>/privacy</code> and the rest of <code>API_TOKEN_CLOSED_PATHS</code> (in the middleware) answer <code>403</code>. A token that reached them could register a passkey or an authenticator, or start an impersonation, and so become a browser session with all of its owner&rsquo;s rights. Add your own account pages to the list.</li>
+            <li><strong class="text-white">Creating one needs a recent sign-in</strong> (<code>AUTH_FRESH_SECONDS</code>, 15 minutes): not a session left open, nor one restored by the remember-me cookie.</li>
+            <li><strong class="text-white">A password reset deletes them</strong>, with the account&rsquo;s passkeys and pending sign-in links: whoever had the account for a while keeps nothing they added. A password lockout does not stop a token &mdash; anyone who knows the address can trip it.</li>
             <li>A token is its own credential: the two-factor challenge does not apply to it. Give it the narrowest scopes and a lifetime.</li>
             <li><strong class="text-white">None for a single-sign-on-only account</strong> (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>): creating one answers <code>403</code>, and a token made before is refused like an unknown one &mdash; it would outlive the user&rsquo;s removal at the identity provider.</li>
         </ul>
@@ -254,7 +258,9 @@ end</code></pre>
             <li><strong class="text-white">Who may</strong>: an administrator, on an account that is not one, and not from inside an impersonation &mdash; <code>_may_impersonate</code> in the controller is the rule to change. Anything else is a <code>403</code>.</li>
             <li>While it lasts the session is the user&rsquo;s (<code>current_user()</code> is them) under a new session id, and the banner shows on every page with a button back.</li>
             <li><strong class="text-white">Every start and stop is logged</strong>, and written to the <a href="/docs/database/models#audit-log" class="text-amber-400 hover:text-amber-300">audit log</a> when the app has one (<code>action</code>: <code>impersonate</code> / <code>stop_impersonating</code>).</li>
-            <li>The user&rsquo;s API tokens cannot be managed while impersonating. Other sensitive pages of yours (password, two-factor) are yours to guard with <code>impersonating?()</code>.</li>
+            <li><strong class="text-white">It ends with the administrator&rsquo;s own sessions, and after an hour.</strong> The session remembers the administrator&rsquo;s session version: a password reset, a demotion or a revocation of the administrator ends the impersonation on its next request, and stopping it then gives no administrator session back. <code>AUTH_IMPERSONATION_SECONDS</code> (3600) is its longest life.</li>
+            <li><strong class="text-white">From a browser session only</strong>: an API token cannot start one.</li>
+            <li><strong class="text-white">Nothing that adds or removes a way in</strong> while impersonating: the user&rsquo;s API tokens, passkeys and two-factor settings answer <code>403</code> (<code>auth_own_session?(req)</code> &mdash; use it on sensitive pages of yours, a password or an email change).</li>
         </ul>
     </section>
 
@@ -339,6 +345,7 @@ end</code></pre>
             <code>data-csrf-token</code>), so they also pass with <code>SOLI_CSRF_TOKENS=require</code>.
         </p>
 
+        <p class="text-gray-400 my-4">Adding a passkey needs the owner&rsquo;s own browser session and a sign-in from the last 15 minutes (<code>AUTH_FRESH_SECONDS</code>): an API token, an administrator acting as the user, or a session restored by the remember-me cookie gets <code>403</code>. A password reset deletes the account&rsquo;s passkeys. A password lockout does not stop a passkey sign-in.</p>
         <h3 id="passkeys-native" class="text-xl font-semibold text-white mt-8 mb-3">Hand-rolled ceremonies</h3>
         <p class="text-gray-400 mb-4">
             The generated code is a thin layer over the native <code class="text-amber-300">WebAuthn</code> class &mdash;

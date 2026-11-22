@@ -79,7 +79,7 @@ Nothing existing is overwritten. Add the link to your sign-in view:
    | `SAML_LINK_DIRECTORY` | `on`: a first sign-in may link, by email, an account a [SCIM](/docs/security/scim) directory provisioned. **Off unless set**; off, such an account still links when its SCIM `externalId` is the assertion's NameID |
    | `SAML_SESSION_TTL` | seconds a SAML sign-in lasts here, cut shorter by the IdP's `SessionNotOnOrAfter`. Default `28800` (8 hours) |
 
-   In production with `AUTH_SIGNUP=first_user`, no SAML sign-in creates an
+   Outside development, with `AUTH_SIGNUP=first_user`, no SAML sign-in creates an
    account until the first one exists: the first account is the admin, made at
    `/signup` with `AUTH_SETUP_TOKEN`, and a SAML member created before it would
    make the app non-empty and close `/signup`. The refusal is logged
@@ -160,8 +160,8 @@ and matched exactly.
      handing one to whoever the identity provider says has that address is the
      takeover linking-off exists to prevent: the sign-in is refused, and the
      log says to confirm or delete the account, or to require confirmation.
-     **Turn `auth_require_confirmed_email` on with SAML** if sign-up is open,
-     so that an address registered in wait does not block its owner. An
+     With open sign-up (`AUTH_SIGNUP=open`) confirmation is always required,
+     so an address registered in wait never blocks its owner. An
      admin's account is refused either way.
 
 ### What `revoke_credentials` removes

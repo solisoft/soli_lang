@@ -24,7 +24,13 @@ class TwoFactorController < Controller
   def setup
     user = current_user()
     return redirect("/login") if user.nil?
+    return @_not_the_owner unless auth_own_session?(req)
     return redirect("/two_factor") if TwoFactor.enabled?(user)
+    # Turning a second factor on locks everyone else out of the account:
+    # from a sign-in of the last few minutes, not a session left open.
+    unless auth_fresh_sign_in?()
+      return @_render_index(user, "Sign in again to set up two-factor authentication.", 403)
+    end
 
     if getenv("SOLI_ENCRYPTION_KEY").blank?
       return @_render_index(user, "Set SOLI_ENCRYPTION_KEY first: the secret is stored encrypted.", 500)
@@ -37,6 +43,7 @@ class TwoFactorController < Controller
   def confirm
     user = current_user()
     return redirect("/login") if user.nil?
+    return @_not_the_owner unless auth_own_session?(req)
 
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil? || record.confirmed?
@@ -67,6 +74,7 @@ class TwoFactorController < Controller
   def backup_codes
     user = current_user()
     return redirect("/login") if user.nil?
+    return @_not_the_owner unless auth_own_session?(req)
 
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil? || !record.confirmed?
@@ -83,6 +91,7 @@ class TwoFactorController < Controller
   def destroy
     user = current_user()
     return redirect("/login") if user.nil?
+    return @_not_the_owner unless auth_own_session?(req)
 
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil?
@@ -118,6 +127,7 @@ class TwoFactorController < Controller
 
     # A new session id once both factors passed, as after a password sign-in.
     session_regenerate()
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)
@@ -127,6 +137,12 @@ class TwoFactorController < Controller
   end
 
   private
+
+  # An API token, or an administrator acting as the user: the second factor
+  # is the owner's to set, show and remove.
+  def _not_the_owner
+    {"status": 403, "body": "Forbidden"}
+  end
 
   # The per-IP throttle of the sign-in form (app/models/user.sl).
   def _allowed

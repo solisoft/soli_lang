@@ -26,6 +26,10 @@ class ApiTokensController < Controller
     return redirect("/login") if user.nil?
     return @_render(user, nil, "A single sign-on account cannot have API tokens.", 403) if user.sso_only?
     return @_render(user, nil, "Give the token a name.", 422) if params["name"].to_s.trim.blank?
+    # A token is a lasting way in: from a sign-in of the last few minutes.
+    unless auth_fresh_sign_in?()
+      return @_render(user, nil, "Sign in again to create a token (your last sign-in is too old).", 403)
+    end
 
     scopes = API_TOKEN_SCOPES.filter { |scope| params["scope_#{scope}"].to_s == "1" }
     issued = ApiToken.issue(user, params["name"], scopes, params["days"])
@@ -47,8 +51,7 @@ class ApiTokensController < Controller
 
   # The signed-in user, when the request comes from their own session.
   def _person
-    return nil unless (req["api_token"] rescue nil).nil?
-    return nil if session_get("impersonator_id").to_s.present?
+    return nil unless auth_own_session?(req)
 
     current_user()
   end

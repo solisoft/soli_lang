@@ -37,9 +37,13 @@ class PasswordsController < Controller
     # An account that signs in through single sign-on only gets no reset link,
     # and the same answer: a password set here would outlive its removal at
     # the identity provider.
-    unless user.nil? || user.sso_only?
+    # The mail leaves the request (`deliver_later`), and an address with no
+    # account costs the same write: the answer and its timing say nothing.
+    if user.nil? || user.sso_only?
+      User.burn_write_work
+    else
       token = user.start_password_reset
-      AuthMailer.reset_password(user, token).deliver_now rescue nil
+      AuthMailer.reset_password(user, token).deliver_later rescue nil
     end
 
     @_request_form("If that email exists, a reset link is on its way.", "", 200)
@@ -76,6 +80,7 @@ class PasswordsController < Controller
     user.finish_password_reset(password)
     # Sign the user straight in with a fresh session.
     session_regenerate()
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)

@@ -171,6 +171,8 @@ fn serve(root: &Path) -> Server {
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env("AUTH_SIGNUP", "first_user")
+        // A test run: the first account needs no AUTH_SETUP_TOKEN.
+        .env("APP_ENV", "test")
         .env("AUTH_ATTEMPTS_PER_IP", "1000")
         .env("APP_BASE_URL", "https://app.test")
         .env("SOLI_CSRF_TOKENS", "require")
@@ -472,14 +474,33 @@ fn an_api_token_authenticates_a_request_within_its_scopes() {
         "a session has no scopes"
     );
     assert!(ada.get("/api_tokens").body.contains("last used"));
-    // It cannot manage tokens.
-    assert_eq!(script.get("/api_tokens").location, "/login");
+    // It cannot manage tokens, nor reach any page that manages the account:
+    // those are closed to tokens whatever their scopes.
+    assert_eq!(script.get("/api_tokens").status, 403);
     assert_eq!(
         script
             .post("/api_tokens", json!({"name": "more", "scope_write": "1"}))
-            .location,
-        "/login"
+            .status,
+        403
     );
+    assert_eq!(script.post("/impersonate/anyone", json!({})).status, 403);
+
+    // Ten wrong passwords lock the password, not the integration: anyone who
+    // knows the address can send them.
+    let mut stranger = Client::browser(&server);
+    for _ in 0..10 {
+        let reply = stranger.post(
+            "/login",
+            json!({"email": "ada@example.com", "password": "not the password"}),
+        );
+        assert_eq!(reply.status, 401);
+    }
+    let locked = stranger.post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD}),
+    );
+    assert_eq!(locked.status, 401, "the account did not lock");
+    assert_eq!(script.whoami(), "ada@example.com admin");
 
     // A wrong token is a 401, not the session behind it.
     let mut wrong = Client::script(&server, "soli_pat_0000");
@@ -518,6 +539,27 @@ fn an_api_token_authenticates_a_request_within_its_scopes() {
         assert_eq!(ada.request("DELETE", &path, Some(json!({}))).status, 302);
     }
     assert_eq!(sync.get("/whoami").status, 401);
+
+    // A password reset takes the tokens with it: whoever had the account
+    // for a while keeps nothing they added.
+    let created = ada.post(
+        "/api_tokens",
+        json!({"name": "left behind", "scope_read": "1"}),
+    );
+    let start = created.body.find("data-new-token>").unwrap() + 15;
+    let left = created.body[start..]
+        .split('<')
+        .next()
+        .unwrap()
+        .trim()
+        .to_string();
+    let mut left_behind = Client::script(&server, &left);
+    assert_eq!(left_behind.whoami(), "ada@example.com admin");
+    runner(
+        dir.path(),
+        "User.find_by(\"email\", \"ada@example.com\").finish_password_reset(\"another horse battery 9\")",
+    );
+    assert_eq!(left_behind.get("/whoami").status, 401);
     assert_eq!(script.get("/whoami").status, 401);
 }
 
@@ -597,6 +639,14 @@ fn an_administrator_acts_as_a_user_and_comes_back() {
     assert_eq!(start(&mut admin, &grace_key).status, 403);
     assert_eq!(admin.get("/api_tokens").location, "/login");
 
+    // The impersonation holds only while the administrator's own sessions
+    // do: once they are ended (a password reset, a revocation), it is over,
+    // and stopping it gives no administrator session back.
+    let mut hijacked = Client::browser(&server);
+    login(&mut hijacked, "admin@example.com");
+    assert_eq!(start(&mut hijacked, &grace_key).status, 302);
+    assert_eq!(hijacked.whoami(), "grace@example.com member");
+
     // And comes back.
     let reply = admin.request("DELETE", "/impersonate", Some(json!({})));
     assert_eq!((reply.status, reply.location.as_str()), (302, "/"));
@@ -613,6 +663,19 @@ fn an_administrator_acts_as_a_user_and_comes_back() {
         302
     );
     assert_eq!(grace.whoami(), "grace@example.com member");
+
+    runner(
+        dir.path(),
+        "user = User.find_by(\"email\", \"admin@example.com\")\n\
+         user.session_version = user.current_session_version + 1\nuser.save",
+    );
+    assert_eq!(
+        hijacked.whoami(),
+        "guest",
+        "the impersonation outlived the admin's sessions"
+    );
+    hijacked.request("DELETE", "/impersonate", Some(json!({})));
+    assert_eq!(hijacked.whoami(), "guest");
 }
 
 /// `soli runner -e code` against the served app's database: the last line it

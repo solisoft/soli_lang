@@ -1,0 +1,7 @@
+<p>Hello,</p>
+<p>Someone &mdash; probably you &mdash; tried to create an account with this
+address, but it already has one.</p>
+<p><a href="<%= login_url %>">Sign in</a>, or
+<a href="<%= reset_url %>">reset your password</a> if you no longer know it.</p>
+<p>If this was not you, there is nothing to do: no account was created and
+nothing changed.</p>

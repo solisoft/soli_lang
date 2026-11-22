@@ -196,6 +196,7 @@ makes one), and link to `/two_factor` from your account page.
 - **Turning it off, new backup codes.** Both ask for the password (an account
   created through OAuth has none, and is not asked); turning it off also asks
   for a code.
+- **The owner, at the keyboard.** Setting it up needs a sign-in from the last 15 minutes (`AUTH_FRESH_SECONDS`), and none of setup, backup codes or turning it off answers to an API token or to an administrator acting as the user (`403`). Backup codes are 80 random bits each (`xxxxx-xxxxx-xxxxx-xxxxx`), and wrong codes are counted in the database, one atomic write each. The model declares `optimistic_lock`: recording a code as used is a compare-and-swap, so two requests carrying the same code cannot both pass.
 
 ### With remember-me, passkeys and OAuth
 
@@ -283,6 +284,9 @@ create (name, scopes, lifetime), list, revoke.
   ```
 - **Managing tokens takes a person in a browser**: a request made with a
   token cannot list, create or revoke tokens.
+- **The account's own pages are closed to tokens**, whatever their scopes: `/login`, `/password`, `/passkeys`, `/two_factor`, `/api_tokens`, `/impersonate`, `/oauth`, `/saml`, `/privacy` and the rest of `API_TOKEN_CLOSED_PATHS` (in the middleware) answer `403`. A token that reached them could register a passkey or an authenticator, or start an impersonation, and so become a browser session with all of its owner's rights. Add your own account pages to the list.
+- **Creating one needs a recent sign-in** (`AUTH_FRESH_SECONDS`, 15 minutes): not a session left open, nor one restored by the remember-me cookie.
+- **A password reset deletes them**, with the account's passkeys and pending sign-in links: whoever had the account for a while keeps nothing they added. A password lockout does not stop a token — anyone who knows the address can trip it.
 - A token is its own credential: the two-factor challenge does not apply to
   it. Give it the narrowest scopes and a lifetime.
 - **None for a single-sign-on-only account** ([SAML](/docs/security/saml),
@@ -314,9 +318,9 @@ banner partial to render in your layout:
 - **Every start and stop is logged**, and written to the
   [audit log](/docs/database/models#audit-log) when the app has one
   (`action`: `impersonate` / `stop_impersonating`).
-- The user's API tokens cannot be managed while impersonating. Other
-  sensitive pages of yours (password, two-factor) are yours to guard with
-  `impersonating?()`.
+- **It ends with the administrator's own sessions, and after an hour.** The session remembers the administrator's session version: a password reset, a demotion or a revocation of the administrator ends the impersonation on its next request, and stopping it then gives no administrator session back. `AUTH_IMPERSONATION_SECONDS` (3600) is its longest life.
+- **From a browser session only**: an API token cannot start one.
+- **Nothing that adds or removes a way in** while impersonating: the user's API tokens, passkeys and two-factor settings answer `403` (`auth_own_session?(req)` — use it on sensitive pages of yours, a password or an email change).
 
 ## Passkeys
 
@@ -390,6 +394,8 @@ gets the same `401`, so the
 endpoint reveals nothing about which passkeys exist. The JSON requests carry
 the page's CSRF token in `X-CSRF-Token` (the views emit it in
 `data-csrf-token`), so they also pass with `SOLI_CSRF_TOKENS=require`.
+
+Adding a passkey needs the owner's own browser session and a sign-in from the last 15 minutes (`AUTH_FRESH_SECONDS`): an API token, an administrator acting as the user, or a session restored by the remember-me cookie gets `403`. A password reset deletes the account's passkeys. A password lockout does not stop a passkey sign-in.
 
 ### Hand-rolled ceremonies
 

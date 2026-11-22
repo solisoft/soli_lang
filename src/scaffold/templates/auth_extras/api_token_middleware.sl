@@ -4,9 +4,33 @@
 # `current_user()` is that user and `req["api_token"]` the token, for
 # `api_scope?`. A `soli_pat_` token that is unknown or expired is a 401, never
 # a fall back to the session: a script must not turn into its owner's browser.
+# For the same reason the account's own pages are closed to tokens
+# (API_TOKEN_CLOSED_PATHS).
 #
 # Order 7: after the session's user is loaded (5) and after the two-factor
 # gate (6), which is about sessions — a token is its own credential.
+
+
+# Where a token is refused whatever its scopes: the pages that manage the
+# account itself. A token that could reach them could register a passkey or
+# an authenticator, mint other tokens, or start an impersonation — and so
+# turn into a browser session with all of its owner's rights. Add your own
+# account pages here.
+const API_TOKEN_CLOSED_PATHS = [
+  "/login",
+  "/logout",
+  "/signup",
+  "/password",
+  "/confirm",
+  "/passkeys",
+  "/two_factor",
+  "/api_tokens",
+  "/impersonate",
+  "/oauth",
+  "/auth",
+  "/saml",
+  "/privacy"
+]
 
 # order: 7
 
@@ -31,11 +55,23 @@ def authenticate_api_token(req)
   user = User.find_by("_key", token.user_id)
   # A single-sign-on-only account's token (one made before the account
   # became one) is refused like an unknown token.
-  if user.nil? || user.locked? || user.sso_only?
+  # No `user.locked?`: that lock counts wrong passwords, and anyone who
+  # knows the address can trip it — it must not switch integrations off.
+  if user.nil? || user.sso_only?
     return {
       "status": 401,
       "headers": {"Content-Type": "application/json", "WWW-Authenticate": "Bearer"},
       "body": "{\"error\":\"invalid or expired token\"}"
+    }
+  end
+
+  path = req["path"].to_s
+  closed = API_TOKEN_CLOSED_PATHS.filter { |prefix| path == prefix || path.starts_with?("#{prefix}/") }
+  if closed.length > 0
+    return {
+      "status": 403,
+      "headers": {"Content-Type": "application/json"},
+      "body": "{\"error\":\"this page needs a browser session, not an API token\"}"
     }
   end
 

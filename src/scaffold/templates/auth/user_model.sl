@@ -30,6 +30,40 @@ end
 const AUTH_ATTEMPTS_PER_IP = auth_env_int("AUTH_ATTEMPTS_PER_IP", 15)
 const AUTH_IP_WINDOW_SECONDS = auth_env_int("AUTH_IP_WINDOW_SECONDS", 300)
 
+# How recent a sign-in must be to add a way into the account (a passkey, an
+# API token, an authenticator app). A session left open on a shared machine,
+# or one restored from the remember-me cookie, signs in again first.
+const AUTH_FRESH_SECONDS = auth_env_int("AUTH_FRESH_SECONDS", 900)
+# How long an administrator may act as a user before the session ends.
+const AUTH_IMPERSONATION_SECONDS = auth_env_int("AUTH_IMPERSONATION_SECONDS", 3600)
+
+# Is the account's owner at the keyboard? Not when the request is carried by
+# an API token (a script must not become its owner's browser), and not while
+# an administrator is acting as the user. Asked before anything that adds or
+# removes a way into the account.
+def auth_own_session?(req)
+  return false unless (req["api_token"] rescue nil).nil?
+
+  session_get("impersonator_id").to_s.blank?
+end
+
+# Did this session sign in within AUTH_FRESH_SECONDS? (`auth_time` is set by
+# every sign-in, and by nothing else: not by remember-me, not by an
+# impersonation.)
+def auth_fresh_sign_in?
+  signed_in_at = (session_get("auth_time") ?? 0).to_i
+  signed_in_at > 0 && DateTime.utc.to_unix - signed_in_at <= AUTH_FRESH_SECONDS
+end
+
+# A sign-in is a new person: whatever impersonation the session carried is
+# over. `session_regenerate` keeps the session's data, so every action that
+# opens a session calls this.
+def auth_forget_impersonation
+  session_delete("impersonator_id")
+  session_delete("impersonator_version")
+  session_delete("impersonation_started_at")
+end
+
 # Who may create an account at /signup, from AUTH_SIGNUP:
 #
 #   first_user  (default) only while no account exists: the first visitor
@@ -55,15 +89,22 @@ def auth_signup_open?
   User.count.zero?
 end
 
-# In production, `first_user` asks for AUTH_SETUP_TOKEN: the first account
-# becomes the admin, and on a freshly deployed app the first visitor to
-# reach /signup is not necessarily you. Set AUTH_SETUP_TOKEN, then sign up
-# with it; until it is set, production creates no first account.
+# `first_user` asks for AUTH_SETUP_TOKEN: the first account becomes the
+# admin, and on a freshly deployed app the first visitor to reach /signup is
+# not necessarily you. Set AUTH_SETUP_TOKEN, then sign up with it; until it is
+# set, no first account is created.
+#
+# Only a development or test run goes without: `soli serve --dev`, or
+# APP_ENV=development / test. Asking "is this production?" instead left the
+# door open on every deployment that forgot to say so.
 def auth_setup_token_required?
-  auth_signup_mode() == "first_user" && getenv("APP_ENV").to_s.trim.downcase == "production"
+  return false unless auth_signup_mode() == "first_user"
+  return false if dev_mode?()
+
+  !["development", "test"].includes?(getenv("APP_ENV").to_s.trim.downcase)
 end
 
-# Whether `given` unlocks the first sign-up (always, outside production).
+# Whether `given` unlocks the first sign-up (always, in development and test).
 def auth_setup_token_ok?(given)
   return true unless auth_setup_token_required?()
 
@@ -89,8 +130,13 @@ end
 # Require a confirmed email before sign-in. Flip to true once SMTP is
 # configured (SOLI_SMTP_* env vars — see the mailer docs) so users can
 # actually receive the confirmation link.
+#
+# Always true when anyone may sign up (AUTH_SIGNUP=open): the sign-up form
+# answers the same for a free address and a taken one, and that only holds if
+# the account it may have created cannot be signed in to before its mailbox
+# answered — otherwise "sign up, then try to sign in" tells which it was.
 def auth_require_confirmed_email
-  false
+  auth_signup_mode() == "open"
 end
 
 # The models of the optional generators that hold a way into an account, or
@@ -193,6 +239,14 @@ class User < Model
     false
   end
 
+  # The database write a known address costs (a token stored, an attempt
+  # counted), spent on no row: with the mail sent off the request
+  # (`deliver_later`), an unknown address then answers in the same time.
+  static def burn_write_work
+    User.where({"_key": "no-such-user"}).update_all({"reset_sent_at": 0})
+    nil
+  end
+
   def admin?
     @role == "admin"
   end
@@ -205,7 +259,7 @@ class User < Model
     token = uuid_v4()
     @reset_token_digest = Crypto.sha256(token)
     @reset_sent_at = DateTime.utc.to_unix
-    @update
+    @_patch({"reset_token_digest": @reset_token_digest, "reset_sent_at": @reset_sent_at})
     token
   end
 
@@ -241,7 +295,25 @@ class User < Model
     # who was already signed in stayed signed in through the victim's reset —
     # which is the one thing a password reset is supposed to stop.
     @session_version = (@session_version ?? 0) + 1
-    @update
+    saved = @update
+    # A reset is what someone does when the account may be in other hands:
+    # the ways in that a visitor to the account could have added — API
+    # tokens, passkeys, pending sign-in links — go with the old password.
+    # (Linked providers and the authenticator app stay: they are the owner's.)
+    ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
+      model = const_get(name)
+      model.where({"user_id": @_key}).delete_all unless model.nil?
+    end
+    saved
+  end
+
+  # Write these fields and no others. `@update` writes the whole record as
+  # this request loaded it: a sign-in that started before a password reset
+  # and finished after it (Argon2 takes a tenth of a second) would put the
+  # old password, and the old session version, back.
+  def _patch(fields)
+    User.where({"_key": @_key}).update_all(fields)
+    true
   end
 
   # Bumped whenever every existing session must be invalidated (a password
@@ -290,7 +362,10 @@ class User < Model
     token = uuid_v4()
     @confirmation_token_digest = Crypto.sha256(token)
     @confirmation_sent_at = DateTime.utc.to_unix
-    @update
+    @_patch({
+      "confirmation_token_digest": @confirmation_token_digest,
+      "confirmation_sent_at": @confirmation_sent_at
+    })
     token
   end
 
@@ -310,7 +385,7 @@ class User < Model
     @confirmed_at = DateTime.utc.to_unix
     @confirmation_token_digest = nil
     @confirmation_sent_at = nil
-    @update
+    @_patch({"confirmed_at": @confirmed_at, "confirmation_token_digest": nil, "confirmation_sent_at": nil})
   end
 
   def confirmed?
@@ -321,7 +396,15 @@ class User < Model
   def start_remember_me
     token = uuid_v4()
     @remember_token_digest = Crypto.sha256(token)
-    @update
+    @remember_previous_digest = nil
+    @remember_rotated_at = nil
+    @remember_created_at = DateTime.utc.to_unix
+    @_patch({
+      "remember_token_digest": @remember_token_digest,
+      "remember_previous_digest": nil,
+      "remember_rotated_at": nil,
+      "remember_created_at": @remember_created_at
+    })
     token
   end
 
@@ -329,13 +412,52 @@ class User < Model
     return true if @remember_token_digest.blank?
 
     @remember_token_digest = nil
-    @update
+    @remember_previous_digest = nil
+    @remember_created_at = nil
+    @_patch({"remember_token_digest": nil, "remember_previous_digest": nil, "remember_created_at": nil})
   end
 
+  # A remember-me token is used once: each time it restores a session it is
+  # replaced (`load_current_user` sets the new cookie). The one it replaces
+  # stays good for a minute, for the requests a browser sent side by side;
+  # after that, seeing it again means two parties hold the cookie — a copy —
+  # and remember-me is ended for the account (`remembered_by?`).
+  def rotate_remember_me
+    token = uuid_v4()
+    @remember_previous_digest = @remember_token_digest
+    @remember_rotated_at = DateTime.utc.to_unix
+    @remember_token_digest = Crypto.sha256(token)
+    @_patch({
+      "remember_token_digest": @remember_token_digest,
+      "remember_previous_digest": @remember_previous_digest,
+      "remember_rotated_at": @remember_rotated_at
+    })
+    token
+  end
+
+  # Is `token` the current one (the caller then rotates it)?
+  def remember_current?(token)
+    @remember_token_digest.present? && Crypto.secure_compare(Crypto.sha256(token.to_s), @remember_token_digest)
+  end
+
+  # The cookie's lifetime is the browser's to keep; this one is the
+  # server's: a copied token stops working AUTH_REMEMBER_DAYS after it was
+  # issued, whatever the copy says.
   def remembered_by?(token)
     return false if @remember_token_digest.blank?
+    return false if DateTime.utc.to_unix - (@remember_created_at ?? 0).to_i > AUTH_REMEMBER_DAYS * 86400
+    return true if @remember_current?(token)
+    return false if @remember_previous_digest.blank?
+    return false unless Crypto.secure_compare(Crypto.sha256(token.to_s), @remember_previous_digest)
+    # The replaced token, within its minute: a request sent alongside the
+    # one that rotated it.
+    return true if DateTime.utc.to_unix - (@remember_rotated_at ?? 0).to_i <= 60
 
-    Crypto.secure_compare(Crypto.sha256(token.to_s), @remember_token_digest)
+    # The replaced token, later: someone else holds a copy. Nobody is
+    # remembered any more; both parties sign in again.
+    Logger.warn("remember-me token of #{@email} reused after rotation: remember-me revoked")
+    @forget_me
+    false
   end
 
   # --- Account lockout --------------------------------------------------------
@@ -346,7 +468,7 @@ class User < Model
       # The lockout window has passed — auto-unlock.
       @locked_at = nil
       @failed_attempts = 0
-      @update
+      @_patch({"locked_at": nil, "failed_attempts": 0})
       return false
     end
     true
@@ -378,7 +500,7 @@ class User < Model
     attempts = @failed_attempts ?? 0
     if attempts >= AUTH_MAX_FAILED_ATTEMPTS
       @locked_at = DateTime.utc.to_unix
-      @update
+      @_patch({"locked_at": @locked_at})
     end
     # One notification, from the guess that reached the limit.
     just_locked = attempts == AUTH_MAX_FAILED_ATTEMPTS
@@ -389,7 +511,7 @@ class User < Model
     # was the right one. Delivery failures must not break sign-in.
     if just_locked
       try
-        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver_now
+        AuthMailer.account_locked(this, AUTH_LOCKOUT_SECONDS / 60).deliver_later
       catch error
         Logger.warn("account-locked notification failed: #{error}")
       end
@@ -404,6 +526,6 @@ class User < Model
 
     @failed_attempts = 0
     @locked_at = nil
-    @update
+    @_patch({"failed_attempts": 0, "locked_at": nil})
   end
 end

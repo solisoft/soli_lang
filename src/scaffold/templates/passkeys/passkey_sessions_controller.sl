@@ -40,7 +40,9 @@ class PasskeySessionsController < Controller
     user = User.find_by("_key", passkey.user_id)
     # A single-sign-on-only account's passkey (one registered before the
     # account became one) does not sign in.
-    return @_reject if user.nil? || user.locked? || user.sso_only?
+    # No `user.locked?`: that lock counts wrong passwords, which anyone who
+    # knows the address can send — it must not close this way in.
+    return @_reject if user.nil? || user.sso_only?
     # Nothing named the user before this ceremony, so the user handle is
     # mandatory (WebAuthn L3 §7.2 step 6) and must name the passkey's owner.
     return @_reject unless result["user_handle"] == user._key
@@ -54,6 +56,7 @@ class PasskeySessionsController < Controller
     # New session id after a successful login defeats session fixation. The
     # challenge was consumed above, before this regenerates the session.
     session_regenerate()
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)

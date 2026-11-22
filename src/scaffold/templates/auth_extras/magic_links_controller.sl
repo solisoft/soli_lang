@@ -22,14 +22,19 @@ class MagicLinksController < Controller
     return @_form("", "Too many requests. Try again in a few minutes.", 429) unless limiter.allowed
 
     user = User.find_by("email", params["email"].to_s.trim.downcase)
-    # A locked account gets no link, and no different answer; nor does one
-    # that signs in through single sign-on only (`sso_only?`): a link in the
-    # mailbox would outlive the user's removal at the identity provider.
+    # An account that signs in through single sign-on only (`sso_only?`)
+    # gets no link, and no different answer: a link in the mailbox would
+    # outlive the user's removal at the identity provider. A password
+    # lockout does not stop a link — anyone can trip it, and the mailbox is
+    # its own proof.
     nonce = Crypto.random_hex(32)
-    if !user.nil? && !user.locked? && !user.sso_only?
+    if !user.nil? && !user.sso_only?
       link = MagicLink.issue(user)
       nonce = link["nonce"]
-      MagicLinkMailer.sign_in(user, link["token"]).deliver_now rescue nil
+      MagicLinkMailer.sign_in(user, link["token"]).deliver_later rescue nil
+    else
+      # The write an account costs, on no row: same timing either way.
+      User.burn_write_work
     end
     set_cookie("magic_link", nonce, {
       "max_age": MAGIC_LINK_TTL,
@@ -49,7 +54,7 @@ class MagicLinksController < Controller
     user = MagicLink.redeem(params["token"], (cookies["magic_link"] rescue nil))
     # A link issued before the account became single sign-on only is refused
     # like an expired one.
-    if user.nil? || user.locked? || user.sso_only?
+    if user.nil? || user.sso_only?
       return @_form(
         "",
         "This link is invalid, has expired, or was opened in another browser than the one that asked for it.",
@@ -67,6 +72,7 @@ class MagicLinksController < Controller
     })
     # New session id after a successful login defeats session fixation.
     session_regenerate()
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)

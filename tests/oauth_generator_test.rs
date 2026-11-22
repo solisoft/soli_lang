@@ -413,6 +413,8 @@ fn serve(root: &Path, providers: u16, signup: &str) -> Server {
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env("AUTH_SIGNUP", signup)
+        // A test run: the first account needs no AUTH_SETUP_TOKEN.
+        .env("APP_ENV", "test")
         .env("AUTH_ATTEMPTS_PER_IP", "1000")
         .env("SOLI_HTTP_ALLOW_HOSTS", format!("127.0.0.1:{providers}"))
         .env("GITLAB_BASE_URL", &fake)
@@ -735,7 +737,7 @@ fn served_app_signs_in_links_and_refuses() {
     assert!(!denied.body.contains("phish"), "{}", denied.body);
 
     // An account someone created in wait with the victim's address, never
-    // confirmed. It cannot link a provider to itself while unconfirmed...
+    // confirmed.
     let mut squatter = Browser::new(&server);
     let signup = squatter.request(
         "POST",
@@ -743,21 +745,34 @@ fn served_app_signs_in_links_and_refuses() {
         Some(json!({"email": "grace@example.com", "password": "squatter password 1"})),
         true,
     );
-    assert_eq!(signup.status, 302, "{}", signup.body);
-    assert!(squatter.whoami().starts_with("grace@example.com"));
-    let refused = squatter.link("apple");
-    assert_eq!(
-        refused.status, 403,
-        "an unconfirmed account started linking"
+    // Open sign-up answers "check your mailbox" and opens no session: the
+    // squatter never read the victim's mail, so they are never signed in —
+    // nothing to link a provider with, and the password they chose opens
+    // nothing either.
+    assert_eq!(signup.status, 200, "{}", signup.body);
+    assert_eq!(squatter.whoami(), "guest");
+    let login = squatter.request(
+        "POST",
+        "/login",
+        Some(json!({"email": "grace@example.com", "password": "squatter password 1"})),
+        true,
     );
-    // A GET from a signed-in browser never links (any site can make one):
-    // it shows the connected accounts.
-    let get = squatter.get("/auth/apple");
+    assert_eq!(login.status, 401, "an unconfirmed account signed in");
+    // The same answer for an address that already has an account.
+    let again = Browser::new(&server).request(
+        "POST",
+        "/signup",
+        Some(json!({"email": "grace@example.com", "password": "another password 12"})),
+        true,
+    );
+    let stable = |page: &str| {
+        page.split("value=\"")
+            .map(|part| part.split_once('"').map_or(part, |(_, rest)| rest))
+            .collect::<String>()
+    };
     assert_eq!(
-        (get.status, get.location.as_str()),
-        (302, "/oauth/identities"),
-        "{}",
-        get.body
+        (again.status, stable(&again.body)),
+        (signup.status, stable(&signup.body))
     );
 
     // A session opened after a password reset bumped the account's session
@@ -800,7 +815,8 @@ fn served_app_signs_in_links_and_refuses() {
         Some(json!({"email": "grace@example.com", "password": "squatter password 1"})),
         true,
     );
-    assert_eq!(login.status, 302, "{}", login.body);
+    // (The squatter never could sign in: the address was never confirmed.)
+    assert_eq!(login.status, 401, "{}", login.body);
     set_profile(gitlab("gl-2", "grace@example.com", true));
     let mut grace = Browser::new(&server);
     assert_eq!(grace.sign_in_with("gitlab").status, 302);

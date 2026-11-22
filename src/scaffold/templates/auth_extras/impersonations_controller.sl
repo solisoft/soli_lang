@@ -17,6 +17,8 @@ class ImpersonationsController < Controller
   def create
     admin = current_user()
     return redirect("/login") if admin.nil?
+    # From the administrator's own browser session only — never an API token.
+    return {"status": 403, "body": "Forbidden"} unless auth_own_session?(req)
 
     target = User.find_by("_key", params["id"])
     return {"status": 403, "body": "Forbidden"} unless @_may_impersonate(admin, target)
@@ -24,6 +26,10 @@ class ImpersonationsController < Controller
     @_record("impersonate", admin, target)
     @_become(target)
     session_set("impersonator_id", admin._key)
+    # What `load_current_user` holds the impersonation to: the administrator's
+    # sessions as they were, and an hour (AUTH_IMPERSONATION_SECONDS).
+    session_set("impersonator_version", admin.current_session_version)
+    session_set("impersonation_started_at", DateTime.utc.to_unix)
     redirect("/")
   end
 
@@ -34,7 +40,11 @@ class ImpersonationsController < Controller
 
     admin = User.find_by("_key", admin_id)
     target = current_user()
-    if admin.nil?
+    # Still an administrator, and still holding the sessions this was started
+    # from: a reset or a demotion in the meantime gives nothing back.
+    still_theirs = !admin.nil? && admin.admin? &&
+      (session_get("impersonator_version") ?? -1).to_i == admin.current_session_version
+    unless still_theirs
       session_destroy()
       return redirect("/login")
     end
@@ -58,7 +68,7 @@ class ImpersonationsController < Controller
   # Make the session `user`'s, under a new session id.
   def _become(user)
     session_regenerate()
-    session_delete("impersonator_id")
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     session_set("session_version", user.current_session_version)
     # Nobody signed in as this user just now: no auth_time for the OIDC provider.

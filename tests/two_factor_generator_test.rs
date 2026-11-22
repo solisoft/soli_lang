@@ -463,6 +463,21 @@ fn served_app() -> tempfile::TempDir {
     dir
 }
 
+/// What clicking the mailed confirmation link does, written straight to the
+/// database: open sign-up answers "check your mailbox" and signs nobody in
+/// until the address is confirmed.
+fn confirm_address(root: &Path, email: &str) {
+    let conn = rusqlite::Connection::open(root.join("app.sqlite3")).unwrap();
+    let changed = conn
+        .execute(
+            "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
+             WHERE json_extract(doc, '$.email') = ?1",
+            [email],
+        )
+        .unwrap();
+    assert_eq!(changed, 1, "no account for {email}");
+}
+
 #[test]
 fn served_app_enrols_challenges_and_refuses_replays() {
     let dir = served_app();
@@ -482,7 +497,10 @@ fn served_app_enrols_challenges_and_refuses_replays() {
     // Sign up; a second browser signs in to the same account.
     let mut ada = Browser::new(&server);
     let signup = ada.post("/signup", json!({"email": EMAIL, "password": PASSWORD}));
-    assert_eq!(signup.status, 302, "{}", signup.body);
+    assert_eq!(signup.status, 200, "{}", signup.body);
+    confirm_address(dir.path(), EMAIL);
+    let login = ada.post("/login", json!({"email": EMAIL, "password": PASSWORD}));
+    assert_eq!(login.status, 302, "{}", login.body);
     let page = ada.get("/two_factor");
     assert_eq!(page.status, 200, "{}", page.body);
     assert!(
@@ -676,4 +694,32 @@ fn soli_with_database(root: &Path, code: &str) -> (bool, String) {
             String::from_utf8_lossy(&output.stderr)
         ),
     )
+}
+
+/// The second factor is the owner's to set, show and remove: not an API
+/// token's, not an administrator's acting as the user. And wrong codes are
+/// counted in the database, so a burst cannot hide behind one write.
+#[test]
+fn only_the_owner_at_the_keyboard_manages_the_second_factor() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_skeleton(dir.path());
+    create_auth(dir.path().to_str().unwrap()).unwrap();
+    create_two_factor(dir.path().to_str().unwrap()).unwrap();
+    let read = |path: &str| fs::read_to_string(dir.path().join(path)).unwrap();
+    let controller = read("app/controllers/two_factor_controller.sl");
+    assert_eq!(
+        controller
+            .matches("return @_not_the_owner unless auth_own_session?(req)")
+            .count(),
+        4,
+        "setup, confirm, backup_codes and destroy:\n{controller}"
+    );
+    assert!(controller.contains("auth_fresh_sign_in?()"), "{controller}");
+    let model = read("app/models/two_factor.sl");
+    assert!(model.contains(r#"@increment("failed_codes")"#), "{model}");
+    assert!(model.contains("Crypto.random_hex(10)"), "{model}");
+    // Two requests carrying the same code cannot both record it as used:
+    // the save is a compare-and-swap.
+    assert!(model.contains("optimistic_lock"), "{model}");
+    assert_eq!(model.matches("@update == true").count(), 2, "{model}");
 }

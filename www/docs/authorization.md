@@ -22,18 +22,34 @@ layer:
   sign up (a public app); `closed` lets nobody (create accounts from a
   console, a seed or an admin page). Any other value counts as `closed`, so a
   typo fails shut. While sign-up is closed, `/signup` answers `403` with the
-  sign-in form and the "Create one" link is hidden. **In production**
-  (`APP_ENV=production`), `first_user` asks for `AUTH_SETUP_TOKEN` (16+
+  sign-in form and the "Create one" link is hidden. **Outside development**, `first_user` asks for `AUTH_SETUP_TOKEN` (16+
   characters) on the sign-up form: on a freshly deployed app the first
-  visitor to reach `/signup` became the admin. With no token set, production
-  creates no first account, and OAuth creates none either — the admin signs
-  up at `/signup` with the token.
+  visitor to reach `/signup` became the admin. Only `soli serve --dev`, or
+  `APP_ENV=development` / `test`, goes without — a deployment that forgot
+  `APP_ENV=production` is still asked. With no token set, no first account is
+  created, and OAuth creates none either — the admin signs up at `/signup`
+  with the token.
+- **A sign-in session's limits.** The remember-me cookie has a server-side
+  end (`AUTH_REMEMBER_DAYS` after it was issued — a copied cookie stops
+  working then, whatever the copy says), honours the gates of the sign-in form
+  (confirmed address, not single sign-on only), and restores a session that
+  nobody "just signed in" to: adding a passkey, an API token or an
+  authenticator asks for a sign-in from the last 15 minutes
+  (`AUTH_FRESH_SECONDS`). The password lockout closes the password only —
+  passkeys, sign-in links and API tokens keep working, since anyone who knows
+  an address can send ten wrong passwords. Small writes to the user (a
+  remember-me token, a failed attempt) touch their own fields, so a sign-in
+  that straddles a password reset cannot put the old password back.
+- **Open sign-up gives one answer.** With `AUTH_SIGNUP=open`, `/signup` answers "check your mailbox" whether the address was free or already had an account, and signs nobody in: a new account gets a confirmation link and signs in once it is confirmed, the owner of an existing one gets a note (`AuthMailer.already_registered`). "Could not create your account" told anyone which addresses are registered — and so did signing in straight after signing up, which is why open sign-up always confirms first. `first_user` is unchanged: the first account is signed in at once.
+- **Answers that take the same time.** The mails of the uniform-answer endpoints (reset, confirmation, sign-in link, lockout notice) are sent off the request (`deliver_later`), and an address with no account costs the same database write (`User.burn_write_work`) and the same Argon2 work as one that has: neither the reply nor its timing says whether an address is registered.
+- **The remember-me token is used once.** Each time it restores a session it is replaced; the one it replaced stays good for a minute, for requests a browser sent side by side. Seen again later, it means two parties hold the cookie — a copy — and remember-me ends for the account (logged), so both sign in again.
 - **Password reset** (`/password/reset`): hashed one-time tokens, 2-hour
   expiry, no account enumeration, emailed via the scaffolded `AuthMailer`.
 - **Email confirmation** (`/confirm_email`, `/confirmation/resend`): sent on
-  signup; enforcement is a one-line toggle (`auth_require_confirmed_email`
-  in `app/models/user.sl`, off by default so the flow works before SMTP is
-  configured). With it on, an unconfirmed account answers a sign-in like a
+  signup; enforcement is `auth_require_confirmed_email` in
+  `app/models/user.sl` — on whenever sign-up is open to anyone
+  (`AUTH_SIGNUP=open`), off otherwise so the flow works before SMTP is
+  configured. With it on, an unconfirmed account answers a sign-in like a
   wrong password (one message, `401`): a distinct "confirm your email" reply
   appeared only once the password was right, which confirmed it. The link in
   the email shows a page with a button, and only the button confirms (a

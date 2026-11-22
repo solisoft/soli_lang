@@ -32,6 +32,22 @@ def load_current_user(req)
       session_destroy()
       return {"continue": true, "request": req}
     end
+    # An impersonation (`soli generate auth --impersonation`) lasts while
+    # the administrator behind it is still one, still holds the sessions it
+    # was started from (a password reset, a demotion or a revocation ends it
+    # here), and for AUTH_IMPERSONATION_SECONDS at most.
+    admin_id = session_get("impersonator_id").to_s
+    if admin_id.present?
+      admin = User.find_by("_key", admin_id) rescue nil
+      started_at = (session_get("impersonation_started_at") ?? 0).to_i
+      over = admin.nil? || !admin.admin? ||
+        (session_get("impersonator_version") ?? -1).to_i != admin.current_session_version ||
+        DateTime.utc.to_unix - started_at > AUTH_IMPERSONATION_SECONDS
+      if over
+        session_destroy()
+        return {"continue": true, "request": req}
+      end
+    end
     req["current_user"] = user
     return {"continue": true, "request": req}
   end
@@ -42,11 +58,28 @@ def load_current_user(req)
   if !remember.blank? && remember.includes?(":")
     parts = remember.split(":")
     user = User.find_by("_key", parts[0]) rescue nil
-    if !user.nil? && user.remembered_by?(parts[1])
+    # The gates of the sign-in form hold here too: an account that became
+    # single sign-on only, or that must confirm its address first, is not
+    # let back in by an old cookie.
+    allowed = !user.nil? && !user.sso_only? && (user.confirmed? || !auth_require_confirmed_email())
+    if allowed && user.remembered_by?(parts[1])
       session_regenerate()
+      auth_forget_impersonation()
+      # No `auth_time`: nobody signed in just now.
+      session_delete("auth_time")
       session_set("user_id", user._key)
       session_set("session_version", user.current_session_version)
       req["current_user"] = user
+      # Used once: replaced now, for whatever is left of its lifetime.
+      if user.remember_current?(parts[1])
+        left = AUTH_REMEMBER_DAYS * 86400 - (DateTime.utc.to_unix - (user.remember_created_at ?? 0).to_i)
+        set_cookie("remember_token", "#{user._key}:#{user.rotate_remember_me}", {
+          "max_age": left,
+          "http_only": true,
+          "same_site": "Lax",
+          "secure": true
+        })
+      end
     end
   end
   {"continue": true, "request": req}

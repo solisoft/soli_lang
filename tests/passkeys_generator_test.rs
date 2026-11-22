@@ -499,6 +499,21 @@ impl Authenticator {
     }
 }
 
+/// What clicking the mailed confirmation link does, written straight to the
+/// database: open sign-up answers "check your mailbox" and signs nobody in
+/// until the address is confirmed.
+fn confirm_address(root: &Path, email: &str) {
+    let conn = rusqlite::Connection::open(root.join("app.sqlite3")).unwrap();
+    let changed = conn
+        .execute(
+            "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
+             WHERE json_extract(doc, '$.email') = ?1",
+            [email],
+        )
+        .unwrap();
+    assert_eq!(changed, 1, "no account for {email}");
+}
+
 /// The value of `data-csrf-token="…"` in a page.
 fn csrf_from(html: &str) -> String {
     let start = html.find("data-csrf-token=\"").expect("no data-csrf-token") + 17;
@@ -539,7 +554,14 @@ fn served_app_registers_a_passkey_and_signs_in_with_it() {
     // Sign up, then open /passkeys and pick up its CSRF token.
     let mut ada = Browser::new(&server);
     let signup = json!({"email": "ada@example.com", "password": "correct horse battery"});
-    assert_eq!(ada.post("/signup", signup).0, 302);
+    assert_eq!(ada.post("/signup", signup.clone()).0, 200);
+    assert_eq!(
+        ada.request("GET", "/passkeys", None).0,
+        302,
+        "signed in before confirming"
+    );
+    confirm_address(dir.path(), "ada@example.com");
+    assert_eq!(ada.post("/login", signup).0, 302);
     let (status, page) = ada.request("GET", "/passkeys", None);
     assert_eq!(status, 200, "{page}");
     assert!(page.contains("No passkey yet"), "{page}");
@@ -574,6 +596,70 @@ fn served_app_registers_a_passkey_and_signs_in_with_it() {
     );
     let (_, page) = ada.request("GET", "/passkeys", None);
     assert!(page.contains("Laptop"), "{page}");
+
+    // A session restored from the remember-me cookie is Ada's, but nobody
+    // signed in just now: it adds no passkey.
+    let mut remembered = Browser::new(&server);
+    let login = json!({"email": "ada@example.com", "password": "correct horse battery", "remember_me": "1"});
+    assert_eq!(remembered.post("/login", login).0, 302);
+    remembered.jar.retain(|name, _| name == "remember_token");
+    assert_eq!(remembered.jar.len(), 1, "no remember-me cookie");
+    let kept = remembered.jar.clone();
+    let (status, page) = remembered.request("GET", "/passkeys", None);
+    assert_eq!(
+        status, 200,
+        "the cookie did not restore the session: {page}"
+    );
+    remembered.csrf = Some(csrf_from(&page));
+    let (status, refused) = remembered.post("/passkeys/options", json!({}));
+    assert_eq!(status, 403, "{refused}");
+    // The token was used once: restoring the session replaced it. The one
+    // it replaced still works for a minute (requests sent side by side)...
+    let fresh = remembered.jar.get("remember_token").cloned();
+    assert_ne!(
+        fresh,
+        kept.get("remember_token").cloned(),
+        "the token was not rotated"
+    );
+    let mut alongside = Browser::new(&server);
+    alongside.jar = kept.clone();
+    assert_eq!(alongside.request("GET", "/passkeys", None).0, 200);
+    // ...and after that, seeing it again means two parties hold the cookie:
+    // remember-me ends for the account, for the copy and the original alike.
+    let database = format!("sqlite://{}/app.sqlite3", dir.path().display());
+    let runner = |code: &str| {
+        let (ok, output) = soli(
+            dir.path(),
+            &["runner", "-e", code],
+            &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
+        );
+        assert!(ok, "{output}");
+    };
+    runner("User.where({\"email\": \"ada@example.com\"}).update_all({\"remember_rotated_at\": 1})");
+    let mut copied = Browser::new(&server);
+    copied.jar = kept;
+    assert_eq!(
+        copied.request("GET", "/passkeys", None).0,
+        302,
+        "a stale copy signed in"
+    );
+    let mut original = Browser::new(&server);
+    original
+        .jar
+        .insert("remember_token".to_string(), fresh.unwrap());
+    assert_eq!(
+        original.request("GET", "/passkeys", None).0,
+        302,
+        "remember-me survived the reuse of a replaced token"
+    );
+
+    // And the cookie has an end the server keeps: past it, it is nothing.
+    let mut again = Browser::new(&server);
+    let login = json!({"email": "ada@example.com", "password": "correct horse battery", "remember_me": "1"});
+    assert_eq!(again.post("/login", login).0, 302);
+    again.jar.retain(|name, _| name == "remember_token");
+    runner("User.where({\"email\": \"ada@example.com\"}).update_all({\"remember_created_at\": 1})");
+    assert_eq!(again.request("GET", "/passkeys", None).0, 302);
 
     // Sign in from a fresh browser with the passkey.
     let mut device = Browser::new(&server);

@@ -71,7 +71,8 @@ class SessionsController < Controller
     authenticated = user.nil? ? User.burn_password_work(password) : user.authenticate(password)
 
     unless authenticated
-      user.register_failed_attempt unless user.nil?
+      # An address with no account costs the write a counted attempt does.
+      user.nil? ? User.burn_write_work : user.register_failed_attempt
       return @_reject(@_failure_message, email, 401)
     end
 
@@ -87,7 +88,7 @@ class SessionsController < Controller
     # `session_regenerate` keeps the session's data. A sign-in is a new
     # person: an impersonation left in the session would let this user's
     # "stop impersonating" become the admin who started it.
-    session_delete("impersonator_id")
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)

@@ -18,6 +18,17 @@ class AuthMailer < Mailer
     @mail(to: user.email, subject: "Confirm your email address")
   end
 
+  # Sent when someone signs up with an address that already has an account.
+  # The sign-up form answers the same either way — telling the browser
+  # "taken" tells anyone which addresses are registered — so this is how the
+  # owner learns of it, and where a forgetful one is pointed.
+  def already_registered(user)
+    @user = user
+    @login_url = "#{auth_base_url()}/login"
+    @reset_url = "#{auth_base_url()}/password/reset"
+    @mail(to: user.email, subject: "You already have an account")
+  end
+
   # Sent once, when the lockout trips. The sign-in response deliberately says
   # nothing about the lock — telling the browser "this account is locked" also
   # tells whoever is guessing that they found the right password — so this is

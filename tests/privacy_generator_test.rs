@@ -118,6 +118,8 @@ fn serve(root: &Path) -> Server {
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env("AUTH_SIGNUP", "open")
+        // A test run: the first account needs no AUTH_SETUP_TOKEN.
+        .env("APP_ENV", "test")
         .env("AUTH_ATTEMPTS_PER_IP", "1000")
         .env("SOLI_CSRF_TOKENS", "require")
         .env("SOLI_DB_ADAPTER", "sqlite")
@@ -298,9 +300,27 @@ end
     dir
 }
 
-fn sign_up(server: &Server, email: &str, address: &str) -> Client {
+/// What clicking the mailed confirmation link does, written straight to the
+/// database: open sign-up answers "check your mailbox" and signs nobody in
+/// until the address is confirmed.
+fn confirm_address(root: &Path, email: &str) {
+    let conn = rusqlite::Connection::open(root.join("app.sqlite3")).unwrap();
+    let changed = conn
+        .execute(
+            "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
+             WHERE json_extract(doc, '$.email') = ?1",
+            [email],
+        )
+        .unwrap();
+    assert_eq!(changed, 1, "no account for {email}");
+}
+
+fn sign_up(server: &Server, root: &Path, email: &str, address: &str) -> Client {
     let mut client = Client::browser(server);
     let reply = client.post("/signup", json!({"email": email, "password": PASSWORD}));
+    assert_eq!(reply.status, 200, "{email}: {}", reply.body);
+    confirm_address(root, email);
+    let reply = client.post("/login", json!({"email": email, "password": PASSWORD}));
     assert_eq!(reply.status, 302, "{email}: {}", reply.body);
     assert_eq!(
         client
@@ -315,8 +335,8 @@ fn sign_up(server: &Server, email: &str, address: &str) -> Client {
 fn a_user_downloads_their_data_and_erases_their_account() {
     let dir = served_app();
     let server = serve(dir.path());
-    let mut ada = sign_up(&server, "ada@example.com", "1 rue Ada");
-    let mut grace = sign_up(&server, "grace@example.com", "2 rue Grace");
+    let mut ada = sign_up(&server, dir.path(), "ada@example.com", "1 rue Ada");
+    let mut grace = sign_up(&server, dir.path(), "grace@example.com", "2 rue Grace");
     let created = ada.post("/api_tokens", json!({"name": "export", "scope_read": "1"}));
     let start = created
         .body
@@ -334,15 +354,15 @@ fn a_user_downloads_their_data_and_erases_their_account() {
     assert_eq!(Client::browser(&server).get("/privacy").location, "/login");
     let mut script = Client::browser(&server);
     script.bearer = Some(token.clone());
-    assert_eq!(script.post("/privacy/export", json!({})).location, "/login");
+    assert_eq!(script.post("/privacy/export", json!({})).status, 403);
     assert_eq!(
         script
             .post(
                 "/privacy/erase",
                 json!({"email": "ada@example.com", "password": PASSWORD})
             )
-            .location,
-        "/login"
+            .status,
+        403
     );
     let page = ada.get("/privacy");
     assert_eq!(page.status, 200, "{}", page.body);

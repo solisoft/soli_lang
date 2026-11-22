@@ -50,6 +50,19 @@ class RegistrationsController < Controller
     password_error = user.password_error(params["password"])
     return @_reject(user, password_error, 422) unless password_error.nil?
 
+    # Open sign-up answers the same whether the address is free or taken —
+    # "could not create your account" told anyone which addresses are
+    # registered. The owner of a taken one gets a mail instead, and the same
+    # Argon2 work is spent.
+    open_sign_up = auth_signup_mode() == "open"
+    existing = open_sign_up ? User.find_by("email", params["email"].to_s.trim.downcase) : nil
+    unless existing.nil?
+      User.burn_password_work(params["password"].to_s)
+      User.burn_write_work
+      AuthMailer.already_registered(existing).deliver_later rescue nil
+      return @_check_mailbox(existing.email)
+    end
+
     # The account that opens a `first_user` app runs it.
     user.role = "admin" if auth_signup_mode() == "first_user"
     user.set_password(params["password"].to_s)
@@ -60,21 +73,12 @@ class RegistrationsController < Controller
     # SMTP is configured (set SOLI_MAIL_DELIVERY_METHOD=logger in dev to see
     # the email in the console instead).
     token = user.start_email_confirmation
-    AuthMailer.confirm_email(user, token).deliver_now rescue nil
+    AuthMailer.confirm_email(user, token).deliver_later rescue nil
 
-    if auth_require_confirmed_email()
-      return render(
-        "sessions/new",
-        {
-          "title": "Sign in",
-          "error": "Account created — confirm your email to sign in.",
-          "email": user.email,
-          "signup_open": auth_signup_open?()
-        }
-      )
-    end
+    return @_check_mailbox(user.email) if auth_require_confirmed_email()
 
     session_regenerate()
+    auth_forget_impersonation()
     session_set("user_id", user._key)
     # When this sign-in happened: the OIDC provider reads it for max_age / auth_time.
     session_set("auth_time", DateTime.utc.to_unix)
@@ -84,6 +88,20 @@ class RegistrationsController < Controller
   end
 
   private
+
+  # The one answer of a sign-up that waits for the mailbox: a new account
+  # gets a confirmation link there, an address that already had one a note.
+  def _check_mailbox(email)
+    render(
+      "sessions/new",
+      {
+        "title": "Sign in",
+        "error": "Check your mailbox: a message is on its way to finish signing up.",
+        "email": email,
+        "signup_open": auth_signup_open?()
+      }
+    )
+  end
 
   # Re-render the sign-up form with an error and an accurate status code.
   def _reject(user, message, status)

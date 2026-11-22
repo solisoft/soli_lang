@@ -273,6 +273,29 @@ impl Client {
     }
 }
 
+/// Sign up, confirm the address (what the mailed link does) and sign in:
+/// open sign-up answers "check your mailbox" and signs nobody in before that.
+fn join(client: &mut Client, root: &Path, signup: &Json) {
+    assert_eq!(
+        client.request("POST", "/signup", Some(signup.clone())).0,
+        200
+    );
+    let email = signup["email"].as_str().unwrap();
+    let conn = rusqlite::Connection::open(root.join("app.sqlite3")).unwrap();
+    let changed = conn
+        .execute(
+            "UPDATE users SET doc = json_set(doc, '$.confirmed_at', 1) \
+             WHERE json_extract(doc, '$.email') = ?1",
+            [email],
+        )
+        .unwrap();
+    assert_eq!(changed, 1, "no account for {email}");
+    assert_eq!(
+        client.request("POST", "/login", Some(signup.clone())).0,
+        302
+    );
+}
+
 fn served_app() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -550,7 +573,7 @@ fn a_deactivated_user_is_signed_out_and_kept_out() {
     let mut grace = Client::browser(&server);
     let password = "correct horse battery";
     let signup = json!({"email": "grace@example.com", "password": password});
-    assert_eq!(grace.request("POST", "/signup", Some(signup)).0, 302);
+    join(&mut grace, dir.path(), &signup);
     assert_eq!(grace.whoami(), "grace@example.com member");
     let (status, page) = grace.request(
         "POST",
@@ -946,7 +969,7 @@ fn a_directory_cannot_touch_an_admin_or_an_account_it_did_not_provision() {
     for email in ["boss@example.com", "local@example.com"] {
         let mut visitor = Client::browser(&server);
         let signup = json!({"email": email, "password": "correct horse battery"});
-        assert_eq!(visitor.request("POST", "/signup", Some(signup)).0, 302);
+        join(&mut visitor, dir.path(), &signup);
     }
     fs::write(
         dir.path().join("promote.sl"),
@@ -1053,10 +1076,7 @@ fn adopting_an_existing_account_revokes_its_credentials() {
     let server = serve_with(dir.path(), &[("SCIM_ADOPT_EXISTING", "on")]);
     let mut squatter = Client::browser(&server);
     let signup = json!({"email": "newhire@example.com", "password": "correct horse battery"});
-    assert_eq!(
-        squatter.request("POST", "/signup", Some(signup.clone())).0,
-        302
-    );
+    join(&mut squatter, dir.path(), &signup);
     assert_eq!(squatter.whoami(), "newhire@example.com member");
 
     assert_eq!(find_count(&server, "newhire@example.com", TOKEN), json!(1));

@@ -38,7 +38,7 @@ pub fn create_auth_with(folder: &str, passkeys: bool) -> Result<(), String> {
 
     // (relative path, contents) — written only if absent so re-running never
     // clobbers a User model or policy you've already customized.
-    let files: [(&str, &str); 18] = [
+    let files: [(&str, &str); 19] = [
         ("app/models/user.sl", auth::USER_MODEL),
         (
             "app/policies/application_policy.sl",
@@ -89,6 +89,10 @@ pub fn create_auth_with(folder: &str, passkeys: bool) -> Result<(), String> {
         (
             "app/views/auth_mailer/account_locked.html.slv",
             auth::MAILER_ACCOUNT_LOCKED_VIEW,
+        ),
+        (
+            "app/views/auth_mailer/already_registered.html.slv",
+            auth::MAILER_ALREADY_REGISTERED_VIEW,
         ),
     ];
 
@@ -194,7 +198,8 @@ pub fn print_auth_success_message() {
     );
     println!();
     println!("  \x1b[2mSign-up policy:\x1b[0m \x1b[36mAUTH_SIGNUP\x1b[0m=first_user (default: /signup closes once");
-    println!("  an account exists), open (anyone) or closed (nobody). The per-IP throttle reads");
+    println!("  an account exists), open (anyone) or closed (nobody). Outside `soli serve --dev`");
+    println!("  the first account needs \x1b[36mAUTH_SETUP_TOKEN\x1b[0m (16+ characters). The per-IP throttle reads");
     println!("  \x1b[36mAUTH_ATTEMPTS_PER_IP\x1b[0m (15) per \x1b[36mAUTH_IP_WINDOW_SECONDS\x1b[0m (300).");
     println!();
     println!("  \x1b[2mIncluded flows:\x1b[0m password reset (/password/reset), email");

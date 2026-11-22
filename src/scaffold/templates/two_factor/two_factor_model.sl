@@ -23,6 +23,10 @@ def two_factor_issuer
 end
 
 class TwoFactor < Model
+  # A save is refused when the record changed since it was read: two requests
+  # carrying the same code cannot both record it as used (see `_accept_totp`
+  # and `_use_backup_code`).
+  optimistic_lock
   encrypts(:secret)
   validates(
     "user_id",
@@ -81,14 +85,14 @@ class TwoFactor < Model
   # Replace the backup codes. Returns the new ones in plaintext, to show once.
   def new_backup_codes
     codes = (0 .. TWO_FACTOR_BACKUP_CODES).map do |_|
-      Crypto.random_hex(5)
+      Crypto.random_hex(10)
     end
     @backup_code_digests = codes.map do |code|
       Crypto.sha256(code)
     end
     @update
     codes.map do |code|
-      code.substring(0, 5) + "-" + code.substring(5, 10)
+      [code.substring(0, 5), code.substring(5, 10), code.substring(10, 15), code.substring(15, 20)].join("-")
     end
   end
 
@@ -126,8 +130,8 @@ class TwoFactor < Model
     return false if step <= (@last_step ?? 0)
 
     @last_step = step
-    @update
-    true
+    # False when another request used a code in the meantime: this one loses.
+    @update == true
   end
 
   def _use_backup_code(code)
@@ -139,17 +143,19 @@ class TwoFactor < Model
     return false if remaining.length == stored.length
 
     @backup_code_digests = remaining
-    @update
-    true
+    # False when another request spent a code in the meantime.
+    @update == true
   end
 
   def _register_failure
-    @failed_codes = (@failed_codes ?? 0) + 1
-    if @failed_codes >= AUTH_MAX_FAILED_ATTEMPTS
-      @locked_at = DateTime.utc.to_unix
-      @failed_codes = 0
-    end
-    @update
+    # Counted in the database (`increment` is one atomic write): a read, +1
+    # and save let parallel guesses overwrite each other's count.
+    @increment("failed_codes")
+    return if (@failed_codes ?? 0) < AUTH_MAX_FAILED_ATTEMPTS
+
+    @locked_at = DateTime.utc.to_unix
+    @failed_codes = 0
+    TwoFactor.where({"_key": @_key}).update_all({"locked_at": @locked_at, "failed_codes": 0})
   end
 
   def _clear_failures

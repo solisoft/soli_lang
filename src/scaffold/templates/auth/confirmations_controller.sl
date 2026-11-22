@@ -48,11 +48,20 @@ class ConfirmationsController < Controller
 
   # POST /confirmation/resend
   def create
+    # Each request mails the address and replaces its pending link: the
+    # per-address throttle of the sign-in form applies.
+    limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
+    unless limiter.allowed
+      return @_form("Confirm your email", "", "Too many requests. Try again in a few minutes.")
+    end
+
     email = params["email"].to_s.trim.downcase
     user = User.find_by("email", email)
     if !user.nil? && !user.confirmed?
       token = user.start_email_confirmation
-      AuthMailer.confirm_email(user, token).deliver_now rescue nil
+      AuthMailer.confirm_email(user, token).deliver_later rescue nil
+    else
+      User.burn_write_work
     end
 
     @_form("Confirm your email", "If that email needs confirming, a fresh link is on its way.", "")

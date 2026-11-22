@@ -26,6 +26,10 @@ class PasskeysController < Controller
     user = current_user()
     return render_json({"error": "Sign in first"}, 401) if user.nil?
     return render_json({"error": "This account signs in through single sign-on only."}, 403) if user.sso_only?
+    # The owner, at the keyboard, signed in a moment ago: a passkey is a
+    # permanent way in, and neither an API token, nor an administrator acting
+    # as the user, nor a session left open adds one.
+    return render_json({"error": "Sign in again to add a passkey."}, 403) unless @_may_add
 
     result = WebAuthn.registration_options({
       "rp_id": webauthn_rp_id(),
@@ -44,6 +48,7 @@ class PasskeysController < Controller
     user = current_user()
     return render_json({"error": "Sign in first"}, 401) if user.nil?
     return render_json({"error": "This account signs in through single sign-on only."}, 403) if user.sso_only?
+    return render_json({"error": "Sign in again to add a passkey."}, 403) unless @_may_add
 
     challenge = webauthn_take_challenge("register")
     return render_json({"error": "The passkey request expired. Try again."}, 422) if challenge.nil?
@@ -74,9 +79,17 @@ class PasskeysController < Controller
     user = current_user()
     return redirect("/login") if user.nil?
 
+    return {"status": 403, "body": "Forbidden"} unless auth_own_session?(req)
+
     passkey = PasskeyCredential.find_by("_key", params["id"])
     # Someone else's passkey answers exactly like a missing one.
     passkey.delete if !passkey.nil? && passkey.user_id == user._key
     redirect("/passkeys")
+  end
+
+  private
+
+  def _may_add
+    auth_own_session?(req) && auth_fresh_sign_in?()
   end
 end
