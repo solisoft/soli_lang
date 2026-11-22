@@ -499,7 +499,16 @@ impl Interpreter {
             // Deferred falls through to the error arm below, where `type_name()`
             // forces it and reports the *resolved* type — producing the
             // self-contradictory "cannot iterate over array".
-            deferred @ Value::Deferred(_) => deferred.force_deferred(),
+            // `force_checked`: a read that failed is its own error here, not
+            // "cannot iterate over null".
+            deferred @ Value::Deferred(_) => {
+                deferred
+                    .force_checked()
+                    .map_err(|message| RuntimeError::General {
+                        message,
+                        span: iterable.span,
+                    })?
+            }
             other => other,
         };
         match iter_value {

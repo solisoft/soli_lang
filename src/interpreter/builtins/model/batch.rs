@@ -198,6 +198,22 @@ pub fn end() -> Result<(), String> {
         }
         res = res.and(flush_inner());
     }
+    // Still pending after that: not run, so not nil — failed.
+    BATCH.with(|b| {
+        if let Some(state) = b.borrow_mut().as_mut() {
+            let leftover: Vec<_> = state
+                .pending
+                .iter()
+                .map(|pq| pq.cell.clone())
+                .chain(state.d1_reads.iter().map(|read| read.cell.clone()))
+                .collect();
+            for cell in leftover {
+                cell.borrow_mut().failed =
+                    Some("grouped: a read was still pending when the block ended".to_string());
+                state.flushed.push(cell);
+            }
+        }
+    });
     let flushed = BATCH.with(|b| b.borrow_mut().take().map(|state| state.flushed));
     // A read that failed and reached nobody who could raise it — never
     // read, or read where there is no error channel (a condition, a view) —
@@ -288,20 +304,28 @@ pub fn force(cell: &Rc<RefCell<DeferredCell>>) -> Result<Value, String> {
 /// nothing pending. Used before the tenant changes: a deferred read belongs to
 /// the tenant it was made under.
 pub fn flush() -> Result<(), String> {
+    // The reads this flush is about to run.
+    let mine: Vec<Rc<RefCell<DeferredCell>>> = BATCH.with(|b| match b.borrow().as_ref() {
+        Some(state) => state
+            .pending
+            .iter()
+            .map(|pq| pq.cell.clone())
+            .chain(state.d1_reads.iter().map(|read| read.cell.clone()))
+            .collect(),
+        None => Vec::new(),
+    });
     let result = flush_inner();
-    if result.is_err() {
-        // Raised to this caller (a tenant or role switch): delivered. Rescued
-        // there, it is not raised a second time by the block's end.
-        BATCH.with(|b| {
-            if let Some(state) = b.borrow().as_ref() {
-                for cell in &state.flushed {
-                    let mut cell = cell.borrow_mut();
-                    if cell.failed.is_some() {
-                        cell.delivered = true;
-                    }
-                }
+    if let Err(error) = &result {
+        // Raised to this caller (a tenant or role switch): delivered — the
+        // failure it is told about, on the reads it ran. Rescued there, the
+        // block's end does not raise it again. Another failure of the same
+        // flush, or an older one nobody heard, still is.
+        for cell in &mine {
+            let mut cell = cell.borrow_mut();
+            if cell.failed.as_ref() == Some(error) {
+                cell.delivered = true;
             }
-        });
+        }
     }
     result
 }
@@ -356,7 +380,12 @@ fn flush_inner() -> Result<(), String> {
     // would otherwise hold every row set it ever loaded until its end.
     BATCH.with(|b| {
         if let Some(state) = b.borrow_mut().as_mut() {
-            state.flushed.retain(|cell| cell.borrow().failed.is_some());
+            // (One not answered yet stays too: it belongs to a flush still
+            // running, and may fail.)
+            state.flushed.retain(|cell| {
+                let cell = cell.borrow();
+                cell.failed.is_some() || cell.resolved.is_none()
+            });
         }
     });
     result
