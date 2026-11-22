@@ -14,7 +14,9 @@
   the store cannot address (`/orders/abc` on an integer key) is a miss —
   404 — again, not the 500 the previous entry made of it.
   The same for `Model.update` / `Model.delete`, and for a uuid key.
-  Logout decides on the session, not on the user the middleware loaded.
+  Logout reads the account itself, unrescued, and drops the token only for
+  a session past every step of signing in. A bad value in a
+  `Model.update` patch raises; only a refusal of the key is a miss.
 - **orm: the last writes that answered a refusal as a value raise.**
   `Model.update(id, …)`, `Model.delete(id)` and `Model.transaction(sdbql)`
   returned an `"Error: …"` string — truthy — when the database refused.

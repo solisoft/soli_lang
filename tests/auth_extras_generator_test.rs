@@ -981,3 +981,48 @@ print("#{took} #{lost} #{held} #{gone.nil?} #{signed.email}")"##;
         "redeem no longer claims the link before using it"
     );
 }
+
+/// Logging out drops the remember-me token: a copy of the cookie restores
+/// nothing afterwards.
+#[test]
+fn logout_ends_remember_me_for_every_copy_of_the_cookie() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    drop(sign_up(&server, "ada@example.com"));
+    let mut ada = Client::browser(&server);
+    let reply = ada.post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD, "remember_me": "1"}),
+    );
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    let copied = ada.jar.get("remember_token").expect("no cookie").clone();
+
+    // The copy works while the token lives…
+    let mut thief = Client::browser(&server);
+    thief
+        .jar
+        .insert("remember_token".to_string(), copied.clone());
+    assert_eq!(thief.whoami(), "ada@example.com admin");
+
+    // …the owner signs in again, and logs out.
+    let mut owner = Client::browser(&server);
+    let reply = owner.post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD, "remember_me": "1"}),
+    );
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    let current = owner.jar.get("remember_token").expect("no cookie").clone();
+    let out = owner.request("DELETE", "/logout", None);
+    assert!(out.status == 302 || out.status == 200, "{}", out.body);
+    assert_eq!(owner.whoami(), "guest");
+
+    for cookie in [current, copied] {
+        let mut later = Client::browser(&server);
+        later.jar.insert("remember_token".to_string(), cookie);
+        assert_eq!(
+            later.whoami(),
+            "guest",
+            "a remember-me cookie outlived the logout"
+        );
+    }
+}

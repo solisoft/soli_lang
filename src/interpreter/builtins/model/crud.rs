@@ -2685,10 +2685,18 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
 /// Did the store refuse the key itself, before any read? `/orders/abc` on an
 /// integer or uuid key, a document key that normalizes to nothing: such a
 /// key names no row, which is a miss — not a failure of the database.
+///
+/// For a READ by key only, where the key is all that was bound. A write
+/// binds its values too: "invalid input syntax for type date" is then a bad
+/// value in the patch, on a row that is there — see [`key_refused`].
 pub fn key_names_no_row(error: &str) -> bool {
-    error.contains("is not a number")
+    key_refused(error) || error.contains("invalid input syntax for type")
+}
+
+/// The refusals that can only be about the key, whatever else was sent.
+pub fn key_refused(error: &str) -> bool {
+    (error.contains("primary key") && error.contains("is not a number"))
         || error.contains("invalid document key")
-        || error.contains("invalid input syntax for type")
         || error.contains("lookup requires a primary-key value")
 }
 

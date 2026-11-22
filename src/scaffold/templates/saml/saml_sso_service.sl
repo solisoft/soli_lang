@@ -344,7 +344,15 @@ class SamlSso
   # password, marked `sso_only`. Raises when there is no account to give.
   static def user_for(assertion)
     identity = SamlSso.identity_for(assertion)
-    return User.find(identity.user_id) unless identity.nil?
+    unless identity.nil?
+      known = User.find(identity.user_id)
+      # Linked: whatever take-over was pending is done (a link finished by
+      # hand, or one whose mark could not be cleared at the time).
+      if known.saml_link_pending == true
+        User.where({"_key": known._key}).update_all({"saml_link_pending": false})
+      end
+      return known
+    end
 
     email = SamlSso.email_of(assertion)
     throw "the identity provider sent no usable email address" if email.nil?

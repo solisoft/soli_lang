@@ -1514,7 +1514,7 @@ pub(super) fn build_uploader_config_from_args(
 /// for and the `dependent: "delete"` cascade skips.
 pub fn in_band_if_gone(error: impl ToString) -> Result<Value, String> {
     let message = error.to_string();
-    if super::crud::document_already_gone(&message) || super::crud::key_names_no_row(&message) {
+    if super::crud::document_already_gone(&message) || super::crud::key_refused(&message) {
         Ok(Value::String(format!("Error: {}", message).into()))
     } else {
         Err(message)

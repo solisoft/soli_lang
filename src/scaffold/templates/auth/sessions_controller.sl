@@ -114,20 +114,15 @@ class SessionsController < Controller
   def destroy
     user_id = session_get("user_id")
     # The remember-me token is its owner's to drop: not an administrator's
-    # acting as them, nor a visitor's who only got as far as the password.
-    # Written without reading the account first, and not rescued: a read
-    # that failed would leave the token alive behind a logout that said it
-    # was done — a copy of the cookie would still sign in.
-    # Decided on what the session and the request say, not on the user the
-    # middleware loaded: that load is rescued, and a database that did not
-    # answer it must not make this skip the write. (`two_factor_user`: the
-    # password step alone, set by the second-factor gate.)
-    if !user_id.blank? && auth_own_session?(req) && (req["two_factor_user"] rescue nil).nil?
-      auth_written(User.where({"_key": user_id}).update_all({
-        "remember_token_digest": nil,
-        "remember_previous_digest": nil,
-        "remember_created_at": nil
-      }))
+    # acting as them, nor a visitor's who only got as far as the password,
+    # nor a session a password reset has already ended. The account is read
+    # here, and that read is not rescued: the user the middleware loaded
+    # comes from a rescued read, and a database that did not answer it must
+    # neither skip this (the token would stay alive behind a logout that
+    # said it was done) nor let a half-signed-in session through.
+    if !user_id.blank? && auth_own_session?(req)
+      user = User.find_by("_key", user_id)
+      user.forget_me if !user.nil? && @_fully_signed_in?(user)
     end
     # Expire the remember-me cookie immediately.
     set_cookie("remember_token", "", {
@@ -141,6 +136,18 @@ class SessionsController < Controller
   end
 
   private
+
+  # Is this session `user`'s own, past every step of signing in? Its version
+  # is current (no reset since), and where the app has two-factor and the
+  # account turned it on, the session passed the challenge.
+  def _fully_signed_in?(user)
+    return false if session_get("session_version").to_i < user.current_session_version
+
+    two_factor = const_get("TwoFactor")
+    return true if two_factor.nil? || !two_factor.enabled?(user)
+
+    session_get("two_factor").to_s == "ok:#{user._key}"
+  end
 
   # What every refused sign-in says. With confirmation required it also
   # covers an unconfirmed account, which must not answer differently.

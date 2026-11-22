@@ -127,7 +127,10 @@ and matched exactly.
    before its identity was stored is finished by the next sign-in; else a new
    one (see `SAML_PROVISION`).
    Otherwise an address that already has an account is refused: link it by
-   hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`). The
+   hand (`SamlIdentity.create({"user_id", "issuer", "name_id", "email"})`).
+   To take a link away for good, use `user.revoke_credentials` (or clear
+   `saml_link_pending` with the identity row): a marked account without an
+   identity is linked again by its address. The
    link must be stored, or the sign-in is refused (and an account just created
    for it is deleted). The password lockout (`AUTH_MAX_FAILED_ATTEMPTS`) does
    not apply here: it counts wrong passwords, and the IdP authenticated the
