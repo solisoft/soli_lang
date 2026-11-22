@@ -569,10 +569,8 @@ fn served_app_enrols_challenges_and_refuses_replays() {
     // Confirm with the previous step's code (still in the window), which
     // leaves the current and next steps for the sign-ins below.
     settle();
-    let confirmed = ada.post(
-        "/two_factor/confirm",
-        json!({"code": totp(&secret, unix_now() - 30)}),
-    );
+    let enrolling_code = totp(&secret, unix_now() - 30);
+    let confirmed = ada.post("/two_factor/confirm", json!({"code": enrolling_code}));
     assert_eq!(confirmed.status, 200, "{}", confirmed.body);
     let backup = marked(&confirmed.body, "data-backup-code");
     assert_eq!(backup.len(), 10, "{}", confirmed.body);
@@ -600,8 +598,11 @@ fn served_app_enrols_challenges_and_refuses_replays() {
 
     // A wrong code, a malformed one and the code already spent on enrolling
     // are all refused the same way.
+    // The very code that enrolled — not "the previous step's code" worked
+    // out again: on a slow runner a step has passed since, and that would be
+    // another code, still good.
     settle();
-    let spent = totp(&secret, unix_now() - 30);
+    let spent = enrolling_code.clone();
     for code in ["000000", "12", "", spent.as_str()] {
         let refused = phone.post("/two_factor/challenge", json!({"code": code}));
         assert_eq!(refused.status, 401, "{code:?}: {}", refused.body);
