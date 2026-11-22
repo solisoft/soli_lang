@@ -892,3 +892,91 @@ print("enrolled #{!record.confirm(Crypto.totp_generate(record.secret)).nil?}")
         page.body
     );
 }
+
+/// Passing the challenge re-opens the session inside the sign-in the first
+/// step began: what that step set stays — the end a SAML sign-in came with
+/// (the only thing that ends such a session), a provider's vouching for the
+/// same user. A new sign-in drops both: they were the previous one's.
+#[test]
+fn the_challenge_keeps_what_the_first_step_set_and_a_new_sign_in_drops_it() {
+    let dir = served_app();
+    let root = dir.path();
+    fs::write(
+        root.join("app/controllers/fixture_controller.sl"),
+        r##"class FixtureController < Controller
+  # POST /fixture/stamp — what a SAML or provider first step leaves
+  def stamp
+    session_set("sign_in_expires_at", 4102444800)
+    session_set("oauth_reauth_user", session_get("user_id"))
+    session_set("oauth_reauth_at", 1234)
+    render_text("stamped")
+  end
+
+  # POST /fixture/read
+  def read
+    mine = session_get("oauth_reauth_user") == session_get("user_id")
+    render_text("#{session_get("sign_in_expires_at")} #{mine} #{session_get("oauth_reauth_at")}")
+  end
+end
+"##,
+    )
+    .unwrap();
+    let mut routes = fs::read_to_string(root.join("config/routes.sl")).unwrap();
+    routes.push_str(
+        "post(\"/fixture/stamp\", \"fixture#stamp\")\npost(\"/fixture/read\", \"fixture#read\")\n",
+    );
+    fs::write(root.join("config/routes.sl"), routes).unwrap();
+    let server = serve(root);
+    let creds = json!({"email": EMAIL, "password": PASSWORD});
+    let mut ada = Browser::new(&server);
+    assert_eq!(ada.post("/signup", creds.clone()).status, 200);
+    confirm_address(root, EMAIL);
+
+    fs::write(
+        root.join("enrol.sl"),
+        r##"user = User.find_by("email", "ada@example.com")
+record = TwoFactor.start(user)
+record.confirm(Crypto.totp_generate(record.secret))
+print("secret #{record.secret}")
+"##,
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["runner", "enrol.sl"])
+        .current_dir(root)
+        .env_remove("SOLI_ENGINE")
+        .env(
+            "SOLI_ENCRYPTION_KEY",
+            "two-factor-test-key-0123456789abcdef",
+        )
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env(
+            "DATABASE_URL",
+            format!("sqlite://{}/app.sqlite3", root.display()),
+        )
+        .output()
+        .expect("run soli");
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    let secret = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("secret "))
+        .unwrap_or_else(|| panic!("no secret: {text}"))
+        .to_string();
+
+    // First step, then what it would have left, then the challenge.
+    assert_eq!(ada.post("/login", creds.clone()).status, 302);
+    assert_eq!(ada.post("/fixture/stamp", json!({})).body, "stamped");
+    let passed = ada.post(
+        "/two_factor/challenge",
+        json!({"code": totp(&secret, unix_now() + 30)}),
+    );
+    assert_eq!(passed.status, 302, "{}", passed.body);
+    assert_eq!(
+        ada.post("/fixture/read", json!({})).body,
+        "4102444800 true 1234"
+    );
+
+    // A new sign-in in the same browser: none of it is this sign-in's.
+    assert_eq!(ada.post("/login", creds).status, 302);
+    assert_eq!(ada.post("/fixture/read", json!({})).body, "null false null");
+}

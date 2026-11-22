@@ -130,7 +130,9 @@ class Thing < Model
     return Thing.where({"a": 1}).first
   end
 end
-print("got=" + str(Thing.one()))
+# No database answers here: the read raises (it used to say nil), and the
+# script says so rather than dying — the point is which engine ran it.
+print("got=" + str(Thing.one() rescue "no database"))
 "#;
 
     let interpreted = run_script(source, false);

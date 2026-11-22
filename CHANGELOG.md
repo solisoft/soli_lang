@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **orm: a read or a bulk write the database failed raises.**
+  `.where(...).first` answered nil — "no such row" — and `.exists.first`
+  and the aggregates a truthy `"Error: …"` string; `update_all` and
+  `delete_all` returned that string to callers that did not look. A
+  database error read as "nothing forbids this" or "it is done". They now
+  raise, as `.all`, `.count` and `find_by` already did.
+- **saml: spent assertions are pruned on the SQL adapters.** The prune
+  used a SoliDB-only filter and failed silently on Postgres, MySQL and
+  SQLite, so the replay table only grew; the change above made it visible.
 - **auth: a seventh review** (nothing above low). Sign-up fails alike for
   a free and a taken address when the database refuses writes (the check
   added the round before could not fire). The two-factor pages say that

@@ -180,7 +180,8 @@ class SamlSso
   # kept until it expires, and a second use is refused.
   static def spend(assertion)
     now = DateTime.utc.to_unix
-    SamlAssertion.where("doc.expires_at < @now", {"now": now}).delete_all
+    # The hash form: it runs on every adapter (a string filter is SoliDB's).
+    SamlAssertion.where({"expires_at": {"lt": now}}).delete_all
     id = assertion["assertion_id"] ?? assertion["response_id"]
     throw "the assertion has no id to spend" if id.nil?
 

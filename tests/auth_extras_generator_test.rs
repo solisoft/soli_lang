@@ -874,3 +874,58 @@ print(ApiToken.issue(user, "seed", [], 0)["token"])"##,
     assert_eq!(reply.into_string().unwrap(), "ada@example.com admin");
     assert_eq!(runner(dir.path(), used), "false");
 }
+
+/// A browser restoring its tabs sends the same remember-me cookie on several
+/// requests at once. For real, against a served app: every one of them is
+/// signed in, exactly one is handed a replacement (the others lose the
+/// compare-and-swap or meet the replaced token within its minute, and set no
+/// cookie), and that replacement is the token the account holds afterwards.
+#[test]
+fn parallel_requests_with_one_remember_me_cookie_get_one_replacement() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    drop(sign_up(&server, "ada@example.com"));
+    let mut ada = Client::browser(&server);
+    let reply = ada.post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD, "remember_me": "1"}),
+    );
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    let remembered = ada.jar.get("remember_token").expect("no cookie").clone();
+    let port = server.1;
+
+    let tabs: Vec<_> = (0..8)
+        .map(|_| {
+            let remembered = remembered.clone();
+            std::thread::spawn(move || {
+                let mut tab = Client {
+                    port,
+                    jar: BTreeMap::new(),
+                    bearer: None,
+                };
+                tab.jar.insert("remember_token".to_string(), remembered);
+                let who = tab.whoami();
+                (who, tab.jar.get("remember_token").cloned())
+            })
+        })
+        .collect();
+    let results: Vec<_> = tabs.into_iter().map(|tab| tab.join().unwrap()).collect();
+    for (who, _) in &results {
+        assert_eq!(who, "ada@example.com admin", "{results:?}");
+    }
+    let replacements: Vec<&String> = results
+        .iter()
+        .filter_map(|(_, cookie)| cookie.as_ref())
+        .filter(|cookie| **cookie != remembered)
+        .collect();
+    assert_eq!(replacements.len(), 1, "{results:?}");
+
+    // The one replacement is the account's token: it restores a session,
+    // and nothing was taken for a copy (the first session still stands).
+    let mut later = Client::browser(&server);
+    later
+        .jar
+        .insert("remember_token".to_string(), replacements[0].clone());
+    assert_eq!(later.whoami(), "ada@example.com admin");
+    assert_eq!(ada.whoami(), "ada@example.com admin");
+}

@@ -1094,14 +1094,10 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             return self.qb_first_n(qb, count, span);
         }
         let qb_ref = qb.borrow();
-        if qb_ref.exists_mode {
-            Ok(execute_query_builder_exists(&qb_ref))
+        let found = if qb_ref.exists_mode {
+            execute_query_builder_exists(&qb_ref)
         } else if let Some((ref func, ref field)) = qb_ref.aggregation {
-            Ok(execute_query_builder_aggregate(
-                &qb_ref,
-                func.clone(),
-                field,
-            ))
+            execute_query_builder_aggregate(&qb_ref, func.clone(), field)
         } else if !qb_ref.group_fields.is_empty() || !qb_ref.aggregate_specs.is_empty() {
             // Grouped mode: .first returns the first group row (the whole
             // result for ungrouped multi-aggregates, which yield one row).
@@ -1112,18 +1108,28 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                 let first = arr.borrow().first().cloned();
                 return Ok(first.unwrap_or(Value::Null));
             }
-            Ok(rows)
+            rows
         } else if let Some((ref gf, ref func, ref af)) = qb_ref.group_by_info {
-            Ok(execute_query_builder_group_by(
-                &qb_ref,
-                gf,
-                func.clone(),
-                af,
-            ))
+            execute_query_builder_group_by(&qb_ref, gf, func.clone(), af)
         } else if qb_ref.time_bucket_info.is_some() {
-            Ok(crate::interpreter::builtins::model::execute_query_builder_time_bucket(&qb_ref))
+            crate::interpreter::builtins::model::execute_query_builder_time_bucket(&qb_ref)
         } else {
-            Ok(execute_query_builder_first(&qb_ref))
+            execute_query_builder_first(&qb_ref)
+        };
+        // A read the database failed comes back from these paths as an
+        // "Error: …" string. It is raised, as `.all` and `.count` raise it:
+        // handed on, it read as nil ("no such row") from a plain `.first`
+        // and as a truthy value from `.exists.first` — a database error
+        // taken for an answer, in whichever direction the caller's test
+        // happened to fail open.
+        match found {
+            Value::String(message) if message.starts_with("Error: ") => {
+                Err(RuntimeError::General {
+                    message: message["Error: ".len()..].to_string(),
+                    span,
+                })
+            }
+            found => Ok(found),
         }
     }
 
@@ -1307,7 +1313,7 @@ target rows, not join rows; delete the through relation's records instead"
                 span,
             });
         }
-        Ok(execute_query_builder_delete_all(&qb.borrow()))
+        raise_refused_write(execute_query_builder_delete_all(&qb.borrow()), span)
     }
 
     fn qb_update_all(
@@ -1364,7 +1370,10 @@ through relation's records instead"
                 ))
             }
         };
-        Ok(execute_query_builder_update_all(&qb.borrow(), update_data))
+        raise_refused_write(
+            execute_query_builder_update_all(&qb.borrow(), update_data),
+            span,
+        )
     }
 
     fn qb_pluck(
@@ -1822,5 +1831,20 @@ through relation's records instead"
             new_qb.limit_val = Some(top_k);
         }
         Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+    }
+}
+
+/// A bulk write the database refused comes back from the model layer as an
+/// "Error: …" string. Handed to the caller as a value, nothing told a
+/// `delete_all` that deleted nothing from one that worked — code that
+/// revokes tokens, clears a counter or ends sessions went on as if it had.
+/// It is raised, as a refused read is.
+fn raise_refused_write(result: Value, span: Span) -> RuntimeResult<Value> {
+    match result {
+        Value::String(message) if message.starts_with("Error: ") => Err(RuntimeError::General {
+            message: message["Error: ".len()..].to_string(),
+            span,
+        }),
+        done => Ok(done),
     }
 }

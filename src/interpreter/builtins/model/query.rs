@@ -2503,10 +2503,11 @@ fn execute_query_builder_first_inner(qb: &QueryBuilder) -> Value {
 
     match execute_query_builder_inner(qb) {
         Value::Array(arr) => arr.borrow().first().cloned().unwrap_or(Value::Null),
-        // Exec failures surface as strings from the query paths. `.first`
-        // means "instance or nil", so a failed read is nil — never a truthy
-        // "Error: …" string a presence guard would mistake for a record.
-        Value::String(_) => Value::Null,
+        // Exec failures surface as strings from the query paths, and this
+        // one is handed on as it is: `qb_first` raises it. It was answered
+        // with nil — "no such row" — which is the wrong way to fail for the
+        // reads that ask "is there a row that forbids this?": a transient
+        // database error read as permission.
         other => other,
     }
 }

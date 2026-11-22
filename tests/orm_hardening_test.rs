@@ -120,3 +120,38 @@ check("reserved bind", fn() {
     // reserved-name check is exercised by the SDBQL specs.)
     assert!(lines[4].starts_with("reserved bind raised:"), "{lines:#?}");
 }
+
+/// A read or a bulk write the database failed is an error, not an answer.
+/// `.first` used to say nil ("no such row"), `.exists.first` a truthy
+/// string, `update_all` / `delete_all` a string nobody looked at: a database
+/// error read as "nothing forbids this" or "it is done".
+#[test]
+fn a_failed_read_or_bulk_write_raises() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("app.sqlite3"),
+        "this file is not a database, and is long enough to be read as a header ........................................",
+    )
+    .unwrap();
+    let script = format!(
+        r#"{CHECK}
+class Note < Model
+end
+check("first", fn() {{ Note.where({{"owner": "a"}}).first }})
+check("exists", fn() {{ Note.where({{"owner": "a"}}).exists.first }})
+check("update_all", fn() {{ Note.where({{"owner": "a"}}).update_all({{"seen": true}}) }})
+check("delete_all", fn() {{ Note.where({{"owner": "a"}}).delete_all }})
+"#
+    );
+    let lines = sqlite_script(dir.path(), &script);
+    for label in ["first", "exists", "update_all", "delete_all"] {
+        let line = lines
+            .iter()
+            .find(|line| line.starts_with(label))
+            .unwrap_or_else(|| panic!("no line for {label}: {lines:?}"));
+        assert!(
+            line.contains("raised:") && line.contains("not a database"),
+            "{label} did not raise: {line}"
+        );
+    }
+}
