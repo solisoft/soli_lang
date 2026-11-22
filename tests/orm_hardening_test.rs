@@ -214,6 +214,10 @@ check("unread", fn() {{
   let later = "unset"
   grouped(fn() {{
     later = Note.where({{"owner": "c"}}).first
+    other = Note.where({{"owner": "d"}}).count
+    # Read and rescued here: the batch runs now, in the middle of the block,
+    # and `later` fails with it — unread, and not by the block's last flush.
+    counted = (other + 0 rescue 0)
   }})
   "the block finished on a read nobody looked at"
 }})

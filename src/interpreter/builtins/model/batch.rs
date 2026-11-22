@@ -184,7 +184,20 @@ pub fn begin() -> bool {
 /// End the batch owned by this caller: flush any still-pending queries, then
 /// clear the context. Returns `Err` if the final flush failed.
 pub fn end() -> Result<(), String> {
-    let res = flush_inner();
+    let mut res = flush_inner();
+    // A read registered while that flush ran (a preload reaching another
+    // store) is run too, not left unanswered: a few rounds at most.
+    for _ in 0..8 {
+        let more = BATCH.with(|b| {
+            b.borrow()
+                .as_ref()
+                .is_some_and(|state| !state.pending.is_empty() || !state.d1_reads.is_empty())
+        });
+        if !more {
+            break;
+        }
+        res = res.and(flush_inner());
+    }
     let flushed = BATCH.with(|b| b.borrow_mut().take().map(|state| state.flushed));
     // A read that failed and reached nobody who could raise it — never
     // read, or read where there is no error channel (a condition, a view) —
@@ -275,7 +288,22 @@ pub fn force(cell: &Rc<RefCell<DeferredCell>>) -> Result<Value, String> {
 /// nothing pending. Used before the tenant changes: a deferred read belongs to
 /// the tenant it was made under.
 pub fn flush() -> Result<(), String> {
-    flush_inner()
+    let result = flush_inner();
+    if result.is_err() {
+        // Raised to this caller (a tenant or role switch): delivered. Rescued
+        // there, it is not raised a second time by the block's end.
+        BATCH.with(|b| {
+            if let Some(state) = b.borrow().as_ref() {
+                for cell in &state.flushed {
+                    let mut cell = cell.borrow_mut();
+                    if cell.failed.is_some() {
+                        cell.delivered = true;
+                    }
+                }
+            }
+        });
+    }
+    result
 }
 
 /// Best-effort flush used by the `Value` formatting/comparison helpers, which
@@ -323,7 +351,15 @@ fn flush_inner() -> Result<(), String> {
         }
     });
     let d1 = flush_d1(d1_reads);
-    flush_solidb(pending).and(d1)
+    let result = flush_solidb(pending).and(d1);
+    // Only the failures are worth keeping: a block that reads in a loop
+    // would otherwise hold every row set it ever loaded until its end.
+    BATCH.with(|b| {
+        if let Some(state) = b.borrow_mut().as_mut() {
+            state.flushed.retain(|cell| cell.borrow().failed.is_some());
+        }
+    });
+    result
 }
 
 /// Run the deferred D1 reads, their statements coalesced, and fill their

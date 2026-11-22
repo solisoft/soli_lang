@@ -484,10 +484,11 @@ impl Interpreter {
         let iter_value = self.evaluate(iterable)?;
         // QueryBuilder is iterable: materialize it into an Array up front.
         let iter_value = match iter_value {
-            Value::QueryBuilder(qb) => crate::interpreter::builtins::model::raise_if_error_value(
+            Value::QueryBuilder(qb) => {
                 crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
-                    .force_deferred(),
-            )
+                    .force_checked()
+                    .and_then(crate::interpreter::builtins::model::raise_if_error_value)
+            }
             .map_err(|message| RuntimeError::General {
                 message,
                 span: iterable.span,

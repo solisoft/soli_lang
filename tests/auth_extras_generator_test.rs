@@ -973,4 +973,11 @@ print("#{took} #{lost} #{held} #{gone.nil?} #{signed.email}")"##;
         runner(dir.path(), code),
         "true false true true ada@example.com"
     );
+    // And `redeem` goes through it (two calls in a row cannot show that:
+    // the second does not find the row).
+    let model = fs::read_to_string(dir.path().join("app/models/magic_link.sl")).unwrap();
+    assert!(
+        model.contains("return nil unless MagicLink.claim(link, digest)"),
+        "redeem no longer claims the link before using it"
+    );
 }

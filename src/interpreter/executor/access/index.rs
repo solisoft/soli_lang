@@ -23,10 +23,11 @@ impl Interpreter {
         // QueryBuilder indexing materializes the rows once, then indexes
         // into the resulting array. Lets users write user.posts[0].
         let obj_val = match obj_val {
-            Value::QueryBuilder(qb) => crate::interpreter::builtins::model::raise_if_error_value(
+            Value::QueryBuilder(qb) => {
                 crate::interpreter::builtins::model::execute_query_builder(&qb.borrow())
-                    .force_deferred(),
-            )
+                    .force_checked()
+                    .and_then(crate::interpreter::builtins::model::raise_if_error_value)
+            }
             .map_err(|e| RuntimeError::new(e, span))?,
             other => other,
         };
