@@ -28,20 +28,21 @@ class MagicLinksController < Controller
     # outlive the user's removal at the identity provider. A password
     # lockout does not stop a link — anyone can trip it, and the mailbox is
     # its own proof.
-    # The cookie this browser holds is kept — asking again must not undo
-    # the link already in the mailbox — and every answer sets one.
-    held = (cookies[MAGIC_LINK_COOKIE] rescue nil).to_s
-    nonce = Regex.matches("^[0-9a-f]{64}$", held) ? held : Crypto.random_hex(32)
+    nonce = Crypto.random_hex(32)
     if !user.nil? && !user.sso_only?
-      link = MagicLink.issue(user, client_ip(req), nonce)
+      link = MagicLink.issue(user, MagicLink.requester_for(client_ip(req)))
       unless link.nil?
+        nonce = link["nonce"]
         MagicLinkMailer.sign_in(user, link["token"]).deliver_later rescue nil
       end
     else
       # The write an account costs, on no row: same timing either way.
       User.burn_write_work
     end
-    set_cookie(MAGIC_LINK_COOKIE, nonce, {
+    # Added to what the browser holds, whatever the address: asking again
+    # must not undo the link already in the mailbox.
+    held = (cookies[MAGIC_LINK_COOKIE] rescue nil).to_s
+    set_cookie(MAGIC_LINK_COOKIE, MagicLink.cookie_with(held, nonce), {
       "path": "/",
       "max_age": MAGIC_LINK_TTL,
       "http_only": true,

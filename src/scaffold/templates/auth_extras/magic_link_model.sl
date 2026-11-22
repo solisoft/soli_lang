@@ -34,9 +34,9 @@ class MagicLink < Model
   # that filling the account's MAGIC_LINKS_PENDING takes many addresses, not
   # three.
   #
-  # `nonce`: the one the asking browser already holds, when it has one — a
-  # second request must not orphan the link the first one sent.
-  static def issue(user, requester = "", nonce = "")
+  # `requester` is a network, not an address (`MagicLink.requester_for`):
+  # an IPv6 client has a whole prefix of addresses to ask from.
+  static def issue(user, requester = "")
     let now = DateTime.utc.to_unix
     # Expired rows go in one write: one per row would make a request for an
     # address someone parked links on slower than one for an unknown address.
@@ -46,7 +46,7 @@ class MagicLink < Model
     return nil if live.filter { |link| link.requester.to_s == requester.to_s }.length >= MAGIC_LINKS_PER_REQUESTER
 
     token = Crypto.random_hex(32)
-    nonce = Crypto.random_hex(32) unless Regex.matches("^[0-9a-f]{64}$", nonce.to_s)
+    nonce = Crypto.random_hex(32)
     MagicLink.create({
       "user_id": user._key,
       "requester": requester.to_s,
@@ -57,13 +57,48 @@ class MagicLink < Model
     {"token": token, "nonce": nonce}
   end
 
+  # Who is asking, for the per-requester limit: an IPv4 address as it is, an
+  # IPv6 one cut to its /64 — the unit one subscriber holds, and the one the
+  # rate limiter counts by. Counted per address, a single IPv6 client would
+  # be as many requesters as it likes.
+  static def requester_for(address)
+    let text = address.to_s.trim.downcase
+    return text unless text.includes?(":")
+    # An IPv4 client seen through a dual-stack listener (::ffff:a.b.c.d).
+    if text.includes?(".")
+      let pieces = text.split(":")
+      return pieces[pieces.length - 1]
+    end
+
+    let halves = text.split("::")
+    let head = halves[0].to_s.split(":").filter { |group| group.present? }
+    let tail = halves.length > 1 ? halves[1].to_s.split(":").filter { |group| group.present? } : []
+    let missing = halves.length > 1 ? 8 - head.length - tail.length : 0
+    let zeros = (0..missing).map { |i| "0" }
+    let groups = [...head, ...zeros, ...tail]
+    groups.slice(0, 4).map { |group| group.to_i(16).to_s }.join(":") + "::/64"
+  end
+
+  # The browser cookie after a request: the nonces it held (the last three)
+  # and the new one, so asking again does not undo the link already in the
+  # mailbox. Never a held nonce reused for a new link: whoever sat at this
+  # browser before knows it.
+  static def cookie_with(held, nonce)
+    let kept = held.to_s.split(".").filter { |one| Regex.matches("^[0-9a-f]{64}$", one) }
+    kept = kept.slice(kept.length - 3, kept.length) if kept.length > 3
+    [...kept, nonce].join(".")
+  end
+
   # The user `token` signs in from the browser holding `nonce`, or nil. A
   # link opened elsewhere is left as it is; one opened here is used up, in
   # time or not.
   static def redeem(token, nonce)
     link = MagicLink.find_by("token_digest", Crypto.sha256(token.to_s))
     return nil if link.nil?
-    return nil unless Crypto.secure_compare(link.nonce_digest, Crypto.sha256(nonce.to_s))
+    # The cookie holds the nonces of this browser's last few requests
+    # (`MagicLink.cookie_with`): any of them opens its own link.
+    let matching = nonce.to_s.split(".").filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
+    return nil if matching.length == 0
 
     expired = DateTime.utc.to_unix > link.expires_at
     link.delete

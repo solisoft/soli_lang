@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a fifth review** (no way in found; three medium findings). A
+  database that takes no writes answered 500 for a known address and 200
+  for an unknown one: both now fail alike. The sign-up cookie is new on
+  every submission and its digest is cleared at confirmation — reusing it
+  behind a password check told its holder whether a guess was right. A
+  sign-in link's requester is an IPv6 /64, not an address. The link cookie
+  holds the nonces of the browser's last requests; none is reused for a new
+  link. Marking an account as used is best effort in the middlewares. A
+  password reset whose writes were refused answers its form, not a 500.
 - **auth: a fourth review.** An account is marked as used by an open
   session and by an API token too, not only by a new sign-in (an account
   from before the mark, or used through tokens alone, could still be

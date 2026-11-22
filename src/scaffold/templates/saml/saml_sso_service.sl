@@ -416,12 +416,14 @@ class SamlSso
 
     if !user.confirmed? && user.never_signed_in?
       SamlSso.take_over_unconfirmed(user)
-    elsif !user.confirmed?
-      # In use, by whoever the administrator's setting (or the directory)
-      # says the identity provider speaks for: confirmed, and left with what
-      # its user set.
-      user.confirm_email
-    elsif directory && user.password_digest.blank? && !user.sso_only?
+      return nil
+    end
+
+    # In use, by whoever the administrator's setting (or the directory) says
+    # the identity provider speaks for: confirmed, and left with what its
+    # user set.
+    user.confirm_email unless user.confirmed?
+    if directory && user.password_digest.blank? && !user.sso_only?
       # A directory account with no password signs in through the identity
       # provider from now on — and whatever session it had open (a magic
       # link's, which has no expiry of its own) closes.

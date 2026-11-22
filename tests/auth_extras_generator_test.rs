@@ -484,14 +484,16 @@ print("#{sent["token"]} #{sent["nonce"]}")"##,
     // Anyone can ask for a link to any address. Asking never removes a link
     // that is waiting — the owner's still works — and is refused instead:
     // past three for one address, past a hundred for the account. Expired
-    // rows do not count, and a browser that asks again keeps its cookie.
+    // rows do not count, a browser that asks again holds both nonces, and
+    // an IPv6 requester is its /64.
     assert_eq!(
         runner(
             dir.path(),
             r##"user = User.find_by("email", "ada@example.com")
 MagicLink.where({"user_id": user._key}).delete_all
 owners = MagicLink.issue(user, "198.51.100.7")
-again = MagicLink.issue(user, "198.51.100.7", owners["nonce"])
+again = MagicLink.issue(user, "198.51.100.7")
+held = MagicLink.cookie_with(MagicLink.cookie_with("junk." + owners["nonce"], again["nonce"]), "f" * 64)
 refused = (0..10).map { |i| MagicLink.issue(user, "203.0.113.9") }.filter { |sent| sent.nil? }.length
 after_one_address = MagicLink.where({"user_id": user._key}).count
 (0..200).each do |i|
@@ -499,13 +501,14 @@ after_one_address = MagicLink.where({"user_id": user._key}).count
 end
 full = MagicLink.where({"user_id": user._key}).count
 at_ceiling = MagicLink.issue(user, "a new address").nil?
-both = !MagicLink.redeem(owners["token"], owners["nonce"]).nil? && !MagicLink.redeem(again["token"], owners["nonce"]).nil?
+both = !MagicLink.redeem(owners["token"], held).nil? && !MagicLink.redeem(again["token"], held).nil?
 MagicLink.where({"user_id": user._key}).update_all({"expires_at": 1})
 fresh = !MagicLink.issue(user, "a new address").nil?
 left = MagicLink.where({"user_id": user._key}).count
-print("#{again["nonce"] == owners["nonce"]} #{refused} #{after_one_address} #{full} #{at_ceiling} #{both} #{fresh} #{left}")"##
+networks = ["2001:db8:0:1::5", "2001:0db8:0000:0001:ffff::9", "2001:db8:0:2::5", "::ffff:192.0.2.1", "192.0.2.1"].map { |address| MagicLink.requester_for(address) }
+print("#{networks.join(" ")} #{again["nonce"] != owners["nonce"]} #{refused} #{after_one_address} #{full} #{at_ceiling} #{both} #{fresh} #{left}")"##
         ),
-        "true 7 5 100 true true true 1"
+        "8193:3512:0:1::/64 8193:3512:0:1::/64 8193:3512:0:2::/64 192.0.2.1 192.0.2.1 true 7 5 100 true true true 1"
     );
 }
 

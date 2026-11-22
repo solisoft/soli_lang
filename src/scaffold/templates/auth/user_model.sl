@@ -333,7 +333,9 @@ class User < Model
   # counted), spent on no row: with the mail sent off the request
   # (`deliver_later`), an unknown address then answers in the same time.
   static def burn_write_work
-    User.where({"_key": "no-such-user"}).update_all({"reset_sent_at": 0})
+    # Refused like a real one (`auth_written`): a database that takes no
+    # writes answers the same for an address it knows and one it does not.
+    auth_written(User.where({"_key": "no-such-user"}).update_all({"reset_sent_at": 0}))
     nil
   end
 
@@ -461,6 +463,7 @@ class User < Model
       end
     end
     @password_digest = nil
+    @signup_nonce_digest = nil
     @reset_token_digest = nil
     @reset_sent_at = nil
     @remember_token_digest = nil
@@ -500,7 +503,14 @@ class User < Model
     @confirmed_at = DateTime.utc.to_unix
     @confirmation_token_digest = nil
     @confirmation_sent_at = nil
-    @_patch({"confirmed_at": @confirmed_at, "confirmation_token_digest": nil, "confirmation_sent_at": nil})
+    # The sign-up cookie has done its work: it vouches for nothing later.
+    @signup_nonce_digest = nil
+    @_patch({
+      "confirmed_at": @confirmed_at,
+      "confirmation_token_digest": nil,
+      "confirmation_sent_at": nil,
+      "signup_nonce_digest": nil
+    })
   end
 
   def confirmed?
@@ -514,6 +524,12 @@ class User < Model
   # browser, a sign-in link, a provider): everything it could be entered
   # with is revoked first. An account that has been used keeps what its user
   # set — its second factor above all, which a mailbox alone must not remove.
+  #
+  # Adding this scaffold over accounts that already exist? They carry no
+  # `signed_in_at`, and count as never entered until their next request or
+  # sign-in: set it on them once (`User.where({}).update_all({"signed_in_at":
+  # DateTime.utc.to_unix})`), or a proof of the address takes over an
+  # account that is in use.
   def never_signed_in?
     @signed_in_at.nil?
   end

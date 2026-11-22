@@ -79,7 +79,7 @@ class PasswordsController < Controller
     return @_reject_edit(password_error) unless password_error.nil?
     return @_reject_edit("Passwords don't match.") if password != params["password_confirmation"].to_s
 
-    unless user.finish_password_reset(password) == true
+    unless (user.finish_password_reset(password) rescue false) == true
       return @_reject_edit("The password could not be changed. Ask for a new link and try again.")
     end
     # Sign the user straight in with a fresh session.
