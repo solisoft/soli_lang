@@ -67,9 +67,11 @@ class TwoFactorController < Controller
     # Every other session of this account is signed out; this one stays.
     # One field, counted in the database: writing the whole account back
     # here could undo a password reset that happened meanwhile.
+    # (The marker first: were the increment to fail, this session would
+    # otherwise keep "no second factor" on an account that now has one.)
+    session_set("two_factor", "ok:#{user._key}")
     user.increment("session_version")
     session_set("session_version", user.current_session_version)
-    session_set("two_factor", "ok:#{user._key}")
     render(
       "two_factor/backup_codes",
       {"title": "Backup codes", "codes": codes}

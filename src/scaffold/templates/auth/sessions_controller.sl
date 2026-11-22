@@ -122,7 +122,12 @@ class SessionsController < Controller
     # said it was done) nor let a half-signed-in session through.
     if !user_id.blank? && auth_own_session?(req)
       user = User.find_by("_key", user_id)
-      user.forget_me if !user.nil? && @_fully_signed_in?(user)
+      # …or the request holds the token itself, which is proof enough to
+      # end it: a session an expired one's cookie just restored is, on an
+      # account with a second factor, waiting at the challenge.
+      if !user.nil? && (@_fully_signed_in?(user) || @_holds_remember_token?(user))
+        user.forget_me
+      end
     end
     # Expire the remember-me cookie immediately.
     set_cookie("remember_token", "", {
@@ -147,6 +152,21 @@ class SessionsController < Controller
     return true if two_factor.nil? || !two_factor.enabled?(user)
 
     session_get("two_factor").to_s == "ok:#{user._key}"
+  end
+
+  # Does this request carry `user`'s remember-me token — the current one,
+  # or the one it replaced a moment ago (the middleware rotates it when it
+  # restores a session, in this very request)?
+  def _holds_remember_token?(user)
+    given = (cookies["remember_token"] rescue nil).to_s
+    return false unless given.includes?(":")
+
+    parts = given.split(":")
+    return false unless parts[0] == user._key.to_s
+
+    digest = Crypto.sha256(parts[1].to_s)
+    stored = [user.remember_token_digest.to_s, user.remember_previous_digest.to_s]
+    stored.filter { |one| one.present? && Crypto.secure_compare(one, digest) }.length > 0
   end
 
   # What every refused sign-in says. With confirmation required it also

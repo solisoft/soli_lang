@@ -1035,7 +1035,10 @@ print("token kept #{User.find(user._key).remember_token_digest.present?}")
         "/two_factor/challenge",
         "the stranger's session is not pending the second factor"
     );
-    stranger.request("DELETE", "/logout", None);
+    // The logout itself goes through (an error would also "keep" the token).
+    let out = stranger.request("DELETE", "/logout", None);
+    assert_eq!(out.status, 302, "{}", out.body);
+    assert!(!stranger.signed_in());
 
     fs::write(
         root.join("after.sl"),
@@ -1047,5 +1050,71 @@ print("token kept #{user.remember_token_digest.present?}")
     assert!(
         held("after.sl").ends_with("token kept true"),
         "a session that never passed the second factor dropped the owner's remember-me"
+    );
+}
+
+/// …and the owner's own logout, from a session that passed the second
+/// factor, drops it.
+#[test]
+fn a_logout_past_the_second_factor_drops_the_remember_me_token() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root);
+    let creds = json!({"email": EMAIL, "password": PASSWORD});
+    let mut owner = Browser::new(&server);
+    assert_eq!(owner.post("/signup", creds).status, 200);
+    confirm_address(root, EMAIL);
+    let run = |name: &str, code: &str| {
+        fs::write(root.join(name), code).unwrap();
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+            .args(["runner", name])
+            .current_dir(root)
+            .env_remove("SOLI_ENGINE")
+            .env(
+                "SOLI_ENCRYPTION_KEY",
+                "two-factor-test-key-0123456789abcdef",
+            )
+            .env("SOLI_DB_ADAPTER", "sqlite")
+            .env(
+                "DATABASE_URL",
+                format!("sqlite://{}/app.sqlite3", root.display()),
+            )
+            .output()
+            .expect("run soli");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    let enrolled = run(
+        "enrol.sl",
+        r##"user = User.find_by("email", "ada@example.com")
+record = TwoFactor.start(user)
+record.confirm(Crypto.totp_generate(record.secret))
+print("secret #{record.secret}")
+"##,
+    );
+    let secret = enrolled
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("secret "))
+        .unwrap_or_else(|| panic!("no secret: {enrolled}"))
+        .to_string();
+
+    // Password with "remember me", then the challenge: a full session.
+    let remembered = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
+    assert_eq!(owner.post("/login", remembered).status, 302);
+    let passed = owner.post(
+        "/two_factor/challenge",
+        json!({"code": totp(&secret, unix_now() + 30)}),
+    );
+    assert_eq!(passed.status, 302, "{}", passed.body);
+    assert!(owner.signed_in());
+    let stored = r##"user = User.find_by("email", "ada@example.com")
+print("token stored #{user.remember_token_digest.present?}")
+"##;
+    assert!(run("stored.sl", stored).ends_with("token stored true"));
+
+    let out = owner.request("DELETE", "/logout", None);
+    assert_eq!(out.status, 302, "{}", out.body);
+    assert!(
+        run("stored.sl", stored).ends_with("token stored false"),
+        "the owner's logout left the remember-me token alive"
     );
 }

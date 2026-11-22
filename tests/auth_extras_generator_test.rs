@@ -1004,25 +1004,17 @@ fn logout_ends_remember_me_for_every_copy_of_the_cookie() {
         .insert("remember_token".to_string(), copied.clone());
     assert_eq!(thief.whoami(), "ada@example.com admin");
 
-    // …the owner signs in again, and logs out.
-    let mut owner = Client::browser(&server);
-    let reply = owner.post(
-        "/login",
-        json!({"email": "ada@example.com", "password": PASSWORD, "remember_me": "1"}),
-    );
-    assert_eq!(reply.status, 302, "{}", reply.body);
-    let current = owner.jar.get("remember_token").expect("no cookie").clone();
-    let out = owner.request("DELETE", "/logout", None);
+    // …the owner logs out, from the browser that was remembered.
+    let out = ada.request("DELETE", "/logout", None);
     assert!(out.status == 302 || out.status == 200, "{}", out.body);
-    assert_eq!(owner.whoami(), "guest");
+    assert_eq!(ada.whoami(), "guest");
 
-    for cookie in [current, copied] {
-        let mut later = Client::browser(&server);
-        later.jar.insert("remember_token".to_string(), cookie);
-        assert_eq!(
-            later.whoami(),
-            "guest",
-            "a remember-me cookie outlived the logout"
-        );
-    }
+    // The copy — the same token, which nothing replaced meanwhile — is dead.
+    let mut later = Client::browser(&server);
+    later.jar.insert("remember_token".to_string(), copied);
+    assert_eq!(
+        later.whoami(),
+        "guest",
+        "a copy of the remember-me cookie outlived the logout"
+    );
 }

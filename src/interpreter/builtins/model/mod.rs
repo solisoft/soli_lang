@@ -302,7 +302,6 @@ pub mod uploaders;
 pub mod validation;
 
 pub use callbacks::{register_callback, ModelCallbacks};
-pub use core::in_band_if_gone;
 pub use core::{
     build_safe_filter_from_hash, class_name_to_collection, db_host, db_scheme_and_host,
     duration_to_cutoff_rfc3339, ensure_scalar_bind_value, ensure_string_form_bind_value,
@@ -313,6 +312,7 @@ pub use core::{
     timeseries_insert_only_error, update_metadata, validate_field_name, validate_order_direction,
     validate_retention_duration, EngineContextGuard, Model, ModelMetadata, MODEL_REGISTRY,
 };
+pub use core::{in_band_if_gone, in_band_if_no_row};
 pub use crud::{
     exec_async_query, exec_async_query_raw, exec_async_query_with_binds, exec_auto_collection,
     exec_auto_collection_with_binds, exec_db_json, json_doc_to_instance_owned, json_to_value,

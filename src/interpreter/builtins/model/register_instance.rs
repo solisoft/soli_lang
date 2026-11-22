@@ -533,7 +533,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                                 // always was. Any other refusal raises — it
                                 // was a truthy string too, and code went on
                                 // as if the record were deleted.
-                                super::core::in_band_if_gone(e)
+                                super::core::in_band_if_no_row(e)
                             }
                         }
                     }

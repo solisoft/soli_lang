@@ -2765,6 +2765,12 @@ mod tests {
         assert!(matches!(in_band_if_gone(integer_key), Ok(Value::String(_))));
         // Raised: a bad value, a database that did not answer.
         assert!(in_band_if_gone(date_value).is_err());
+        // A delete binds only the key: a malformed uuid there is a miss.
+        use super::super::core::in_band_if_no_row;
+        assert!(matches!(in_band_if_no_row(uuid_text), Ok(Value::String(_))));
+        assert!(in_band_if_gone(uuid_text).is_err());
+        let numeric_key = r#""rates" has a numeric primary key (id); "abc" is not a number"#;
+        assert!(key_refused(numeric_key) && key_names_no_row(numeric_key));
         assert!(in_band_if_gone("HTTP 500 Internal Server Error …").is_err());
         assert!(in_band_if_gone("HTTP error: error sending request …").is_err());
     }

@@ -2168,7 +2168,7 @@ impl Vm {
                 Err(e) => {
                     // As the native answers: in band when the row is not
                     // there, a raise for any other refusal.
-                    let answer = crate::interpreter::builtins::model::in_band_if_gone(e)
+                    let answer = crate::interpreter::builtins::model::in_band_if_no_row(e)
                         .map_err(|message| RuntimeError::General { message, span })?;
                     self.stack.truncate(receiver_idx);
                     self.stack.push(answer);

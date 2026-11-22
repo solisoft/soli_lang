@@ -1400,7 +1400,7 @@ impl Interpreter {
             // raise for any other refusal (it was a truthy string for a
             // database that did not answer, and the action went on).
             Err(e) => {
-                return crate::interpreter::builtins::model::in_band_if_gone(e)
+                return crate::interpreter::builtins::model::in_band_if_no_row(e)
                     .map(Some)
                     .map_err(|message| RuntimeError::General { message, span })
             }

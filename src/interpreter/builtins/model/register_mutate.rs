@@ -291,7 +291,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     }
                     Ok(json_to_value(&result))
                 }
-                Err(e) => in_band_if_gone(e),
+                Err(e) => in_band_if_no_row(e),
             }
         })),
     );

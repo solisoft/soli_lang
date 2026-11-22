@@ -17,6 +17,10 @@
   Logout reads the account itself, unrescued, and drops the token only for
   a session past every step of signing in. A bad value in a
   `Model.update` patch raises; only a refusal of the key is a miss.
+  A delete binds nothing but the key, so any refusal of the key is a miss
+  there (`/orders/not-a-uuid` is not a 500). Logout also drops the token
+  when the request itself carries it — a session an expired one's cookie
+  just restored is, with a second factor, waiting at the challenge.
 - **orm: the last writes that answered a refusal as a value raise.**
   `Model.update(id, …)`, `Model.delete(id)` and `Model.transaction(sdbql)`
   returned an `"Error: …"` string — truthy — when the database refused.

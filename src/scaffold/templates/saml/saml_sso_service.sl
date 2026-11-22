@@ -348,8 +348,10 @@ class SamlSso
       known = User.find(identity.user_id)
       # Linked: whatever take-over was pending is done (a link finished by
       # hand, or one whose mark could not be cleared at the time).
+      # (Best effort: a valid sign-in is not refused over this one write.)
       if known.saml_link_pending == true
-        User.where({"_key": known._key}).update_all({"saml_link_pending": false})
+        (User.where({"_key": known._key}).update_all({"saml_link_pending": false})) rescue nil
+        known.saml_link_pending = false
       end
       return known
     end

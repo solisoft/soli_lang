@@ -56,7 +56,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_get_tx, json_to_value};
                 match exec_get_tx(&collection, &key) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => in_band_if_gone(e),
+                    Err(e) => in_band_if_no_row(e),
                 }
             }
         })),
@@ -128,7 +128,7 @@ pub fn get_or_create_transaction_class(model_name: &str) -> Rc<Class> {
                 use super::crud::{exec_delete_tx, json_to_value};
                 match exec_delete_tx(&collection, &key) {
                     Ok(result) => Ok(json_to_value(&result)),
-                    Err(e) => in_band_if_gone(e),
+                    Err(e) => in_band_if_no_row(e),
                 }
             }
         })),
@@ -1515,6 +1515,18 @@ pub(super) fn build_uploader_config_from_args(
 pub fn in_band_if_gone(error: impl ToString) -> Result<Value, String> {
     let message = error.to_string();
     if super::crud::document_already_gone(&message) || super::crud::key_refused(&message) {
+        Ok(Value::String(format!("Error: {}", message).into()))
+    } else {
+        Err(message)
+    }
+}
+
+/// [`in_band_if_gone`] for a call that binds nothing but the key — a delete,
+/// a read by key: there, any refusal of the key means it names no row
+/// (`/orders/not-a-uuid` on a uuid key), and that too is "not there".
+pub fn in_band_if_no_row(error: impl ToString) -> Result<Value, String> {
+    let message = error.to_string();
+    if super::crud::document_already_gone(&message) || super::crud::key_names_no_row(&message) {
         Ok(Value::String(format!("Error: {}", message).into()))
     } else {
         Err(message)
