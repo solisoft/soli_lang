@@ -1375,3 +1375,62 @@ fn production_first_user_waits_for_the_admin() {
     assert_eq!(ada.get("/signup").status, 200, "sign-up closed");
     assert_eq!(runner(root, "print(User.count)"), "0");
 }
+
+/// A take-over that stopped before its identity row was stored leaves an
+/// account that is confirmed and single sign-on only: nothing can enter it,
+/// and it is not taken over again. The take-over marks it, and the next
+/// sign-in links it. An account that merely looks the same — single sign-on
+/// only, no identity, because its identity was revoked on purpose — carries
+/// no mark and is still refused: its address alone proves nothing.
+#[test]
+fn a_half_done_take_over_is_finished_and_a_revoked_account_is_not_relinked() {
+    let dir = served_app();
+    let root = dir.path();
+    // SAML_LINK_EXISTING off: an existing account is not linked by address.
+    let server = serve(root, "on");
+    let state = r##"half = User.new
+half.email = "half@example.com"
+half.role = "member"
+half.confirmed_at = DateTime.utc.to_unix
+half.sso_only = true
+half.saml_link_pending = true
+half.save
+revoked = User.new
+revoked.email = "revoked@example.com"
+revoked.role = "member"
+revoked.confirmed_at = DateTime.utc.to_unix
+revoked.sso_only = true
+revoked.save
+print("ready")"##;
+    assert_eq!(runner(root, state), "ready");
+
+    let mut half = Browser::new(&server);
+    let id = half.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "half-at-idp", "attributes": {"email": "half@example.com"}}),
+    );
+    assert_eq!(half.post_response(&response).status, 302);
+    assert!(half.whoami().starts_with("half@example.com member "));
+
+    let mut revoked = Browser::new(&server);
+    let id = revoked.start("/saml/login");
+    let response = issue(
+        root,
+        &id,
+        json!({"name_id": "revoked-at-idp", "attributes": {"email": "revoked@example.com"}}),
+    );
+    assert_eq!(revoked.post_response(&response).status, 401);
+    assert_eq!(revoked.whoami(), "guest");
+
+    assert_eq!(
+        runner(
+            root,
+            r##"half = User.find_by("email", "half@example.com")
+revoked = User.find_by("email", "revoked@example.com")
+print("#{half.saml_link_pending} #{SamlIdentity.where({"user_id": half._key}).count} #{SamlIdentity.where({"user_id": revoked._key}).count}")"##
+        ),
+        "false 1 0"
+    );
+}
