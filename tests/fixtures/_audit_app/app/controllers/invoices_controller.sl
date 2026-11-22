@@ -48,6 +48,37 @@ class InvoicesController < Controller
     render_json({"ok": true})
   end
 
+  # GET /audit/head
+  def head
+    render_json(Audit.head)
+  end
+
+  # GET /audit/verify_head — the chain, against a head kept elsewhere
+  def verify_head
+    known = {"seq": params["seq"].to_i, "entry_hash": params["hash"].to_s}
+    render_json({"broken": Audit.verify(known)})
+  end
+
+  # POST /audit/cut — remove the newest entry
+  def cut
+    Audit.order("seq", "desc").first.delete
+    render_json({"count": Audit.count})
+  end
+
+  # POST /audit/redo — edit an entry, then redo every hash after it the way
+  # someone with the table (but not AUDIT_CHAIN_KEY) can: plain SHA-256
+  def redo
+    prev_hash = ""
+    for row in Audit.order("seq", "asc").all
+      row.actor_label = "nobody@example.com" if row.seq == params["seq"].to_i
+      row.prev_hash = prev_hash
+      row.entry_hash = Crypto.ledger_hash(prev_hash, row.seq, row.hashed_fields)
+      row.save
+      prev_hash = row.entry_hash
+    end
+    render_json({"ok": true})
+  end
+
   # GET /audit/actor
   def actor
     member = Member.find_by("email", params["email"])

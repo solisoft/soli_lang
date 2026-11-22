@@ -60,6 +60,20 @@ fn classify(expr: &Expr) -> Option<(&'static str, Span)> {
              with an argv array, which never invokes a shell.",
             expr.span,
         )),
+        // `System.run("convert #{name} out.png")`: the string form is split on
+        // spaces, so a value with a space in it adds arguments of its own
+        // (`in.png -write /app/public/x`). No shell runs, and it is still an
+        // injection.
+        ExprKind::Call { callee, arguments }
+            if is_system_run(callee) && first_argument_is_interpolated(arguments) =>
+        {
+            Some((
+                "System.run / run_sync / exec with an interpolated string: the string is split \
+                 on spaces, so a value containing one adds arguments to the command. Pass an \
+                 argv array ([\"prog\", value, ...]), where each value is one argument.",
+                expr.span,
+            ))
+        }
         ExprKind::Call { callee, .. } => match &callee.kind {
             // Bare-name builtins.
             ExprKind::Variable(name) if name == "db_query_raw" => Some((
@@ -97,6 +111,22 @@ fn classify(expr: &Expr) -> Option<(&'static str, Span)> {
         },
         _ => None,
     }
+}
+
+fn is_system_run(callee: &Expr) -> bool {
+    matches!(
+        &callee.kind,
+        ExprKind::Member { object, name }
+            if matches!(&object.kind, ExprKind::Variable(class) if class == "System")
+                && matches!(name.as_str(), "run" | "run_sync" | "exec" | "exec_sync")
+    )
+}
+
+fn first_argument_is_interpolated(arguments: &[Argument]) -> bool {
+    matches!(
+        arguments.first(),
+        Some(Argument::Positional(expr)) if matches!(expr.kind, ExprKind::InterpolatedString(_))
+    )
 }
 
 /// `security/unfiltered-mass-assignment` — `Model.create(params)` (and

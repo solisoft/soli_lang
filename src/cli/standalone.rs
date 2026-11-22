@@ -1100,11 +1100,13 @@ fn download_release_runtime(
                     VERSION
                 ));
             }
-            eprintln!(
-                "  \x1b[33mWarning:\x1b[0m no .sha256 published for v{} — \
-                 skipping checksum verification.",
-                version
-            );
+            // Not strict (the runtime of another target, embedded into
+            // an app that ships): unverified bytes are no more acceptable
+            // there than an unverified interpreter here.
+            return Err(format!(
+                "soli {version} publishes no .sha256 for {tarball} — refusing to embed \
+                 an unverified runtime."
+            ));
         }
         Ok(resp) => return Err(format!("fetching .sha256: HTTP {}", resp.status())),
         Err(e) => return Err(format!("fetching .sha256: {}", e)),

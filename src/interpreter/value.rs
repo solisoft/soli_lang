@@ -3748,11 +3748,23 @@ fn fast_parse_i64_digits(digits: &[u8], neg: bool) -> Value {
 /// materialised (IndexMap + Rc/RefCell dominate either way).
 #[inline]
 pub fn parse_json(s: &str) -> Result<Value, String> {
-    parse_json_bytes(s.as_bytes())
+    parse_json_utf8(s.as_bytes())
 }
 
 /// Parse JSON from bytes.
+///
+/// The parser builds its strings without re-checking them (`from_utf8_unchecked`),
+/// which is sound only for input that is UTF-8: the bytes are checked here,
+/// once, so that this safe function is safe for any slice.
 pub fn parse_json_bytes(bytes: &[u8]) -> Result<Value, String> {
+    if std::str::from_utf8(bytes).is_err() {
+        return Err("JSON is not valid UTF-8".to_string());
+    }
+    parse_json_utf8(bytes)
+}
+
+/// The parser proper, for bytes known to be UTF-8 (a `&str`'s, or checked).
+fn parse_json_utf8(bytes: &[u8]) -> Result<Value, String> {
     let mut pos = 0;
     let value = parse_value(bytes, &mut pos, 0)?;
     skip_ws(bytes, &mut pos);

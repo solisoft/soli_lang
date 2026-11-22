@@ -142,15 +142,21 @@ fn refuses_a_tarball_whose_checksum_does_not_match() {
 }
 
 #[test]
-fn a_missing_checksum_warns_but_proceeds() {
-    // Releases predating checksum publishing must still be usable — refusing
-    // them outright would break builds against existing versions.
+fn a_missing_checksum_is_refused_unless_the_builder_says_so() {
+    // The binary is embedded into an application that ships to other people:
+    // bytes nobody could check are not embedded on a warning. A release from
+    // before checksums were published is still usable, by saying so
+    // (SOLI_ALLOW_UNVERIFIED_DOWNLOAD=1).
     let tarball = make_tarball(FAKE_DB);
     let port = spawn_server(tarball, None);
 
     with_mirror(port, || {
-        let bytes = solilang::desktop::fetch::database_binary("linux-amd64", "9.9.7")
-            .expect("missing checksum must not be fatal");
-        assert_eq!(bytes, FAKE_DB);
+        let err = solilang::desktop::fetch::database_binary("linux-amd64", "9.9.7")
+            .expect_err("a missing checksum must be refused");
+        assert!(
+            err.contains("refusing to embed an unverified binary"),
+            "{err}"
+        );
+        assert!(err.contains("SOLI_ALLOW_UNVERIFIED_DOWNLOAD=1"), "{err}");
     });
 }

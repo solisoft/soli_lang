@@ -37,10 +37,6 @@ ignore = [
     # umya-spreadsheet. Dropping ratatui removed the other.
     "RUSTSEC-2024-0436",
 
-    # daemonize — unmaintained. Used only for `soli serve -d` (Unix daemonize).
-    # Small, stable surface; revisit if a maintained equivalent appears.
-    "RUSTSEC-2025-0069",
-
     # proc-macro-error 1.0.4 — unmaintained proc-macro (build-time only, no
     # runtime risk). Reached through the PDF font stack via allsorts 0.16 →
     # ouroboros 0.17, which pins it; ouroboros >=0.18 uses proc-macro-error2.

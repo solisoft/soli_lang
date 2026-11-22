@@ -745,6 +745,7 @@ fn stop_app(proxy_url: &str, app: &str) -> Result<(), String> {
         .ok()
         .filter(|key| !key.is_empty())
     {
+        crate::platform::credential_may_travel_to(proxy_url, "soli preview")?;
         request = request.header("X-Api-Key", key);
     }
 
@@ -781,6 +782,7 @@ fn app_is_known(proxy_url: &str, app: &str) -> Result<bool, String> {
         .ok()
         .filter(|key| !key.is_empty())
     {
+        crate::platform::credential_may_travel_to(proxy_url, "soli preview")?;
         request = request.header("X-Api-Key", key);
     }
 

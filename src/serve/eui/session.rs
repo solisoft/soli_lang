@@ -863,6 +863,11 @@ enum Chunk {
     Refused { code: u32, why: String },
 }
 
+/// Transfers a session may have announced at once.
+const MAX_SESSION_UPLOADS: usize = 16;
+/// Bytes a session's announced transfers may come to, all together.
+const MAX_SESSION_UPLOAD_BYTES: u64 = 4 * UPLOAD_CEILING;
+
 /// Open the file a `file_pick` announced, so the chunks that follow have
 /// somewhere to go. The payload is `[id, name, size]` (06 §1).
 fn announce(
@@ -891,6 +896,25 @@ fn announce(
     if size > UPLOAD_CEILING {
         return Err(format!(
             "{name} is {size} bytes; this server takes {UPLOAD_CEILING}"
+        ));
+    }
+    // A session holds a few transfers at a time, and so much in all. Each
+    // announced id opened a file: one socket — anonymous, unless the
+    // component asks for a session — could hold file descriptors and
+    // `N × UPLOAD_CEILING` of disk without limit until it hung up.
+    if !uploads.contains_key(&id) && uploads.len() >= MAX_SESSION_UPLOADS {
+        return Err(format!(
+            "too many files in one session: this server takes {MAX_SESSION_UPLOADS} at a time"
+        ));
+    }
+    let announced: u64 = uploads
+        .iter()
+        .filter(|(other, _)| **other != id)
+        .map(|(_, upload)| upload.size)
+        .sum();
+    if announced.saturating_add(size) > MAX_SESSION_UPLOAD_BYTES {
+        return Err(format!(
+            "the files of this session would come to more than {MAX_SESSION_UPLOAD_BYTES} bytes"
         ));
     }
     // One directory per session, and the id in the leaf: two files of the
@@ -1435,6 +1459,28 @@ mod tests {
             Chunk::Refused { code: 302, .. }
         ));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_session_announces_only_so_many_files_and_bytes() {
+        let session = format!("sess-cap-{}", std::process::id());
+        let mut uploads = std::collections::HashMap::new();
+        let pick = |id: u64, size: u64| serde_json::json!({ "payload": [id, "f.bin", size] });
+        for id in 0..MAX_SESSION_UPLOADS as u64 {
+            announce(&mut uploads, &pick(id, 1), &session, "c").expect("within the cap");
+        }
+        let refused = announce(&mut uploads, &pick(999, 1), &session, "c").unwrap_err();
+        assert!(refused.contains("too many files"), "{refused}");
+        // Announcing the same id again is not a new file.
+        announce(&mut uploads, &pick(0, 1), &session, "c").expect("a re-announce");
+
+        let mut big = std::collections::HashMap::new();
+        for id in 0..4u64 {
+            announce(&mut big, &pick(id, UPLOAD_CEILING), &session, "c").expect("four full files");
+        }
+        let refused = announce(&mut big, &pick(4, 1), &session, "c").unwrap_err();
+        assert!(refused.contains("more than"), "{refused}");
+        let _ = std::fs::remove_dir_all(upload_dir(&session));
     }
 
     #[test]

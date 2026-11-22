@@ -24,6 +24,10 @@ on:
       - "src/xml/**"
       - "fuzz/**"
 
+# The token only reads the repository: nothing here writes to it.
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: ubuntu-latest
@@ -37,13 +41,11 @@ jobs:
           - xml_parse
           - xml_xpath
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@nightly
-
+        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
       - name: Restore cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/bin
@@ -60,7 +62,7 @@ jobs:
       # run save a fresh entry; `restore-keys` picks up the newest previous one,
       # so the corpus accumulates across nights.
       - name: Restore fuzz corpus
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: ${{ runner.os }}-fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -104,7 +106,7 @@ jobs:
 
       - name: Upload crash artifacts
         if: failure() && steps.fuzz.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: crash-${{ matrix.target }}
           path: fuzz/artifacts

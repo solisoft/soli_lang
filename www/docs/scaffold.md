@@ -69,7 +69,7 @@ soli generate scaffold post title:string body:text author:string
 | `string` | Short text field |
 | `text` | Long text field |
 | `email` | Email address (creates unique index) |
-| `password` | Password field (creates unique index) |
+| `password` | Password field (creates unique index). Typed blind in the form and **not displayed** by the generated index and show pages; stored as typed — for sign-in use `soli generate auth`, for another secret `encrypts` it |
 | `integer` | Whole number |
 | `float` | Decimal number |
 | `boolean` | True/false value |

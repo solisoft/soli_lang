@@ -210,3 +210,35 @@ fn create_scaffold_names_the_migration_as_db_migrate_reads_it() {
     assert!(version.chars().all(|c| c.is_ascii_digit()), "{names:?}");
     assert_eq!(rest, "create_invoices.sl");
 }
+
+/// A `password` field is typed in the form and shown nowhere: the generated
+/// index and show pages printed its value.
+#[test]
+fn a_password_field_is_not_displayed_by_the_generated_views() {
+    let dir = tempfile::tempdir().unwrap();
+    for sub in ["app/controllers", "app/models", "app/views", "config"] {
+        std::fs::create_dir_all(dir.path().join(sub)).unwrap();
+    }
+    std::fs::write(dir.path().join("config/routes.sl"), "# routes\n").unwrap();
+    solilang::scaffold::create_scaffold_with_fields(
+        dir.path().to_str().unwrap(),
+        "vault",
+        &["label:string".to_string(), "secret:password".to_string()],
+    )
+    .unwrap();
+    let read = |name: &str| {
+        std::fs::read_to_string(dir.path().join("app/views/vaults").join(name)).unwrap()
+    };
+    for page in ["index.html.slv", "show.html.slv"] {
+        let view = read(page);
+        assert!(view.contains(r#"["label"]"#), "{page}: {view}");
+        assert!(
+            !view.contains(r#"["secret"]"#),
+            "{page} displays the password: {view}"
+        );
+    }
+    assert!(
+        read("_form.html.slv").contains("password_field")
+            || read("new.html.slv").contains("password_field")
+    );
+}

@@ -67,7 +67,7 @@ soli generate privacy</code></pre>
             <p class="text-yellow-200/80 text-sm mb-0">
                 <strong>A model that is not listed is neither exported nor erased.</strong> A name that is not a model raises, so a typo
                 cannot leave data behind in silence. What the other generators store about a user &mdash; OAuth and SAML identities,
-                passkeys, two-factor, API tokens, magic links &mdash; is already listed (<code>PRIVACY_SCAFFOLD_MODELS</code>), deleted on
+                passkeys, two-factor, API tokens, magic links, push devices, the offline outbox, the OpenID Connect provider&rsquo;s consents, codes and tokens &mdash; is already listed (<code>PRIVACY_SCAFFOLD_MODELS</code>; audit entries a user is the actor of are exported and kept), deleted on
                 erasure, exported without its secrets.
             </p>
         </div>

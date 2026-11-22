@@ -112,7 +112,6 @@ const BUNDLE_EXTENSIONS: &[&str] = &[
     "erb",
     "toml",
     "json",
-    "env",
     "md", // Documents and styles
     "css",
     "js",
@@ -152,6 +151,32 @@ const BUNDLE_EXTENSIONS: &[&str] = &[
 ];
 
 const BUNDLE_SPECIAL_FILES: &[&str] = &["soli.toml", ".solivrc"];
+
+/// Root directories a bundle never carries (see `collect_entries`).
+const BUNDLE_EXCLUDED_ROOT_DIRS: &[&str] = &[
+    "sessions", "tmp", "log", "logs", "coverage", "storage", "uploads",
+];
+
+/// Files whose name says they hold secrets: environment files other than the
+/// hidden `.env` (already skipped), cloud service-account and credential
+/// documents, deploy configuration, private keys. A bundle is distributed;
+/// the secrets of the machine it was built on stay there.
+fn is_secret_bearing_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let stem = lower
+        .rsplit_once('.')
+        .map_or(lower.as_str(), |(stem, _)| stem);
+    lower.ends_with(".env")
+        || lower.ends_with(".pem")
+        || lower.ends_with(".key")
+        || lower.ends_with(".pkcs8")
+        || lower.ends_with(".p12")
+        || lower == "deploy.toml"
+        || stem.starts_with("service-account")
+        || stem.starts_with("service_account")
+        || stem.starts_with("credentials")
+        || stem.starts_with("secrets")
+}
 
 pub struct BundleBuilder;
 
@@ -307,6 +332,20 @@ impl BundleBuilder {
             }
             // Skip hidden files and common non-app directories
             if name_str.starts_with('.') || name_str == "node_modules" || name_str == "target" {
+                continue;
+            }
+            // What a running app or a developer's tools leave at the root of
+            // a project is not the application: sessions on disk (each one a
+            // signed-in user), temporary files, logs, uploads, coverage
+            // reports. A bundle is copied to other machines.
+            if current_dir == source_dir
+                && BUNDLE_EXCLUDED_ROOT_DIRS.contains(&name_str.as_ref())
+                && path.is_dir()
+            {
+                continue;
+            }
+            // Nor is a file that holds credentials by its very name.
+            if path.is_file() && is_secret_bearing_name(&name_str) {
                 continue;
             }
 
@@ -878,5 +917,62 @@ mod tests {
         let entries = vec![(BUNDLE_META_ENTRY.to_string(), json.as_slice())];
         let err = check_bundle_meta(&entries).unwrap_err();
         assert!(err.contains("rebuild the bundle"), "got: {err}");
+    }
+
+    #[test]
+    fn a_bundle_leaves_runtime_state_and_secrets_behind() {
+        let dir = std::env::temp_dir().join(format!("soli-bundle-secrets-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (path, body) in [
+            (
+                "app/controllers/home_controller.sl",
+                "class HomeController < Controller\nend\n",
+            ),
+            ("config/routes.sl", "get(\"/\", \"home#index\")\n"),
+            ("config/settings.json", "{}"),
+            ("public/app.css", "body{}"),
+            (
+                "app/sessions/keep.sl",
+                "# an app directory named sessions is the app's\n",
+            ),
+            ("prod.env", "SECRET=1\n"),
+            ("config/secrets.env", "SECRET=1\n"),
+            ("service-account.json", "{\"private_key\":\"x\"}"),
+            ("config/credentials.json", "{}"),
+            ("deploy.toml", "key = \"x\"\n"),
+            ("sessions/3f2a.json", "{\"user_id\":\"1\"}"),
+            ("tmp/cache.json", "{}"),
+            ("coverage/report.json", "{}"),
+            ("storage/attachments/a.txt", "private"),
+        ] {
+            let path = dir.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let entries = BundleBuilder::collect(&dir).unwrap();
+        let names: Vec<&String> = entries.keys().collect();
+        for kept in [
+            "app/controllers/home_controller.sl",
+            "config/routes.sl",
+            "config/settings.json",
+            "public/app.css",
+            "app/sessions/keep.sl",
+        ] {
+            assert!(entries.contains_key(kept), "{kept} missing from {names:?}");
+        }
+        for left in [
+            "prod.env",
+            "config/secrets.env",
+            "service-account.json",
+            "config/credentials.json",
+            "deploy.toml",
+            "sessions/3f2a.json",
+            "tmp/cache.json",
+            "coverage/report.json",
+            "storage/attachments/a.txt",
+        ] {
+            assert!(!entries.contains_key(left), "{left} was bundled");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -184,6 +184,10 @@ fn audited_app(chained: bool) -> tempfile::TempDir {
 }
 
 fn serve(root: &Path) -> Server {
+    serve_with(root, &[])
+}
+
+fn serve_with(root: &Path, extra: &[(&str, &str)]) -> Server {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
@@ -199,6 +203,10 @@ fn serve(root: &Path) -> Server {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     for (key, value) in database_env(root) {
+        command.env(key, value);
+    }
+    command.env_remove("AUDIT_CHAIN_KEY");
+    for (key, value) in extra {
         command.env(key, value);
     }
     let server = Server(command.spawn().expect("spawn soli serve"), port);
@@ -413,5 +421,96 @@ fn an_unchained_log_has_no_sequence_and_takes_every_entry() {
     assert_eq!(
         call(&server, "GET", "/audit/verify", None, "")["count"],
         json!(3)
+    );
+}
+
+/// Three entries in a chained log: a creation, an update, a deletion.
+fn three_entries(server: &Server) {
+    call(server, "POST", "/members", Some(json!({"email": ADA})), "");
+    let invoice = call(
+        server,
+        "POST",
+        "/invoices",
+        Some(json!({"number": "F-1", "total": 100})),
+        ADA,
+    );
+    let key = invoice["key"].as_str().unwrap().to_string();
+    call(
+        server,
+        "POST",
+        &format!("/invoices/{key}/update"),
+        Some(json!({"total": 120})),
+        ADA,
+    );
+    call(
+        server,
+        "POST",
+        &format!("/invoices/{key}/delete"),
+        Some(json!({})),
+        "",
+    );
+    assert_eq!(
+        call(server, "GET", "/audit/verify", None, ""),
+        json!({"broken": null, "count": 3})
+    );
+}
+
+/// Removing the newest entries leaves a shorter chain that is intact: only a
+/// head kept elsewhere notices the missing tail.
+#[test]
+fn a_log_cut_short_is_noticed_against_a_head_kept_elsewhere() {
+    let dir = audited_app(true);
+    let server = serve(dir.path());
+    three_entries(&server);
+    let head = call(&server, "GET", "/audit/head", None, "");
+    assert_eq!(head["seq"], json!(3), "{head}");
+    let against_head = format!(
+        "/audit/verify_head?seq=3&hash={}",
+        head["entry_hash"].as_str().unwrap()
+    );
+    assert_eq!(
+        call(&server, "GET", &against_head, None, ""),
+        json!({"broken": null})
+    );
+
+    assert_eq!(
+        call(&server, "POST", "/audit/cut", Some(json!({})), ""),
+        json!({"count": 2})
+    );
+    assert_eq!(
+        call(&server, "GET", "/audit/verify", None, ""),
+        json!({"broken": null, "count": 2}),
+        "a shorter chain is intact on its own"
+    );
+    assert_eq!(
+        call(&server, "GET", &against_head, None, ""),
+        json!({"broken": 3})
+    );
+}
+
+/// Someone who can write to the table can edit an entry and redo every hash
+/// after it. With plain hashes the chain then verifies; with AUDIT_CHAIN_KEY
+/// they would need the key, and the edit is noticed.
+#[test]
+fn a_redone_chain_passes_without_a_key_and_fails_with_one() {
+    let redo = |key: Option<&str>| {
+        let dir = audited_app(true);
+        let extra: Vec<(&str, &str)> = key
+            .map(|k| vec![("AUDIT_CHAIN_KEY", k)])
+            .unwrap_or_default();
+        let server = serve_with(dir.path(), &extra);
+        three_entries(&server);
+        call(&server, "POST", "/audit/redo", Some(json!({"seq": 2})), "");
+        call(&server, "GET", "/audit/verify", None, "")["broken"].clone()
+    };
+    assert_eq!(
+        redo(None),
+        json!(null),
+        "an unkeyed chain cannot notice this"
+    );
+    assert_eq!(
+        redo(Some("an-audit-chain-key-of-32-characters!")),
+        json!(1),
+        "a keyed chain was redone without its key, unnoticed"
     );
 }

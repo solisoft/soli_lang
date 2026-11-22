@@ -37,6 +37,10 @@ env:
   # checked production.
   SOLI_VERSION: "2.27.1"
 
+# The token only reads the repository: nothing here writes to it.
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: the site builds and answers
@@ -45,8 +49,7 @@ jobs:
       run:
         working-directory: www
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       # Direct download of the pinned release: the published install.sh only
       # knows `latest`.
       - name: Install the pinned soli
@@ -167,8 +170,7 @@ jobs:
         [ -n "$p" ] || { echo 000; exit 0; }
         curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:$p/up"
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       # Nothing is configured on this repository yet, so the job reports what is
       # missing and stops rather than failing. Adding this workflow must not turn
       # main red; it starts deploying the day the secrets exist.
@@ -196,14 +198,20 @@ jobs:
 
       - name: Prepare SSH
         if: steps.cfg.outputs.configured == 'true'
+        # Through the environment, not written into the script: a secret
+        # interpolated into `run:` becomes part of the shell text, where a
+        # quote or a `$(` in it would be executed.
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_DEPLOY_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           # known_hosts rather than StrictHostKeyChecking=no: host verification
           # is not disabled on a channel that carries production code.
-          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: The site exists on the server
@@ -246,7 +254,7 @@ jobs:
 
       - name: Check out the EUI client
         if: steps.cfg.outputs.configured == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: solisoft/eui
           ref: ${{ steps.eui.outputs.rev }}
@@ -254,12 +262,12 @@ jobs:
 
       - name: Install Rust for the browser client
         if: steps.cfg.outputs.configured == 'true'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           targets: wasm32-unknown-unknown
 
       - if: steps.cfg.outputs.configured == 'true'
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: eui
 

@@ -3139,6 +3139,8 @@ rewrite the whole table can rewrite the whole chain — publish or store the
 latest `entry_hash` elsewhere if that is your threat. `purge_before` removes
 the head of the chain; archive before you purge.
 
+What the chain proves is yours to decide. With `AUDIT_CHAIN_KEY` (32+ characters, set before the first entry) the hashes are keyed: without it, someone who can write to the table can edit an entry and redo every hash after it, and `verify` sees an intact chain. And removing the *newest* entries leaves a shorter chain that is intact — keep `Audit.head` (`{seq, entry_hash}`) somewhere the database's writers cannot reach, and hand it to `Audit.verify(head)`, which then reports the missing tail.
+
 ### What is not logged
 
 - Writes that skip callbacks: `update_all`, `delete_all`, `increment` /

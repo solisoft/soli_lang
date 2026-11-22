@@ -521,3 +521,23 @@ fn an_unpinned_directory_is_untouched() {
     assert!(run.stdout.contains("pinned   no"), "{}", run.stdout);
     assert!(!run.stdout.contains(SENTINEL));
 }
+
+/// A pin naming a release from before the security floor is refused before
+/// anything is fetched: a `soli.toml` would otherwise choose an interpreter
+/// with known holes for every command run in its tree.
+#[test]
+fn a_pin_older_than_the_security_floor_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("app");
+    write_pinned_project(&project, "2.20.0");
+    let cache = dir.path().join("cache");
+
+    let run = run_soli(&project, &cache, None, &["routes"], &[]);
+    assert!(!run.ok, "an old pin was honoured");
+    assert!(
+        run.stderr.contains("older than 2.29.5"),
+        "stderr: {}",
+        run.stderr
+    );
+    assert!(!cache.exists() || std::fs::read_dir(&cache).unwrap().next().is_none());
+}

@@ -42,8 +42,12 @@ const PRIVACY_MODELS = {
 **A model that is not listed is neither exported nor erased.** A name that is
 not a model raises, so a typo cannot leave data behind in silence. What the
 other generators store about a user — OAuth and SAML identities, passkeys,
-two-factor, API tokens, magic links — is already listed
+two-factor, API tokens, magic links, push devices, the offline outbox, the
+OpenID Connect provider's consents, codes and tokens — is already listed
 (`PRIVACY_SCAFFOLD_MODELS`), deleted on erasure, exported without its secrets.
+The audit log (`soli generate audit`) is the exception: the entries a user is
+the actor of are exported, and **kept** by an erasure — the file says how to
+anonymize them instead, and what that does to a chained log.
 
 ## Export
 

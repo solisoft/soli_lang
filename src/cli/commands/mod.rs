@@ -415,6 +415,10 @@ pub(crate) fn resolve_bundle_key() -> Result<(String, String), String> {
 fn fetch_bundle_key(url: &str, api_key: Option<&str>) -> Result<String, String> {
     use std::io::Read;
 
+    // The answer is the bundle's key, and the request may carry an API key:
+    // neither goes over plain http to another machine.
+    solilang::platform::credential_may_travel_to(url, "bundle key server")?;
+
     let client = reqwest::blocking::Client::builder()
         .user_agent("soli-lang-cli")
         .min_tls_version(reqwest::tls::Version::TLS_1_2)
@@ -2798,11 +2802,15 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
             println!("  Checksum verified.");
         }
         Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+            // Every release publishes its digest. One that answers 404 for
+            // it is not installed over the running binary on a warning:
+            // the bytes would be run as they came.
             eprintln!(
-                "  \x1b[33mWarning:\x1b[0m no .sha256 published for v{} — \
-                 skipping checksum verification.",
+                "  \x1b[31mError:\x1b[0m no .sha256 published for v{} — refusing to install \
+                 an unverified binary.",
                 latest_tag
             );
+            process::exit(1);
         }
         Ok(resp) => {
             eprintln!(

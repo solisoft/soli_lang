@@ -172,11 +172,16 @@ and in the shipped app.
 ## Security summary
 
 - **Signed manifests.** Updates are verified with P-256 ECDSA against a key
-  embedded at build time. An unsigned update is accepted **only** when no key was
-  embedded (local testing), and then only with a loud warning.
+  embedded at build time. A build with no key **refuses** an update (it used
+  to accept an unsigned one with a warning: whoever answered for the update URL
+  then chose the binary every installed copy runs); `SOLI_ALLOW_UNSIGNED_UPDATES=1`
+  on the machine accepts it, for local testing.
 - **sha256-gated download.** The downloaded artifact must match the sha256 in the
   (already signature-verified) manifest, or it is refused.
-- **HTTPS required** for the update URL.
+- **HTTPS required** for the update URL and for each artifact (plain http only
+  to this machine). A download larger than the manifest's `size` is refused,
+  and the new binary is staged in a file created for it, never through a link
+  already at that path.
 - **Downgrade-safe.** The updater never installs a version older than or equal to
   the running one.
 - **Atomic swap.** The new binary is staged and verified before an atomic rename

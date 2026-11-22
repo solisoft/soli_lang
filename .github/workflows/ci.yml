@@ -7,8 +7,12 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only by default: the checks run third-party actions and whatever the
+# pull request changed, and none of them needs to write to the repository.
+# The jobs that publish (draft-release, the builds, publish-release, docker)
+# ask for what they use.
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -62,16 +66,14 @@ jobs:
       SOLIDB_DRIVER_TEST_HOST: 127.0.0.1:16745
 
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       # Swatinem/rust-cache, not actions/cache/restore. The restore-only step
       # this replaces was keyed on ${{ github.sha }} with no restore-keys, and
       # nothing in the repository ever ran actions/cache/save — so the key was
@@ -84,7 +86,7 @@ jobs:
       # so PR branches each pushing an entry is how caches start evicting each
       # other.
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -216,16 +218,14 @@ jobs:
   windows-check:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       # This job had no cache at all, and at 15.2 min it is the critical path —
       # every other job finishes inside it, so its cold rebuild set the length
       # of the whole run.
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: windows-check
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -248,8 +248,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       # libasound2-dev is here and not on the other jobs because this is the
       # only one that passes --all-features, which turns on `eui-desktop` and so
       # pulls eui-client -> cpal -> alsa -> alsa-sys, whose build script asks
@@ -262,13 +261,13 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config libasound2-dev
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           components: clippy
 
       # rust-cache, for the reasons spelled out on the `test` job above.
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: clippy
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -303,10 +302,9 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           components: rustfmt
 
@@ -331,15 +329,14 @@ jobs:
   edge:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           targets: wasm32-unknown-unknown
 
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: edge
           workspaces: edge -> ../target
@@ -375,13 +372,11 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: audit
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -422,13 +417,11 @@ jobs:
       SOLI: ./target/ci/soli
 
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: engine-parity
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -462,8 +455,7 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -472,16 +464,15 @@ jobs:
       # The runner image happens to ship Chrome, but relying on that makes the
       # job depend on an image detail that can change without notice.
       - name: Install Chrome
-        uses: browser-actions/setup-chrome@v2
+        uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4 # v2
         with:
           chrome-version: stable
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       # rust-cache, for the reasons spelled out on the `test` job above.
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: browser
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -513,18 +504,16 @@ jobs:
   verapdf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - name: Set up Java (for veraPDF)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
@@ -538,7 +527,7 @@ jobs:
 
       # rust-cache, for the reasons spelled out on the `test` job above.
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: verapdf
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -562,9 +551,10 @@ jobs:
   draft-release:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Verify tag matches Cargo.toml version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -641,10 +631,9 @@ jobs:
       ARTIFACT: ${{ matrix.kind == 'soli' && 'soli' || 'render-pdf' }}-${{ matrix.platform.name }}
     # Shared with build-windows through the anchor.
     steps: &build-steps
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           targets: ${{ matrix.platform.target }}
 
@@ -759,9 +748,10 @@ jobs:
     needs: [release, build-binaries]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -776,8 +766,7 @@ jobs:
     permissions:
       packages: write
     steps:
-      - uses: actions/checkout@v5
-
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Fetch the Linux binaries from the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -791,10 +780,9 @@ jobs:
           done
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -803,7 +791,7 @@ jobs:
       # Nothing compiles in the image, so a missing library or a glibc too old
       # for the binary would only show when someone runs it. Run it first.
       - name: Build the amd64 image locally
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: release-image
           file: Dockerfile.release
@@ -815,7 +803,7 @@ jobs:
         run: docker run --rm soli-release-check --version | tee /dev/stderr | grep -F "${GITHUB_REF_NAME#v}"
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: release-image
           file: Dockerfile.release

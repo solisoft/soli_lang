@@ -167,7 +167,7 @@
                 </tr>
                 <tr>
                     <td class="px-6 py-4 font-mono text-amber-300">password</td>
-                    <td class="px-6 py-4 text-gray-400">password (unique index)</td>
+                    <td class="px-6 py-4 text-gray-400">password (unique index); typed blind, not displayed by the generated index and show pages, stored as typed</td>
                     <td class="px-6 py-4 font-mono text-gray-500">password:password</td>
                 </tr>
                 <tr>

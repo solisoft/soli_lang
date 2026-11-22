@@ -91,6 +91,13 @@ pub fn create_scaffold_with_fields(
         .iter()
         .filter_map(|f| FieldDefinition::parse(f))
         .collect();
+    if parsed_fields.iter().any(|f| f.field_type == "password") {
+        println!(
+            "  \x1b[33mNote:\x1b[0m a `password` field is stored as it is typed. The generated \
+             views do not display it, but it is not hashed: for sign-in, use \
+             \x1b[36msoli generate auth\x1b[0m; for another secret, `encrypts` it in the model."
+        );
+    }
 
     // Ensure directory structure exists
     ensure_directory_structure(app_path)?;

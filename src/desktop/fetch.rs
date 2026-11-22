@@ -139,11 +139,21 @@ fn verify_checksum(
             .unwrap_or_default()
             .to_lowercase(),
         Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
-            println!(
-                "  \x1b[33m! no .sha256 published for this database release\x1b[0m — \
-                 embedding without verification"
+            // The database binary is embedded into an application that
+            // ships to other people. Without a digest it is refused, unless
+            // the builder says to go on.
+            if crate::platform::env::var("SOLI_ALLOW_UNVERIFIED_DOWNLOAD").as_deref() == Ok("1") {
+                println!(
+                    "  \x1b[33m! no .sha256 published for this database release\x1b[0m — \
+                     embedding without verification (SOLI_ALLOW_UNVERIFIED_DOWNLOAD=1)"
+                );
+                return Ok(());
+            }
+            return Err(
+                "no .sha256 published for this database release — refusing to embed an \
+                 unverified binary (set SOLI_ALLOW_UNVERIFIED_DOWNLOAD=1 to embed it anyway)"
+                    .to_string(),
             );
-            return Ok(());
         }
         Ok(resp) => return Err(format!("fetching .sha256: HTTP {}", resp.status())),
         Err(e) => return Err(format!("fetching .sha256: {}", e)),

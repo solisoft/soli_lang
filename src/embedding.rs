@@ -22,6 +22,23 @@ fn embedding_timeout() -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
+/// The API key goes to the embeddings endpoint with every call: not over
+/// plain http to another machine (said once, then the calls are skipped).
+#[cfg(feature = "embedding")]
+fn embedding_endpoint_allowed(url: &str) -> bool {
+    match crate::platform::credential_may_travel_to(url, "embeddings") {
+        Ok(()) => true,
+        Err(message) => {
+            static WARNED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                eprintln!("[soli] {message}");
+            }
+            false
+        }
+    }
+}
+
 /// Generate an embedding vector for the given text by calling an external API.
 /// Returns None if embedding API is not configured or the call fails.
 #[cfg(feature = "embedding")]
@@ -31,6 +48,9 @@ pub fn generate_embedding(text: &str) -> Option<Vec<f64>> {
         .unwrap_or_else(|_| "https://api.openai.com/v1/embeddings".to_string());
     let model = crate::platform::env::var("SOLI_EMBEDDING_MODEL")
         .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+    if !embedding_endpoint_allowed(&url) {
+        return None;
+    }
 
     let body = serde_json::json!({
         "input": text,
@@ -78,6 +98,9 @@ pub fn generate_embeddings_batch(texts: &[String]) -> Option<Vec<Vec<f64>>> {
         .unwrap_or_else(|_| "https://api.openai.com/v1/embeddings".to_string());
     let model = crate::platform::env::var("SOLI_EMBEDDING_MODEL")
         .unwrap_or_else(|_| "text-embedding-3-small".to_string());
+    if !embedding_endpoint_allowed(&url) {
+        return None;
+    }
 
     let body = serde_json::json!({
         "input": texts,

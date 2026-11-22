@@ -77,6 +77,7 @@ pub fn publish(opts: &PublishOptions<'_>) -> Result<Published, String> {
         .map_err(|e| e.to_string())?;
     let mut request = client.post(upload_url(opts.url)).multipart(form);
     if let Some(token) = opts.token {
+        crate::platform::credential_may_travel_to(opts.url, "soli mobile publish")?;
         request = request.bearer_auth(token);
     }
     let response = request

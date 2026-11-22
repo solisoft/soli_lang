@@ -56,6 +56,47 @@ const PRIVACY_SCAFFOLD_MODELS = {
   "ScimMembership": {
     "owner": "user_id",
     "erase": "delete"
+  },
+  # Push tokens (`soli generate devices`): left behind, they kept delivering
+  # an erased user's notifications to their phone.
+  "Device": {
+    "owner": "user_id",
+    "erase": "delete",
+    "omit": ["token", "subscription"]
+  },
+  # The offline outbox (`soli generate offline`): what the user's devices sent.
+  "SyncEvent": {"owner": "user_id", "erase": "delete"},
+  # The OpenID Connect provider (`soli generate oidc_provider`) names the
+  # user by `user_key`: the applications they authorised, and the codes and
+  # tokens issued in their name.
+  "OauthConsent": {"owner": "user_key", "erase": "delete"},
+  "OauthRefreshToken": {
+    "owner": "user_key",
+    "erase": "delete",
+    "export": false
+  },
+  "OauthAuthorizationCode": {
+    "owner": "user_key",
+    "erase": "delete",
+    "export": false
+  },
+  "OauthDeviceCode": {
+    "owner": "user_key",
+    "erase": "delete",
+    "export": false
+  },
+  # The audit log (`soli generate audit`) names who did what: the entries a
+  # user is the actor of are part of an export. They are *kept* by an
+  # erasure — a log that forgets is not one, and keeping it is usually a
+  # legal obligation or a legitimate interest you state in your privacy
+  # notice. To blank the address and the IP instead, make this
+  # `"erase": "anonymize", "fields": ["actor_label", "ip"]` — in a chained
+  # log (`--chain`) that breaks `Audit.verify` at those entries, since both
+  # are covered by the hashes.
+  "Audit": {
+    "owner": "actor_key",
+    "erase": "keep",
+    "omit": ["prev_hash", "entry_hash"]
   }
 }
 
@@ -73,6 +114,9 @@ const PRIVACY_USER_SECRETS = [
   "confirmation_token_digest",
   "confirmation_sent_at",
   "remember_token_digest",
+  "remember_previous_digest",
+  "remember_created_at",
+  "remember_rotated_at",
   "session_version",
   "failed_attempts",
   "locked_at"

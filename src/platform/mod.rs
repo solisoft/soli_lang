@@ -19,6 +19,35 @@ pub mod process;
 /// Seconds since the Unix epoch by the wall clock (0 for a clock set before
 /// it). Not the frozen test clock: token expiries and cookie lifetimes are
 /// checked against real time.
+/// May a credential be sent to `url`? Over https, or over http to this
+/// machine. Anywhere else over plain http the key travels in clear — a
+/// deploy key, a publish token, the key of an encrypted bundle — and whoever
+/// is on the path has it. `SOLI_ALLOW_INSECURE_ENDPOINTS=1` says the network
+/// in between is trusted (a private segment, a tunnel).
+pub fn credential_may_travel_to(url: &str, what: &str) -> Result<(), String> {
+    let lower = url.trim().to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return Ok(());
+    }
+    if let Some(rest) = lower.strip_prefix("http://") {
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+        let host = match authority.strip_prefix('[') {
+            Some(v6) => v6.split(']').next().unwrap_or(""),
+            None => authority.split(':').next().unwrap_or(""),
+        };
+        if matches!(host, "localhost" | "127.0.0.1" | "::1") {
+            return Ok(());
+        }
+    }
+    if env::var("SOLI_ALLOW_INSECURE_ENDPOINTS").as_deref() == Ok("1") {
+        return Ok(());
+    }
+    Err(format!(
+        "{what}: refusing to send a credential to {url} over plain http. Use https://, or set \
+         SOLI_ALLOW_INSECURE_ENDPOINTS=1 if the network in between is trusted."
+    ))
+}
+
 pub fn unix_now_secs() -> u64 {
     web_time::SystemTime::now()
         .duration_since(web_time::UNIX_EPOCH)
@@ -62,3 +91,31 @@ pub fn release_freed_memory() {
 /// Nothing to hand back on the edge build: no mimalloc, no threads.
 #[cfg(target_arch = "wasm32")]
 pub fn release_freed_memory() {}
+
+#[cfg(test)]
+mod credential_transport_tests {
+    use super::credential_may_travel_to;
+
+    #[test]
+    fn a_credential_goes_over_https_or_to_this_machine() {
+        if super::env::var("SOLI_ALLOW_INSECURE_ENDPOINTS").as_deref() == Ok("1") {
+            return;
+        }
+        for ok in [
+            "https://proxy.example.com",
+            "http://localhost:9000",
+            "http://127.0.0.1:9000/x",
+            "http://[::1]:9000",
+        ] {
+            assert!(credential_may_travel_to(ok, "t").is_ok(), "{ok}");
+        }
+        for refused in [
+            "http://proxy.example.com",
+            "http://10.0.0.5:9000",
+            "http://localhost.evil.example",
+            "ftp://x",
+        ] {
+            assert!(credential_may_travel_to(refused, "t").is_err(), "{refused}");
+        }
+    }
+}

@@ -112,6 +112,38 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 echo "Downloading ${DOWNLOAD_URL} ..."
 fetch "$DOWNLOAD_URL" > "${TMP_DIR}/${TARBALL}"
 
+# --- Verify it ---
+# Every release publishes `<tarball>.sha256` next to the tarball. The
+# download used to be unpacked and run as it came; it is now checked against
+# that digest, and an installation with no digest to check against stops
+# here (SOLI_INSTALL_SKIP_CHECKSUM=1 installs it anyway).
+if command -v sha256sum >/dev/null 2>&1; then
+  digest_of() { sha256sum "$1" | cut -d' ' -f1; }
+elif command -v shasum >/dev/null 2>&1; then
+  digest_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+else
+  digest_of() { echo ""; }
+fi
+EXPECTED=$(fetch "${DOWNLOAD_URL}.sha256" 2>/dev/null | cut -d' ' -f1 | tr 'A-F' 'a-f')
+ACTUAL=$(digest_of "${TMP_DIR}/${TARBALL}")
+if [ -n "$EXPECTED" ] && [ -n "$ACTUAL" ]; then
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "Error: checksum mismatch for ${TARBALL}"
+    echo "  expected ${EXPECTED}"
+    echo "  got      ${ACTUAL}"
+    exit 1
+  fi
+  echo "Checksum verified."
+elif [ "${SOLI_INSTALL_SKIP_CHECKSUM:-}" = "1" ]; then
+  echo "Warning: the download could not be verified (no .sha256, or no sha256sum/shasum); installing anyway."
+else
+  echo "Error: the download could not be verified:"
+  [ -z "$EXPECTED" ] && echo "  no ${TARBALL}.sha256 could be fetched"
+  [ -z "$ACTUAL" ] && echo "  neither sha256sum nor shasum is installed"
+  echo "Set SOLI_INSTALL_SKIP_CHECKSUM=1 to install without verification."
+  exit 1
+fi
+
 tar xzf "${TMP_DIR}/${TARBALL}" -C "$TMP_DIR"
 
 NEW_VERSION=$("${TMP_DIR}/soli" --version 2>/dev/null | head -1)

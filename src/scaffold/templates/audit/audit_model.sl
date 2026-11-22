@@ -20,6 +20,19 @@
 # (`Audit.verify`). It costs a read per entry, and writers queue on the tail of
 # the log. Set by `soli generate audit --chain`; changing it later needs the
 # unique index on `seq` its migration creates.
+#
+# What the chain proves depends on two things you decide:
+#
+#   AUDIT_CHAIN_KEY=<32+ characters>   the hashes are keyed (HMAC). Without
+#       it they are plain SHA-256: someone who can write to the table can
+#       edit an entry and recompute every hash after it, and `verify` sees
+#       an intact chain. With it they would need the key as well. Set it
+#       before the first entry; changing it later breaks `verify`.
+#   Audit.head                         {seq, entry_hash} of the last entry.
+#       Removing the newest entries leaves a shorter chain that is intact:
+#       keep the head somewhere the database's writers cannot reach (a mail
+#       to yourself each night, another system) and give it back to
+#       `Audit.verify(head)`, which then notices the missing tail.
 const AUDIT_CHAINED = false
 
 const AUDIT_REDACTED = "[redacted]"
@@ -64,9 +77,32 @@ class Audit < Model
   # Where the change came from, when it came from a request.
   static def origin
     {
-      "request_id": (req["headers"]["x-request-id"] rescue nil),
+      "request_id": Audit.request_id,
       "ip": (req["remote_addr"] rescue nil)
     }
+  end
+
+  # The request's id, when it looks like one. The header is the client's to
+  # write: anything else (a kilobyte of text, markup for whoever reads the
+  # log in a browser) is not stored.
+  static def request_id
+    given = (req["headers"]["x-request-id"] rescue nil).to_s
+    Regex.matches("^[A-Za-z0-9._-]{1,64}$", given) ? given : nil
+  end
+
+  # The hash that links an entry to the one before it: keyed when
+  # AUDIT_CHAIN_KEY is set (see the top of this file).
+  static def link_hash(prev_hash, seq, fields)
+    plain = Crypto.ledger_hash(prev_hash, seq, fields)
+    key = getenv("AUDIT_CHAIN_KEY").to_s
+    key.length >= 32 ? Crypto.hmac(plain, key) : plain
+  end
+
+  # The last entry of the chain, as {seq, entry_hash} — to keep elsewhere and
+  # hand to `verify`. nil while the log is empty.
+  static def head
+    last = Audit.order("seq", "desc").first
+    last.nil? ? nil : {"seq": last.seq, "entry_hash": last.entry_hash}
   end
 
   # Write the entry for `action` on `record`. Called by the Audited concern.
@@ -94,7 +130,7 @@ class Audit < Model
       links = {
         "seq": seq,
         "prev_hash": prev_hash,
-        "entry_hash": Crypto.ledger_hash(prev_hash, seq, entry)
+        "entry_hash": Audit.link_hash(prev_hash, seq, entry)
       }
       row = Audit.create(entry.merge(links)) rescue nil
       return row if !row.nil? && !row._errors
@@ -106,17 +142,27 @@ class Audit < Model
 
   # Check the chain from its first entry. Returns nil when it is intact, or
   # the `seq` of the first entry that was altered, removed or inserted.
-  static def verify
+  #
+  # With a `known_head` (an earlier `Audit.head`, kept elsewhere) the chain
+  # must also still hold that entry: a log cut short after it, or rewritten
+  # from before it, is reported at the head's `seq`.
+  static def verify(known_head = nil)
     prev_hash = ""
     seq = 1
+    head_seen = known_head.nil?
     for row in Audit.order("seq", "asc").all
       return seq if row.seq != seq || row.prev_hash != prev_hash
-      return seq if row.entry_hash != Crypto.ledger_hash(prev_hash, seq, row.hashed_fields)
+      return seq if row.entry_hash != Audit.link_hash(prev_hash, seq, row.hashed_fields)
 
+      if !known_head.nil? && seq == known_head["seq"]
+        return seq unless row.entry_hash == known_head["entry_hash"]
+
+        head_seen = true
+      end
       prev_hash = row.entry_hash
       seq += 1
     end
-    nil
+    head_seen ? nil : known_head["seq"]
   end
 
   static def for_record(record)

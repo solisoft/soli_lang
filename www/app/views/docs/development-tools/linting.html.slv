@@ -243,6 +243,7 @@ this.on_save = "log"</code></pre>
                     <li><code>db_query_raw</code> &rarr; parameterised <code>@sdbql{ ... #{value} ... }</code> block, or <code>Model.where(&quot;x = #{v}&quot;, { &quot;v&quot;: v })</code>.</li>
                     <li><code>Trusted.*</code> &rarr; jailed <code>File.*</code> (read/write/exists), which keeps every operation under the app root.</li>
                     <li><code>System.shell</code> / backticks &rarr; <code>System.run([&quot;prog&quot;, &quot;arg1&quot;, ...])</code> with an argv array, which never invokes a shell.</li>
+                    <li><code>System.run(&quot;convert #{name} out.png&quot;)</code> &mdash; an <strong class="text-white">interpolated string</strong> given to <code>System.run</code> / <code>run_sync</code> / <code>exec</code>: the string is split on spaces, so a value containing one adds arguments of its own. Pass an argv array.</li>
                 </ul>
                 <p class="text-gray-400 mt-2">Models, migrations, and tests are out of scope &mdash; those layers legitimately use these APIs against operator-controlled data.</p>
             </div>

@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Security — updates, builds and the release pipeline
+The last lot of the same audit.
+
+- **auto-update: a build without `--update-key` refuses updates.** It
+  accepted an unsigned manifest with a warning. `SOLI_ALLOW_UNSIGNED_UPDATES=1`
+  accepts one, for local testing. The update URL and the artifacts must be
+  https (http only to this machine), a download larger than the manifest's
+  `size` is refused, and the new binary is staged in a file created for it.
+- **downloads are verified or refused:** `install.sh` checks the release's
+  `.sha256`; `soli self-update`, the runtime fetched for another target and
+  the database binary embedded into a desktop app no longer continue on a
+  missing checksum (`SOLI_INSTALL_SKIP_CHECKSUM=1` /
+  `SOLI_ALLOW_UNVERIFIED_DOWNLOAD=1` to go on anyway).
+- **soli build: a bundle leaves secrets and runtime state behind** —
+  `*.env`, key files, service-account and credential documents,
+  `deploy.toml`, and the root `sessions/`, `tmp/`, `log/`, `storage/`,
+  `uploads/`, `coverage/` directories.
+- **`soli_version` pins have a floor (2.29.5):** a `soli.toml` cannot hand
+  the commands run in its tree to a release from before the security fixes
+  (`SOLI_ALLOW_OLD_PIN=1` to run one anyway).
+- **credentials are not sent over plain http** to another machine: the
+  deploy and preview API key, the mobile publish token, the bundle key
+  server, the embeddings API key (`SOLI_ALLOW_INSECURE_ENDPOINTS=1` for a
+  trusted network).
+- **generate audit --chain:** `AUDIT_CHAIN_KEY` keys the hashes (unkeyed, a
+  writer of the table can redo the chain), `Audit.head` and
+  `Audit.verify(head)` notice a log cut short, and the request id stored
+  with an entry is held to a format.
+- **generate scaffold: a `password` field is not displayed** by the
+  generated index and show pages.
+- **generate privacy:** push devices, the offline outbox and the OIDC
+  provider's consents, codes and tokens are erased with their user; audit
+  entries are exported and, by default, kept.
+- **EUI: a session's uploads are capped** (16 at a time, four times the
+  per-file ceiling in all).
+- **lint: `System.run` with an interpolated string** is reported
+  (`smell/dangerous-server-builtin`): the string is split on spaces.
+- **dependencies:** `url` 2.5.9 (RUSTSEC-2026-0592); a stale audit waiver
+  removed.
+- **CI:** the workflow token is read-only by default, with write access on
+  the release jobs only; actions are pinned by commit; deploy secrets reach
+  the script through the environment.
+
 ### Security — server, builtins, generators
 The rest of the same audit.
 

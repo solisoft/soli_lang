@@ -140,7 +140,7 @@ a lambda is instance code again: a closure it stores on `this` is flagged.
 
 `smell/dangerous-server-builtin` fires on `db_query_raw`, `Trusted.*`,
 `System.shell` / `System.shell_sync`, and backtick command substitution, when
-called from `app/controllers/`, `app/middleware/` or `app/views/`. These are
+called from `app/controllers/`, `app/middleware/` or `app/views/`. It also fires on `System.run` / `run_sync` / `exec` given an **interpolated string** (`System.run("convert #{name} out.png")`): the string is split on spaces, so a value containing one adds arguments of its own — pass an argv array. These are
 powerful primitives that become injection or traversal sinks once fed
 request-controlled data, and the diagnostic names the safe form for each:
 

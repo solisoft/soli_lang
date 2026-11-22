@@ -90,8 +90,35 @@ fn resolve() -> Option<PinPlan> {
         return None;
     }
 
+    // A pin chooses which interpreter runs every command in this tree —
+    // `lint`, `fmt` and the language server included, which run no project
+    // code themselves. A `soli.toml` (the project's, or one planted in a
+    // directory above) naming a release from before the security floor
+    // would hand those commands to an interpreter with known holes.
+    if matches!(
+        solilang::module::compare_versions(&version, MINIMUM_PINNED_VERSION),
+        std::cmp::Ordering::Less
+    ) && !env_is_set(ALLOW_OLD_PIN_ENV)
+    {
+        eprintln!(
+            "\x1b[31mError:\x1b[0m {} pins soli {version}, older than {MINIMUM_PINNED_VERSION}, \
+             the oldest release this soli will switch to (it predates security fixes).\n\
+             Pin a newer release, set {NO_PIN_ENV}=1 to use the soli already installed, \
+             or {ALLOW_OLD_PIN_ENV}=1 to run the old one anyway.",
+            manifest.display()
+        );
+        std::process::exit(1);
+    }
+
     Some(PinPlan { version, manifest })
 }
+
+/// The oldest release a `soli_version` pin may name: the first that carries
+/// the 2.29.5 security patch. Raised when a release fixes something an older
+/// interpreter must not be trusted with.
+const MINIMUM_PINNED_VERSION: &str = "2.29.5";
+/// Run a pinned release older than [`MINIMUM_PINNED_VERSION`] anyway.
+const ALLOW_OLD_PIN_ENV: &str = "SOLI_ALLOW_OLD_PIN";
 
 fn env_is_set(name: &str) -> bool {
     std::env::var(name).is_ok_and(|v| !v.trim().is_empty())

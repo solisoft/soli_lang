@@ -138,12 +138,7 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_manifest(descriptor: &UpdateDescriptor) -> Result<UpdateManifest, String> {
     let base = descriptor.update_url.trim_end_matches('/');
-    if !base.starts_with("https://") && !base.starts_with("http://") {
-        return Err(format!(
-            "auto-update: update_url must be http(s), got '{}'",
-            base
-        ));
-    }
+    require_transport(base, "update_url")?;
     let url = format!("{}/{}/latest.json", base, descriptor.channel);
     let body = http_client()?
         .get(&url)
@@ -202,15 +197,59 @@ fn canonical_json(value: &serde_json::Value) -> String {
     }
 }
 
+/// The largest artifact an update may be.
+const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// An update travels over https — or over http to this machine, for a test
+/// or a local mirror. Over plain http to anywhere else, whoever sits on the
+/// path serves the manifest and the binary.
+fn require_transport(url: &str, what: &str) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return Ok(());
+    }
+    if let Some(rest) = lower.strip_prefix("http://") {
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+        let host = match authority.strip_prefix('[') {
+            Some(v6) => v6.split(']').next().unwrap_or(""),
+            None => authority.split(':').next().unwrap_or(""),
+        };
+        if matches!(host, "localhost" | "127.0.0.1" | "::1") {
+            return Ok(());
+        }
+    }
+    Err(format!(
+        "auto-update: {what} must be https:// (plain http only to this machine), got '{url}'"
+    ))
+}
+
+/// May a manifest without a signature be acted on? Only when whoever runs
+/// the app says so (`SOLI_ALLOW_UNSIGNED_UPDATES=1`).
+fn unsigned_updates_allowed() -> bool {
+    crate::platform::env::var("SOLI_ALLOW_UNSIGNED_UPDATES")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
+}
+
 fn verify_signature(manifest: &UpdateManifest, pubkey_b64: Option<&str>) -> Result<(), String> {
     let Some(pubkey_b64) = pubkey_b64 else {
-        // No key embedded: unsigned updates permitted, loudly.
-        eprintln!(
-            "  \x1b[33mWarning:\x1b[0m this artifact was built without --update-key, so the \
-             update manifest is trusted without a signature. Anyone who can serve the update \
-             URL can push a binary. Build with --update-key for production."
+        // No key embedded. The manifest used to be trusted with a warning:
+        // anyone able to answer for the update URL — its host, its DNS, a
+        // hop on the way — then chose the binary every installed copy runs.
+        if unsigned_updates_allowed() {
+            eprintln!(
+                "  \x1b[33mWarning:\x1b[0m this artifact was built without --update-key and \
+                 SOLI_ALLOW_UNSIGNED_UPDATES is set: the update manifest is trusted without a \
+                 signature."
+            );
+            return Ok(());
+        }
+        return Err(
+            "auto-update: this artifact was built without --update-key, so its updates cannot \
+             be verified. Rebuild with --update-key (soli update keygen), or set \
+             SOLI_ALLOW_UNSIGNED_UPDATES=1 to accept unsigned updates."
+                .to_string(),
         );
-        return Ok(());
     };
     let signature_b64 = manifest.signature.as_deref().ok_or_else(|| {
         "auto-update: the artifact requires a signed manifest but this one is unsigned".to_string()
@@ -275,22 +314,32 @@ pub fn apply(descriptor: &UpdateDescriptor) -> Result<String, String> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn download_and_verify(entry: &ArtifactEntry) -> Result<Vec<u8>, String> {
-    if !entry.url.starts_with("https://") && !entry.url.starts_with("http://") {
-        return Err(format!(
-            "auto-update: artifact url must be http(s): {}",
-            entry.url
-        ));
-    }
+    require_transport(&entry.url, "artifact url")?;
     let mut response = http_client()?
         .get(&entry.url)
         .send()
         .and_then(|r| r.error_for_status())
         .map_err(|e| format!("auto-update: download failed: {}", e))?;
 
+    // No more than the manifest announced (or the ceiling, when it announced
+    // nothing): the download was read to its end, whatever its size, before
+    // the digest could refuse it.
+    let limit = if entry.size > 0 {
+        entry.size
+    } else {
+        MAX_ARTIFACT_BYTES
+    }
+    .min(MAX_ARTIFACT_BYTES);
     let mut bytes = Vec::new();
-    response
+    (&mut response)
+        .take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("auto-update: download read failed: {}", e))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!(
+            "auto-update: the artifact is larger than the {limit} bytes the manifest allows. Refusing to install."
+        ));
+    }
 
     let digest = format!("{:x}", Sha256::digest(&bytes));
     if !digest.eq_ignore_ascii_case(entry.sha256.trim()) {
@@ -327,8 +376,19 @@ pub fn replace_executable(exe: &Path, bytes: &[u8]) -> Result<(), String> {
             .unwrap_or("soli-app")
     ));
 
-    std::fs::write(&staged, bytes)
-        .map_err(|e| format!("auto-update: cannot stage new binary: {}", e))?;
+    // A new file, never whatever is already at that path: `fs::write`
+    // followed a symbolic link left there and wrote the binary to its target.
+    let _ = std::fs::remove_file(&staged);
+    {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+            .map_err(|e| format!("auto-update: cannot stage new binary: {}", e))?;
+        file.write_all(bytes)
+            .map_err(|e| format!("auto-update: cannot stage new binary: {}", e))?;
+    }
 
     #[cfg(unix)]
     {
@@ -506,5 +566,38 @@ mod tests {
             "target should be os-arch, got {}",
             target
         );
+    }
+
+    #[test]
+    fn an_update_travels_over_https_or_to_this_machine() {
+        for ok in [
+            "https://updates.example.com/app",
+            "http://localhost:8080/app",
+            "http://127.0.0.1/app",
+            "http://[::1]:9000/app",
+        ] {
+            assert!(require_transport(ok, "update_url").is_ok(), "{ok}");
+        }
+        for refused in [
+            "http://updates.example.com/app",
+            "http://localhost.evil.example/app",
+            "http://127.0.0.1.evil.example/app",
+            "ftp://updates.example.com/app",
+            "file:///tmp/app",
+        ] {
+            assert!(
+                require_transport(refused, "update_url").is_err(),
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_manifest_without_a_signature_is_refused_by_a_keyless_build() {
+        if unsigned_updates_allowed() {
+            return;
+        }
+        let error = verify_signature(&sample_manifest(), None).unwrap_err();
+        assert!(error.contains("--update-key"), "{error}");
     }
 }

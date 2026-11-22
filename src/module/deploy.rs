@@ -260,6 +260,11 @@ const DEFAULT_EXCLUDES: &[&str] = &[
     "node_modules/",
     ".env",
     ".env.*",
+    // Cloudflare's local secrets file and soli's own state directory: as
+    // much a machine's secrets as `.env`.
+    ".dev.vars",
+    ".dev.vars.*",
+    ".soli",
     "sessions/",
     "*.log",
     ".DS_Store",
@@ -492,6 +497,8 @@ fn trigger_proxy_deploy(proxy_url: &str, api_key: &str, app_name: &str) -> Resul
         proxy_url.trim_end_matches('/'),
         app_name
     );
+
+    crate::platform::credential_may_travel_to(proxy_url, "soli deploy")?;
 
     // SEC-042a: same TLS-1.2 floor as the shared runtime clients in
     // `http_class.rs`. `proxy_url` is operator-configured and reaches

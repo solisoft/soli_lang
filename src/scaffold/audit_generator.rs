@@ -66,8 +66,11 @@ pub fn print_audit_success_message(chained: bool) {
     println!("  override \x1b[36maudit_redacted\x1b[0m / \x1b[36maudit_ignored\x1b[0m in a model for more.");
     if chained {
         println!("  Entries are chained by hash: \x1b[36mAudit.verify\x1b[0m returns nil while the log is intact.");
+        println!("  Set \x1b[36mAUDIT_CHAIN_KEY\x1b[0m (32+ characters) so the hashes are keyed, and keep");
+        println!("  \x1b[36mAudit.head\x1b[0m outside the database for \x1b[36mAudit.verify(head)\x1b[0m: without them a writer");
+        println!("  of the table can redo the chain, or cut its tail, unnoticed.");
     } else {
-        println!("  For a tamper-evident log, generate with \x1b[36m--chain\x1b[0m.");
+        println!("  To notice an edited or removed entry, generate with \x1b[36m--chain\x1b[0m.");
     }
     println!("  Not logged: update_all, delete_all, increment/decrement and raw queries.");
     println!("  Docs: /docs/database/models#audit-log");

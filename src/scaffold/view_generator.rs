@@ -42,6 +42,13 @@ fn create_resource_index_view(
 ) -> Result<(), String> {
     let title = to_title_case(resource_name);
     let model_title = to_title_case(model_var);
+    // A `password` field has its place in the form, typed blind — not in a
+    // list or on a page, where the generated views printed it in clear.
+    let shown: Vec<&FieldDefinition> = fields
+        .iter()
+        .filter(|f| f.field_type != "password")
+        .collect();
+    let fields = shown.as_slice();
 
     let table_headers = fields
         .iter()
@@ -90,6 +97,12 @@ fn create_show_view(
 ) -> Result<(), String> {
     let resource_title = to_title_case(resource_name);
     let model_title = to_title_case(model_var);
+    // Never the value of a `password` field (see the index view).
+    let shown: Vec<&FieldDefinition> = fields
+        .iter()
+        .filter(|f| f.field_type != "password")
+        .collect();
+    let fields = shown.as_slice();
 
     let detail_rows = fields
         .iter()
