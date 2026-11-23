@@ -1586,3 +1586,64 @@ fn two_first_sign_ins_together_leave_one_linked_account() {
         later.whoami()
     );
 }
+
+/// The narrow case the test above cannot provoke on demand, made to happen:
+/// while a first sign-in is between creating the account and linking it,
+/// another sign-in of the same person links that account. The first one
+/// fails — and must leave the account, which is the other's now: removed,
+/// the identity would name nobody and that person could never sign in.
+#[test]
+fn a_first_sign_in_that_lost_the_link_leaves_the_account_to_the_winner() {
+    let dir = served_app();
+    let root = dir.path();
+    let service_path = root.join("app/services/saml_sso.sl");
+    let service = fs::read_to_string(&service_path).unwrap();
+    let linking = "    link = SamlIdentity.create({\n";
+    assert_eq!(service.matches(linking).count(), 1, "{service}");
+    fs::write(
+        &service_path,
+        service.replace(
+            linking,
+            "    if created && email.starts_with?(\"raced\") && SamlIdentity.count == 0\n      \
+             SamlIdentity.create({\"user_id\": user._key, \"issuer\": assertion[\"issuer\"], \
+             \"name_id\": SamlSso.name_id_of(assertion), \"email\": email})\n    end\n    \
+             link = SamlIdentity.create({\n",
+        ),
+    )
+    .unwrap();
+    // The unique indexes are what refuses the second link.
+    let migrated = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["db:migrate", "up", "."])
+        .current_dir(root)
+        .env_remove("SOLI_ENGINE")
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env(
+            "DATABASE_URL",
+            format!("sqlite://{}/app.sqlite3", root.display()),
+        )
+        .output()
+        .expect("run soli");
+    assert!(
+        migrated.status.success(),
+        "db:migrate up: {}",
+        String::from_utf8_lossy(&migrated.stderr)
+    );
+    let server = serve(root, "on");
+    let raced = json!({"name_id": "raced-at-idp", "attributes": {"Mail": "raced@example.com"}});
+
+    let mut first = Browser::new(&server);
+    let request_id = first.start("/saml/login");
+    let lost = first.post_response(&issue(root, &request_id, raced.clone()));
+    assert_eq!(lost.status, 401, "{}", lost.body);
+
+    // The account is there and linked: the person signs in.
+    let mut later = Browser::new(&server);
+    let request_id = later.start("/saml/login");
+    let reply = later.post_response(&issue(root, &request_id, raced));
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    assert!(
+        later.whoami().starts_with("raced@example.com"),
+        "{}",
+        later.whoami()
+    );
+}

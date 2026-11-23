@@ -284,6 +284,8 @@ struct Provider {
     claims: Json,
     /// The form body of the last token request.
     last_token_request: String,
+    /// How many token requests were received.
+    token_requests: usize,
     /// The nonce of each authorization request, by its PKCE challenge — which
     /// is how the token request (it carries the verifier) finds its own.
     nonces: BTreeMap<String, String>,
@@ -367,6 +369,7 @@ fn start_providers(state: Arc<Mutex<Provider>>) -> u16 {
                 state.profile.clone()
             } else if path.ends_with("/token") {
                 state.last_token_request = String::from_utf8_lossy(&body).into_owned();
+                state.token_requests += 1;
                 if path == "/oauth/token" {
                     if let Some(hook) = state.on_token.as_mut() {
                         hook();
@@ -1554,4 +1557,5 @@ fn a_callback_sent_together_is_answered_once() {
     let sent = state.lock().unwrap().last_token_request.clone();
     let verifier = parameter(&sent, "code_verifier").unwrap_or_default();
     assert!(verifier.len() >= 43, "the verifier was gone: {sent}");
+    assert_eq!(state.lock().unwrap().token_requests, 1, "{replies:?}");
 }
