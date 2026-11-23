@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.40.2] - 2026-11-23
+
 ### Security
 - **auth: what is used once is used once, also by requests sent
   together.** The served tests of the scaffold ran on one request worker,
@@ -36,7 +38,31 @@
   provider's codes, refresh tokens and device codes, TOTP steps and
   backup codes, magic links, remember-me rotation, SAML replay.
 
+### Changed
+- **eui: the score engraver pinned at eui `88db77e`** (was `0a305ba`; also
+  `eui-proto` and `eui-client`). What the native engraver behind
+  `eui_score_layout` / `eui_score_bands` / `eui_score_midi` / `eui_score_pdf`
+  gains: slurs placed as LilyPond places them, and `\shape` moving a slur's,
+  a phrasing slur's or a tie's control points; hairpins and curves moved by
+  their offsets; beams that go past what stands under them; chord
+  accidentals in a zig-zag, octaves aligned; ledger lines only under the
+  heads that need them; ornaments, fermatas, arpeggios, pedals and two-note
+  tremolos in Emmentaler's signs, and played; tablature tunings, strings
+  past six, grace notes, dead notes and harmonics on a tab staff;
+  `RhythmicStaff`; shape notes (Aiken, Sacred Harp, Southern Harmony, funk,
+  Walker); Roman numeral analysis under the bass; `\transposition` and an
+  instrument changed in the middle of a staff; title pages, the words
+  written after the music, and markups as blocks of the page, spaced by
+  `\paper`; page headers that know a book part's pages, and LilyPond
+  2.24's `\if`. For the Score app's cards #1019–#1026, #1031 and #1032.
+
 ### Fixed
+- **test client: `set_request_cookie` replaces a cookie of the same name.**
+  It appended a second `name=value` to the jar, and since 2.39.1 the
+  server keeps the first of duplicate cookies: `set_request_cookie("locale",
+  "fr")` then `set_request_cookie("locale", "en")` still sent `fr`. The
+  second call now replaces the first, as a `Set-Cookie` answer already did;
+  an empty value removes the cookie.
 - **mobile: a refused build is told why.** `POST /__soli/mobile/builds`
   refused a wrong token (401) or an oversized build (413) without reading
   what the client was still sending, and the connection closed under it:

@@ -20,13 +20,22 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.40.1.</p>
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.40.2.</p>
+    </section>
+
+    <section id="v2-40-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.40.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-23</span></h2>
+        <h3 id="v2-40-2-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">What is used once is used once, also by requests sent together.</strong> The scaffold&rsquo;s served tests ran on one request worker, where two requests never run side by side; on several, each copy of a request reads a single-use value before any spends it. Tests now send them for real, and every single-use value was read again. Fixed: a <strong class="text-white">passkey assertion</strong> signed in once per copy &mdash; and, with the <code class="text-cyan-400">cookie</code> session driver, again later &mdash; so an answered challenge is now spent under its digest (<code class="text-cyan-400">WebauthnChallenge.spend</code>); a <strong class="text-white">password-reset link</strong> completed twice together went through twice, leaving one request&rsquo;s password and the other&rsquo;s session; two <strong class="text-white">first sign-ups</strong> together both became the admin; the confirmation link&rsquo;s take-over ran once per copy; the OAuth <code class="text-cyan-400">state</code> was read, not taken; a SAML first sign-in could delete an account another one had just linked. The reset and confirmation claims are guarded writes on SoliDB from 2.9.1 on, the scaffold&rsquo;s minimum. Erasures and second-factor set-ups sent together held, and are now tested (<a href="/docs/security/authentication" class="text-amber-400 hover:underline">Authentication</a>).</li>
         </ul>
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-40-2-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI &amp; scores</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The score engraver, updated (eui <code class="text-cyan-400">88db77e</code>).</strong> Slurs placed as LilyPond places them, and <code class="text-cyan-400">\shape</code> on slurs and ties; beams that clear what stands under them; chord accidentals in a zig-zag; ledger lines only where needed; ornaments, fermatas, arpeggios, pedals and tremolos, drawn and played; tablature tunings and more strings; <code class="text-cyan-400">RhythmicStaff</code>; shape notes; Roman numeral analysis; <code class="text-cyan-400">\transposition</code> and instrument changes in a staff; title pages and markups as blocks of the page.</li>
+        </ul>
+        <h3 id="v2-40-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">set_request_cookie</code> replaces a cookie of the same name.</strong> A second call appended a duplicate, and the server keeps the first of duplicate cookies, so a spec that set <code class="text-cyan-400">locale</code> to <code>fr</code> then <code>en</code> still sent <code>fr</code> (<a href="/docs/core-concepts/testing" class="text-amber-400 hover:underline">Testing</a>).</li>
             <li><strong class="text-white"><code class="text-cyan-400">soli mobile publish</code> is told why a build is refused.</strong> The server answered a wrong token or an oversized build while the file was still arriving, and the connection closed under the upload: the command reported a transfer error instead of the <code class="text-cyan-400">401</code> or the <code class="text-cyan-400">413</code>. It now asks first &mdash; the same <code class="text-cyan-400">POST</code> with no body and the size in <code class="text-cyan-400">X-Soli-Build-Size</code> &mdash; and sends the file only when told to (<a href="/docs/native/clients" class="text-amber-400 hover:underline">Clients</a>).</li>
             <li><strong class="text-white"><code class="text-cyan-400">Model.upsert</code> on SoliDB, for a model or a key named &ldquo;collection&hellip;&rdquo;.</strong> Of two upserts of one key sent together, the one that lost the insert retries as an update. Its conflict was read as &ldquo;the collection already exists&rdquo; whenever that word stood in the URL or in the key, and it failed instead.</li>
         </ul>
