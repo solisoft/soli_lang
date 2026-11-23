@@ -133,12 +133,23 @@ fn serve(root: &Path) -> Server {
 
 /// `serve`, with `extra` environment over the defaults.
 fn serve_with(root: &Path, extra: &[(&str, &str)]) -> Server {
+    serve_workers(root, 1, extra)
+}
+
+/// `serve_with`, on `workers` request workers: requests sent together run
+/// side by side.
+fn serve_workers(root: &Path, workers: usize, extra: &[(&str, &str)]) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env("AUTH_SIGNUP", "open")
@@ -608,4 +619,91 @@ fn erasing_an_account_with_no_password_needs_a_recent_sign_in() {
     assert_eq!(stale.status, 403, "{}", stale.body);
     assert!(stale.body.contains("Sign in again"), "{}", stale.body);
     assert_eq!(grace.get("/privacy").status, 200, "the account was erased");
+}
+
+/// Several sessions of one account erase it in the same instant (two tabs,
+/// a double click on two devices): requests on separate workers, for real.
+/// None of them fails, the account is erased once, each model follows its
+/// rule exactly once, and nobody else's data is touched.
+#[test]
+fn erasures_of_one_account_sent_together_erase_it_once() {
+    let dir = served_app();
+    let server = serve_workers(dir.path(), 4, &[]);
+    let ada = sign_up(&server, dir.path(), "ada@example.com", "1 rue Ada");
+    let mut grace = sign_up(&server, dir.path(), "grace@example.com", "2 rue Grace");
+    let mut sessions = vec![ada];
+    for _ in 0..3 {
+        let mut another = Client::browser(&server);
+        let reply = another.post(
+            "/login",
+            json!({"email": "ada@example.com", "password": PASSWORD}),
+        );
+        assert_eq!(reply.status, 302, "{}", reply.body);
+        sessions.push(another);
+    }
+
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(sessions.len()));
+    let erasing: Vec<_> = sessions
+        .into_iter()
+        .map(|mut session| {
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                gate.wait();
+                let reply = session.post(
+                    "/privacy/erase",
+                    json!({"email": "ada@example.com", "password": PASSWORD}),
+                );
+                let after = session.get("/privacy");
+                (reply.status, reply.location, after.status)
+            })
+        })
+        .collect();
+    let replies: Vec<_> = erasing.into_iter().map(|one| one.join().unwrap()).collect();
+    for (status, _, after) in &replies {
+        assert!(*status < 500, "an erasure failed: {replies:?}");
+        assert_ne!(*after, 200, "a session outlived the erasure: {replies:?}");
+    }
+    assert!(
+        replies
+            .iter()
+            .any(|(status, location, _)| *status == 302 && location == "/"),
+        "no erasure went through: {replies:?}"
+    );
+
+    let state: Json = serde_json::from_str(&grace.get("/probe/state").body).unwrap();
+    let users = state["users"].as_array().unwrap();
+    assert_eq!(users.len(), 2, "{state}");
+    let shells: Vec<_> = users
+        .iter()
+        .filter(|u| u["email"].as_str().unwrap().ends_with("@erased.invalid"))
+        .collect();
+    assert_eq!(shells.len(), 1, "{state}");
+    for field in ["password_digest", "name", "remember_token_digest"] {
+        assert!(
+            shells[0].get(field).is_none_or(Json::is_null),
+            "{field}: {state}"
+        );
+    }
+    assert!(!state.to_string().contains("ada@example.com"), "{state}");
+    let orders = state["orders"].as_array().unwrap();
+    assert_eq!(orders.len(), 2, "{state}");
+    assert!(
+        orders.iter().any(|o| o["address"] == json!("2 rue Grace")),
+        "{state}"
+    );
+    assert!(
+        orders
+            .iter()
+            .any(|o| o.get("address").is_none_or(Json::is_null)),
+        "{state}"
+    );
+    assert_eq!(state["notes"], json!(1), "{state}");
+    assert_eq!(state["invoices"], json!(2), "{state}");
+    assert_eq!(state["tokens"], json!(0), "{state}");
+    let login = Client::browser(&server).post(
+        "/login",
+        json!({"email": "ada@example.com", "password": PASSWORD}),
+    );
+    assert_eq!(login.status, 401);
+    assert_eq!(grace.get("/privacy").status, 200);
 }

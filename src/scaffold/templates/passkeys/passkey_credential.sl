@@ -84,6 +84,21 @@ class PasskeyCredential < Model
     }
   end
 
+  # Take `passkey` for this sign-in, or answer false when another request
+  # took it first. A challenge answers one response, but it is kept in the
+  # session, and requests sent together each read it before any deleted it:
+  # the same assertion, copied, passed once per copy. The write names the
+  # mark that was read, so of several requests one finds it changed — the
+  # counter cannot say it, a synced passkey keeps it at 0.
+  static def claim_use(passkey)
+    mark = "used:#{Crypto.random_hex(16)}"
+    auth_written(
+      PasskeyCredential.where({"_key": passkey._key, "use_mark": passkey.use_mark}).update_all({"use_mark": mark})
+    )
+    now_holds = PasskeyCredential.find_by("_key", passkey._key)
+    !now_holds.nil? && now_holds.use_mark == mark
+  end
+
   # Record a successful sign-in.
   def touch_used(sign_count)
     @sign_count = sign_count

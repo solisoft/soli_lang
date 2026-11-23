@@ -272,12 +272,23 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
+    serve_workers(root, 1)
+}
+
+/// `serve`, with `workers` request workers: requests sent together run
+/// side by side.
+fn serve_workers(root: &Path, workers: usize) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env_remove("TWO_FACTOR_ISSUER")
@@ -1334,4 +1345,99 @@ fn a_set_up_left_open_is_not_the_next_sign_ins() {
     assert_eq!(inherited.status, 409, "{}", inherited.body);
     assert!(!inherited.body.contains(&secret), "the secret was shown");
     assert!(!inherited.body.contains("<svg"), "a QR code was shown");
+}
+
+/// Two sessions of one account set the second factor up in the same instant
+/// and confirm in the same instant — requests on separate workers, for real.
+/// At most one of them enrols; the account then answers to that session's
+/// secret alone, and the other session's secret opens nothing.
+#[test]
+fn two_set_ups_sent_together_enrol_one_secret_at_most() {
+    let dir = served_app();
+    let server = serve_workers(dir.path(), 4);
+    let mut first = Browser::new(&server);
+    let signup = first.post("/signup", json!({"email": EMAIL, "password": PASSWORD}));
+    assert_eq!(signup.status, 200, "{}", signup.body);
+    confirm_address(dir.path(), EMAIL);
+    assert_eq!(first.sign_in().status, 302);
+    let mut second = Browser::new(&server);
+    assert_eq!(second.sign_in().status, 302);
+
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let enrolling: Vec<_> = [first, second]
+        .into_iter()
+        .map(|mut browser| {
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                gate.wait();
+                let setup = browser.post("/two_factor/setup", json!({}));
+                let secret = marked(&setup.body, "data-two-factor-secret")
+                    .into_iter()
+                    .next();
+                gate.wait();
+                let confirmed = match &secret {
+                    Some(secret) => {
+                        settle();
+                        Some(browser.post(
+                            "/two_factor/confirm",
+                            json!({"code": totp(secret, unix_now())}),
+                        ))
+                    }
+                    None => None,
+                };
+                let backup = confirmed
+                    .as_ref()
+                    .filter(|reply| reply.status == 200)
+                    .map(|reply| marked(&reply.body, "data-backup-code"));
+                let status = confirmed.map(|reply| reply.status);
+                (setup.status, secret, status, backup)
+            })
+        })
+        .collect();
+    let results: Vec<_> = enrolling
+        .into_iter()
+        .map(|one| one.join().unwrap())
+        .collect();
+    for (setup, _, confirmed, _) in &results {
+        assert!(*setup < 500, "{results:?}");
+        assert!(confirmed.is_none_or(|status| status < 500), "{results:?}");
+    }
+    let winners: Vec<_> = results.iter().filter(|r| r.2 == Some(200)).collect();
+    assert!(winners.len() <= 1, "two secrets were enrolled: {results:?}");
+
+    let mut fresh = Browser::new(&server);
+    assert_eq!(fresh.sign_in().status, 302);
+    let Some(winner) = winners.first() else {
+        // Neither enrolled: the account has no second factor.
+        assert!(
+            fresh.signed_in(),
+            "challenged without an enrolment: {results:?}"
+        );
+        return;
+    };
+    assert!(!fresh.signed_in(), "the enrolled factor is not asked for");
+    // The other session's secret is nobody's factor.
+    for (_, secret, confirmed, _) in &results {
+        if *confirmed == Some(200) {
+            continue;
+        }
+        if let Some(secret) = secret {
+            settle();
+            let refused = fresh.post(
+                "/two_factor/challenge",
+                json!({"code": totp(secret, unix_now())}),
+            );
+            assert_ne!(refused.status, 302, "the losing secret passed: {results:?}");
+            assert!(
+                !fresh.signed_in(),
+                "the losing secret signed in: {results:?}"
+            );
+        }
+    }
+    // The enrolled one is: a backup code shown to the winning session passes.
+    let codes = winner.3.as_ref().expect("no backup codes");
+    assert_eq!(codes.len(), 10, "{results:?}");
+    let passed = fresh.post("/two_factor/challenge", json!({"code": codes[0]}));
+    assert_eq!(passed.status, 302, "{}", passed.body);
+    assert!(fresh.signed_in());
 }

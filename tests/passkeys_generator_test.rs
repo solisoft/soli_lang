@@ -307,12 +307,23 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
+    serve_workers(root, 1)
+}
+
+/// `serve`, with `workers` request workers: requests sent together run
+/// side by side.
+fn serve_workers(root: &Path, workers: usize) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         // Every sign-in of this test comes from one address: the default
@@ -796,4 +807,65 @@ fn served_app_registers_a_passkey_and_signs_in_with_it() {
     let (_, options) = later.post("/passkeys/login/options", json!({}));
     let assertion = authenticator.get(&options, 2, &user_handle);
     assert_eq!(later.post("/passkeys/login", assertion).0, 401);
+}
+
+/// One passkey assertion sent several times in the same instant — a copied
+/// request, on separate workers, for real. The challenge is single use and
+/// the counter moves forward once: exactly one of them signs in.
+#[test]
+fn one_assertion_sent_together_signs_in_once() {
+    let dir = served_passkeys_app();
+    let server = serve_workers(dir.path(), 6);
+    let authenticator = Authenticator::new();
+    let mut ada = Browser::new(&server);
+    let signup = json!({"email": "ada@example.com", "password": "correct horse battery"});
+    assert_eq!(ada.post("/signup", signup.clone()).0, 200);
+    confirm_address(dir.path(), "ada@example.com");
+    assert_eq!(ada.post("/login", signup).0, 302);
+    let (_, page) = ada.request("GET", "/passkeys", None);
+    ada.csrf = Some(csrf_from(&page));
+    let (status, options) = ada.post("/passkeys/options", json!({}));
+    assert_eq!(status, 200, "{options}");
+    let user_handle = unb64(options["user"]["id"].as_str().unwrap());
+    let credential = authenticator.create(&options);
+    let (status, created) = ada.post(
+        "/passkeys",
+        json!({"credential": credential, "name": "Laptop"}),
+    );
+    assert_eq!(status, 201, "{created}");
+
+    let mut device = Browser::new(&server);
+    let (status, options) = device.post("/passkeys/login/options", json!({}));
+    assert_eq!(status, 200, "{options}");
+    let assertion = authenticator.get(&options, 1, &user_handle);
+    let copies = 6;
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(copies));
+    let sending: Vec<_> = (0..copies)
+        .map(|_| {
+            let mut copy = Browser {
+                port: device.port,
+                jar: device.jar.clone(),
+                csrf: None,
+            };
+            let assertion = assertion.clone();
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                gate.wait();
+                copy.post("/passkeys/login", assertion).0
+            })
+        })
+        .collect();
+    let statuses: Vec<u16> = sending.into_iter().map(|one| one.join().unwrap()).collect();
+    assert_eq!(
+        statuses.iter().filter(|status| **status == 200).count(),
+        1,
+        "{statuses:?}"
+    );
+    assert!(
+        statuses.iter().all(|status| [200, 401].contains(status)),
+        "{statuses:?}"
+    );
+    // And once more, later: the same assertion is spent.
+    let (status, _) = device.post("/passkeys/login", assertion);
+    assert_eq!(status, 401);
 }

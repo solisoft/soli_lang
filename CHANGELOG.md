@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Security
+- **auth (passkeys): one assertion signs in once, also when its copies
+  arrive together.** The sign-in challenge is single use, but it is kept
+  in the session, and requests sent in the same instant each read it
+  before any deleted it: the same response, copied, was accepted once per
+  copy (two or three of six, on several workers). Whoever could do it
+  already held the request and its session cookie, and the copies opened
+  the same session — but a challenge answers one response. The sign-in now
+  takes the passkey with a write that names what it read
+  (`PasskeyCredential.claim_use`, a `use_mark` field): one request finds
+  it unchanged. Found by a test that sends them for real; two more of the
+  kind cover erasures of one account sent together and two second-factor
+  set-ups sent together, which held.
+
 ## [2.40.1] - 2026-11-23
 
 ### Added

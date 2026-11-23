@@ -56,6 +56,9 @@ class PasskeySessionsController < Controller
     # that ran between the two reads removed it, and the account read after
     # it carries the version that would make this session current.
     return @_reject if PasskeyCredential.find_by("_key", passkey._key).nil?
+    # One response, one sign-in: of copies of it sent together, each read
+    # the challenge before any spent it, and one takes the passkey.
+    return @_reject unless PasskeyCredential.claim_use(passkey)
 
     passkey.touch_used(result["sign_count"])
     user.clear_failed_attempts
