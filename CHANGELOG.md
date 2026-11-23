@@ -51,6 +51,21 @@
     otherwise. The OpenID Connect provider refuses a deactivated account's
     codes and refresh tokens. The SAML and provider take-overs write their
     own fields, not the whole account.
+  - *And from a third round:* `record.destroy` did nothing. A model has
+    no such method (`delete` is the one); the name read a field that was
+    never set and "called" nil, so the row stayed and the caller was told
+    nothing. The devices scaffold unregistered a device that way — `DELETE
+    /devices/:id` answered 204 over a row that kept receiving the
+    account's notifications, and `Device.prune_tokens` pruned nothing. It
+    is `delete` there and in the docs, and `destroy` on a model now raises
+    and says so (a model's own `def destroy` is the model's). On an
+    account with a second factor, "remember me" is honoured once both
+    factors passed, not at the password: the token was in the hands of
+    whoever held the password alone, and shown twice it ended every
+    session of the account. `soli generate devices` names its model for
+    the password reset (and names one written by an earlier run); a SCIM
+    group gives nothing to an account its directory has not taken charge
+    of, and takes one member given as an object.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

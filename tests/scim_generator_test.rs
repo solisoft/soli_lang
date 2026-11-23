@@ -1111,6 +1111,18 @@ fn adopting_an_existing_account_revokes_its_credentials() {
 
     assert_eq!(find_count(&server, "newhire@example.com", TOKEN), json!(1));
     let (_, key) = account(&server, "newhire@example.com");
+    // Before the directory has taken charge of the account, a group gives
+    // it nothing: it still holds the password of whoever made it.
+    let (status, group) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance", "members": [{"value": key}]})),
+        TOKEN,
+    );
+    assert_eq!(status, 201, "{group}");
+    assert_eq!(group["members"].as_array().unwrap().len(), 0, "{group}");
+    assert_eq!(roles(&server)["newhire@example.com"], json!(["member"]));
     let adopt = json!({"Operations": [{"op": "replace", "path": "externalId", "value": "00u1"}]});
     let (status, user) = scim(
         &server,
@@ -1378,6 +1390,18 @@ fn removing_a_member_who_is_gone_does_not_empty_the_group() {
         roles(&server)["ada@example.com"],
         json!(["accountant", "Finance"])
     );
+    // One member given as an object, not a list of one: read as that member.
+    let back = create_user(&server, "linus@example.com", TOKEN);
+    let one = json!({"Operations": [{"op": "add", "path": "members", "value": {"value": back}}]});
+    let (status, body) = scim(&server, "PATCH", &path, Some(one), TOKEN);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["members"].as_array().unwrap().len(), 2, "{body}");
+    let out =
+        json!({"Operations": [{"op": "remove", "path": "members", "value": {"value": back}}]});
+    let (status, body) = scim(&server, "PATCH", &path, Some(out), TOKEN);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["members"].as_array().unwrap().len(), 1, "{body}");
+
     // "Remove" with no value still empties it.
     let all = json!({"Operations": [{"op": "remove", "path": "members"}]});
     let (status, body) = scim(&server, "PATCH", &path, Some(all), TOKEN);

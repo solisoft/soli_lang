@@ -375,8 +375,12 @@ user.to_h();   # { "name": "Alice Smith", "age": 31 }
 ### Deleting Records
 
 ```soli
-User.delete("user123");
+User.delete("user123")   # by key
+user.delete              # this record: callbacks and `dependent:` rules run
 ```
+
+The method is `delete`. A model has no `destroy`: calling it raises and says
+so (it used to do nothing, silently). A model may define its own.
 
 ### Counting Records
 
@@ -3887,7 +3891,7 @@ end
 ### Coverage
 
 Logged:
-- All `Model` operations (`Model.all`, `.where()`, `.find()`, `.create()`, `.update()`, `.destroy()`, `.count`, eager-loaded `includes`, soft-delete scopes, etc.)
+- All `Model` operations (`Model.all`, `.where()`, `.find()`, `.create()`, `.update()`, `.delete`, `.count`, eager-loaded `includes`, soft-delete scopes, etc.)
 - Validation lookups (`uniqueness`)
 - HABTM join-table operations
 

@@ -328,7 +328,8 @@ User.delete("user123")
 
 # Instance method
 user = User.find("user123")
-user.delete()</code></pre>
+user.delete</code></pre>
+            <p class="text-gray-400 mt-3">The method is <code>delete</code>. A model has no <code>destroy</code>: calling it raises and says so (it used to do nothing, silently). A model may define its own.</p>
         </div>
 
         <div>

@@ -462,6 +462,21 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
     );
 
     // instance.delete() - Delete (or soft-delete) the document from DB.
+    // `destroy` is what Rails calls it, and what a habit writes. Unknown to
+    // the model, it read a field that was never set and "called" nil: the
+    // row stayed and the caller was told nothing — a device never
+    // unregistered, a record never removed, behind a 204. It says so now.
+    native_methods.insert(
+        "destroy".to_string(),
+        Rc::new(NativeFunction::new("Model#destroy", Some(0), |_args| {
+            Err(
+                "a model has no `destroy`: use `delete` (it runs the callbacks and \
+                 the `dependent:` rules, and returns the deleted record)"
+                    .to_string(),
+            )
+        })),
+    );
+
     // before_delete/after_delete run in the executor interceptor so user
     // methods and closures can execute with `this` bound to the instance.
     native_methods.insert(

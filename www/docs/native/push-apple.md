@@ -33,7 +33,7 @@ class ApplePush
 
     # The device is gone: stop sending to it, or you will do this forever.
     if result["status"] == 410 || result["reason"] == "Unregistered"
-      Device.find(device["_key"]).destroy()
+      Device.find(device["_key"]).delete
       return "pruned"
     end
 

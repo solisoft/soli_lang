@@ -99,18 +99,16 @@ class SessionsController < Controller
     auth_open_session(user)
 
     if params["remember_me"].to_s == "1"
-      # nil when the password changed while this sign-in was being checked.
-      token = user.start_remember_me
-      # `secure` matters more here than on the session cookie: this one is a
-      # 30-day bearer credential, and without the flag a single plaintext
-      # request to the same host hands it to anyone on the path.
-      unless token.nil?
-        set_cookie("remember_token", "#{user._key}:#{token}", {
-          "max_age": AUTH_REMEMBER_DAYS * 86400,
-          "http_only": true,
-          "same_site": "Lax",
-          "secure": true
-        })
+      # An account with a second factor is remembered once it has passed
+      # it (`TwoFactorController#verify`), not at the password: a token made
+      # here would be in the hands of whoever holds the password alone, and
+      # replace the owner's — and, shown twice, read as a copied cookie that
+      # ends every session of the account.
+      two_factor = const_get("TwoFactor")
+      if !two_factor.nil? && two_factor.enabled?(user)
+        session_set("remember_wanted", user._key)
+      else
+        auth_remember(user)
       end
     end
 

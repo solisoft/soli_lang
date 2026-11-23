@@ -77,6 +77,27 @@ fn create_devices_writes_model_controller_and_routes() {
         "{model}"
     );
 
+    // What the scaffold deletes, it deletes: `destroy` is not a model
+    // method (it raises now; it used to answer nil and leave the row).
+    assert!(!controller.contains(".destroy("), "{controller}");
+    assert!(!model.contains(".destroy("), "{model}");
+
+    // A model from an earlier run of the generator is given its name; an
+    // app's own Device model is left as it is.
+    let path = dir.path().join("app/models/device.sl");
+    fs::write(
+        &path,
+        model.replace("const PUSH_DEVICES_MODEL = \"Device\"\n\n", ""),
+    )
+    .unwrap();
+    create_devices(dir.path().to_str().unwrap()).expect("upgrade");
+    assert_eq!(fs::read_to_string(&path).unwrap(), model);
+    let own = "class Device < Model\n  # a sensor of the fleet\nend\n";
+    fs::write(&path, own).unwrap();
+    create_devices(dir.path().to_str().unwrap()).expect("own model");
+    assert_eq!(fs::read_to_string(&path).unwrap(), own);
+    fs::write(&path, &model).unwrap();
+
     // Idempotent
     create_devices(dir.path().to_str().unwrap()).expect("second run");
 }

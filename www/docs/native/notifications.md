@@ -63,7 +63,7 @@ gone for good and a store that never deletes them grows without bound:
 
 ```soli
 for token in result["prune"]
-  Device.first_by("token", token)&.destroy()
+  Device.first_by("token", token)&.delete
 end
 ```
 

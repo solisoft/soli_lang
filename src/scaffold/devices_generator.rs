@@ -35,6 +35,7 @@ pub fn create_devices(folder: &str) -> Result<(), String> {
     }
 
     write_if_absent(app_path, "app/models/device.sl", devices::DEVICE_MODEL)?;
+    name_the_devices_model(app_path)?;
     write_if_absent(
         app_path,
         "app/controllers/devices_controller.sl",
@@ -71,4 +72,28 @@ pub fn print_devices_success_message() {
     println!();
     println!("  See \x1b[36m/docs/native/devices\x1b[0m");
     println!();
+}
+
+/// A model written by an earlier `soli generate devices` does not name
+/// itself (`PUSH_DEVICES_MODEL`), and the auth scaffold's password reset
+/// then leaves its rows alone. Add the constant to it — to the generated
+/// model only: a file that is not `class Device < Model` is the app's own.
+fn name_the_devices_model(app_path: &Path) -> Result<(), String> {
+    let path = app_path.join("app/models/device.sl");
+    let Ok(model) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let class = "class Device < Model";
+    if model.contains("PUSH_DEVICES_MODEL")
+        || !model.contains(class)
+        || !model.contains("push_targets_for")
+    {
+        return Ok(());
+    }
+    let named = model.replacen(
+        class,
+        &format!("const PUSH_DEVICES_MODEL = \"Device\"\n\n{class}"),
+        1,
+    );
+    fs::write(&path, named).map_err(|e| format!("Failed to update '{}': {}", path.display(), e))
 }

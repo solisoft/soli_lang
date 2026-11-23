@@ -1123,19 +1123,24 @@ print("token stored #{user.remember_token_digest.present?}")
         "the owner's logout left the remember-me token alive"
     );
 
-    // The account's current token, carried by a session that is at the
-    // challenge after the password ("remember me" ticked) and logs out
-    // before the code.
+    // "Remember me" ticked at the password of an account with a second
+    // factor makes no token: the session is at the challenge, and whoever
+    // holds only the password must not hold a remember-me cookie. Logging
+    // out from there has nothing to drop.
     let mut waiting = Browser::new(&server);
     let ticked = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
     assert_eq!(waiting.post("/login", ticked).status, 302);
-    assert!(run("stored.sl", stored).ends_with("token stored true"));
-    let out = waiting.request("DELETE", "/logout", None);
-    assert_eq!(out.status, 302, "{}", out.body);
     assert!(
         run("stored.sl", stored).ends_with("token stored false"),
-        "a logout carrying the current token, before the code, left it alive"
+        "the password step alone made a remember-me token"
     );
+    assert!(
+        !waiting.jar.keys().any(|name| name.contains("remember")),
+        "{:?}",
+        waiting.jar
+    );
+    let out = waiting.request("DELETE", "/logout", None);
+    assert_eq!(out.status, 302, "{}", out.body);
 
     // Remembered again; then the session is gone and only the cookie is
     // left. Restored, it waits at the challenge — and a logout from there
@@ -1199,6 +1204,19 @@ print("backup #{codes[0]}")
     settle();
     let remembered = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
     assert_eq!(owner.post("/login", remembered).status, 302);
+    // Not remembered yet: the password alone, on an account with a second
+    // factor, gets no token — whoever holds only the password would hold a
+    // remember-me cookie, and showing it twice ends everyone's sessions.
+    assert!(
+        !owner.jar.keys().any(|name| name.contains("remember")),
+        "{:?}",
+        owner.jar
+    );
+    let (ok, stored) = soli_with_database(
+        root,
+        r##"print("token #{User.find_by("email", "ada@example.com").remember_token_digest.present?}")"##,
+    );
+    assert!(ok && stored.contains("token false"), "{stored}");
     let passed = owner.post(
         "/two_factor/challenge",
         json!({"code": totp(&secret, unix_now() + 30)}),

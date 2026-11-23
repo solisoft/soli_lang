@@ -47,7 +47,7 @@ class Device < Model
     for token in tokens {
       let row = Device.first_by("token", token)
       if row {
-        row.destroy()
+        row.delete()
         n = n + 1
       }
     }
@@ -103,9 +103,17 @@ def create(req)
   # scaffold's does; an app with its own sign-in has nothing to compare.)
   let stamped = session_get("session_version")
   unless stamped.nil?
-    let fresh = User.find_by("_key", user_id)
+    let fresh = nil
+    try
+      fresh = User.find_by("_key", user_id)
+    catch error
+      # The question could not be asked: the device is not kept on the
+      # strength of an answer nobody gave.
+      device.delete() rescue nil
+      throw error
+    end
     if fresh.nil? || (fresh.session_version ?? 0).to_i() != (user.session_version ?? 0).to_i()
-      device.destroy()
+      device.delete()
       return { "status": 401, "body": json_stringify({ "error": "login required" }) }
     end
   end
@@ -139,7 +147,7 @@ def destroy(req)
   if device.nil? || device.user_id != user_id
     return { "status": 404, "body": json_stringify({ "error": "not found" }) }
   end
-  device.destroy()
+  device.delete()
   { "status": 204, "body": "" }
 end
 "#;

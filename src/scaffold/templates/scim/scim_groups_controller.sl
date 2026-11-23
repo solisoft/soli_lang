@@ -184,9 +184,24 @@ class ScimGroupsController < ScimController
   # The user ids of a `members` value: [{"value": "<id>"}, …].
   def _member_ids(members)
     list = members ?? []
+    # One member given as an object rather than a list of one.
+    list = [members] if type(members) == "hash"
+    return [] unless type(list) == "array"
+
     # Only the accounts this directory manages (`_user`): a group cannot hand
     # its role to an administrator, a local account or another directory's.
-    list.map { |member| member["value"].to_s }.filter { |id| id.present? && !@_user(id).nil? }
+    # And only those it has taken charge of: with SCIM_ADOPT_EXISTING an
+    # account it merely could adopt is in its reach, but a group must not
+    # give a role to one that still holds what its maker set on it — the
+    # directory updates the user first, which adopts it.
+    list.filter { |member| type(member) == "hash" }
+      .map { |member| member["value"].to_s }
+      .filter { |id| id.present? && @_provisioned?(id) }
+  end
+
+  def _provisioned?(id)
+    user = @_user(id)
+    !user.nil? && !user.scim_provisioned_at.nil?
   end
 
   def _group(group)

@@ -268,7 +268,7 @@ def posts_board(event_data: Any) -> Any {
 }
 ```
 
-Nothing else is required: writing a `Post` from an ordinary controller (`Post.create(...)`, `post.save()`, `post.destroy()`) wakes every board viewing it. `live_where` returns the same instances as `where(...).all()`, so a template that iterated the old result needs no changes.
+Nothing else is required: writing a `Post` from an ordinary controller (`Post.create(...)`, `post.save()`, `post.delete`) wakes every board viewing it. `live_where` returns the same instances as `where(...).all()`, so a template that iterated the old result needs no changes.
 
 Outside a LiveView render `live_where` is exactly `where(...).all()` — the subscription is a no-op — so it's a safe drop-in.
 

@@ -122,6 +122,8 @@ def auth_open_session(user, same_sign_in = false, by_owner = true)
   session_regenerate()
   auth_forget_impersonation()
   session_delete("two_factor")
+  # "Remember me", ticked at a password step that waits for a second factor.
+  session_delete("remember_wanted")
   session_delete("sign_in_expires_at")
   # Who re-authenticated to link a provider, and for whom: the previous
   # occupant's, not this user's.
@@ -237,6 +239,23 @@ def auth_written(result)
   throw result if type(result) == "string" && result.starts_with?("Error:")
 
   result
+end
+
+# Remember this browser: a new remember-me token for `user`, in its cookie.
+def auth_remember(user)
+  # nil when the password changed while this sign-in was being checked.
+  token = user.start_remember_me
+  return if token.nil?
+
+  # `secure` matters more here than on the session cookie: this one is a
+  # 30-day bearer credential, and without the flag a single plaintext
+  # request to the same host hands it to anyone on the path.
+  set_cookie("remember_token", "#{user._key}:#{token}", {
+    "max_age": AUTH_REMEMBER_DAYS * 86400,
+    "http_only": true,
+    "same_site": "Lax",
+    "secure": true
+  })
 end
 
 # After adding a way into `user`'s account — a token, a passkey, a linked
@@ -588,8 +607,12 @@ class User < Model
   # Delete the rows of USER_CREDENTIAL_MODELS that name this account.
   def _sweep_credentials
     USER_CREDENTIAL_MODELS.each do |entry|
-      # `const_get` answers nil for a class this app does not have.
-      model = const_get(entry[0])
+      # `const_get` answers nil for a class this app does not have. Push
+      # devices are the model `soli generate devices` names, not whatever
+      # the app calls Device (see `_reset_sweep`).
+      name = entry[0]
+      name = const_get("PUSH_DEVICES_MODEL") if name == "Device"
+      model = type(name) == "string" ? const_get(name) : nil
       unless model.nil?
         owner = {}
         owner[entry[1]] = @_key

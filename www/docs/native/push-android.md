@@ -28,7 +28,7 @@ class AndroidPush
 
     # The app was uninstalled or the token rotated.
     if result["reason"] == "UNREGISTERED" || result["reason"] == "NOT_FOUND"
-      Device.find(device["_key"]).destroy()
+      Device.find(device["_key"]).delete
       return "pruned"
     end
 

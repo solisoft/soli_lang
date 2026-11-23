@@ -51,6 +51,11 @@ class PasskeySessionsController < Controller
       return render_json({"error": "Please confirm your email address first — check your inbox."}, 403)
     end
 
+    # The passkey as it is now, read after the account: a password reset
+    # that ran between the two reads removed it, and the account read after
+    # it carries the version that would make this session current.
+    return @_reject if PasskeyCredential.find_by("_key", passkey._key).nil?
+
     passkey.touch_used(result["sign_count"])
     user.clear_failed_attempts
     # A new session, the user's alone (see `auth_open_session`).

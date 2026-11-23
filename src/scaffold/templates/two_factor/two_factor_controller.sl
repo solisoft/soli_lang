@@ -41,7 +41,13 @@ class TwoFactorController < Controller
     # the owner scans it — they would hold the second factor too.
     nonce = Crypto.random_hex(16)
     session_set("two_factor_setup", nonce)
-    @_render_setup(TwoFactor.start(user, Crypto.sha256(nonce)), user, "", 200)
+    record = TwoFactor.start(user, Crypto.sha256(nonce))
+    # Confirmed since the check above (the owner's confirm landed in
+    # between): `start` hands that record back as it is, and its secret is
+    # the account's second factor — never shown again.
+    return redirect("/two_factor") if record.confirmed?
+
+    @_render_setup(record, user, "", 200)
   end
 
   # POST /two_factor/confirm — a first code from the app turns it on
@@ -94,6 +100,16 @@ class TwoFactorController < Controller
     user.end_sessions
     @_stamp_session(user)
     session_delete("two_factor_setup")
+    # A password reset that ran while this was being confirmed ended this
+    # session, and the stamp above would have put it back: the password this
+    # request signed in with is not the account's any more. The session
+    # goes, and the authenticator it enrolled with it.
+    stored = User.find_by("_key", user._key)
+    if stored.nil? || stored.password_digest != user.password_digest
+      record.delete rescue nil
+      session_destroy()
+      return redirect("/login")
+    end
     session_set("two_factor", "ok:#{user._key}")
     render(
       "two_factor/backup_codes",
@@ -170,8 +186,12 @@ class TwoFactorController < Controller
     # A new session id once both factors passed, as after a password sign-in.
     # A new session, the user's alone (see `auth_open_session`) — within the
     # sign-in the password step began: an end it came with (SAML) stays.
+    # "Remember me" ticked at the password step is honoured now, with both
+    # factors passed (read first: opening the session drops the note).
+    remember = session_get("remember_wanted").to_s == user._key.to_s
     auth_open_session(user, true)
     session_set("two_factor", "ok:#{user._key}")
+    auth_remember(user) if remember
     redirect("/")
   end
 

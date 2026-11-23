@@ -52,7 +52,7 @@
         </p>
     </div>
     <pre class="mb-4"><code class="language-soli text-sm">for token in result["prune"]
-  Device.first_by("token", token)&amp;.destroy()
+  Device.first_by("token", token)&amp;.delete
 end</code></pre>
     <p class="text-gray-400 mb-4">
         By default the push cascade is skipped when the bridge already reached someone. Pass <code class="text-cyan-400">"always": true</code> to notify every transport regardless &mdash; for a to-all announcement where a user with two devices should hear it on both.

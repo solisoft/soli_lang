@@ -1152,6 +1152,32 @@ fn an_administrator_acting_as_a_user_registers_no_device() {
     assert_eq!(admin.whoami(), "admin@example.com admin");
     assert_eq!(admin.post("/devices", phone).status, 201);
     assert_eq!(runner(root, "print(Device.count)"), "2");
+
+    // Unregistering removes the device: the answer used to be 204 over a
+    // row that stayed (`destroy`, which a model does not have). Someone
+    // else's device is not there to remove.
+    let id = own
+        .body
+        .split("\"id\":\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next());
+    let id = id
+        .unwrap_or_else(|| panic!("no id in {}", own.body))
+        .to_string();
+    assert_eq!(
+        admin
+            .request("DELETE", &format!("/devices/{id}"), None)
+            .status,
+        404
+    );
+    assert_eq!(runner(root, "print(Device.count)"), "2");
+    assert_eq!(
+        grace
+            .request("DELETE", &format!("/devices/{id}"), None)
+            .status,
+        204
+    );
+    assert_eq!(runner(root, "print(Device.count)"), "1");
 }
 
 /// The limit on pending sign-in links holds against requests sent together.
