@@ -171,13 +171,10 @@ pub fn register_request_helpers(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("set_request_cookie", Some(2), |args| {
             let name = arg_string(args, 0, "set_request_cookie(name, value)")?;
             let value = arg_string(args, 1, "set_request_cookie(name, value)")?;
-            COOKIES.with(|cell| {
-                let mut cookies = cell.borrow_mut();
-                if !cookies.is_empty() {
-                    cookies.push(';');
-                }
-                cookies.push_str(&format!("{}={}", name, value));
-            });
+            // Replaces a cookie of the same name rather than sending it twice:
+            // the server keeps the first of duplicate cookies, so an appended
+            // second value was never seen.
+            set_cookie_inner(name, value);
             Ok(Value::Null)
         })),
     );
@@ -922,6 +919,29 @@ mod tests {
         let mut h = headers(&[("Content-Type", "multipart/form-data; boundary=x")]);
         add_csrf_token(&mut h, Some("--x--")).unwrap();
         assert!(header_key(&h, "x-csrf-token").is_none());
+    }
+
+    /// Setting a cookie a second time replaces it: the server keeps the
+    /// first of duplicate cookies, so `locale=fr` then `locale=en` must send
+    /// `en` alone.
+    #[test]
+    fn set_request_cookie_twice_sends_only_the_last_value() {
+        let mut env = Environment::new();
+        register_request_helpers(&mut env);
+        let set = match env.get("set_request_cookie") {
+            Some(Value::NativeFunction(f)) => f,
+            other => panic!("expected set_request_cookie, got {other:?}"),
+        };
+        let call = |name: &str, value: &str| {
+            (set.func)(&[Value::String(name.into()), Value::String(value.into())]).unwrap();
+        };
+
+        clear_cookies_inner();
+        call("theme", "dark");
+        call("locale", "fr");
+        call("locale", "en");
+        assert_eq!(current_cookies(), "theme=dark; locale=en");
+        clear_cookies_inner();
     }
 
     #[test]
