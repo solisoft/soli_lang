@@ -244,11 +244,28 @@ impl Drop for Server {
     }
 }
 
+/// A free port no other test of this binary was given. The tests run side
+/// by side and each serves several apps in turn: a port released by one was
+/// handed to another while the first server was still going down, and a
+/// request meant for a server with tracing off was answered by one with it
+/// on.
+fn unused_port() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .and_then(|l| l.local_addr())
+            .map(|a| a.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
+}
+
 fn serve(root: &Path, down: u16, env: &[(&str, &str)]) -> Server {
-    let port = TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .expect("a free port");
+    let port = unused_port();
     let mut command = Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")

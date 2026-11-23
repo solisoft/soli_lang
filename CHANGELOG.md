@@ -36,6 +36,14 @@
   provider's codes, refresh tokens and device codes, TOTP steps and
   backup codes, magic links, remember-me rotation, SAML replay.
 
+### Fixed
+- **ORM (SoliDB): `Model.upsert` on a model whose name holds "collection".**
+  Two upserts of one key sent together: the one that lost the insert is
+  meant to retry as an update. Its 409 was read as "the collection already
+  exists" — the word was found in the URL (`/document/collection_items`),
+  not in what SoliDB said — so it failed with `upsert failed: HTTP 409`
+  instead. The answer is read without the URL.
+
 ## [2.40.1] - 2026-11-23
 
 ### Added

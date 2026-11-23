@@ -19,12 +19,21 @@ const KEY: &str = "integration-test-key-material";
 
 fn pick_port() -> u16 {
     static FALLBACK: AtomicU16 = AtomicU16::new(28600);
-    if let Ok(listener) = TcpListener::bind("127.0.0.1:0") {
-        if let Ok(addr) = listener.local_addr() {
-            return addr.port();
+    // Never a port another test of this binary was given: the tests run
+    // side by side, and a port released by one could be handed to another
+    // while the first server was still going down.
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .unwrap_or_else(|_| FALLBACK.fetch_add(1, Ordering::SeqCst));
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
         }
     }
-    FALLBACK.fetch_add(1, Ordering::SeqCst)
 }
 
 fn soli_binary() -> PathBuf {

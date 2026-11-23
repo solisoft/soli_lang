@@ -5,7 +5,6 @@
 //! usage and engine events — and reads no database: the trackers that would
 //! write one are turned off too.
 
-use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -43,10 +42,7 @@ struct Server {
 
 impl Server {
     fn start(dir: &Path, env: &[(&str, String)]) -> Self {
-        let port = TcpListener::bind("127.0.0.1:0")
-            .and_then(|l| l.local_addr())
-            .map(|a| a.port())
-            .expect("a free port");
+        let port = port_not_given_before();
         let mut command = Command::new(env!("CARGO_BIN_EXE_soli"));
         command
             .arg("serve")
@@ -201,4 +197,22 @@ fn replies_from_the_response_cache_are_counted() {
         !html.contains("Kept in memory only"),
         "a database is configured"
     );
+}
+
+/// A free port no other test of this binary was given: the tests run side
+/// by side, and a port released by one could be handed to another while the
+/// first server was still going down.
+fn port_not_given_before() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }

@@ -188,10 +188,7 @@ fn serve(root: &Path) -> Server {
 }
 
 fn serve_with(root: &Path, extra: &[(&str, &str)]) -> Server {
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .unwrap();
+    let port = port_not_given_before();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
@@ -513,4 +510,22 @@ fn a_redone_chain_passes_without_a_key_and_fails_with_one() {
         json!(1),
         "a keyed chain was redone without its key, unnoticed"
     );
+}
+
+/// A free port no other test of this binary was given: the tests run side
+/// by side, and a port released by one could be handed to another while the
+/// first server was still going down.
+fn port_not_given_before() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }

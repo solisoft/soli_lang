@@ -7,7 +7,6 @@
 //! database on a closed port and read what it prints.
 
 use std::io::Read;
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -15,10 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 fn pick_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|listener| listener.local_addr())
-        .map(|addr| addr.port())
-        .expect("a free local port")
+    port_not_given_before()
 }
 
 /// A minimal app: one route, an `app/jobs/` directory, and `job_files` in it.
@@ -145,4 +141,22 @@ fn an_unreachable_database_is_reported_once_not_per_tick() {
         printed.matches("JWT login failed").count() <= 1,
         "the login warning prints once per failure streak:\n{printed}"
     );
+}
+
+/// A free port no other test of this binary was given: the tests run side
+/// by side, and a port released by one could be handed to another while the
+/// first server was still going down.
+fn port_not_given_before() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }

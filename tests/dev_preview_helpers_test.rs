@@ -9,7 +9,7 @@
 //! loads the helpers on its own thread first.
 
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -27,10 +27,7 @@ impl Drop for Server {
 }
 
 fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .expect("free port")
+    port_not_given_before()
 }
 
 fn write(root: &Path, rel: &str, body: &str) {
@@ -133,4 +130,22 @@ fn a_component_preview_calls_an_app_helper() {
         page.contains("Bonjour ADA"),
         "helper output missing:\n{page}"
     );
+}
+
+/// A free port no other test of this binary was given: the tests run side
+/// by side, and a port released by one could be handed to another while the
+/// first server was still going down.
+fn port_not_given_before() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }

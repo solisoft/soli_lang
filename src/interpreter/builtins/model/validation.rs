@@ -522,7 +522,16 @@ pub fn is_unique_violation(err: &str) -> bool {
     if !has_keyword {
         return false;
     }
-    !(lower.contains("collection") && lower.contains("already"))
+    // "Collection … already exists" is a 409 too, and not a taken value. Read
+    // in what SoliDB said, not in the URL before it: a model named
+    // `CollectionItem` posts to `/document/collection_items`, and its taken
+    // key was read as that.
+    let said: Vec<&str> = lower
+        .split_whitespace()
+        .filter(|word| !word.starts_with("http://") && !word.starts_with("https://"))
+        .collect();
+    let said = said.join(" ");
+    !(said.contains("collection") && said.contains("already"))
 }
 
 /// Is `value` already used in `field` by a row other than `exclude_key`?
@@ -1188,6 +1197,23 @@ mod tests {
             "HTTP 500 duplicate request id rejected"
         ));
         assert!(!is_unique_violation("connection refused: write conflict"));
+    }
+
+    #[test]
+    fn a_taken_key_is_a_unique_violation_whatever_the_collection_is_called() {
+        // `CollectionItem` posts to …/document/collection_items: the word in
+        // the URL is not SoliDB saying a collection exists.
+        let taken = "HTTP 409 Conflict http://x/_api/database/db/document/collection_items: \
+                     {\"error\":\"Conflict: Document with _key 'k' already exists\"}";
+        assert!(is_unique_violation(taken));
+        let in_a_database_so_named =
+            "HTTP 409 Conflict http://x/_api/database/collections/document/users: \
+                     {\"error\":\"Conflict: Document with _key 'k' already exists\"}";
+        assert!(is_unique_violation(in_a_database_so_named));
+        // What SoliDB says of a collection is still not one.
+        let exists = "HTTP 409 Conflict http://x/_api/database/db/collection: \
+                      {\"error\":\"Conflict: Collection 'users' already exists\"}";
+        assert!(!is_unique_violation(exists));
     }
 
     #[test]

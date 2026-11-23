@@ -159,10 +159,7 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .unwrap_or(28743);
+    let port = port_not_given_before();
     let child = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
         .arg("serve")
         .arg(root)
@@ -264,4 +261,22 @@ fn super_reaches_the_nearest_override_whatever_ran_first() {
     assert_eq!(get(&server, "/chain"), (200, "111".to_string()));
     assert_eq!(get(&server, "/lb"), (200, "11".to_string()));
     assert_eq!(get(&server, "/chain"), (200, "111".to_string()));
+}
+
+/// A free port no other test of this binary was given: the tests run side
+/// by side, and a port released by one could be handed to another while the
+/// first server was still going down.
+fn port_not_given_before() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }

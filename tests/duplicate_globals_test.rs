@@ -35,10 +35,7 @@ fn app_with_a_duplicate(root: &Path) {
 fn serve_refuses_an_app_that_declares_a_name_twice() {
     let dir = tempfile::tempdir().unwrap();
     app_with_a_duplicate(dir.path());
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .unwrap_or(28911);
+    let port = port_not_given_before();
     let mut child = Command::new(env!("CARGO_BIN_EXE_soli"))
         .arg("serve")
         .arg(dir.path())
@@ -88,4 +85,22 @@ fn lint_reports_the_second_declaration() {
         text.contains("app/services/notifications.sl:2:1 - [smell/duplicate-global]"),
         "{text}"
     );
+}
+
+/// A free port no other test of this binary was given: the tests run side
+/// by side, and a port released by one could be handed to another while the
+/// first server was still going down.
+fn port_not_given_before() -> u16 {
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }
