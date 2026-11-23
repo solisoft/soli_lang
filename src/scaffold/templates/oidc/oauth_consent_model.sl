@@ -49,7 +49,13 @@ class OauthConsent < Model
     consent.granted_at = now
     consent.revoked_at = null
 
-    return consent.update()
+    # By filter: updated whole, on the SQL adapters, a consent removed a
+    # moment ago (`revoke_credentials`) would be back.
+    auth_written(
+      OauthConsent.where({"_key": consent._key, "user_key": user_key.to_s})
+        .update_all({"scopes": merged, "granted_at": now, "revoked_at": nil})
+    )
+    return consent
   end
 
   # Withdraw consent and kill the live tokens. Without the second half the user
@@ -59,7 +65,10 @@ class OauthConsent < Model
     return false if consent.nil?
 
     consent.revoked_at = DateTime.utc().to_unix()
-    consent.update()
+    auth_written(
+      OauthConsent.where({"_key": consent._key, "user_key": user_key.to_s})
+        .update_all({"revoked_at": consent.revoked_at})
+    )
     OauthRefreshToken.where({"user_key": user_key.to_s, "client_id": client_id.to_s}).each do |token|
       OauthRefreshToken.revoke_chain(token["chain_id"], "consent_revoked")
     end

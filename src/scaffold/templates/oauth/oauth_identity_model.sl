@@ -24,7 +24,12 @@ class OauthIdentity < Model
     unless existing.nil?
       existing.email = email if email
       existing.raw = raw if raw
-      existing.save
+      # By filter: saved whole, on the SQL adapters, an identity its owner
+      # disconnected a moment ago would be back — and sign in again.
+      auth_written(
+        OauthIdentity.where({"_key": existing._key, "user_id": existing.user_id})
+          .update_all({"email": existing.email, "raw": existing.raw})
+      )
       return existing
     end
 

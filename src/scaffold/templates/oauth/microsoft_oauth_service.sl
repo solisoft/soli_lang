@@ -204,7 +204,9 @@ class MicrosoftOauth
     end
 
     legacy.uid = uid
-    legacy.save
+    # By filter, on the uid it had: not the record saved whole (which would
+    # put back an identity disconnected meanwhile).
+    auth_written(OauthIdentity.where({"_key": legacy._key, "user_id": legacy.user_id}).update_all({"uid": uid}))
     legacy
   end
 

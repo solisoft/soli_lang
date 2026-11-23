@@ -88,8 +88,7 @@ class ScimGroupsController < ScimController
 
     @_rename(group, name)
     group.external_id = body["externalId"] if body.has_key("externalId")
-    group.save
-    return @_error(400, "The group could not be saved: #{group._errors}", "invalidValue") if @_failed?(group)
+    return @_error(400, "The group could not be saved", "invalidValue") unless @_store(group)
 
     group.replace_members(@_member_ids(body["members"]))
     @_json(200, @_group(group))
@@ -106,8 +105,7 @@ class ScimGroupsController < ScimController
     operations.each do |operation|
       @_apply(group, operation["op"].to_s.downcase, operation["path"].to_s, operation["value"])
     end
-    group.save
-    return @_error(400, "The group could not be saved: #{group._errors}", "invalidValue") if @_failed?(group)
+    return @_error(400, "The group could not be saved", "invalidValue") unless @_store(group)
 
     @_json(200, @_group(group))
   end
@@ -180,8 +178,19 @@ class ScimGroupsController < ScimController
     return if @_name_taken?(group, name)
 
     group.display_name = name
-    group.save
+    return unless @_store(group)
+
     group.members.each { |user| ScimGroup.sync_role(user) }
+  end
+
+  # Write the group's name and externalId — by filter, not the record saved
+  # whole: on the SQL adapters that would put a group deleted a moment ago
+  # back. False when the write was refused (the name is another group's).
+  def _store(group)
+    fields = {"display_name": group.display_name, "external_id": group.external_id}
+    mine = {"_key": group._key, "scim_directory": @_directory}
+    written = ScimGroup.where(mine).update_all(fields) rescue "Error: refused"
+    !(type(written) == "string" && written.starts_with?("Error:"))
   end
 
   # The user ids of a `members` value: [{"value": "<id>"}, …].
