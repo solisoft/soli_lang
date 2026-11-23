@@ -239,6 +239,9 @@ pub(super) async fn dispatch(
 
     let decision = admin_auth::authorize(req.headers(), dev_mode, peer_addr.ip(), "MOBILE");
     if let Some(refused) = admin_auth::refusal(decision, "Soli mobile") {
+        if method == "POST" {
+            settle(req.into_body()).await;
+        }
         return Ok(refused);
     }
 
@@ -249,6 +252,7 @@ pub(super) async fn dispatch(
             // CLI or CI call, and the Origin gate already refused a
             // cross-site one.
             if bearer_less_basic(req.headers()) {
+                settle(req.into_body()).await;
                 return Ok(json_error(
                     StatusCode::UNAUTHORIZED,
                     "uploads take `Authorization: Bearer <SOLI_MOBILE_TOKEN>`",
@@ -270,6 +274,29 @@ pub(super) async fn dispatch(
         }
         _ => Ok(admin_auth::hidden_not_found()),
     }
+}
+
+/// The most of a refused upload that is read before it is answered, and for
+/// how long.
+const SETTLE_BYTES: usize = 1024 * 1024;
+const SETTLE_FOR: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Read what a refused request was still sending, within a bound, before
+/// the refusal is written. Answered while its body is unread, the
+/// connection is closed under the client, which may then see a reset
+/// instead of the 401 or the 413 it was sent — `soli mobile publish` would
+/// report a network error for a wrong token.
+async fn settle(mut body: Incoming) {
+    let reading = async {
+        let mut left = SETTLE_BYTES;
+        while let Some(Ok(frame)) = body.frame().await {
+            left = left.saturating_sub(frame.data_ref().map_or(0, |data| data.len()));
+            if left == 0 {
+                break;
+            }
+        }
+    };
+    let _ = tokio::time::timeout(SETTLE_FOR, reading).await;
 }
 
 fn bearer_less_basic(headers: &HeaderMap) -> bool {
@@ -468,6 +495,7 @@ async fn receive(root: &Path, req: Request<Incoming>) -> Result<Build, UploadErr
         .and_then(|v| v.parse::<u64>().ok());
     // The multipart framing adds a few hundred bytes around the file.
     if declared.is_some_and(|n| n > cap.saturating_add(64 * 1024)) {
+        settle(req.into_body()).await;
         return Err(UploadError::TooLarge);
     }
     let boundary = req
@@ -510,6 +538,18 @@ async fn receive(root: &Path, req: Request<Incoming>) -> Result<Build, UploadErr
             while let Some(chunk) = field.chunk().await.map_err(bad_body)? {
                 size += chunk.len() as u64;
                 if size > cap {
+                    // What is left of the file, within the same bound (see
+                    // `settle`): the client must be able to read the 413.
+                    let rest = async {
+                        let mut left = SETTLE_BYTES;
+                        while let Ok(Some(more)) = field.chunk().await {
+                            left = left.saturating_sub(more.len());
+                            if left == 0 {
+                                break;
+                            }
+                        }
+                    };
+                    let _ = tokio::time::timeout(SETTLE_FOR, rest).await;
                     return Err(UploadError::TooLarge);
                 }
                 {

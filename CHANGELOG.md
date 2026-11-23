@@ -37,6 +37,12 @@
   backup codes, magic links, remember-me rotation, SAML replay.
 
 ### Fixed
+- **mobile: a refused upload is answered, not cut.** `POST
+  /__soli/mobile/builds` refused a wrong token (401) or an oversized
+  build (413) without reading what the client was still sending, and the
+  connection closed under it: `soli mobile publish` could report a
+  network error instead of the refusal. What is left of the body is read
+  first, within a bound (1 MiB, two seconds).
 - **ORM (SoliDB): `Model.upsert` on a model whose name holds "collection".**
   Two upserts of one key sent together: the one that lost the insert is
   meant to retry as an update. Its 409 was read as "the collection already
