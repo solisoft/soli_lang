@@ -263,6 +263,9 @@ class ScimController < Controller
   # account with no owner yet (made before directories were recorded) takes
   # this one.
   def _take_charge(user)
+    # The account as this request found it: `_saved` writes what changed
+    # since, and nothing it merely read.
+    @loaded = @_scim_fields(user)
     if user.scim_provisioned_at.nil?
       user.revoke_credentials
       user.scim_provisioned_at = DateTime.utc.to_unix
@@ -287,11 +290,36 @@ class ScimController < Controller
 
     # A directory's account is nobody's placeholder (`User#never_signed_in?`).
     user.awaiting_owner = false
-    # What a directory sets, and nothing else. The whole record, written back
-    # as this request loaded it, would undo what happened to the account
-    # meanwhile — a password reset, another request's deactivation — and put
-    # the old session version back.
-    fields = {
+    # What this request changed, and nothing else. The whole record — or
+    # even these fields as the request read them — written back would undo
+    # what happened to the account meanwhile: a password reset, another
+    # request's deactivation.
+    now = @_scim_fields(user)
+    fields = {"awaiting_owner": false}
+    now.keys.each do |name|
+      fields[name] = now[name] if now[name] != @loaded[name]
+    end
+    # Deactivated by this request.
+    deactivating = fields.has_key("deactivated_at") && !user.deactivated_at.nil?
+    if deactivating
+      fields["remember_token_digest"] = nil
+      fields["remember_previous_digest"] = nil
+      # Its sessions end first — counted in the database. Ended and then not
+      # deactivated (the write below failing) is the safe half; the other
+      # order, retried, would find the account deactivated and end nothing.
+      user.end_sessions
+    end
+    written = User.where({"_key": user._key}).update_all(fields) rescue "Error: the write failed"
+    if type(written) == "string" && written.starts_with?("Error:")
+      return @_error(400, "The user could not be saved", "invalidValue")
+    end
+
+    @_json(200, @_resource(user))
+  end
+
+  # The fields a directory sets on a user, as `user` holds them.
+  def _scim_fields(user)
+    {
       "email": user.email,
       "name": user.name,
       "scim_external_id": user.scim_external_id,
@@ -300,25 +328,8 @@ class ScimController < Controller
       "scim_directory": user.scim_directory,
       "scim_provisioned_at": user.scim_provisioned_at,
       "confirmed_at": user.confirmed_at,
-      "deactivated_at": user.deactivated_at,
-      "awaiting_owner": false
+      "deactivated_at": user.deactivated_at
     }
-    # Deactivated by this request: active as stored, not as it is to be.
-    stored = User.find_by("_key", user._key)
-    deactivating = !user.deactivated_at.nil? && !stored.nil? && stored.deactivated_at.nil?
-    if deactivating
-      fields["remember_token_digest"] = nil
-      fields["remember_previous_digest"] = nil
-    end
-    written = User.where({"_key": user._key}).update_all(fields) rescue "Error: the write failed"
-    if type(written) == "string" && written.starts_with?("Error:")
-      return @_error(400, "The user could not be saved", "invalidValue")
-    end
-    # A deactivated account's sessions end — counted in the database, after
-    # the write that deactivates it.
-    user.end_sessions if deactivating
-
-    @_json(200, @_resource(user))
   end
 
   # The name of the directory whose token the request carries, or nil.

@@ -72,6 +72,12 @@ class TwoFactor < Model
     Crypto.totp_uri(@secret, user.email, two_factor_issuer())
   end
 
+  # Would `code` be accepted now? Asked before enrolling, and spends nothing.
+  def accepts?(code)
+    step = Crypto.totp_step(@secret, code.to_s.replace(" ", ""))
+    !step.nil? && step > (@last_step ?? 0)
+  end
+
   # Finish enrolling with a first code from the app. Returns the backup codes
   # in plaintext — the only time they exist that way — or nil on a wrong code.
   def confirm(code)

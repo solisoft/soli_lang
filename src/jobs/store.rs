@@ -444,6 +444,13 @@ pub fn retry(id: &str) -> Result<bool, String> {
             doc.state.as_str()
         ));
     }
+    // A mail whose body was removed (delivered, or given up on) has nothing
+    // left to send: retried, it would go out empty.
+    if doc.args.get("body_forgotten").and_then(|v| v.as_bool()) == Some(true) {
+        return Err(format!(
+            "job {id} is a mail whose body was removed and cannot be retried — send it again"
+        ));
+    }
     patch_job(
         id,
         serde_json::json!({

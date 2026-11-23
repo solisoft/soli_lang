@@ -357,7 +357,7 @@ fn served_app() -> tempfile::TempDir {
         root.join("app/models/scim_group.sl"),
         model.replace(
             "const SCIM_GROUP_ROLES = {}",
-            "const SCIM_GROUP_ROLES = {\"Finance\": \"accountant\", \"Support\": \"agent\", \"Owners\": \"admin\"}",
+            "const SCIM_GROUP_ROLES = {\"Finance\": \"accountant\", \"Support\": \"agent\", \"Owners\": \"admin\", \"okta/Auditors\": \"auditor\"}",
         ),
     )
     .unwrap();
@@ -1239,6 +1239,35 @@ fn a_directory_cannot_reach_another_directory_s_groups() {
         roles(&server)["ada@example.com"],
         json!(["accountant", "Finance"])
     );
+
+    // A role mapped to one directory's group ("okta/Auditors") is that
+    // directory's to give: not the other's group of that name, nor a group
+    // whose display name spells the key.
+    let group = |name: &str, member: &str, token: &str| {
+        let body = json!({"displayName": name, "members": [{"value": member}]});
+        let (status, created) = scim(&server, "POST", "/Groups", Some(body), token);
+        assert_eq!(status, 201, "{created}");
+        format!("/Groups/{}", created["id"].as_str().unwrap())
+    };
+    let plain = group("Auditors", &grace, OTHER_TOKEN);
+    let spelled = group("okta/Auditors", &grace, OTHER_TOKEN);
+    assert_eq!(
+        roles(&server)["grace@example.com"],
+        // (`accountant` from its own Finance group — not `auditor`.)
+        json!(["accountant", "Auditors", "Finance", "okta/Auditors"])
+    );
+    let okta_auditors = group("Auditors", &ada, TOKEN);
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["auditor", "Auditors", "Finance"])
+    );
+    for (path, token) in [
+        (&plain, OTHER_TOKEN),
+        (&spelled, OTHER_TOKEN),
+        (&okta_auditors, TOKEN),
+    ] {
+        assert_eq!(scim(&server, "DELETE", path, None, token).0, 204);
+    }
 
     assert_eq!(
         scim(&server, "DELETE", &their_path, None, OTHER_TOKEN).0,

@@ -139,7 +139,14 @@ A group belongs to the directory that created it. With several directories
 another directory's group is a `404`, like another directory's user — and
 two directories may each have a group of the same name. A name in the
 mapping stands for that group in every directory; write `"okta/Finance"` to
-mean the one of the directory named `okta` only.
+mean the one of the directory named `okta` only (a key with a `/` is always
+read as directory, then name).
+
+An app generated before groups had an owner: give the existing groups one
+(`ScimGroup.where({"scim_directory": nil}).update_all({"scim_directory": "default"})`,
+`default` being the directory of `SCIM_TOKEN`) and replace the unique index on
+`display_name` by one on `["scim_directory", "display_name"]`. Until then they
+answer `404` to every token.
 
 - **A directory never makes an administrator.** `admin` is granted in the app:
   a mapping to it is ignored, and an account that is an administrator keeps

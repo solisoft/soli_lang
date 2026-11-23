@@ -230,6 +230,11 @@ class OauthSso
       end
 
       user = User.find(linking)
+      # Read just now, after the round-trips to the provider: a session the
+      # account ended meanwhile (a password reset) links nothing.
+      if session_get("session_version").to_i < user.current_session_version
+        OauthSso.refuse("sign in again before connecting an account")
+      end
       refusal = OauthSso.link_refusal(user)
       OauthSso.refuse(refusal) unless refusal.nil?
 
@@ -354,10 +359,10 @@ class OauthSso
       # link changes what the session can do), its stamps left as they were.
       # It must *be* this user's: a link never moves a session to an account.
       OauthSso.refuse("sign in again before connecting an account") unless session_get("user_id") == user._key
+      # Its version stamp too: stamped anew, a session that a password
+      # reset ended while the provider answered would be back.
       session_regenerate()
       session_set("user_id", user._key)
-      # So that it is not refused for predating a reset the link went through.
-      session_set("session_version", user.current_session_version)
     else
       # A provider sign-in is a fresh proof of identity: a new session, the
       # user's alone (`auth_open_session` in app/models/user.sl), stamped

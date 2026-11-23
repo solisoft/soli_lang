@@ -54,36 +54,23 @@ class TwoFactorController < Controller
     end
     return @_render_setup(record, user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
 
-    codes = record.confirm(params["code"])
-    if codes.nil?
-      return @_render_setup(
-        record,
-        user,
-        "That code is not valid. Check the clock of your device and try again.",
-        422
-      )
-    end
-
-    # Every other session of this account is signed out; this one stays.
-    # One field, counted in the database: writing the whole account back
-    # here could undo a password reset that happened meanwhile.
-    # (The marker first: were the increment to fail, this session would
-    # otherwise keep "no second factor" on an account that now has one.)
-    session_set("two_factor", "ok:#{user._key}")
+    invalid = "That code is not valid. Check the clock of your device and try again."
+    return @_render_setup(record, user, invalid, 422) unless record.accepts?(params["code"])
     # An authenticator enrolled from a session that ended meanwhile (a
     # password reset) is not kept.
     return redirect("/login") unless auth_credential_kept?(user, record)
 
-    try
-      user.end_sessions
-    catch error
-      # The other sessions could not be signed out: then the account is not
-      # enrolled either. Left enrolled, a session that holds "no second
-      # factor" would stay signed in to an account that has one.
-      record.delete
-      throw error
-    end
+    # Every other session of this account is signed out; this one stays.
+    # Before the account is enrolled, not after: were this to fail, nothing
+    # is enrolled and it can be tried again. The other order could leave an
+    # account with a second factor and, signed in to it, a session that
+    # holds "no second factor".
+    user.end_sessions
     session_set("session_version", user.current_session_version)
+    codes = record.confirm(params["code"])
+    return @_render_setup(record, user, invalid, 422) if codes.nil?
+
+    session_set("two_factor", "ok:#{user._key}")
     render(
       "two_factor/backup_codes",
       {"title": "Backup codes", "codes": codes}

@@ -24,7 +24,9 @@
 # Group display name => role. A user in several mapped groups gets the role
 # of the last one listed here that they are in; in none, "member". A name
 # stands for that group in every directory; "okta/Finance" for the one of
-# the directory named `okta` only.
+# the directory named `okta` only. A key with a `/` is always read that way
+# — directory, then name — so a group another directory names "okta/Finance"
+# is not it.
 #
 #   const SCIM_GROUP_ROLES = {"Finance": "accountant", "okta/Support": "agent"}
 const SCIM_GROUP_ROLES = {}
@@ -61,14 +63,18 @@ class ScimGroup < Model
     ScimGroup.for_user(user).map { |group| group.display_name }
   end
 
-  # The names SCIM_GROUP_ROLES may be keyed by: "Finance" and "okta/Finance".
-  static def role_keys_for(user)
-    keys = []
-    ScimGroup.for_user(user).each do |group|
-      keys.push(group.display_name)
-      keys.push("#{group.scim_directory}/#{group.display_name}")
+  # Is `user` in the group a SCIM_GROUP_ROLES key names? "Finance" is that
+  # group in any directory; "okta/Finance" the one of `okta` — matched on
+  # the directory and the name, never on a display name that spells both.
+  static def in_mapped_group?(groups, key)
+    cut = key.index_of("/")
+    if cut.nil? || cut < 0
+      return groups.filter { |group| group.display_name == key }.length > 0
     end
-    keys
+
+    directory = key.substring(0, cut)
+    name = key.substring(cut + 1, key.length)
+    groups.filter { |group| group.scim_directory.to_s == directory && group.display_name == name }.length > 0
   end
 
   # Set the account's role from its groups (SCIM_GROUP_ROLES). An
@@ -76,11 +82,11 @@ class ScimGroup < Model
   static def sync_role(user)
     return if user.admin?
 
-    names = ScimGroup.role_keys_for(user)
+    groups = ScimGroup.for_user(user)
     role = "member"
     SCIM_GROUP_ROLES.keys.each do |name|
       mapped = SCIM_GROUP_ROLES[name]
-      role = mapped if names.includes?(name) && mapped != "admin"
+      role = mapped if mapped != "admin" && ScimGroup.in_mapped_group?(groups, name)
     end
     return if user.role == role
 
@@ -89,7 +95,10 @@ class ScimGroup < Model
     # request loaded it, would undo a deactivation or a password reset that
     # happened meanwhile. (Never an administrator's: checked above, and
     # again in the write.)
-    written = User.where({"_key": user._key, "role": {"ne": "admin"}}).update_all({"role": role})
+    # (A role that was never set is not `admin` either: on SQL, `<>` alone
+    # does not match it.)
+    not_admin = {"_key": user._key, "or": [{"role": {"ne": "admin"}}, {"role": nil}]}
+    written = User.where(not_admin).update_all({"role": role})
     throw written if type(written) == "string" && written.starts_with?("Error:")
   end
 

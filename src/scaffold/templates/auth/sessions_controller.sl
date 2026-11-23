@@ -41,7 +41,11 @@ class SessionsController < Controller
     # each against thousands of accounts) and it is itself abusable as a
     # denial of service against a known address. This closes both.
     limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
-    return @_reject("Too many sign-in attempts. Try again in a few minutes.", email, 429) unless limiter.allowed
+    # (Answered at once: a refusal that waits would let one address over its
+    # budget hold the workers.)
+    unless limiter.allowed
+      return @_reject("Too many sign-in attempts. Try again in a few minutes.", email, 429, false)
+    end
 
     user = User.find_by("email", email)
 
@@ -186,8 +190,8 @@ class SessionsController < Controller
   # Re-render the sign-in form with an error and an accurate status code.
   # Every failure path goes through here so none of them can drift into
   # leaking more than the others.
-  def _reject(message, email, status)
-    auth_uniform_wait(@started)
+  def _reject(message, email, status, uniform = true)
+    auth_uniform_wait(@started) if uniform
     render(
       "sessions/new",
       {

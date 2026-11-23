@@ -242,9 +242,10 @@ end
 # removed its like, and it goes. `user` is the account as this request
 # loaded it.
 #
-# With `end_sessions` running before that sweep, one of the two always
-# catches the row: either this read sees the new version, or the row was
-# there when the sweep ran.
+# The reset counts the version, sweeps, changes the password, counts again
+# and sweeps again. A row written before a sweep is swept; one written after
+# the last sweep is read back here after the last count, which no session
+# opened before it matches.
 def auth_credential_kept?(user, record)
   current = User.find_by("_key", user._key)
   return true if !current.nil? && current.current_session_version == user.current_session_version
@@ -470,8 +471,13 @@ class User < Model
       "confirmation_sent_at": nil
     })
     # And again, now that the old password opens nothing: a sign-in with it
-    # that slipped in since the first count is behind this one.
+    # that slipped in since the first count is behind this one — and what it
+    # may have added since the sweep above goes in a second one.
     @end_sessions
+    ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
+      model = const_get(name)
+      auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
+    end
     true
   end
 
@@ -524,15 +530,7 @@ class User < Model
   def revoke_credentials
     # Sessions first, as in `finish_password_reset`.
     @end_sessions
-    USER_CREDENTIAL_MODELS.each do |entry|
-      # `const_get` answers nil for a class this app does not have.
-      model = const_get(entry[0])
-      unless model.nil?
-        owner = {}
-        owner[entry[1]] = @_key
-        auth_written(model.where(owner).delete_all)
-      end
-    end
+    @_sweep_credentials
     @password_digest = nil
     # Taken back from whoever made it, or revoked by its owner: either way
     # no placeholder any more (and this whole-record write must not put back
@@ -556,8 +554,23 @@ class User < Model
       "remember_previous_digest": nil,
       "remember_created_at": nil
     })
+    # Again, and a second sweep, as in `finish_password_reset`.
     @end_sessions
+    @_sweep_credentials
     true
+  end
+
+  # Delete the rows of USER_CREDENTIAL_MODELS that name this account.
+  def _sweep_credentials
+    USER_CREDENTIAL_MODELS.each do |entry|
+      # `const_get` answers nil for a class this app does not have.
+      model = const_get(entry[0])
+      unless model.nil?
+        owner = {}
+        owner[entry[1]] = @_key
+        auth_written(model.where(owner).delete_all)
+      end
+    end
   end
 
   # --- Email confirmation -----------------------------------------------------
