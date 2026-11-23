@@ -36,10 +36,21 @@ fn broker_bin() -> Option<PathBuf> {
 }
 
 fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .map(|a| a.port())
-        .expect("a free port")
+    // Never a port another test of this binary was given: the tests run
+    // side by side, and a port released by one could be handed to another
+    // while the first server was still going down.
+    static TAKEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .and_then(|listener| listener.local_addr())
+            .map(|addr| addr.port())
+            .expect("a free port");
+        let mut taken = TAKEN.lock().unwrap_or_else(|e| e.into_inner());
+        if !taken.contains(&port) {
+            taken.push(port);
+            return port;
+        }
+    }
 }
 
 fn start() -> Option<Broker> {

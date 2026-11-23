@@ -42,7 +42,8 @@
   meant to retry as an update. Its 409 was read as "the collection already
   exists" — the word was found in the URL (`/document/collection_items`),
   not in what SoliDB said — so it failed with `upsert failed: HTTP 409`
-  instead. The answer is read without the URL.
+  instead. The answer is read without the URL, and without the names it
+  quotes (a taken key called `collection-42` was read the same way).
 
 ## [2.40.1] - 2026-11-23
 

@@ -531,7 +531,13 @@ pub fn is_unique_violation(err: &str) -> bool {
         .filter(|word| !word.starts_with("http://") && !word.starts_with("https://"))
         .collect();
     let said = said.join(" ");
-    !(said.contains("collection") && said.contains("already"))
+    // Nor in a name it quotes: `Document with _key 'collection-42' already
+    // exists` is a taken key. What says a collection exists is the error's
+    // type over HTTP, and the sentence itself through the driver.
+    let unquoted: String = said.split('\'').step_by(2).collect::<Vec<_>>().join(" ");
+    let unquoted = unquoted.split_whitespace().collect::<Vec<_>>().join(" ");
+    !(unquoted.contains("collectionalreadyexists")
+        || unquoted.contains("collection already exists"))
 }
 
 /// Is `value` already used in `field` by a row other than `exclude_key`?
@@ -1214,6 +1220,14 @@ mod tests {
         let exists = "HTTP 409 Conflict http://x/_api/database/db/collection: \
                       {\"error\":\"Conflict: Collection 'users' already exists\"}";
         assert!(!is_unique_violation(exists));
+        // …as it is sent over HTTP: the name alone, and the type.
+        let over_http = "HTTP 409 Conflict http://x/_api/database/db/collection: \
+                         {\"code\":409,\"error\":\"users\",\"type\":\"CollectionAlreadyExists\"}";
+        assert!(!is_unique_violation(over_http));
+        // A taken key that holds the word is a taken key.
+        let key_so_named = "HTTP 409 Conflict http://x/_api/database/db/document/items: \
+                            {\"error\":\"Conflict: Document with _key 'collection-42' already exists\"}";
+        assert!(is_unique_violation(key_so_named));
     }
 
     #[test]
