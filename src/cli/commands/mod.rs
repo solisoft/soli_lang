@@ -1589,7 +1589,30 @@ pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
         let source = match fs::read_to_string(file) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("{}: error reading file: {}", file.display(), e);
+                // A file that cannot be read is an issue too: nothing in it
+                // was checked. (Not UTF-8, no permission, a dangling link.)
+                files_with_issues += 1;
+                total_issues += 1;
+                if format == OutputFormat::Json {
+                    json_findings.push(serde_json::json!({
+                        "severity": "error",
+                        "code": "io/error",
+                        "name": null,
+                        "message": format!("error reading file: {e}"),
+                        "file": file.display().to_string(),
+                        "line": 1,
+                        "column": 1,
+                        "hint": null,
+                        "secondary": [],
+                        "notes": [],
+                    }));
+                } else {
+                    println!(
+                        "{}:1:1 - [io/error] error reading file: {}",
+                        file.display(),
+                        e
+                    );
+                }
                 continue;
             }
         };
@@ -1601,22 +1624,32 @@ pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
                 // none of its rules ran. It was printed and then left out of
                 // the count, so the run ended "No issues found." with exit
                 // code 0 on a file that could not be read as Soli at all.
-                eprintln!("{}: parse error: {}", file.display(), e);
+                // Reported like any finding — on stdout, at the error's own
+                // place — so an editor or a CI annotation lands on it.
                 files_with_issues += 1;
                 total_issues += 1;
+                let sources = solilang::error::source_map::SourceSet::new(&source, Some(file));
+                let diagnostic = solilang::error::Diagnostic::from_error(&e, &sources);
                 if format == OutputFormat::Json {
-                    json_findings.push(serde_json::json!({
-                        "severity": "error",
-                        "code": "parse/error",
-                        "name": null,
-                        "message": e.to_string(),
-                        "file": file.display().to_string(),
-                        "line": 1,
-                        "column": 1,
-                        "hint": null,
-                        "secondary": [],
-                        "notes": [],
-                    }));
+                    json_findings.push(diagnostic_json(&diagnostic, &sources, file));
+                } else {
+                    let (line, column) = e
+                        .span()
+                        .map(|span| (span.line, span.column))
+                        .unwrap_or((1, 1));
+                    println!(
+                        "{}:{}:{} - [parse/error] {}",
+                        file.display(),
+                        line,
+                        column,
+                        e.inner_message()
+                    );
+                    if frames {
+                        print!(
+                            "{}",
+                            solilang::error::render::frame(&diagnostic, &sources, render_options)
+                        );
+                    }
                 }
                 continue;
             }

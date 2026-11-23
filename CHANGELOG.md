@@ -5,8 +5,10 @@
 ### Security — follow-ups
 - **lint: a file that does not parse fails `soli lint`.** The parse error
   was printed, then the file left out of the count: the run ended "No
-  issues found." with exit code 0. It counts as an issue (`parse/error`
-  in `--format=json`) and the run exits 1, as `soli check` does.
+  issues found." with exit code 0. It counts as an issue and the run exits
+  1, as `soli check` does: reported on stdout as `[parse/error]` at the
+  error's own line (its diagnostic in `--format=json`). A file that cannot
+  be read counts too (`[io/error]`).
 - **auth: logout drops the remember-me token with one write, unrescued.**
   It read the account first and rescued that read: a database that did
   not answer left the token alive behind a logout that said it was done.

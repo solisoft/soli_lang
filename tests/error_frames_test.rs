@@ -400,8 +400,9 @@ fn a_frame_points_at_the_declaration_too() {
 
 /// A file that does not parse is an issue `soli lint` reports and fails on.
 /// It printed the parse error and then left the file out of its count: the
-/// run ended "No issues found." with exit code 0 — on `i += 1 while i < 3`,
-/// a postfix `while` the language does not have.
+/// run ended "No issues found." with exit code 0 — on `i += 1 while i < 3`:
+/// the language has no postfix `while`, so this opens a block `while` that
+/// the file never closes.
 #[test]
 fn soli_lint_fails_on_a_file_that_does_not_parse() {
     let dir = tempfile::tempdir().unwrap();
@@ -419,14 +420,32 @@ fn soli_lint_fails_on_a_file_that_does_not_parse() {
         String::from_utf8_lossy(&plain.stderr)
     );
     assert_eq!(plain.status.code(), Some(1), "{said}");
-    assert!(said.contains("parse error"), "{said}");
+    // On stdout, in the shape of every finding, at the error's own place —
+    // the file's end here, where the block `while` opened is never closed.
+    let found = stdout(&plain);
+    assert!(found.contains("broken.sl:4:1 - [parse/error] "), "{said}");
     assert!(!said.contains("No issues found"), "{said}");
 
     let json = soli(dir.path(), &["lint", "--format=json", "broken.sl"]);
     assert_eq!(json.status.code(), Some(1));
     let report: serde_json::Value = serde_json::from_slice(&json.stdout).expect("JSON");
     assert_eq!(report["issues"], 1);
-    assert_eq!(report["diagnostics"][0]["code"], "parse/error");
+    // The diagnostic `soli check --format=json` gives for the same file.
+    assert_eq!(report["diagnostics"][0]["severity"], "error");
+    assert_eq!(report["diagnostics"][0]["code"], "E0201");
+    let checked = soli(dir.path(), &["check", "--format=json", "broken.sl"]);
+    let check_report: serde_json::Value = serde_json::from_slice(&checked.stdout).expect("JSON");
+    assert_eq!(report["diagnostics"][0], check_report["diagnostics"][0]);
+
+    // A file that cannot be read at all fails the run too.
+    std::fs::write(dir.path().join("binary.sl"), [0xff_u8, 0xfe, 0x00, 0x9f]).unwrap();
+    let unreadable = soli(dir.path(), &["lint", "binary.sl"]);
+    assert_eq!(unreadable.status.code(), Some(1), "{}", stdout(&unreadable));
+    assert!(
+        stdout(&unreadable).contains("[io/error]"),
+        "{}",
+        stdout(&unreadable)
+    );
 
     // A file that parses is still clean.
     let clean = soli(dir.path(), &["lint", "fine.sl"]);
