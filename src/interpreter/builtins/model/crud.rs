@@ -2678,7 +2678,8 @@ pub fn exec_update_tx(
         }
         result
     } else {
-        exec_update(collection, key, document, false)
+        // A record's update, outside a transaction: the row must be there.
+        exec_update_row(collection, key, document, false)
     }
 }
 
@@ -2730,7 +2731,8 @@ pub fn key_refused(error: &str) -> bool {
 /// used, shared by the callers that mean the same thing.
 pub fn document_already_gone(error: &str) -> bool {
     let said = error.to_lowercase();
-    said.contains("not found") || said.contains("documentnotfound")
+    // (`no row in … with …` is how a column-mode table says it.)
+    said.contains("not found") || said.contains("documentnotfound") || said.contains("no row in ")
 }
 
 #[cfg(test)]

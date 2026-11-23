@@ -38,6 +38,12 @@ held.owner = "eve"
 answer("save", fn() { held.save })
 answer("touch", fn() { held.touch })
 answer("static", fn() { type(RowProbe.update(key, {"owner": "eve"})) })
+# A patch with a nested object takes the read-merge-write path.
+answer("nested", fn() { type(RowProbe.update(key, {"prefs": {"theme": "dark"}})) })
+# `upsert` is the one that creates — and merges into a row that is there.
+answer("upsert", fn() { RowProbe.upsert("row-probe-chosen", {"suite": "update_row", "owner": "linus"}).owner })
+answer("upsert again", fn() { RowProbe.upsert("row-probe-chosen", {"uses": 2}).owner })
+RowProbe.where({"_key": "row-probe-chosen"}).delete_all
 
 # A row that is there is written as before, nested objects included.
 kept = RowProbe.create({"suite": "update_row", "owner": "ada", "prefs": {"theme": "dark"}})
@@ -48,11 +54,14 @@ answer("merged", fn() { RowProbe.update(kept._key, {"prefs": {"lang": "fr"}}).pr
 RowProbe.where({"suite": "update_row"}).delete_all
 "##;
 
-const EXPECTED: [&str; 6] = [
+const EXPECTED: [&str; 9] = [
     "update false 0",
     "save false 0",
     "touch raised 0",
     "static string 0",
+    "nested string 0",
+    "upsert linus 1",
+    "upsert again linus 1",
     "there true 1",
     "merged lang,theme 1",
 ];
@@ -71,7 +80,11 @@ fn run_against(adapter: &str, url: &str) {
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     if !output.status.success() {
         let all = format!("{stdout}{stderr}").to_lowercase();
-        if all.contains("connect") || all.contains("refused") || all.contains("unreachable") {
+        // A server that is not there, said by the pool — not any failure
+        // that happens to mention a connection.
+        if all.contains("pool (primary)")
+            && (all.contains("could not connect") || all.contains("error connecting"))
+        {
             skip(&format!("{adapter} not reachable at {url}: {stderr}"));
             return;
         }

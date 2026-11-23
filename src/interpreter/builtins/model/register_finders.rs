@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::*;
-use super::crud::exec_update_row;
+use super::crud::exec_update;
 use crate::interpreter::value::{NativeFunction, Value};
 
 fn eq_finder_arg(args: &[Value], method: &str) -> Result<(String, serde_json::Value), String> {
@@ -278,8 +278,11 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 _ => return Err("upsert() expects hash data".to_string()),
             };
 
-            // Try update first, create if not found
-            match exec_update_row(&collection, &key, data.clone(), true) {
+            // Try update first, create if not found. The upserting update,
+            // on purpose: on the SQL adapters it is one atomic merge-or-
+            // insert, and two steps would let the insert replace a row
+            // another request created in between.
+            match exec_update(&collection, &key, data.clone(), true) {
                 Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
                 Err(_) => {
                     let mut insert_obj = match data {
@@ -308,7 +311,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                             // can't distinguish from a real conflict.
                             if super::validation::is_unique_violation(&e) {
                                 if let Ok(result) =
-                                    exec_update_row(&collection, &key, update_payload, true)
+                                    exec_update(&collection, &key, update_payload, true)
                                 {
                                     return Ok(super::crud::json_doc_to_instance(&class, &result));
                                 }

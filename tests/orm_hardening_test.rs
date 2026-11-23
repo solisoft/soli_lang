@@ -416,6 +416,8 @@ held.owner = "eve"
 answer("save", fn() { held.save })
 answer("touch", fn() { held.touch })
 answer("static", fn() { type(Token.update(key, {"owner": "eve"})) })
+# A patch with a nested object takes another path in the adapters.
+answer("nested", fn() { type(Token.update(key, {"prefs": {"theme": "dark"}})) })
 
 # A soft delete of a row that is gone leaves no stub behind.
 note = Note.create({"title": "draft"})
@@ -445,6 +447,7 @@ print("upsert", made.owner, Token.count)
             "save false 0",
             "touch raised 0",
             "static string 0",
+            "nested string 0",
             "soft delete string 0",
             "there true grace 1",
             "static there 2",
