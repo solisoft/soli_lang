@@ -18,6 +18,11 @@ class OauthSessionsController < Controller
     # this endpoint bounce any visitor anywhere a hint (anyone's own
     # id_token) allows; the "signed out" page links back instead.
     if current_user().nil?
+      # A session that is not signed in to the end — waiting for its second
+      # factor, or whose account could not be read — is ended by the
+      # confirmed form all the same: "there is no session" must be true
+      # when it is said. (A bare GET ends nothing: see below.)
+      session_destroy() if req["method"] == "POST" && !session_get("user_id").to_s.blank?
       return render(
         "oauth/logout_confirm",
         {
@@ -53,7 +58,9 @@ class OauthSessionsController < Controller
     # End the session as `DELETE /logout` does: without forgetting the
     # remember-me token, the next request restores the session from its
     # cookie and the relying party's "sign in" finds the user still here.
-    current_user()&.forget_me
+    # The token is its owner's to drop, as there: not an administrator's
+    # acting as them, nor an API token's.
+    current_user()&.forget_me if auth_own_session?(req)
     set_cookie("remember_token", "", {
       "max_age": 0,
       "http_only": true,

@@ -54,7 +54,15 @@ class TwoFactor < Model
     record = TwoFactor.for_user(user)
     return record if !record.nil? && record.confirmed?
 
-    record.delete unless record.nil?
+    unless record.nil?
+      # Deleted only while it is still unconfirmed, in the delete itself: a
+      # record confirmed since it was read a line above is the account's
+      # second factor, and deleting it by key would turn that off behind
+      # the owner's back.
+      auth_written(TwoFactor.where({"_key": record._key, "confirmed_at": nil}).delete_all)
+      kept = TwoFactor.for_user(user)
+      return kept unless kept.nil?
+    end
     TwoFactor.create({
       "user_id": user._key,
       "secret": Crypto.totp_secret,

@@ -138,7 +138,7 @@ class ScimGroupsController < ScimController
       # Through `_member_ids`, like every other shape: an account this
       # directory does not manage is not taken out of anything, nor has its
       # role recomputed.
-      return @_member_ids([{"value": one[1]}]).each { |id| group.remove(id) }
+      return @_members_named(group, [{"value": one[1]}]).each { |id| group.remove(id) }
     end
 
     if attribute == "members"
@@ -151,7 +151,10 @@ class ScimGroupsController < ScimController
       named = type(value) == "array" ? value.length : (value.nil? ? 0 : 1)
       return group.replace_members([]) if named == 0
 
-      return ids.each { |id| group.remove(id) }
+      # Whoever is in the group, managed or not any more (promoted to
+      # administrator since, say): a member the directory cannot see must
+      # not be one it cannot take out.
+      return @_members_named(group, value).each { |id| group.remove(id) }
     end
     return @_rename(group, value.to_s.trim) if attribute == "displayname" && value.to_s.present?
 
@@ -197,6 +200,18 @@ class ScimGroupsController < ScimController
     list.filter { |member| type(member) == "hash" }
       .map { |member| member["value"].to_s }
       .filter { |id| id.present? && @_provisioned?(id) }
+  end
+
+  # The ids of `members` that are in `group` now — to take out. Not through
+  # `_member_ids`: that is who may be put in. An id that is not a member is
+  # left alone (taking it "out" would only recompute a stranger's role).
+  def _members_named(group, members)
+    list = type(members) == "hash" ? [members] : (members ?? [])
+    return [] unless type(list) == "array"
+
+    list.filter { |member| type(member) == "hash" }
+      .map { |member| member["value"].to_s }
+      .filter { |id| id.present? && ScimMembership.where({"group_id": group._key, "user_id": id}).count > 0 }
   end
 
   def _provisioned?(id)

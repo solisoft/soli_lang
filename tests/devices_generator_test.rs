@@ -56,9 +56,11 @@ fn create_devices_writes_model_controller_and_routes() {
     // The signed-in user as the middleware left it (two-factor, deactivation),
     // not the session's raw id.
     assert!(
-        controller.contains("let user = current_user()"),
+        controller.contains("let user = req[\"current_user\"] rescue nil"),
         "{controller}"
     );
+    // (Named in a comment; never called.)
+    assert!(!controller.contains("= current_user()"), "{controller}");
     assert!(
         !controller.contains("session_get(\"user_id\")"),
         "{controller}"
@@ -92,9 +94,27 @@ fn create_devices_writes_model_controller_and_routes() {
     .unwrap();
     create_devices(dir.path().to_str().unwrap()).expect("upgrade");
     assert_eq!(fs::read_to_string(&path).unwrap(), model);
+    // ... also when a comment above the class quotes its header.
+    let quoting = model
+        .replace("const PUSH_DEVICES_MODEL = \"Device\"\n\n", "")
+        .replace(
+            "class Device < Model",
+            "# was `class Device < Model` before\nclass Device < Model",
+        );
+    fs::write(&path, &quoting).unwrap();
+    create_devices(dir.path().to_str().unwrap()).expect("upgrade past a comment");
+    let upgraded = fs::read_to_string(&path).unwrap();
+    assert!(
+        upgraded.contains(
+            "# was `class Device < Model` before\nconst PUSH_DEVICES_MODEL = \"Device\"\n\nclass Device < Model"
+        ),
+        "{upgraded}"
+    );
+    // An app's own Device model is not this generator's to build on.
     let own = "class Device < Model\n  # a sensor of the fleet\nend\n";
     fs::write(&path, own).unwrap();
-    create_devices(dir.path().to_str().unwrap()).expect("own model");
+    let refused = create_devices(dir.path().to_str().unwrap()).unwrap_err();
+    assert!(refused.contains("is not the model"), "{refused}");
     assert_eq!(fs::read_to_string(&path).unwrap(), own);
     fs::write(&path, &model).unwrap();
 
@@ -210,7 +230,7 @@ fn create_offline_writes_sync_and_outbox() {
     let controller =
         fs::read_to_string(dir.path().join("app/controllers/sync_controller.sl")).unwrap();
     assert!(
-        controller.contains("let user = current_user()"),
+        controller.contains("let user = req[\"current_user\"] rescue nil"),
         "{controller}"
     );
     assert!(

@@ -77,7 +77,10 @@ class MagicLink < Model
   # Who is asking, for the per-requester limit: an IPv4 address as it is, an
   # IPv6 one cut to its /64 — the unit one subscriber holds, and the one the
   # rate limiter counts by. Counted per address, a single IPv6 client would
-  # be as many requesters as it likes.
+  # be as many requesters as it likes. (A host that holds many /64s — a /56,
+  # a /48 — is as many requesters still, and can fill MAGIC_LINKS_PENDING
+  # for an account: its owner then gets no link until they expire. The
+  # password and its reset are not touched.)
   static def requester_for(address)
     let text = address.to_s.trim.downcase
     # What a proxy may write: "[2001:db8::1]:443", "192.0.2.1:5678".
@@ -151,6 +154,11 @@ class MagicLink < Model
     # (`MagicLink.cookie_with`): any of them opens its own link.
     let matching = MagicLink.held_nonces(nonce).filter { |one| Crypto.secure_compare(link.nonce_digest, Crypto.sha256(one)) }
     return nil if matching.length == 0
+    # The account, read before the link is taken: a password reset that runs
+    # between the two removes the link, and the claim below then fails. Read
+    # after it, the account would carry the version that makes the session
+    # this opens current — on the strength of a link the reset removed.
+    let user = User.find_by("_key", link.user_id)
     return nil unless MagicLink.claim(link, digest)
 
     let expired = DateTime.utc.to_unix > link.expires_at
@@ -159,7 +167,7 @@ class MagicLink < Model
     let deleted = link.delete
     return nil if expired || deleted == false || type(deleted) == "string"
 
-    User.find_by("_key", link.user_id)
+    user
   end
 
   # Take `link` for this request, or answer false when another one took it

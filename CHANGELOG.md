@@ -66,6 +66,25 @@
     the password reset (and names one written by an earlier run); a SCIM
     group gives nothing to an account its directory has not taken charge
     of, and takes one member given as an object.
+  - *And from a fourth round* (none found a way in; a hunt for other
+    methods that do not exist found none): the nonce that makes a
+    two-factor set-up its session's was kept across a new sign-in in the
+    same browser, and `TwoFactor.start` could delete a record confirmed
+    since it read it — the set-up is dropped at each sign-in, and deleted
+    only while unconfirmed. Erasing an account (`/privacy/erase`) asked
+    for the password without the sign-in form's budget or lockout.
+    `/oauth/logout` dropped the remember-me token of a user an
+    administrator was acting as, and said "no session" over one waiting
+    for its second factor. A SCIM `remove` could not take out a member the
+    directory no longer manages (promoted to administrator since); a role
+    is recomputed until it matches the memberships. A sign-in link reads
+    the account before it takes the link. Starting an impersonation checks
+    the session kept its marks. `soli generate devices` and
+    `soli generate offline` read the user from the request rather than
+    through `current_user()`, which only the auth scaffold defines; the
+    devices generator refuses an app's own `Device` model, and a web push
+    subscription is stored under its endpoint so that a dead one is
+    pruned.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

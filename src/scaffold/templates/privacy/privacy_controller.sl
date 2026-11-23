@@ -40,10 +40,21 @@ class PrivacyController < Controller
     user = @_person
     return redirect("/login") if user.nil?
 
+    # The password is asked here as at the sign-in form, and guessed here
+    # under the same two limits: the per-address budget and the account's
+    # lockout. A session left open is not a place to try passwords without
+    # end — the first right one erases the account.
+    limiter = rate_limiter_from_ip(req, AUTH_ATTEMPTS_PER_IP, AUTH_IP_WINDOW_SECONDS)
+    return @_page(user, "Too many attempts. Try again in a few minutes.", 429) unless limiter.allowed
+
     typed = params["email"].to_s.trim.downcase
     return @_page(user, "Type your email address to confirm.", 422) unless typed == user.email
-    if user.password_digest.present? && !user.authenticate(params["password"].to_s)
-      return @_page(user, "Wrong password.", 401)
+    if user.password_digest.present?
+      if user.locked? || !user.authenticate(params["password"].to_s)
+        user.register_failed_attempt
+        return @_page(user, "Wrong password.", 401)
+      end
+      user.clear_failed_attempts
     end
 
     Privacy.erase(user)

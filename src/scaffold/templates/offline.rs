@@ -7,11 +7,13 @@ pub const SYNC_CONTROLLER: &str = r#"# SyncController — offline outbox drain +
 # when the radio returns. Pull returns documents changed since `since`.
 
 def push(req)
-  # `current_user()`, not the session's `user_id`: the session holds that id
-  # as soon as the password passed, before a second factor and whatever a
-  # deactivation says — the middleware that enforce those clear
-  # `current_user()`, and this action must answer to them.
-  let user = current_user()
+  # The signed-in user as the middleware left it, not the session's
+  # `user_id`: the session holds that id as soon as the password passed,
+  # before a second factor and whatever a deactivation says — the middleware
+  # that enforce those clear it, and this action must answer to them. Read
+  # from the request, where the auth scaffold's middleware (or the app's
+  # own) puts it: an app without that scaffold has no `current_user()`.
+  let user = req["current_user"] rescue nil
   let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
@@ -49,11 +51,13 @@ def push(req)
 end
 
 def pull(req)
-  # `current_user()`, not the session's `user_id`: the session holds that id
-  # as soon as the password passed, before a second factor and whatever a
-  # deactivation says — the middleware that enforce those clear
-  # `current_user()`, and this action must answer to them.
-  let user = current_user()
+  # The signed-in user as the middleware left it, not the session's
+  # `user_id`: the session holds that id as soon as the password passed,
+  # before a second factor and whatever a deactivation says — the middleware
+  # that enforce those clear it, and this action must answer to them. Read
+  # from the request, where the auth scaffold's middleware (or the app's
+  # own) puts it: an app without that scaffold has no `current_user()`.
+  let user = req["current_user"] rescue nil
   let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }

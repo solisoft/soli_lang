@@ -62,11 +62,14 @@ pub const DEVICES_CONTROLLER: &str = r#"# DevicesController — register push to
 # DELETE /devices/:id
 
 def create(req)
-  # `current_user()`, not the session's `user_id`: the session holds that id
-  # as soon as the password passed, before a second factor and whatever a
-  # deactivation says — the middleware that enforce those clear
-  # `current_user()`, and this action must answer to them.
-  let user = current_user()
+  # The signed-in user as the middleware left it, not the session's
+  # `user_id`: the session holds that id as soon as the password passed,
+  # before a second factor and whatever a deactivation says — the middleware
+  # that enforce those clear it, and this action must answer to them. Read
+  # from the request, where the auth scaffold's middleware (or the app's
+  # own) puts it: `current_user()` is that scaffold's helper, and an app
+  # without it has none.
+  let user = req["current_user"] rescue nil
   let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
@@ -91,7 +94,10 @@ def create(req)
     if subscription.nil?
       return { "status": 422, "body": json_stringify({ "error": "subscription required for web" }) }
     end
-    token = token || json_stringify(subscription)
+    # The endpoint is what names a web subscription — and what a failed
+    # delivery reports, for `Device.prune_tokens` to find the row by.
+    let endpoint = subscription["endpoint"] rescue nil
+    token = token || endpoint || json_stringify(subscription)
   elsif token.nil? || token.to_s().blank?
     return { "status": 422, "body": json_stringify({ "error": "token required" }) }
   end
@@ -129,11 +135,14 @@ def create(req)
 end
 
 def destroy(req)
-  # `current_user()`, not the session's `user_id`: the session holds that id
-  # as soon as the password passed, before a second factor and whatever a
-  # deactivation says — the middleware that enforce those clear
-  # `current_user()`, and this action must answer to them.
-  let user = current_user()
+  # The signed-in user as the middleware left it, not the session's
+  # `user_id`: the session holds that id as soon as the password passed,
+  # before a second factor and whatever a deactivation says — the middleware
+  # that enforce those clear it, and this action must answer to them. Read
+  # from the request, where the auth scaffold's middleware (or the app's
+  # own) puts it: `current_user()` is that scaffold's helper, and an app
+  # without it has none.
+  let user = req["current_user"] rescue nil
   let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }

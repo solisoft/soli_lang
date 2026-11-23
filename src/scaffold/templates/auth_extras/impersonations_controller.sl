@@ -30,6 +30,14 @@ class ImpersonationsController < Controller
     # sessions as they were, and an hour (AUTH_IMPERSONATION_SECONDS).
     session_set("impersonator_version", admin.current_session_version)
     session_set("impersonation_started_at", DateTime.utc.to_unix)
+    # The marks are what make this session an impersonation — an hour, no
+    # credentials touched, an end when the administrator's sessions end. A
+    # session store that did not keep them leaves the target's own session:
+    # read back, and without them there is no session at all.
+    if session_get("impersonator_id").to_s != admin._key.to_s || session_get("impersonation_started_at").nil?
+      session_destroy()
+      return {"status": 500, "body": "The impersonation could not be started."}
+    end
     redirect("/")
   end
 

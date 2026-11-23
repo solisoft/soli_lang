@@ -1310,3 +1310,28 @@ fn the_enrolment_secret_is_the_starting_sessions_alone() {
     assert!(ada.signed_in());
     assert!(!other.signed_in());
 }
+
+/// A set-up left half-way in a browser is not the next sign-in's in that
+/// browser: someone else at the keyboard who knows the password signs in on
+/// the same session, and must not be shown the secret the owner scanned —
+/// they would hold a copy of the second factor the owner then turns on.
+#[test]
+fn a_set_up_left_open_is_not_the_next_sign_ins() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    let mut ada = Browser::new(&server);
+    let signup = ada.post("/signup", json!({"email": EMAIL, "password": PASSWORD}));
+    assert_eq!(signup.status, 200, "{}", signup.body);
+    confirm_address(dir.path(), EMAIL);
+    assert_eq!(ada.sign_in().status, 302);
+    let setup = ada.post("/two_factor/setup", json!({}));
+    assert_eq!(setup.status, 200, "{}", setup.body);
+    let secret = marked(&setup.body, "data-two-factor-secret").remove(0);
+
+    // The same browser — the same cookies — signs in again.
+    assert_eq!(ada.sign_in().status, 302);
+    let inherited = ada.post("/two_factor/confirm", json!({"code": "000000"}));
+    assert_eq!(inherited.status, 409, "{}", inherited.body);
+    assert!(!inherited.body.contains(&secret), "the secret was shown");
+    assert!(!inherited.body.contains("<svg"), "a QR code was shown");
+}

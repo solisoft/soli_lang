@@ -34,6 +34,19 @@ pub fn create_devices(folder: &str) -> Result<(), String> {
         }
     }
 
+    // A `Device` model of the app's own (a fleet, a sensor) is not the one
+    // this controller and migration are written against: `Device.register`
+    // is not there, and the migration would index its collection.
+    let model_path = app_path.join("app/models/device.sl");
+    if let Ok(existing) = fs::read_to_string(&model_path) {
+        if !existing.contains("push_targets_for") {
+            return Err(
+                "app/models/device.sl is not the model `soli generate devices` writes: \
+                 rename the app's own Device model, or write the push devices by hand."
+                    .to_string(),
+            );
+        }
+    }
     write_if_absent(app_path, "app/models/device.sl", devices::DEVICE_MODEL)?;
     name_the_devices_model(app_path)?;
     write_if_absent(
@@ -83,17 +96,22 @@ fn name_the_devices_model(app_path: &Path) -> Result<(), String> {
     let Ok(model) = fs::read_to_string(&path) else {
         return Ok(());
     };
-    let class = "class Device < Model";
-    if model.contains("PUSH_DEVICES_MODEL")
-        || !model.contains(class)
-        || !model.contains("push_targets_for")
-    {
+    if model.contains("PUSH_DEVICES_MODEL") || !model.contains("push_targets_for") {
         return Ok(());
     }
-    let named = model.replacen(
-        class,
-        &format!("const PUSH_DEVICES_MODEL = \"Device\"\n\n{class}"),
-        1,
-    );
+    // Before the class header itself — the line that begins with it — not
+    // the first place those words appear: a comment may quote them.
+    let mut named = String::with_capacity(model.len() + 48);
+    let mut done = false;
+    for line in model.split_inclusive('\n') {
+        if !done && line.starts_with("class Device < Model") {
+            named.push_str("const PUSH_DEVICES_MODEL = \"Device\"\n\n");
+            done = true;
+        }
+        named.push_str(line);
+    }
+    if !done {
+        return Ok(());
+    }
     fs::write(&path, named).map_err(|e| format!("Failed to update '{}': {}", path.display(), e))
 }

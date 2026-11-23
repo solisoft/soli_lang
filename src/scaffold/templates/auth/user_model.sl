@@ -124,6 +124,9 @@ def auth_open_session(user, same_sign_in = false, by_owner = true)
   session_delete("two_factor")
   # "Remember me", ticked at a password step that waits for a second factor.
   session_delete("remember_wanted")
+  # An authenticator set-up started by the previous occupant: its secret is
+  # theirs to see, not the next sign-in's in the same browser.
+  session_delete("two_factor_setup")
   session_delete("sign_in_expires_at")
   # Who re-authenticated to link a provider, and for whom: the previous
   # occupant's, not this user's.

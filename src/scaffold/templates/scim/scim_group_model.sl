@@ -82,29 +82,43 @@ class ScimGroup < Model
     groups.filter { |group| group.scim_directory.to_s == directory && group.display_name == name }.length > 0
   end
 
-  # Set the account's role from its groups (SCIM_GROUP_ROLES). An
-  # administrator is left alone, and no group makes one.
-  static def sync_role(user)
-    return if user.admin?
-
+  # The role `user`'s groups give now: the last mapped one, or "member".
+  static def role_for(user)
     groups = ScimGroup.for_user(user)
     role = "member"
     SCIM_GROUP_ROLES.keys.each do |name|
       mapped = SCIM_GROUP_ROLES[name]
       role = mapped if mapped != "admin" && ScimGroup.in_mapped_group?(groups, name)
     end
-    return if user.role == role
+    role
+  end
 
-    user.role = role
-    # The role and nothing else: the whole record, written back as this
-    # request loaded it, would undo a deactivation or a password reset that
-    # happened meanwhile. (Never an administrator's: checked above, and
-    # again in the write.)
-    # (A role that was never set is not `admin` either: on SQL, `<>` alone
-    # does not match it.)
-    not_admin = {"_key": user._key, "or": [{"role": {"ne": "admin"}}, {"role": nil}]}
-    written = User.where(not_admin).update_all({"role": role})
-    throw written if type(written) == "string" && written.starts_with?("Error:")
+  # Set the account's role from its groups (SCIM_GROUP_ROLES). An
+  # administrator is left alone, and no group makes one.
+  static def sync_role(user)
+    return if user.admin?
+
+    # Computed, written, and computed again: two memberships of one user
+    # changed at the same moment each compute the role from what they read,
+    # and the one that writes last may have read the older state. The loop
+    # ends when what was written is what the memberships now say.
+    attempts = 0
+    while attempts < 3
+      attempts = attempts + 1
+      role = ScimGroup.role_for(user)
+      if user.role != role
+        user.role = role
+        # The role and nothing else: the whole record, written back as this
+        # request loaded it, would undo a deactivation or a password reset
+        # that happened meanwhile. (Never an administrator's: checked above,
+        # and again in the write. A role that was never set is not `admin`
+        # either: on SQL, `<>` alone does not match it.)
+        not_admin = {"_key": user._key, "or": [{"role": {"ne": "admin"}}, {"role": nil}]}
+        written = User.where(not_admin).update_all({"role": role})
+        throw written if type(written) == "string" && written.starts_with?("Error:")
+      end
+      break if ScimGroup.role_for(user) == role
+    end
   end
 
   # The users in this group.
