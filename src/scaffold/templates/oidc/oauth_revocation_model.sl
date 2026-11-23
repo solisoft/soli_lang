@@ -13,11 +13,12 @@ class OauthRevocation < Model
     return false if jti.to_s.blank?
     return true if OauthRevocation.revoked?(jti)
 
-    OauthRevocation.create({
+    stored = OauthRevocation.create({
       "jti": jti.to_s,
       "reason": reason,
       "expires_at": DateTime.utc().to_unix() + OIDC_ACCESS_TOKEN_TTL
     })
+    OauthRevocation.must_be_stored(stored, jti.to_s)
     # Past this point the token has expired on its own and the row is
     # redundant — prune on whatever schedule suits you.
 
@@ -34,13 +35,25 @@ class OauthRevocation < Model
     marker = "chain:#{chain_id}"
     return true if OauthRevocation.revoked?(marker)
 
-    OauthRevocation.create({
+    stored = OauthRevocation.create({
       "jti": marker,
       "reason": reason,
       "expires_at": DateTime.utc().to_unix() + OIDC_REFRESH_TOKEN_TTL
     })
+    OauthRevocation.must_be_stored(stored, marker)
 
     return true
+  end
+
+  # A revocation the database did not store revokes nothing: `create`
+  # hands back an unsaved record then, and "revoked" must not be answered
+  # over a token that still works. (Refused because another request wrote
+  # the same row first is fine: it is there.)
+  static def must_be_stored(record, jti)
+    return if (record._errors ?? []).length == 0
+    return if OauthRevocation.revoked?(jti)
+
+    throw "the revocation of #{jti} could not be stored: #{record._errors}"
   end
 
   static def family_revoked?(chain_id)
