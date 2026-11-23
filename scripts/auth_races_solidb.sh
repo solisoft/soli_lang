@@ -19,7 +19,8 @@ set -euo pipefail
 # What the shell exports wins over an app's `.env`: nothing of the caller's
 # database may reach the commands below.
 unset SOLI_DB_ADAPTER DATABASE_URL SOLIDB_HOST SOLIDB_DATABASE SOLIDB_USERNAME \
-  SOLIDB_PASSWORD SOLI_PROTECT_ENV APP_ENV SOLI_SESSION_DRIVER SOLI_ENGINE
+  SOLIDB_PASSWORD SOLIDB_API_KEY SOLIDB_JWT SOLI_PROTECT_ENV APP_ENV \
+  SOLI_SESSION_DRIVER SOLI_ENGINE AUTH_SIGNUP AUTH_SETUP_TOKEN
 
 die() {
   echo "auth_races_solidb: $*" >&2
@@ -80,6 +81,10 @@ sed -i.bak "s#^SOLIDB_HOST=.*#SOLIDB_HOST=http://127.0.0.1:$DB_PORT#; s#^SOLIDB_
 "$SOLI" generate auth --passkeys >/dev/null 2>&1
 "$SOLI" generate oidc_provider >/dev/null 2>&1
 "$SOLI" db:migrate up >"$WORK/migrate.log" 2>&1 || { cat "$WORK/migrate.log" >&2; die "db:migrate up failed"; }
+# The unique indexes are part of what is checked: the migrations must be on
+# the database the app is about to use.
+"$SOLI" db:migrate status 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep "applied, 0 pending" >/dev/null \
+  || die "migrations are pending on the database the app uses"
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK/oidc.pem" 2>/dev/null
 openssl rsa -in "$WORK/oidc.pem" -pubout -out "$WORK/oidc.pub.pem" 2>/dev/null

@@ -503,6 +503,33 @@ pub fn parse_validates_options(
 /// words into a validation error and mask the real fault — the tighter
 /// anchor on `HTTP 409` plus a body keyword keeps the false-positive rate
 /// near zero.
+/// Is this 409 SoliDB saying a collection (or a database, which it reports
+/// the same way) is already there? Its type over HTTP, or the sentence it
+/// opens with through the driver — not the words wherever they stand: a
+/// taken key may hold them (`Document with _key 'collection-42' already
+/// exists`), quotes and all.
+fn says_a_collection_exists(said: &str) -> bool {
+    let compact: String = said.split_whitespace().collect();
+    if compact.contains(r#""type":"collectionalreadyexists""#) {
+        return true;
+    }
+    let sentence = [
+        r#""error":""#,
+        r#""errormessage":""#,
+        r#""error": ""#,
+        r#""errormessage": ""#,
+    ]
+    .iter()
+    .find_map(|field| said.split_once(field).map(|(_, text)| text))
+    .unwrap_or(said);
+    let sentence = sentence
+        .trim_start_matches("http 409 conflict")
+        .trim_start_matches([':', ' '])
+        .trim_start_matches("conflict:")
+        .trim_start();
+    sentence.starts_with("collection '")
+}
+
 pub fn is_unique_violation(err: &str) -> bool {
     // A SQL adapter classifies its own driver error and marks it, so there is
     // nothing to infer from prose there (see `db::error::Constraint`).
@@ -531,13 +558,7 @@ pub fn is_unique_violation(err: &str) -> bool {
         .filter(|word| !word.starts_with("http://") && !word.starts_with("https://"))
         .collect();
     let said = said.join(" ");
-    // Nor in a name it quotes: `Document with _key 'collection-42' already
-    // exists` is a taken key. What says a collection exists is the error's
-    // type over HTTP, and the sentence itself through the driver.
-    let unquoted: String = said.split('\'').step_by(2).collect::<Vec<_>>().join(" ");
-    let unquoted = unquoted.split_whitespace().collect::<Vec<_>>().join(" ");
-    !(unquoted.contains("collectionalreadyexists")
-        || unquoted.contains("collection already exists"))
+    !says_a_collection_exists(&said)
 }
 
 /// Is `value` already used in `field` by a row other than `exclude_key`?
@@ -1228,6 +1249,15 @@ mod tests {
         let key_so_named = "HTTP 409 Conflict http://x/_api/database/db/document/items: \
                             {\"error\":\"Conflict: Document with _key 'collection-42' already exists\"}";
         assert!(is_unique_violation(key_so_named));
+        let key_with_quotes = "HTTP 409 Conflict http://x/_api/database/db/document/items: \
+                               {\"error\":\"Document with _key 'a' collection 'b' already exists\"}";
+        assert!(is_unique_violation(key_with_quotes));
+        // A database that exists is reported as a collection that does.
+        let database = "HTTP 409 Conflict http://x/_api/database: \
+                        {\"error\":\"Collection 'Database 'x' already exists' already exists\"}";
+        assert!(!is_unique_violation(database));
+        let plain = "HTTP 409 Conflict: Collection 'users' already exists";
+        assert!(!is_unique_violation(plain));
     }
 
     #[test]
