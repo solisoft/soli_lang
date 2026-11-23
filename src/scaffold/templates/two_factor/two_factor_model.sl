@@ -46,7 +46,11 @@ class TwoFactor < Model
   # Start enrolling: a record with a fresh secret, not confirmed yet. An
   # earlier unconfirmed attempt is replaced; a confirmed one is returned as it
   # is, so this can never swap the secret of an account that has two-factor on.
-  static def start(user)
+  #
+  # `setup_digest` is the digest of a value only the session that starts the
+  # enrolment holds (`started_by?`): the secret is that session's to see and
+  # to confirm, not any session's of the account.
+  static def start(user, setup_digest = nil)
     record = TwoFactor.for_user(user)
     return record if !record.nil? && record.confirmed?
 
@@ -54,8 +58,16 @@ class TwoFactor < Model
     TwoFactor.create({
       "user_id": user._key,
       "secret": Crypto.totp_secret,
-      "backup_code_digests": []
+      "backup_code_digests": [],
+      "setup_digest": setup_digest
     })
+  end
+
+  # Was this enrolment started by the session that holds `nonce`?
+  def started_by?(nonce)
+    return false if @setup_digest.blank? || nonce.to_s.blank?
+
+    Crypto.secure_compare(Crypto.sha256(nonce.to_s), @setup_digest)
   end
 
   # A backup code as it was issued: lowercase, no dash, no spaces.

@@ -348,8 +348,9 @@ class OauthSso
     user.revoke_credentials
     user.confirmed_at = DateTime.utc.to_unix
     user.confirmation_token_digest = nil
-    saved = user.save
-    OauthSso.refuse("could not take over the account") if saved != true || (user._errors ?? []).length > 0
+    # These fields and no others: not the record as this request read it.
+    saved = user._patch({"confirmed_at": user.confirmed_at, "confirmation_token_digest": nil}) rescue false
+    OauthSso.refuse("could not take over the account") if saved != true
   end
 
   static def sign_in(user)

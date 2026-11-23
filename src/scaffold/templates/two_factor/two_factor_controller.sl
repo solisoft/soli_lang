@@ -36,7 +36,12 @@ class TwoFactorController < Controller
       return @_render_index(user, "Set SOLI_ENCRYPTION_KEY first: the secret is stored encrypted.", 500)
     end
 
-    @_render_setup(TwoFactor.start(user), user, "", 200)
+    # The secret is shown to this session and confirmed by it, and no
+    # other: someone else signed in with the password must not read it while
+    # the owner scans it — they would hold the second factor too.
+    nonce = Crypto.random_hex(16)
+    session_set("two_factor_setup", nonce)
+    @_render_setup(TwoFactor.start(user, Crypto.sha256(nonce)), user, "", 200)
   end
 
   # POST /two_factor/confirm — a first code from the app turns it on
@@ -45,6 +50,10 @@ class TwoFactorController < Controller
     return redirect("/login") if user.nil?
     return @_not_the_owner unless auth_own_session?(req)
 
+    # Before anything is looked up: asked in a loop, this must not tell for
+    # free when an enrolment begins.
+    return @_render_index(user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
+
     record = TwoFactor.for_user(user)
     return redirect("/two_factor") if record.nil? || record.confirmed?
     # As for `setup`: an enrolment left half-way must not be finished — and
@@ -52,13 +61,21 @@ class TwoFactorController < Controller
     unless auth_fresh_sign_in?()
       return @_render_index(user, "Sign in again to set up two-factor authentication.", 403)
     end
-    return @_render_setup(record, user, "Too many attempts. Try again in a few minutes.", 429) unless @_allowed
+    # Nor from a session that did not start it (`setup`): it is told
+    # nothing of the secret, and starts its own.
+    unless record.started_by?(session_get("two_factor_setup"))
+      return @_render_index(user, "This set-up was started somewhere else. Start it again here.", 409)
+    end
 
     invalid = "That code is not valid. Check the clock of your device and try again."
     return @_render_setup(record, user, invalid, 422) unless record.accepts?(params["code"])
-    # An authenticator enrolled from a session that ended meanwhile (a
-    # password reset) is not kept.
-    return redirect("/login") unless auth_credential_kept?(user, record)
+    # Not from a session that ended while this was being set up (a password
+    # reset). The record is left alone — unconfirmed, it enrols nothing — so
+    # that a form sent twice cannot have its second copy undo the first.
+    current = User.find_by("_key", user._key)
+    if current.nil? || current.current_session_version != user.current_session_version
+      return redirect("/login")
+    end
 
     # Every other session of this account is signed out; this one stays.
     # Before the account is enrolled, not after: were this to fail, nothing
@@ -70,6 +87,13 @@ class TwoFactorController < Controller
     codes = record.confirm(params["code"])
     return @_render_setup(record, user, invalid, 422) if codes.nil?
 
+    # And once more now that it is enrolled, with the remember-me token
+    # gone: a session restored from a copy of that cookie between the count
+    # above and the enrolment was told "no second factor".
+    user.forget_me
+    user.end_sessions
+    session_set("session_version", user.current_session_version)
+    session_delete("two_factor_setup")
     session_set("two_factor", "ok:#{user._key}")
     render(
       "two_factor/backup_codes",

@@ -34,6 +34,21 @@
   - *A mail that was never delivered kept its link* in the jobs
     collection: its body is removed when the job is given up on.
   - Sign-in answers refusals after a uniform time, like sign-up and reset.
+  - *And from three more readings of the whole, once those were in:*
+    the secret of a two-factor enrolment was shown to any session of the
+    account signed in a moment ago — someone with the password could read
+    it while the owner scanned it, and pass the second factor ever after.
+    It is the session's that started the enrolment (`TwoFactor.start(user,
+    setup_digest)`, `started_by?`); another session is told to start its
+    own. Failed sign-ins are counted within the per-address window, so one
+    address cannot reach the lock by coming back. A password reset also
+    removes the account's push devices. Removing from a SCIM group a
+    member that is gone no longer empties the group; an externalId is
+    looked up within the directory's reach; a taken address is "exists"
+    (409) only for an account the directory may see, a plain refusal (400)
+    otherwise. The OpenID Connect provider refuses a deactivated account's
+    codes and refresh tokens. The SAML and provider take-overs write their
+    own fields, not the whole account.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

@@ -28,8 +28,9 @@ end
 # spread thinly across thousands of accounts never trips it, and an attacker
 # who knows an email address can lock its owner out on demand. Keying on the
 # source address covers the first, and the second for as long as the budget
-# stays under AUTH_MAX_FAILED_ATTEMPTS: one address then cannot reach the
-# lock by itself. (Several addresses still can — the lock is what stops
+# stays under AUTH_MAX_FAILED_ATTEMPTS — failures are counted within that
+# same window (`register_failed_attempt`): one address then cannot reach the
+# lock by itself, at once or by coming back. (Several addresses still can — the lock is what stops
 # them guessing; its owner is mailed, and a password reset lifts it.) Tune
 # per deployment with AUTH_ATTEMPTS_PER_IP and AUTH_IP_WINDOW_SECONDS: an
 # office behind one NAT may need a higher limit, and above the lock's
@@ -247,8 +248,17 @@ end
 # the last sweep is read back here after the last count, which no session
 # opened before it matches.
 def auth_credential_kept?(user, record)
-  current = User.find_by("_key", user._key)
-  return true if !current.nil? && current.current_session_version == user.current_session_version
+  kept = false
+  try
+    current = User.find_by("_key", user._key)
+    kept = !current.nil? && current.current_session_version == user.current_session_version
+  catch error
+    # The question could not be asked: the row is not kept on the strength
+    # of an answer nobody gave.
+    record.delete rescue nil
+    throw error
+  end
+  return true if kept
 
   record.delete
   false
@@ -418,7 +428,8 @@ class User < Model
   def finish_password_reset(plaintext)
     # A reset is what someone does when the account may be in other hands:
     # the ways in that a visitor to the account could have added — API
-    # tokens, passkeys, pending sign-in links — go with the old password.
+    # tokens, passkeys, pending sign-in links, and the push devices that
+    # receive its notifications — go with the old password.
     # (Linked providers and the authenticator app stay: they are the owner's.)
     #
     # The authenticator stays on purpose. Dropped here, the mailbox alone
@@ -430,7 +441,7 @@ class User < Model
     # that is being ended may still be adding a token, and it checks the
     # version after writing (`auth_credential_kept?`).
     @end_sessions
-    ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
+    ["ApiToken", "PasskeyCredential", "MagicLink", "Device"].each do |name|
       model = const_get(name)
       auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
     end
@@ -474,7 +485,7 @@ class User < Model
     # that slipped in since the first count is behind this one — and what it
     # may have added since the sweep above goes in a second one.
     @end_sessions
-    ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
+    ["ApiToken", "PasskeyCredential", "MagicLink", "Device"].each do |name|
       model = const_get(name)
       auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
     end
@@ -775,6 +786,16 @@ class User < Model
       return true
     end
 
+    # A count that stopped growing longer ago than the per-address window
+    # starts again: otherwise one address, never over its budget, reaches
+    # the lock in two windows — eight guesses, a pause, two more.
+    now = DateTime.utc.to_unix
+    if (@failed_attempts ?? 0) > 0 && now - (@last_failed_at ?? 0).to_i > AUTH_IP_WINDOW_SECONDS
+      @failed_attempts = 0
+      @_patch({"failed_attempts": 0})
+    end
+    @last_failed_at = now
+    @_patch({"last_failed_at": now})
     # Counted in the database (`increment` is one atomic write): a read, +1
     # and save let parallel guesses overwrite each other's count, so a burst
     # of wrong passwords slipped past the lockout.

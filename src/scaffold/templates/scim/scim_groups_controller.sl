@@ -145,7 +145,11 @@ class ScimGroupsController < ScimController
       ids = @_member_ids(value)
       return group.replace_members(ids) if op == "replace"
       return ids.each { |id| group.add(id) } if op == "add"
-      return group.replace_members([]) if ids.length == 0
+      # "Remove" with no value empties the group. With a value that names
+      # nobody this directory manages (a user it deleted since), it removes
+      # nobody: not everyone.
+      named = type(value) == "array" ? value.length : (value.nil? ? 0 : 1)
+      return group.replace_members([]) if named == 0
 
       return ids.each { |id| group.remove(id) }
     end

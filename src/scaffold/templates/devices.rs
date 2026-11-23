@@ -92,6 +92,11 @@ def create(req)
   end
 
   let device = Device.register(user_id, platform, token.to_s(), subscription)
+  # Not from a session that ended while this was written (a password reset):
+  # the device would go on receiving the account's notifications.
+  unless auth_credential_kept?(user, device)
+    return { "status": 401, "body": json_stringify({ "error": "login required" }) }
+  end
   {
     "status": 201,
     "headers": { "Content-Type": "application/json" },

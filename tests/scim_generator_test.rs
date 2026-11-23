@@ -1344,3 +1344,104 @@ fn padded_tokens_work_odd_values_are_not_stored_and_guessing_is_throttled() {
     assert_eq!(scim(&server, "GET", "/Users", None, "a-wrong-token").0, 429);
     assert_eq!(scim(&server, "GET", "/Users", None, padded).0, 200);
 }
+
+/// Taking out of a group a member the directory no longer manages — a user
+/// it deleted a moment ago — takes nobody out. Read as "remove with no
+/// value", it emptied the group and every member lost the role.
+#[test]
+fn removing_a_member_who_is_gone_does_not_empty_the_group() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    let ada = create_user(&server, "ada@example.com", TOKEN);
+    let grace = create_user(&server, "grace@example.com", TOKEN);
+    let (status, finance) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance", "members": [{"value": ada}, {"value": grace}]})),
+        TOKEN,
+    );
+    assert_eq!(status, 201, "{finance}");
+    let path = format!("/Groups/{}", finance["id"].as_str().unwrap());
+
+    assert_eq!(
+        scim(&server, "DELETE", &format!("/Users/{grace}"), None, TOKEN).0,
+        204
+    );
+    for gone in [grace.as_str(), "no-such-user"] {
+        let out = json!({"Operations": [{"op": "remove", "path": "members", "value": [{"value": gone}]}]});
+        let (status, body) = scim(&server, "PATCH", &path, Some(out), TOKEN);
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["members"][0]["value"], json!(ada), "{body}");
+    }
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["accountant", "Finance"])
+    );
+    // "Remove" with no value still empties it.
+    let all = json!({"Operations": [{"op": "remove", "path": "members"}]});
+    let (status, body) = scim(&server, "PATCH", &path, Some(all), TOKEN);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(roles(&server)["ada@example.com"], json!(["member"]));
+}
+
+/// What a directory is told about an address or an externalId it cannot
+/// see: nothing. Its own user is found by externalId whatever another
+/// directory's users carry, and a taken address is "exists" only when the
+/// account is in its reach.
+#[test]
+fn another_directory_s_accounts_do_not_show_through_lookups_and_conflicts() {
+    let dir = served_app();
+    let tokens = format!("okta={TOKEN},entra={OTHER_TOKEN}");
+    let server = serve_with(dir.path(), &[("SCIM_TOKENS", &tokens)]);
+    let make = |email: &str, token: &str| {
+        let body = json!({"userName": email, "externalId": "emp-1"});
+        let (status, created) = scim(&server, "POST", "/Users", Some(body), token);
+        assert_eq!(status, 201, "{created}");
+        created["id"].as_str().unwrap().to_string()
+    };
+    let ada = make("ada@example.com", TOKEN);
+    let grace = make("grace@example.com", OTHER_TOKEN);
+
+    // The same externalId in both directories: each finds its own.
+    let by_id = "/Users?filter=externalId%20eq%20%22emp-1%22";
+    let (_, mine) = scim(&server, "GET", by_id, None, TOKEN);
+    assert_eq!(mine["totalResults"], json!(1), "{mine}");
+    assert_eq!(mine["Resources"][0]["id"], json!(ada));
+    let (_, theirs) = scim(&server, "GET", by_id, None, OTHER_TOKEN);
+    assert_eq!(theirs["totalResults"], json!(1), "{theirs}");
+    assert_eq!(theirs["Resources"][0]["id"], json!(grace));
+
+    // An address of its own: "exists". Of the other directory: refused, and
+    // not said why.
+    let again = json!({"userName": "ada@example.com"});
+    let (status, body) = scim(&server, "POST", "/Users", Some(again.clone()), TOKEN);
+    assert_eq!(
+        (status, body["scimType"].clone()),
+        (409, json!("uniqueness")),
+        "{body}"
+    );
+    let (status, body) = scim(&server, "POST", "/Users", Some(again), OTHER_TOKEN);
+    assert_eq!(
+        (status, body["scimType"].clone()),
+        (400, json!("invalidValue")),
+        "{body}"
+    );
+    let rename =
+        json!({"Operations": [{"op": "replace", "path": "userName", "value": "ada@example.com"}]});
+    let (status, body) = scim(
+        &server,
+        "PATCH",
+        &format!("/Users/{grace}"),
+        Some(rename),
+        OTHER_TOKEN,
+    );
+    assert_eq!(
+        (status, body["scimType"].clone()),
+        (400, json!("invalidValue")),
+        "{body}"
+    );
+    assert!(account(&server, "grace@example.com")
+        .0
+        .starts_with("grace@example.com "));
+}

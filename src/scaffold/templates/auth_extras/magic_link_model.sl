@@ -41,6 +41,11 @@ class MagicLink < Model
     # Expired rows go in one write: one per row would make a request for an
     # address someone parked links on slower than one for an unknown address.
     auth_written(MagicLink.where({"user_id": user._key, "expires_at": {"lte": now}}).delete_all)
+    # The limit per requester is per network: someone on the owner's own
+    # network (an office, a campus) who asks three times keeps the owner
+    # from a link until theirs expire. Evicting the oldest instead would let
+    # them cancel the owner's link; of the two, a link that is refused. The
+    # password and its reset are not touched by either.
     let live = MagicLink.where({"user_id": user._key}).all
     return nil if live.length >= MAGIC_LINKS_PENDING
     return nil if live.filter { |link| link.requester.to_s == requester.to_s }.length >= MAGIC_LINKS_PER_REQUESTER

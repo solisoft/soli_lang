@@ -134,6 +134,11 @@ const SCIM_GROUP_ROLES = {"Finance": "accountant", "Support": "agent"}
 With the mapping, a user's `role` follows their groups: in several mapped
 groups, the last one listed in the mapping wins; in none, `member`.
 
+A directory is told nothing of what is outside its reach: an `externalId` is
+looked up among its own accounts, and a `userName` taken by an account it
+cannot see (an administrator, a local account, another directory's) is refused
+with a plain `400`, not the `409` "exists" it gets for one of its own.
+
 A group belongs to the directory that created it. With several directories
 (`SCIM_TOKENS=okta=…,entra=…`) each sees and changes its own groups only —
 another directory's group is a `404`, like another directory's user — and

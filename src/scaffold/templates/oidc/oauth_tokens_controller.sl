@@ -216,7 +216,13 @@ class OauthTokensController < Controller
   # code, a device approval or a refresh token when it was made? A password
   # reset or an account takeover bumps it, and ends every grant made before.
   # A row from before the stamp existed counts as version 0.
+  #
+  # A deactivated account (`soli generate scim`) is past every grant too:
+  # its sessions were ended a moment before it was marked, and a code made
+  # in between carries the new version.
   def _session_version_moved?(user, version)
+    return true unless user.deactivated_at.nil?
+
     user.current_session_version > (version ?? 0).to_i
   end
 

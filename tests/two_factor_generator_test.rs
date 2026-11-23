@@ -1226,3 +1226,69 @@ print("backup #{codes[0]}")
     let fresh = owner.post("/two_factor/backup_codes", json!({"password": PASSWORD}));
     assert_eq!(fresh.status, 200, "{}", fresh.body);
 }
+
+/// The secret of an enrolment is shown to the session that started it, and
+/// to no other session of the account. Someone signed in with the password
+/// who could read it while the owner scans the QR code would hold the
+/// second factor too — and be asked for it, and pass, ever after.
+#[test]
+fn the_enrolment_secret_is_the_starting_sessions_alone() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    let mut ada = Browser::new(&server);
+    let signup = ada.post("/signup", json!({"email": EMAIL, "password": PASSWORD}));
+    assert_eq!(signup.status, 200, "{}", signup.body);
+    confirm_address(dir.path(), EMAIL);
+    assert_eq!(ada.sign_in().status, 302);
+    let mut other = Browser::new(&server);
+    assert_eq!(other.sign_in().status, 302);
+
+    // Nothing pending: asked in a loop, it tells nothing, and is counted.
+    let idle = other.post("/two_factor/confirm", json!({"code": "000000"}));
+    assert_eq!(idle.location, "/two_factor", "{}", idle.body);
+
+    let setup = ada.post("/two_factor/setup", json!({}));
+    assert_eq!(setup.status, 200, "{}", setup.body);
+    let secret = marked(&setup.body, "data-two-factor-secret").remove(0);
+
+    // The other session, with a junk code: told the set-up is not its own,
+    // and nothing of the secret.
+    let peek = other.post("/two_factor/confirm", json!({"code": "000000"}));
+    assert_eq!(peek.status, 409, "{}", peek.body);
+    assert!(!peek.body.contains(&secret), "the secret was shown");
+    assert!(!peek.body.contains("<svg"), "a QR code was shown");
+    // Nor with a right code: it cannot finish what it did not start.
+    settle();
+    let stolen = other.post(
+        "/two_factor/confirm",
+        json!({"code": totp(&secret, unix_now())}),
+    );
+    assert_eq!(stolen.status, 409, "{}", stolen.body);
+
+    // It may start its own — which replaces the owner's. The owner is then
+    // told to start again, and is not handed the other's secret to scan.
+    let theirs = other.post("/two_factor/setup", json!({}));
+    assert_eq!(theirs.status, 200, "{}", theirs.body);
+    let their_secret = marked(&theirs.body, "data-two-factor-secret").remove(0);
+    assert_ne!(their_secret, secret);
+    let replaced = ada.post(
+        "/two_factor/confirm",
+        json!({"code": totp(&secret, unix_now())}),
+    );
+    assert_eq!(replaced.status, 409, "{}", replaced.body);
+    assert!(!replaced.body.contains(&their_secret), "{}", replaced.body);
+
+    // The owner starts again and confirms: enrolled with a secret only the
+    // owner's session saw, and the other session is out.
+    let again = ada.post("/two_factor/setup", json!({}));
+    let mine = marked(&again.body, "data-two-factor-secret").remove(0);
+    settle();
+    let confirmed = ada.post(
+        "/two_factor/confirm",
+        json!({"code": totp(&mine, unix_now())}),
+    );
+    assert_eq!(confirmed.status, 200, "{}", confirmed.body);
+    assert_eq!(marked(&confirmed.body, "data-backup-code").len(), 10);
+    assert!(ada.signed_in());
+    assert!(!other.signed_in());
+}

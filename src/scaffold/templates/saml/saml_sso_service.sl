@@ -324,8 +324,16 @@ class SamlSso
     user.sso_only = true
     # Until its identity row is stored: see `link_account`.
     user.saml_link_pending = true
-    saved = user.save
-    throw "could not take over #{user.email}" if saved != true || (user._errors ?? []).length > 0
+    # These fields and no others: the whole record, written back as this
+    # request read it, would undo what happened to the account meanwhile (a
+    # directory deactivating it).
+    saved = user._patch({
+      "confirmed_at": user.confirmed_at,
+      "confirmation_token_digest": nil,
+      "sso_only": true,
+      "saml_link_pending": true
+    }) rescue false
+    throw "could not take over #{user.email}" if saved != true
   end
 
   # The account an assertion signs in. Known identity first. Otherwise the
@@ -451,10 +459,12 @@ class SamlSso
       # A directory account with no password signs in through the identity
       # provider from now on — and whatever session it had open (a magic
       # link's, which has no expiry of its own) closes.
+      # (Counted in the database, and one field written: not the record as
+      # this request read it, which a deactivation may have changed since.)
       user.sso_only = true
-      user.session_version = user.current_session_version + 1
-      saved = user.save
-      throw "could not update #{email}" if saved != true || (user._errors ?? []).length > 0
+      user.end_sessions
+      saved = user._patch({"sso_only": true}) rescue false
+      throw "could not update #{email}" if saved != true
     end
   end
 end

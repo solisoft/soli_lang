@@ -140,7 +140,8 @@ class ScimController < Controller
     body = @_body
     email = @_email_of(body)
     return @_error(400, "userName is required", "invalidValue") if email.blank?
-    return @_error(409, "A user with that userName exists", "uniqueness") unless User.find_by("email", email).nil?
+    conflict = @_conflict(email, nil)
+    return conflict unless conflict.nil?
 
     user = User.new
     user.email = email
@@ -169,7 +170,8 @@ class ScimController < Controller
     body = @_body
     email = @_email_of(body)
     return @_error(400, "userName is required", "invalidValue") if email.blank?
-    return @_error(409, "A user with that userName exists", "uniqueness") if @_taken?(email, user)
+    conflict = @_conflict(email, user)
+    return conflict unless conflict.nil?
 
     @_take_charge(user)
     user.email = email
@@ -200,7 +202,8 @@ class ScimController < Controller
         @_set(user, path, removing ? nil : operation["value"], removing)
       end
     end
-    return @_error(409, "A user with that userName exists", "uniqueness") if @_taken?(user.email, user)
+    conflict = @_conflict(user.email, user)
+    return conflict unless conflict.nil?
 
     @_saved(user)
   end
@@ -275,10 +278,17 @@ class ScimController < Controller
     user.scim_directory = @_directory if user.scim_directory.blank?
   end
 
-  # Is `email` another account's?
-  def _taken?(email, user)
+  # The refusal when `email` is another account's, or nil. "A user with
+  # that userName exists" (409) is said of an account the directory may see;
+  # of any other — an administrator, a local account, another directory's —
+  # it is told only that the write was refused, as for any other reason:
+  # those accounts are not there for it.
+  def _conflict(email, user)
     other = User.find_by("email", email.to_s)
-    !other.nil? && other._key != user._key
+    return nil if other.nil? || (!user.nil? && other._key == user._key)
+    return @_error(409, "A user with that userName exists", "uniqueness") if @_manages?(other)
+
+    @_error(400, "The user could not be saved", "invalidValue")
   end
 
   # Save, and answer with what was stored — or with the refusal. A directory
@@ -392,9 +402,17 @@ class ScimController < Controller
 
   # The user a filter names, or nil.
   def _find(attribute, value)
-    by_name = attribute == "username"
-    user = User.find_by(by_name ? "email" : "scim_external_id", by_name ? value.downcase : value)
-    @_manages?(user) ? user : nil
+    if attribute == "username"
+      user = User.find_by("email", value.downcase)
+      return @_manages?(user) ? user : nil
+    end
+
+    # An externalId is the directory's own: looked up among the accounts in
+    # its reach, or another directory's account with the same id would hide
+    # this one's.
+    reach = @_scope
+    reach["scim_external_id"] = value
+    User.where(reach).all.filter { |user| @_manages?(user) }.first
   end
 
   # The request body. Directories send `application/scim+json`.
