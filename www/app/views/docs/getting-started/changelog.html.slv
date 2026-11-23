@@ -20,8 +20,16 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.40.0.</p>
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.40.1.</p>
+    </section>
+
+    <section id="v2-40-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.40.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-23</span></h2>
+        <h3 id="v2-40-1-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A gzip request body is decoded.</strong> A request sent with <code class="text-cyan-400">Content-Encoding: gzip</code> (or <code class="text-cyan-400">x-gzip</code>) reached the app with its bytes destroyed and an empty <code class="text-cyan-400">req["json"]</code>. It is now decoded before anything reads the body, under its own cap, <code class="text-cyan-400">SOLI_MAX_INFLATED_BODY_SIZE</code> (ten times <code class="text-cyan-400">SOLI_MAX_BODY_SIZE</code> by default): <code>413</code> past it, <code>400</code> for bytes that are not gzip (<a href="/docs/getting-started/configuration" class="text-amber-400 hover:underline">Configuration</a>).</li>
+        </ul>
+        <h3 id="v2-40-1-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Encrypted bundles: the key is stretched with Argon2id.</strong> It was one SHA-256 of the key material, which a passphrase does not survive when someone holds the file. New bundles carry a salt and an Argon2id-derived key; older ones still open, with a notice to rebuild them (<a href="/docs/development-tools/deploy" class="text-amber-400 hover:underline">Deploy</a>).</li>
             <li><strong class="text-white"><code class="text-cyan-400">soli update</code> can verify a release signature.</strong> A binary built with a release key also wants the tarball&rsquo;s signature, which only the key&rsquo;s holder can make, on top of the digest published beside it.</li>
@@ -56,7 +64,7 @@
             <li><strong class="text-white">OAuth client.</strong> An identity with no subject is refused, a link that was not stored fails the sign-in, an account already linked at a provider is not linked again by address, and a non-ASCII address matches no account (<a href="/docs/security/oauth-client" class="text-amber-400 hover:underline">OAuth client</a>).</li>
             <li><strong class="text-white"><code class="text-cyan-400">Saml.verify_response</code> says more, and can demand more.</strong> The result carries <code class="text-cyan-400">certificate_expires_at</code> / <code class="text-cyan-400">certificate_expired</code> for the certificate that signed the claims (the validity period was never read), and the NameID&rsquo;s <code class="text-cyan-400">name_qualifier</code> / <code class="text-cyan-400">sp_name_qualifier</code>. <code class="text-cyan-400">require_valid_certificate: true</code> refuses a signature from a certificate outside its period. A system clock that cannot be read now fails the verification instead of making every assertion look unexpired (<a href="/docs/security/saml" class="text-amber-400 hover:underline">SAML</a>).</li>
         </ul>
-        <h3 id="unreleased-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM &amp; domain</h3>
+        <h3 id="v2-40-1-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM &amp; domain</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Snapshots for event-sourced aggregates.</strong> <code class="text-cyan-400">static snapshot_every: Int = 100</code> on an <code class="text-cyan-400">EventSourced</code> class writes a snapshot of its state every 100 events, in the transaction of the events; <code class="text-cyan-400">load</code> restores it and replays only what came after, instead of the whole stream. <code class="text-cyan-400">snapshot_version</code> invalidates old snapshots when the state changes shape, <code class="text-cyan-400">snapshot_state</code> / <code class="text-cyan-400">restore_snapshot</code> handle fields that are not plain values, and <code class="text-cyan-400">take_snapshot</code> backfills (<a href="/docs/database/domain-events#snapshots" class="text-amber-400 hover:underline">Snapshots</a>).</li>
             <li><strong class="text-white">The error points to <code class="text-cyan-400">abstract def</code>.</strong> A base class calling a method an implemented interface declares but nothing defines got only &ldquo;Cannot access member &lsquo;check_parameters&rsquo; on type &lsquo;Base&rsquo;&rdquo;; it now adds that <code class="text-cyan-400">Base</code> implements the interface declaring it, and to define it or make <code class="text-cyan-400">Base</code> an <code class="text-cyan-400">abstract class</code> with <code class="text-cyan-400">abstract def check_parameters</code> (<code class="text-cyan-400">soli explain E0304</code>).</li>
