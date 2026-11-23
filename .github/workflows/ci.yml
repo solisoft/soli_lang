@@ -210,6 +210,16 @@ jobs:
         working-directory: www
         run: cargo run --locked --manifest-path ../Cargo.toml -- test --require-assertions --no-coverage
 
+      # The auth scaffold's single-use values — the first account, a reset
+      # link, a passkey challenge, an authorization code, a refresh token, a
+      # device code — each used by several requests in the same instant,
+      # against a real SoliDB: a generated app on four request workers. The
+      # Rust tests send requests together too, but on SQLite, and the OpenID
+      # Connect provider runs on SoliDB only. The script starts its own
+      # throwaway server (the binary downloaded above) on a free port.
+      - name: Auth single-use values, sent together, against SoliDB
+        run: PATH="/tmp/solidb:$PATH" scripts/auth_races_solidb.sh target/debug/soli
+
   # Keeps the Windows port from silently re-breaking. The crate has no
   # structural pressure to stay portable, so without a gate the next
   # unconditional `nix` import or `/`-joined path lands unnoticed and is far

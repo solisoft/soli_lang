@@ -3,8 +3,8 @@
 # same instant, against a real SoliDB.
 #
 # The Rust tests send requests together too, but on SQLite, and the OpenID
-# Connect provider is SoliDB-only: CI has no SoliDB, so this is run by hand.
-# It generates an app with this `soli`, starts a throwaway `solidb` and the
+# Connect provider is SoliDB-only. CI runs this after the specs (the `test`
+# job), and it runs by hand the same way. It generates an app with this `soli`, starts a throwaway `solidb` and the
 # app on four request workers, and checks that each of these goes through
 # exactly once: the first account becoming admin, a password-reset link, a
 # passkey challenge, an authorization code, a refresh token, a device code.
@@ -60,8 +60,12 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir "$WORK/data"
-SOLIDB_ADMIN_PASSWORD=testpass123 solidb --host 127.0.0.1 --port "$DB_PORT" \
-  --data-dir "$WORK/data" --no-lua >"$WORK/solidb.log" 2>&1 &
+# (`--no-lua` where this solidb has it: nothing here runs a script.)
+NO_LUA=()
+if solidb --help 2>&1 | grep -q -- "--no-lua"; then NO_LUA=(--no-lua); fi
+SOLIDB_ADMIN_PASSWORD=testpass123 JWT_SECRET=throwaway-secret-of-the-auth-race-script \
+  solidb --host 127.0.0.1 --port "$DB_PORT" --data-dir "$WORK/data" ${NO_LUA[@]+"${NO_LUA[@]}"} \
+  >"$WORK/solidb.log" 2>&1 &
 PIDS+=($!)
 ready "$!" "$DB_PORT" solidb "$WORK/solidb.log"
 
