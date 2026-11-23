@@ -961,7 +961,7 @@ pub(crate) fn ensure_cached_runtime(
         return Ok(cache_path);
     }
 
-    let bytes = download_release_runtime(target, version, policy.strict_checksum)?;
+    let (bytes, signed) = download_release_runtime(target, version, policy.strict_checksum)?;
 
     let parent = cache_path
         .parent()
@@ -983,10 +983,8 @@ pub(crate) fn ensure_cached_runtime(
         )
     })?;
 
-    // Downloaded by a keyed soli that accepts nothing unsigned: the
-    // signature was verified, or the download above would have failed.
-    if keyed && !allow_unsigned {
-        let _ = std::fs::write(&marker, sha256_hex(&bytes));
+    if signed {
+        let _ = std::fs::write(&marker, signed_mark(&cache_path, &sha256_hex(&bytes)));
     } else {
         let _ = std::fs::remove_file(&marker);
     }
@@ -1016,7 +1014,37 @@ pub(crate) fn marked_signed(cache_path: &std::path::Path) -> bool {
     let Ok(mark) = std::fs::read_to_string(signed_marker_path(cache_path)) else {
         return false;
     };
-    crate::cli::commands::sha256_of_file(cache_path).is_ok_and(|actual| actual == mark.trim())
+    let mut fields = mark.split_whitespace();
+    let Some(digest) = fields.next() else {
+        return false;
+    };
+    // The file as it was when marked — same size, same modification time —
+    // is not hashed again on every command; anything else is.
+    if let (Some(stamp), Some(now)) = (fields.next(), file_stamp(cache_path)) {
+        if stamp == now {
+            return true;
+        }
+    }
+    crate::cli::commands::sha256_of_file(cache_path).is_ok_and(|actual| actual == digest)
+}
+
+/// What the mark holds: the runtime's digest, then its size and modification
+/// time as they were when the signature was verified.
+fn signed_mark(cache_path: &std::path::Path, digest: &str) -> String {
+    match file_stamp(cache_path) {
+        Some(stamp) => format!("{digest} {stamp}"),
+        None => digest.to_string(),
+    }
+}
+
+fn file_stamp(path: &std::path::Path) -> Option<String> {
+    let meta = path.metadata().ok()?;
+    let modified = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some(format!("{}:{}", meta.len(), modified.as_nanos()))
 }
 
 /// Whether a cached entry is one this soli runs without fetching it again.
@@ -1096,7 +1124,7 @@ fn download_release_runtime(
     target: &str,
     version: &str,
     strict_checksum: bool,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Vec<u8>, bool), String> {
     let allow_unsigned = allow_unsigned_runtime();
     download_release_runtime_from(
         &release_base_url(),
@@ -1108,6 +1136,9 @@ fn download_release_runtime(
     )
 }
 
+/// Returns the runtime and whether the release key's signature was verified
+/// on it.
+///
 /// [`download_release_runtime`] with what it reads from the build and the
 /// environment handed in: the release host, the release key this binary was
 /// built with (if any), and whether an unsigned release is accepted.
@@ -1118,7 +1149,7 @@ fn download_release_runtime_from(
     strict_checksum: bool,
     release_pubkey: Option<&str>,
     allow_unsigned: bool,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Vec<u8>, bool), String> {
     let tarball = format!("soli-{}.tar.gz", target);
     let url = format!("{}/v{}/{}", base_url, version, tarball);
 
@@ -1205,6 +1236,7 @@ fn download_release_runtime_from(
     // A soli built with a release key holds a pinned interpreter and an
     // embedded runtime to what it holds its own update to: the digest sits
     // beside the tarball, the signature does not come from the same hands.
+    let mut signed = false;
     if let Some(pubkey) = release_pubkey {
         let sig_url = format!("{}.sig", url);
         match client.get(&sig_url).send() {
@@ -1221,6 +1253,7 @@ fn download_release_runtime_from(
                 )
                 .map_err(|e| format!("soli {version} {tarball}: {e}"))?;
                 println!("  Signature verified.");
+                signed = true;
             }
             Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
                 // A release from before releases were signed. Named, not
@@ -1253,14 +1286,15 @@ fn download_release_runtime_from(
     // Windows tarballs carry `soli.exe`; every other target carries `soli`.
     let file_name = runtime_file_name_for(target);
     let binary_path = temp_dir.path().join(file_name);
-    std::fs::read(&binary_path).map_err(|e| {
+    let runtime = std::fs::read(&binary_path).map_err(|e| {
         format!(
             "tarball did not contain a '{}' binary ({}): {}",
             file_name,
             binary_path.display(),
             e
         )
-    })
+    })?;
+    Ok((runtime, signed))
 }
 
 /// Public label helper for `run_build`'s summary line.
@@ -1628,11 +1662,17 @@ mod tests {
 
         // Signed for this version and this artifact.
         let good = sign_release(&private_pem, "v9.9.9", name, &tarball);
+        let verified = (runtime.clone(), true);
+        let digest_only = (runtime.clone(), false);
         assert_eq!(
             fetch(Some(good.clone()), Some(&public), false).unwrap(),
-            runtime
+            verified
         );
-
+        // Verified is verified, whatever was allowed.
+        assert_eq!(
+            fetch(Some(good.clone()), Some(&public), true).unwrap(),
+            verified
+        );
         // The same tarball, signed as an older release: a rollback.
         let older = sign_release(&private_pem, "v9.9.8", name, &tarball);
         let err = fetch(Some(older), Some(&public), false).unwrap_err();
@@ -1656,10 +1696,10 @@ mod tests {
         // No signature published: refused, unless the person said so.
         let err = fetch(None, Some(&public), false).unwrap_err();
         assert!(err.contains("publishes no signature"), "{err}");
-        assert_eq!(fetch(None, Some(&public), true).unwrap(), runtime);
+        assert_eq!(fetch(None, Some(&public), true).unwrap(), digest_only);
 
         // A soli built without a key checks the digest, as before.
-        assert_eq!(fetch(None, None, false).unwrap(), runtime);
+        assert_eq!(fetch(None, None, false).unwrap(), digest_only);
     }
 
     /// A keyed soli does not run from the cache what only a digest vouched
@@ -1679,8 +1719,25 @@ mod tests {
         let entry = dir.path().join("soli-linux-amd64");
         std::fs::write(&entry, b"the runtime").unwrap();
         assert!(!marked_signed(&entry), "no mark");
+        let mark = signed_mark(&entry, &sha256_hex(b"the runtime"));
+        assert_eq!(
+            mark.split_whitespace().count(),
+            2,
+            "digest, then size:mtime"
+        );
+        std::fs::write(signed_marker_path(&entry), &mark).unwrap();
+        assert!(marked_signed(&entry));
+        // A mark of the digest alone, or one whose stamp is stale, is settled
+        // by hashing the file.
         std::fs::write(signed_marker_path(&entry), sha256_hex(b"the runtime")).unwrap();
         assert!(marked_signed(&entry));
+        std::fs::write(
+            signed_marker_path(&entry),
+            format!("{} 1:1", sha256_hex(b"the runtime")),
+        )
+        .unwrap();
+        assert!(marked_signed(&entry));
+        std::fs::write(signed_marker_path(&entry), &mark).unwrap();
         std::fs::write(&entry, b"another runtime, put there since").unwrap();
         assert!(!marked_signed(&entry), "the mark outlived its file");
 

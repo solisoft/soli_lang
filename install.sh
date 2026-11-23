@@ -101,12 +101,19 @@ if [ -z "$TAG" ]; then
   if command -v curl >/dev/null 2>&1; then
     RESOLVED=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null || true)
   else
-    RESOLVED=$(wget -S --max-redirect=0 -O /dev/null "$LATEST_URL" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tr -d '\r' | tail -1)
+    # The header as the server sent it (wget also prints its own
+    # "Location: … [following]" line): the first word after the name.
+    RESOLVED=$(wget -S --spider "$LATEST_URL" 2>&1 | sed -n 's/^ *[Ll]ocation: *\([^ ]*\).*/\1/p' | tr -d '\r' | tail -1)
   fi
   case "$RESOLVED" in
     */releases/tag/v[0-9]*) TAG="${RESOLVED##*/releases/tag/}" ;;
   esac
 fi
+
+# A tag is a version: anything else in it is not one this script follows.
+case "$TAG" in
+  *[!A-Za-z0-9._-]*) TAG="" ;;
+esac
 
 # --- Never backwards ---
 # "Latest" is what a server said. A release older than the one installed is
@@ -114,7 +121,7 @@ fi
 # purpose).
 version_number() {
   # "soli 2.41.0", "v2.41.0" -> 2041000; anything else -> nothing.
-  printf '%s\n' "$1" | sed -n 's/^[^0-9]*\([0-9]\{1,4\}\)\.\([0-9]\{1,3\}\)\.\([0-9]\{1,3\}\).*$/\1 \2 \3/p' |
+  printf '%s\n' "$1" | sed -n 's/^[^0-9]*0*\([0-9]\{1,4\}\)\.0*\([0-9]\{1,3\}\)\.0*\([0-9]\{1,3\}\).*$/\1 \2 \3/p' |
     { read -r major minor patch || exit 0; echo $((major * 1000000 + minor * 1000 + patch)); }
 }
 if [ -n "$TAG" ] && [ -n "$OLD_VERSION" ] && [ "${SOLI_INSTALL_ALLOW_DOWNGRADE:-}" != "1" ]; then

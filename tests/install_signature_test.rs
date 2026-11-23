@@ -68,12 +68,12 @@ fn sign(private_pem: &str, tag: &str, artifact: &str, tarball: &[u8]) -> String 
 
 /// Serve the release: the API's "latest", the tarball, its digest and — when
 /// there is one — its signature.
-fn release_host(tarball: Vec<u8>, signature: Option<String>) -> u16 {
+fn release_host(tarball: Vec<u8>, signature: Option<String>, api_answers: bool) -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let sha = sha256_hex(&tarball);
     std::thread::spawn(move || {
-        for _ in 0..8 {
+        for _ in 0..12 {
             let Ok((mut stream, _)) = listener.accept() else {
                 return;
             };
@@ -84,11 +84,25 @@ fn release_host(tarball: Vec<u8>, signature: Option<String>) -> u16 {
                 .nth(1)
                 .unwrap_or("")
                 .to_string();
-            let (status, body): (&str, Vec<u8>) = if path.ends_with("/latest") {
-                (
-                    "200 OK",
-                    format!("{{\n  \"tag_name\": \"{TAG}\"\n}}\n").into_bytes(),
-                )
+            // The release page's "latest": a redirect to the tag's page.
+            if path.ends_with("/page/latest") {
+                let head = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{port}/page/releases/tag/{TAG}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = stream.write_all(head.as_bytes());
+                continue;
+            }
+            let (status, body): (&str, Vec<u8>) = if path.ends_with("/api/latest") {
+                if api_answers {
+                    (
+                        "200 OK",
+                        format!("{{\n  \"tag_name\": \"{TAG}\"\n}}\n").into_bytes(),
+                    )
+                } else {
+                    ("403 rate limit exceeded", Vec::new())
+                }
+            } else if path.contains("/releases/tag/") {
+                ("200 OK", Vec::new())
             } else if path.ends_with(".sha256") {
                 ("200 OK", sha.clone().into_bytes())
             } else if path.ends_with(".sig") {
@@ -120,14 +134,20 @@ struct Install {
 /// Run the installer against a release host. `pubkey` is what the release
 /// key line of the script would hold.
 fn install(signature: Option<String>, pubkey: Option<&str>) -> Install {
-    let port = release_host(tarball(), signature);
+    install_with(signature, pubkey, true)
+}
+
+fn install_with(signature: Option<String>, pubkey: Option<&str>, api_answers: bool) -> Install {
+    let port = release_host(tarball(), signature, api_answers);
     let dir = tempfile::tempdir().unwrap();
     let script =
         std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh")).unwrap();
     let api = "https://api.github.com/repos/${REPO}/releases/latest";
     let downloads = "https://github.com/${REPO}/releases/download";
-    assert!(script.contains(api) && script.contains(downloads));
+    let page = "https://github.com/${REPO}/releases/latest\"";
+    assert!(script.contains(api) && script.contains(downloads) && script.contains(page));
     let script = script
+        .replace(page, &format!("http://127.0.0.1:{port}/page/latest\""))
         .replace(api, &format!("http://127.0.0.1:{port}/api/latest"))
         .replace(downloads, &format!("http://127.0.0.1:{port}/dl"));
     let script_path = dir.path().join("install.sh");
@@ -235,7 +255,7 @@ fn without_a_release_key_the_installer_checks_the_digest() {
 /// not installed, signed or not, unless the person asks for it.
 #[test]
 fn the_installer_does_not_go_back_to_an_older_release() {
-    let port = release_host(tarball(), None);
+    let port = release_host(tarball(), None, true);
     let dir = tempfile::tempdir().unwrap();
     let script = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh"))
         .unwrap()
@@ -267,11 +287,52 @@ fn the_installer_does_not_go_back_to_an_older_release() {
         .output()
         .unwrap();
     let output = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(!out.status.success(), "{output}");
     assert!(
         output.contains("is older than the installed soli 10.0.0"),
         "{output}"
     );
+    assert!(!output.contains("Downloading"), "{output}");
     assert!(std::fs::read_to_string(&installed)
         .unwrap()
         .contains("10.0.0"));
+}
+
+/// The API is rate-limited; the release page's redirect is not. A keyed
+/// install needs the tag — the signature names it — and gets it there.
+#[test]
+fn a_rate_limited_api_does_not_stop_a_keyed_install() {
+    let (private_pem, public) = solilang::update::generate_keypair().unwrap();
+    let bytes = tarball();
+    let run = install_with(
+        Some(sign(&private_pem, TAG, &artifact(), &bytes)),
+        Some(&public),
+        false,
+    );
+    assert!(
+        run.output.contains(&format!("Installing Soli {TAG}")),
+        "{}",
+        run.output
+    );
+    assert!(run.output.contains("Signature verified."), "{}", run.output);
+    assert!(run.installed, "{}", run.output);
+}
+
+/// A key line that does not hold a key says so, rather than blaming the
+/// release's signature.
+#[test]
+fn a_malformed_release_key_is_named_as_such() {
+    let (private_pem, _) = solilang::update::generate_keypair().unwrap();
+    let bytes = tarball();
+    let run = install(
+        Some(sign(&private_pem, TAG, &artifact(), &bytes)),
+        Some("bm90IGEga2V5"),
+    );
+    assert!(
+        run.output
+            .contains("RELEASE_PUBKEY is not a P-256 public key"),
+        "{}",
+        run.output
+    );
+    assert!(!run.installed);
 }
