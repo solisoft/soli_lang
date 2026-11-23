@@ -87,7 +87,8 @@ document instead of text, for editors and CI:
 ```
 
 For a lint finding, `code` is the rule id (`smell/undefined-local`) and
-`name` is `null`; `soli lint` prints `files_linted` and `issues` instead of
+`name` is `null` — except a file `soli lint` could not parse, which is the
+`E` diagnostic above, and one it could not read (`io/error`); `soli lint` prints `files_linted` and `issues` instead of
 the counts above. The exit status is the same as in text mode. The editor
 extension (LSP) reports the same codes on syntax errors.
 

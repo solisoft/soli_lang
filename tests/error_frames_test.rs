@@ -424,6 +424,8 @@ fn soli_lint_fails_on_a_file_that_does_not_parse() {
     // the file's end here, where the block `while` opened is never closed.
     let found = stdout(&plain);
     assert!(found.contains("broken.sl:4:1 - [parse/error] "), "{said}");
+    // The place is said once: the message does not repeat it.
+    assert!(!found.contains(" at 4:1"), "{found}");
     assert!(!said.contains("No issues found"), "{said}");
 
     let json = soli(dir.path(), &["lint", "--format=json", "broken.sl"]);

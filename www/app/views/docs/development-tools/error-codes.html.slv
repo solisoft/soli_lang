@@ -107,7 +107,7 @@ soli explain                        # list every code and rule</code></pre>
         </div>
         <p class="text-gray-400 mb-4">
             For a lint finding, <code>code</code> is the rule id (<code>smell/undefined-local</code>) and <code>name</code>
-            is <code>null</code>; <code>soli lint</code> prints <code>files_linted</code> and <code>issues</code> instead of
+            is <code>null</code> &mdash; except a file <code>soli lint</code> could not parse, which is the <code>E</code> diagnostic above, and one it could not read (<code>io/error</code>); <code>soli lint</code> prints <code>files_linted</code> and <code>issues</code> instead of
             the counts above. The exit status is the same as in text mode. The editor extension (LSP) reports the same
             codes on syntax errors.
         </p>

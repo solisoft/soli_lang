@@ -11,7 +11,9 @@ soli lint app/main.sl      # one file
 
 Exit code `0` when clean, `1` when anything was found — a file that does not
 parse (`[parse/error]`, at the error's line) or cannot be read (`[io/error]`)
-counts: none of its rules ran. A directory whose name starts with `_` or `.`
+counts: none of its rules ran. These two tags are not rules (`soli explain`
+does not know them); in `--format=json` a parse error is the diagnostic
+`soli check` gives — an `E` code, severity `error`. A directory whose name starts with `_` or `.`
 is not walked: keep a deliberately broken fixture there.
 
 Each issue is one line — path, line, column, rule, message:

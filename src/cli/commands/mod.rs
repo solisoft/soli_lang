@@ -1637,12 +1637,14 @@ pub fn run_lint(paths: &[String], format: OutputFormat, frames: bool) {
                         .span()
                         .map(|span| (span.line, span.column))
                         .unwrap_or((1, 1));
+                    // (The diagnostic's message: the error's own ends in
+                    // " at L:C", which the line already says.)
                     println!(
                         "{}:{}:{} - [parse/error] {}",
                         file.display(),
                         line,
                         column,
-                        e.inner_message()
+                        diagnostic.message
                     );
                     if frames {
                         print!(
