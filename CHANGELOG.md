@@ -106,6 +106,17 @@
     The other whole-record writes of the auth templates that could bring
     a removed row back on the SQL adapters (a provider identity, an OIDC
     consent, a SCIM group) write by filter.
+  - *And from a seventh round*, by readers who chose for themselves the
+    five places to distrust (no way to get, keep or raise a session; nothing
+    in OAuth, the OIDC provider or SAML for the third round running): a
+    SCIM `DELETE /Users/:id` that the database refused — records of the
+    app still referring to the account — answered 204 over an account left
+    whole and active, one password reset away from its former user. It is
+    deactivated and the directory told. Sign-in reads the lock again after
+    the password verified: guesses sent together all passed the test made
+    before, and the right one got in over a lock that had just landed. An
+    erasure removes the second factor with the account, not before it. The
+    offline outbox no longer accepts an item the database did not store.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

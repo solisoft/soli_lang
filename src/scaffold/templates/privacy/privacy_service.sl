@@ -201,10 +201,16 @@ class Privacy
     user.end_sessions
     models = Privacy.models
     models.keys.each do |name|
+      # The second factor goes with the account, not before it: were the
+      # account's own erasure to fail below, it would be left with its
+      # password and nothing behind it.
+      next if name == "TwoFactor"
+
       Privacy.erase_model(name, models[name], user, report)
     end
 
     Privacy.erase_account(user)
+    Privacy.erase_model("TwoFactor", models["TwoFactor"], user, report) if models.has_key("TwoFactor")
     # And what could sign in to it, once more, now that the account is
     # closed: nothing added since the first sweep is left on the shell.
     user._sweep_credentials

@@ -221,7 +221,18 @@ class ScimController < Controller
     # `@_set_active(user, false)` then `user.save`.
     user.revoke_credentials
     ScimMembership.where({"user_id": user._key}).delete_all
-    user.delete
+    deleted = user.delete
+    # A delete the database refuses (records of the app still refer to the
+    # account) answers false and leaves the row: said gone, the account
+    # would be whole, active, and one "forgot password" away from its
+    # former user. It is kept out instead — deactivated, its group role
+    # taken back — and the directory is told the delete did not happen.
+    if deleted == false || !User.find_by("_key", user._key).nil?
+      written = User.where({"_key": user._key}).update_all({"deactivated_at": DateTime.utc.to_unix})
+      throw written if type(written) == "string" && written.starts_with?("Error:")
+      ScimGroup.sync_role(user)
+      return @_error(409, "The user could not be deleted: records still refer to it. It was deactivated.", nil)
+    end
     {"status": 204, "body": ""}
   end
 

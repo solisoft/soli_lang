@@ -29,7 +29,7 @@ def push(req)
     begin
       # App-specific: map item["method"] / item["path"] / item["body"] onto models.
       # Default: record the outbox row for an operator to inspect.
-      SyncEvent.create({
+      let event = SyncEvent.create({
         "user_id": user_id,
         "client_id": client_id,
         "method": item["method"],
@@ -37,7 +37,13 @@ def push(req)
         "payload": item["body"],
         "created_at": item["created_at"] || datetime_now()
       })
-      accepted.push(client_id)
+      # Accepted is what was stored: the client drops an accepted item from
+      # its outbox, and a write the database refused would be lost there.
+      if (event._errors ?? []).length() > 0
+        rejected.push({ "id": client_id, "error": "not stored" })
+      else
+        accepted.push(client_id)
+      end
     rescue err
       rejected.push({ "id": client_id, "error": str(err) })
     end

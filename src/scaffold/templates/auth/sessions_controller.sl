@@ -94,6 +94,16 @@ class SessionsController < Controller
       return @_reject(@_failure_message, email, 401)
     end
 
+    # The lock as it is now, not as it was read before the password was
+    # checked: guesses sent together all pass the test above while the
+    # account is still open, and the lock lands while they are being
+    # verified. The one that is right must not get in over it.
+    current = User.find_by("_key", user._key)
+    if current.nil? || current.locked?
+      User.burn_write_work
+      return @_reject(@_failure_message, email, 401)
+    end
+
     user.clear_failed_attempts
     # A new session, the user's alone (see `auth_open_session`).
     auth_open_session(user)
