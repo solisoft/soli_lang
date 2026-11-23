@@ -472,6 +472,16 @@ pub fn update_with(
     })
 }
 
+/// The statement of [`update_present`]: `?1` the key, `?2` the document.
+fn update_present_sql(table_q: &str, merge: bool) -> String {
+    let set = if merge {
+        "doc = json_patch(COALESCE(doc, '{}'), json(?2))"
+    } else {
+        "doc = json(?2)"
+    };
+    format!("UPDATE {table_q} SET {set} WHERE _key = ?1 RETURNING doc")
+}
+
 /// Update the row of `key`, which must be there: the same merge as
 /// [`upsert`], and no insert.
 fn update_present(
@@ -484,12 +494,7 @@ fn update_present(
         obj.insert("_key".to_string(), serde_json::json!(key));
     }
     let table_q = Dialect::Sqlite.quote_ident(table)?;
-    let set = if merge {
-        "doc = json_patch(COALESCE(doc, '{}'), json(?2))"
-    } else {
-        "doc = json(?2)"
-    };
-    let sql = format!("UPDATE {table_q} SET {set} WHERE _key = ?1 RETURNING doc");
+    let sql = update_present_sql(&table_q, merge);
     let rows = exec(
         "update",
         &sql,
@@ -1139,5 +1144,43 @@ mod tests {
             serde_json::json!("{\"a\":1}")
         );
         assert_eq!(bind_value(&SqlBind::I64(7)), serde_json::json!(7));
+    }
+
+    /// The statement an update of a row that must be there sends to D1, run
+    /// on an SQLite of this machine — the same dialect: it merges into a row
+    /// that is there, replaces one, and touches nothing (and inserts
+    /// nothing) for a key that names no row.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn the_update_of_a_present_row_never_inserts() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE t (_key TEXT PRIMARY KEY, doc TEXT NOT NULL);
+             INSERT INTO t VALUES ('k', json('{\"owner\":\"ada\",\"uses\":1}'));",
+        )
+        .unwrap();
+        let run = |merge: bool, key: &str, doc: &str| -> Vec<String> {
+            let mut stmt = conn.prepare(&update_present_sql("\"t\"", merge)).unwrap();
+            let rows = stmt
+                .query_map(rusqlite::params![key, doc], |row| row.get::<_, String>(0))
+                .unwrap();
+            rows.map(|row| row.unwrap()).collect()
+        };
+        let count = || -> i64 {
+            conn.query_row("SELECT COUNT(*) FROM t", [], |row| row.get(0))
+                .unwrap()
+        };
+
+        let merged = run(true, "k", r#"{"uses":2}"#);
+        assert_eq!(merged, [r#"{"owner":"ada","uses":2}"#]);
+        // A merge that changes nothing is still a row that is there.
+        assert_eq!(run(true, "k", r#"{"uses":2}"#).len(), 1);
+        let replaced = run(false, "k", r#"{"owner":"grace"}"#);
+        assert_eq!(replaced, [r#"{"owner":"grace"}"#]);
+
+        for merge in [true, false] {
+            assert!(run(merge, "gone", r#"{"owner":"eve"}"#).is_empty());
+        }
+        assert_eq!(count(), 1, "a row was inserted for a key that named none");
     }
 }

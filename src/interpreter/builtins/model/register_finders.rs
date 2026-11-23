@@ -284,6 +284,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             // another request created in between.
             match exec_update(&collection, &key, data.clone(), true) {
                 Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
+                // Only a row that is not there is created (SoliDB, a column
+                // table: their update does not insert). Any other failure —
+                // a deadlock, a refused value, a pool that timed out — is
+                // the answer: falling to the insert would replace a row
+                // that is there with the patch alone.
+                Err(e) if !super::crud::document_already_gone(&e) => {
+                    Err(format!("upsert failed: {}", e))
+                }
                 Err(_) => {
                     let mut insert_obj = match data {
                         serde_json::Value::Object(m) => m,
@@ -296,9 +304,12 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                         "_key".to_string(),
                         serde_json::Value::String(key.clone().to_string()),
                     );
-                    match super::crud::exec_insert(
+                    // Exclusive: a key another writer took since the update
+                    // missed is a unique violation (and the retry below),
+                    // not a row to replace.
+                    match super::crud::exec_insert_new(
                         &collection,
-                        None,
+                        &key,
                         serde_json::Value::Object(insert_obj),
                     ) {
                         Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),

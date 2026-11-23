@@ -438,7 +438,7 @@ fn update_present(
             }
         });
     }
-    let sql = format!("UPDATE {table_q} SET doc = $2::jsonb WHERE _key = $1 RETURNING doc");
+    let sql = replace_present_sql(&table_q);
     let rows = exec(
         "update",
         &sql,
@@ -448,6 +448,23 @@ fn update_present(
         ],
     )?;
     one_doc("update", rows)?.ok_or_else(|| super::sql::row_not_found(table, key))
+}
+
+/// The replace of a row that is there: `$1` the key, `$2` the document.
+fn replace_present_sql(table_q: &str) -> String {
+    format!("UPDATE {table_q} SET doc = $2::jsonb WHERE _key = $1 RETURNING doc")
+}
+
+/// The one-statement merge (no nested object in the patch): `||`, then the
+/// keys the patch nulls dropped. It updates; a key that names no row
+/// returns nothing, and what happens then is the caller's.
+fn merge_present_sql(table_q: &str) -> String {
+    format!(
+        "UPDATE {table_q} SET doc = (COALESCE(doc, '{{}}'::jsonb) || $2::jsonb) - (\
+             SELECT COALESCE(array_agg(key), ARRAY[]::text[]) \
+             FROM jsonb_each($2::jsonb) WHERE value = 'null'::jsonb\
+         ) WHERE _key = $1 RETURNING doc"
+    )
 }
 
 /// What [`merge_into`] answers, with `must_exist`, for a key that names no
@@ -530,12 +547,7 @@ fn merge_into(
     let key_bind = || SqlBind::Text(key.to_string());
 
     if !super::merge::needs_recursive_merge(document) {
-        let sql = format!(
-            "UPDATE {table_q} SET doc = (COALESCE(doc, '{{}}'::jsonb) || $2::jsonb) - (\
-                 SELECT COALESCE(array_agg(key), ARRAY[]::text[]) \
-                 FROM jsonb_each($2::jsonb) WHERE value = 'null'::jsonb\
-             ) WHERE _key = $1 RETURNING doc"
-        );
+        let sql = merge_present_sql(table_q);
         let rows = exec(
             "update (merge)",
             &sql,
@@ -1283,5 +1295,63 @@ mod host {
                 changes: json["changes"].as_u64().unwrap_or(0),
             })
         }
+    }
+}
+
+#[cfg(all(test, feature = "postgres"))]
+mod present_row_statements {
+    use super::*;
+
+    /// The statements an update of a row that must be there sends through
+    /// Hyperdrive, run on a Postgres of this machine: they write a row that
+    /// is there and return nothing — and insert nothing — for a key that
+    /// names none. Needs `PG_DATABASE_URL`; skipped without a server, failed
+    /// instead under `SOLI_REQUIRE_DB=1`.
+    #[test]
+    fn the_update_of_a_present_row_never_inserts() {
+        let url = crate::platform::env::var("PG_DATABASE_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
+            .ok()
+            .filter(|u| u.starts_with("postgres"))
+            .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
+        let mut client = match postgres::Client::connect(&url, postgres::NoTls) {
+            Ok(client) => client,
+            Err(e) => {
+                crate::db::skip_unless_required(&format!("postgres not reachable at {url}: {e}"));
+                return;
+            }
+        };
+        client
+            .batch_execute(
+                "DROP TABLE IF EXISTS soli_hyperdrive_present; \
+                 CREATE TABLE soli_hyperdrive_present (_key text PRIMARY KEY, doc jsonb NOT NULL); \
+                 INSERT INTO soli_hyperdrive_present VALUES ('k', '{\"owner\":\"ada\",\"uses\":1}');",
+            )
+            .expect("create the table");
+        let table_q = PG.quote_ident("soli_hyperdrive_present").unwrap();
+        let mut run = |sql: &str, key: &str, doc: serde_json::Value| -> Vec<serde_json::Value> {
+            client
+                .query(sql, &[&key, &doc])
+                .expect("the statement runs")
+                .iter()
+                .map(|row| row.get(0))
+                .collect()
+        };
+        let merge = merge_present_sql(&table_q);
+        let replace = replace_present_sql(&table_q);
+
+        let merged = run(&merge, "k", serde_json::json!({"uses": 2, "owner": null}));
+        assert_eq!(merged, [serde_json::json!({"uses": 2})]);
+        let replaced = run(&replace, "k", serde_json::json!({"owner": "grace"}));
+        assert_eq!(replaced, [serde_json::json!({"owner": "grace"})]);
+        for sql in [&merge, &replace] {
+            assert!(run(sql, "gone", serde_json::json!({"owner": "eve"})).is_empty());
+        }
+        let rows: i64 = client
+            .query_one("SELECT COUNT(*) FROM soli_hyperdrive_present", &[])
+            .unwrap()
+            .get(0);
+        let _ = client.batch_execute("DROP TABLE IF EXISTS soli_hyperdrive_present;");
+        assert_eq!(rows, 1, "a row was inserted for a key that named none");
     }
 }

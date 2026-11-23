@@ -14,6 +14,9 @@
   from `update` / `save`, a raise from `touch`, the `"Error: … not
   found"` string from `Model.update` and a soft delete. `Model.upsert`
   creates, as it says; the jobs and cron stores keep their upsert.
+  `Model.upsert` that fails for another reason than a missing row (a
+  deadlock, a refused value) now says so: it fell to an insert that
+  replaced the row with the patch alone.
 - **auth: a fresh audit of the scaffold in its final state (three
   independent readings: core flows, add-ons, federation) found no way into
   someone else's account, and these.**

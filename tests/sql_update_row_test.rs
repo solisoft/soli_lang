@@ -50,11 +50,15 @@ kept = RowProbe.create({"suite": "update_row", "owner": "ada", "prefs": {"theme"
 kept.owner = "grace"
 answer("there", fn() { kept.update })
 answer("merged", fn() { RowProbe.update(kept._key, {"prefs": {"lang": "fr"}}).prefs.keys.sort.join(",") })
+# A patch that changes nothing is still a row that is there (MySQL counts
+# the rows an UPDATE changed, not the ones it matched).
+answer("no change", fn() { RowProbe.update(kept._key, {"owner": "grace"}).owner })
+answer("no change, instance", fn() { RowProbe.find(kept._key).update })
 
 RowProbe.where({"suite": "update_row"}).delete_all
 "##;
 
-const EXPECTED: [&str; 9] = [
+const EXPECTED: [&str; 11] = [
     "update false 0",
     "save false 0",
     "touch raised 0",
@@ -64,6 +68,8 @@ const EXPECTED: [&str; 9] = [
     "upsert again linus 1",
     "there true 1",
     "merged lang,theme 1",
+    "no change grace 1",
+    "no change, instance true 1",
 ];
 
 fn run_against(adapter: &str, url: &str) {

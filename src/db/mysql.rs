@@ -638,6 +638,20 @@ pub fn replace_if_version(
     })
 }
 
+/// The rows an UPDATE matched, from the server's own answer to it
+/// ("Rows matched: 1  Changed: 0  Warnings: 0"). `affected_rows()` counts
+/// the rows it *changed* (CLIENT_FOUND_ROWS is off), so a merge that
+/// changes nothing looks like a row that is not there; this does not.
+/// `None` when the answer carries no such line.
+fn rows_matched(info: &str) -> Option<u64> {
+    info.split("Rows matched:")
+        .nth(1)?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
 /// `update` minus the `ensure_table`, which `ensured::write_with_table` owns.
 fn update_existing(
     table: &str,
@@ -662,6 +676,12 @@ fn update_existing(
             // affected_rows() can't tell "row missing" from "no-op merge"
             // (CLIENT_FOUND_ROWS is off, so it reports CHANGED rows) — read
             // back instead, and only insert when the row truly isn't there.
+            // With `must_exist`, the UPDATE itself says whether it found
+            // the row: a read-back alone would take a row inserted between
+            // the two statements for one this update wrote.
+            if must_exist && rows_matched(&conn.info_str()) == Some(0) {
+                return Err(super::sql::row_not_found(table, key));
+            }
             if let Some(doc) = get_on(conn, table, key)? {
                 return Ok(doc);
             }
@@ -685,6 +705,9 @@ fn update_existing(
         return with_conn(|conn| {
             conn.exec_drop(&sql, (&doc_str, key))
                 .map_err(|e| my_error("mysql update (replace)", &e))?;
+            if rows_matched(&conn.info_str()) == Some(0) {
+                return Err(super::sql::row_not_found(table, key));
+            }
             get_on(conn, table, key)?.ok_or_else(|| super::sql::row_not_found(table, key))
         });
     }
@@ -2173,5 +2196,30 @@ mod replica_integration_tests {
         assert_eq!(answered(), "replica");
 
         crate::interpreter::builtins::session::clear_response_cookies();
+    }
+}
+
+#[cfg(test)]
+mod rows_matched_tests {
+    use super::rows_matched;
+
+    /// What the server says of an UPDATE: matched, whether or not changed.
+    #[test]
+    fn reads_the_matched_count_and_nothing_else() {
+        assert_eq!(
+            rows_matched("Rows matched: 1  Changed: 0  Warnings: 0"),
+            Some(1)
+        );
+        assert_eq!(
+            rows_matched("Rows matched: 0  Changed: 0  Warnings: 0"),
+            Some(0)
+        );
+        assert_eq!(
+            rows_matched("Rows matched: 12  Changed: 3  Warnings: 1"),
+            Some(12)
+        );
+        // No such line (an INSERT, an empty answer): not a count of zero.
+        assert_eq!(rows_matched(""), None);
+        assert_eq!(rows_matched("Records: 3  Duplicates: 0  Warnings: 0"), None);
     }
 }

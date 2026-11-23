@@ -2731,8 +2731,14 @@ pub fn key_refused(error: &str) -> bool {
 /// used, shared by the callers that mean the same thing.
 pub fn document_already_gone(error: &str) -> bool {
     let said = error.to_lowercase();
-    // (`no row in … with …` is how a column-mode table says it.)
-    said.contains("not found") || said.contains("documentnotfound") || said.contains("no row in ")
+    // (`no row in "table" with pk = …` is how a column-mode table says it:
+    // the whole message, from its first word — not a database's complaint
+    // about a value that happens to hold those words.)
+    said.contains("not found")
+        || said.contains("documentnotfound")
+        || said
+            .trim_start_matches("error: ")
+            .starts_with("no row in \"")
 }
 
 #[cfg(test)]
@@ -2752,6 +2758,22 @@ mod tests {
     /// store cannot store is not that: on a write, Postgres's "invalid
     /// input syntax" is as likely a bad date in the patch, on a row that is
     /// there, and must not be answered "not found".
+    #[test]
+    fn a_column_table_says_no_row_and_a_refused_value_does_not() {
+        assert!(document_already_gone(r#"no row in "orders" with id = 7"#));
+        assert!(document_already_gone(
+            r#"Error: no row in "orders" with id = 7"#
+        ));
+        assert!(document_already_gone("document not found: tokens/abc"));
+        // A value the database refused, quoted back in its complaint.
+        assert!(!document_already_gone(
+            r#"db error: ERROR: invalid input syntax for type date: "no row in sight""#
+        ));
+        assert!(!document_already_gone(
+            "Incorrect date value: 'no row in sight' for column 'due'"
+        ));
+    }
+
     #[test]
     fn a_refused_key_is_a_miss_and_a_refused_value_is_not() {
         let integer_key = r#""orders" has an integer primary key (id); "abc" is not a number"#;
