@@ -476,7 +476,7 @@ pub fn verify_release_signature(
     pubkey_b64: &str,
 ) -> Result<(), String> {
     let key_bytes = B64
-        .decode(pubkey_b64.trim())
+        .decode(pubkey_b64.split_whitespace().collect::<String>())
         .map_err(|_| "the release key built into this binary is not valid base64".to_string())?;
     let verifying = VerifyingKey::from_sec1_bytes(&key_bytes)
         .map_err(|e| format!("the release key built into this binary is invalid: {e}"))?;
@@ -602,6 +602,19 @@ mod tests {
         assert!(check("v2.41.0", "soli-linux-amd64.tar.gz", &"cd".repeat(32)).is_err());
     }
 
+    /// A public key pasted with a line break in it (what `openssl base64`
+    /// prints without `-A`) is the same key.
+    #[test]
+    fn a_release_key_wrapped_onto_two_lines_is_read_as_one() {
+        use p256::pkcs8::DecodePrivateKey;
+        let (private_pem, public_b64) = generate_keypair().unwrap();
+        let signing = SigningKey::from_pkcs8_pem(&private_pem).unwrap();
+        let signature: Signature = signing.sign(b"bytes");
+        let sig = B64.encode(signature.to_der().as_bytes());
+        let wrapped = format!("{}\n{}\n", &public_b64[..64], &public_b64[64..]);
+        verify_release_signature(b"bytes", &sig, &wrapped).expect("a wrapped key");
+    }
+
     /// The release job's own commands, word for word: the public key it
     /// derives from the secret is the one `update-keygen` printed, and the
     /// signature it makes over its `printf` statement is one `verify_release`
@@ -613,7 +626,6 @@ mod tests {
         let (private_pem, public_b64) = generate_keypair().unwrap();
         std::fs::write(dir.path().join("key.pem"), &private_pem).unwrap();
         let sha = "0123456789abcdef".repeat(4);
-        std::fs::write(dir.path().join("a.tar.gz.sha256"), format!("{sha}\n")).unwrap();
 
         let run = |script: &str| {
             let out = std::process::Command::new("sh")
@@ -630,13 +642,25 @@ mod tests {
             );
             String::from_utf8(out.stdout).unwrap()
         };
-        let derived =
-            run("openssl pkey -in key.pem -pubout -outform DER | tail -c 65 | openssl base64 -A");
-        assert_eq!(derived, public_b64);
 
-        let signature = run(r#"name=a.tar.gz
-               printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$name" "$(cat "$name.sha256")" > statement
-               openssl dgst -sha256 -sign key.pem statement | openssl base64 -A"#);
+        // The two lines of the job that make a signature, as the workflow
+        // has them: if the job is reworded, this test is about another job.
+        let statement_line = r#"printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$name" "$digest" > "$RUNNER_TEMP/statement""#;
+        let sign_line = r#"openssl dgst -sha256 -sign "$keyfile" "$RUNNER_TEMP/statement" | openssl base64 -A > "$name.sig""#;
+        let derive_line =
+            r#"openssl pkey -in "$keyfile" -pubout -outform DER | tail -c 65 | openssl base64 -A"#;
+        let workflow = include_str!("../.github/workflows/ci.yml");
+        for line in [statement_line, sign_line, derive_line] {
+            assert!(
+                workflow.contains(line),
+                "the release job no longer has: {line}"
+            );
+        }
+        let preamble = format!("RUNNER_TEMP=. keyfile=key.pem name=a.tar.gz digest={sha}\n");
+        assert_eq!(run(&format!("{preamble}{derive_line}")), public_b64);
+        let signature = run(&format!(
+            "{preamble}{statement_line}\n{sign_line}\ncat \"$name.sig\""
+        ));
         verify_release("v2.41.0", "a.tar.gz", &sha, &signature, &public_b64)
             .expect("the job's signature");
         assert!(verify_release("v2.41.1", "a.tar.gz", &sha, &signature, &public_b64).is_err());

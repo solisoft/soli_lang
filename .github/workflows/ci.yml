@@ -732,11 +732,21 @@ jobs:
   # and the digest, one per line (`release_statement` in src/update.rs) — not
   # the tarball alone, whose signature would be good under any tag and name.
   sign-release:
-    needs: build-binaries
+    # After the gate, not only after the builds: a tag whose tests fail gets
+    # no signed tarball.
+    needs: [build-binaries, release]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Keep the key an *environment* secret of `release-signing`, with a
+    # deployment rule for `v*` tags: a repository secret is readable by any
+    # workflow someone with write access pushes.
+    environment: release-signing
     permissions:
       contents: write
+    env:
+      # The Windows tarballs arrive later, from their own job, and are
+      # signed by `sign-windows`.
+      SIGN_WINDOWS: "no"
     steps: &sign-steps
       - name: Sign the release's tarballs
         shell: bash
@@ -745,6 +755,8 @@ jobs:
           SOLI_RELEASE_SIGNING_KEY: ${{ secrets.SOLI_RELEASE_SIGNING_KEY }}
           SOLI_RELEASE_PUBKEY: ${{ vars.SOLI_RELEASE_PUBKEY }}
         run: |
+          # Whitespace anywhere in the variable is dropped, as the binary
+          # drops it when it reads the key it was built with.
           pubkey=$(printf '%s' "$SOLI_RELEASE_PUBKEY" | tr -d '[:space:]')
           if [ -z "$SOLI_RELEASE_SIGNING_KEY" ]; then
             # Both halves or neither: a binary that expects a signature this
@@ -768,20 +780,37 @@ jobs:
             echo "::error::SOLI_RELEASE_PUBKEY is not the public half of SOLI_RELEASE_SIGNING_KEY"
             exit 1
           fi
+          openssl pkey -in "$keyfile" -pubout -out "$RUNNER_TEMP/release-key.pub"
           mkdir release && cd release
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --pattern '*.tar.gz' --pattern '*.tar.gz.sha256' --pattern '*.tar.gz.sig'
           signed=0
           for name in *.tar.gz; do
-            # Signed by an earlier run of this job (the Windows binaries come
-            # later than the others): left as it is.
-            [ -s "$name.sig" ] && continue
+            # Only what this pipeline builds, and only this job's share.
+            case "$name" in
+              soli-windows-*|render-pdf-windows-*) [ "$SIGN_WINDOWS" = "yes" ] || continue ;;
+              soli-*|render-pdf-*) [ "$SIGN_WINDOWS" = "no" ] || continue ;;
+              *) echo "Not one of ours, not signed: $name"; continue ;;
+            esac
+            if [ ! -s "$name.sha256" ]; then
+              echo "::error::$name has no published .sha256"
+              exit 1
+            fi
             digest=$(sha256sum "$name" | awk '{print $1}')
             if [ "$digest" != "$(cat "$name.sha256")" ]; then
               echo "::error::$name does not match its published .sha256"
               exit 1
             fi
             printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$name" "$digest" > "$RUNNER_TEMP/statement"
+            # A signature already there is kept only if it is this key's for
+            # this tarball: after a re-run the tarballs are new builds, and
+            # the signatures of the old ones are not theirs.
+            if [ -s "$name.sig" ] &&
+               openssl base64 -d -A < "$name.sig" > "$RUNNER_TEMP/sig.der" 2>/dev/null &&
+               openssl dgst -sha256 -verify "$RUNNER_TEMP/release-key.pub" \
+                 -signature "$RUNNER_TEMP/sig.der" "$RUNNER_TEMP/statement" >/dev/null 2>&1; then
+              continue
+            fi
             openssl dgst -sha256 -sign "$keyfile" "$RUNNER_TEMP/statement" | openssl base64 -A > "$name.sig"
             test -s "$name.sig"
             gh release upload --clobber "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$name.sig"
@@ -819,11 +848,14 @@ jobs:
 
   # The Windows tarballs, signed when they arrive.
   sign-windows:
-    needs: build-windows
+    needs: [build-windows, release]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    environment: release-signing
     permissions:
       contents: write
+    env:
+      SIGN_WINDOWS: "yes"
     steps: *sign-steps
 
   publish-release:

@@ -202,9 +202,7 @@ fn ensure_toolchain(version: &str, manifest: &Path) -> Result<PathBuf, String> {
 
 fn cached(target: &str, version: &str) -> bool {
     super::standalone::cached_runtime_path(target, version)
-        .ok()
-        .and_then(|p| p.metadata().ok())
-        .is_some_and(|m| m.len() > 0)
+        .is_ok_and(|path| super::standalone::cached_runtime_usable(&path))
 }
 
 /// Become `exe`. Does not return on success.

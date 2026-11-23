@@ -22,7 +22,12 @@
   key is written on its `RELEASE_PUBKEY=` line.
   The pipeline signs in a job of its own, with no checkout and no build,
   so the key is never on a runner that ran a dependency's build script. A
-  keyed soli runs from its runtime cache only what it saw signed.
+  keyed soli runs from its runtime cache only what it saw signed —
+  when the key arrives, a project pinned to a release from before
+  signatures needs `SOLI_ALLOW_UNSIGNED_RUNTIME=1`. `install.sh` does not
+  install a release older than the one in place
+  (`SOLI_INSTALL_ALLOW_DOWNGRADE=1` to do it on purpose) and reads the
+  latest tag from the release page's redirect when the API is rate-limited.
 - **lint: a file that does not parse fails `soli lint`.** The parse error
   was printed, then the file left out of the count: the run ended "No
   issues found." with exit code 0. It counts as an issue and the run exits

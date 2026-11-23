@@ -953,7 +953,7 @@ pub(crate) fn ensure_cached_runtime(
     let allow_unsigned = allow_unsigned_runtime();
     let marker = signed_marker_path(&cache_path);
     if cache_path.metadata().map(|m| m.len() > 0).unwrap_or(false)
-        && cache_entry_trusted(keyed, marker.exists(), allow_unsigned)
+        && cache_entry_trusted(keyed, marked_signed(&cache_path), allow_unsigned)
     {
         if policy.executable {
             ensure_executable(&cache_path)?;
@@ -986,7 +986,7 @@ pub(crate) fn ensure_cached_runtime(
     // Downloaded by a keyed soli that accepts nothing unsigned: the
     // signature was verified, or the download above would have failed.
     if keyed && !allow_unsigned {
-        let _ = std::fs::write(&marker, b"");
+        let _ = std::fs::write(&marker, sha256_hex(&bytes));
     } else {
         let _ = std::fs::remove_file(&marker);
     }
@@ -1007,6 +1007,34 @@ fn signed_marker_path(cache_path: &std::path::Path) -> PathBuf {
     let mut name = cache_path.file_name().unwrap_or_default().to_os_string();
     name.push(".signed");
     cache_path.with_file_name(name)
+}
+
+/// Whether the cached runtime at `cache_path` is the one a keyed soli saw
+/// signed: the mark holds that file's digest, so a mark outliving its file —
+/// replaced since by a soli that checks digests only — vouches for nothing.
+pub(crate) fn marked_signed(cache_path: &std::path::Path) -> bool {
+    let Ok(mark) = std::fs::read_to_string(signed_marker_path(cache_path)) else {
+        return false;
+    };
+    crate::cli::commands::sha256_of_file(cache_path).is_ok_and(|actual| actual == mark.trim())
+}
+
+/// Whether a cached entry is one this soli runs without fetching it again.
+pub(crate) fn cached_runtime_usable(cache_path: &std::path::Path) -> bool {
+    cache_path.metadata().is_ok_and(|m| m.len() > 0)
+        && cache_entry_trusted(
+            solilang::update::release_pubkey().is_some(),
+            marked_signed(cache_path),
+            allow_unsigned_runtime(),
+        )
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Whether a cached runtime is run as it is. An unkeyed soli trusts its
@@ -1516,21 +1544,13 @@ mod tests {
             FOOTER_MAGIC
         );
     }
-    fn sha256_hex_of(bytes: &[u8]) -> String {
-        use sha2::{Digest, Sha256};
-        Sha256::digest(bytes)
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
-    }
-
     /// A release host for one test: the tarball, its digest, and — when
     /// given — a signature, each under the name a release publishes it.
     fn release_host(tarball: Vec<u8>, signature: Option<String>) -> String {
         use std::io::Read;
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        let sha = sha256_hex_of(&tarball);
+        let sha = sha256_hex(&tarball);
         std::thread::spawn(move || {
             for _ in 0..6 {
                 let Ok((mut stream, _)) = listener.accept() else {
@@ -1585,7 +1605,7 @@ mod tests {
         use p256::ecdsa::signature::Signer;
         use p256::pkcs8::DecodePrivateKey;
         let key = p256::ecdsa::SigningKey::from_pkcs8_pem(private_pem).unwrap();
-        let sha = sha256_hex_of(tarball);
+        let sha = sha256_hex(tarball);
         let signature: p256::ecdsa::Signature =
             key.sign(&solilang::update::release_statement(tag, artifact, &sha));
         base64::engine::general_purpose::STANDARD.encode(signature.to_der().as_bytes())
@@ -1620,15 +1640,18 @@ mod tests {
 
         // Signed as another target's artifact.
         let other = sign_release(&private_pem, "v9.9.9", "soli-linux-arm64.tar.gz", &tarball);
-        assert!(fetch(Some(other), Some(&public), false).is_err());
+        let err = fetch(Some(other), Some(&public), false).unwrap_err();
+        assert!(err.contains("does not verify"), "{err}");
 
         // Signed by a key that is not the release key.
         let (stranger_pem, _) = solilang::update::generate_keypair().unwrap();
         let forged = sign_release(&stranger_pem, "v9.9.9", name, &tarball);
-        assert!(fetch(Some(forged.clone()), Some(&public), false).is_err());
+        let err = fetch(Some(forged.clone()), Some(&public), false).unwrap_err();
+        assert!(err.contains("does not verify"), "{err}");
         // ... which SOLI_ALLOW_UNSIGNED_RUNTIME does not excuse: it is for a
         // release with no signature, not for one with a wrong signature.
-        assert!(fetch(Some(forged), Some(&public), true).is_err());
+        let err = fetch(Some(forged), Some(&public), true).unwrap_err();
+        assert!(err.contains("does not verify"), "{err}");
 
         // No signature published: refused, unless the person said so.
         let err = fetch(None, Some(&public), false).unwrap_err();
@@ -1650,6 +1673,17 @@ mod tests {
         assert!(cache_entry_trusted(true, true, false));
         assert!(!cache_entry_trusted(true, false, false));
         assert!(cache_entry_trusted(true, false, true), "the person said so");
+
+        // The mark is the digest of the file it vouches for.
+        let dir = tempfile::tempdir().unwrap();
+        let entry = dir.path().join("soli-linux-amd64");
+        std::fs::write(&entry, b"the runtime").unwrap();
+        assert!(!marked_signed(&entry), "no mark");
+        std::fs::write(signed_marker_path(&entry), sha256_hex(b"the runtime")).unwrap();
+        assert!(marked_signed(&entry));
+        std::fs::write(&entry, b"another runtime, put there since").unwrap();
+        assert!(!marked_signed(&entry), "the mark outlived its file");
+
         assert_eq!(
             signed_marker_path(std::path::Path::new("/c/v1.0.0/soli-linux-amd64")),
             PathBuf::from("/c/v1.0.0/soli-linux-amd64.signed")

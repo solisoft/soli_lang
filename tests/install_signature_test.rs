@@ -176,7 +176,11 @@ fn the_installer_installs_only_what_the_release_key_signed() {
         Some(sign(&private_pem, "v9.9.8", &name, &bytes)),
         Some(&public),
     );
-    assert!(run.output.contains("not installing it"), "{}", run.output);
+    assert!(
+        run.output.contains("is not the release key's for"),
+        "{}",
+        run.output
+    );
     assert!(!run.installed);
 
     // Signed as another artifact.
@@ -189,12 +193,22 @@ fn the_installer_installs_only_what_the_release_key_signed() {
         )),
         Some(&public),
     );
-    assert!(!run.installed, "{}", run.output);
+    assert!(
+        run.output.contains("is not the release key's for"),
+        "{}",
+        run.output
+    );
+    assert!(!run.installed);
 
     // Signed by another key.
     let (stranger_pem, _) = solilang::update::generate_keypair().unwrap();
     let run = install(Some(sign(&stranger_pem, TAG, &name, &bytes)), Some(&public));
-    assert!(!run.installed, "{}", run.output);
+    assert!(
+        run.output.contains("is not the release key's for"),
+        "{}",
+        run.output
+    );
+    assert!(!run.installed);
 
     // No signature published.
     let run = install(None, Some(&public));
@@ -215,4 +229,49 @@ fn without_a_release_key_the_installer_checks_the_digest() {
     assert!(run.output.contains("Checksum verified."), "{}", run.output);
     assert!(!run.output.contains("Signature"), "{}", run.output);
     assert!(run.installed, "{}", run.output);
+}
+
+/// "Latest" is what a server said: a release older than the installed one is
+/// not installed, signed or not, unless the person asks for it.
+#[test]
+fn the_installer_does_not_go_back_to_an_older_release() {
+    let port = release_host(tarball(), None);
+    let dir = tempfile::tempdir().unwrap();
+    let script = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh"))
+        .unwrap()
+        .replace(
+            "https://api.github.com/repos/${REPO}/releases/latest",
+            &format!("http://127.0.0.1:{port}/api/latest"),
+        )
+        .replace(
+            "https://github.com/${REPO}/releases/download",
+            &format!("http://127.0.0.1:{port}/dl"),
+        );
+    let script_path = dir.path().join("install.sh");
+    std::fs::write(&script_path, script).unwrap();
+    let bin = dir.path().join("home/.local/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let installed = bin.join("soli");
+    std::fs::write(&installed, "#!/bin/sh\necho \"soli 10.0.0\"\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&installed, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let out = Command::new("sh")
+        .arg(&script_path)
+        .arg("--user")
+        .env("HOME", dir.path().join("home"))
+        .env_remove("SOLI_RELEASE_PUBKEY")
+        .env_remove("SOLI_INSTALL_ALLOW_DOWNGRADE")
+        .output()
+        .unwrap();
+    let output = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        output.contains("is older than the installed soli 10.0.0"),
+        "{output}"
+    );
+    assert!(std::fs::read_to_string(&installed)
+        .unwrap()
+        .contains("10.0.0"));
 }

@@ -93,6 +93,40 @@ if TAG=$(fetch "$API_URL" 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"
   fi
 fi
 
+# The API is rate-limited (60 calls an hour for an address without a token);
+# the `releases/latest` page redirects to the tag and is not. Where the tag
+# comes from does not matter to its trust: a signed release names its tag.
+if [ -z "$TAG" ]; then
+  LATEST_URL="https://github.com/${REPO}/releases/latest"
+  if command -v curl >/dev/null 2>&1; then
+    RESOLVED=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null || true)
+  else
+    RESOLVED=$(wget -S --max-redirect=0 -O /dev/null "$LATEST_URL" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tr -d '\r' | tail -1)
+  fi
+  case "$RESOLVED" in
+    */releases/tag/v[0-9]*) TAG="${RESOLVED##*/releases/tag/}" ;;
+  esac
+fi
+
+# --- Never backwards ---
+# "Latest" is what a server said. A release older than the one installed is
+# not an update, whoever says so (SOLI_INSTALL_ALLOW_DOWNGRADE=1 to do it on
+# purpose).
+version_number() {
+  # "soli 2.41.0", "v2.41.0" -> 2041000; anything else -> nothing.
+  printf '%s\n' "$1" | sed -n 's/^[^0-9]*\([0-9]\{1,4\}\)\.\([0-9]\{1,3\}\)\.\([0-9]\{1,3\}\).*$/\1 \2 \3/p' |
+    { read -r major minor patch || exit 0; echo $((major * 1000000 + minor * 1000 + patch)); }
+}
+if [ -n "$TAG" ] && [ -n "$OLD_VERSION" ] && [ "${SOLI_INSTALL_ALLOW_DOWNGRADE:-}" != "1" ]; then
+  OLD_NUMBER=$(version_number "$OLD_VERSION")
+  NEW_NUMBER=$(version_number "$TAG")
+  if [ -n "$OLD_NUMBER" ] && [ -n "$NEW_NUMBER" ] && [ "$NEW_NUMBER" -lt "$OLD_NUMBER" ]; then
+    echo "Error: ${TAG} is older than the installed ${OLD_VERSION} — not installing it."
+    echo "Set SOLI_INSTALL_ALLOW_DOWNGRADE=1 to go back on purpose."
+    exit 1
+  fi
+fi
+
 # --- Download and extract ---
 TARBALL="soli-${OS}-${ARCH}.tar.gz"
 if [ -n "$TAG" ]; then
@@ -160,7 +194,7 @@ if [ -n "$RELEASE_PUBKEY" ]; then
     exit 1
   fi
   if [ -z "$TAG" ]; then
-    echo "Error: the release's version is not known (GitHub's API did not answer),"
+    echo "Error: the release's version is not known (GitHub did not say which is latest),"
     echo "  and the signature names it. Try again in a moment."
     exit 1
   fi
@@ -171,12 +205,20 @@ if [ -n "$RELEASE_PUBKEY" ]; then
   # The key as a SubjectPublicKeyInfo: the fixed P-256 header, then the point.
   {
     printf '\060\131\060\023\006\007\052\206\110\316\075\002\001\006\010\052\206\110\316\075\003\001\007\003\102\000'
-    printf '%s' "$RELEASE_PUBKEY" | openssl base64 -d -A
+    printf '%s' "$RELEASE_PUBKEY" | tr -d '[:space:]' | openssl base64 -d -A 2>/dev/null || true
   } > "${TMP_DIR}/key.der"
+  if [ "$(wc -c < "${TMP_DIR}/key.der" | tr -d ' ')" != "91" ]; then
+    echo "Error: RELEASE_PUBKEY is not a P-256 public key (base64, as \`soli update-keygen\` prints it)."
+    exit 1
+  fi
   printf '%s\n%s\n%s\n' "$TAG" "$TARBALL" "$ACTUAL" > "${TMP_DIR}/statement"
-  if openssl base64 -d -A < "${TMP_DIR}/sig.b64" > "${TMP_DIR}/sig.der" 2>/dev/null &&
-     openssl dgst -sha256 -verify "${TMP_DIR}/key.der" -keyform DER \
-       -signature "${TMP_DIR}/sig.der" "${TMP_DIR}/statement" >/dev/null 2>&1; then
+  VERDICT=""
+  if openssl base64 -d -A < "${TMP_DIR}/sig.b64" > "${TMP_DIR}/sig.der" 2>/dev/null; then
+    VERDICT=$(openssl dgst -sha256 -verify "${TMP_DIR}/key.der" -keyform DER \
+      -signature "${TMP_DIR}/sig.der" "${TMP_DIR}/statement" 2>/dev/null || true)
+  fi
+  # The words, not only the exit status.
+  if [ "$VERDICT" = "Verified OK" ]; then
     echo "Signature verified."
   else
     echo "Error: the signature of ${TARBALL} is not the release key's for ${TAG} — not installing it."
