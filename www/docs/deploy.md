@@ -270,7 +270,9 @@ Resolved in this order, at both build and serve time:
 The 256-bit key is stretched from that material with Argon2id and a salt stored in the bundle, so
 a passphrase costs an attacker who holds the file real work per guess (a random key is still the
 better choice). Bundles built before this — one SHA-256 of the material, no salt — still open,
-with a notice at start; rebuild them.
+with a notice at start; rebuild them. The other way round does not work: a bundle built by a
+newer soli is refused by an older `soli serve` ("unsupported encrypted bundle version") — upgrade
+the server before you deploy a bundle built with the new one.
 
 Both can live in the `.env` beside the `.soli` file, loaded before decryption, so the deployed
 host only ever carries its own API key:

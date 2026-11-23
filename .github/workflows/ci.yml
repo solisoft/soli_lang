@@ -736,7 +736,21 @@ jobs:
           if [ -n "$SOLI_RELEASE_SIGNING_KEY" ]; then
             keyfile="$RUNNER_TEMP/release-signing-key.pem"
             ( umask 077; printf '%s\n' "$SOLI_RELEASE_SIGNING_KEY" > "$keyfile" )
-            openssl dgst -sha256 -sign "$keyfile" $ARTIFACT.tar.gz | openssl base64 -A > $ARTIFACT.tar.gz.sig
+            # The two halves are one pair: the public key derived from the
+            # secret (the last 65 bytes of its SubjectPublicKeyInfo — the
+            # SEC1 point) is the variable the binaries were built with. A
+            # mismatch would publish binaries that refuse every update.
+            derived=$(openssl pkey -in "$keyfile" -pubout -outform DER | tail -c 65 | openssl base64 -A)
+            if [ "$derived" != "$SOLI_RELEASE_PUBKEY" ]; then
+              rm -f "$keyfile"
+              echo "::error::SOLI_RELEASE_PUBKEY is not the public half of SOLI_RELEASE_SIGNING_KEY"
+              exit 1
+            fi
+            # Signed: the tag, the artifact's name and its digest, one per
+            # line — not the tarball alone, whose signature would be good
+            # under any tag and any name (`release_statement` in update.rs).
+            printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$ARTIFACT.tar.gz" "$(cat $ARTIFACT.tar.gz.sha256)" > "$RUNNER_TEMP/statement"
+            openssl dgst -sha256 -sign "$keyfile" "$RUNNER_TEMP/statement" | openssl base64 -A > $ARTIFACT.tar.gz.sig
             rm -f "$keyfile"
             test -s $ARTIFACT.tar.gz.sig
             gh release upload --clobber ${{ github.ref_name }} $ARTIFACT.tar.gz.sig

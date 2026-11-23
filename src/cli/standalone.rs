@@ -1112,6 +1112,49 @@ fn download_release_runtime(
         Err(e) => return Err(format!("fetching .sha256: {}", e)),
     }
 
+    // A soli built with a release key holds a pinned interpreter and an
+    // embedded runtime to what it holds its own update to: the digest sits
+    // beside the tarball, the signature does not come from the same hands.
+    if let Some(pubkey) = solilang::update::release_pubkey() {
+        let sig_url = format!("{}.sig", url);
+        match client.get(&sig_url).send() {
+            Ok(resp) if resp.status().is_success() => {
+                let signature = resp
+                    .text()
+                    .map_err(|e| format!("failed to read .sig: {}", e))?;
+                solilang::update::verify_release(
+                    &format!("v{}", version),
+                    &tarball,
+                    &actual_sha,
+                    &signature,
+                    pubkey,
+                )
+                .map_err(|e| format!("soli {version} {tarball}: {e}"))?;
+                println!("  Signature verified.");
+            }
+            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+                // A release from before releases were signed. Named, not
+                // assumed: the person running this says so.
+                let allowed = std::env::var("SOLI_ALLOW_UNSIGNED_RUNTIME")
+                    .is_ok_and(|v| matches!(v.trim(), "1" | "true" | "yes"));
+                if !allowed {
+                    return Err(format!(
+                        "soli {version} publishes no signature for {tarball} — refusing to run \
+                         a runtime this release key did not sign. A release from before \
+                         signatures needs SOLI_ALLOW_UNSIGNED_RUNTIME=1."
+                    ));
+                }
+                eprintln!(
+                    "  \x1b[33mWarning:\x1b[0m soli {version} is not signed; \
+                     SOLI_ALLOW_UNSIGNED_RUNTIME is set, its published digest is all that \
+                     was checked."
+                );
+            }
+            Ok(resp) => return Err(format!("fetching .sig: HTTP {}", resp.status())),
+            Err(e) => return Err(format!("fetching .sig: {}", e)),
+        }
+    }
+
     let tf =
         std::fs::File::open(&tarball_path).map_err(|e| format!("failed to open tarball: {}", e))?;
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tf));

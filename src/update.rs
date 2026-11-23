@@ -440,6 +440,32 @@ pub fn release_pubkey() -> Option<&'static str> {
         .filter(|key| !key.is_empty())
 }
 
+/// What a release signature is made over: the tag, the artifact's file name
+/// and its SHA-256, one per line. Not the tarball alone — a signature over
+/// bare bytes would also be good for those bytes under any other name: an
+/// older, vulnerable release served as the latest one, or another artifact
+/// of the same key in this one's place. The updater rebuilds the statement
+/// from the tag and the name it asked for and the digest of what it got.
+pub fn release_statement(tag: &str, artifact: &str, sha256_hex: &str) -> Vec<u8> {
+    format!("{tag}\n{artifact}\n{}\n", sha256_hex.to_ascii_lowercase()).into_bytes()
+}
+
+/// Verify a release: `signature_b64` is the release key's signature of
+/// [`release_statement`] for this tag, artifact and digest.
+pub fn verify_release(
+    tag: &str,
+    artifact: &str,
+    sha256_hex: &str,
+    signature_b64: &str,
+    pubkey_b64: &str,
+) -> Result<(), String> {
+    verify_release_signature(
+        &release_statement(tag, artifact, sha256_hex),
+        signature_b64,
+        pubkey_b64,
+    )
+}
+
 /// Check `signature_b64` — an ECDSA P-256 signature over the SHA-256 of
 /// `bytes`, DER-encoded then base64, which is what
 /// `openssl dgst -sha256 -sign key.pem file | openssl base64 -A` writes —
@@ -543,6 +569,37 @@ mod tests {
         assert!(verify_release_signature(tarball, &sig_b64[..20], &public_b64).is_err());
         assert!(verify_release_signature(tarball, "", &public_b64).is_err());
         assert!(verify_release_signature(tarball, &sig_b64, "not a key").is_err());
+    }
+
+    /// The signature names the release it is for. The tarball of an older
+    /// release, with the signature that was made for it, does not pass as a
+    /// newer tag; nor does another artifact signed by the same key.
+    #[test]
+    fn a_release_signature_is_for_one_tag_and_one_artifact() {
+        use p256::pkcs8::DecodePrivateKey;
+        let (private_pem, public_b64) = generate_keypair().unwrap();
+        let signing = SigningKey::from_pkcs8_pem(&private_pem).unwrap();
+        let sha = "ab".repeat(32);
+        let statement = release_statement("v2.41.0", "soli-linux-amd64.tar.gz", &sha);
+        assert_eq!(
+            String::from_utf8(statement.clone()).unwrap(),
+            format!("v2.41.0\nsoli-linux-amd64.tar.gz\n{sha}\n")
+        );
+        let signature: Signature = signing.sign(&statement);
+        let sig = B64.encode(signature.to_der().as_bytes());
+
+        let check = |tag: &str, artifact: &str, digest: &str| {
+            verify_release(tag, artifact, digest, &sig, &public_b64)
+        };
+        assert!(check("v2.41.0", "soli-linux-amd64.tar.gz", &sha).is_ok());
+        assert!(check("v2.41.0", "soli-linux-amd64.tar.gz", &sha.to_uppercase()).is_ok());
+        // The same bytes under a newer tag: a rollback.
+        assert!(check("v2.42.0", "soli-linux-amd64.tar.gz", &sha).is_err());
+        // Another artifact of the same key.
+        assert!(check("v2.41.0", "render-pdf-linux-amd64.tar.gz", &sha).is_err());
+        assert!(check("v2.41.0", "soli-linux-arm64.tar.gz", &sha).is_err());
+        // Other bytes.
+        assert!(check("v2.41.0", "soli-linux-amd64.tar.gz", &"cd".repeat(32)).is_err());
     }
 
     /// The release pipeline signs with

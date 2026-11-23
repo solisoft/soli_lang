@@ -709,12 +709,13 @@ fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
 /// (model `encrypts` fields, sealed bundles) permanently undecryptable. Enforce
 /// key entropy operationally instead. See the docs for key-generation guidance.
 /// The key of an encrypted bundle, stretched from its key material with
-/// Argon2id (RFC 9106's second profile: 19 MiB, two passes) and a salt stored
-/// in the bundle. One SHA-256 of the material ([`derive_aes_key`]) is right
+/// Argon2id — RFC 9106's second recommended option: 64 MiB, three passes,
+/// four lanes — and a salt stored in the bundle. Paid once per process, at
+/// start, against someone who pays it per guess. One SHA-256 of the material ([`derive_aes_key`]) is right
 /// for a random key and wrong for a passphrase — a bundle is a file someone
 /// may hold a copy of and try passphrases against at billions a second.
 pub(crate) fn derive_bundle_key(material: &[u8], salt: &[u8]) -> Result<[u8; 32], String> {
-    let params = Params::new(19 * 1024, 2, 1, Some(32))
+    let params = Params::new(64 * 1024, 3, 4, Some(32))
         .map_err(|e| format!("bundle key derivation: {e}"))?;
     let mut key = [0u8; 32];
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)

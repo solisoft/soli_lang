@@ -106,7 +106,7 @@ cargo install --path . --locked --no-default-features \
         Running <code class="text-amber-300">soli update</code> without the needed permissions prints a hint telling you to re-run with <code class="text-amber-300">sudo</code>.
     </p>
     <p class="text-gray-400 mb-4">
-        The download is checked before anything is installed: against the SHA-256 published beside it, and &mdash; on a binary built with a release key &mdash; against the release&rsquo;s signature, which only the key&rsquo;s holder can make. A release that fails either is not installed.
+        The download is checked before anything is installed: against the SHA-256 published beside it, and &mdash; on a binary built with a release key &mdash; against the release&rsquo;s signature, which only the key&rsquo;s holder can make and which names the version and the artifact. A release that fails either is not installed. The first install is not covered by the signature: <code>install.sh</code> checks the published SHA-256 only.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">

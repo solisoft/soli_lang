@@ -2903,14 +2903,16 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
                 process::exit(1);
             }
         };
-        let tarball = match std::fs::read(&tarball_path) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                eprintln!("  \x1b[31mError:\x1b[0m reading download: {}", e);
-                process::exit(1);
-            }
-        };
-        if let Err(e) = solilang::update::verify_release_signature(&tarball, &signature, pubkey) {
+        // Signed for this tag and this artifact, by name: an older release
+        // served under the latest tag, or another artifact of the same key,
+        // carries a signature that is not this one.
+        if let Err(e) = solilang::update::verify_release(
+            &format!("v{}", latest_tag),
+            &tarball,
+            &actual_sha,
+            &signature,
+            pubkey,
+        ) {
             eprintln!("  \x1b[31mError:\x1b[0m {} — refusing to install.", e);
             process::exit(1);
         }
@@ -2958,6 +2960,11 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     // Move the freshly downloaded binary into place.
     if std::fs::rename(&binary_path, &current_exe).is_err() {
         if let Err(e) = std::fs::copy(&binary_path, &current_exe) {
+            // The running binary was moved aside a moment ago: put it back,
+            // or a failed update leaves no `soli` at all.
+            if std::fs::rename(&backup_path, &current_exe).is_err() {
+                let _ = std::fs::copy(&backup_path, &current_exe);
+            }
             permission_hint(&e);
             return Err(format!("Failed to install new binary: {}", e).into());
         }

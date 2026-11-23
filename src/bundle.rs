@@ -884,6 +884,18 @@ mod tests {
         );
     }
 
+    /// A container of the current version cut short of its salt, nonce and
+    /// tag is refused before anything is sliced out of it.
+    #[test]
+    fn a_truncated_container_of_the_current_version_is_refused() {
+        let mut cut = Vec::new();
+        cut.extend_from_slice(ENCRYPTED_BUNDLE_MAGIC);
+        cut.push(ENCRYPTED_BUNDLE_VERSION);
+        cut.extend_from_slice(&[0u8; 35]); // 40 bytes: past the old minimum, short of this one
+        let err = decrypt_bundle(&cut, "key").unwrap_err();
+        assert!(err.contains("truncated"), "{err}");
+    }
+
     #[test]
     fn bundle_reader_rejects_encrypted_magic() {
         let sealed = encrypt_bundle(&plain_fixture_bundle(), "key").unwrap();
