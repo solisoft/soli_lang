@@ -24,17 +24,20 @@ def auth_env_int(name, fallback)
 end
 
 # Per-IP throttle on the credential endpoints (login, sign-up, reset). The
-# per-account lockout above cannot see these two attacks: credential stuffing
-# spread thinly across thousands of accounts never trips it, and an attacker
-# who knows an email address can lock its owner out on demand. Keying on the
-# source address covers the first, and the second for as long as the budget
-# stays under AUTH_MAX_FAILED_ATTEMPTS — failures are counted within that
-# same window (`register_failed_attempt`): one address then cannot reach the
-# lock by itself, at once or by coming back. (Several addresses still can — the lock is what stops
-# them guessing; its owner is mailed, and a password reset lifts it.) Tune
-# per deployment with AUTH_ATTEMPTS_PER_IP and AUTH_IP_WINDOW_SECONDS: an
-# office behind one NAT may need a higher limit, and above the lock's
-# threshold one address can lock an account again.
+# per-account lockout above cannot see credential stuffing spread thinly
+# across thousands of accounts; keying on the source address does.
+#
+# The lockout is also a way to keep an owner out: whoever knows an address
+# can send it wrong passwords. The budget is under AUTH_MAX_FAILED_ATTEMPTS,
+# so one address cannot do it in one go — it takes it two windows, ten
+# minutes with the defaults, and several addresses none. That is the price
+# of the lock: counting failures only within a window, or per address, would
+# spare the owner and hand a guesser five times the tries, unlocked and
+# unannounced. The owner is mailed when the lock trips, it lifts by itself
+# after AUTH_LOCKOUT_SECONDS, and a password reset lifts it at once.
+#
+# Tune per deployment with AUTH_ATTEMPTS_PER_IP and AUTH_IP_WINDOW_SECONDS
+# (an office behind one NAT may need a higher limit).
 const AUTH_ATTEMPTS_PER_IP = auth_env_int("AUTH_ATTEMPTS_PER_IP", 8)
 const AUTH_IP_WINDOW_SECONDS = auth_env_int("AUTH_IP_WINDOW_SECONDS", 300)
 
@@ -441,7 +444,7 @@ class User < Model
     # that is being ended may still be adding a token, and it checks the
     # version after writing (`auth_credential_kept?`).
     @end_sessions
-    ["ApiToken", "PasskeyCredential", "MagicLink", "Device"].each do |name|
+    @_reset_sweep.each do |name|
       model = const_get(name)
       auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
     end
@@ -485,11 +488,22 @@ class User < Model
     # that slipped in since the first count is behind this one — and what it
     # may have added since the sweep above goes in a second one.
     @end_sessions
-    ["ApiToken", "PasskeyCredential", "MagicLink", "Device"].each do |name|
+    @_reset_sweep.each do |name|
       model = const_get(name)
       auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
     end
     true
+  end
+
+  # The models a password reset empties for this account: what a visitor to
+  # it could have added. Push devices are those of `soli generate devices`,
+  # which names its model (PUSH_DEVICES_MODEL) — not whatever an app calls
+  # Device.
+  def _reset_sweep
+    names = ["ApiToken", "PasskeyCredential", "MagicLink"]
+    devices = const_get("PUSH_DEVICES_MODEL")
+    names.push(devices) if type(devices) == "string"
+    names
   end
 
   # Invalidate every session opened before this moment.
@@ -786,16 +800,6 @@ class User < Model
       return true
     end
 
-    # A count that stopped growing longer ago than the per-address window
-    # starts again: otherwise one address, never over its budget, reaches
-    # the lock in two windows — eight guesses, a pause, two more.
-    now = DateTime.utc.to_unix
-    if (@failed_attempts ?? 0) > 0 && now - (@last_failed_at ?? 0).to_i > AUTH_IP_WINDOW_SECONDS
-      @failed_attempts = 0
-      @_patch({"failed_attempts": 0})
-    end
-    @last_failed_at = now
-    @_patch({"last_failed_at": now})
     # Counted in the database (`increment` is one atomic write): a read, +1
     # and save let parallel guesses overwrite each other's count, so a burst
     # of wrong passwords slipped past the lockout.

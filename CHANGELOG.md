@@ -20,8 +20,11 @@
     directory that created it; another's is a 404. `"okta/Finance"` in
     `SCIM_GROUP_ROLES` maps one directory's group. SCIM writes the fields
     it sets, not the whole user.
-  - *One address could lock an account.* The per-IP budget (15) was above
-    the lockout's threshold (10). `AUTH_ATTEMPTS_PER_IP` defaults to 8.
+  - *One address could lock an account in one go.* The per-IP budget (15)
+    was above the lockout's threshold (10). `AUTH_ATTEMPTS_PER_IP` defaults
+    to 8: it now takes one address two windows (ten minutes). The lock
+    itself stays as it was — counting failures per window instead would
+    give a guesser five times the tries, unlocked and unannounced.
   - *Turning two-factor on could leave other sessions signed in* when the
     write that ends them failed: the enrolment is then undone.
   - *A second factor passed on a remember-me session counted as a fresh
@@ -40,8 +43,7 @@
     it while the owner scanned it, and pass the second factor ever after.
     It is the session's that started the enrolment (`TwoFactor.start(user,
     setup_digest)`, `started_by?`); another session is told to start its
-    own. Failed sign-ins are counted within the per-address window, so one
-    address cannot reach the lock by coming back. A password reset also
+    own. A password reset also
     removes the account's push devices. Removing from a SCIM group a
     member that is gone no longer empties the group; an externalId is
     looked up within the directory's reach; a taken address is "exists"

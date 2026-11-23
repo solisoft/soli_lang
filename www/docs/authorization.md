@@ -76,10 +76,11 @@ layer:
   `AUTH_ATTEMPTS_PER_IP` per `AUTH_IP_WINDOW_SECONDS` (default 8 per 5
   minutes) is the total across all credential traffic from that address, not
   8 each. The default sits under the account lockout's ten failures on
-  purpose: one address cannot lock an account by itself (several still can —
-  the owner is mailed, and a password reset lifts the lock). Failed sign-ins
-  are counted within that same window: a count that stopped growing longer
-  ago starts again, so one address cannot reach the lock by coming back. The key is the peer address, or the proxy-recorded client only
+  purpose: one address cannot lock an account in one go (several still can —
+  the owner is mailed, and a password reset lifts the lock). One address that
+  comes back after its window still reaches it — in ten minutes with the
+  defaults: the lock is what keeps a guesser to a handful of tries, and
+  counting failures per window instead would give them five times as many. The key is the peer address, or the proxy-recorded client only
   when `enable_trust_proxy()` is on — so a rotating `X-Forwarded-For` can't
   widen it. Both numbers are read from the environment (`AUTH_ATTEMPTS_PER_IP`,
   `AUTH_IP_WINDOW_SECONDS`; unset, blank or non-positive falls back to the

@@ -64,6 +64,19 @@ fn create_devices_writes_model_controller_and_routes() {
         "{controller}"
     );
 
+    // The controller stands without the auth scaffold: an app with its own
+    // sign-in generates devices too, and must not call a helper it lacks.
+    assert!(
+        !controller.contains("auth_credential_kept?") && !controller.contains("auth_own_session?"),
+        "{controller}"
+    );
+    // The model names itself, for the auth scaffold's password reset.
+    let model = fs::read_to_string(dir.path().join("app/models/device.sl")).unwrap();
+    assert!(
+        model.contains("const PUSH_DEVICES_MODEL = \"Device\""),
+        "{model}"
+    );
+
     // Idempotent
     create_devices(dir.path().to_str().unwrap()).expect("second run");
 }

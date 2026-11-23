@@ -5,6 +5,11 @@ pub const DEVICE_MODEL: &str = r#"# Device — push / native shell registration 
 # Shells POST { platform, token } (or a web PushSubscription) after login.
 # Pass Device.push_targets_for(user_id) into Push.deliver(..., { "targets": ... }).
 
+# The model `soli generate devices` wrote, by name: a password reset of the
+# auth scaffold removes an account's push devices, and looks here to know
+# which model that is — not any model that happens to be called Device.
+const PUSH_DEVICES_MODEL = "Device"
+
 class Device < Model
   validates("platform", { "presence": true })
   validates("token", { "presence": true })
@@ -94,8 +99,15 @@ def create(req)
   let device = Device.register(user_id, platform, token.to_s(), subscription)
   # Not from a session that ended while this was written (a password reset):
   # the device would go on receiving the account's notifications.
-  unless auth_credential_kept?(user, device)
-    return { "status": 401, "body": json_stringify({ "error": "login required" }) }
+  # (Where the session carries the account's session version — the auth
+  # scaffold's does; an app with its own sign-in has nothing to compare.)
+  let stamped = session_get("session_version")
+  unless stamped.nil?
+    let fresh = User.find_by("_key", user_id)
+    if fresh.nil? || (fresh.session_version ?? 0).to_i() != (user.session_version ?? 0).to_i()
+      device.destroy()
+      return { "status": 401, "body": json_stringify({ "error": "login required" }) }
+    end
   end
   {
     "status": 201,

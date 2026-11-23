@@ -999,57 +999,6 @@ fn runner_line(root: &Path, env: &[(&str, &str)], code: &str) -> String {
     output.trim().lines().last().unwrap_or_default().to_string()
 }
 
-/// One address cannot lock an account by itself — not at once (its budget
-/// is under the threshold) and not by coming back: failures are counted
-/// within the per-address window. Ten in a row still lock.
-#[test]
-fn failures_older_than_the_window_do_not_add_up_to_a_lock() {
-    let dir = servable_app();
-    let root = dir.path();
-    let code = r##"user = User.new
-user.email = "ada@example.com"
-user.set_password("correct horse battery")
-user.save
-# Eight wrong passwords — a whole budget — then the window passes.
-(0..8).each { |_| user.register_failed_attempt }
-print("after eight: #{user.failed_attempts} #{user.locked?}")
-User.where({"_key": user._key}).update_all({"last_failed_at": DateTime.utc.to_unix - AUTH_IP_WINDOW_SECONDS - 5})
-later = User.find_by("email", "ada@example.com")
-(0..8).each { |_| later.register_failed_attempt }
-later = User.find_by("email", "ada@example.com")
-print("eight more, later: #{later.failed_attempts} #{later.locked?}")
-# Without the pause, two more reach the threshold.
-(0..2).each { |_| later.register_failed_attempt }
-print("ten in a window: #{User.find_by("email", "ada@example.com").locked?}")"##;
-    let database = format!("sqlite://{}/app.sqlite3", root.display());
-    for engine in ["tree", "vm"] {
-        let _ = fs::remove_file(root.join("app.sqlite3"));
-        let (ok, output) = soli(
-            root,
-            &["runner", "-e", code],
-            &[
-                ("SOLI_DB_ADAPTER", "sqlite"),
-                ("DATABASE_URL", &database),
-                ("SOLI_ENGINE", engine),
-                ("SOLI_MAIL_DELIVERY_METHOD", "test"),
-            ],
-        );
-        assert!(ok, "{engine}: {output}");
-        // (The runner has no mailer: the "account locked" mail is a warning
-        // on stderr, somewhere among these lines.)
-        for line in [
-            "after eight: 8 false",
-            "eight more, later: 8 false",
-            "ten in a window: true",
-        ] {
-            assert!(
-                output.lines().any(|got| got == line),
-                "{engine}: no `{line}` in\n{output}"
-            );
-        }
-    }
-}
-
 /// A password reset also removes the push devices registered on the
 /// account: one added by whoever had the old password would go on receiving
 /// its notifications.
@@ -1057,11 +1006,6 @@ print("ten in a window: #{User.find_by("email", "ada@example.com").locked?}")"##
 fn a_reset_removes_the_devices_registered_on_the_account() {
     let dir = servable_app();
     let root = dir.path();
-    fs::write(
-        root.join("app/models/device.sl"),
-        "class Device < Model\nend\n",
-    )
-    .unwrap();
     let code = r##"user = User.new
 user.email = "ada@example.com"
 user.set_password("correct horse battery")
@@ -1071,11 +1015,24 @@ Device.create({"user_id": "another-account", "platform": "ios", "token": "not-ou
 user.start_password_reset
 print("#{user.finish_password_reset("another long password")} #{Device.where({"user_id": user._key}).count} #{Device.count}")"##;
     let database = format!("sqlite://{}/app.sqlite3", root.display());
-    let (ok, output) = soli(
-        root,
-        &["runner", "-e", code],
-        &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
-    );
-    assert!(ok, "{output}");
-    assert!(output.trim_end().ends_with("true 0 1"), "{output}");
+    // The model `soli generate devices` writes names itself, and its rows go.
+    // A `Device` of the app's own — a fleet, a sensor — that does not is
+    // nobody's push device: a reset leaves it alone.
+    for (model, left) in [
+        (
+            "const PUSH_DEVICES_MODEL = \"Device\"\n\nclass Device < Model\nend\n",
+            "true 0 1",
+        ),
+        ("class Device < Model\nend\n", "true 1 2"),
+    ] {
+        fs::write(root.join("app/models/device.sl"), model).unwrap();
+        let _ = fs::remove_file(root.join("app.sqlite3"));
+        let (ok, output) = soli(
+            root,
+            &["runner", "-e", code],
+            &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
+        );
+        assert!(ok, "{output}");
+        assert!(output.trim_end().ends_with(left), "{model}: {output}");
+    }
 }

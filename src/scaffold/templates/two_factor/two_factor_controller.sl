@@ -83,7 +83,7 @@ class TwoFactorController < Controller
     # account with a second factor and, signed in to it, a session that
     # holds "no second factor".
     user.end_sessions
-    session_set("session_version", user.current_session_version)
+    @_stamp_session(user)
     codes = record.confirm(params["code"])
     return @_render_setup(record, user, invalid, 422) if codes.nil?
 
@@ -92,7 +92,7 @@ class TwoFactorController < Controller
     # above and the enrolment was told "no second factor".
     user.forget_me
     user.end_sessions
-    session_set("session_version", user.current_session_version)
+    @_stamp_session(user)
     session_delete("two_factor_setup")
     session_set("two_factor", "ok:#{user._key}")
     render(
@@ -215,6 +215,14 @@ class TwoFactorController < Controller
     end
     user.register_failed_attempt
     false
+  end
+
+  # Keep this session on the account's current version — read back, not
+  # taken from this request's count: a copy of the same form sent alongside
+  # counts too, and the lower of the two stamps would sign this session out.
+  def _stamp_session(user)
+    stored = User.find_by("_key", user._key)
+    session_set("session_version", (stored ?? user).current_session_version)
   end
 
   def _render_index(user, error, status)
