@@ -440,4 +440,44 @@ mod integration_tests {
             let _ = db::sql::drop_table(JOBS_COLLECTION);
         });
     }
+
+    /// A mail that is given up on keeps no body — it may hold a reset or a
+    /// sign-in link that is still good — and, with nothing left to send,
+    /// cannot be put back in the queue.
+    #[test]
+    fn a_mail_given_up_on_keeps_no_body_and_is_not_retried() {
+        with_pg(|| {
+            if !pg_ready() {
+                return;
+            }
+
+            let args = serde_json::json!({
+                "to": "ada@example.com",
+                "subject": "Reset your password",
+                "html": "<a href=\"/password/edit?token=live-token\">Reset</a>",
+                "text": "/password/edit?token=live-token",
+            });
+            let mut mail = JobDoc::new("__MailDelivery", args, "default", now_iso());
+            mail.max_retries = 0;
+            store::enqueue(&mail).expect("enqueue");
+            let claimed = claim(1).expect("claim");
+            crate::jobs::engine::report_outcome(&claimed[0], Some("the mail server refused"));
+
+            let row = store::get(&mail.key).expect("get").expect("row");
+            assert_eq!(row.state, JobState::Dead);
+            assert!(row.args["html"].is_null(), "{}", row.args);
+            assert!(row.args["text"].is_null(), "{}", row.args);
+            assert!(!row.args.to_string().contains("live-token"), "{}", row.args);
+            assert_eq!(row.args["to"], serde_json::json!("ada@example.com"));
+
+            let err = store::retry(&mail.key).expect_err("nothing left to send");
+            assert!(err.contains("body was removed"), "{err}");
+            assert_eq!(
+                store::get(&mail.key).expect("get").expect("row").state,
+                JobState::Dead
+            );
+
+            let _ = db::sql::drop_table(JOBS_COLLECTION);
+        });
+    }
 }

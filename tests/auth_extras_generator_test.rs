@@ -9,7 +9,9 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{json, Value as Json};
-use solilang::scaffold::{create_api_tokens, create_auth, create_impersonation, create_magic_link};
+use solilang::scaffold::{
+    create_api_tokens, create_auth, create_devices, create_impersonation, create_magic_link,
+};
 
 fn make_app_skeleton(root: &Path) {
     for sub in ["app/controllers", "app/models", "app/views", "config"] {
@@ -182,12 +184,22 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
+    serve_with(root, 1, &[])
+}
+
+/// `workers` request workers, and `extra` environment over the defaults.
+fn serve_with(root: &Path, workers: usize, extra: &[(&str, &str)]) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env("AUTH_SIGNUP", "first_user")
@@ -204,6 +216,7 @@ fn serve(root: &Path) -> Server {
         // Mail is kept in memory, where /whoami/mail reads the link back.
         .env("SOLI_MAIL_DELIVERY_METHOD", "test")
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+        .envs(extra.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let server = Server(command.spawn().expect("spawn soli serve"), port);
@@ -1081,4 +1094,197 @@ fn a_logout_the_database_cannot_serve_fails_and_drops_nothing() {
     let mut later = Client::browser(&server);
     later.jar.insert("remember_token".to_string(), replacement);
     assert_eq!(later.whoami(), "guest");
+}
+
+/// An administrator acting as a user does not register a push device: it
+/// would be the administrator's own, and go on receiving the user's
+/// notifications once the impersonation is over.
+#[test]
+fn an_administrator_acting_as_a_user_registers_no_device() {
+    let dir = served_app();
+    let root = dir.path();
+    create_devices(root.to_str().unwrap()).expect("devices");
+    let (ok, output) = soli(root, &["db:migrate", "up", "."]);
+    assert!(ok, "db:migrate up:\n{output}");
+    let server = serve(root);
+    drop(sign_up(&server, "admin@example.com"));
+    fs::write(
+        root.join("users.sl"),
+        "user = User.new\nuser.email = \"grace@example.com\"\nuser.role = \"member\"\n\
+         user.set_password(\"correct horse battery\")\nuser.save\n",
+    )
+    .unwrap();
+    drop(server);
+    let (ok, output) = soli(root, &["db:seed", ".", "users.sl"]);
+    assert!(ok, "{output}");
+    let server = serve(root);
+    let login = |client: &mut Client, email: &str| {
+        let reply = client.post("/login", json!({"email": email, "password": PASSWORD}));
+        assert_eq!(reply.status, 302, "{email}: {}", reply.body);
+    };
+    let mut admin = Client::browser(&server);
+    login(&mut admin, "admin@example.com");
+    let mut grace = Client::browser(&server);
+    login(&mut grace, "grace@example.com");
+    let grace_key = grace.get("/whoami/key").body;
+
+    let reply = admin.post(&format!("/impersonate/{grace_key}"), json!({}));
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    assert_eq!(admin.whoami(), "grace@example.com member");
+    let phone = json!({"platform": "ios", "token": "the-administrators-own-phone"});
+    let refused = admin.post("/devices", phone.clone());
+    assert_eq!(refused.status, 403, "{}", refused.body);
+    assert!(
+        refused.body.contains("acting as another user"),
+        "{}",
+        refused.body
+    );
+    assert_eq!(runner(root, "print(Device.count)"), "0");
+
+    // Their own sessions may: the user's, and the administrator's once back.
+    let own = grace.post(
+        "/devices",
+        json!({"platform": "ios", "token": "graces-phone"}),
+    );
+    assert_eq!(own.status, 201, "{}", own.body);
+    let back = admin.request("DELETE", "/impersonate", None);
+    assert_eq!(back.status, 302, "{}", back.body);
+    assert_eq!(admin.whoami(), "admin@example.com admin");
+    assert_eq!(admin.post("/devices", phone).status, 201);
+    assert_eq!(runner(root, "print(Device.count)"), "2");
+}
+
+/// The limit on pending sign-in links holds against requests sent together.
+/// Each of them reads the count before any of them writes: counted once,
+/// before the write, they all pass.
+///
+/// (A race, so one-sided: with the recount removed this failed about every
+/// other run — four links for a limit of three; with it, it must never.)
+#[test]
+fn sign_in_links_asked_for_together_stay_under_the_limit() {
+    let dir = served_app();
+    let server = serve_with(dir.path(), 8, &[]);
+    drop(sign_up(&server, "ada@example.com"));
+    std::thread::scope(|scope| {
+        for _ in 0..40 {
+            scope.spawn(|| {
+                Client::browser(&server).post("/login/link", json!({"email": "ada@example.com"}));
+            });
+        }
+    });
+    let pending = runner(
+        dir.path(),
+        r##"user = User.find_by("email", "ada@example.com")
+print(MagicLink.where({"user_id": user._key}).count)"##,
+    );
+    let pending: usize = pending.parse().unwrap_or_else(|_| panic!("{pending}"));
+    assert!(pending <= 3, "{pending} links pending for one requester");
+}
+
+/// A wrong password is answered after the uniform time — a known address and
+/// an unknown one do not cost the same work — and an address over its budget
+/// at once: a refusal that waited would let it hold the workers.
+#[test]
+fn a_refused_sign_in_waits_and_a_throttled_one_does_not() {
+    let dir = served_app();
+    let server = serve_with(dir.path(), 1, &[("AUTH_ATTEMPTS_PER_IP", "3")]);
+    drop(sign_up(&server, "ada@example.com"));
+    let attempt = |email: &str| {
+        let started = std::time::Instant::now();
+        let reply = Client::browser(&server).post(
+            "/login",
+            json!({"email": email, "password": "not the password"}),
+        );
+        (reply.status, started.elapsed().as_millis())
+    };
+    for email in ["ada@example.com", "nobody@example.com"] {
+        let (status, took) = attempt(email);
+        assert_eq!(status, 401, "{email}");
+        assert!(took >= 240, "{email} was refused after {took} ms");
+    }
+    // The budget (3) is spent: the sign-up and the two refusals.
+    let (status, took) = attempt("ada@example.com");
+    assert_eq!(status, 429);
+    assert!(took < 200, "the throttled answer took {took} ms");
+}
+
+/// The reset against the thing it is for: someone signed in with the old
+/// password, adding API tokens as fast as they can while the owner resets
+/// it. When the reset has answered, no token of theirs is left and their
+/// session is over — whichever of the two wrote first, each time.
+///
+/// (A race, so one-sided: it can only fail when a token survives.)
+#[test]
+fn tokens_added_while_the_password_is_reset_do_not_survive_it() {
+    let dir = served_app();
+    let server = serve_with(dir.path(), 6, &[]);
+    let mut intruder = sign_up(&server, "ada@example.com");
+    assert_eq!(intruder.whoami(), "ada@example.com admin");
+
+    for round in 0..3 {
+        // The owner's reset link (made here: with several workers the
+        // mail kept in memory is in whichever one sent it).
+        let token = runner(
+            dir.path(),
+            r##"print(User.find_by("email", "ada@example.com").start_password_reset)"##,
+        );
+        let password = format!("a new long password {round}");
+
+        let done = std::sync::atomic::AtomicBool::new(false);
+        let added = std::sync::atomic::AtomicUsize::new(0);
+        let refused = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            // Four copies of the intruder's session, each adding tokens
+            // until the reset has answered.
+            for copy in 0..4 {
+                let mut session = Client::browser(&server);
+                session.jar = intruder.jar.clone();
+                let (done, added, refused) = (&done, &added, &refused);
+                scope.spawn(move || {
+                    let mut n = 0;
+                    while !done.load(std::sync::atomic::Ordering::SeqCst) && n < 400 {
+                        n += 1;
+                        let reply = session.post(
+                            "/api_tokens",
+                            json!({"name": format!("t{copy}-{n}"), "scope_read": "1"}),
+                        );
+                        let counter = if reply.status == 201 { added } else { refused };
+                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                });
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            let reset = Client::browser(&server).post(
+                "/password/update",
+                json!({"token": token, "password": password, "password_confirmation": password}),
+            );
+            assert_eq!(reset.status, 302, "round {round}: {}", reset.body);
+            // A few more requests after it, then stop.
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        // The race was run: tokens went in before the reset, and requests
+        // were turned away after it.
+        let (added, refused) = (added.into_inner(), refused.into_inner());
+        assert!(
+            added > 0 && refused > 0,
+            "round {round}: {added} added, {refused} refused"
+        );
+
+        let left = runner(
+            dir.path(),
+            r##"user = User.find_by("email", "ada@example.com")
+print(ApiToken.where({"user_id": user._key}).count)"##,
+        );
+        assert_eq!(left, "0", "round {round}: tokens outlived the reset");
+        assert_eq!(intruder.whoami(), "guest", "round {round}");
+
+        // Next round: the intruder has the new password too.
+        intruder = Client::browser(&server);
+        let reply = intruder.post(
+            "/login",
+            json!({"email": "ada@example.com", "password": password}),
+        );
+        assert_eq!(reply.status, 302, "round {round}: {}", reply.body);
+    }
 }

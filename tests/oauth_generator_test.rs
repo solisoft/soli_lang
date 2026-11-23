@@ -289,6 +289,9 @@ struct Provider {
     nonces: BTreeMap<String, String>,
     /// Answer with a nonce from some other sign-in.
     forge_nonce: bool,
+    /// Run when GitLab is asked for a token: something that happens to the
+    /// account while the callback is waiting for the provider.
+    on_token: Option<Box<dyn FnMut() + Send>>,
 }
 
 /// One parameter of a query string or a form body, percent-decoded.
@@ -365,6 +368,9 @@ fn start_providers(state: Arc<Mutex<Provider>>) -> u16 {
             } else if path.ends_with("/token") {
                 state.last_token_request = String::from_utf8_lossy(&body).into_owned();
                 if path == "/oauth/token" {
+                    if let Some(hook) = state.on_token.as_mut() {
+                        hook();
+                    }
                     json!({"access_token": "gitlab-token", "token_type": "bearer"})
                 } else {
                     let claims = claims_for(&state, &state.last_token_request);
@@ -1438,4 +1444,56 @@ fn the_generated_services_hold_their_configuration_to_account() {
         "{controller}"
     );
     assert!(controller.contains("OauthSso.log_safe("), "{controller}");
+}
+
+/// A link is added by the session that asked for it. If the account's
+/// sessions are ended while the provider is answering — a password reset —
+/// the session that comes back from the provider links nothing, and is not
+/// stamped back to life.
+#[test]
+fn a_session_ended_while_the_provider_answered_links_nothing() {
+    let dir = served_app();
+    let root = dir.path().to_path_buf();
+    let state = Arc::new(Mutex::new(Provider::default()));
+    let providers = start_providers(Arc::clone(&state));
+    let server = serve(&root, providers, "open");
+    state.lock().unwrap().profile = gitlab("gl-1", "ada@example.com", true);
+    let mut ada = Browser::new(&server);
+    assert_eq!(ada.sign_in_with("gitlab").status, 302);
+    assert_eq!(ada.whoami(), "ada@example.com member From GitLab");
+
+    // Another GitLab account, to connect — and the account's sessions end
+    // when the provider is asked for the token, in the middle of the
+    // callback.
+    state.lock().unwrap().profile = gitlab("gl-2", "second@example.com", true);
+    let link_state = ada.start_link("gitlab");
+    let app = root.clone();
+    state.lock().unwrap().on_token = Some(Box::new(move || {
+        let code = r##"User.find_by("email", "ada@example.com").end_sessions"##;
+        let (ok, output) = soli(&app, &["runner", "-e", code]);
+        assert!(ok, "{output}");
+    }));
+    let reply = ada.get(&format!(
+        "/auth/gitlab/callback?code=the-code&state={link_state}"
+    ));
+    state.lock().unwrap().on_token = None;
+    assert_ne!(reply.location, "/oauth/identities", "{}", reply.body);
+    assert!(
+        reply
+            .body
+            .contains("sign in again before connecting an account"),
+        "{} {}",
+        reply.status,
+        reply.body
+    );
+    let (ok, output) = soli(
+        &root,
+        &[
+            "runner",
+            "-e",
+            r##"print("linked #{OauthIdentity.where({"uid": "gl-2"}).count}")"##,
+        ],
+    );
+    assert!(ok && output.trim_end().ends_with("linked 0"), "{output}");
+    assert_eq!(ada.whoami(), "guest", "the ended session is back");
 }
