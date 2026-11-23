@@ -24,7 +24,9 @@
     removed and asked to try again.
   - *The confirmation link's take-over ran once per copy*, each mailing a
     reset link of which only the last worked: claimed like the others.
-  - *OAuth `state`* is taken from the session, not read.
+  - *OAuth `state`* is taken from the session, not read; a callback
+    refused for its state clears nothing else, so a copy that came late
+    does not take the verifier from the one being answered.
   - *SAML*: an account made for a first sign-in is no longer deleted when
     another sign-in of the same person linked it meanwhile.
   The reset and confirmation claims are by-filter writes: on SoliDB they

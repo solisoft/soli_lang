@@ -85,7 +85,9 @@ def callback(req)
 
   answer = req["query"] || req["query_params"] || {}
   unless OauthSso.valid_state?(answer["state"])
-    OauthSso.clear_state
+    # Nothing else is cleared: the state is spent by the check itself, and
+    # a copy of the callback that arrived a moment late must not take the
+    # verifier and the nonce from under the one that is being answered.
     return {"status": 403, "body": "Invalid OAuth state — try signing in again"}
   end
 

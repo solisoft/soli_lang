@@ -1441,3 +1441,61 @@ fn two_set_ups_sent_together_enrol_one_secret_at_most() {
     assert_eq!(passed.status, 302, "{}", passed.body);
     assert!(fresh.signed_in());
 }
+
+/// One backup code, then one authenticator code, each typed at the same
+/// instant in four browsers waiting at the challenge — on separate workers,
+/// for real. A code passes once.
+#[test]
+fn a_code_typed_together_passes_once() {
+    let dir = served_app();
+    let server = serve_workers(dir.path(), 4);
+    let mut ada = Browser::new(&server);
+    let signup = ada.post("/signup", json!({"email": EMAIL, "password": PASSWORD}));
+    assert_eq!(signup.status, 200, "{}", signup.body);
+    confirm_address(dir.path(), EMAIL);
+    assert_eq!(ada.sign_in().status, 302);
+    let setup = ada.post("/two_factor/setup", json!({}));
+    let secret = marked(&setup.body, "data-two-factor-secret").remove(0);
+    settle();
+    let enrolled_at = unix_now() / 30;
+    let confirmed = ada.post(
+        "/two_factor/confirm",
+        json!({"code": totp(&secret, unix_now())}),
+    );
+    assert_eq!(confirmed.status, 200, "{}", confirmed.body);
+    let backup = marked(&confirmed.body, "data-backup-code").remove(0);
+
+    let typed_together = |code: String| -> usize {
+        let gate = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let waiting: Vec<_> = (0..4)
+            .map(|_| {
+                let mut browser = Browser::new(&server);
+                assert_eq!(browser.sign_in().status, 302);
+                let gate = gate.clone();
+                let code = code.clone();
+                std::thread::spawn(move || {
+                    gate.wait();
+                    let reply = browser.post("/two_factor/challenge", json!({"code": code}));
+                    assert!(reply.status < 500, "{}", reply.body);
+                    browser.signed_in()
+                })
+            })
+            .collect();
+        waiting
+            .into_iter()
+            .map(|one| one.join().unwrap())
+            .filter(|signed_in| *signed_in)
+            .count()
+    };
+    assert_eq!(typed_together(backup), 1, "the backup code");
+    // A step after the one that enrolled, which is spent.
+    while unix_now() / 30 <= enrolled_at {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    settle();
+    assert_eq!(
+        typed_together(totp(&secret, unix_now())),
+        1,
+        "the authenticator code"
+    );
+}

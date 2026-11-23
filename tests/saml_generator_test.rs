@@ -217,12 +217,23 @@ fn serve(root: &Path, provision: &str) -> Server {
 
 /// `serve`, with more environment (it wins over the defaults).
 fn serve_with(root: &Path, provision: &str, extra: &[(&str, &str)]) -> Server {
+    serve_workers(root, provision, extra, 1)
+}
+
+/// `serve_with`, on `workers` request workers: requests sent together run
+/// side by side.
+fn serve_workers(root: &Path, provision: &str, extra: &[(&str, &str)], workers: usize) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env_remove("SAML_IDP_METADATA_FILE")
@@ -1491,5 +1502,87 @@ print("ready #{SamlIdentity.where({"user_id": user._key}).count}")"##
 print("#{user.saml_link_pending} #{SamlIdentity.where({"user_id": user._key}).count}")"##
         ),
         "false 1"
+    );
+}
+
+/// One response posted several times together with the request cookie it
+/// answers — on separate workers, for real. An assertion signs in once.
+#[test]
+fn a_response_posted_together_signs_in_once() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_workers(root, "on", &[], 4);
+    let mut ada = Browser::new(&server);
+    let request_id = ada.start("/saml/login");
+    let response = issue(root, &request_id, json!({}));
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(4));
+    let copies: Vec<_> = (0..4)
+        .map(|_| {
+            let mut copy = Browser {
+                port: ada.port,
+                jar: ada.jar.clone(),
+            };
+            let gate = gate.clone();
+            let response = response.clone();
+            std::thread::spawn(move || {
+                gate.wait();
+                let status = copy.post_response(&response).status;
+                (status, copy.whoami())
+            })
+        })
+        .collect();
+    let replies: Vec<_> = copies.into_iter().map(|one| one.join().unwrap()).collect();
+    let signed_in = replies.iter().filter(|(status, _)| *status == 302).count();
+    assert_eq!(signed_in, 1, "{replies:?}");
+    for (status, who) in &replies {
+        assert!(*status == 302 || *status == 401, "{replies:?}");
+        assert_eq!(
+            *status == 302,
+            who.starts_with("ada@example.com"),
+            "{replies:?}"
+        );
+    }
+}
+
+/// Two first sign-ins of the same person sent together, each with its own
+/// request and its own assertion — two tabs. Whatever each is answered, the
+/// account that remains is one, it is linked, and the next sign-in works:
+/// the request that lost must not remove the account the other one linked.
+#[test]
+fn two_first_sign_ins_together_leave_one_linked_account() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_workers(root, "on", &[("SAML_LINK_EXISTING", "on")], 4);
+    let mut tabs = Vec::new();
+    for _ in 0..2 {
+        let mut tab = Browser::new(&server);
+        let request_id = tab.start("/saml/login");
+        let response = issue(root, &request_id, json!({}));
+        tabs.push((tab, response));
+    }
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let posting: Vec<_> = tabs
+        .into_iter()
+        .map(|(mut tab, response)| {
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                gate.wait();
+                tab.post_response(&response).status
+            })
+        })
+        .collect();
+    let statuses: Vec<u16> = posting.into_iter().map(|one| one.join().unwrap()).collect();
+    assert!(statuses.contains(&302), "nobody signed in: {statuses:?}");
+    assert!(statuses.iter().all(|status| *status < 500), "{statuses:?}");
+
+    let mut later = Browser::new(&server);
+    let request_id = later.start("/saml/login");
+    let response = issue(root, &request_id, json!({}));
+    let reply = later.post_response(&response);
+    assert_eq!(reply.status, 302, "{statuses:?}: {}", reply.body);
+    assert!(
+        later.whoami().starts_with("ada@example.com"),
+        "{}",
+        later.whoami()
     );
 }

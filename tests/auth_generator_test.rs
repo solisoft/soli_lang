@@ -1224,3 +1224,70 @@ fn a_reset_link_completed_together_changes_the_password_once() {
         302
     );
 }
+
+/// A take-over by confirmation link that fails half-way — after the account
+/// was already stripped — leaves the link usable and the account still a
+/// placeholder: pressing the button again does the whole job, sweep and
+/// reset mail included, instead of merely confirming the address.
+#[test]
+fn a_take_over_that_failed_half_way_starts_again_whole() {
+    let dir = servable_app();
+    let root = dir.path();
+    let model_path = root.join("app/models/user.sl");
+    let model = fs::read_to_string(&model_path).unwrap();
+    let end = "    @end_sessions\n    @_sweep_credentials\n    true\n  end\n";
+    assert_eq!(model.matches(end).count(), 1, "{model}");
+    fs::write(
+        &model_path,
+        model.replace(
+            end,
+            "    @end_sessions\n    @_sweep_credentials\n                 throw \"injected\" if User.find_by(\"_key\", @_key).name.to_s == \"fail\"\n\n    true\n  end\n",
+        ),
+    )
+    .unwrap();
+    let server = serve(root, &[("APP_ENV", "test"), ("AUTH_SIGNUP", "open")]);
+    let (status, body) = call(&server, "POST", "/signup", Some(ADA));
+    assert_eq!(status, 200, "{body}");
+    let database = format!("sqlite://{}/app.sqlite3", root.display());
+    let env = [
+        ("SOLI_DB_ADAPTER", "sqlite"),
+        ("DATABASE_URL", database.as_str()),
+    ];
+    let token = runner_line(
+        root,
+        &env,
+        r##"user = User.find_by("email", "ada@example.com")
+token = user.start_email_confirmation
+User.where({"_key": user._key}).update_all({"name": "fail"})
+print(token)"##,
+    );
+    let press = serde_json::json!({"token": token}).to_string();
+    let state = |token: &str| {
+        runner_line(
+            root,
+            &env,
+            &format!(
+                r##"user = User.find_by("email", "ada@example.com")
+held = user.confirmation_token_digest == Crypto.sha256("{token}")
+print("#{{user.awaiting_owner == true}} #{{held}} #{{user.confirmed?}} #{{user.reset_token_digest.present?}}")"##
+            ),
+        )
+    };
+
+    let (status, body) = call(&server, "POST", "/confirm_email", Some(&press));
+    assert_eq!(status, 500, "{body}");
+    // Still a placeholder, the link still its own, nothing confirmed.
+    assert_eq!(state(&token), "true true false false");
+
+    runner_line(
+        root,
+        &env,
+        r##"User.where({"email": "ada@example.com"}).update_all({"name": "Ada"})"##,
+    );
+    let (status, body) = call(&server, "POST", "/confirm_email", Some(&press));
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("We sent you a link"), "{body}");
+    // The whole take-over: confirmed, no placeholder, a reset link issued.
+    let after = state(&token);
+    assert_eq!(after, "false false true true", "{body}");
+}

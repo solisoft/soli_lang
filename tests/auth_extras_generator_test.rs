@@ -1336,3 +1336,59 @@ held.touch
 print("#{ApiToken.count} #{ApiToken.authenticate(issued["token"]).nil?}")"##;
     assert_eq!(runner(dir.path(), code), "0 true");
 }
+
+/// One sign-in link opened several times together by the browser that
+/// asked — on separate workers, for real. It signs in once.
+#[test]
+fn a_sign_in_link_pressed_together_signs_in_once() {
+    let dir = served_app();
+    let server = serve_with(dir.path(), 4, &[]);
+    drop(sign_up(&server, "ada@example.com"));
+    let mut ada = Client::browser(&server);
+    assert_eq!(
+        ada.post("/login/link", json!({"email": "ada@example.com"}))
+            .status,
+        200
+    );
+    // The test mailbox is one worker's memory: ask until that worker answers.
+    let mut link = String::new();
+    for _ in 0..200 {
+        let mail = Client::browser(&server).get("/whoami/mail").body;
+        if let Some(start) = mail.rfind("https://app.test/login/link/") {
+            link = mail[start..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || ":/._-".contains(*c))
+                .collect::<String>()
+                .trim_start_matches("https://app.test")
+                .to_string();
+            break;
+        }
+    }
+    assert!(!link.is_empty(), "no worker holds the mail");
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(4));
+    let pressing: Vec<_> = (0..4)
+        .map(|_| {
+            let mut copy = Client {
+                port: ada.port,
+                jar: ada.jar.clone(),
+                bearer: None,
+            };
+            let gate = gate.clone();
+            let link = link.clone();
+            std::thread::spawn(move || {
+                gate.wait();
+                copy.post(&link, json!({})).status
+            })
+        })
+        .collect();
+    let statuses: Vec<u16> = pressing
+        .into_iter()
+        .map(|one| one.join().unwrap())
+        .collect();
+    assert_eq!(
+        statuses.iter().filter(|status| **status == 302).count(),
+        1,
+        "{statuses:?}"
+    );
+    assert!(statuses.iter().all(|status| *status < 500), "{statuses:?}");
+}

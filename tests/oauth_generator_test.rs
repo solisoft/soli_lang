@@ -1549,4 +1549,9 @@ fn a_callback_sent_together_is_answered_once() {
         3,
         "{replies:?}"
     );
+    // The copies that were refused took nothing from the one answered: the
+    // provider was asked once, with the verifier.
+    let sent = state.lock().unwrap().last_token_request.clone();
+    let verifier = parameter(&sent, "code_verifier").unwrap_or_default();
+    assert!(verifier.len() >= 43, "the verifier was gone: {sent}");
 }
