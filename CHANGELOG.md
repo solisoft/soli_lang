@@ -27,6 +27,8 @@
   - *OAuth `state`* is taken from the session, not read.
   - *SAML*: an account made for a first sign-in is no longer deleted when
     another sign-in of the same person linked it meanwhile.
+  The reset and confirmation claims are by-filter writes: on SoliDB they
+  are guarded from 2.9.1 on, which is the scaffold's minimum.
   Held, and now tested: erasures of one account sent together, and two
   second-factor set-ups sent together. Held by reading: the OIDC
   provider's codes, refresh tokens and device codes, TOTP steps and

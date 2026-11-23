@@ -50,6 +50,10 @@ layer:
 - **What counts as a placeholder.** The sign-up form marks the account it creates (`awaiting_owner`); the first session or API token of its own clears the mark, an administrator impersonating does not. Only a marked account is taken over. An account made any other way — by an administrator, a directory, a seed, or before the mark existed — is never one, so nothing needs setting on existing accounts. Do not make `auth_require_confirmed_email` false while strangers can sign up: an account signed in to at sign-up stops being a placeholder at once, and the take-over no longer protects the address's owner. **A sign-in link signs nobody in by itself:** it opens a page naming the account, and the button on it does — on a shared browser, a link someone else asked for and sent along would otherwise sign the next visitor in to that someone's account.
 - **Password reset** (`/password/reset`): hashed one-time tokens, 2-hour
   expiry, no account enumeration, emailed via the scaffolded `AuthMailer`.
+  A link is used once also when it is submitted several times together:
+  the first request takes it by a write that names the digest it read. On
+  SoliDB that write is guarded from 2.9.1 on — run the scaffold on 2.9.1
+  or later.
 - **Email confirmation** (`/confirm_email`, `/confirmation/resend`): sent on
   signup; enforcement is `auth_require_confirmed_email` in
   `app/models/user.sl` — on whenever sign-up is open to anyone

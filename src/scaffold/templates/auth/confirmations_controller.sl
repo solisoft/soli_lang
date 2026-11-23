@@ -69,7 +69,15 @@ class ConfirmationsController < Controller
     now_holds = User.find_by("_key", user._key)
     return @_invalid if now_holds.nil? || now_holds.confirmation_token_digest != mark
 
-    user.revoke_credentials
+    try
+      user.revoke_credentials
+    catch error
+      # Not done: the link is given back, so that pressing the button again
+      # finishes the job.
+      as_claimed = {"_key": user._key, "confirmation_token_digest": mark}
+      User.where(as_claimed).update_all({"confirmation_token_digest": digest}) rescue nil
+      throw error
+    end
     user.confirm_email
     AuthMailer.reset_password(user, user.start_password_reset).deliver_later rescue nil
     @_form(

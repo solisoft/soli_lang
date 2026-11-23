@@ -276,8 +276,10 @@ class OauthSso
       end
       # Two first accounts made together both counted none and both took
       # the admin role: one that finds it is not alone is not the first.
-      if user.role == "admin" && User.count > 1
-        user.delete
+      if user.role == "admin" && User.where({"role": "admin"}).count > 1
+        auth_written(User.where({"_key": user._key}).delete_all)
+        # And an identity another callback linked to it meanwhile.
+        auth_written(OauthIdentity.where({"user_id": user._key}).delete_all)
         OauthSso.refuse("another account was created at the same time — try again")
       end
 

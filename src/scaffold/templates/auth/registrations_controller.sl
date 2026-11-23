@@ -86,8 +86,10 @@ class RegistrationsController < Controller
     # account and both took the admin role. The one that finds it is not
     # alone is not the first: it goes (both may — nobody is the admin by
     # accident, and the form is still open).
-    if user.role == "admin" && User.count > 1
-      user.delete
+    # (Admins are what is counted: a member a directory provisioned in the
+    # same instant does not make the first account a second one.)
+    if user.role == "admin" && User.where({"role": "admin"}).count > 1
+      auth_written(User.where({"_key": user._key}).delete_all)
       return @_reject(user, "Another account was created at the same time. Try again.", 409)
     end
 
