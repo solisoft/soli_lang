@@ -54,8 +54,9 @@ Running `soli update` without the needed permissions prints a hint telling you t
 The download is checked before anything is installed: against the SHA-256 published
 beside it, and — on a binary built with a release key — against the release's
 signature, which only the key's holder can make and which names the version and
-the artifact. A release that fails either is not installed. The first install is
-not covered by the signature: `install.sh` checks the published SHA-256 only.
+the artifact. A release that fails either is not installed. `install.sh` checks the
+same two things once the release key is written into it (it needs `openssl` then);
+until then it checks the published SHA-256 only.
 
 ### Via Cargo
 

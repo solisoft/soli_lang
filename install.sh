@@ -144,6 +144,46 @@ else
   exit 1
 fi
 
+# --- Verify its signature ---
+# The digest above sits beside the tarball: whoever can replace one can
+# replace the other. A release is also signed — ECDSA P-256 over its tag, the
+# artifact's name and its digest, one per line — with a key that is not on
+# the release host. RELEASE_PUBKEY is the public half (base64, as
+# `soli update-keygen` prints it), written on the line below when the key is
+# made; while it is empty, releases are not signed yet and the digest is all
+# there is to check. SOLI_RELEASE_PUBKEY names another key (a mirror's).
+RELEASE_PUBKEY=""
+RELEASE_PUBKEY="${SOLI_RELEASE_PUBKEY:-$RELEASE_PUBKEY}"
+if [ -n "$RELEASE_PUBKEY" ]; then
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "Error: openssl is needed to verify the release signature."
+    exit 1
+  fi
+  if [ -z "$TAG" ]; then
+    echo "Error: the release's version is not known (GitHub's API did not answer),"
+    echo "  and the signature names it. Try again in a moment."
+    exit 1
+  fi
+  if ! fetch "${DOWNLOAD_URL}.sig" > "${TMP_DIR}/sig.b64" 2>/dev/null || [ ! -s "${TMP_DIR}/sig.b64" ]; then
+    echo "Error: ${TAG} publishes no signature for ${TARBALL} — not installing it."
+    exit 1
+  fi
+  # The key as a SubjectPublicKeyInfo: the fixed P-256 header, then the point.
+  {
+    printf '\060\131\060\023\006\007\052\206\110\316\075\002\001\006\010\052\206\110\316\075\003\001\007\003\102\000'
+    printf '%s' "$RELEASE_PUBKEY" | openssl base64 -d -A
+  } > "${TMP_DIR}/key.der"
+  printf '%s\n%s\n%s\n' "$TAG" "$TARBALL" "$ACTUAL" > "${TMP_DIR}/statement"
+  if openssl base64 -d -A < "${TMP_DIR}/sig.b64" > "${TMP_DIR}/sig.der" 2>/dev/null &&
+     openssl dgst -sha256 -verify "${TMP_DIR}/key.der" -keyform DER \
+       -signature "${TMP_DIR}/sig.der" "${TMP_DIR}/statement" >/dev/null 2>&1; then
+    echo "Signature verified."
+  else
+    echo "Error: the signature of ${TARBALL} is not the release key's for ${TAG} — not installing it."
+    exit 1
+  fi
+fi
+
 tar xzf "${TMP_DIR}/${TARBALL}" -C "$TMP_DIR"
 
 NEW_VERSION=$("${TMP_DIR}/soli" --version 2>/dev/null | head -1)

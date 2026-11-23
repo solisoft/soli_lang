@@ -705,10 +705,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          # Handed to this step alone, as an environment variable — never
-          # written into the script.
-          SOLI_RELEASE_SIGNING_KEY: ${{ secrets.SOLI_RELEASE_SIGNING_KEY }}
-          SOLI_RELEASE_PUBKEY: ${{ vars.SOLI_RELEASE_PUBKEY }}
         run: |
           # SEC-041: publish a `.sha256` sibling so `soli update` can
           # verify the downloaded tarball before extracting / chmod-ing.
@@ -724,37 +720,74 @@ jobs:
           cat $ARTIFACT.tar.gz.sha256
           gh release upload --clobber ${{ github.ref_name }} $ARTIFACT.tar.gz $ARTIFACT.tar.gz.sha256
 
-          # The digest sits beside the tarball: whoever can replace one can
-          # replace the other. The signature is made with a key that is not
-          # on the release — `soli update` checks it against the public half
-          # built into the binary. Both halves or neither: a binary that
-          # expects a signature this job did not make could never update.
-          if [ -n "$SOLI_RELEASE_PUBKEY" ] && [ -z "$SOLI_RELEASE_SIGNING_KEY" ]; then
-            echo "::error::SOLI_RELEASE_PUBKEY is set but the SOLI_RELEASE_SIGNING_KEY secret is not"
-            exit 1
-          fi
-          if [ -n "$SOLI_RELEASE_SIGNING_KEY" ]; then
-            keyfile="$RUNNER_TEMP/release-signing-key.pem"
-            ( umask 077; printf '%s\n' "$SOLI_RELEASE_SIGNING_KEY" > "$keyfile" )
-            # The two halves are one pair: the public key derived from the
-            # secret (the last 65 bytes of its SubjectPublicKeyInfo — the
-            # SEC1 point) is the variable the binaries were built with. A
-            # mismatch would publish binaries that refuse every update.
-            derived=$(openssl pkey -in "$keyfile" -pubout -outform DER | tail -c 65 | openssl base64 -A)
-            if [ "$derived" != "$SOLI_RELEASE_PUBKEY" ]; then
-              rm -f "$keyfile"
-              echo "::error::SOLI_RELEASE_PUBKEY is not the public half of SOLI_RELEASE_SIGNING_KEY"
+  # The digest sits beside the tarball: whoever can replace one can replace
+  # the other. The signature is made with a key that is not on the release —
+  # `soli update`, the version pin and install.sh check it against the public
+  # half (built into the binary, written into the script).
+  #
+  # A job of its own, with no checkout and no build: the key is never on a
+  # runner that has just run cargo and every dependency's build script. It
+  # downloads what the build jobs uploaded, checks each tarball against its
+  # published digest, and signs a statement — the tag, the artifact's name
+  # and the digest, one per line (`release_statement` in src/update.rs) — not
+  # the tarball alone, whose signature would be good under any tag and name.
+  sign-release:
+    needs: build-binaries
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps: &sign-steps
+      - name: Sign the release's tarballs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOLI_RELEASE_SIGNING_KEY: ${{ secrets.SOLI_RELEASE_SIGNING_KEY }}
+          SOLI_RELEASE_PUBKEY: ${{ vars.SOLI_RELEASE_PUBKEY }}
+        run: |
+          pubkey=$(printf '%s' "$SOLI_RELEASE_PUBKEY" | tr -d '[:space:]')
+          if [ -z "$SOLI_RELEASE_SIGNING_KEY" ]; then
+            # Both halves or neither: a binary that expects a signature this
+            # job did not make could never update.
+            if [ -n "$pubkey" ]; then
+              echo "::error::SOLI_RELEASE_PUBKEY is set but the SOLI_RELEASE_SIGNING_KEY secret is not"
               exit 1
             fi
-            # Signed: the tag, the artifact's name and its digest, one per
-            # line — not the tarball alone, whose signature would be good
-            # under any tag and any name (`release_statement` in update.rs).
-            printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$ARTIFACT.tar.gz" "$(cat $ARTIFACT.tar.gz.sha256)" > "$RUNNER_TEMP/statement"
-            openssl dgst -sha256 -sign "$keyfile" "$RUNNER_TEMP/statement" | openssl base64 -A > $ARTIFACT.tar.gz.sig
-            rm -f "$keyfile"
-            test -s $ARTIFACT.tar.gz.sig
-            gh release upload --clobber ${{ github.ref_name }} $ARTIFACT.tar.gz.sig
+            echo "No release key yet: nothing to sign."
+            exit 0
           fi
+          keyfile="$RUNNER_TEMP/release-signing-key.pem"
+          trap 'rm -f "$keyfile"' EXIT
+          ( umask 077; printf '%s\n' "$SOLI_RELEASE_SIGNING_KEY" > "$keyfile" )
+          # The two halves are one pair: the public key derived from the
+          # secret (the last 65 bytes of its SubjectPublicKeyInfo — the SEC1
+          # point) is the variable the binaries were built with. A mismatch
+          # would publish binaries that refuse every update.
+          derived=$(openssl pkey -in "$keyfile" -pubout -outform DER | tail -c 65 | openssl base64 -A)
+          if [ "$derived" != "$pubkey" ]; then
+            echo "::error::SOLI_RELEASE_PUBKEY is not the public half of SOLI_RELEASE_SIGNING_KEY"
+            exit 1
+          fi
+          mkdir release && cd release
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.tar.gz' --pattern '*.tar.gz.sha256' --pattern '*.tar.gz.sig'
+          signed=0
+          for name in *.tar.gz; do
+            # Signed by an earlier run of this job (the Windows binaries come
+            # later than the others): left as it is.
+            [ -s "$name.sig" ] && continue
+            digest=$(sha256sum "$name" | awk '{print $1}')
+            if [ "$digest" != "$(cat "$name.sha256")" ]; then
+              echo "::error::$name does not match its published .sha256"
+              exit 1
+            fi
+            printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$name" "$digest" > "$RUNNER_TEMP/statement"
+            openssl dgst -sha256 -sign "$keyfile" "$RUNNER_TEMP/statement" | openssl base64 -A > "$name.sig"
+            test -s "$name.sig"
+            gh release upload --clobber "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$name.sig"
+            signed=$((signed + 1))
+          done
+          echo "Signed $signed tarball(s)."
 
   # Windows on its own: a red windows-check or a failed Windows build costs the
   # Windows binary only. The Linux and macOS release publishes without waiting;
@@ -784,8 +817,17 @@ jobs:
       ARTIFACT: ${{ matrix.kind == 'soli' && 'soli' || 'render-pdf' }}-${{ matrix.platform.name }}
     steps: *build-steps
 
+  # The Windows tarballs, signed when they arrive.
+  sign-windows:
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps: *sign-steps
+
   publish-release:
-    needs: [release, build-binaries]
+    needs: [release, build-binaries, sign-release]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

@@ -602,42 +602,45 @@ mod tests {
         assert!(check("v2.41.0", "soli-linux-amd64.tar.gz", &"cd".repeat(32)).is_err());
     }
 
-    /// The release pipeline signs with
-    /// `openssl dgst -sha256 -sign key.pem file | openssl base64 -A`, using
-    /// the key `soli update-keygen` printed. That exact output verifies here.
+    /// The release job's own commands, word for word: the public key it
+    /// derives from the secret is the one `update-keygen` printed, and the
+    /// signature it makes over its `printf` statement is one `verify_release`
+    /// accepts — for that tag, that artifact and that digest only.
+    #[cfg(unix)]
     #[test]
-    fn a_signature_made_by_openssl_as_the_release_pipeline_makes_it_verifies() {
-        let openssl = std::process::Command::new("openssl")
-            .arg("version")
-            .output();
-        if !openssl.is_ok_and(|out| out.status.success()) {
-            eprintln!("skip: no openssl on this machine");
-            return;
-        }
+    fn the_release_jobs_commands_make_a_signature_the_updater_accepts() {
         let dir = tempfile::tempdir().unwrap();
         let (private_pem, public_b64) = generate_keypair().unwrap();
-        let key = dir.path().join("key.pem");
-        let tarball = dir.path().join("soli.tar.gz");
-        std::fs::write(&key, &private_pem).unwrap();
-        let bytes: Vec<u8> = (0..50_000u32).map(|i| (i % 251) as u8).collect();
-        std::fs::write(&tarball, &bytes).unwrap();
+        std::fs::write(dir.path().join("key.pem"), &private_pem).unwrap();
+        let sha = "0123456789abcdef".repeat(4);
+        std::fs::write(dir.path().join("a.tar.gz.sha256"), format!("{sha}\n")).unwrap();
 
-        let signed = std::process::Command::new("openssl")
-            .args(["dgst", "-sha256", "-sign"])
-            .arg(&key)
-            .arg(&tarball)
-            .output()
-            .unwrap();
-        assert!(
-            signed.status.success(),
-            "{}",
-            String::from_utf8_lossy(&signed.stderr)
-        );
-        let sig_b64 = B64.encode(&signed.stdout);
-        verify_release_signature(&bytes, &sig_b64, &public_b64).expect("openssl's signature");
-        let mut tampered = bytes.clone();
-        tampered[100] ^= 1;
-        assert!(verify_release_signature(&tampered, &sig_b64, &public_b64).is_err());
+        let run = |script: &str| {
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(script)
+                .current_dir(dir.path())
+                .env("GITHUB_REF_NAME", "v2.41.0")
+                .output()
+                .expect("sh and openssl: the release job needs them, and so does this test");
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8(out.stdout).unwrap()
+        };
+        let derived =
+            run("openssl pkey -in key.pem -pubout -outform DER | tail -c 65 | openssl base64 -A");
+        assert_eq!(derived, public_b64);
+
+        let signature = run(r#"name=a.tar.gz
+               printf '%s\n%s\n%s\n' "$GITHUB_REF_NAME" "$name" "$(cat "$name.sha256")" > statement
+               openssl dgst -sha256 -sign key.pem statement | openssl base64 -A"#);
+        verify_release("v2.41.0", "a.tar.gz", &sha, &signature, &public_b64)
+            .expect("the job's signature");
+        assert!(verify_release("v2.41.1", "a.tar.gz", &sha, &signature, &public_b64).is_err());
+        assert!(verify_release("v2.41.0", "b.tar.gz", &sha, &signature, &public_b64).is_err());
     }
 
     fn sample_manifest() -> UpdateManifest {

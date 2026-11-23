@@ -2962,8 +2962,13 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(e) = std::fs::copy(&binary_path, &current_exe) {
             // The running binary was moved aside a moment ago: put it back,
             // or a failed update leaves no `soli` at all.
-            if std::fs::rename(&backup_path, &current_exe).is_err() {
-                let _ = std::fs::copy(&backup_path, &current_exe);
+            if std::fs::rename(&backup_path, &current_exe).is_err()
+                && std::fs::copy(&backup_path, &current_exe).is_err()
+            {
+                eprintln!(
+                    "  \x1b[31mError:\x1b[0m the previous binary could not be put back; it is at {}",
+                    backup_path.display()
+                );
             }
             permission_hint(&e);
             return Err(format!("Failed to install new binary: {}", e).into());
@@ -2974,12 +2979,15 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&current_exe)
-            .expect("Failed to get permissions")
-            .permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&current_exe, perms)
-            .expect("Failed to set executable permissions");
+        std::fs::set_permissions(&current_exe, std::fs::Permissions::from_mode(0o755)).map_err(
+            |e| {
+                format!(
+                    "Installed {} but could not make it executable ({e}); the previous binary is at {}",
+                    current_exe.display(),
+                    backup_path.display()
+                )
+            },
+        )?;
     }
 
     std::fs::remove_file(&backup_path).ok();

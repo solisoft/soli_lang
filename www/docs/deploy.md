@@ -272,7 +272,8 @@ a passphrase costs an attacker who holds the file real work per guess (a random 
 better choice). Bundles built before this — one SHA-256 of the material, no salt — still open,
 with a notice at start; rebuild them. The other way round does not work: a bundle built by a
 newer soli is refused by an older `soli serve` ("unsupported encrypted bundle version") — upgrade
-the server before you deploy a bundle built with the new one.
+the server before you deploy a bundle built with the new one. Deriving the key takes about 64 MiB
+for a moment at start, on top of the app: leave that room in a container's memory limit.
 
 Both can live in the `.env` beside the `.soli` file, loaded before decryption, so the deployed
 host only ever carries its own API key:
