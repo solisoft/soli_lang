@@ -1036,3 +1036,48 @@ print("#{user.finish_password_reset("another long password")} #{Device.where({"u
         assert!(output.trim_end().ends_with(left), "{model}: {output}");
     }
 }
+
+/// The lock is read after the password was checked, not only before. Guesses
+/// sent together all pass the first test while the account is open; the
+/// lock lands while they are being verified, and the one that is right must
+/// not get in over it. Here the lock lands during the check itself — the
+/// model's `authenticate` writes it, standing in for the other requests.
+#[test]
+fn a_lock_that_lands_while_the_password_is_checked_keeps_the_right_one_out() {
+    let dir = servable_app();
+    let model_path = dir.path().join("app/models/user.sl");
+    let model = fs::read_to_string(&model_path).unwrap();
+    let check = "    Crypto.password_verify(plaintext, @password_digest)\n  end\n";
+    assert_eq!(model.matches(check).count(), 1, "{model}");
+    fs::write(
+        &model_path,
+        model.replace(
+            check,
+            "    verified = Crypto.password_verify(plaintext, @password_digest)\n                 if @email.starts_with?(\"raced\")\n                   User.where({\"_key\": @_key}).update_all({\"locked_at\": DateTime.utc.to_unix})\n                 end\n    verified\n  end\n",
+        ),
+    )
+    .unwrap();
+    let server = serve(dir.path(), &[("APP_ENV", "test"), ("AUTH_SIGNUP", "open")]);
+    for email in ["raced@example.com", "calm@example.com"] {
+        let body = format!(r#"{{"email": "{email}", "password": "correct horse battery"}}"#);
+        let (status, text) = call(&server, "POST", "/signup", Some(&body));
+        assert_eq!(status, 200, "{email}: {text}");
+    }
+    let confirm = r##"User.where({"confirmed_at": nil}).update_all({"confirmed_at": 1})"##;
+    let database = format!("sqlite://{}/app.sqlite3", dir.path().display());
+    let (ok, output) = soli(
+        dir.path(),
+        &["runner", "-e", confirm],
+        &[("SOLI_DB_ADAPTER", "sqlite"), ("DATABASE_URL", &database)],
+    );
+    assert!(ok, "{output}");
+
+    // The right password, on an account locked while it was being checked.
+    let raced = r#"{"email": "raced@example.com", "password": "correct horse battery"}"#;
+    let (status, text) = call(&server, "POST", "/login", Some(raced));
+    assert_eq!(status, 401, "{text}");
+    assert!(text.contains("Invalid email or password"), "{text}");
+    // An account nothing happened to signs in.
+    let calm = r#"{"email": "calm@example.com", "password": "correct horse battery"}"#;
+    assert_eq!(call(&server, "POST", "/login", Some(calm)).0, 302);
+}

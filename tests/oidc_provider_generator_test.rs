@@ -651,3 +651,55 @@ fn the_fourth_audit_s_guards_are_in_the_generated_files() {
         "the link's lookup runs before its throttle"
     );
 }
+
+/// "Revoked" is answered for what is revoked. A revocation the database did
+/// not store — `create` hands the record back unsaved, with its errors —
+/// used to be reported as made, over an access token that went on working.
+#[test]
+fn a_revocation_that_was_not_stored_is_not_answered_as_made() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    create_oidc_provider(dir.path().to_str().unwrap()).unwrap();
+    let code = r##"refused = OauthRevocation.new
+refused._errors = [{"message": "the database said no"}]
+outcome = "answered"
+try
+  OauthRevocation.must_be_stored(refused, "jti-never-stored")
+catch error
+  outcome = "raised"
+end
+print("not stored: #{outcome}")
+print("stored: #{OauthRevocation.revoke("jti-1", "test")} #{OauthRevocation.revoked?("jti-1")}")
+# Refused because another request wrote the same row first: it is there.
+late = OauthRevocation.new
+late._errors = [{"message": "duplicate"}]
+OauthRevocation.must_be_stored(late, "jti-1")
+print("already there: fine")
+print("family: #{OauthRevocation.revoke_family("chain-1", "test")} #{OauthRevocation.family_revoked?("chain-1")}")"##;
+    let database = format!("sqlite://{}/app.sqlite3", dir.path().display());
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["runner", "-e", code])
+        .current_dir(dir.path())
+        .env_remove("SOLI_ENGINE")
+        .env("SOLI_DB_ADAPTER", "sqlite")
+        .env("DATABASE_URL", &database)
+        .output()
+        .expect("run soli");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{text}");
+    for line in [
+        "not stored: raised",
+        "stored: true true",
+        "already there: fine",
+        "family: true true",
+    ] {
+        assert!(
+            text.lines().any(|got| got == line),
+            "no `{line}` in\n{text}"
+        );
+    }
+}

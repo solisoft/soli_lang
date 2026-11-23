@@ -128,6 +128,11 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
+    serve_with(root, &[])
+}
+
+/// `serve`, with `extra` environment over the defaults.
+fn serve_with(root: &Path, extra: &[(&str, &str)]) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
@@ -148,6 +153,7 @@ fn serve(root: &Path) -> Server {
         )
         .env("SOLI_MAIL_DELIVERY_METHOD", "test")
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+        .envs(extra.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let server = Server(command.spawn().expect("spawn soli serve"), port);
@@ -528,4 +534,78 @@ fn guessing_the_password_at_the_erase_form_locks_the_account() {
         200,
         "the account was erased by a guess made past the lockout"
     );
+}
+
+/// An erasure by deletion that the app refuses — records still refer to the
+/// account — is not acknowledged as done. It was: logged, the session
+/// closed, the visitor sent home, over an account left whole.
+#[test]
+fn an_erasure_the_app_refuses_is_not_reported_as_done() {
+    let dir = served_app();
+    let root = dir.path();
+    let service = fs::read_to_string(root.join("app/services/privacy.sl")).unwrap();
+    let mode = "const PRIVACY_USER_ERASE = \"anonymize\"";
+    assert!(service.contains(mode), "{service}");
+    fs::write(
+        root.join("app/services/privacy.sl"),
+        service.replace(mode, "const PRIVACY_USER_ERASE = \"delete\""),
+    )
+    .unwrap();
+    // What a foreign key from the app's own tables does: the delete answers
+    // false. (A veto in the model stands in for it.)
+    let model = fs::read_to_string(root.join("app/models/user.sl")).unwrap();
+    let hook = "  before_save(\"normalize\")\n";
+    assert!(model.contains(hook), "{model}");
+    fs::write(
+        root.join("app/models/user.sl"),
+        model.replace(
+            hook,
+            "  before_save(\"normalize\")\n  before_delete(\"not_while_referenced\")\n\n  \
+             def not_while_referenced\n    false\n  end\n",
+        ),
+    )
+    .unwrap();
+    let server = serve(root);
+    let mut linus = sign_up(&server, root, "linus@example.com", "3 rue Linus");
+
+    let refused = linus.post(
+        "/privacy/erase",
+        json!({"email": "linus@example.com", "password": PASSWORD}),
+    );
+    assert_eq!(refused.status, 500, "{}", refused.body);
+    // The account is there, with its password: its owner signs in again
+    // (the sessions were ended when the erasure began).
+    let again = Client::browser(&server).post(
+        "/login",
+        json!({"email": "linus@example.com", "password": PASSWORD}),
+    );
+    assert_eq!(again.status, 302, "{}", again.body);
+}
+
+/// An account with no password (a provider's, a directory's) has none to
+/// ask for, and the address to type is printed on the page: what is asked
+/// is a sign-in of the last few minutes. A session left open erases nothing.
+#[test]
+fn erasing_an_account_with_no_password_needs_a_recent_sign_in() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve_with(root, &[("AUTH_FRESH_SECONDS", "1")]);
+    let mut grace = sign_up(&server, root, "grace@example.com", "2 rue Grace");
+    // No password any more: as an account that signs in through a provider.
+    let changed = rusqlite::Connection::open(root.join("app.sqlite3"))
+        .and_then(|conn| {
+            conn.execute(
+                "UPDATE users SET doc = json_remove(doc, '$.password_digest') \
+                 WHERE json_extract(doc, '$.email') = ?1",
+                ["grace@example.com"],
+            )
+        })
+        .unwrap();
+    assert_eq!(changed, 1);
+    std::thread::sleep(std::time::Duration::from_millis(2200));
+
+    let stale = grace.post("/privacy/erase", json!({"email": "grace@example.com"}));
+    assert_eq!(stale.status, 403, "{}", stale.body);
+    assert!(stale.body.contains("Sign in again"), "{}", stale.body);
+    assert_eq!(grace.get("/privacy").status, 200, "the account was erased");
 }

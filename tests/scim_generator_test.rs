@@ -1514,3 +1514,63 @@ fn another_directory_s_accounts_do_not_show_through_lookups_and_conflicts() {
         .0
         .starts_with("grace@example.com "));
 }
+
+/// A delete the app refuses — records still refer to the account — is not
+/// answered as done. Said gone, the account was whole and active, one
+/// password reset away from its former user, and the directory had recorded
+/// it as removed. It is kept out instead, and the directory is told.
+#[test]
+fn a_delete_the_app_refuses_deactivates_the_account_and_says_so() {
+    let dir = served_app();
+    // What a foreign key from the app's own tables does: the delete answers
+    // false. (A veto in the model stands in for it here.)
+    let model_path = dir.path().join("app/models/user.sl");
+    let model = fs::read_to_string(&model_path).unwrap();
+    let hook = "  before_save(\"normalize\")\n";
+    assert!(model.contains(hook), "{model}");
+    fs::write(
+        &model_path,
+        model.replace(
+            hook,
+            "  before_save(\"normalize\")\n  before_delete(\"not_while_referenced\")\n\n  \
+             def not_while_referenced\n    !@email.to_s.starts_with?(\"kept\")\n  end\n",
+        ),
+    )
+    .unwrap();
+    let server = serve(dir.path());
+    let kept = create_user(&server, "kept@example.com", TOKEN);
+    let gone = create_user(&server, "gone@example.com", TOKEN);
+    let (status, finance) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance", "members": [{"value": kept}]})),
+        TOKEN,
+    );
+    assert_eq!(status, 201, "{finance}");
+    assert_eq!(
+        roles(&server)["kept@example.com"],
+        json!(["accountant", "Finance"])
+    );
+
+    let (status, body) = scim(&server, "DELETE", &format!("/Users/{kept}"), None, TOKEN);
+    assert_eq!(status, 409, "{body}");
+    // Still there — and out: deactivated, no password, no group, no role.
+    assert_eq!(
+        account(&server, "kept@example.com").0,
+        "kept@example.com password=false active=false directory=okta"
+    );
+    assert_eq!(roles(&server)["kept@example.com"], json!(["member"]));
+    // Asked again, it answers the same: nothing is half done.
+    assert_eq!(
+        scim(&server, "DELETE", &format!("/Users/{kept}"), None, TOKEN).0,
+        409
+    );
+
+    // An account nothing refers to goes, as before.
+    assert_eq!(
+        scim(&server, "DELETE", &format!("/Users/{gone}"), None, TOKEN).0,
+        204
+    );
+    assert_eq!(account(&server, "gone@example.com").0, "none");
+}
