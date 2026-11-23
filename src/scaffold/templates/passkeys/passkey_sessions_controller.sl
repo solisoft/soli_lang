@@ -6,9 +6,10 @@
 # email field). The response says which credential answered; its stored public
 # key verifies the signature, and the user handle must name the same account.
 #
-# It opens the session exactly as the password login does: the same per-IP
-# throttle, the same locked and confirmed gates, a new session id, and the
-# session version a password reset bumps. Every failure gets the same answer,
+# It opens the session as the password login does: the same per-IP throttle,
+# the same confirmed-address gate, a new session id, and the session version
+# a password reset bumps. Not the password's lockout: that counts wrong
+# passwords, which anyone who knows the address can send. Every failure gets the same answer,
 # so the endpoint tells an attacker nothing about which credentials exist.
 
 class PasskeySessionsController < Controller
@@ -70,7 +71,7 @@ class PasskeySessionsController < Controller
   private
 
   # The one failure answer: unknown credential, bad signature, expired
-  # challenge and locked account all look the same.
+  # challenge and a passkey removed meanwhile all look the same.
   def _reject
     render_json({"error": "Passkey sign-in failed."}, 401)
   end

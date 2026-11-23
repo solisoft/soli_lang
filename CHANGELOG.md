@@ -117,6 +117,13 @@
     before, and the right one got in over a lock that had just landed. An
     erasure removes the second factor with the account, not before it. The
     offline outbox no longer accepts an item the database did not store.
+  - *And an eighth round*, every file read from top to bottom for a
+    sign-off: the core and the add-ons (26 files) came back with no
+    finding; the federation layer (some forty) with one, low — the OIDC
+    device page looked a user code up from its link without the throttle
+    the form has. It counts the same way. Between the two rounds, the
+    OIDC denylist stopped answering "revoked" for a revocation the
+    database did not store.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

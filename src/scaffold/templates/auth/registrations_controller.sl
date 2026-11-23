@@ -7,7 +7,8 @@
 #
 # New accounts get a confirmation email (AuthMailer). Whether an unconfirmed
 # account may sign in is controlled by `auth_require_confirmed_email` in
-# app/models/user.sl (off by default so the flow works before SMTP is set up).
+# app/models/user.sl: it is asked for when sign-up is open to anyone
+# (AUTH_SIGNUP=open), and not in the default `first_user` mode.
 
 class RegistrationsController < Controller
   static {

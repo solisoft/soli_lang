@@ -21,6 +21,12 @@ class OauthDeviceController < Controller
 
     code = params["user_code"].to_s
     return render("oauth_device/new", {"title": "Connect a device", "step": "enter", "error": nil}) if code.blank?
+    # A code in the link is looked up as one typed in the form is, and
+    # counted the same way: this page says whether a code is pending, and
+    # for which app — unmetered, it was the place to guess them.
+    unless oidc_within_rate_limit(req, "user_code", OIDC_USER_CODE_ATTEMPTS_PER_IP)
+      return this._enter_step("Too many attempts. Wait a minute and try again.")
+    end
 
     this._confirm_step(code)
   end
