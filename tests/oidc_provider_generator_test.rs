@@ -626,4 +626,28 @@ fn the_fourth_audit_s_guards_are_in_the_generated_files() {
         &device_controller,
         r#"oidc_within_rate_limit(req, "user_code""#,
     );
+    // ... on both ways a user code is looked up: typed in the form (POST)
+    // and carried by the link (GET). The link's lookup says whether a code
+    // is pending and for which app, so it was the place to guess them.
+    assert_eq!(
+        device_controller
+            .matches(r#"oidc_within_rate_limit(req, "user_code", OIDC_USER_CODE_ATTEMPTS_PER_IP)"#)
+            .count(),
+        2,
+        "{device_controller}"
+    );
+    let link_lookup = device_controller
+        .split("def create")
+        .next()
+        .unwrap_or_default();
+    let throttle = link_lookup
+        .find("oidc_within_rate_limit")
+        .expect("no throttle in `new`");
+    let lookup = link_lookup
+        .find("this._confirm_step(code)")
+        .expect("no lookup in `new`");
+    assert!(
+        throttle < lookup,
+        "the link's lookup runs before its throttle"
+    );
 }
