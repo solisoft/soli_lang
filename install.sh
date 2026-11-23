@@ -96,6 +96,11 @@ fi
 # The API is rate-limited (60 calls an hour for an address without a token);
 # the `releases/latest` page redirects to the tag and is not. Where the tag
 # comes from does not matter to its trust: a signed release names its tag.
+# A tag is a version: anything else in it is not one this script follows
+# (checked here, so that the redirect is asked next, and again after it).
+case "$TAG" in
+  *[!A-Za-z0-9._-]*) TAG="" ;;
+esac
 if [ -z "$TAG" ]; then
   LATEST_URL="https://github.com/${REPO}/releases/latest"
   if command -v curl >/dev/null 2>&1; then
@@ -110,7 +115,6 @@ if [ -z "$TAG" ]; then
   esac
 fi
 
-# A tag is a version: anything else in it is not one this script follows.
 case "$TAG" in
   *[!A-Za-z0-9._-]*) TAG="" ;;
 esac

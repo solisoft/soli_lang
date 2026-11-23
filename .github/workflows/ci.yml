@@ -793,6 +793,7 @@ jobs:
               --pattern '*-linux-*' --pattern '*-darwin-*'
           fi
           signed=0
+          kept=0
           for name in *.tar.gz; do
             # Only what this pipeline builds, and only this job's share.
             case "$name" in
@@ -814,7 +815,11 @@ jobs:
             # as text (`option_env!`), so it is looked for there.
             case "$name" in
               soli-*)
-                if ! tar -xzOf "$name" | grep -qaF "$(printf '%s' "$pubkey" | cut -c1-60)"; then
+                # Unpacked to a file first: `grep -q` stops at the first
+                # match, and a `tar` still writing into the closed pipe would
+                # fail the pipeline — a keyed binary reported as unkeyed.
+                tar -xzOf "$name" > "$RUNNER_TEMP/unpacked"
+                if ! grep -qaF "$(printf '%s' "$pubkey" | cut -c1-60)" "$RUNNER_TEMP/unpacked"; then
                   echo "::error::$name was built without SOLI_RELEASE_PUBKEY (is it a repository variable?)"
                   exit 1
                 fi ;;
@@ -827,6 +832,7 @@ jobs:
                openssl base64 -d -A < "$name.sig" > "$RUNNER_TEMP/sig.der" 2>/dev/null &&
                openssl dgst -sha256 -verify "$RUNNER_TEMP/release-key.pub" \
                  -signature "$RUNNER_TEMP/sig.der" "$RUNNER_TEMP/statement" >/dev/null 2>&1; then
+              kept=$((kept + 1))
               continue
             fi
             openssl dgst -sha256 -sign "$keyfile" "$RUNNER_TEMP/statement" | openssl base64 -A > "$name.sig"
@@ -834,7 +840,13 @@ jobs:
             gh release upload --clobber "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$name.sig"
             signed=$((signed + 1))
           done
-          echo "Signed $signed tarball(s)."
+          echo "Signed $signed tarball(s), kept $kept signature(s)."
+          # A key and nothing to sign: the download matched no tarball, and
+          # the release would go out unsigned to binaries that want one.
+          if [ $((signed + kept)) -eq 0 ]; then
+            echo "::error::no tarball of this job's share was found on the release"
+            exit 1
+          fi
 
   # Windows on its own: a red windows-check or a failed Windows build costs the
   # Windows binary only. The Linux and macOS release publishes without waiting;

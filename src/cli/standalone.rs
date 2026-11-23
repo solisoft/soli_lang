@@ -974,6 +974,9 @@ pub(crate) fn ensure_cached_runtime(
     if policy.executable {
         ensure_executable(&tmp)?;
     }
+    // The stamp of the file whose signature was verified, taken before it is
+    // put in place: once there, another soli may have put its own over it.
+    let stamp = file_stamp(&tmp);
     std::fs::rename(&tmp, &cache_path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!(
@@ -984,7 +987,7 @@ pub(crate) fn ensure_cached_runtime(
     })?;
 
     if signed {
-        let _ = std::fs::write(&marker, signed_mark(&cache_path, &sha256_hex(&bytes)));
+        let _ = std::fs::write(&marker, signed_mark(stamp, &sha256_hex(&bytes)));
     } else {
         let _ = std::fs::remove_file(&marker);
     }
@@ -1030,8 +1033,8 @@ pub(crate) fn marked_signed(cache_path: &std::path::Path) -> bool {
 
 /// What the mark holds: the runtime's digest, then its size and modification
 /// time as they were when the signature was verified.
-fn signed_mark(cache_path: &std::path::Path, digest: &str) -> String {
-    match file_stamp(cache_path) {
+fn signed_mark(stamp: Option<String>, digest: &str) -> String {
+    match stamp {
         Some(stamp) => format!("{digest} {stamp}"),
         None => digest.to_string(),
     }
@@ -1719,7 +1722,7 @@ mod tests {
         let entry = dir.path().join("soli-linux-amd64");
         std::fs::write(&entry, b"the runtime").unwrap();
         assert!(!marked_signed(&entry), "no mark");
-        let mark = signed_mark(&entry, &sha256_hex(b"the runtime"));
+        let mark = signed_mark(file_stamp(&entry), &sha256_hex(b"the runtime"));
         assert_eq!(
             mark.split_whitespace().count(),
             2,
