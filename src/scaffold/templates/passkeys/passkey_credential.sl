@@ -88,6 +88,11 @@ class PasskeyCredential < Model
   def touch_used(sign_count)
     @sign_count = sign_count
     @last_used_at = DateTime.utc.to_iso
-    @save
+    # By filter: the record saved whole would, on the SQL adapters, put a
+    # passkey removed a moment ago back in the table.
+    auth_written(
+      PasskeyCredential.where({"_key": @_key, "credential_id": @credential_id})
+        .update_all({"sign_count": @sign_count, "last_used_at": @last_used_at})
+    )
   end
 end

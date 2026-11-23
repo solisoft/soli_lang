@@ -46,6 +46,11 @@ class TwoFactorController < Controller
     # between): `start` hands that record back as it is, and its secret is
     # the account's second factor — never shown again.
     return redirect("/two_factor") if record.confirmed?
+    # Stored, and this session's: a set-up another session started at the
+    # same moment is not shown here, whichever of the two the database kept.
+    if (record._errors ?? []).length > 0 || !record.started_by?(nonce)
+      return @_render_index(user, "This set-up was started somewhere else. Start it again here.", 409)
+    end
 
     @_render_setup(record, user, "", 200)
   end

@@ -1402,6 +1402,51 @@ fn removing_a_member_who_is_gone_does_not_empty_the_group() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["members"].as_array().unwrap().len(), 1, "{body}");
 
+    // A member the directory no longer manages — made an administrator in
+    // the app since — is still one it can take out of its own group: left
+    // in, the group kept naming them to the app's policies.
+    let promote = r##"User.where({"email": "linus@example.com"}).update_all({"role": "admin"})"##;
+    let again =
+        json!({"Operations": [{"op": "add", "path": "members", "value": [{"value": back}]}]});
+    assert_eq!(scim(&server, "PATCH", &path, Some(again), TOKEN).0, 200);
+    let (ok, output) = soli(dir.path(), &["runner", "-e", promote]);
+    assert!(ok, "{output}");
+    assert_eq!(
+        roles(&server)["linus@example.com"],
+        json!(["admin", "Finance"])
+    );
+    for shape in [
+        json!({"op": "remove", "path": format!("members[value eq \"{back}\"]")}),
+        json!({"op": "remove", "path": "members", "value": [{"value": back}]}),
+    ] {
+        let (status, body) = scim(
+            &server,
+            "PATCH",
+            &path,
+            Some(json!({"Operations": [shape]})),
+            TOKEN,
+        );
+        assert_eq!(status, 200, "{body}");
+        // Out of the group, and still an administrator.
+        assert_eq!(roles(&server)["linus@example.com"], json!(["admin"]));
+        // (Put back by hand for the second shape: the directory cannot.)
+        let (ok, output) = soli(
+            dir.path(),
+            &[
+                "runner",
+                "-e",
+                &format!(
+                    "ScimMembership.create({{\"group_id\": \"{}\", \"user_id\": \"{back}\"}})",
+                    finance["id"].as_str().unwrap()
+                ),
+            ],
+        );
+        assert!(ok, "{output}");
+    }
+    let last =
+        json!({"Operations": [{"op": "remove", "path": "members", "value": [{"value": back}]}]});
+    assert_eq!(scim(&server, "PATCH", &path, Some(last), TOKEN).0, 200);
+
     // "Remove" with no value still empties it.
     let all = json!({"Operations": [{"op": "remove", "path": "members"}]});
     let (status, body) = scim(&server, "PATCH", &path, Some(all), TOKEN);

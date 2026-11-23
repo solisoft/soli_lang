@@ -55,6 +55,14 @@ class PrivacyController < Controller
         return @_page(user, "Wrong password.", 401)
       end
       user.clear_failed_attempts
+    else
+      # No password to ask for (an account that signs in through a provider,
+      # a directory, a link): the address typed is on this very page, so it
+      # proves nothing. A sign-in of the last few minutes is asked instead,
+      # as for anything else that cannot be undone from a session left open.
+      unless auth_fresh_sign_in?()
+        return @_page(user, "Sign in again to erase your account (your last sign-in is too old).", 403)
+      end
     end
 
     Privacy.erase(user)

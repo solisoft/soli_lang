@@ -502,3 +502,30 @@ fn a_user_downloads_their_data_and_erases_their_account() {
     );
     assert!(grace.get("/privacy").status == 200);
 }
+
+/// The password that erases an account is guessed under the lockout of the
+/// sign-in form: from a session left open, ten wrong ones lock it, and the
+/// right one that follows erases nothing.
+#[test]
+fn guessing_the_password_at_the_erase_form_locks_the_account() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    let mut linus = sign_up(&server, dir.path(), "linus@example.com", "3 rue Linus");
+    for guess in 0..10 {
+        let refused = linus.post(
+            "/privacy/erase",
+            json!({"email": "linus@example.com", "password": format!("guess number {guess}")}),
+        );
+        assert_eq!(refused.status, 401, "guess {guess}: {}", refused.body);
+    }
+    let locked = linus.post(
+        "/privacy/erase",
+        json!({"email": "linus@example.com", "password": PASSWORD}),
+    );
+    assert_eq!(locked.status, 401, "{}", locked.body);
+    assert_eq!(
+        linus.get("/privacy").status,
+        200,
+        "the account was erased by a guess made past the lockout"
+    );
+}

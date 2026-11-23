@@ -194,12 +194,20 @@ class Privacy
       "anonymized": {},
       "kept": {}
     }
+    # The account's sessions end first, as in a password reset: a session
+    # of the account that is adding a token or a passkey while this runs
+    # checks the version after writing (`auth_credential_kept?`) and takes
+    # its row back — or wrote it before the sweep below, which removes it.
+    user.end_sessions
     models = Privacy.models
     models.keys.each do |name|
       Privacy.erase_model(name, models[name], user, report)
     end
 
     Privacy.erase_account(user)
+    # And what could sign in to it, once more, now that the account is
+    # closed: nothing added since the first sweep is left on the shell.
+    user._sweep_credentials
     Logger.info("privacy: erased user #{user._key}: #{report}")
     report
   end

@@ -21,7 +21,13 @@ class Device < Model
       existing.user_id = user_id
       existing.platform = platform
       existing.subscription = subscription
-      existing.save()
+      # By filter: the record saved whole would, on the SQL adapters, put a
+      # device unregistered a moment ago back in the table.
+      let fields = { "user_id": user_id, "platform": platform, "subscription": subscription }
+      let written = Device.where({ "_key": existing._key, "token": token }).update_all(fields)
+      if type(written) == "string" && written.starts_with?("Error:") {
+        throw written
+      }
       return existing
     }
     Device.create({
@@ -33,7 +39,7 @@ class Device < Model
   }
 
   static def push_targets_for(user_id) -> Array {
-    Device.where("doc.user_id == @uid", { "uid": user_id }).all().map(fn(d) {
+    Device.where({ "user_id": user_id }).all().map(fn(d) {
       if d.platform == "web" && d.subscription {
         { "platform": "web", "subscription": d.subscription }
       } else {

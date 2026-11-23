@@ -1314,3 +1314,25 @@ print(ApiToken.where({"user_id": user._key}).count)"##,
         assert_eq!(reply.status, 302, "round {round}: {}", reply.body);
     }
 }
+
+/// A token revoked while a request carrying it is being served stays
+/// revoked. The request notes the token's use; written back whole, the
+/// record put the row back in the table on the SQL adapters, and the token
+/// worked again.
+#[test]
+fn a_token_revoked_during_a_request_is_not_written_back() {
+    let dir = served_app();
+    let server = serve(dir.path());
+    drop(sign_up(&server, "ada@example.com"));
+    let code = r##"user = User.find_by("email", "ada@example.com")
+issued = ApiToken.issue(user, "ci", ["read"], nil)
+# The request that carries the token has read it...
+held = ApiToken.authenticate(issued["token"])
+held.last_used_at = nil
+# ...the owner revokes it...
+issued["record"].delete
+# ...and the request notes the use.
+held.touch
+print("#{ApiToken.count} #{ApiToken.authenticate(issued["token"]).nil?}")"##;
+    assert_eq!(runner(dir.path(), code), "0 true");
+}

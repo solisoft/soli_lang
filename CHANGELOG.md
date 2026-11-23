@@ -85,6 +85,16 @@
     devices generator refuses an app's own `Device` model, and a web push
     subscription is stored under its endpoint so that a dead one is
     pruned.
+  - *And from a fifth round* (nothing above low; nothing in OAuth, the
+    OIDC provider, SAML or SCIM): a token, a passkey or a device removed
+    while a request was using it came back — the request noted the use by
+    saving the whole record, which on the SQL adapters inserts a row that
+    is gone. Those stamps are written by filter. `/two_factor/setup`
+    shows a secret only to the session it was stored for (a set-up
+    another session started in the same instant could be handed over).
+    Erasing an account with no password asks for a recent sign-in — the
+    address typed is on the page — and ends the account's sessions before
+    and sweeps its credentials after, as a password reset does.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

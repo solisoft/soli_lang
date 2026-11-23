@@ -61,7 +61,11 @@ class TwoFactor < Model
       # the owner's back.
       auth_written(TwoFactor.where({"_key": record._key, "confirmed_at": nil}).delete_all)
       kept = TwoFactor.for_user(user)
-      return kept unless kept.nil?
+      # Confirmed meanwhile: handed back as it is. Anything else there now
+      # is another session's set-up, created this instant — not this
+      # caller's to be given: the create below is refused by the one record
+      # per user the index allows, and the caller is told to start again.
+      return kept if !kept.nil? && kept.confirmed?
     end
     TwoFactor.create({
       "user_id": user._key,

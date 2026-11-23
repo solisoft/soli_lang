@@ -103,6 +103,8 @@ class ApiToken < Model
     return if !@last_used_at.nil? && now - @last_used_at < API_TOKEN_TOUCH_EVERY
 
     @last_used_at = now
-    @update
+    # By filter, naming the digest: the record written back whole would, on
+    # the SQL adapters, put a token revoked a moment ago back in the table.
+    auth_written(ApiToken.where({"_key": @_key, "token_digest": @token_digest}).update_all({"last_used_at": now}))
   end
 end
