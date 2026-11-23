@@ -49,7 +49,8 @@ class OauthSso
 
   # True when the callback `state` matches the one we issued.
   static def valid_state?(state)
-    expected = session_get("oauth_state").to_s
+    # Taken, not read: a state answers one callback.
+    expected = session_delete("oauth_state").to_s
     expected.present? && state.to_s.present? && Crypto.secure_compare(expected, state.to_s)
   end
 
@@ -272,6 +273,12 @@ class OauthSso
       if user._errors
         Logger.warn("OAuth: could not create the account for #{provider} #{uid}: #{user._errors}")
         OauthSso.refuse("could not create the account")
+      end
+      # Two first accounts made together both counted none and both took
+      # the admin role: one that finds it is not alone is not the first.
+      if user.role == "admin" && User.count > 1
+        user.delete
+        OauthSso.refuse("another account was created at the same time — try again")
       end
 
       OauthSso.link(user, provider, uid, email, raw, false)

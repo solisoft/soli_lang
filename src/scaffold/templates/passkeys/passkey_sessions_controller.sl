@@ -56,9 +56,10 @@ class PasskeySessionsController < Controller
     # that ran between the two reads removed it, and the account read after
     # it carries the version that would make this session current.
     return @_reject if PasskeyCredential.find_by("_key", passkey._key).nil?
-    # One response, one sign-in: of copies of it sent together, each read
-    # the challenge before any spent it, and one takes the passkey.
-    return @_reject unless PasskeyCredential.claim_use(passkey)
+    # One response, one sign-in: copies of it sent together each read the
+    # challenge before any deleted it, and a cookie-held session still
+    # carries it afterwards. The first to spend it is the only one.
+    return @_reject unless WebauthnChallenge.spend(challenge)
 
     passkey.touch_used(result["sign_count"])
     user.clear_failed_attempts

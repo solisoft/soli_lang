@@ -450,7 +450,32 @@ class User < Model
   # row raises with the old password and the link still in place, so the
   # reset can be tried again — the other order could change the password,
   # burn the link, and leave a stranger's API token behind for good.
+  #
+  # The link is taken first, by a write that names the digest that was read:
+  # of two requests completing the same link together, one finds it changed
+  # and answers false — both went through, and the session of one outlived
+  # the password of the other. A failure further down gives the link back.
   def finish_password_reset(plaintext)
+    held = @reset_token_digest
+    mark = nil
+    unless held.blank?
+      mark = "claimed:#{Crypto.random_hex(16)}"
+      auth_written(User.where({"_key": @_key, "reset_token_digest": held}).update_all({"reset_token_digest": mark}))
+      now_holds = User.find_by("_key", @_key)
+      return false if now_holds.nil? || now_holds.reset_token_digest != mark
+    end
+    try
+      @_reset_password_and_credentials(plaintext)
+    catch error
+      unless mark.nil?
+        User.where({"_key": @_key, "reset_token_digest": mark}).update_all({"reset_token_digest": held}) rescue nil
+      end
+      throw error
+    end
+  end
+
+  # What `finish_password_reset` does once the link is its own.
+  def _reset_password_and_credentials(plaintext)
     # A reset is what someone does when the account may be in other hands:
     # the ways in that a visitor to the account could have added — API
     # tokens, passkeys, pending sign-in links, and the push devices that

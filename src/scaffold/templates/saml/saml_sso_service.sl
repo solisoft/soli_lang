@@ -400,7 +400,9 @@ class SamlSso
     if link.nil? || link._errors
       # A sign-in that cannot be remembered is not one: the next would find
       # an account with no identity. The account made for it goes too.
-      user.delete if created
+      # (Unless another sign-in of the same person, sent together, found it
+      # by its address and linked it meanwhile: it is theirs now.)
+      user.delete if created && SamlIdentity.where({"user_id": user._key}).first.nil?
       throw "could not link #{email} to its identity at #{assertion["issuer"]}"
     end
     # The take-over is complete (see `link_account`).

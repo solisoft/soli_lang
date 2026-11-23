@@ -58,6 +58,17 @@ class ConfirmationsController < Controller
     # entered with goes, and a link to choose a password is mailed: sent to
     # the mailbox rather than handed to this browser, so that a confirmation
     # mail forwarded to someone is not a way into the account.
+    #
+    # Once per link: copies of this request sent together each mailed a
+    # reset link, and only the last one stored works. The link is taken by
+    # a write that names the digest that was read.
+    digest = Crypto.sha256(params["token"].to_s)
+    mark = "claimed:#{Crypto.random_hex(16)}"
+    as_read = {"_key": user._key, "confirmation_token_digest": digest}
+    auth_written(User.where(as_read).update_all({"confirmation_token_digest": mark}))
+    now_holds = User.find_by("_key", user._key)
+    return @_invalid if now_holds.nil? || now_holds.confirmation_token_digest != mark
+
     user.revoke_credentials
     user.confirm_email
     AuthMailer.reset_password(user, user.start_password_reset).deliver_later rescue nil

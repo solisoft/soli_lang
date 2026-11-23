@@ -375,12 +375,23 @@ impl Drop for Server {
 /// hands back to the interpreter fails the request, so the controllers are
 /// checked on the engine `soli serve` runs them on.
 fn serve(root: &Path, env: &[(&str, &str)]) -> Server {
+    serve_workers(root, env, 1)
+}
+
+/// `serve`, on `workers` request workers: requests sent together run side
+/// by side.
+fn serve_workers(root: &Path, env: &[(&str, &str)], workers: usize) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env_remove("AUTH_SIGNUP")
@@ -1080,4 +1091,136 @@ fn a_lock_that_lands_while_the_password_is_checked_keeps_the_right_one_out() {
     // An account nothing happened to signs in.
     let calm = r#"{"email": "calm@example.com", "password": "correct horse battery"}"#;
     assert_eq!(call(&server, "POST", "/login", Some(calm)).0, 302);
+}
+
+/// Sign-ups sent together to an app nobody opened yet — on separate
+/// workers, for real: each counts no account. At most one of them is the
+/// first account, and so the admin.
+#[test]
+fn first_sign_ups_sent_together_make_one_admin_at_most() {
+    let dir = servable_app();
+    let server = serve_workers(dir.path(), &[("APP_ENV", "test")], 4);
+    let port = server.1;
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(4));
+    let signing_up: Vec<_> = (0..4)
+        .map(|i| {
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                let body = format!(
+                    r#"{{"email": "first{i}@example.com", "password": "correct horse battery"}}"#
+                );
+                gate.wait();
+                let agent = ureq::AgentBuilder::new().redirects(0).build();
+                let sent = agent
+                    .post(&format!("http://127.0.0.1:{port}/signup"))
+                    .set("Content-Type", "application/json")
+                    .send_string(&body);
+                match sent {
+                    Ok(reply) => reply.status(),
+                    Err(ureq::Error::Status(status, _)) => status,
+                    Err(e) => panic!("{e}"),
+                }
+            })
+        })
+        .collect();
+    let statuses: Vec<u16> = signing_up
+        .into_iter()
+        .map(|one| one.join().unwrap())
+        .collect();
+    assert!(statuses.iter().all(|status| *status < 500), "{statuses:?}");
+    let database = format!("sqlite://{}/app.sqlite3", dir.path().display());
+    let env = [
+        ("SOLI_DB_ADAPTER", "sqlite"),
+        ("DATABASE_URL", database.as_str()),
+    ];
+    let counts = runner_line(
+        dir.path(),
+        &env,
+        r##"print("#{User.where({"role": "admin"}).count} #{User.count}")"##,
+    );
+    assert!(
+        ["0 0", "1 1"].contains(&counts.as_str()),
+        "{counts} {statuses:?}"
+    );
+}
+
+/// One reset link completed several times together, each with its own
+/// password — on separate workers, for real. One of them changes the
+/// password; the others are refused and open no session.
+#[test]
+fn a_reset_link_completed_together_changes_the_password_once() {
+    let dir = servable_app();
+    let server = serve_workers(dir.path(), &[("APP_ENV", "test")], 4);
+    let (status, body) = call(&server, "POST", "/signup", Some(ADA));
+    assert_eq!(status, 302, "{body}");
+    let database = format!("sqlite://{}/app.sqlite3", dir.path().display());
+    let env = [
+        ("SOLI_DB_ADAPTER", "sqlite"),
+        ("DATABASE_URL", database.as_str()),
+    ];
+    let token = runner_line(
+        dir.path(),
+        &env,
+        r##"print(User.find_by("email", "ada@example.com").start_password_reset)"##,
+    );
+    assert!(token.len() >= 32, "{token}");
+    let port = server.1;
+    let gate = std::sync::Arc::new(std::sync::Barrier::new(4));
+    let resetting: Vec<_> = (0..4)
+        .map(|i| {
+            let gate = gate.clone();
+            let token = token.clone();
+            std::thread::spawn(move || {
+                let password = format!("a new password number {i}");
+                let body = serde_json::json!({
+                    "token": token, "password": password, "password_confirmation": password
+                })
+                .to_string();
+                gate.wait();
+                let agent = ureq::AgentBuilder::new().redirects(0).build();
+                let sent = agent
+                    .post(&format!("http://127.0.0.1:{port}/password/update"))
+                    .set("Content-Type", "application/json")
+                    .send_string(&body);
+                let status = match sent {
+                    Ok(reply) => reply.status(),
+                    Err(ureq::Error::Status(status, _)) => status,
+                    Err(e) => panic!("{e}"),
+                };
+                (status, password)
+            })
+        })
+        .collect();
+    let results: Vec<_> = resetting
+        .into_iter()
+        .map(|one| one.join().unwrap())
+        .collect();
+    let winners: Vec<_> = results
+        .iter()
+        .filter(|(status, _)| *status == 302)
+        .collect();
+    assert_eq!(winners.len(), 1, "{results:?}");
+    // (A copy that came after the link was taken is shown "invalid link", a 200.)
+    assert!(
+        results
+            .iter()
+            .all(|(status, _)| [302, 422, 200].contains(status)),
+        "{results:?}"
+    );
+    // The password is the winner's, and nobody else's.
+    for (status, password) in &results {
+        let body =
+            serde_json::json!({"email": "ada@example.com", "password": password}).to_string();
+        let (login, _) = call(&server, "POST", "/login", Some(&body));
+        assert_eq!(login == 302, *status == 302, "{password}: {results:?}");
+    }
+    // And the link is spent.
+    let again = serde_json::json!({
+        "token": token, "password": "yet another password", "password_confirmation": "yet another password"
+    })
+    .to_string();
+    assert_ne!(
+        call(&server, "POST", "/password/update", Some(&again)).0,
+        302
+    );
 }

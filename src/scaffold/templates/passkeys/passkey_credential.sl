@@ -84,21 +84,6 @@ class PasskeyCredential < Model
     }
   end
 
-  # Take `passkey` for this sign-in, or answer false when another request
-  # took it first. A challenge answers one response, but it is kept in the
-  # session, and requests sent together each read it before any deleted it:
-  # the same assertion, copied, passed once per copy. The write names the
-  # mark that was read, so of several requests one finds it changed — the
-  # counter cannot say it, a synced passkey keeps it at 0.
-  static def claim_use(passkey)
-    mark = "used:#{Crypto.random_hex(16)}"
-    auth_written(
-      PasskeyCredential.where({"_key": passkey._key, "use_mark": passkey.use_mark}).update_all({"use_mark": mark})
-    )
-    now_holds = PasskeyCredential.find_by("_key", passkey._key)
-    !now_holds.nil? && now_holds.use_mark == mark
-  end
-
   # Record a successful sign-in.
   def touch_used(sign_count)
     @sign_count = sign_count
@@ -109,5 +94,26 @@ class PasskeyCredential < Model
       PasskeyCredential.where({"_key": @_key, "credential_id": @credential_id})
         .update_all({"sign_count": @sign_count, "last_used_at": @last_used_at})
     )
+  end
+end
+
+# A sign-in challenge that was answered, kept until it expires: the challenge
+# of a session is single use, and the session cannot say so by itself.
+# Requests sent together each read it before any deleted it, and with the
+# `cookie` session driver deleting it only asks the browser to forget — the
+# request, sent again with the cookie it came with, still holds it. The
+# digest is the row's key, so of any number of uses one creates the row.
+class WebauthnChallenge < Model
+  # True for the first use of `challenge`, false for every other.
+  static def spend(challenge)
+    now = DateTime.utc.to_unix
+    # The hash form: it runs on every adapter (a string filter is SoliDB's).
+    WebauthnChallenge.where({"expires_at": {"lt": now}}).delete_all
+    # `{"key": …}` refuses a key that is taken, on every adapter.
+    spent = WebauthnChallenge.create(
+      {"expires_at": now + WEBAUTHN_CHALLENGE_TTL + 60},
+      {"key": Crypto.sha256(challenge.to_s)}
+    ) rescue nil
+    !spent.nil? && (spent._errors ?? []).length == 0
   end
 end

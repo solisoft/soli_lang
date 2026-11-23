@@ -378,12 +378,14 @@ public `https://` URL.
    purpose and an expiry (`WEBAUTHN_CHALLENGE_TTL`, 300 s).
 2. The browser signs it; `passkeys.js` posts the credential's `toJSON()`.
 3. `POST /passkeys/login` takes the challenge out of the session *before*
-   verifying (a replay or a second tab fails closed; copies sent in the same
-   instant are settled by `PasskeyCredential.claim_use`, a write that names
-   the `use_mark` it read — one request takes the passkey), finds the passkey by
+   verifying (a replay or a second tab fails closed), finds the passkey by
    `credential_id` with `find_by`, verifies it with
    `WebAuthn.verify_authentication`, and checks that the user handle is present
-   and names the same account.
+   and names the same account. The answered challenge is then spent
+   (`WebauthnChallenge.spend`: its digest is a row's key, so one use creates
+   the row): copies of the request sent together, or the request sent again
+   with the cookie it came with under the `cookie` session driver, sign
+   nobody in a second time.
 4. It then opens the session exactly as the password login does: the per-IP
    throttle (`AUTH_ATTEMPTS_PER_IP`), the locked and confirmed gates,
    `session_regenerate()`, `user_id` and `session_version`.

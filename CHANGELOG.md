@@ -3,18 +3,34 @@
 ## [Unreleased]
 
 ### Security
-- **auth (passkeys): one assertion signs in once, also when its copies
-  arrive together.** The sign-in challenge is single use, but it is kept
-  in the session, and requests sent in the same instant each read it
-  before any deleted it: the same response, copied, was accepted once per
-  copy (two or three of six, on several workers). Whoever could do it
-  already held the request and its session cookie, and the copies opened
-  the same session — but a challenge answers one response. The sign-in now
-  takes the passkey with a write that names what it read
-  (`PasskeyCredential.claim_use`, a `use_mark` field): one request finds
-  it unchanged. Found by a test that sends them for real; two more of the
-  kind cover erasures of one account sent together and two second-factor
-  set-ups sent together, which held.
+- **auth: what is used once is used once, also by requests sent
+  together.** The served tests of the scaffold ran on one request worker,
+  where two requests never run side by side; on several, a value kept in
+  the session or read from a row is read by each copy before any spends
+  it. Tests now send them for real, and a reading of every single-use
+  value followed. Found and fixed:
+  - *A passkey assertion signed in once per copy* (two or three of six) —
+    and, with the `cookie` session driver, again later: deleting the
+    challenge there only asks the browser to forget it. An answered
+    challenge is now spent under its digest as a row's key
+    (`WebauthnChallenge.spend`, collection `webauthn_challenges`): one
+    use creates it.
+  - *A password-reset link completed twice together went through twice*:
+    the password of one, and a live session for the other. The link is
+    taken first, by a write that names the digest that was read; the other
+    is refused. A failure further down gives the link back.
+  - *Two first sign-ups together both became the admin* (`first_user`, at
+    /signup and through a provider). One that finds it is not alone is
+    removed and asked to try again.
+  - *The confirmation link's take-over ran once per copy*, each mailing a
+    reset link of which only the last worked: claimed like the others.
+  - *OAuth `state`* is taken from the session, not read.
+  - *SAML*: an account made for a first sign-in is no longer deleted when
+    another sign-in of the same person linked it meanwhile.
+  Held, and now tested: erasures of one account sent together, and two
+  second-factor set-ups sent together. Held by reading: the OIDC
+  provider's codes, refresh tokens and device codes, TOTP steps and
+  backup codes, magic links, remember-me rotation, SAML replay.
 
 ## [2.40.1] - 2026-11-23
 

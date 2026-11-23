@@ -82,6 +82,15 @@ class RegistrationsController < Controller
       return @_reject(user, "Could not create your account", 422)
     end
 
+    # Two sign-ups sent together to a `first_user` app both counted no
+    # account and both took the admin role. The one that finds it is not
+    # alone is not the first: it goes (both may — nobody is the admin by
+    # accident, and the form is still open).
+    if user.role == "admin" && User.count > 1
+      user.delete
+      return @_reject(user, "Another account was created at the same time. Try again.", 409)
+    end
+
     # Send the confirmation link. `rescue nil` keeps signup working before
     # SMTP is configured (set SOLI_MAIL_DELIVERY_METHOD=logger in dev to see
     # the email in the console instead).

@@ -36,6 +36,8 @@ def up(db)
   db.create_collection("passkey_credentials")
   db.create_index("passkey_credentials", "idx_passkey_credential_id", ["credential_id"], {"unique": true})
   db.create_index("passkey_credentials", "idx_passkey_user_id", ["user_id"], {})
+  # Sign-in challenges that were answered (`WebauthnChallenge.spend`).
+  db.create_collection("webauthn_challenges")
 end
 
 def down(db)
@@ -43,6 +45,7 @@ def down(db)
     db.drop_index("passkey_credentials", idx["name"])
   end
   db.drop_collection("passkey_credentials")
+  db.drop_collection("webauthn_challenges")
 end
 "#
     .to_string()

@@ -307,12 +307,12 @@ impl Drop for Server {
 }
 
 fn serve(root: &Path) -> Server {
-    serve_workers(root, 1)
+    serve_workers(root, 1, &[])
 }
 
 /// `serve`, with `workers` request workers: requests sent together run
 /// side by side.
-fn serve_workers(root: &Path, workers: usize) -> Server {
+fn serve_workers(root: &Path, workers: usize, extra: &[(&str, &str)]) -> Server {
     let port = unused_port();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
@@ -344,6 +344,7 @@ fn serve_workers(root: &Path, workers: usize) -> Server {
         )
         .env("SOLI_MAIL_DELIVERY_METHOD", "logger")
         .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+        .envs(extra.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let server = Server(command.spawn().expect("spawn soli serve"), port);
@@ -815,7 +816,7 @@ fn served_app_registers_a_passkey_and_signs_in_with_it() {
 #[test]
 fn one_assertion_sent_together_signs_in_once() {
     let dir = served_passkeys_app();
-    let server = serve_workers(dir.path(), 6);
+    let server = serve_workers(dir.path(), 6, &[]);
     let authenticator = Authenticator::new();
     let mut ada = Browser::new(&server);
     let signup = json!({"email": "ada@example.com", "password": "correct horse battery"});
@@ -868,4 +869,59 @@ fn one_assertion_sent_together_signs_in_once() {
     // And once more, later: the same assertion is spent.
     let (status, _) = device.post("/passkeys/login", assertion);
     assert_eq!(status, 401);
+}
+
+/// With the `cookie` session driver the session is what the browser sends:
+/// deleting the challenge only asks it to forget. The accepted request,
+/// sent again with the cookie it came with, still carries the challenge —
+/// and signs nobody in a second time.
+#[test]
+fn an_accepted_assertion_sent_again_with_its_old_cookie_is_refused() {
+    let dir = served_passkeys_app();
+    let server = serve_workers(
+        dir.path(),
+        1,
+        &[
+            ("SOLI_SESSION_DRIVER", "cookie"),
+            (
+                "SOLI_SESSION_SECRET",
+                "passkeys-test-secret-0123456789abcdef",
+            ),
+        ],
+    );
+    let authenticator = Authenticator::new();
+    let mut ada = Browser::new(&server);
+    let signup = json!({"email": "ada@example.com", "password": "correct horse battery"});
+    assert_eq!(ada.post("/signup", signup.clone()).0, 200);
+    confirm_address(dir.path(), "ada@example.com");
+    assert_eq!(ada.post("/login", signup).0, 302);
+    let (_, page) = ada.request("GET", "/passkeys", None);
+    ada.csrf = Some(csrf_from(&page));
+    let (status, options) = ada.post("/passkeys/options", json!({}));
+    assert_eq!(status, 200, "{options}");
+    let user_handle = unb64(options["user"]["id"].as_str().unwrap());
+    let credential = authenticator.create(&options);
+    let (status, created) = ada.post(
+        "/passkeys",
+        json!({"credential": credential, "name": "Laptop"}),
+    );
+    assert_eq!(status, 201, "{created}");
+
+    let mut device = Browser::new(&server);
+    let (status, options) = device.post("/passkeys/login/options", json!({}));
+    assert_eq!(status, 200, "{options}");
+    let before = device.jar.clone();
+    // A synced passkey: its counter stays at 0, so it cannot tell a replay.
+    let assertion = authenticator.get(&options, 0, &user_handle);
+    let (status, result) = device.post("/passkeys/login", assertion.clone());
+    assert_eq!(status, 200, "{result}");
+
+    let mut replay = Browser {
+        port: device.port,
+        jar: before,
+        csrf: None,
+    };
+    let (status, _) = replay.post("/passkeys/login", assertion);
+    assert_eq!(status, 401, "the same assertion signed in twice");
+    assert_eq!(replay.request("GET", "/passkeys", None).0, 302);
 }

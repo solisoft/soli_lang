@@ -64,8 +64,6 @@ class PasskeysController < Controller
       "public_key": record["public_key"],
       "algorithm": record["algorithm"],
       "sign_count": record["sign_count"],
-      # What a sign-in claims the passkey by (`PasskeyCredential.claim_use`).
-      "use_mark": "new",
       "transports": record["transports"],
       "aaguid": record["aaguid"],
       "backed_up": record["backed_up"],
