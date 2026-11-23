@@ -41,7 +41,8 @@ pub fn users_migration() -> String {
 def up(db)
   db.create_index("users", "idx_users_scim_external_id", ["scim_external_id"], {})
   db.create_collection("scim_groups")
-  db.create_index("scim_groups", "idx_scim_group_name", ["display_name"], {"unique": true})
+  # One name per directory: two directories may each have a "Finance".
+  db.create_index("scim_groups", "idx_scim_group_name", ["scim_directory", "display_name"], {"unique": true})
   db.create_collection("scim_memberships")
   db.create_index("scim_memberships", "idx_scim_membership", ["group_id", "user_id"], {"unique": true})
   db.create_index("scim_memberships", "idx_scim_membership_user", ["user_id"], {})

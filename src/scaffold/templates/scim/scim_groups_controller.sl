@@ -5,6 +5,11 @@
 # group gives a user is in app/models/scim_group.sl: nothing by itself, a role
 # through SCIM_GROUP_ROLES, never `admin`.
 #
+# A directory sees and changes its own groups, and in them the accounts it
+# manages — nothing else. Another directory's group is a 404, like another
+# directory's user: a token must not hand its users a role through someone
+# else's group, read who is in it, or take its members out.
+#
 # Member changes come as PATCH operations on `members`, in three shapes:
 #
 #   {"op": "add",    "path": "members", "value": [{"value": "<user id>"}]}
@@ -26,7 +31,7 @@ class ScimGroupsController < ScimController
       matched = filter.match("^(?i)displayName\\s+eq\\s+\"(.*)\"$")
       return @_error(400, "Only `displayName eq` is supported", "invalidFilter") if matched.nil?
 
-      group = ScimGroup.find_by("display_name", matched[1])
+      group = ScimGroup.named(@_directory, matched[1])
       found = group.nil? ? [] : [@_group(group)]
       return @_list(found, found.length, 1)
     end
@@ -34,15 +39,16 @@ class ScimGroupsController < ScimController
     start = params["startIndex"].to_i > 0 ? params["startIndex"].to_i : 1
     count = params["count"].to_s.present? ? params["count"].to_i : SCIM_PAGE
     count = SCIM_PAGE if count > SCIM_PAGE || count < 0
-    groups = ScimGroup.order("display_name", "asc").offset(start - 1).limit(count).all
-    @_list(groups.map { |group| @_group(group) }, ScimGroup.count, start)
+    mine = {"scim_directory": @_directory}
+    groups = ScimGroup.where(mine).order("display_name", "asc").offset(start - 1).limit(count).all
+    @_list(groups.map { |group| @_group(group) }, ScimGroup.where(mine).count, start)
   end
 
   # GET /scim/v2/Groups/:id
   def show
     return @_unauthorized if @_directory.nil?
 
-    group = ScimGroup.find_by("_key", params["id"])
+    group = ScimGroup.of(@_directory, params["id"])
     return @_error(404, "Group #{params["id"]} not found", nil) if group.nil?
 
     @_json(200, @_group(group))
@@ -55,9 +61,15 @@ class ScimGroupsController < ScimController
     body = @_body
     name = body["displayName"].to_s.trim
     return @_error(400, "displayName is required", "invalidValue") if name.blank?
-    return @_error(409, "A group with that displayName exists", "uniqueness") unless ScimGroup.find_by("display_name", name).nil?
+    return @_error(409, "A group with that displayName exists", "uniqueness") unless ScimGroup.named(@_directory, name).nil?
 
-    group = ScimGroup.create({"display_name": name, "external_id": body["externalId"]})
+    group = ScimGroup.create({
+      "display_name": name,
+      "external_id": body["externalId"],
+      "scim_directory": @_directory
+    })
+    return @_error(400, "The group could not be created", "invalidValue") if @_failed?(group)
+
     group.replace_members(@_member_ids(body["members"]))
     @_json(201, @_group(group))
   end
@@ -66,12 +78,13 @@ class ScimGroupsController < ScimController
   def replace
     return @_unauthorized if @_directory.nil?
 
-    group = ScimGroup.find_by("_key", params["id"])
+    group = ScimGroup.of(@_directory, params["id"])
     return @_error(404, "Group #{params["id"]} not found", nil) if group.nil?
 
     body = @_body
     name = body["displayName"].to_s.trim
     return @_error(400, "displayName is required", "invalidValue") if name.blank?
+    return @_error(409, "A group with that displayName exists", "uniqueness") if @_name_taken?(group, name)
 
     @_rename(group, name)
     group.external_id = body["externalId"] if body.has_key("externalId")
@@ -86,7 +99,7 @@ class ScimGroupsController < ScimController
   def update
     return @_unauthorized if @_directory.nil?
 
-    group = ScimGroup.find_by("_key", params["id"])
+    group = ScimGroup.of(@_directory, params["id"])
     return @_error(404, "Group #{params["id"]} not found", nil) if group.nil?
 
     operations = @_body["Operations"] ?? []
@@ -103,7 +116,7 @@ class ScimGroupsController < ScimController
   def destroy
     return @_unauthorized if @_directory.nil?
 
-    group = ScimGroup.find_by("_key", params["id"])
+    group = ScimGroup.of(@_directory, params["id"])
     return @_error(404, "Group #{params["id"]} not found", nil) if group.nil?
 
     group.disband
@@ -121,7 +134,12 @@ class ScimGroupsController < ScimController
   def _apply(group, op, path, value)
     attribute = path.downcase
     one = path.match("^(?i)members\\[value\\s+eq\\s+\"(.*)\"\\]$")
-    return group.remove(one[1]) if !one.nil? && op == "remove"
+    if !one.nil? && op == "remove"
+      # Through `_member_ids`, like every other shape: an account this
+      # directory does not manage is not taken out of anything, nor has its
+      # role recomputed.
+      return @_member_ids([{"value": one[1]}]).each { |id| group.remove(id) }
+    end
 
     if attribute == "members"
       ids = @_member_ids(value)
@@ -142,9 +160,17 @@ class ScimGroupsController < ScimController
     group.replace_members(@_member_ids(value["members"])) if value.has_key("members")
   end
 
+  # Is `name` another group's, in this directory?
+  def _name_taken?(group, name)
+    other = ScimGroup.named(@_directory, name)
+    !other.nil? && other._key != group._key
+  end
+
   # A new name changes what SCIM_GROUP_ROLES gives: recompute the members'.
   def _rename(group, name)
     return if group.display_name == name
+    # Another group of the directory has it: the name stays.
+    return if @_name_taken?(group, name)
 
     group.display_name = name
     group.save
@@ -165,7 +191,10 @@ class ScimGroupsController < ScimController
       "id": group._key,
       "externalId": group.external_id,
       "displayName": group.display_name,
-      "members": group.members.map { |user| {"value": user._key, "display": user.email} },
+      # Those this directory manages: an account that left its reach since
+      # is not named to it.
+      "members": group.members.filter { |user| @_manages?(user) }
+        .map { |user| {"value": user._key, "display": user.email} },
       "meta": {"resourceType": "Group", "location": "#{auth_base_url()}/scim/v2/Groups/#{group._key}"}
     }
   end

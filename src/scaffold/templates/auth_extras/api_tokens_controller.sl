@@ -33,6 +33,10 @@ class ApiTokensController < Controller
 
     scopes = API_TOKEN_SCOPES.filter { |scope| params["scope_#{scope}"].to_s == "1" }
     issued = ApiToken.issue(user, params["name"], scopes, params["days"])
+    # Not from a session that ended while this was written (a password
+    # reset): the token would outlive it.
+    return redirect("/login") unless auth_credential_kept?(user, issued["record"])
+
     @_render(user, issued["token"], "", 201)
   end
 

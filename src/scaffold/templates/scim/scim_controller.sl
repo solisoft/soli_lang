@@ -281,12 +281,42 @@ class ScimController < Controller
   # that reads 200 records the change as made: a deactivation that did not
   # save must not look like one that did.
   def _saved(user)
+    unless Regex.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", user.email.to_s)
+      return @_error(400, "The user could not be saved: userName is not an email address", "invalidValue")
+    end
+
     # A directory's account is nobody's placeholder (`User#never_signed_in?`).
     user.awaiting_owner = false
-    user.save
-    if (user._errors ?? []).length > 0
-      return @_error(400, "The user could not be saved: #{user._errors}", "invalidValue")
+    # What a directory sets, and nothing else. The whole record, written back
+    # as this request loaded it, would undo what happened to the account
+    # meanwhile — a password reset, another request's deactivation — and put
+    # the old session version back.
+    fields = {
+      "email": user.email,
+      "name": user.name,
+      "scim_external_id": user.scim_external_id,
+      "scim_given_name": user.scim_given_name,
+      "scim_family_name": user.scim_family_name,
+      "scim_directory": user.scim_directory,
+      "scim_provisioned_at": user.scim_provisioned_at,
+      "confirmed_at": user.confirmed_at,
+      "deactivated_at": user.deactivated_at,
+      "awaiting_owner": false
+    }
+    # Deactivated by this request: active as stored, not as it is to be.
+    stored = User.find_by("_key", user._key)
+    deactivating = !user.deactivated_at.nil? && !stored.nil? && stored.deactivated_at.nil?
+    if deactivating
+      fields["remember_token_digest"] = nil
+      fields["remember_previous_digest"] = nil
     end
+    written = User.where({"_key": user._key}).update_all(fields) rescue "Error: the write failed"
+    if type(written) == "string" && written.starts_with?("Error:")
+      return @_error(400, "The user could not be saved", "invalidValue")
+    end
+    # A deactivated account's sessions end — counted in the database, after
+    # the write that deactivates it.
+    user.end_sessions if deactivating
 
     @_json(200, @_resource(user))
   end
@@ -430,7 +460,7 @@ class ScimController < Controller
     return unless user.deactivated_at.nil?
 
     user.deactivated_at = DateTime.utc.to_unix
-    user.session_version = user.current_session_version + 1
+    # `_saved` forgets the remember-me cookie and ends the sessions.
     user.remember_token_digest = nil
   end
 

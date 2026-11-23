@@ -1165,6 +1165,92 @@ fn a_directory_cannot_reach_another_directory_s_accounts() {
     );
 }
 
+/// A group is its directory's, like a user: another directory's token does
+/// not see it, cannot put its own users in it (and take the role it gives),
+/// cannot read who is in it, and cannot empty, rename or delete it. Nor can
+/// any token take an account it does not manage out of a group — which
+/// recomputed that account's role.
+#[test]
+fn a_directory_cannot_reach_another_directory_s_groups() {
+    let dir = served_app();
+    let tokens = format!("okta={TOKEN},entra={OTHER_TOKEN}");
+    let server = serve_with(dir.path(), &[("SCIM_TOKENS", &tokens)]);
+    let ada = create_user(&server, "ada@example.com", TOKEN);
+    let grace = create_user(&server, "grace@example.com", OTHER_TOKEN);
+
+    let (status, finance) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance", "members": [{"value": ada}]})),
+        TOKEN,
+    );
+    assert_eq!(status, 201, "{finance}");
+    let path = format!("/Groups/{}", finance["id"].as_str().unwrap());
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["accountant", "Finance"])
+    );
+
+    // Not there for the other directory: read, list, find by name.
+    assert_eq!(scim(&server, "GET", &path, None, OTHER_TOKEN).0, 404);
+    let (_, list) = scim(&server, "GET", "/Groups", None, OTHER_TOKEN);
+    assert_eq!(list["totalResults"], json!(0), "{list}");
+    let by_name = "/Groups?filter=displayName%20eq%20%22Finance%22";
+    let (_, found) = scim(&server, "GET", by_name, None, OTHER_TOKEN);
+    assert_eq!(found["totalResults"], json!(0), "{found}");
+
+    // Nor to write: its own user into it, its members out of it, a new
+    // name, the whole group.
+    let add =
+        json!({"Operations": [{"op": "add", "path": "members", "value": [{"value": grace}]}]});
+    assert_eq!(scim(&server, "PATCH", &path, Some(add), OTHER_TOKEN).0, 404);
+    let out =
+        json!({"Operations": [{"op": "remove", "path": format!("members[value eq \"{ada}\"]")}]});
+    assert_eq!(scim(&server, "PATCH", &path, Some(out), OTHER_TOKEN).0, 404);
+    let put = json!({"displayName": "Renamed", "members": []});
+    assert_eq!(scim(&server, "PUT", &path, Some(put), OTHER_TOKEN).0, 404);
+    assert_eq!(scim(&server, "DELETE", &path, None, OTHER_TOKEN).0, 404);
+    let now = roles(&server);
+    assert_eq!(now["ada@example.com"], json!(["accountant", "Finance"]));
+    assert_eq!(now["grace@example.com"], json!(["member"]));
+
+    // A group of the same name is the other directory's own, with its own
+    // members; the first is untouched by what happens to it.
+    let (status, theirs) = scim(
+        &server,
+        "POST",
+        "/Groups",
+        Some(json!({"displayName": "Finance", "members": [{"value": grace}, {"value": ada}]})),
+        OTHER_TOKEN,
+    );
+    assert_eq!(status, 201, "{theirs}");
+    assert_eq!(theirs["members"].as_array().unwrap().len(), 1, "{theirs}");
+    assert_eq!(theirs["members"][0]["value"], json!(grace));
+    let their_path = format!("/Groups/{}", theirs["id"].as_str().unwrap());
+
+    // An account the caller does not manage is not taken out of a group,
+    // whatever shape the removal has: its role is not recomputed.
+    let out =
+        json!({"Operations": [{"op": "remove", "path": format!("members[value eq \"{ada}\"]")}]});
+    let (status, body) = scim(&server, "PATCH", &their_path, Some(out), OTHER_TOKEN);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        roles(&server)["ada@example.com"],
+        json!(["accountant", "Finance"])
+    );
+
+    assert_eq!(
+        scim(&server, "DELETE", &their_path, None, OTHER_TOKEN).0,
+        204
+    );
+    let now = roles(&server);
+    assert_eq!(now["grace@example.com"], json!(["member"]));
+    assert_eq!(now["ada@example.com"], json!(["accountant", "Finance"]));
+    let (_, mine) = scim(&server, "GET", &path, None, TOKEN);
+    assert_eq!(mine["members"][0]["value"], json!(ada), "{mine}");
+}
+
 /// A token that ends with `=` (base64 padding) is one token, a value that is
 /// not a string is not stored, and an address that keeps guessing is refused
 /// even once it guesses right.

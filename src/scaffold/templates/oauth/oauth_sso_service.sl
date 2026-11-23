@@ -313,12 +313,18 @@ class OauthSso
   # Attach the identity; with `notify`, tell the account's owner a new way in
   # was added — the one sign that someone else did it.
   static def link(user, provider, uid, email, raw, notify)
+    known = !OauthIdentity.find_for(provider, uid).nil?
     identity = OauthIdentity.link!(user._key, provider, uid, email.blank? ? nil : email, raw)
     # A link that was not stored is not a link: do not sign in on it, and do
     # not tell the owner one was added.
     if identity.nil? || (identity._errors ?? []).length > 0
       Logger.warn("OAuth: could not link #{provider} #{uid} to #{user._key}: #{identity&._errors}")
       OauthSso.refuse("could not link the #{provider.capitalize} account")
+    end
+    # A provider linked while the account's sessions were being ended (a
+    # password reset, a take-over) is not kept: see `auth_credential_kept?`.
+    if !known && !auth_credential_kept?(user, identity)
+      OauthSso.refuse("sign in again to link the #{provider.capitalize} account")
     end
     return unless notify
 

@@ -315,7 +315,7 @@ print("no password, no count", User.find(sso._key).failed_attempts.nil?, sso.loc
     assert_eq!(
         default,
         vec![
-            "before first_user true 15 300",
+            "before first_user true 8 300",
             "saved true ada@example.com member",
             "after false",
             "password true false Password must be at least 12 characters",
@@ -336,7 +336,7 @@ print("no password, no count", User.find(sso._key).failed_attempts.nil?, sso.loc
     assert_eq!(open[2], "after true");
     for typed in ["Closed", "yes"] {
         let closed = run(&[("AUTH_SIGNUP", typed)]);
-        assert_eq!(closed[0], "before closed false 15 300", "{typed}");
+        assert_eq!(closed[0], "before closed false 8 300", "{typed}");
     }
 }
 
@@ -578,6 +578,66 @@ fn served_signup_and_throttle_follow_the_environment() {
     assert!(!offers_signup(&server));
 }
 
+/// A token added by a session that a password reset is ending must not
+/// outlive the reset: the request that writes it loaded the account before
+/// the reset, and may write after the reset's sweep. `auth_credential_kept?`
+/// is asked after the write; the reset counts the version before it sweeps.
+/// The reset itself writes its own fields only, and counts twice.
+#[test]
+fn a_credential_added_while_a_reset_runs_is_not_kept() {
+    let dir = servable_app();
+    let root = dir.path();
+    fs::write(
+        root.join("app/models/api_token.sl"),
+        "class ApiToken < Model\nend\n",
+    )
+    .unwrap();
+    let code = r##"user = User.new
+user.email = "ada@example.com"
+user.set_password("correct horse battery")
+user.save
+# The request that will add a token: the account as it was.
+visitor = User.find_by("email", "ada@example.com")
+kept = ApiToken.create({"user_id": visitor._key, "name": "before"})
+print("before the reset: #{auth_credential_kept?(visitor, kept)}")
+# Something else about the account changes meanwhile; the reset, working
+# from its own copy, must not put the old value back.
+User.where({"_key": user._key}).update_all({"name": "set meanwhile"})
+owner = User.find_by("email", "ada@example.com")
+token = owner.start_password_reset
+print("reset: #{owner.finish_password_reset("another long password")}")
+# ... and the visitor's request writes its token after the sweep.
+late = ApiToken.create({"user_id": visitor._key, "name": "late"})
+print("after the reset: #{auth_credential_kept?(visitor, late)}")
+after = User.find_by("email", "ada@example.com")
+print("#{ApiToken.where({"user_id": after._key}).count} #{after.current_session_version} #{after.authenticate("another long password")} #{after.authenticate("correct horse battery")} #{after.name}")"##;
+    let database = format!("sqlite://{}/app.sqlite3", root.display());
+    for engine in ["tree", "vm"] {
+        let _ = fs::remove_file(root.join("app.sqlite3"));
+        let (ok, output) = soli(
+            root,
+            &["runner", "-e", code],
+            &[
+                ("SOLI_DB_ADAPTER", "sqlite"),
+                ("DATABASE_URL", &database),
+                ("SOLI_ENGINE", engine),
+            ],
+        );
+        assert!(ok, "{engine}: {output}");
+        let lines: Vec<&str> = output.trim_end().lines().rev().take(4).collect();
+        assert_eq!(
+            lines,
+            [
+                "0 2 true false set meanwhile",
+                "after the reset: false",
+                "reset: true",
+                "before the reset: true"
+            ],
+            "{engine}: {output}"
+        );
+    }
+}
+
 /// `User#revoke_credentials` leaves an account nothing but its email: the
 /// password, the remember-me digest and every session go, and so do the rows
 /// of the optional credential models the app has (here an `ApiToken`), while
@@ -616,7 +676,8 @@ print("#{user.password_digest.nil?} #{user.remember_token_digest.nil?} #{user.cu
         );
         assert!(ok, "{engine}: {output}");
         assert!(
-            output.trim_end().ends_with("true true 1 false 0 1"),
+            // The version counts twice: once before the rows go, once after.
+            output.trim_end().ends_with("true true 2 false 0 1"),
             "{engine}: {output}"
         );
     }

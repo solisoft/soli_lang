@@ -1160,3 +1160,69 @@ print("token stored #{user.remember_token_digest.present?}")
         "a logout carrying the token, from a session waiting at the challenge, left it alive"
     );
 }
+
+/// "Fresh" means the password was typed a moment ago. A session the
+/// remember-me cookie restored was not signed in to at all, and passing the
+/// second factor on it proves the device, not the password: it must not
+/// count as a sign-in that just happened — which is what unlocks new backup
+/// codes, a token, a passkey.
+#[test]
+fn the_second_factor_after_remember_me_is_not_a_fresh_sign_in() {
+    let dir = served_app();
+    let root = dir.path();
+    let server = serve(root);
+    let creds = json!({"email": EMAIL, "password": PASSWORD});
+    let mut owner = Browser::new(&server);
+    assert_eq!(owner.post("/signup", creds).status, 200);
+    confirm_address(root, EMAIL);
+    let (ok, enrolled) = soli_with_database(
+        root,
+        r##"user = User.find_by("email", "ada@example.com")
+record = TwoFactor.start(user)
+codes = record.confirm(Crypto.totp_generate(record.secret))
+print("secret #{record.secret}")
+print("backup #{codes[0]}")
+"##,
+    );
+    assert!(ok, "{enrolled}");
+    let printed = |label: &str| {
+        enrolled
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(label))
+            .unwrap_or_else(|| panic!("no {label}: {enrolled}"))
+            .to_string()
+    };
+    let secret = printed("secret ");
+    let backup = printed("backup ");
+
+    // Password (remembered), then the code: a sign-in that just happened.
+    settle();
+    let remembered = json!({"email": EMAIL, "password": PASSWORD, "remember_me": "1"});
+    assert_eq!(owner.post("/login", remembered).status, 302);
+    let passed = owner.post(
+        "/two_factor/challenge",
+        json!({"code": totp(&secret, unix_now() + 30)}),
+    );
+    assert_eq!(passed.status, 302, "{}", passed.body);
+
+    // Another browser start: the remember-me cookie alone.
+    let mut back = Browser::new(&server);
+    for (name, value) in &owner.jar {
+        if name.contains("remember") {
+            back.jar.insert(name.clone(), value.clone());
+        }
+    }
+    assert_eq!(back.jar.len(), 1, "the remember-me cookie: {:?}", owner.jar);
+    assert!(!back.signed_in(), "restored, and waiting for the code");
+    // (A backup code: the authenticator's code of this step is spent.)
+    let passed = back.post("/two_factor/challenge", json!({"code": backup}));
+    assert_eq!(passed.status, 302, "{}", passed.body);
+    assert!(back.signed_in());
+    let stale = back.post("/two_factor/backup_codes", json!({"password": PASSWORD}));
+    assert_eq!(stale.status, 403, "{}", stale.body);
+    assert!(stale.body.contains("Sign in again"), "{}", stale.body);
+
+    // The owner's own session, password typed a moment ago, may.
+    let fresh = owner.post("/two_factor/backup_codes", json!({"password": PASSWORD}));
+    assert_eq!(fresh.status, 200, "{}", fresh.body);
+}

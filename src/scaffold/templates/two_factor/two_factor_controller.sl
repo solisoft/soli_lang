@@ -70,7 +70,19 @@ class TwoFactorController < Controller
     # (The marker first: were the increment to fail, this session would
     # otherwise keep "no second factor" on an account that now has one.)
     session_set("two_factor", "ok:#{user._key}")
-    user.increment("session_version")
+    # An authenticator enrolled from a session that ended meanwhile (a
+    # password reset) is not kept.
+    return redirect("/login") unless auth_credential_kept?(user, record)
+
+    try
+      user.end_sessions
+    catch error
+      # The other sessions could not be signed out: then the account is not
+      # enrolled either. Left enrolled, a session that holds "no second
+      # factor" would stay signed in to an account that has one.
+      record.delete
+      throw error
+    end
     session_set("session_version", user.current_session_version)
     render(
       "two_factor/backup_codes",

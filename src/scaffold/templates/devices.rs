@@ -66,6 +66,12 @@ def create(req)
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
   end
+  # Not while an administrator is acting as the user: the device registered
+  # would be the administrator's, and would go on receiving this account's
+  # notifications after the impersonation ended.
+  unless session_get("impersonator_id").to_s().blank?
+    return { "status": 403, "body": json_stringify({ "error": "not while acting as another user" }) }
+  end
 
   let params = req["json"] || {}
   let platform = (params["platform"] || "").to_s().downcase()
@@ -106,6 +112,9 @@ def destroy(req)
   let user_id = user.nil? ? nil : user._key
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
+  end
+  unless session_get("impersonator_id").to_s().blank?
+    return { "status": 403, "body": json_stringify({ "error": "not while acting as another user" }) }
   end
 
   let id = req["params"]["id"]

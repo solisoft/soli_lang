@@ -75,6 +75,15 @@ pub fn report_outcome(job: &JobDoc, error: Option<&str>) {
                     "[jobs] {} died after {} attempt(s): {}",
                     job.handler, job.attempts, err
                 );
+                // A mail that will never be sent keeps nothing worth keeping:
+                // its body may hold a sign-in, reset or confirmation link
+                // that is still good, readable by whoever reads the jobs.
+                if let Err(e) = store::forget_delivered_mail(job) {
+                    eprintln!(
+                        "[jobs] could not remove the body of dead mail {}: {e}",
+                        job.key
+                    );
+                }
             }
         }),
     };

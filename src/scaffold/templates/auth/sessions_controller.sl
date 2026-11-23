@@ -30,6 +30,9 @@ class SessionsController < Controller
 
   # POST /login
   def create
+    # Every refusal below answers after the same time (`_reject`): a known
+    # address and an unknown one do not cost the same database work.
+    @started = clock()
     email = params["email"].to_s.trim.downcase
     password = params["password"].to_s
 
@@ -184,6 +187,7 @@ class SessionsController < Controller
   # Every failure path goes through here so none of them can drift into
   # leaking more than the others.
   def _reject(message, email, status)
+    auth_uniform_wait(@started)
     render(
       "sessions/new",
       {

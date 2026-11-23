@@ -70,6 +70,9 @@ class PasskeysController < Controller
       "name": body["name"].to_s.trim.present? ? body["name"].to_s.trim : "Passkey"
     })
     return render_json({"error": "This passkey is already registered."}, 422) if passkey._errors
+    # Not from a session that ended while this was written (a password
+    # reset): the passkey would outlive it.
+    return render_json({"error": "Sign in first"}, 401) unless auth_credential_kept?(user, passkey)
 
     render_json({"id": passkey._key, "name": passkey.name}, 201)
   end

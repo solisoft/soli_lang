@@ -16,17 +16,38 @@
 # A user who leaves a group, or whose group is deleted, loses what it gave at
 # once: the role is recomputed on every change.
 
-# Group display name => role. A user in several mapped groups gets the role
-# of the last one listed here that they are in; in none, "member".
+# A group belongs to the directory that created it (`scim_directory`, the
+# name of its token): another directory does not see it, cannot put its
+# users in it, and cannot empty it. Two directories may each have a group of
+# the same name.
 #
-#   const SCIM_GROUP_ROLES = {"Finance": "accountant", "Support": "agent"}
+# Group display name => role. A user in several mapped groups gets the role
+# of the last one listed here that they are in; in none, "member". A name
+# stands for that group in every directory; "okta/Finance" for the one of
+# the directory named `okta` only.
+#
+#   const SCIM_GROUP_ROLES = {"Finance": "accountant", "okta/Support": "agent"}
 const SCIM_GROUP_ROLES = {}
 
 class ScimMembership < Model
 end
 
 class ScimGroup < Model
-  validates("display_name", {"presence": true, "uniqueness": true})
+  # Unique within its directory: the controller checks before it creates.
+  validates("display_name", {"presence": true})
+
+  # The group `id` names, if `directory` owns it — nil otherwise, so another
+  # directory's group reads exactly as one that does not exist.
+  static def of(directory, id)
+    group = ScimGroup.find_by("_key", id.to_s)
+    return nil if group.nil? || directory.to_s.blank? || group.scim_directory.to_s != directory.to_s
+
+    group
+  end
+
+  static def named(directory, name)
+    ScimGroup.where({"scim_directory": directory.to_s, "display_name": name.to_s}).first
+  end
 
   # The groups `user` is in.
   static def for_user(user)
@@ -40,12 +61,22 @@ class ScimGroup < Model
     ScimGroup.for_user(user).map { |group| group.display_name }
   end
 
+  # The names SCIM_GROUP_ROLES may be keyed by: "Finance" and "okta/Finance".
+  static def role_keys_for(user)
+    keys = []
+    ScimGroup.for_user(user).each do |group|
+      keys.push(group.display_name)
+      keys.push("#{group.scim_directory}/#{group.display_name}")
+    end
+    keys
+  end
+
   # Set the account's role from its groups (SCIM_GROUP_ROLES). An
   # administrator is left alone, and no group makes one.
   static def sync_role(user)
     return if user.admin?
 
-    names = ScimGroup.names_for(user)
+    names = ScimGroup.role_keys_for(user)
     role = "member"
     SCIM_GROUP_ROLES.keys.each do |name|
       mapped = SCIM_GROUP_ROLES[name]
@@ -54,7 +85,12 @@ class ScimGroup < Model
     return if user.role == role
 
     user.role = role
-    user.save
+    # The role and nothing else: the whole record, written back as this
+    # request loaded it, would undo a deactivation or a password reset that
+    # happened meanwhile. (Never an administrator's: checked above, and
+    # again in the write.)
+    written = User.where({"_key": user._key, "role": {"ne": "admin"}}).update_all({"role": role})
+    throw written if type(written) == "string" && written.starts_with?("Error:")
   end
 
   # The users in this group.
@@ -65,6 +101,7 @@ class ScimGroup < Model
   end
 
   # Put a user in the group. Unknown users are skipped. Idempotent.
+  # (The controller hands in only users the group's directory manages.)
   def add(user_id)
     user = User.find_by("_key", user_id.to_s)
     return if user.nil?

@@ -3,6 +3,37 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **auth: a fresh audit of the scaffold in its final state (three
+  independent readings: core flows, add-ons, federation) found no way into
+  someone else's account, and these.**
+  - *A token or passkey added while a password reset ran outlived it.* The
+    reset removed the rows, spent its Argon2 time, then ended the sessions;
+    a request of a session being ended could write in between. Sessions now
+    end first (`User#end_sessions`, counted in the database), every place
+    that adds a way in asks `auth_credential_kept?` after writing, and the
+    reset and `revoke_credentials` write their own fields only — neither
+    can put an older session version back.
+  - *SCIM groups were not the calling directory's.* With several
+    directories, one could put its users in another's mapped group (and
+    take the role), read its members, empty or delete it, and take an
+    account it does not manage out of a group. A group now belongs to the
+    directory that created it; another's is a 404. `"okta/Finance"` in
+    `SCIM_GROUP_ROLES` maps one directory's group. SCIM writes the fields
+    it sets, not the whole user.
+  - *One address could lock an account.* The per-IP budget (15) was above
+    the lockout's threshold (10). `AUTH_ATTEMPTS_PER_IP` defaults to 8.
+  - *Turning two-factor on could leave other sessions signed in* when the
+    write that ends them failed: the enrolment is then undone.
+  - *A second factor passed on a remember-me session counted as a fresh
+    sign-in* (new backup codes, a token, a passkey): it keeps the time of
+    the sign-in it continues, or none.
+  - *An administrator acting as a user could register a push device* that
+    kept receiving that user's notifications: refused while impersonating.
+  - *Magic-link limits could be passed by requests sent together*: counted
+    again after the link is written.
+  - *A mail that was never delivered kept its link* in the jobs
+    collection: its body is removed when the job is given up on.
+  - Sign-in answers refusals after a uniform time, like sign-up and reset.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and

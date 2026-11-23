@@ -153,7 +153,7 @@ return cached unless cached.nil?
 - Sign-in **misses spend the same Argon2 work** as hits. Lockout copy
   waits until the password verifies. One failure message.
 - **Per-IP throttle** on sign-in, sign-up, and reset (`429`). Shared
-  budget: `AUTH_ATTEMPTS_PER_IP` / `AUTH_IP_WINDOW_SECONDS` (15 / 5 min).
+  budget: `AUTH_ATTEMPTS_PER_IP` / `AUTH_IP_WINDOW_SECONDS` (8 / 5 min).
   An existing lockout is not re-stamped. Keys on the peer unless
   `enable_trust_proxy()`.
 - **`User#password_error`** owns the policy (`AUTH_MIN_PASSWORD_LENGTH`,

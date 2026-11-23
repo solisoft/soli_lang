@@ -134,6 +134,13 @@ const SCIM_GROUP_ROLES = {"Finance": "accountant", "Support": "agent"}
 With the mapping, a user's `role` follows their groups: in several mapped
 groups, the last one listed in the mapping wins; in none, `member`.
 
+A group belongs to the directory that created it. With several directories
+(`SCIM_TOKENS=okta=…,entra=…`) each sees and changes its own groups only —
+another directory's group is a `404`, like another directory's user — and
+two directories may each have a group of the same name. A name in the
+mapping stands for that group in every directory; write `"okta/Finance"` to
+mean the one of the directory named `okta` only.
+
 - **A directory never makes an administrator.** `admin` is granted in the app:
   a mapping to it is ignored, and an account that is an administrator keeps
   its role whatever its groups say. A compromised or misconfigured directory

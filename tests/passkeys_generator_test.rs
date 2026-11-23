@@ -315,7 +315,9 @@ fn serve(root: &Path) -> Server {
         .args(["--port", &port.to_string(), "--workers", "1"])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
-        .env_remove("AUTH_ATTEMPTS_PER_IP")
+        // Every sign-in of this test comes from one address: the default
+        // budget is under the lockout's threshold and would stop it short.
+        .env("AUTH_ATTEMPTS_PER_IP", "1000")
         .env_remove("AUTH_IP_WINDOW_SECONDS")
         .env_remove("WEBAUTHN_RP_ID")
         .env_remove("WEBAUTHN_ORIGINS")

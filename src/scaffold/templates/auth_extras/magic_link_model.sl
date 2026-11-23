@@ -47,13 +47,25 @@ class MagicLink < Model
 
     let token = Crypto.random_hex(32)
     let nonce = Crypto.random_hex(32)
-    MagicLink.create({
+    let link = MagicLink.create({
       "user_id": user._key,
       "requester": requester.to_s,
       "token_digest": Crypto.sha256(token),
       "nonce_digest": Crypto.sha256(nonce),
       "expires_at": DateTime.utc.to_unix + MAGIC_LINK_TTL
     })
+    # Counted again with the link in: requests sent together all read the
+    # same count above, and each would pass. The one that finds itself over
+    # a limit takes its link back.
+    let now_live = MagicLink.where({"user_id": user._key}).all
+    let mine = now_live.filter { |other| other.requester.to_s == requester.to_s }.length
+    if now_live.length > MAGIC_LINKS_PENDING || mine > MAGIC_LINKS_PER_REQUESTER
+      link.delete
+      return nil
+    end
+    # Nor a link written while the account's sessions were being ended.
+    return nil unless auth_credential_kept?(user, link)
+
     {"token": token, "nonce": nonce}
   end
 

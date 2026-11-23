@@ -4,7 +4,9 @@
 # Passwords are never stored in plaintext: assign through `set_password`,
 # which hashes with Argon2id (the built-in Crypto module), and verify with
 # `authenticate`. Reset/confirmation/remember tokens are random UUIDs whose
-# SHA-256 digest is stored — a database leak can't be replayed as a live link.
+# SHA-256 digest is stored — a leak of the users can't be replayed as a live
+# link. (The mail that carries a link sits in the jobs collection until it is
+# delivered or given up on; its body is removed then.)
 
 # --- Auth flow tuning --------------------------------------------------------
 const AUTH_RESET_TOKEN_TTL = 7200  # password-reset links live 2 hours
@@ -25,9 +27,14 @@ end
 # per-account lockout above cannot see these two attacks: credential stuffing
 # spread thinly across thousands of accounts never trips it, and an attacker
 # who knows an email address can lock its owner out on demand. Keying on the
-# source address covers both. Tune per deployment with AUTH_ATTEMPTS_PER_IP and
-# AUTH_IP_WINDOW_SECONDS (an office behind one NAT may need a higher limit).
-const AUTH_ATTEMPTS_PER_IP = auth_env_int("AUTH_ATTEMPTS_PER_IP", 15)
+# source address covers the first, and the second for as long as the budget
+# stays under AUTH_MAX_FAILED_ATTEMPTS: one address then cannot reach the
+# lock by itself. (Several addresses still can — the lock is what stops
+# them guessing; its owner is mailed, and a password reset lifts it.) Tune
+# per deployment with AUTH_ATTEMPTS_PER_IP and AUTH_IP_WINDOW_SECONDS: an
+# office behind one NAT may need a higher limit, and above the lock's
+# threshold one address can lock an account again.
+const AUTH_ATTEMPTS_PER_IP = auth_env_int("AUTH_ATTEMPTS_PER_IP", 8)
 const AUTH_IP_WINDOW_SECONDS = auth_env_int("AUTH_IP_WINDOW_SECONDS", 300)
 
 # How long a reset or a confirmation link stays the only one: a new request
@@ -53,7 +60,8 @@ end
 
 # Did this session sign in within AUTH_FRESH_SECONDS? (`auth_time` is set by
 # every sign-in, and by nothing else: not by remember-me, not by an
-# impersonation.)
+# impersonation, and not by the second factor passed after either — that
+# re-opens the session within the sign-in it had, and keeps its time.)
 def auth_fresh_sign_in?
   signed_in_at = (session_get("auth_time") ?? 0).to_i
   signed_in_at > 0 && DateTime.utc.to_unix - signed_in_at <= AUTH_FRESH_SECONDS
@@ -96,6 +104,10 @@ end
 # (`User#never_signed_in?`).
 def auth_open_session(user, same_sign_in = false, by_owner = true)
   sign_in_ends = same_sign_in ? session_get("sign_in_expires_at") : nil
+  # The moment the sign-in this continues began — none, for a session the
+  # remember-me cookie restored: a second factor passed after it proves the
+  # device, not that the password was typed.
+  signed_in_at = same_sign_in ? session_get("auth_time") : DateTime.utc.to_unix
   # A provider sign-in vouches for a moment (`OauthSso.mark_authenticated`):
   # within the same sign-in, and for this same user, it stays — an account
   # with no password has no other way to prove itself before linking.
@@ -120,7 +132,7 @@ def auth_open_session(user, same_sign_in = false, by_owner = true)
   session_set("user_id", user._key)
   # When this sign-in happened: the OIDC provider reads it for max_age /
   # auth_time, and adding a way into the account asks for a recent one.
-  session_set("auth_time", DateTime.utc.to_unix)
+  signed_in_at.nil? ? session_delete("auth_time") : session_set("auth_time", signed_in_at)
   # Stamped so a later password reset can invalidate this session.
   session_set("session_version", user.current_session_version)
   user.mark_signed_in if by_owner
@@ -221,6 +233,24 @@ def auth_written(result)
   throw result if type(result) == "string" && result.starts_with?("Error:")
 
   result
+end
+
+# After adding a way into `user`'s account — a token, a passkey, a linked
+# provider, a device: is it kept? Not when the account's sessions were ended
+# while this request ran (a password reset, `revoke_credentials`): the row
+# was written by a session that is over, possibly after the sweep that
+# removed its like, and it goes. `user` is the account as this request
+# loaded it.
+#
+# With `end_sessions` running before that sweep, one of the two always
+# catches the row: either this read sees the new version, or the row was
+# there when the sweep ran.
+def auth_credential_kept?(user, record)
+  current = User.find_by("_key", user._key)
+  return true if !current.nil? && current.current_session_version == user.current_session_version
+
+  record.delete
+  false
 end
 
 def auth_require_confirmed_email
@@ -389,6 +419,16 @@ class User < Model
     # the ways in that a visitor to the account could have added — API
     # tokens, passkeys, pending sign-in links — go with the old password.
     # (Linked providers and the authenticator app stay: they are the owner's.)
+    #
+    # The authenticator stays on purpose. Dropped here, the mailbox alone
+    # would be enough to get past a second factor; kept, an authenticator
+    # someone else enrolled with the old password locks the owner out until
+    # an administrator removes it — the lesser of the two.
+    #
+    # Sessions end first, and before the rows go: a request of a session
+    # that is being ended may still be adding a token, and it checks the
+    # version after writing (`auth_credential_kept?`).
+    @end_sessions
     ["ApiToken", "PasskeyCredential", "MagicLink"].each do |name|
       model = const_get(name)
       auth_written(model.where({"user_id": @_key}).delete_all) unless model.nil?
@@ -413,15 +453,42 @@ class User < Model
     # A confirmation link still in the mailbox is spent with it.
     @confirmation_token_digest = nil
     @confirmation_sent_at = nil
-    # Invalidate every session opened before this moment.
-    #
-    # Sessions are not indexed by user, so there is nothing to delete; instead
-    # each session records the `session_version` it was opened at, and
-    # `load_current_user` refuses one that is behind. Without this, an attacker
-    # who was already signed in stayed signed in through the victim's reset —
-    # which is the one thing a password reset is supposed to stop.
-    @session_version = (@session_version ?? 0) + 1
-    @update == true
+    # These fields and no others (`_patch`): the session version is counted
+    # in the database, never written back from this copy.
+    @_patch({
+      "password_digest": @password_digest,
+      "reset_token_digest": nil,
+      "reset_sent_at": nil,
+      "remember_token_digest": nil,
+      "remember_previous_digest": nil,
+      "remember_created_at": nil,
+      "failed_attempts": 0,
+      "locked_at": nil,
+      "confirmed_at": @confirmed_at,
+      "awaiting_owner": false,
+      "confirmation_token_digest": nil,
+      "confirmation_sent_at": nil
+    })
+    # And again, now that the old password opens nothing: a sign-in with it
+    # that slipped in since the first count is behind this one.
+    @end_sessions
+    true
+  end
+
+  # Invalidate every session opened before this moment.
+  #
+  # Sessions are not indexed by user, so there is nothing to delete; instead
+  # each session records the `session_version` it was opened at, and
+  # `load_current_user` refuses one that is behind. Without this, an attacker
+  # who was already signed in stayed signed in through the victim's reset —
+  # which is the one thing a password reset is supposed to stop.
+  #
+  # Counted in the database (one atomic step, raising when it cannot be
+  # made), not written from this copy of the record: two of these at once
+  # both count, and neither can put an older number back.
+  def end_sessions
+    @increment("session_version")
+    true
   end
 
   # Write these fields and no others. `@update` writes the whole record as
@@ -455,6 +522,8 @@ class User < Model
   # row, and leave a passkey or a token behind on an account that looked
   # cleaned. (Not one transaction: the models may live on other connections.)
   def revoke_credentials
+    # Sessions first, as in `finish_password_reset`.
+    @end_sessions
     USER_CREDENTIAL_MODELS.each do |entry|
       # `const_get` answers nil for a class this app does not have.
       model = const_get(entry[0])
@@ -477,9 +546,17 @@ class User < Model
     @remember_token_digest = nil
     @remember_previous_digest = nil
     @remember_created_at = nil
-    @session_version = @current_session_version + 1
-    throw "could not revoke the credentials of #{@email}" unless @update
-
+    @_patch({
+      "password_digest": nil,
+      "awaiting_owner": false,
+      "saml_link_pending": false,
+      "reset_token_digest": nil,
+      "reset_sent_at": nil,
+      "remember_token_digest": nil,
+      "remember_previous_digest": nil,
+      "remember_created_at": nil
+    })
+    @end_sessions
     true
   end
 
@@ -642,7 +719,7 @@ class User < Model
     # session of the account ends, and the owner is told.
     Logger.warn("remember-me token of #{@email} reused after rotation: sessions ended")
     @forget_me
-    @increment("session_version")
+    @end_sessions
     AuthMailer.sessions_ended(this).deliver_later rescue nil
     false
   end

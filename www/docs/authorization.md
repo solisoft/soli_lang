@@ -73,13 +73,16 @@ layer:
 - **Rate limiting**: sign-in, sign-up, and reset requests are throttled per
   source IP — over the limit returns `429`. The three share **one** budget
   (`rate_limiter_from_ip` keys on the address alone), so
-  `AUTH_ATTEMPTS_PER_IP` per `AUTH_IP_WINDOW_SECONDS` (default 15 per 5
+  `AUTH_ATTEMPTS_PER_IP` per `AUTH_IP_WINDOW_SECONDS` (default 8 per 5
   minutes) is the total across all credential traffic from that address, not
-  15 each. The key is the peer address, or the proxy-recorded client only
+  8 each. The default sits under the account lockout's ten failures on
+  purpose: one address cannot lock an account by itself (several still can —
+  the owner is mailed, and a password reset lifts the lock). The key is the peer address, or the proxy-recorded client only
   when `enable_trust_proxy()` is on — so a rotating `X-Forwarded-For` can't
   widen it. Both numbers are read from the environment (`AUTH_ATTEMPTS_PER_IP`,
   `AUTH_IP_WINDOW_SECONDS`; unset, blank or non-positive falls back to the
-  default) — raise them if your users sit behind a shared NAT.
+  default) — raise them if your users sit behind a shared NAT, knowing that
+  above ten one address can lock an account again.
 - **Account lockout**: 10 failed logins lock the account for 30 minutes
   (auto-unlock); thresholds are constants at the top of the User model. The
   owner is mailed once when the lock trips (`AuthMailer.account_locked`). An
