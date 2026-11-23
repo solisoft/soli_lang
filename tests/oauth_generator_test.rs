@@ -428,13 +428,24 @@ fn database_url(root: &Path) -> String {
 }
 
 fn serve(root: &Path, providers: u16, signup: &str) -> Server {
+    serve_workers(root, providers, signup, 1)
+}
+
+/// `serve`, on `workers` request workers: requests sent together run side
+/// by side.
+fn serve_workers(root: &Path, providers: u16, signup: &str, workers: usize) -> Server {
     let port = unused_port();
     let fake = format!("http://127.0.0.1:{providers}");
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_soli"));
     command
         .arg("serve")
         .arg(root)
-        .args(["--port", &port.to_string(), "--workers", "1"])
+        .args([
+            "--port",
+            &port.to_string(),
+            "--workers",
+            &workers.to_string(),
+        ])
         .current_dir(root)
         .env_remove("SOLI_ENGINE")
         .env("AUTH_SIGNUP", signup)
@@ -1496,4 +1507,46 @@ fn a_session_ended_while_the_provider_answered_links_nothing() {
     );
     assert!(ok && output.trim_end().ends_with("linked 0"), "{output}");
     assert_eq!(ada.whoami(), "guest", "the ended session is back");
+}
+
+/// One provider callback sent several times together — on separate workers,
+/// for real — against a provider that would answer the same code each time.
+/// The `state` answers one callback: one copy signs in, the others are
+/// refused before the provider is asked anything.
+#[test]
+fn a_callback_sent_together_is_answered_once() {
+    let dir = served_app();
+    let state = Arc::new(Mutex::new(Provider::default()));
+    let providers = start_providers(Arc::clone(&state));
+    let server = serve_workers(dir.path(), providers, "open", 4);
+    state.lock().unwrap().profile = gitlab("gl-9", "ada@example.com", true);
+    let mut ada = Browser::new(&server);
+    let sent_state = ada.start("gitlab");
+    let gate = Arc::new(std::sync::Barrier::new(4));
+    let copies: Vec<_> = (0..4)
+        .map(|_| {
+            let mut copy = Browser {
+                port: ada.port,
+                jar: ada.jar.clone(),
+            };
+            let gate = Arc::clone(&gate);
+            let path = format!("/auth/gitlab/callback?code=the-code&state={sent_state}");
+            std::thread::spawn(move || {
+                gate.wait();
+                let reply = copy.get(&path);
+                (reply.status, reply.location)
+            })
+        })
+        .collect();
+    let replies: Vec<_> = copies.into_iter().map(|one| one.join().unwrap()).collect();
+    let signed_in = replies
+        .iter()
+        .filter(|(status, location)| *status == 302 && location == "/")
+        .count();
+    assert_eq!(signed_in, 1, "{replies:?}");
+    assert_eq!(
+        replies.iter().filter(|(status, _)| *status == 403).count(),
+        3,
+        "{replies:?}"
+    );
 }

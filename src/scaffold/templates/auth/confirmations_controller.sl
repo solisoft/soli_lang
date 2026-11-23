@@ -73,9 +73,12 @@ class ConfirmationsController < Controller
       user.revoke_credentials
     catch error
       # Not done: the link is given back, so that pressing the button again
-      # finishes the job.
+      # finishes the job — with the placeholder mark, which the failed run
+      # may already have cleared: without it the second press would only
+      # confirm the address, and skip the sweep that did not finish.
       as_claimed = {"_key": user._key, "confirmation_token_digest": mark}
-      User.where(as_claimed).update_all({"confirmation_token_digest": digest}) rescue nil
+      as_it_was = {"confirmation_token_digest": digest, "awaiting_owner": true}
+      User.where(as_claimed).update_all(as_it_was) rescue nil
       throw error
     end
     user.confirm_email
