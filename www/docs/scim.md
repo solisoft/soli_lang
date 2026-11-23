@@ -140,7 +140,8 @@ another directory's group is a `404`, like another directory's user — and
 two directories may each have a group of the same name. A name in the
 mapping stands for that group in every directory; write `"okta/Finance"` to
 mean the one of the directory named `okta` only (a key with a `/` is always
-read as directory, then name).
+read as directory, then name; a directory's name in `SCIM_TOKENS` is made of
+letters, digits, `.`, `_` and `-`, and an entry named otherwise is ignored).
 
 An app generated before groups had an owner: give the existing groups one
 (`ScimGroup.where({"scim_directory": nil}).update_all({"scim_directory": "default"})`,

@@ -67,13 +67,15 @@ class ScimGroup < Model
   # group in any directory; "okta/Finance" the one of `okta` — matched on
   # the directory and the name, never on a display name that spells both.
   static def in_mapped_group?(groups, key)
-    cut = key.index_of("/")
-    if cut.nil? || cut < 0
+    parts = key.split("/")
+    if parts.length < 2
       return groups.filter { |group| group.display_name == key }.length > 0
     end
 
-    directory = key.substring(0, cut)
-    name = key.substring(cut + 1, key.length)
+    # The directory is what precedes the first `/` (a directory's name has
+    # none: see `_tokens` in the SCIM controller); the rest is the name.
+    directory = parts[0]
+    name = key.substring(directory.length + 1, key.length)
     groups.filter { |group| group.scim_directory.to_s == directory && group.display_name == name }.length > 0
   end
 

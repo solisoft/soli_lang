@@ -266,6 +266,7 @@ class ScimController < Controller
     # The account as this request found it: `_saved` writes what changed
     # since, and nothing it merely read.
     @loaded = @_scim_fields(user)
+    @active_stated = false
     if user.scim_provisioned_at.nil?
       user.revoke_credentials
       user.scim_provisioned_at = DateTime.utc.to_unix
@@ -299,8 +300,15 @@ class ScimController < Controller
     now.keys.each do |name|
       fields[name] = now[name] if now[name] != @loaded[name]
     end
-    # Deactivated by this request.
-    deactivating = fields.has_key("deactivated_at") && !user.deactivated_at.nil?
+    # What the request said about `active` is written even when it is what
+    # the request read: the account may have been switched the other way
+    # meanwhile, and the directory is told what this answer shows.
+    deactivating = false
+    if @active_stated
+      fields["deactivated_at"] = user.deactivated_at
+      stored = User.find_by("_key", user._key)
+      deactivating = !user.deactivated_at.nil? && !stored.nil? && stored.deactivated_at.nil?
+    end
     if deactivating
       fields["remember_token_digest"] = nil
       fields["remember_previous_digest"] = nil
@@ -359,7 +367,10 @@ class ScimController < Controller
 
       name = entry.substring(0, cut).trim
       token = entry.substring(cut + 1, entry.length).trim
-      next unless name.present? && name != "default" && token.length >= 32
+      # Letters, digits, `.`, `_`, `-`: a name with a `/` would be read as
+      # another directory's in SCIM_GROUP_ROLES ("corp/eu/Finance").
+      next unless Regex.matches("^[A-Za-z0-9._-]+$", name)
+      next unless name != "default" && token.length >= 32
 
       tokens[name] = token
     end
@@ -463,6 +474,7 @@ class ScimController < Controller
   # its remember-me cookie forgotten; app/middleware/scim_active.sl keeps it
   # out from then on. Entra sends the flag as the string "False".
   def _set_active(user, value)
+    @active_stated = true
     active = value.to_s.downcase == "true"
     if active
       user.deactivated_at = nil
