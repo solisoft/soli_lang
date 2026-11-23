@@ -11,13 +11,42 @@
 #
 #   scripts/auth_races_solidb.sh [path/to/soli]
 #
-# Needs `solidb`, `openssl` and `python3` on PATH. Touches nothing outside a
-# temporary directory; ports with AUTH_RACES_DB_PORT / AUTH_RACES_APP_PORT.
+# Needs `solidb`, `openssl`, `curl` and `python3` on PATH. Everything lives in
+# a temporary directory; the two servers take ports that were free (or
+# AUTH_RACES_DB_PORT / AUTH_RACES_APP_PORT, refused when something answers).
 set -euo pipefail
 
+# What the shell exports wins over an app's `.env`: nothing of the caller's
+# database may reach the commands below.
+unset SOLI_DB_ADAPTER DATABASE_URL SOLIDB_HOST SOLIDB_DATABASE SOLIDB_USERNAME \
+  SOLIDB_PASSWORD SOLI_PROTECT_ENV APP_ENV SOLI_SESSION_DRIVER SOLI_ENGINE
+
+die() {
+  echo "auth_races_solidb: $*" >&2
+  exit 1
+}
+free_port() {
+  python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
+}
+answers() {
+  curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1/"
+}
+# Wait until the process `$1` answers on port `$2`, or die: a server that did
+# not start must not leave the checks talking to someone else's.
+ready() {
+  for _ in $(seq 1 80); do
+    kill -0 "$1" 2>/dev/null || die "$3 exited — see $4"
+    answers "$2" && return 0
+    sleep 0.5
+  done
+  die "$3 did not answer on port $2"
+}
+
 SOLI="$(realpath "$(command -v "${1:-soli}")")"
-DB_PORT="${AUTH_RACES_DB_PORT:-6850}"
-APP_PORT="${AUTH_RACES_APP_PORT:-6851}"
+DB_PORT="${AUTH_RACES_DB_PORT:-$(free_port)}"
+APP_PORT="${AUTH_RACES_APP_PORT:-$(free_port)}"
+answers "$DB_PORT" && die "something already answers on port $DB_PORT"
+answers "$APP_PORT" && die "something already answers on port $APP_PORT"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 PIDS=()
@@ -34,7 +63,11 @@ mkdir "$WORK/data"
 SOLIDB_ADMIN_PASSWORD=testpass123 solidb --host 127.0.0.1 --port "$DB_PORT" \
   --data-dir "$WORK/data" --no-lua >"$WORK/solidb.log" 2>&1 &
 PIDS+=($!)
-sleep 4
+ready "$!" "$DB_PORT" solidb "$WORK/solidb.log"
+
+# The environment every command below runs in, migrations included: under
+# APP_ENV=test the app reads `.env.test`, and so must `db:migrate`.
+export APP_ENV=test AUTH_ATTEMPTS_PER_IP=1000 SOLI_MAIL_DELIVERY_METHOD=logger
 
 cd "$WORK"
 "$SOLI" new app >/dev/null 2>&1
@@ -42,11 +75,10 @@ cd app
 sed -i.bak "s#^SOLIDB_HOST=.*#SOLIDB_HOST=http://127.0.0.1:$DB_PORT#; s#^SOLIDB_PASSWORD=.*#SOLIDB_PASSWORD=testpass123#" .env .env.test
 "$SOLI" generate auth --passkeys >/dev/null 2>&1
 "$SOLI" generate oidc_provider >/dev/null 2>&1
-"$SOLI" db:migrate up >/dev/null 2>&1
+"$SOLI" db:migrate up >"$WORK/migrate.log" 2>&1 || { cat "$WORK/migrate.log" >&2; die "db:migrate up failed"; }
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK/oidc.pem" 2>/dev/null
 openssl rsa -in "$WORK/oidc.pem" -pubout -out "$WORK/oidc.pub.pem" 2>/dev/null
-export APP_ENV=test AUTH_ATTEMPTS_PER_IP=1000 SOLI_MAIL_DELIVERY_METHOD=logger
 export SOLI_OIDC_ISSUER="http://127.0.0.1:$APP_PORT"
 SOLI_OIDC_PRIVATE_KEY="$(cat "$WORK/oidc.pem")"
 SOLI_OIDC_PUBLIC_KEY="$(cat "$WORK/oidc.pub.pem")"
@@ -54,9 +86,6 @@ export SOLI_OIDC_PRIVATE_KEY SOLI_OIDC_PUBLIC_KEY
 
 "$SOLI" serve . --port "$APP_PORT" --workers 4 >"$WORK/app.log" 2>&1 &
 PIDS+=($!)
-for _ in $(seq 1 60); do
-  curl -s -o /dev/null "http://127.0.0.1:$APP_PORT/login" && break
-  sleep 0.5
-done
+ready "$!" "$APP_PORT" "soli serve" "$WORK/app.log"
 
 python3 "$HERE/auth_races_solidb.py" "$SOLI" "$WORK/app" "http://127.0.0.1:$APP_PORT"

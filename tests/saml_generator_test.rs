@@ -1628,7 +1628,9 @@ fn a_first_sign_in_that_lost_the_link_leaves_the_account_to_the_winner() {
         "db:migrate up: {}",
         String::from_utf8_lossy(&migrated.stderr)
     );
-    let server = serve(root, "on");
+    // With linking by address on: that is how another sign-in comes to
+    // link an account it did not create.
+    let server = serve_with(root, "on", &[("SAML_LINK_EXISTING", "on")]);
     let raced = json!({"name_id": "raced-at-idp", "attributes": {"Mail": "raced@example.com"}});
 
     let mut first = Browser::new(&server);

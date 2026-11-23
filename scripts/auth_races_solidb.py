@@ -79,6 +79,7 @@ def check(name, good, detail):
 
 
 # --- the first account: sign-ups sent together make one admin at most
+first_accounts = 0
 for round_ in range(6):
     runner("User.all.each do |user| user.delete end")
     statuses = together([
@@ -86,7 +87,10 @@ for round_ in range(6):
         for i in range(4)
     ])
     counts = runner('print("#{User.where({"role": "admin"}).count} #{User.count}")')
+    first_accounts += counts == "1 1"
+    # (Both may be turned away — "0 0" — but the admin is never two.)
     check("first account", counts in ("0 0", "1 1") and all(s < 500 for s in statuses), (statuses, counts))
+check("first account, made at least once", first_accounts > 0, first_accounts)
 
 # --- a reset link completed together changes the password once
 for round_ in range(6):
@@ -158,7 +162,7 @@ for round_ in range(6):
         token({"grant_type": "refresh_token", "refresh_token": a[1]["refresh_token"]})[0]
         for a in answers if a[0] == 200
     ]
-    good = statuses.count(200) <= 1 and all(s < 500 for s in statuses) and all(s != 200 for s in after)
+    good = statuses.count(200) == 1 and all(s < 500 for s in statuses) and all(s != 200 for s in after)
     check("authorization code", good, (statuses, after))
 
 for round_ in range(6):
@@ -175,7 +179,7 @@ for round_ in range(6):
         token({"grant_type": "refresh_token", "refresh_token": a[1]["refresh_token"]})[0]
         for a in answers if a[0] == 200
     ]
-    good = statuses.count(200) <= 1 and all(s < 500 for s in statuses) and all(s != 200 for s in after)
+    good = statuses.count(200) == 1 and all(s < 500 for s in statuses) and all(s != 200 for s in after)
     check("refresh token", good, (statuses, after))
 
 for round_ in range(3):
@@ -194,7 +198,7 @@ for round_ in range(3):
     statuses = [a[0] for a in together([lambda: token(poll) for _ in range(4)])]
     time.sleep(device.get("interval", 5) * 3 + 1)
     late = token(poll)[0]
-    good = approved == 1 and statuses.count(200) + (late == 200) == 1 and all(s < 500 for s in statuses)
+    good = approved == 1 and statuses.count(200) == 1 and late != 200 and all(s < 500 for s in statuses)
     check("device code", good, (approved, statuses, late))
 
 print("ALL OK" if not failures else "FAILURES: " + ", ".join(sorted(set(failures))))
