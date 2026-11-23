@@ -804,6 +804,18 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
+    update_with(table, key, document, merge, false)
+}
+
+/// [`update`], which inserts a row that is not there — or, with
+/// `must_exist`, refuses it (`sql::update_row`).
+pub fn update_with(
+    table: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+    must_exist: bool,
+) -> Result<serde_json::Value, String> {
     // Only a retry after a stale "table exists" memo needs the document twice.
     let mut document = Some(document);
     super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
@@ -817,6 +829,7 @@ pub fn update(
             key,
             attempt.expect("document consumed only by the last attempt"),
             merge,
+            must_exist,
         )
     })
 }
@@ -857,6 +870,7 @@ fn update_existing(
     key: &str,
     mut document: serde_json::Value,
     merge: bool,
+    must_exist: bool,
 ) -> Result<serde_json::Value, String> {
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
@@ -873,6 +887,26 @@ fn update_existing(
     } else {
         "doc = excluded.doc"
     };
+    if must_exist {
+        // The same merge, on a row that is there: no insert.
+        let set = if merge {
+            "doc = json_patch(COALESCE(doc, '{}'), json(?2))"
+        } else {
+            "doc = json(?2)"
+        };
+        let sql = format!("UPDATE {table_q} SET {set} WHERE _key = ?1");
+        let _trace = super::trace::start_plain(&sql);
+        return with_conn(|conn| {
+            let changed = conn
+                .prepare_cached(&sql)
+                .and_then(|mut stmt| stmt.execute(rusqlite::params![key, &doc_str]))
+                .map_err(|e| lite_error("sqlite update", &e))?;
+            if changed == 0 {
+                return Err(super::sql::row_not_found(table, key));
+            }
+            get_on(conn, table, key)?.ok_or_else(|| super::sql::row_not_found(table, key))
+        });
+    }
     let sql = format!(
         "INSERT INTO {table_q} (_key, doc) VALUES (?, json(?)) \
          ON CONFLICT(_key) DO UPDATE SET {set}"

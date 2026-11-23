@@ -451,9 +451,54 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
+    update_with(table, key, document, merge, false)
+}
+
+/// [`update`], which inserts a row that is not there — or, with
+/// `must_exist`, refuses it (`sql::update_row`).
+pub fn update_with(
+    table: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+    must_exist: bool,
+) -> Result<serde_json::Value, String> {
     super::ensured::write_with_table(table, false, ensure_table, |_| {
-        upsert(table, Some(key), document.clone(), merge, "update")
+        if must_exist {
+            update_present(table, key, document.clone(), merge)
+        } else {
+            upsert(table, Some(key), document.clone(), merge, "update")
+        }
     })
+}
+
+/// Update the row of `key`, which must be there: the same merge as
+/// [`upsert`], and no insert.
+fn update_present(
+    table: &str,
+    key: &str,
+    mut document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    if let Some(obj) = document.as_object_mut() {
+        obj.insert("_key".to_string(), serde_json::json!(key));
+    }
+    let table_q = Dialect::Sqlite.quote_ident(table)?;
+    let set = if merge {
+        "doc = json_patch(COALESCE(doc, '{}'), json(?2))"
+    } else {
+        "doc = json(?2)"
+    };
+    let sql = format!("UPDATE {table_q} SET {set} WHERE _key = ?1 RETURNING doc");
+    let rows = exec(
+        "update",
+        &sql,
+        &[
+            SqlBind::Text(key.to_string()),
+            SqlBind::Text(document.to_string()),
+        ],
+    )?;
+    one_doc("update", rows)?.ok_or_else(|| super::sql::row_not_found(table, key))
 }
 
 /// Replace the document of `key` only while its `lock_version` is still

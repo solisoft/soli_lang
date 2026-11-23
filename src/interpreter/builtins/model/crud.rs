@@ -2209,6 +2209,24 @@ fn exec_get_committed(collection: &str, key: &str) -> Result<serde_json::Value, 
     }
 }
 
+/// [`exec_update`] for a record: the row must be there. On SoliDB an update
+/// of a document that is gone already fails; on the SQL adapters it was an
+/// upsert, and a record deleted while a request still held it came back,
+/// written whole from that request's copy. A missing row is the error
+/// SoliDB gives ("… not found"), which the model layer hands back in band.
+pub fn exec_update_row(
+    collection: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    let result = exec_update_inner(collection, key, document, merge, true);
+    if result.is_ok() {
+        mark_durable_write();
+    }
+    result
+}
+
 /// Execute an update (PUT) with automatic collection creation.
 ///
 /// `merge == true` (Model.update / soft_delete / touch / restore) patches the
@@ -2220,7 +2238,7 @@ pub fn exec_update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    let result = exec_update_inner(collection, key, document, merge);
+    let result = exec_update_inner(collection, key, document, merge, false);
     if result.is_ok() {
         mark_durable_write();
     }
@@ -2232,6 +2250,7 @@ fn exec_update_inner(
     key: &str,
     mut document: serde_json::Value,
     merge: bool,
+    row_must_exist: bool,
 ) -> Result<serde_json::Value, String> {
     super::registry::encrypt_document_fields(collection, &mut document)?;
     // SQL-bound collections dispatch before the tx check — see exec_insert.
@@ -2247,7 +2266,11 @@ fn exec_update_inner(
                 let pk = super::column_mode::pk_value(&schema, key)?;
                 return crate::db::columns::update_row(&schema, &pk, &patch);
             }
-            crate::db::sql::update(collection, key, document.clone(), merge)
+            if row_must_exist {
+                crate::db::sql::update_row(collection, key, document.clone(), merge)
+            } else {
+                crate::db::sql::update(collection, key, document.clone(), merge)
+            }
         });
     }
     // Route the update through the active transaction when one is open.

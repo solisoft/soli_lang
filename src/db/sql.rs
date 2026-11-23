@@ -283,6 +283,35 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
     })
 }
 
+/// What an update answers for a key that names no row. The words "not
+/// found" are what the model layer reads as "the row is gone"
+/// (`document_already_gone`), as SoliDB's own answer is.
+pub(crate) fn row_not_found(table: &str, key: &str) -> String {
+    format!("document not found: {table}/{key}")
+}
+
+/// [`update`] for a row that must be there: a record's `update` / `save`,
+/// `Model.update(id, …)`, a soft delete, a touch. `update` itself is an
+/// upsert — a key that names no row gets one — which is right for the
+/// stores that patch by key whether or not the row exists (jobs, crons) and
+/// wrong for a record: a row deleted while a request still held it came
+/// back, written whole from that request's copy — a revoked token, a
+/// removed passkey, a deleted account. Here a missing row is an error.
+pub fn update_row(
+    table: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    let result = route_sql!(
+        super::postgres::update_with(table, key, document, merge, true),
+        super::mysql::update_with(table, key, document, merge, true),
+        super::sqlite::update_with(table, key, document, merge, true),
+        super::d1::update_with(table, key, document, merge, true)
+    );
+    mark_on_success(result)
+}
+
 pub fn update(
     table: &str,
     key: &str,

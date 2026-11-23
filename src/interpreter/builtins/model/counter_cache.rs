@@ -300,12 +300,19 @@ pub fn reset_counters(
         column,
         serde_json::Value::Number(serde_json::Number::from(count)),
     );
-    super::crud::exec_update(
+    // The parent row must be there: an upsert would write a stub parent —
+    // a row holding nothing but a count — for one deleted meanwhile. Gone,
+    // there is no count to keep.
+    match super::crud::exec_update_row(
         parent_collection_name,
         parent_key,
         serde_json::Value::Object(patch),
         true,
-    )?;
+    ) {
+        Ok(_) => {}
+        Err(e) if super::crud::document_already_gone(&e) => {}
+        Err(e) => return Err(e),
+    }
 
     Ok(count)
 }

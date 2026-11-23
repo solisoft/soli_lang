@@ -396,10 +396,63 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
+    update_with(table, key, document, merge, false)
+}
+
+/// [`update`], which inserts a row that is not there — or, with
+/// `must_exist`, refuses it (`sql::update_row`).
+pub fn update_with(
+    table: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+    must_exist: bool,
+) -> Result<serde_json::Value, String> {
     super::ensured::write_with_table(table, has_active_tx(), ensure_table, |_| {
-        write(table, Some(key), document.clone(), merge, "update")
+        if must_exist {
+            update_present(table, key, document.clone(), merge)
+        } else {
+            write(table, Some(key), document.clone(), merge, "update")
+        }
     })
 }
+
+/// Update the row of `key`, which must be there: the statements of
+/// [`write`], and no insert.
+fn update_present(
+    table: &str,
+    key: &str,
+    mut document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    if let Some(obj) = document.as_object_mut() {
+        obj.insert("_key".to_string(), serde_json::json!(key));
+    }
+    let table_q = PG.quote_ident(table)?;
+    if merge {
+        return merge_into(&table_q, key, &document, true).map_err(|e| {
+            if e == ROW_GONE {
+                super::sql::row_not_found(table, key)
+            } else {
+                e
+            }
+        });
+    }
+    let sql = format!("UPDATE {table_q} SET doc = $2::jsonb WHERE _key = $1 RETURNING doc");
+    let rows = exec(
+        "update",
+        &sql,
+        &[
+            SqlBind::Text(key.to_string()),
+            SqlBind::Text(document.to_string()),
+        ],
+    )?;
+    one_doc("update", rows)?.ok_or_else(|| super::sql::row_not_found(table, key))
+}
+
+/// What [`merge_into`] answers, with `must_exist`, for a key that names no
+/// row; [`update_present`] turns it into the message that names the table.
+const ROW_GONE: &str = "row gone";
 
 /// Replace the document of `key` only while its `lock_version` is still
 /// `expected` (a missing one counts as 0): `false` when another write got
@@ -447,7 +500,7 @@ fn write(
     }
     let table_q = PG.quote_ident(table)?;
     if merge {
-        return merge_into(&table_q, &key, &document);
+        return merge_into(&table_q, &key, &document, false);
     }
     let sql = format!(
         "INSERT INTO {table_q} (_key, doc) VALUES ($1, $2::jsonb) \
@@ -468,6 +521,7 @@ fn merge_into(
     table_q: &str,
     key: &str,
     document: &serde_json::Value,
+    must_exist: bool,
 ) -> Result<serde_json::Value, String> {
     let mut fresh = serde_json::json!({});
     super::merge::merge_patch(&mut fresh, document);
@@ -489,6 +543,9 @@ fn merge_into(
         )?;
         if let Some(doc) = one_doc("update (merge)", rows)? {
             return Ok(doc);
+        }
+        if must_exist {
+            return Err(ROW_GONE.to_string());
         }
         let rows = exec(
             "update (merge insert)",
@@ -523,6 +580,7 @@ fn merge_into(
                     doc,
                 )
             }
+            None if must_exist => return Err(ROW_GONE.to_string()),
             None => (insert_sql.clone(), fresh.clone()),
         };
         let rows = exec(

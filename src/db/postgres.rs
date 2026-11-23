@@ -686,6 +686,18 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
+    update_with(table, key, document, merge, false)
+}
+
+/// [`update`], which inserts a row that is not there — or, with
+/// `must_exist`, refuses it (`sql::update_row`).
+pub fn update_with(
+    table: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+    must_exist: bool,
+) -> Result<serde_json::Value, String> {
     // Only a retry after a stale "table exists" memo needs the document twice.
     let mut document = Some(document);
     super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
@@ -699,6 +711,7 @@ pub fn update(
             key,
             attempt.expect("document consumed only by the last attempt"),
             merge,
+            must_exist,
         )
     })
 }
@@ -737,6 +750,7 @@ fn update_existing(
     key: &str,
     mut document: serde_json::Value,
     merge: bool,
+    must_exist: bool,
 ) -> Result<serde_json::Value, String> {
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
@@ -769,6 +783,9 @@ fn update_existing(
                     .map_err(|e| pg_error("postgres update (merge)", &e))?;
                 if let Some(row) = rows.first() {
                     return Ok(row.get(0));
+                }
+                if must_exist {
+                    return Err(super::sql::row_not_found(table, key));
                 }
                 // No existing row — insert the patch as the full document, with
                 // its nulls dropped so the result matches a merge into `{}`.
@@ -822,6 +839,7 @@ fn update_existing(
                             .map_err(|e| pg_error("postgres update (merge write)", &e))?;
                         Ok(updated.get(0))
                     }
+                    None if must_exist => Err(super::sql::row_not_found(table, key)),
                     None => {
                         let mut fresh = serde_json::json!({});
                         super::merge::merge_patch(&mut fresh, &document);
@@ -846,6 +864,19 @@ fn update_existing(
                     let _ = client.batch_execute(undo_sql);
                     Err(e)
                 }
+            }
+        });
+    }
+    if must_exist {
+        let sql = format!("UPDATE {table_q} SET doc = $2 WHERE _key = $1 RETURNING doc");
+        let _trace = super::trace::start_plain(&sql);
+        return with_conn(|client| {
+            let rows = client
+                .query(&sql, &[&key, &document])
+                .map_err(|e| pg_error("postgres update (replace)", &e))?;
+            match rows.first() {
+                Some(row) => Ok(row.get(0)),
+                None => Err(super::sql::row_not_found(table, key)),
             }
         });
     }

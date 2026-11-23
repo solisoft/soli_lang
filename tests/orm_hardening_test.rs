@@ -373,3 +373,82 @@ check("kept", fn() {{ Order.find(order.id).total }})
     );
     assert_eq!(line("kept"), "kept 5");
 }
+
+/// A record deleted while a request still holds it stays deleted. On the SQL
+/// document adapters an update was an upsert: `update`, `save`, `touch`, a
+/// soft delete or `Model.update(id, …)` on a row that was gone inserted it —
+/// whole, from the copy the request held: a revoked token worked again, a
+/// deleted account was back. It answers what SoliDB answers: the row is not
+/// there. (`upsert` is the one that creates, and still does.)
+#[test]
+fn a_record_deleted_meanwhile_is_not_written_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = r#"
+class Token < Model
+end
+
+class Note < Model
+  soft_delete
+end
+
+def answer(label, action)
+  said = "raised"
+  try
+    said = action()
+  catch error
+    said = "raised"
+  end
+  print(label, said, Token.count)
+end
+
+# A request reads the record...
+issued = Token.create({"owner": "ada", "secret": "s3cret"})
+held = Token.find(issued._key)
+# ...its owner deletes it...
+issued.delete
+print("deleted", Token.count)
+
+# ...and the request writes.
+key = issued._key
+held.uses = 1
+answer("update", fn() { held.update })
+held.owner = "eve"
+answer("save", fn() { held.save })
+answer("touch", fn() { held.touch })
+answer("static", fn() { type(Token.update(key, {"owner": "eve"})) })
+
+# A soft delete of a row that is gone leaves no stub behind.
+note = Note.create({"title": "draft"})
+copy = Note.find(note._key)
+Note.where({"_key": note._key}).delete_all
+print("soft delete", type(copy.delete), Note.where({"_key": note._key}).count)
+
+# A row that is there is written as before.
+kept = Token.create({"owner": "ada"})
+kept.owner = "grace"
+print("there", kept.update, Token.find(kept._key).owner, Token.count)
+print("static there", Token.update(kept._key, {"uses": 2}).uses)
+
+# And `upsert` creates what is not there, as it says.
+made = Token.upsert("chosen-key", {"owner": "linus"})
+print("upsert", made.owner, Token.count)
+"#;
+    assert_eq!(
+        sqlite_script(dir.path(), script),
+        [
+            "deleted 0",
+            // `update` / `save` answer false, as for any write that did not
+            // happen; `touch` raises; the static form and the soft delete
+            // hand back the "Error: … not found" string a delete of a row
+            // that is gone gives.
+            "update false 0",
+            "save false 0",
+            "touch raised 0",
+            "static string 0",
+            "soft delete string 0",
+            "there true grace 1",
+            "static there 2",
+            "upsert linus 2",
+        ]
+    );
+}

@@ -29,7 +29,7 @@ use crate::interpreter::value::{NativeFunction, Value};
 
 pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunction>>) {
     // Model.update(id, data) - Update document (accepts hash or instance as data)
-    use super::crud::exec_update;
+    use super::crud::exec_update_row;
     native_static_methods.insert(
         "update".to_string(),
         Rc::new(NativeFunction::new("Model.update", Some(3), |args| {
@@ -197,7 +197,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     Err(e) => Err(e),
                 }
             } else {
-                exec_update(&collection, &id, data_value.clone(), true)
+                exec_update_row(&collection, &id, data_value.clone(), true)
             };
             match written {
                 Ok(result) => {

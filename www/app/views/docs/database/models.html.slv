@@ -316,6 +316,7 @@ user.save({ "name": "Alice Smith", "age": 31 })
 
 # `.update(hash)` is equivalent on an existing record
 user.update({ "name": "Alice Smith", "age": 31 })</code></pre>
+            <p class="text-gray-400 mt-3">An update writes a row that is there. If the record was deleted since it was read &mdash; by another request, a cleanup job &mdash; nothing is written: <code>save</code> / <code>update</code> answer <code>false</code>, <code>touch</code> raises, and <code>Model.update(id, …)</code> and a soft <code>delete</code> hand back the <code>"Error: … not found"</code> string a delete of a missing row gives. This is the same on every adapter. (On Postgres, MySQL and SQLite an update used to insert the row, written whole from the copy the request held &mdash; a revoked token came back.) To create a row when it is missing, say so: <code>Model.upsert(key, data)</code>.</p>
         </div>
 
         <div>

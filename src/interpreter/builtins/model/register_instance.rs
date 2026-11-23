@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::*;
-use super::crud::{exec_delete, exec_get, exec_insert, exec_update, json_to_value};
+use super::crud::{exec_delete, exec_get, exec_insert, exec_update_row, json_to_value};
 use super::query::QueryBuilder;
 use crate::interpreter::value::{value_to_json, HashKey, Instance};
 use crate::interpreter::value::{NativeFunction, Value};
@@ -510,7 +510,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                     "deleted_at".to_string(),
                     serde_json::Value::String(now.clone()),
                 );
-                match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
+                match exec_update_row(&collection, &key_str, serde_json::Value::Object(map), true) {
                     Ok(_) => {
                         let mut inst_mut = instance.borrow_mut();
                         inst_mut.set("deleted_at", Value::String(now.into()));
@@ -522,7 +522,10 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                         }
                         Ok(Value::Bool(true))
                     }
-                    Err(e) => Err(e.to_string()),
+                    // Gone already: the in-band answer a hard delete gives
+                    // for the same thing, and the cascade skips. Any other
+                    // refusal raises.
+                    Err(e) => super::core::in_band_if_no_row(e),
                 }
             } else {
                 // Hard delete: remove document
@@ -583,7 +586,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
             );
             let mut map = serde_json::Map::new();
             map.insert("deleted_at".to_string(), serde_json::Value::Null);
-            match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
+            match exec_update_row(&collection, &key_str, serde_json::Value::Object(map), true) {
                 Ok(_) => {
                     let mut inst_mut = instance.borrow_mut();
                     inst_mut.set("deleted_at", Value::Null);
@@ -643,7 +646,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 "_updated_at".to_string(),
                 serde_json::Value::String(now.clone()),
             );
-            match exec_update(&collection, &key_str, serde_json::Value::Object(map), true) {
+            match exec_update_row(&collection, &key_str, serde_json::Value::Object(map), true) {
                 Ok(_) => {
                     instance
                         .borrow_mut()
@@ -1048,7 +1051,7 @@ fn write_update(
 ) -> Result<Persisted, String> {
     narrow_after_replica_read(instance, &mut map, given);
     if !super::registry::is_optimistic_lock(class_name) {
-        return exec_update(collection, key, serde_json::Value::Object(map), true)
+        return exec_update_row(collection, key, serde_json::Value::Object(map), true)
             .map(Persisted::Written);
     }
     let expected = lock_version_value(instance.borrow().fields.get("lock_version"));

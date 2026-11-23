@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::*;
-use super::crud::exec_update;
+use super::crud::exec_update_row;
 use crate::interpreter::value::{NativeFunction, Value};
 
 fn eq_finder_arg(args: &[Value], method: &str) -> Result<(String, serde_json::Value), String> {
@@ -279,7 +279,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             };
 
             // Try update first, create if not found
-            match exec_update(&collection, &key, data.clone(), true) {
+            match exec_update_row(&collection, &key, data.clone(), true) {
                 Ok(result) => Ok(super::crud::json_doc_to_instance(&class, &result)),
                 Err(_) => {
                     let mut insert_obj = match data {
@@ -308,7 +308,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                             // can't distinguish from a real conflict.
                             if super::validation::is_unique_violation(&e) {
                                 if let Ok(result) =
-                                    exec_update(&collection, &key, update_payload, true)
+                                    exec_update_row(&collection, &key, update_payload, true)
                                 {
                                     return Ok(super::crud::json_doc_to_instance(&class, &result));
                                 }

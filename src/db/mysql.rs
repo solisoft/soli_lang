@@ -578,6 +578,18 @@ pub fn update(
     document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
+    update_with(table, key, document, merge, false)
+}
+
+/// [`update`], which inserts a row that is not there — or, with
+/// `must_exist`, refuses it (`sql::update_row`).
+pub fn update_with(
+    table: &str,
+    key: &str,
+    document: serde_json::Value,
+    merge: bool,
+    must_exist: bool,
+) -> Result<serde_json::Value, String> {
     // Only a retry after a stale "table exists" memo needs the document twice.
     let mut document = Some(document);
     super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
@@ -591,6 +603,7 @@ pub fn update(
             key,
             attempt.expect("document consumed only by the last attempt"),
             merge,
+            must_exist,
         )
     })
 }
@@ -631,6 +644,7 @@ fn update_existing(
     key: &str,
     mut document: serde_json::Value,
     merge: bool,
+    must_exist: bool,
 ) -> Result<serde_json::Value, String> {
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
@@ -651,6 +665,9 @@ fn update_existing(
             if let Some(doc) = get_on(conn, table, key)? {
                 return Ok(doc);
             }
+            if must_exist {
+                return Err(super::sql::row_not_found(table, key));
+            }
             // Insert patch as full document; merge on a concurrent insert.
             let ins = format!(
                 "INSERT INTO {table_q} (_key, doc) VALUES (?, CAST(? AS JSON)) \
@@ -660,6 +677,15 @@ fn update_existing(
             conn.exec_drop(&ins, (key, &doc_str, &doc_str))
                 .map_err(|e| my_error("mysql update merge insert", &e))?;
             get_on(conn, table, key)?.ok_or_else(|| "mysql update: row missing".into())
+        });
+    }
+    if must_exist {
+        let sql = format!("UPDATE {table_q} SET doc = CAST(? AS JSON) WHERE _key = ?");
+        let _trace = super::trace::start_plain(&sql);
+        return with_conn(|conn| {
+            conn.exec_drop(&sql, (&doc_str, key))
+                .map_err(|e| my_error("mysql update (replace)", &e))?;
+            get_on(conn, table, key)?.ok_or_else(|| super::sql::row_not_found(table, key))
         });
     }
     let sql = format!(

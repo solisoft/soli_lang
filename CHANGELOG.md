@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **ORM: an update no longer brings a deleted row back.** On Postgres,
+  MySQL, SQLite and D1 the write behind `record.update`, `record.save`,
+  `touch`, a soft `delete`, `restore`, `Model.update(id, …)` and the
+  counter caches was an upsert: a record deleted while a request still
+  held it was inserted again, whole, from that request's copy — a revoked
+  API token worked again, a removed passkey signed in again, a deleted
+  account was back. It writes a row that is there (`db::sql::update_row`),
+  and answers what SoliDB always answered for one that is not: `false`
+  from `update` / `save`, a raise from `touch`, the `"Error: … not
+  found"` string from `Model.update` and a soft delete. `Model.upsert`
+  creates, as it says; the jobs and cron stores keep their upsert.
 - **auth: a fresh audit of the scaffold in its final state (three
   independent readings: core flows, add-ons, federation) found no way into
   someone else's account, and these.**

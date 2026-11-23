@@ -363,6 +363,15 @@ user.save({ "name": "Alice Smith", "age": 31 });
 user.update({ "name": "Alice Smith", "age": 31 });
 ```
 
+An update writes a row that is there. If the record was deleted since it was
+read — by another request, a cleanup job — nothing is written: `save` /
+`update` answer `false`, `touch` raises, and `Model.update(id, …)` and a soft
+`delete` hand back the `"Error: … not found"` string a delete of a missing row
+gives. This is the same on every adapter. (On Postgres, MySQL and SQLite an
+update used to insert the row, written whole from the copy the request held —
+a revoked token came back.) To create a row when it is missing, say so:
+`Model.upsert(key, data)`.
+
 `instance.to_h()` returns the record's user fields as a Hash, dropping the
 `_`-prefixed framework fields (`_key`, `_id`, `_rev`, `_errors`, …). Handy for
 serialization, diffing, and content hashing:
