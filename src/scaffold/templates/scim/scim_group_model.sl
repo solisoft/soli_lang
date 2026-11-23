@@ -72,8 +72,11 @@ class ScimGroup < Model
       return groups.filter { |group| group.display_name == key }.length > 0
     end
 
-    # The directory is what precedes the first `/` (a directory's name has
-    # none: see `_tokens` in the SCIM controller); the rest is the name.
+    # The directory is what precedes the first `/`; the rest is the name.
+    # A directory's name is ASCII and has no `/` (`_tokens` in the SCIM
+    # controller refuses any other), which is what makes this cut right:
+    # `length` counts bytes and `substring` characters, and for ASCII the
+    # two agree.
     directory = parts[0]
     name = key.substring(directory.length + 1, key.length)
     groups.filter { |group| group.scim_directory.to_s == directory && group.display_name == name }.length > 0

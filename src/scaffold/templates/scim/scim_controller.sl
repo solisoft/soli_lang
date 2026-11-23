@@ -300,11 +300,13 @@ class ScimController < Controller
     now.keys.each do |name|
       fields[name] = now[name] if now[name] != @loaded[name]
     end
-    # What the request said about `active` is written even when it is what
-    # the request read: the account may have been switched the other way
-    # meanwhile, and the directory is told what this answer shows.
+    # A request that says "not active" writes it even when that is what it
+    # read: the account may have been reactivated meanwhile, and this is the
+    # side that must hold. (Not the other way: "active" restated over an
+    # account it read as active writes nothing, so that it cannot undo a
+    # deactivation made meanwhile.)
     deactivating = false
-    if @active_stated
+    if @active_stated && !user.deactivated_at.nil?
       fields["deactivated_at"] = user.deactivated_at
       stored = User.find_by("_key", user._key)
       deactivating = !user.deactivated_at.nil? && !stored.nil? && stored.deactivated_at.nil?
@@ -322,7 +324,9 @@ class ScimController < Controller
       return @_error(400, "The user could not be saved", "invalidValue")
     end
 
-    @_json(200, @_resource(user))
+    # Answered from what is stored now, not from this request's copy: a
+    # directory records what it reads here.
+    @_json(200, @_resource(User.find_by("_key", user._key) ?? user))
   end
 
   # The fields a directory sets on a user, as `user` holds them.
