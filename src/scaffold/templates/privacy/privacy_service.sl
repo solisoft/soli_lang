@@ -237,21 +237,33 @@ class Privacy
 
   # The account: gone, or kept as an empty shell nobody can sign in to.
   static def erase_account(user)
-    return user.delete if PRIVACY_USER_ERASE == "delete"
+    if PRIVACY_USER_ERASE == "delete"
+      # A delete the database refuses (a foreign key from a model that is
+      # kept) answers false and leaves the account as it was: an erasure
+      # that did not happen must not be reported as one.
+      deleted = user.delete
+      if deleted == false || !User.find_by("_key", user._key).nil?
+        throw "privacy: the account #{user._key} could not be deleted: #{user._errors}"
+      end
+      return deleted
+    end
 
     blank = {
       "email": "erased-#{user._key}@erased.invalid",
       "erased_at": DateTime.utc.to_unix,
-      "deactivated_at": DateTime.utc.to_unix,
-      "session_version": user.current_session_version + 1
+      # Also what `soli generate scim` reads to keep an account out.
+      "deactivated_at": DateTime.utc.to_unix
     }
-    # Also what `soli generate scim` reads to keep an account out.
-
-    # Every session opened before this moment is refused.
     (PRIVACY_USER_SECRETS + PRIVACY_USER_FIELDS).each do |field|
       blank[field] = nil unless field == "session_version"
     end
     # In bulk, so an audited User does not log the values being erased.
-    User.where({"_key": user._key}).update_all(blank)
+    written = User.where({"_key": user._key}).update_all(blank)
+    throw written if type(written) == "string" && written.starts_with?("Error:")
+    # Every session opened before this moment is refused — counted in the
+    # database, after the write that takes the password away: a number
+    # written from this copy could put an older one back when two erasures
+    # of one account run together, and with it a session opened in between.
+    user.end_sessions
   end
 end

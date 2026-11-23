@@ -33,6 +33,10 @@ class ApiTokensController < Controller
 
     scopes = API_TOKEN_SCOPES.filter { |scope| params["scope_#{scope}"].to_s == "1" }
     issued = ApiToken.issue(user, params["name"], scopes, params["days"])
+    # A token the database did not store opens nothing: it is not shown.
+    if (issued["record"]._errors ?? []).length > 0
+      return @_render(user, nil, "The token could not be created. Try again.", 500)
+    end
     # Not from a session that ended while this was written (a password
     # reset): the token would outlive it.
     return redirect("/login") unless auth_credential_kept?(user, issued["record"])

@@ -28,7 +28,12 @@ class Device < Model
       if type(written) == "string" && written.starts_with?("Error:") {
         throw written
       }
-      return existing
+      # Still there: returned. Removed since it was read a few lines above
+      # (pruned, or swept by its previous owner's password reset): the
+      # write changed nothing, and the device is registered anew below.
+      if Device.first_by("_key", existing._key) {
+        return existing
+      }
     }
     Device.create({
       "user_id": user_id,
@@ -109,6 +114,10 @@ def create(req)
   end
 
   let device = Device.register(user_id, platform, token.to_s(), subscription)
+  # A device the database did not store receives nothing: not a 201.
+  if (device._errors ?? []).length() > 0
+    return { "status": 500, "body": json_stringify({ "error": "the device could not be registered" }) }
+  end
   # Not from a session that ended while this was written (a password reset):
   # the device would go on receiving the account's notifications.
   # (Where the session carries the account's session version — the auth

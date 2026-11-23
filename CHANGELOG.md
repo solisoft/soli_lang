@@ -95,6 +95,17 @@
     Erasing an account with no password asks for a recent sign-in — the
     address typed is on the page — and ends the account's sessions before
     and sweeps its credentials after, as a password reset does.
+  - *And from a sixth round*, the first whose reading of the core and
+    the add-ons reported no security finding (and nothing again in OAuth,
+    the OIDC provider, SAML or SCIM): two erasures of one account run
+    together could write an older session version back, and an erasure by
+    deletion that the database refused was reported as done — the version
+    is counted, and a refused delete raises. A token or a device the
+    database did not store is no longer answered as created, and a device
+    whose row went while it was being re-registered is registered anew.
+    The other whole-record writes of the auth templates that could bring
+    a removed row back on the SQL adapters (a provider identity, an OIDC
+    consent, a SCIM group) write by filter.
 - **bundles: the key of an encrypted bundle is stretched with Argon2id.**
   It was one SHA-256 of the key material: whoever holds a `.soli` file
   tried passphrases at the speed of SHA-256. New bundles carry a salt and
