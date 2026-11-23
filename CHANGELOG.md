@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.40.1] - 2026-11-23
+
 ### Added
 - **serve: a gzip request body is decoded.** A request with
   `Content-Encoding: gzip` (or `x-gzip`) reached the app through a lossy
