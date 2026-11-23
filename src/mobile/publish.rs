@@ -75,14 +75,38 @@ pub fn publish(opts: &PublishOptions<'_>) -> Result<Published, String> {
         .connect_timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
-    let mut request = client.post(upload_url(opts.url)).multipart(form);
-    if let Some(token) = opts.token {
+    if opts.token.is_some() {
         crate::platform::credential_may_travel_to(opts.url, "soli mobile publish")?;
-        request = request.bearer_auth(token);
     }
-    let response = request
+    // Ask first, with nothing to send: a server that refuses the token or
+    // the size while a large build is still arriving closes the connection,
+    // and the refusal may never be read — "connection reset" for a wrong
+    // token. A server from before the question answers it as an upload
+    // without a body (422), which is "go ahead".
+    let size = std::fs::metadata(opts.file)
+        .map(|meta| meta.len())
+        .unwrap_or(0);
+    let mut asking = client
+        .post(upload_url(opts.url))
+        .header("x-soli-build-size", size.to_string())
+        .timeout(std::time::Duration::from_secs(30));
+    if let Some(token) = opts.token {
+        asking = asking.bearer_auth(token);
+    }
+    let asked = asking
         .send()
-        .map_err(|e| format!("upload to {} failed: {e}", opts.url))?;
+        .map_err(|e| format!("cannot reach {}: {e}", opts.url))?;
+    let response = if matches!(asked.status().as_u16(), 401 | 404 | 413) {
+        asked
+    } else {
+        let mut request = client.post(upload_url(opts.url)).multipart(form);
+        if let Some(token) = opts.token {
+            request = request.bearer_auth(token);
+        }
+        request
+            .send()
+            .map_err(|e| format!("upload to {} failed: {e}", opts.url))?
+    };
     let status = response.status().as_u16();
     let body: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
     let field = |name: &str| {

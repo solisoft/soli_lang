@@ -258,6 +258,24 @@ pub(super) async fn dispatch(
                     "uploads take `Authorization: Bearer <SOLI_MOBILE_TOKEN>`",
                 ));
             }
+            // "Would you take a build of this size?" — asked by `soli mobile
+            // publish` before it sends one. A refusal given while a large
+            // body is still arriving can reach the client as a cut
+            // connection (see `settle`, which only covers a small one):
+            // asked first, with nothing to send, it is always read.
+            if let Some(size) = announced_size(req.headers()) {
+                settle(req.into_body()).await;
+                return Ok(if size > max_size() {
+                    too_large()
+                } else {
+                    Response::builder()
+                        .status(StatusCode::NO_CONTENT)
+                        .body(full(Bytes::new()))
+                        .unwrap_or_else(|_| {
+                            json_error(StatusCode::INTERNAL_SERVER_ERROR, "no answer")
+                        })
+                });
+            }
             Ok(handle_upload(&root, req, dev_mode).await)
         }
         ("POST", _) => {
@@ -297,6 +315,29 @@ async fn settle(mut body: Incoming) {
         }
     };
     let _ = tokio::time::timeout(SETTLE_FOR, reading).await;
+}
+
+/// The size a client says its build has, when it asks before sending it.
+pub(crate) const ANNOUNCED_SIZE: &str = "x-soli-build-size";
+
+fn announced_size(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get(ANNOUNCED_SIZE)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn too_large() -> Response<ResponseBody> {
+    json_error(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        &format!(
+            "the build is over SOLI_MOBILE_MAX_SIZE ({} bytes)",
+            max_size()
+        ),
+    )
 }
 
 fn bearer_less_basic(headers: &HeaderMap) -> bool {
@@ -463,13 +504,7 @@ async fn handle_upload(
                 }),
             )
         }
-        Err(UploadError::TooLarge) => json_error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            &format!(
-                "the build is over SOLI_MOBILE_MAX_SIZE ({} bytes)",
-                max_size()
-            ),
-        ),
+        Err(UploadError::TooLarge) => too_large(),
         Err(UploadError::Invalid(message)) => {
             json_error(StatusCode::UNPROCESSABLE_ENTITY, &message)
         }
@@ -502,8 +537,11 @@ async fn receive(root: &Path, req: Request<Incoming>) -> Result<Build, UploadErr
         .headers()
         .get(hyper::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .and_then(|ct| multer::parse_boundary(ct).ok())
-        .ok_or_else(|| UploadError::Invalid("expected multipart/form-data".into()))?;
+        .and_then(|ct| multer::parse_boundary(ct).ok());
+    let Some(boundary) = boundary else {
+        settle(req.into_body()).await;
+        return Err(UploadError::Invalid("expected multipart/form-data".into()));
+    };
 
     let tmp_dir = root.join(".tmp");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| UploadError::Server(e.to_string()))?;
@@ -527,65 +565,74 @@ async fn receive(root: &Path, req: Request<Incoming>) -> Result<Build, UploadErr
     };
 
     let bad_body = |e: multer::Error| UploadError::Invalid(format!("malformed upload: {e}"));
-    while let Some(mut field) = multipart.next_field().await.map_err(bad_body)? {
-        let name = field.name().unwrap_or("").to_string();
-        if name == "file" {
-            if file_name.is_some() {
-                return Err(UploadError::Invalid("more than one `file` part".into()));
+    // Every refusal of a part is answered with the rest of the body read
+    // (within `settle`'s bound): see there.
+    let parts: Result<(), UploadError> = async {
+        while let Some(mut field) = multipart.next_field().await.map_err(bad_body)? {
+            let name = field.name().unwrap_or("").to_string();
+            if name == "file" {
+                if file_name.is_some() {
+                    return Err(UploadError::Invalid("more than one `file` part".into()));
+                }
+                file_name = Some(field.file_name().unwrap_or("").to_string());
+                let mut out = tmp.as_file();
+                while let Some(chunk) = field.chunk().await.map_err(bad_body)? {
+                    size += chunk.len() as u64;
+                    if size > cap {
+                        return Err(UploadError::TooLarge);
+                    }
+                    {
+                        use sha2::Digest;
+                        hasher.update(&chunk);
+                    }
+                    out.write_all(&chunk)
+                        .map_err(|e| UploadError::Server(e.to_string()))?;
+                }
+                continue;
             }
-            file_name = Some(field.file_name().unwrap_or("").to_string());
-            let mut out = tmp.as_file();
+            let limit = if name == "notes" {
+                MAX_NOTES
+            } else {
+                MAX_SHORT_FIELD
+            };
+            let mut value = Vec::new();
             while let Some(chunk) = field.chunk().await.map_err(bad_body)? {
-                size += chunk.len() as u64;
-                if size > cap {
-                    // What is left of the file, within the same bound (see
-                    // `settle`): the client must be able to read the 413.
-                    let rest = async {
-                        let mut left = SETTLE_BYTES;
-                        while let Ok(Some(more)) = field.chunk().await {
-                            left = left.saturating_sub(more.len());
-                            if left == 0 {
-                                break;
-                            }
-                        }
-                    };
-                    let _ = tokio::time::timeout(SETTLE_FOR, rest).await;
-                    return Err(UploadError::TooLarge);
+                value.extend_from_slice(&chunk);
+                if value.len() > limit {
+                    return Err(UploadError::Invalid(format!(
+                        "`{name}` is over {limit} bytes"
+                    )));
                 }
-                {
-                    use sha2::Digest;
-                    hasher.update(&chunk);
+            }
+            let value = String::from_utf8_lossy(&value).trim().to_string();
+            let slot = match name.as_str() {
+                "platform" => &mut fields.platform,
+                "version" => &mut fields.version,
+                "build_number" => &mut fields.build_number,
+                "notes" => &mut fields.notes,
+                "bundle_id" => &mut fields.bundle_id,
+                "name" => &mut fields.name,
+                _ => continue,
+            };
+            *slot = Some(value).filter(|v| !v.is_empty());
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(refusal) = parts {
+        let rest = async {
+            let mut left = SETTLE_BYTES;
+            while let Ok(Some(mut field)) = multipart.next_field().await {
+                while let Ok(Some(more)) = field.chunk().await {
+                    left = left.saturating_sub(more.len());
+                    if left == 0 {
+                        return;
+                    }
                 }
-                out.write_all(&chunk)
-                    .map_err(|e| UploadError::Server(e.to_string()))?;
             }
-            continue;
-        }
-        let limit = if name == "notes" {
-            MAX_NOTES
-        } else {
-            MAX_SHORT_FIELD
         };
-        let mut value = Vec::new();
-        while let Some(chunk) = field.chunk().await.map_err(bad_body)? {
-            value.extend_from_slice(&chunk);
-            if value.len() > limit {
-                return Err(UploadError::Invalid(format!(
-                    "`{name}` is over {limit} bytes"
-                )));
-            }
-        }
-        let value = String::from_utf8_lossy(&value).trim().to_string();
-        let slot = match name.as_str() {
-            "platform" => &mut fields.platform,
-            "version" => &mut fields.version,
-            "build_number" => &mut fields.build_number,
-            "notes" => &mut fields.notes,
-            "bundle_id" => &mut fields.bundle_id,
-            "name" => &mut fields.name,
-            _ => continue,
-        };
-        *slot = Some(value).filter(|v| !v.is_empty());
+        let _ = tokio::time::timeout(SETTLE_FOR, rest).await;
+        return Err(refusal);
     }
 
     let Some(file_name) = file_name else {

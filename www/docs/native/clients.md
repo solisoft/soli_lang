@@ -203,6 +203,13 @@ worker. Fields: `file` (required), `platform`, `version`, `build_number`,
 `notes` (≤ 10 kB), `name`, and `bundle_id` (required for iOS). It answers `201`
 with `install_url` and `download_url`, `401`, `413` over the cap, or `422`.
 
+**Ask before sending.** A refusal given while a large file is still arriving
+closes the connection under the upload, and the client may see a reset rather
+than the `401` or the `413`. So `soli mobile publish` asks first: the same
+`POST`, with no body and the file's size in `X-Soli-Build-Size`. It answers
+`204` (send it), `401` or `413` — and stores nothing. A script of your own
+that uploads builds should do the same.
+
 **Install links.** Each build gets a random, unguessable token:
 `/__soli/mobile/i/<token>` is a phone-friendly page with the download (Android)
 or install (iOS) button, and the QR code on the operator page points at it.

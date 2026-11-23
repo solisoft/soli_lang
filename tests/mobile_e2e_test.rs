@@ -299,6 +299,63 @@ fn publish_round_trip() {
     assert!(install.contains("From the CLI") && install.contains("Shop"));
 }
 
+/// A refusal reaches the client whatever the size of what it meant to send.
+/// Answered while megabytes are still arriving, the connection is closed
+/// under the upload and the 401 or the 413 may never be read: `soli mobile
+/// publish` asks first, with nothing to send.
+#[test]
+fn a_large_build_that_is_refused_is_told_why() {
+    let storage = tempfile::tempdir().unwrap();
+    let server = Server::start(storage.path(), Some(TOKEN));
+    let work = tempfile::tempdir().unwrap();
+    let file = work.path().join("app-release.apk");
+    std::fs::write(&file, apk_bytes(8 * 1024 * 1024)).unwrap();
+    let base = server.url("");
+    let publish = |token: Option<&str>| {
+        solilang::mobile::publish::publish(&solilang::mobile::publish::PublishOptions {
+            file: &file,
+            url: &base,
+            notes: None,
+            token,
+        })
+        .unwrap_err()
+    };
+    for _ in 0..5 {
+        let no_token = publish(None);
+        assert!(
+            no_token.starts_with("401: the server wants a token"),
+            "{no_token}"
+        );
+        let wrong = publish(Some("not-the-token"));
+        assert_eq!(wrong, "401: the server refused SOLI_MOBILE_TOKEN");
+        let too_large = publish(Some(TOKEN));
+        assert!(
+            too_large.starts_with("413: the build is over SOLI_MOBILE_MAX_SIZE"),
+            "{too_large}"
+        );
+    }
+
+    // The question itself: no body, the size in a header.
+    let ask = |token: &str, size: usize| {
+        client()
+            .post(server.url("/__soli/mobile/builds"))
+            .bearer_auth(token)
+            .header("x-soli-build-size", size.to_string())
+            .send()
+            .unwrap()
+            .status()
+    };
+    assert_eq!(ask(TOKEN, MAX_SIZE), StatusCode::NO_CONTENT);
+    assert_eq!(ask(TOKEN, MAX_SIZE + 1), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(ask("not-the-token", 10), StatusCode::UNAUTHORIZED);
+    // Asking stores nothing.
+    assert!(!storage
+        .path()
+        .read_dir()
+        .unwrap()
+        .any(|entry| { entry.unwrap().path().join("build.json").exists() }));
+}
+
 /// A free port no other test of this binary was given: the tests run side
 /// by side, and a port released by one could be handed to another while the
 /// first server was still going down.
