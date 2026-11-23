@@ -207,6 +207,41 @@ pub(super) async fn intake(
             }
         };
 
+        // `Content-Encoding: gzip` on a request: decode before anything reads
+        // the body, under its own cap (`get_max_inflated_body_size`). Without
+        // this the bytes reached `body` through a lossy UTF-8 conversion, and
+        // a compressed upload arrived destroyed.
+        let body_bytes = if header_str(&headers, "content-encoding").is_some_and(is_gzip_coding) {
+            match inflate_gzip(
+                &body_bytes,
+                crate::interpreter::builtins::body_limit::get_max_inflated_body_size(),
+            ) {
+                Ok(inflated) => inflated,
+                Err(InflateError::TooLarge) => {
+                    return Err(Box::new(
+                        Response::builder()
+                            .status(StatusCode::PAYLOAD_TOO_LARGE)
+                            .header("Content-Type", "text/plain; charset=utf-8")
+                            .body(full(Bytes::from(
+                                "Request body too large once decompressed",
+                            )))
+                            .unwrap(),
+                    ));
+                }
+                Err(InflateError::Invalid) => {
+                    return Err(Box::new(
+                        Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .header("Content-Type", "text/plain; charset=utf-8")
+                            .body(full(Bytes::from("Request body is not valid gzip")))
+                            .unwrap(),
+                    ));
+                }
+            }
+        } else {
+            body_bytes
+        };
+
         // Check if this is a multipart form
         let content_type = req_content_type.as_deref();
         if let Some(ct) = content_type {
@@ -349,6 +384,34 @@ enum BodyReadError {
 /// the bytes over without a second pass through `from_utf8_lossy`'s copy
 /// (`Vec::from(Bytes)` reuses the allocation when the buffer is uniquely
 /// owned); invalid input is still replaced lossily, as before.
+#[derive(Debug, PartialEq)]
+enum InflateError {
+    TooLarge,
+    Invalid,
+}
+
+/// `gzip` or `x-gzip`, alone. A stacked coding (`gzip, br`) is left as is.
+fn is_gzip_coding(value: &str) -> bool {
+    let coding = value.trim();
+    coding.eq_ignore_ascii_case("gzip") || coding.eq_ignore_ascii_case("x-gzip")
+}
+
+/// Decode a gzip body (several members allowed), refusing more than `limit`
+/// decoded bytes. Reads at most `limit + 1` bytes, so a bomb stops early.
+fn inflate_gzip(compressed: &[u8], limit: usize) -> Result<Bytes, InflateError> {
+    use std::io::Read;
+    let mut decoder =
+        flate2::read::MultiGzDecoder::new(compressed).take(limit.saturating_add(1) as u64);
+    let mut out = Vec::new();
+    decoder
+        .read_to_end(&mut out)
+        .map_err(|_| InflateError::Invalid)?;
+    if out.len() > limit {
+        return Err(InflateError::TooLarge);
+    }
+    Ok(Bytes::from(out))
+}
+
 fn body_into_string(body: Bytes) -> String {
     String::from_utf8(Vec::from(body))
         .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
@@ -1441,5 +1504,58 @@ mod tests {
             false,
         );
         assert_eq!(body_of(off).await, "<html><body>x</body></html>");
+    }
+}
+
+#[cfg(test)]
+mod inflate_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn gzip(data: &[u8]) -> Vec<u8> {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(data).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn a_gzip_body_decodes_to_its_bytes() {
+        let json = "{\"clients\":[{\"raisonSociale\":\"MÉTALLIQUE\"}]}";
+        let inflated = inflate_gzip(&gzip(json.as_bytes()), 1024).unwrap();
+        assert_eq!(&inflated[..], json.as_bytes());
+    }
+
+    #[test]
+    fn two_members_decode_as_one_body() {
+        let mut both = gzip(b"abc");
+        both.extend(gzip(b"def"));
+        assert_eq!(&inflate_gzip(&both, 1024).unwrap()[..], b"abcdef");
+    }
+
+    #[test]
+    fn a_body_past_the_inflated_cap_is_refused() {
+        let big = vec![b'a'; 10_000];
+        assert_eq!(
+            inflate_gzip(&gzip(&big), 9_999),
+            Err(InflateError::TooLarge)
+        );
+        assert_eq!(inflate_gzip(&gzip(&big), 10_000).unwrap().len(), 10_000);
+    }
+
+    #[test]
+    fn bytes_that_are_not_gzip_are_refused() {
+        assert_eq!(
+            inflate_gzip(b"not gzip at all", 1024),
+            Err(InflateError::Invalid)
+        );
+    }
+
+    #[test]
+    fn only_a_lone_gzip_coding_is_decoded() {
+        assert!(is_gzip_coding("gzip"));
+        assert!(is_gzip_coding(" GZIP "));
+        assert!(is_gzip_coding("x-gzip"));
+        assert!(!is_gzip_coding("br"));
+        assert!(!is_gzip_coding("gzip, br"));
     }
 }

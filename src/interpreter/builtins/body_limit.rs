@@ -326,6 +326,21 @@ impl Drop for BodyReservation {
     }
 }
 
+/// The cap on a request body **once decompressed** (`Content-Encoding: gzip`).
+///
+/// `MAX_BODY_SIZE` bounds the bytes on the wire; a gzip body expands — a
+/// 0.8 MB export is 25 MB of JSON — so the decoded size needs its own cap, or
+/// a small hostile body inflates without limit. `SOLI_MAX_INFLATED_BODY_SIZE`
+/// (bytes); by default ten times `MAX_BODY_SIZE`.
+pub fn get_max_inflated_body_size() -> usize {
+    parse_body_limit_env(
+        crate::platform::env::var("SOLI_MAX_INFLATED_BODY_SIZE")
+            .ok()
+            .as_deref(),
+    )
+    .unwrap_or_else(|| get_max_body_size().saturating_mul(10))
+}
+
 /// Parse a `SOLI_MAX_BODY_SIZE` value. Returns `Some(bytes)` for a clean
 /// non-negative integer, `None` for missing/empty/non-numeric input.
 /// Factored out so tests don't race on `std::env::var` or the

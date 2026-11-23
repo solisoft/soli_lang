@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- **serve: a gzip request body is decoded.** A request with
+  `Content-Encoding: gzip` (or `x-gzip`) reached the app through a lossy
+  UTF-8 conversion: its bytes arrived destroyed, and `req["json"]` empty.
+  The pipeline now decodes it (several gzip members allowed) before
+  anything reads the body, under its own cap,
+  `SOLI_MAX_INFLATED_BODY_SIZE` (bytes; ten times `SOLI_MAX_BODY_SIZE` by
+  default): `413` past it, `400` for bytes that are not gzip. A stacked
+  coding (`gzip, br`) is left as it was.
+
 ### Security — follow-ups
 - **ORM: an update no longer brings a deleted row back.** On Postgres,
   MySQL, SQLite and D1 the write behind `record.update`, `record.save`,
