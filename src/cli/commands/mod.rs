@@ -2880,6 +2880,43 @@ pub fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // The digest is published beside the tarball: whoever can replace one
+    // can replace the other. A binary built with a release key also wants
+    // the signature (`<tarball>.sig`), which only the key's holder can make.
+    if let Some(pubkey) = solilang::update::release_pubkey() {
+        let sig_url = format!("{}.sig", download_url);
+        let signature = match client.get(&sig_url).send() {
+            Ok(resp) if resp.status().is_success() => resp
+                .text()
+                .map_err(|e| format!("Failed to read .sig: {}", e))?,
+            Ok(resp) => {
+                eprintln!(
+                    "  \x1b[31mError:\x1b[0m no signature published for v{} (HTTP {}) — \
+                     refusing to install a binary this release key did not sign.",
+                    latest_tag,
+                    resp.status()
+                );
+                process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("  \x1b[31mError:\x1b[0m fetching .sig: {}", e);
+                process::exit(1);
+            }
+        };
+        let tarball = match std::fs::read(&tarball_path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("  \x1b[31mError:\x1b[0m reading download: {}", e);
+                process::exit(1);
+            }
+        };
+        if let Err(e) = solilang::update::verify_release_signature(&tarball, &signature, pubkey) {
+            eprintln!("  \x1b[31mError:\x1b[0m {} — refusing to install.", e);
+            process::exit(1);
+        }
+        println!("  Signature verified.");
+    }
+
     println!("  Extracting...");
     let tf = std::fs::File::open(&tarball_path).expect("Failed to open tarball");
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(tf));

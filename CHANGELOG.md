@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Security — follow-ups
+- **bundles: the key of an encrypted bundle is stretched with Argon2id.**
+  It was one SHA-256 of the key material: whoever holds a `.soli` file
+  tried passphrases at the speed of SHA-256. New bundles carry a salt and
+  an Argon2id-derived key (container version 2); bundles of the previous
+  format still open, with a notice to rebuild them.
+- **update: `soli update` verifies a signature when the binary was built
+  with a release key.** The published digest sits beside the tarball, on
+  the same release. With `SOLI_RELEASE_PUBKEY` set at build time, the
+  update also wants `<tarball>.sig` — ECDSA P-256 over the tarball, made
+  by the release pipeline with the `SOLI_RELEASE_SIGNING_KEY` secret — and
+  refuses a release without one. Unset, nothing changes.
 - **lint: a file that does not parse fails `soli lint`.** The parse error
   was printed, then the file left out of the count: the run ended "No
   issues found." with exit code 0. It counts as an issue and the run exits

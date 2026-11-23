@@ -6,11 +6,20 @@ use crate::ast::Program;
 
 const BUNDLE_MAGIC: &[u8; 4] = b"SOLB";
 
-/// Magic of an encrypted bundle container: `SOLE` + version byte + nonce[12]
-/// + AES-256-GCM ciphertext (incl. 16-byte tag) of the plaintext SOLB bundle.
+/// Magic of an encrypted bundle container: `SOLE` + version byte, then
+///
+/// * version 2: salt[16] + nonce[12] + AES-256-GCM ciphertext (incl. the
+///   16-byte tag) of the plaintext SOLB bundle, under a key stretched from
+///   the key material with Argon2id and that salt;
+/// * version 1 (read, no longer written): nonce[12] + ciphertext, under
+///   SHA-256 of the key material — one hash, which a passphrase does not
+///   survive: whoever holds the file tries guesses at the speed of SHA-256.
 pub const ENCRYPTED_BUNDLE_MAGIC: &[u8; 4] = b"SOLE";
-const ENCRYPTED_BUNDLE_VERSION: u8 = 1;
-/// magic(4) + version(1) + nonce(12) + GCM tag(16)
+const ENCRYPTED_BUNDLE_VERSION: u8 = 2;
+const ENCRYPTED_BUNDLE_LEGACY_VERSION: u8 = 1;
+const ENCRYPTED_BUNDLE_SALT_LEN: usize = 16;
+/// magic(4) + version(1) + nonce(12) + GCM tag(16) — the shortest container
+/// there has been (version 1).
 const ENCRYPTED_BUNDLE_MIN_LEN: usize = 4 + 1 + 12 + 16;
 
 /// Message shown by the plain-bundle parsers when handed an encrypted bundle.
@@ -46,26 +55,32 @@ pub fn is_encrypted_bundle(data: &[u8]) -> bool {
 }
 
 /// Wrap plaintext SOLB bundle bytes in the encrypted container. The AES-256
-/// key is SHA-256 of the (opaque, UTF-8) key material — hex, base64 or a
-/// passphrase all work, as long as build and serve use the same string.
+/// key is stretched from the (opaque, UTF-8) key material — hex, base64 or a
+/// passphrase all work, as long as build and serve use the same string —
+/// with Argon2id and a salt of the bundle's own.
 pub fn encrypt_bundle(plain: &[u8], key_material: &str) -> Result<Vec<u8>, String> {
-    use crate::interpreter::builtins::crypto::{aes_encrypt_bytes, derive_aes_key};
+    use crate::interpreter::builtins::crypto::{aes_encrypt_bytes, bundle_salt, derive_bundle_key};
 
     if plain.len() < 4 || &plain[..4] != BUNDLE_MAGIC {
         return Err("encrypt_bundle: input is not a SOLB bundle".to_string());
     }
-    let key = derive_aes_key(key_material.as_bytes());
+    let salt = bundle_salt();
+    let key = derive_bundle_key(key_material.as_bytes(), &salt)?;
     let sealed = aes_encrypt_bytes(plain, &key)?; // nonce[12] ‖ ct+tag
-    let mut out = Vec::with_capacity(5 + sealed.len());
+    let mut out = Vec::with_capacity(5 + salt.len() + sealed.len());
     out.extend_from_slice(ENCRYPTED_BUNDLE_MAGIC);
     out.push(ENCRYPTED_BUNDLE_VERSION);
+    out.extend_from_slice(&salt);
     out.extend_from_slice(&sealed);
     Ok(out)
 }
 
-/// Decrypt an encrypted (`SOLE`) container back to plaintext SOLB bytes.
+/// Decrypt an encrypted (`SOLE`) container back to plaintext SOLB bytes. A
+/// bundle of the previous format still opens, with a notice to rebuild it.
 pub fn decrypt_bundle(data: &[u8], key_material: &str) -> Result<Vec<u8>, String> {
-    use crate::interpreter::builtins::crypto::{aes_decrypt_bytes, derive_aes_key};
+    use crate::interpreter::builtins::crypto::{
+        aes_decrypt_bytes, derive_aes_key, derive_bundle_key,
+    };
 
     if !is_encrypted_bundle(data) {
         return Err("decrypt_bundle: not an encrypted bundle (bad magic)".to_string());
@@ -73,14 +88,26 @@ pub fn decrypt_bundle(data: &[u8], key_material: &str) -> Result<Vec<u8>, String
     if data.len() < ENCRYPTED_BUNDLE_MIN_LEN {
         return Err("invalid encrypted bundle: truncated".to_string());
     }
-    let version = data[4];
-    if version != ENCRYPTED_BUNDLE_VERSION {
-        return Err(format!(
-            "unsupported encrypted bundle version {version} — upgrade soli"
-        ));
-    }
-    let key = derive_aes_key(key_material.as_bytes());
-    let plain = aes_decrypt_bytes(&data[5..], &key).map_err(|_| {
+    let (key, sealed) = match data[4] {
+        ENCRYPTED_BUNDLE_VERSION => {
+            let body = &data[5..];
+            if body.len() < ENCRYPTED_BUNDLE_SALT_LEN + 12 + 16 {
+                return Err("invalid encrypted bundle: truncated".to_string());
+            }
+            let (salt, sealed) = body.split_at(ENCRYPTED_BUNDLE_SALT_LEN);
+            (derive_bundle_key(key_material.as_bytes(), salt)?, sealed)
+        }
+        ENCRYPTED_BUNDLE_LEGACY_VERSION => {
+            warn_legacy_bundle_once();
+            (derive_aes_key(key_material.as_bytes()), &data[5..])
+        }
+        version => {
+            return Err(format!(
+                "unsupported encrypted bundle version {version} — upgrade soli"
+            ))
+        }
+    };
+    let plain = aes_decrypt_bytes(sealed, &key).map_err(|_| {
         "bundle decryption failed: wrong or rotated key, or corrupted file".to_string()
     })?;
     if plain.len() < 4 || &plain[..4] != BUNDLE_MAGIC {
@@ -89,6 +116,18 @@ pub fn decrypt_bundle(data: &[u8], key_material: &str) -> Result<Vec<u8>, String
         );
     }
     Ok(plain)
+}
+
+/// Said once per process: an old bundle still runs, and should be rebuilt.
+fn warn_legacy_bundle_once() {
+    static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        eprintln!(
+            "  \x1b[33mWarning:\x1b[0m this bundle was encrypted by an older soli, with a key \
+             derivation a passphrase does not survive (one SHA-256). It still opens; rebuild \
+             it with this version to protect it with Argon2id."
+        );
+    }
 }
 
 /// What gets bundled. Code and templates are the obvious half; the rest is
@@ -770,7 +809,7 @@ mod tests {
         let plain = plain_fixture_bundle();
         let sealed = encrypt_bundle(&plain, "round-trip-key").unwrap();
         assert!(is_encrypted_bundle(&sealed));
-        assert_eq!(&sealed[..5], b"SOLE\x01");
+        assert_eq!(&sealed[..5], b"SOLE\x02");
         let back = decrypt_bundle(&sealed, "round-trip-key").unwrap();
         assert_eq!(back, plain);
         assert!(BundleReader::new(&back).is_ok());
@@ -789,6 +828,46 @@ mod tests {
         let last = sealed.len() - 1;
         sealed[last] ^= 0xFF;
         assert!(decrypt_bundle(&sealed, "key").is_err());
+    }
+
+    /// A bundle of the previous format — one SHA-256 of the key material,
+    /// no salt — still opens; a new one carries a salt and does not open
+    /// under that old derivation, and two bundles of the same content and
+    /// passphrase share no bytes past the header.
+    #[test]
+    fn an_old_bundle_still_opens_and_a_new_one_is_stretched_and_salted() {
+        use crate::interpreter::builtins::crypto::{
+            aes_decrypt_bytes, aes_encrypt_bytes, derive_aes_key,
+        };
+        let plain = plain_fixture_bundle();
+
+        let mut legacy = Vec::new();
+        legacy.extend_from_slice(ENCRYPTED_BUNDLE_MAGIC);
+        legacy.push(ENCRYPTED_BUNDLE_LEGACY_VERSION);
+        legacy.extend_from_slice(
+            &aes_encrypt_bytes(&plain, &derive_aes_key(b"a passphrase")).unwrap(),
+        );
+        assert_eq!(decrypt_bundle(&legacy, "a passphrase").unwrap(), plain);
+        assert!(decrypt_bundle(&legacy, "another").is_err());
+
+        let sealed = encrypt_bundle(&plain, "a passphrase").unwrap();
+        assert_eq!(sealed[4], ENCRYPTED_BUNDLE_VERSION);
+        assert_eq!(decrypt_bundle(&sealed, "a passphrase").unwrap(), plain);
+        // Not the old derivation: SHA-256 of the passphrase opens nothing,
+        // with or without skipping the salt.
+        let old_key = derive_aes_key(b"a passphrase");
+        assert!(aes_decrypt_bytes(&sealed[5..], &old_key).is_err());
+        assert!(aes_decrypt_bytes(&sealed[5 + ENCRYPTED_BUNDLE_SALT_LEN..], &old_key).is_err());
+        // Salted: the same content and passphrase, another salt, another key.
+        let again = encrypt_bundle(&plain, "a passphrase").unwrap();
+        assert_ne!(
+            sealed[5..5 + ENCRYPTED_BUNDLE_SALT_LEN],
+            again[5..5 + ENCRYPTED_BUNDLE_SALT_LEN]
+        );
+        // A salt that was changed is a wrong key.
+        let mut resalted = sealed.clone();
+        resalted[5] ^= 1;
+        assert!(decrypt_bundle(&resalted, "a passphrase").is_err());
     }
 
     #[test]

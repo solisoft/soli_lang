@@ -656,6 +656,10 @@ jobs:
         if: matrix.kind == 'soli'
         run: cargo build --profile ${{ matrix.platform.profile }} --locked --target ${{ matrix.platform.target }}
         env:
+          # The key `soli update` checks a release's signature against, built
+          # into the binary (a repository *variable*: it is public). Unset,
+          # the binary verifies the published digest only.
+          SOLI_RELEASE_PUBKEY: ${{ vars.SOLI_RELEASE_PUBKEY }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
           PKG_CONFIG_PATH_aarch64_unknown_linux_gnu: /usr/lib/aarch64-linux-gnu/pkgconfig
@@ -701,6 +705,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          # Handed to this step alone, as an environment variable — never
+          # written into the script.
+          SOLI_RELEASE_SIGNING_KEY: ${{ secrets.SOLI_RELEASE_SIGNING_KEY }}
+          SOLI_RELEASE_PUBKEY: ${{ vars.SOLI_RELEASE_PUBKEY }}
         run: |
           # SEC-041: publish a `.sha256` sibling so `soli update` can
           # verify the downloaded tarball before extracting / chmod-ing.
@@ -715,6 +723,24 @@ jobs:
           fi
           cat $ARTIFACT.tar.gz.sha256
           gh release upload --clobber ${{ github.ref_name }} $ARTIFACT.tar.gz $ARTIFACT.tar.gz.sha256
+
+          # The digest sits beside the tarball: whoever can replace one can
+          # replace the other. The signature is made with a key that is not
+          # on the release — `soli update` checks it against the public half
+          # built into the binary. Both halves or neither: a binary that
+          # expects a signature this job did not make could never update.
+          if [ -n "$SOLI_RELEASE_PUBKEY" ] && [ -z "$SOLI_RELEASE_SIGNING_KEY" ]; then
+            echo "::error::SOLI_RELEASE_PUBKEY is set but the SOLI_RELEASE_SIGNING_KEY secret is not"
+            exit 1
+          fi
+          if [ -n "$SOLI_RELEASE_SIGNING_KEY" ]; then
+            keyfile="$RUNNER_TEMP/release-signing-key.pem"
+            ( umask 077; printf '%s\n' "$SOLI_RELEASE_SIGNING_KEY" > "$keyfile" )
+            openssl dgst -sha256 -sign "$keyfile" $ARTIFACT.tar.gz | openssl base64 -A > $ARTIFACT.tar.gz.sig
+            rm -f "$keyfile"
+            test -s $ARTIFACT.tar.gz.sig
+            gh release upload --clobber ${{ github.ref_name }} $ARTIFACT.tar.gz.sig
+          fi
 
   # Windows on its own: a red windows-check or a failed Windows build costs the
   # Windows binary only. The Linux and macOS release publishes without waiting;

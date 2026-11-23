@@ -708,6 +708,28 @@ fn do_pkcs1_unpad(em: &[u8]) -> Result<Vec<u8>, String> {
 /// at-rest key, so changing it would make every previously-encrypted value
 /// (model `encrypts` fields, sealed bundles) permanently undecryptable. Enforce
 /// key entropy operationally instead. See the docs for key-generation guidance.
+/// The key of an encrypted bundle, stretched from its key material with
+/// Argon2id (RFC 9106's second profile: 19 MiB, two passes) and a salt stored
+/// in the bundle. One SHA-256 of the material ([`derive_aes_key`]) is right
+/// for a random key and wrong for a passphrase — a bundle is a file someone
+/// may hold a copy of and try passphrases against at billions a second.
+pub(crate) fn derive_bundle_key(material: &[u8], salt: &[u8]) -> Result<[u8; 32], String> {
+    let params = Params::new(19 * 1024, 2, 1, Some(32))
+        .map_err(|e| format!("bundle key derivation: {e}"))?;
+    let mut key = [0u8; 32];
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(material, salt, &mut key)
+        .map_err(|e| format!("bundle key derivation: {e}"))?;
+    Ok(key)
+}
+
+/// A fresh random salt for [`derive_bundle_key`].
+pub(crate) fn bundle_salt() -> [u8; 16] {
+    let mut salt = [0u8; 16];
+    OsRng.fill_bytes(&mut salt);
+    salt
+}
+
 pub(crate) fn derive_aes_key(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(material);

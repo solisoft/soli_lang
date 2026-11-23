@@ -264,8 +264,13 @@ Resolved in this order, at both build and serve time:
 
 1. `SOLI_BUNDLE_KEY` — the key material itself (handy for local testing).
 2. `SOLI_BUNDLE_AUTH_URL` — a URL you expose. Soli issues a `GET`, sending `SOLI_BUNDLE_API_KEY`
-   (if set) as an `x-api-key` header; the response body is the key material, in any encoding — it
-   is hashed to a 256-bit key. This is the revocable path.
+   (if set) as an `x-api-key` header; the response body is the key material, in any encoding. This is
+   the revocable path.
+
+The 256-bit key is stretched from that material with Argon2id and a salt stored in the bundle, so
+a passphrase costs an attacker who holds the file real work per guess (a random key is still the
+better choice). Bundles built before this — one SHA-256 of the material, no salt — still open,
+with a notice at start; rebuild them.
 
 Both can live in the `.env` beside the `.soli` file, loaded before decryption, so the deployed
 host only ever carries its own API key:

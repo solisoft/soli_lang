@@ -423,6 +423,49 @@ pub fn replace_executable(exe: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Soli's own releases: a signature beside the digest.
+// ---------------------------------------------------------------------------
+
+/// The public key soli's release tarballs are signed with (base64 SEC1
+/// P-256, as `soli update-keygen` prints it), set when this binary was built
+/// (`SOLI_RELEASE_PUBKEY`). None on a build that names no key: `soli update`
+/// then verifies the published digest only, as it always has.
+///
+/// The digest sits beside the tarball, on the same release: whoever can
+/// replace one can replace the other. A signature cannot be replaced
+/// without the private key, which is not on the release host.
+pub fn release_pubkey() -> Option<&'static str> {
+    option_env!("SOLI_RELEASE_PUBKEY")
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+}
+
+/// Check `signature_b64` — an ECDSA P-256 signature over the SHA-256 of
+/// `bytes`, DER-encoded then base64, which is what
+/// `openssl dgst -sha256 -sign key.pem file | openssl base64 -A` writes —
+/// against `pubkey_b64`.
+pub fn verify_release_signature(
+    bytes: &[u8],
+    signature_b64: &str,
+    pubkey_b64: &str,
+) -> Result<(), String> {
+    let key_bytes = B64
+        .decode(pubkey_b64.trim())
+        .map_err(|_| "the release key built into this binary is not valid base64".to_string())?;
+    let verifying = VerifyingKey::from_sec1_bytes(&key_bytes)
+        .map_err(|e| format!("the release key built into this binary is invalid: {e}"))?;
+    let compact: String = signature_b64.split_whitespace().collect();
+    let der = B64
+        .decode(compact)
+        .map_err(|_| "the release signature is not valid base64".to_string())?;
+    let signature =
+        Signature::from_der(&der).map_err(|_| "the release signature is malformed".to_string())?;
+    verifying
+        .verify(bytes, &signature)
+        .map_err(|_| "the release signature does not verify".to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Developer tooling: keygen + manifest signing.
 // ---------------------------------------------------------------------------
 
@@ -479,6 +522,66 @@ pub fn sign_manifest_file(manifest_path: &Path, key_pem: &str) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A release tarball's signature: what the key signed verifies, and
+    /// nothing else does — other bytes, another key, a signature cut short.
+    #[test]
+    fn a_release_signature_verifies_only_what_its_key_signed() {
+        use p256::pkcs8::DecodePrivateKey;
+        let (private_pem, public_b64) = generate_keypair().unwrap();
+        let (_, other_public) = generate_keypair().unwrap();
+        let signing = SigningKey::from_pkcs8_pem(&private_pem).unwrap();
+        let tarball = b"the bytes of soli-linux-amd64.tar.gz";
+        let signature: Signature = signing.sign(tarball);
+        let sig_b64 = B64.encode(signature.to_der().as_bytes());
+
+        assert!(verify_release_signature(tarball, &sig_b64, &public_b64).is_ok());
+        // As a file read back with its trailing newline.
+        assert!(verify_release_signature(tarball, &format!("{sig_b64}\n"), &public_b64).is_ok());
+        assert!(verify_release_signature(b"other bytes", &sig_b64, &public_b64).is_err());
+        assert!(verify_release_signature(tarball, &sig_b64, &other_public).is_err());
+        assert!(verify_release_signature(tarball, &sig_b64[..20], &public_b64).is_err());
+        assert!(verify_release_signature(tarball, "", &public_b64).is_err());
+        assert!(verify_release_signature(tarball, &sig_b64, "not a key").is_err());
+    }
+
+    /// The release pipeline signs with
+    /// `openssl dgst -sha256 -sign key.pem file | openssl base64 -A`, using
+    /// the key `soli update-keygen` printed. That exact output verifies here.
+    #[test]
+    fn a_signature_made_by_openssl_as_the_release_pipeline_makes_it_verifies() {
+        let openssl = std::process::Command::new("openssl")
+            .arg("version")
+            .output();
+        if !openssl.is_ok_and(|out| out.status.success()) {
+            eprintln!("skip: no openssl on this machine");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let (private_pem, public_b64) = generate_keypair().unwrap();
+        let key = dir.path().join("key.pem");
+        let tarball = dir.path().join("soli.tar.gz");
+        std::fs::write(&key, &private_pem).unwrap();
+        let bytes: Vec<u8> = (0..50_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&tarball, &bytes).unwrap();
+
+        let signed = std::process::Command::new("openssl")
+            .args(["dgst", "-sha256", "-sign"])
+            .arg(&key)
+            .arg(&tarball)
+            .output()
+            .unwrap();
+        assert!(
+            signed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&signed.stderr)
+        );
+        let sig_b64 = B64.encode(&signed.stdout);
+        verify_release_signature(&bytes, &sig_b64, &public_b64).expect("openssl's signature");
+        let mut tampered = bytes.clone();
+        tampered[100] ^= 1;
+        assert!(verify_release_signature(&tampered, &sig_b64, &public_b64).is_err());
+    }
 
     fn sample_manifest() -> UpdateManifest {
         let mut artifacts = HashMap::new();

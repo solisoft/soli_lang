@@ -51,6 +51,11 @@ sudo soli update
 Running `soli update` without the needed permissions prints a hint telling you to re-run with
 `sudo`.
 
+The download is checked before anything is installed: against the SHA-256 published
+beside it, and — on a binary built with a release key — against the release's
+signature, which only the key's holder can make. A release that fails either is
+not installed.
+
 ### Via Cargo
 
 ```bash
