@@ -26,6 +26,12 @@ die() {
   echo "auth_races_solidb: $*" >&2
   exit 1
 }
+# Run a preparation step; when it fails, show what it printed and say which.
+step() {
+  local name="$1"
+  shift
+  "$@" >"$WORK/step.log" 2>&1 || { cat "$WORK/step.log" >&2; die "$name failed"; }
+}
 free_port() {
   python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
 }
@@ -75,11 +81,11 @@ ready "$!" "$DB_PORT" solidb "$WORK/solidb.log"
 export APP_ENV=test AUTH_ATTEMPTS_PER_IP=1000 SOLI_MAIL_DELIVERY_METHOD=logger
 
 cd "$WORK"
-"$SOLI" new app >/dev/null 2>&1
+step "soli new" "$SOLI" new app
 cd app
 sed -i.bak "s#^SOLIDB_HOST=.*#SOLIDB_HOST=http://127.0.0.1:$DB_PORT#; s#^SOLIDB_PASSWORD=.*#SOLIDB_PASSWORD=testpass123#" .env .env.test
-"$SOLI" generate auth --passkeys >/dev/null 2>&1
-"$SOLI" generate oidc_provider >/dev/null 2>&1
+step "generate auth" "$SOLI" generate auth --passkeys
+step "generate oidc_provider" "$SOLI" generate oidc_provider
 "$SOLI" db:migrate up >"$WORK/migrate.log" 2>&1 || { cat "$WORK/migrate.log" >&2; die "db:migrate up failed"; }
 # The unique indexes are part of what is checked: the migrations must be on
 # the database the app is about to use.
@@ -89,8 +95,8 @@ sed -i.bak "s#^SOLIDB_HOST=.*#SOLIDB_HOST=http://127.0.0.1:$DB_PORT#; s#^SOLIDB_
 sed $'s/\033\\[[0-9;]*m//g' "$WORK/status.log" | grep "applied, 0 pending" >/dev/null \
   || { cat "$WORK/status.log" >&2; die "migrations are pending on the database the app uses"; }
 
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK/oidc.pem" 2>/dev/null
-openssl rsa -in "$WORK/oidc.pem" -pubout -out "$WORK/oidc.pub.pem" 2>/dev/null
+step "openssl genpkey" openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK/oidc.pem"
+step "openssl rsa" openssl rsa -in "$WORK/oidc.pem" -pubout -out "$WORK/oidc.pub.pem"
 export SOLI_OIDC_ISSUER="http://127.0.0.1:$APP_PORT"
 SOLI_OIDC_PRIVATE_KEY="$(cat "$WORK/oidc.pem")"
 SOLI_OIDC_PUBLIC_KEY="$(cat "$WORK/oidc.pub.pem")"
