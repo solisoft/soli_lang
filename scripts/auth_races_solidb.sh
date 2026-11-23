@@ -83,8 +83,11 @@ sed -i.bak "s#^SOLIDB_HOST=.*#SOLIDB_HOST=http://127.0.0.1:$DB_PORT#; s#^SOLIDB_
 "$SOLI" db:migrate up >"$WORK/migrate.log" 2>&1 || { cat "$WORK/migrate.log" >&2; die "db:migrate up failed"; }
 # The unique indexes are part of what is checked: the migrations must be on
 # the database the app is about to use.
-"$SOLI" db:migrate status 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep "applied, 0 pending" >/dev/null \
-  || die "migrations are pending on the database the app uses"
+# (Colours are stripped with an escape every sed reads, not GNU's `\x1b`.)
+"$SOLI" db:migrate status >"$WORK/status.log" 2>&1 \
+  || { cat "$WORK/status.log" >&2; die "db:migrate status failed"; }
+sed $'s/\033\\[[0-9;]*m//g' "$WORK/status.log" | grep "applied, 0 pending" >/dev/null \
+  || { cat "$WORK/status.log" >&2; die "migrations are pending on the database the app uses"; }
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$WORK/oidc.pem" 2>/dev/null
 openssl rsa -in "$WORK/oidc.pem" -pubout -out "$WORK/oidc.pub.pem" 2>/dev/null
