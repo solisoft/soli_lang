@@ -256,12 +256,48 @@ impl Drop for ServerProcess {
 /// `drop(listener)` window between picking the port and the child binding
 /// it; with one server there is one bind and no window).
 ///
-/// `Drop` still runs at process end when the `OnceLock` is destroyed,
-/// preserving the SIGTERM / coverage-flush behavior above.
+/// A static is not dropped at process end, so the server is stopped by an
+/// exit handler instead (`stop_shared_server`), with the same SIGTERM.
 static SHARED_SERVER: OnceLock<ServerProcess> = OnceLock::new();
 
+/// The shared server's pid, for [`stop_shared_server`].
+#[cfg(unix)]
+static SHARED_SERVER_PID: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// Stop the shared server when the test binary exits. A static is never
+/// dropped, so `ServerProcess::drop` does not run for it: every run of this
+/// binary left a `soli serve` behind, adopted by init and alive until
+/// someone killed it. SIGTERM, as `drop` sends, so the coverage profile is
+/// still flushed.
+#[cfg(unix)]
+extern "C" fn stop_shared_server() {
+    let pid = SHARED_SERVER_PID.load(std::sync::atomic::Ordering::SeqCst);
+    if pid > 0 {
+        // SAFETY: `kill` on a pid this process spawned and never reaped;
+        // async-signal-safe, and nothing else runs in an exit handler here.
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+    }
+}
+
 fn shared_server() -> &'static ServerProcess {
-    SHARED_SERVER.get_or_init(ServerProcess::start)
+    SHARED_SERVER.get_or_init(|| {
+        let server = ServerProcess::start();
+        #[cfg(unix)]
+        {
+            SHARED_SERVER_PID.store(
+                server.child.id() as i32,
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            // SAFETY: registers a plain `extern "C"` function with no state
+            // of its own; called once, at process exit.
+            unsafe {
+                libc::atexit(stop_shared_server);
+            }
+        }
+        server
+    })
 }
 
 fn body_string(resp: ureq::Response) -> String {

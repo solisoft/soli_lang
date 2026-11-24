@@ -565,8 +565,11 @@ async fn receive(root: &Path, req: Request<Incoming>) -> Result<Build, UploadErr
     };
 
     let bad_body = |e: multer::Error| UploadError::Invalid(format!("malformed upload: {e}"));
-    // Every refusal of a part is answered with the rest of the body read
-    // (within `settle`'s bound): see there.
+    // Every refusal of a part is answered with the rest of the body read:
+    // see `settle`. Here the bound that holds is its time (`SETTLE_FOR`) —
+    // multer discards what is left of the part that was refused without
+    // handing it over, so those bytes are not counted against
+    // `SETTLE_BYTES`; only the parts after it are.
     let parts: Result<(), UploadError> = async {
         while let Some(mut field) = multipart.next_field().await.map_err(bad_body)? {
             let name = field.name().unwrap_or("").to_string();
