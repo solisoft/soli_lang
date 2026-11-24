@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- **attachments: encryption at rest.** `"encrypted": true` on `uploader` /
+  `has_one_attached` / `has_many_attached` seals the file before it reaches
+  SoliDB, the disk, S3 or R2 and opens it on read (`attach_<field>`,
+  `read_upload`, `read_attachment`, `AttachmentsController#show`). Format
+  "SBE" v1 (`src/interpreter/builtins/blob_crypto.rs`): a 19-byte header
+  (magic, version, key id, segment size, nonce prefix) and AES-256-GCM
+  segments of 64 KiB under the STREAM construction — counter and last-segment
+  flag in the nonce, header and `soli-blob:<collection>` in every segment's
+  AAD. The blob key is derived from `SOLI_ENCRYPTION_KEY` under its own label;
+  `SOLI_ENCRYPTION_OLD_KEYS` (comma-separated) still opens files sealed with
+  an older key. Plaintext stored before the option is served as is. Limits:
+  an encrypted file is opened whole (no streaming, a `Range` gets the whole
+  file), `direct_upload` refuses it, and on the edge an encrypted R2 file is
+  served by the app, without URL image transforms.
+
 ## [2.40.4] - 2026-11-24
 
 ### Changed

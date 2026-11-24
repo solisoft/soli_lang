@@ -15,6 +15,10 @@ class AttachedAlbum < Model
   has_many_attached("photos", {"service": "s3", "max_size": 1000000})
 end
 
+class AttachedContract < Model
+  has_one_attached("scan", {"content_types": ["application/pdf"], "encrypted": true})
+end
+
 class AttachedReport < Model
   has_one_attached("summary", {"content_types": ["application/pdf"], "max_size": 5})
   has_many_attached("scans")
@@ -50,6 +54,11 @@ describe("has_*_attached DSL") do
 
   test("an undeclared field has no config") do
     assert_null(model_uploader_config(AttachedUser, "nothing"))
+  end
+
+  test("encrypted is off unless asked for") do
+    assert_eq(model_uploader_config(AttachedUser, "avatar")["encrypted"], false)
+    assert_eq(model_uploader_config(AttachedContract, "scan")["encrypted"], true)
   end
 
   test("model_uploader_fields lists every declared field in order") do
@@ -95,6 +104,45 @@ describe("disk attachments") do
 
     test("deleting an id that was never stored still answers true") do
       assert_eq(delete_attachment(DISK_CONFIG, "never-stored"), true)
+    end
+  end
+
+  describe("encrypted") do
+    test("an encrypted store reads back as the file it was given") do
+      skip("SOLI_ENCRYPTION_KEY is not set") unless hasenv("SOLI_ENCRYPTION_KEY")
+      config = {"collection": ATTACHMENT_COLLECTION, "encrypted": true}
+      id = store_attachment(config, {"filename": "hi.txt", "content_type": "text/plain", "data": HELLO_BASE64})
+      assert_eq(read_attachment(config, id), {"filename": "hi.txt", "content_type": "text/plain", "size": 5, "data": HELLO_BASE64})
+    end
+
+    test("the bytes on disk are sealed, not the file") do
+      skip("SOLI_ENCRYPTION_KEY is not set") unless hasenv("SOLI_ENCRYPTION_KEY")
+      id = store_attachment({"collection": ATTACHMENT_COLLECTION, "encrypted": true}, {"data": HELLO_BASE64})
+      raw = File.read("storage/attachments/#{ATTACHMENT_COLLECTION}/#{id}/data", "latin1")
+      assert(raw.starts_with("SBE"))
+      assert(!raw.includes?("hello"))
+    end
+
+    test("a sealed blob does not open under another collection") do
+      skip("SOLI_ENCRYPTION_KEY is not set") unless hasenv("SOLI_ENCRYPTION_KEY")
+      id = store_attachment({"collection": ATTACHMENT_COLLECTION, "encrypted": true}, {"data": HELLO_BASE64})
+      System.run_sync(["mkdir", "-p", "storage/attachments/#{ATTACHMENT_COLLECTION}_moved"])
+      System.run_sync(["cp", "-r", "storage/attachments/#{ATTACHMENT_COLLECTION}/#{id}", "storage/attachments/#{ATTACHMENT_COLLECTION}_moved/#{id}"])
+      assert_raises("does not open") do
+        read_attachment({"collection": "#{ATTACHMENT_COLLECTION}_moved", "encrypted": true}, id)
+      end
+      System.run_sync(["rm", "-rf", "storage/attachments/#{ATTACHMENT_COLLECTION}_moved"])
+    end
+
+    test("a file stored before encryption was turned on still reads") do
+      id = store_attachment(DISK_CONFIG, {"data": HELLO_BASE64})
+      assert_eq(read_attachment({"collection": ATTACHMENT_COLLECTION, "encrypted": true}, id)["data"], HELLO_BASE64)
+    end
+
+    test("direct_upload refuses an encrypted config") do
+      assert_raises("cannot encrypt") do
+        direct_upload({"service": "s3", "encrypted": true}, {"filename": "a.pdf", "size": 3})
+      end
     end
   end
 

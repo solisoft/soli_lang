@@ -46,6 +46,9 @@ pub struct UploaderConfig {
     /// or `"r2"` (Cloudflare R2).
     /// `has_one_attached` / `has_many_attached` default to `"disk"`.
     pub service: String,
+    /// `"encrypted": true` seals the bytes at rest (SBE, AES-256-GCM in
+    /// segments; see `builtins::blob_crypto`) with `SOLI_ENCRYPTION_KEY`.
+    pub encrypted: bool,
 }
 
 /// Register an uploader on a class. Called from the `uploader(...)` native

@@ -1388,6 +1388,7 @@ pub(super) fn build_uploader_config_from_args(
     let mut max_width: Option<u32> = None;
     let mut max_height: Option<u32> = None;
     let mut service: Option<String> = None;
+    let mut encrypted = false;
 
     for (k, v) in options {
         if let HashKey::String(key) = k {
@@ -1477,6 +1478,11 @@ pub(super) fn build_uploader_config_from_args(
                         service = Some(normalized.to_string());
                     }
                 }
+                "encrypted" => {
+                    if let Value::Bool(b) = v {
+                        encrypted = b;
+                    }
+                }
                 _ => {}
             }
         }
@@ -1504,6 +1510,7 @@ pub(super) fn build_uploader_config_from_args(
         max_width,
         max_height,
         service,
+        encrypted,
     })
 }
 
@@ -1638,6 +1645,7 @@ pub(super) fn build_attached_config_from_args(
     let mut max_width: Option<u32> = None;
     let mut max_height: Option<u32> = None;
     let mut service: Option<String> = None;
+    let mut encrypted = false;
 
     if let Some(options) = options {
         for (k, v) in options {
@@ -1690,6 +1698,11 @@ pub(super) fn build_attached_config_from_args(
                             service = Some(normalized.to_string());
                         }
                     }
+                    "encrypted" => {
+                        if let Value::Bool(b) = v {
+                            encrypted = b;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1733,6 +1746,7 @@ pub(super) fn build_attached_config_from_args(
         max_width,
         max_height,
         service,
+        encrypted,
     })
 }
 
@@ -1791,6 +1805,10 @@ fn uploader_config_to_value(config: Option<UploaderConfig>) -> Value {
     pairs.insert(
         HashKey::String("service".into()),
         Value::String(c.service.into()),
+    );
+    pairs.insert(
+        HashKey::String("encrypted".into()),
+        Value::Bool(c.encrypted),
     );
     Value::Hash(Rc::new(RefCell::new(pairs)))
 }

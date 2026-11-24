@@ -122,6 +122,25 @@ fn store_from_tus(service: &str, collection: &str, tus_id: &str) -> Result<Strin
     Ok(id)
 }
 
+/// `store_from_tus` for an `encrypted` uploader. Sealing needs the bytes, so
+/// the finished upload is read, sealed and stored rather than moved.
+fn store_sealed_from_tus(service: &str, collection: &str, tus_id: &str) -> Result<String, String> {
+    let owner = crate::interpreter::builtins::session::get_current_session_id();
+    let done = crate::serve::tus::finished(tus_id, owner.as_deref())?;
+    let plain = fs::read(&done.path).map_err(|e| format!("resumable upload read: {e}"))?;
+    let sealed = super::blob_crypto::seal(&plain, &super::blob_crypto::purpose(collection))?;
+    drop(plain);
+    let id = store_bytes(
+        service,
+        collection,
+        &done.filename,
+        &done.content_type,
+        sealed,
+    )?;
+    crate::serve::tus::discard(tus_id);
+    Ok(id)
+}
+
 fn store_disk_from_path(
     collection: &str,
     filename: &str,
@@ -488,6 +507,45 @@ fn hash_str_ref<'a>(hash: &'a HashPairs, key: &str) -> Option<&'a str> {
         })
 }
 
+/// Whether an uploader config asks for encryption at rest (`"encrypted": true`).
+fn wants_encryption(config: &HashPairs) -> bool {
+    matches!(
+        config.get(&HashKey::String("encrypted".into())),
+        Some(Value::Bool(true))
+    )
+}
+
+/// The bytes of a stored blob as the application wrote them. A sealed blob is
+/// opened; a plaintext one under an `encrypted` uploader is one stored before
+/// the option was turned on, and is handed back as it is. Under an uploader
+/// that is not (or no longer) `encrypted`, a blob that only looks sealed is
+/// taken for what it opens to if it opens, else for the file it is.
+fn unseal(collection: &str, encrypted: bool, data: Vec<u8>) -> Result<Vec<u8>, String> {
+    if !super::blob_crypto::is_sealed(&data) {
+        return Ok(data);
+    }
+    unseal_with(collection, encrypted, data, super::blob_crypto::keyring())
+}
+
+fn unseal_with(
+    collection: &str,
+    encrypted: bool,
+    data: Vec<u8>,
+    keys: Result<Vec<super::blob_crypto::BlobKey>, String>,
+) -> Result<Vec<u8>, String> {
+    if !super::blob_crypto::is_sealed(&data) {
+        return Ok(data);
+    }
+    let opened = keys.and_then(|keys| {
+        super::blob_crypto::open_with(&data, &super::blob_crypto::purpose(collection), &keys)
+    });
+    match opened {
+        Ok(plain) => Ok(plain),
+        Err(e) if encrypted => Err(e),
+        Err(_) => Ok(data),
+    }
+}
+
 fn file_bytes(file: &HashPairs) -> Result<Vec<u8>, String> {
     let data = hash_str_ref(file, "data").ok_or_else(|| "file is missing data".to_string())?;
     STANDARD
@@ -516,13 +574,21 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             let filename = hash_str(&file, "filename").unwrap_or_else(|| "file".into());
             let content_type = hash_str(&file, "content_type")
                 .unwrap_or_else(|| "application/octet-stream".into());
+            let encrypted = wants_encryption(&config);
             if let Some(tus_id) = hash_str(&file, "tus_id") {
                 if !file.contains_key(&HashKey::String("data".into())) {
-                    let id = store_from_tus(&service, &collection, &tus_id)?;
+                    let id = if encrypted {
+                        store_sealed_from_tus(&service, &collection, &tus_id)?
+                    } else {
+                        store_from_tus(&service, &collection, &tus_id)?
+                    };
                     return Ok(Value::String(id.into()));
                 }
             }
-            let data = file_bytes(&file)?;
+            let mut data = file_bytes(&file)?;
+            if encrypted {
+                data = super::blob_crypto::seal(&data, &super::blob_crypto::purpose(&collection))?;
+            }
             let id = store_bytes(&service, &collection, &filename, &content_type, data)?;
             Ok(Value::String(id.into()))
         })),
@@ -546,6 +612,13 @@ pub fn register_attachment_builtins(env: &mut Environment) {
                 return Err(format!(
                     "direct_upload needs an s3 attachment service, not {service:?}; use resumable_uploads() for disk"
                 ));
+            }
+            if wants_encryption(&config) {
+                return Err(
+                    "direct_upload cannot encrypt: the browser sends the file straight to the bucket; \
+                     use resumable_uploads() for an encrypted attachment"
+                        .into(),
+                );
             }
             #[cfg(not(feature = "cloud"))]
             {
@@ -643,7 +716,7 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             };
             let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
             let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
-            let (meta, data) = match service.as_str() {
+            let (mut meta, data) = match service.as_str() {
                 #[cfg(target_arch = "wasm32")]
                 "r2" => r2::read(&collection, &id),
                 #[cfg(feature = "cloud")]
@@ -655,6 +728,9 @@ pub fn register_attachment_builtins(env: &mut Environment) {
                 "disk" => read_disk(&collection, &id),
                 _ => return Ok(Value::Null),
             }?;
+            let data = unseal(&collection, wants_encryption(&config), data)?;
+            // The store recorded the sealed length; the caller wants the file's.
+            meta.size = data.len() as u64;
             let mut pairs = HashPairs::default();
             pairs.insert(
                 HashKey::String("filename".into()),
@@ -668,6 +744,76 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             pairs.insert(
                 HashKey::String("data".into()),
                 Value::String(STANDARD.encode(data).into()),
+            );
+            Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+        })),
+    );
+
+    // __soli_blob_seal(collection, data_b64) — the SBE-sealed bytes, base64,
+    // for an `encrypted` uploader on SoliDB (whose blob API speaks base64).
+    env.define(
+        "__soli_blob_seal".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_blob_seal", Some(2), |args| {
+            let (Some(Value::String(collection)), Some(Value::String(data))) =
+                (args.first(), args.get(1))
+            else {
+                return Err("__soli_blob_seal(collection, data) expects two strings".into());
+            };
+            let plain = STANDARD
+                .decode(data.trim())
+                .map_err(|e| format!("file data is not base64: {e}"))?;
+            let sealed =
+                super::blob_crypto::seal(&plain, &super::blob_crypto::purpose(collection))?;
+            Ok(Value::String(STANDARD.encode(sealed).into()))
+        })),
+    );
+
+    // __soli_blob_open(collection, data_b64, encrypted) — {data, size} of the
+    // stored blob as the app wrote it (see `unseal`), or nil for nil.
+    env.define(
+        "__soli_blob_open".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_blob_open", Some(3), |args| {
+            let collection = match args.first() {
+                Some(Value::String(s)) => s.to_string(),
+                _ => {
+                    return Err(
+                        "__soli_blob_open(collection, data, encrypted) expects a collection".into(),
+                    )
+                }
+            };
+            let data = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                Some(Value::Null) | None => return Ok(Value::Null),
+                _ => {
+                    return Err(
+                        "__soli_blob_open(collection, data, encrypted) expects base64 data".into(),
+                    )
+                }
+            };
+            let encrypted = matches!(args.get(2), Some(Value::Bool(true)));
+            let raw = STANDARD
+                .decode(data.trim())
+                .map_err(|e| format!("stored blob is not base64: {e}"))?;
+            let plain = if super::blob_crypto::is_sealed(&raw) {
+                unseal(&collection, encrypted, raw)?
+            } else {
+                // Nothing to open: hand the caller's string back untouched
+                // rather than paying for a second encode.
+                let size = raw.len();
+                drop(raw);
+                let mut pairs = HashPairs::default();
+                pairs.insert(HashKey::String("data".into()), Value::String(data.into()));
+                pairs.insert(HashKey::String("size".into()), Value::Int(size as i64));
+                return Ok(Value::Hash(Rc::new(RefCell::new(pairs))));
+            };
+            let mut pairs = HashPairs::default();
+            pairs.insert(
+                HashKey::String("size".into()),
+                Value::Int(plain.len() as i64),
+            );
+            pairs.insert(
+                HashKey::String("data".into()),
+                Value::String(STANDARD.encode(plain).into()),
             );
             Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
         })),
@@ -780,6 +926,41 @@ mod tests {
         assert!(read_disk("avatars", &id).is_err());
         let _ = fs::remove_dir_all(&dir);
         std::env::remove_var("SOLI_ATTACHMENTS_PATH");
+    }
+
+    #[test]
+    fn unseal_reads_legacy_plaintext_and_refuses_a_foreign_seal() {
+        let key = crate::interpreter::builtins::blob_crypto::BlobKey::from_material(b"elsewhere");
+        let foreign = crate::interpreter::builtins::blob_crypto::seal_with(
+            b"theirs",
+            &crate::interpreter::builtins::blob_crypto::purpose("docs"),
+            &key,
+            crate::interpreter::builtins::blob_crypto::DEFAULT_SEGMENT,
+        )
+        .unwrap();
+        let ours = || {
+            Ok(vec![
+                crate::interpreter::builtins::blob_crypto::BlobKey::from_material(b"ours"),
+            ])
+        };
+        // Plaintext stored before `encrypted` was turned on: served as is.
+        assert_eq!(
+            unseal_with("docs", true, b"legacy".to_vec(), ours()).unwrap(),
+            b"legacy"
+        );
+        // A seal no configured key opens: an error under `encrypted`…
+        assert!(unseal_with("docs", true, foreign.clone(), ours()).is_err());
+        // …and an ordinary file that happens to look sealed otherwise.
+        assert_eq!(
+            unseal_with("docs", false, foreign.clone(), ours()).unwrap(),
+            foreign
+        );
+        // The right key opens it.
+        let theirs = Ok(vec![key]);
+        assert_eq!(
+            unseal_with("docs", true, foreign, theirs).unwrap(),
+            b"theirs"
+        );
     }
 }
 

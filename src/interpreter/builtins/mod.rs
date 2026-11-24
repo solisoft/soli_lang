@@ -63,6 +63,7 @@ pub(crate) mod args;
 pub mod assertions;
 pub mod assigns_helpers;
 pub mod attachments;
+pub mod blob_crypto;
 pub mod body_limit;
 #[cfg(feature = "mail")]
 /// Reading an IMAP `BODYSTRUCTURE`: which parts of a message are the

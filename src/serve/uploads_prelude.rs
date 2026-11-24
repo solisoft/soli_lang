@@ -116,7 +116,11 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         blob_id = store_attachment(config, file)
     else
         client = __soli_resolve_solidb_client()
-        blob_id = solidb_store_blob(client, config["collection"], file["data"],
+        # `encrypted`: SoliDB stores the sealed bytes (store_attachment seals
+        # for the other services itself).
+        data = file["data"]
+        data = __soli_blob_seal(config["collection"], data) if config["encrypted"]
+        blob_id = solidb_store_blob(client, config["collection"], data,
                                     file["filename"], file["content_type"])
     end
     if blob_id.nil?
@@ -179,6 +183,7 @@ def direct_upload_start(model: Any, field_name: String, filename: String, conten
     config = model_uploader_config(model.class, field_name)
     return { "error": "No uploader declared for #{field_name}." } if config.nil?
     return { "error": "Direct uploads need an s3 attachment service." } if config["service"] != "s3"
+    return { "error": "An encrypted attachment cannot be uploaded straight to the bucket; use resumable uploads." } if config["encrypted"]
 
     types = config["content_types"] ?? []
     return { "error": "Unsupported file type for #{field_name}." } if types.length() > 0 && !types.contains(content_type)
@@ -289,14 +294,14 @@ def read_upload(owner: Any, field_name: String, blob_id: Any = null) -> Any
     end
 
     client = __soli_resolve_solidb_client()
-    data = solidb_get_blob(client, config["collection"], blob_id)
-    return null if data.nil?
+    stored = __soli_blob_open(config["collection"], solidb_get_blob(client, config["collection"], blob_id), config["encrypted"] == true)
+    return null if stored.nil?
     meta = solidb_get_blob_metadata(client, config["collection"], blob_id) ?? {}
     {
         "filename":     meta["filename"] ?? "file",
         "content_type": meta["content_type"] ?? "application/octet-stream",
-        "size":         meta["size"] ?? 0,
-        "data":         data
+        "size":         stored["size"],
+        "data":         stored["data"]
     }
 end
 
@@ -329,7 +334,8 @@ class AttachmentsController < Controller
         query   = req["query"] ?? {}
         # On the edge build an R2 blob never crosses wasm: the Worker serves it
         # from the bucket, Range requests and image transforms included.
-        return this._show_r2(req, config, blob_id, query, ctx["ext"]) if service == "r2" && __soli_edge()
+        # An encrypted one does cross: the Worker cannot open it.
+        return this._show_r2(req, config, blob_id, query, ctx["ext"]) if service == "r2" && __soli_edge() && !config["encrypted"]
 
         meta = null
         b64 = null
@@ -352,7 +358,9 @@ class AttachmentsController < Controller
             # with the client's `Range` forwarded — an audio player seeking in a
             # 150 MB episode gets the bytes it asked for, and no worker holds
             # the file. HEAD gets the headers alone.
-            unless ct.starts_with("image/") && this._has_image_transforms(query)
+            # An encrypted blob is opened whole, so it is not streamed (and a
+            # `Range` is answered with the whole file).
+            unless config["encrypted"] || (ct.starts_with("image/") && this._has_image_transforms(query))
                 return solidb_blob_response(client, config["collection"], blob_id, req, {
                     "Content-Type":           ct,
                     "Content-Disposition":    this._disposition(ct),
@@ -360,7 +368,10 @@ class AttachmentsController < Controller
                     "Cache-Control":          "private, max-age=300"
                 })
             end
-            b64 = solidb_get_blob(client, config["collection"], blob_id)
+            stored = __soli_blob_open(config["collection"], solidb_get_blob(client, config["collection"], blob_id), config["encrypted"] == true)
+            return halt(404, "Not found") if stored.nil?
+            b64 = stored["data"]
+            meta = (meta ?? {}).merge({ "size": stored["size"] })
         end
 
         # Apply image transforms if any are present in the query string. The
@@ -370,6 +381,10 @@ class AttachmentsController < Controller
         # an image — we just stream the raw bytes back.
         ct       = meta["content_type"] ?? "application/octet-stream"
         wants_xf = ct.starts_with("image/") && this._has_image_transforms(query)
+        # The edge Worker carries no image codecs, and an encrypted R2 file
+        # cannot go to Cloudflare Images: it is served as stored, as an image
+        # is there without an Images binding.
+        wants_xf = false if __soli_edge() && config["encrypted"]
         if wants_xf
             return this._render_transformed(b64, ct, query)
         end

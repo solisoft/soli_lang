@@ -1034,6 +1034,7 @@ end</code></pre>
         <li><code>format</code> &mdash; convert image uploads to <code>"jpeg"</code>, <code>"png"</code>, or <code>"webp"</code> <strong>before storage</strong>. Non-image uploads (PDF, csv, &hellip;) are never converted.</li>
         <li><code>quality</code> &mdash; encoder quality (1&ndash;100) for lossy formats (<code>jpeg</code>, <code>webp</code>). Defaults to <code>82</code>.</li>
         <li><code>max_width</code> / <code>max_height</code> &mdash; downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales.</li>
+        <li><code>encrypted</code> &mdash; <code>true</code> encrypts the file at rest with <code>SOLI_ENCRYPTION_KEY</code>, on every service. See <a href="#encrypted-attachments" class="text-amber-400 hover:underline">Encrypted attachments</a>.</li>
     </ul>
 
     <h3 class="text-lg font-semibold text-white mb-3">Transform the original before storage</h3>
@@ -1058,6 +1059,35 @@ end</code></pre>
     <p class="text-gray-400 mb-6">
         A 4&nbsp;MB PNG uploaded here lands in storage as a downscaled ~200&nbsp;KB WebP. The transform only runs for image content-types; if the bytes can't be decoded as an image the original is stored unchanged, so an upload is never blocked by a transform failure. The same lossy WebP/quality encoding also powers the read-time <code>photo_url(...)</code> transform pipeline.
     </p>
+
+    <h3 id="encrypted-attachments" class="text-lg font-semibold text-white mb-3 scroll-mt-24">Encrypted attachments</h3>
+    <p class="text-gray-400 mb-4">
+        <code>"encrypted": true</code> encrypts the file before it reaches SoliDB, the disk, S3 or R2, and decrypts it on the way back: <code>attach_&lt;field&gt;</code>, <code>&lt;field&gt;_url</code>, <code>read_upload</code> and the <code>AttachmentsController</code> behave as before, and the store only ever holds ciphertext.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/contract.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Contract &lt; Model
+  has_one_attached("scan", {
+    "content_types": ["application/pdf"],
+    "encrypted":     true
+  })
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">
+        The key is <code>SOLI_ENCRYPTION_KEY</code>, the one <a href="#encrypted-attributes" class="text-amber-400 hover:underline"><code>encrypts</code></a> uses (a separate blob key is derived from it). To rotate it, set the new key and list the old ones, comma-separated, in <code>SOLI_ENCRYPTION_OLD_KEYS</code>: new files are encrypted with the new key, and older files still open, since each file records which key sealed it. Storing an encrypted file without <code>SOLI_ENCRYPTION_KEY</code> raises.
+    </p>
+    <p class="text-gray-400 mb-4">
+        The format is AES-256-GCM in 64&nbsp;KiB segments (the STREAM construction), with a short header naming the format version and the key, about 0.02&nbsp;% larger than the file. A segment cannot be removed, reordered or edited without the read failing, and a file is bound to its collection: copied into another uploader's collection, it does not open.
+    </p>
+    <ul class="text-gray-400 mb-6 space-y-1 ml-4 list-disc">
+        <li>A file stored before <code>encrypted</code> was turned on is still served as it is.</li>
+        <li>An image <code>format</code> / <code>max_width</code> conversion runs before encryption, and URL transforms (<code>photo_url({"w": 200})</code>) after decryption.</li>
+        <li>An encrypted file is decrypted whole, in memory: it is not streamed, and a <code>Range</code> request receives the whole file.</li>
+        <li><code>direct_upload_start</code> refuses an encrypted attachment: the browser would send the file straight to the bucket, where nothing can encrypt it. Use <a href="#large-uploads" class="text-amber-400 hover:underline">resumable uploads</a> instead; a finished upload is read, encrypted and stored.</li>
+        <li>On the edge build, an encrypted R2 file is decrypted by the app rather than served by the Worker straight from the bucket, and URL image transforms are ignored for it: the Worker has no image codecs, and Cloudflare Images cannot read the ciphertext.</li>
+    </ul>
 
     <h3 class="text-lg font-semibold text-white mb-3">Auto-generated instance methods</h3>
     <p class="text-gray-400 mb-4">For each declared uploader, Soli synthesizes:</p>
@@ -1349,7 +1379,7 @@ end</code></pre>
     <h3 class="text-lg font-semibold text-white mb-3">Reflection helpers</h3>
     <p class="text-gray-400 mb-4">Inside controllers or generic helpers you can read a model's uploader configuration without hardcoding the rules:</p>
     <ul class="text-gray-400 mb-6 space-y-1 ml-4">
-        <li><code>model_uploader_config(class_or_name, field)</code> &rarr; hash of <code>{ name, multiple, content_types, max_size, collection }</code>, or <code>null</code>.</li>
+        <li><code>model_uploader_config(class_or_name, field)</code> &rarr; hash of <code>{ name, multiple, content_types, max_size, collection, service, encrypted, &hellip; }</code>, or <code>null</code>.</li>
         <li><code>model_uploader_fields(class_or_name)</code> &rarr; list of declared field names.</li>
         <li><code>find_model_class_by_collection(collection)</code> &rarr; the model class whose <code>class_name_to_collection</code> matches, or <code>null</code>.</li>
     </ul>
@@ -1382,7 +1412,7 @@ end</code></pre>
     </div>
 
     <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-12">
-        <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone. On a column-aware model, each <code>encrypts</code> field must be a string/text column; boot fails if it is missing or not text.</p>
+        <p class="text-sm text-amber-200"><strong>Encrypted columns can't be queried by value.</strong> AES-GCM uses a random nonce, so the same plaintext encrypts differently each time &mdash; <code>where("ssn = @s", ...)</code> will never match. Encrypt only fields you store and read, not ones you filter on. Legacy plaintext written before <code>encrypts</code> was added is returned as-is; low-level/transaction writes that bypass <code>create</code>/<code>save</code> aren't auto-encrypted (use <code>Crypto.encrypt</code> there). The same <code>Crypto.encrypt</code> / <code>Crypto.decrypt</code> builtins are available standalone. On a column-aware model, each <code>encrypts</code> field must be a string/text column; boot fails if it is missing or not text. Files take <code>"encrypted": true</code> on <code>uploader</code> / <code>has_*_attached</code> instead &mdash; see <a href="#encrypted-attachments" class="text-amber-300 underline">Encrypted attachments</a>.</p>
     </div>
 
     <h2 id="audit-log" class="text-2xl font-bold text-white mb-6">Audit Log</h2>

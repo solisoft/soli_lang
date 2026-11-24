@@ -1760,6 +1760,7 @@ end
 | `format` | — | Convert image uploads to `"jpeg"`, `"png"`, or `"webp"` **before storage**. Non-image uploads (PDF, csv, …) are never converted. |
 | `quality` | `82` | Encoder quality (1–100) for lossy formats (`jpeg`, `webp`). |
 | `max_width` / `max_height` | — | Downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales. |
+| `encrypted` | `false` | Encrypt the file at rest with `SOLI_ENCRYPTION_KEY`, on every service — see [Encrypted attachments](#encrypted-attachments). |
 
 #### Transform the original before storage
 
@@ -1810,6 +1811,49 @@ JPEG is the stored bytes); one an image cannot be encoded to (`photo.pdf`,
 `photo.svg` of a PNG) is a `404`; a file that is not an image ignores it.
 `fmt=jpg` answers `image/jpeg` now, where it used to answer `image/jpg`.
 
+#### Encrypted attachments
+
+`"encrypted": true` encrypts the file before it reaches SoliDB, the disk, S3 or
+R2, and decrypts it on the way back: `attach_<field>`, `<field>_url`,
+`read_upload` and the `AttachmentsController` behave as before, and the store
+only ever holds ciphertext.
+
+```soli
+class Contract < Model
+  has_one_attached("scan", {
+    "content_types": ["application/pdf"],
+    "encrypted":     true
+  })
+end
+```
+
+The key is `SOLI_ENCRYPTION_KEY`, the one [`encrypts`](#encrypted-attributes)
+uses (a separate blob key is derived from it). To rotate it, set the new key
+and list the old ones, comma-separated, in `SOLI_ENCRYPTION_OLD_KEYS`: new
+files are encrypted with the new key, and older files still open, since each
+file records which key sealed it. Storing an encrypted file without
+`SOLI_ENCRYPTION_KEY` raises.
+
+The format is AES-256-GCM in 64 KiB segments (the STREAM construction), with
+a short header naming the format version and the key, about 0.02 % larger than
+the file. A segment cannot be removed, reordered or edited without the read
+failing, and a file is bound to its collection: copied into another uploader's
+collection, it does not open.
+
+- A file stored before `encrypted` was turned on is still served as it is.
+- An image `format` / `max_width` conversion runs before encryption, and URL
+  transforms (`photo_url({"w": 200})`) after decryption.
+- An encrypted file is decrypted whole, in memory: it is not streamed, and a
+  `Range` request receives the whole file.
+- `direct_upload_start` refuses an encrypted attachment: the browser would send
+  the file straight to the bucket, where nothing can encrypt it. Use
+  [resumable uploads](#large-files-resumable-and-direct-uploads) instead; a finished upload is
+  read, encrypted and stored.
+- On the edge build, an encrypted R2 file is decrypted by the app rather than
+  served by the Worker straight from the bucket, and URL image transforms are
+  ignored for it: the Worker has no image codecs, and Cloudflare Images cannot
+  read the ciphertext.
+
 For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete. The first argument is the model's collection name, the segment `<field>_url` builds: `GiftCardTemplate` → `uploads("gift_card_templates", "logo")`.
 
 **Cleanup on destroy** — `record.delete()` and `Model.delete(id)` purge every attachment (disk, S3, and SoliDB) before the row is removed. `detach_all_uploads(record)` remains if you need to clear files without deleting the record.
@@ -1823,7 +1867,7 @@ def destroy
 end
 ```
 
-**Introspection** — `model_uploader_config(class_or_name, field)` returns `{ name, multiple, content_types, max_size, collection }` (or `null`); `model_uploader_fields(class_or_name)` lists the declared field names.
+**Introspection** — `model_uploader_config(class_or_name, field)` returns `{ name, multiple, content_types, max_size, collection, service, encrypted, … }` (or `null`); `model_uploader_fields(class_or_name)` lists the declared field names.
 
 ## Relationships
 
@@ -3065,6 +3109,9 @@ as-is on load rather than erroring. Low-level/transaction writes that bypass
 `encrypts` builds on the standalone `Crypto.encrypt(plaintext, key?)` /
 `Crypto.decrypt(ciphertext, key?)` builtins, which you can also use on their
 own (key defaults to `SOLI_ENCRYPTION_KEY`).
+
+Files take `"encrypted": true` on `uploader` / `has_*_attached` instead — see
+[Encrypted attachments](#encrypted-attachments).
 
 ## Audit Log
 

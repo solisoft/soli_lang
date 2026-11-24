@@ -9518,6 +9518,7 @@ let x = "#{[[1, 2], [1, 2, 3], [1, 2, 3, 4, 5, 6], [1]].map(tri)}"
                 max_width: None,
                 max_height: None,
                 service: "disk".to_string(),
+                encrypted: false,
             },
         );
         let mut owner_inst = Instance::new(owner_class);
