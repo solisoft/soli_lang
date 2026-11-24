@@ -2695,6 +2695,20 @@ end
     get(&server_a, &format!("/dm?to={b_id}&text=psst"));
     assert_eq!(on_b.read().expect("A's ws_send").to_text().unwrap(), "psst");
 
+    // From here on, what crosses the bus is presence, which is eventually
+    // consistent: a join or a leave the database was slow to take (its
+    // request times out at 10 s and the op is dropped) reaches the other
+    // server with the next beat's sync, 10 s later. Freezing the database
+    // for 22 s at this point of the test made it fail on a 10 s read; the
+    // reads below wait as long as the merge does.
+    for socket in [&on_a, &on_b] {
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_ref() {
+            stream
+                .set_read_timeout(Some(Duration::from_secs(45)))
+                .unwrap();
+        }
+    }
+
     // Presence spans both: bob tracked on B, alice on A.
     on_b.send(tungstenite::Message::Text("track:bob".into()))
         .expect("track bob");
@@ -2756,7 +2770,7 @@ end
     }
     // Each server holds one socket; the cluster count adds the other's
     // (reported at its next heartbeat).
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(45);
     loop {
         let count = get(&server_a, "/count");
         if count == "1|2" {
