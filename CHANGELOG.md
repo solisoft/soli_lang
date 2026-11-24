@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [2.40.3] - 2026-11-24
+
+### Changed
+- **eui: the score engraver pinned at eui `83348e1`** (was `88db77e`; also
+  `eui-proto` and `eui-client`). What `eui_score_layout` / `eui_score_bands`
+  / `eui_score_midi` / `eui_score_pdf` now read, found in files real users
+  stored and the engraver refused: Scheme `;` comments inside `#( … )`;
+  figured bass written in the same staff as the bass (`<< \bass \figures >>`),
+  drawn above it as LilyPond does; an ossia staff from a context defined in
+  `\layout` (`\name`, `\alias`); articulations on rests; scaled durations
+  (`a4*1/4`, `R1*3/4`); `\jump`; odd and even page headers following
+  `first-page-number`; lyrics held by hand-written beams under
+  `\autoBeamOff`; `\combine` and `#.2`; a lone staff's `instrumentName`; a
+  first score's header kept under the book's title; accented letters the
+  text face lacks composed from letter and accent; a file that only defines
+  music shows the last music variable, with a warning, instead of "there is
+  no music"; `\section` after a volta keeps the repeat sign. Old letters
+  (ſ, ﬅ) are written out; fonts, custos, baroque heads are ignored with a
+  warning.
+
 ### Fixed
 - **realtime: a presence snapshot no longer undoes what came after it.**
   Across servers on a bus, a node restates its whole presence every ten
