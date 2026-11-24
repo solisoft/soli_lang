@@ -2729,7 +2729,23 @@ end
             if who == "2|alice,bob" {
                 break;
             }
-            assert!(Instant::now() < deadline, "presence never merged: {who}");
+            // Seen once in CI ("1|alice" on A for the whole 20 s, with a
+            // 10 s heartbeat that should have healed a lost join) and not
+            // reproduced in 49 runs: what both servers say, and their
+            // logs, for the next time.
+            assert!(
+                Instant::now() < deadline,
+                "presence never merged: {who}\n A: who={} bus={} count={}\n B: who={} bus={} count={}\n \
+                 A stderr: {}\n B stderr: {}",
+                get(&server_a, "/who"),
+                get(&server_a, "/bus"),
+                get(&server_a, "/count"),
+                get(&server_b, "/who"),
+                get(&server_b, "/bus"),
+                get(&server_b, "/count"),
+                std::fs::read_to_string(app_a.path().join("stderr.log")).unwrap_or_default(),
+                std::fs::read_to_string(app_b.path().join("stderr.log")).unwrap_or_default(),
+            );
             thread::sleep(Duration::from_millis(200));
         }
     }
