@@ -200,7 +200,7 @@ ws.onmessage = (event) => {
   const data = JSON.parse(event.data)
 
   if (data.event === 'presence_state') {
-    presences = data.payload              // initial sync — replace everything
+    presences = data.payload              // the whole list — replace everything
     renderUserList()
   } else if (data.event === 'presence_diff') {
     Object.entries(data.payload.joins).forEach(([id, p]) => { presences[id] = p })
