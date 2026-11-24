@@ -293,6 +293,10 @@ pub struct WebSocketRegistry {
     /// Other nodes' presence, by node, when a realtime bus is configured.
     /// Locked after `room_presence` whenever both are held.
     remote_presence: Arc<AsyncMutex<HashMap<String, RemoteNode>>>,
+    /// Connections that missed a presence diff of a channel (their buffer
+    /// was full when it was offered), and are owed that channel's whole
+    /// state: see `offer_presence_diff`.
+    presence_owed: Arc<AsyncMutex<HashSet<(Uuid, String)>>>,
 }
 
 impl Default for WebSocketRegistry {
@@ -311,6 +315,7 @@ impl WebSocketRegistry {
             connection_presence: Arc::new(AsyncMutex::new(HashMap::new())),
             ref_counter: Arc::new(AtomicU64::new(1)),
             remote_presence: Arc::new(AsyncMutex::new(HashMap::new())),
+            presence_owed: Arc::new(AsyncMutex::new(HashSet::new())),
         }
     }
 
@@ -477,23 +482,74 @@ impl WebSocketRegistry {
         }
     }
 
-    /// [`broadcast_to_channel`](Self::broadcast_to_channel), never waiting
-    /// for a connection: one whose buffer is full misses the message. For
-    /// what the server sends of its own accord from a task that must go on
-    /// — presence diffs from other nodes: a client that stopped reading
-    /// would otherwise hold that task, and everything behind it.
-    pub async fn offer_to_channel(&self, channel: &str, message: &str) {
+    /// Offer a presence diff to a channel: [`broadcast_to_channel`]
+    /// (Self::broadcast_to_channel) that never waits for a connection, and
+    /// remembers the ones that missed it. For the diffs that come from other
+    /// nodes, sent from tasks that must go on: a client that stopped reading
+    /// would otherwise hold them, and everything behind. A diff says what
+    /// changed; a client that did not get one has a
+    /// list that stays wrong, since nothing later repeats it. It is owed the
+    /// channel's whole state, sent by [`settle_presence_owed`]
+    /// (Self::settle_presence_owed) once it reads again.
+    pub async fn offer_presence_diff(&self, channel: &str, message: &str) {
         let channel_ids = self.get_channel_ids(channel).await;
         let senders: Vec<_> = {
             let connections = self.connections.lock().await;
             channel_ids
                 .iter()
-                .filter_map(|id| connections.get(id).map(|c| c.sender.clone()))
+                .filter_map(|id| connections.get(id).map(|c| (*id, c.sender.clone())))
                 .collect()
         };
         let msg = Message::text(message);
-        for sender in senders {
-            let _ = sender.try_send(Ok(msg.clone()));
+        let mut missed = Vec::new();
+        for (id, sender) in senders {
+            if let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) =
+                sender.try_send(Ok(msg.clone()))
+            {
+                missed.push(id);
+            }
+        }
+        if !missed.is_empty() {
+            let mut owed = self.presence_owed.lock().await;
+            for id in missed {
+                owed.insert((id, channel.to_string()));
+            }
+        }
+    }
+
+    /// Send the whole presence of a channel to each connection that missed
+    /// a diff of it, where its buffer now has room; the others stay owed.
+    /// Cheap when nobody is.
+    pub async fn settle_presence_owed(&self) {
+        let owed: Vec<(Uuid, String)> = {
+            let mut owed = self.presence_owed.lock().await;
+            if owed.is_empty() {
+                return;
+            }
+            owed.drain().collect()
+        };
+        let mut still = Vec::new();
+        for (id, channel) in owed {
+            let sender = {
+                let connections = self.connections.lock().await;
+                connections
+                    .get(&id)
+                    .filter(|c| c.channels.contains(&channel))
+                    .map(|c| c.sender.clone())
+            };
+            // Gone, or no longer in the channel: nothing is owed.
+            let Some(sender) = sender else {
+                continue;
+            };
+            let state = Self::build_presence_state(&self.list_presence(&channel).await);
+            if let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) =
+                sender.try_send(Ok(Message::text(state)))
+            {
+                still.push((id, channel));
+            }
+        }
+        if !still.is_empty() {
+            self.presence_owed.lock().await.extend(still);
         }
     }
 
@@ -1900,7 +1956,7 @@ mod tests {
     /// the server offers a channel of its own accord does not wait for it,
     /// and still reaches the others; a plain broadcast would never return.
     #[tokio::test]
-    async fn an_offer_to_a_channel_does_not_wait_for_a_full_connection() {
+    async fn a_presence_diff_offered_does_not_wait_for_a_full_connection() {
         let registry = WebSocketRegistry::new();
         let (tx_stuck, _rx_stuck) = tokio::sync::mpsc::channel(1);
         let (tx_ok, mut rx_ok) = tokio::sync::mpsc::channel(8);
@@ -1915,7 +1971,7 @@ mod tests {
         let offers = async {
             for n in 0..5 {
                 registry
-                    .offer_to_channel("lobby", &format!("diff {n}"))
+                    .offer_presence_diff("lobby", &format!("diff {n}"))
                     .await;
             }
         };
@@ -1936,6 +1992,45 @@ mod tests {
                 .is_err(),
             "the full connection did not hold a plain broadcast"
         );
+    }
+
+    /// A connection that missed a presence diff is sent the channel's whole
+    /// state once it reads again — a diff is never repeated, so its list
+    /// would otherwise stay wrong.
+    #[tokio::test]
+    async fn a_connection_that_missed_a_presence_diff_gets_the_state_later() {
+        let registry = WebSocketRegistry::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let slow = WebSocketConnection::new(Arc::new(tx));
+        let id = slow.id;
+        registry.register(slow).await;
+        registry.join_channel(&id, "lobby").await;
+
+        // The first diff fills its buffer; the second is missed.
+        registry.offer_presence_diff("lobby", "diff 1").await;
+        registry.offer_presence_diff("lobby", "diff 2").await;
+        // Still not reading: it stays owed, and nothing waits.
+        registry.settle_presence_owed().await;
+        assert_eq!(registry.presence_owed.lock().await.len(), 1);
+
+        // It reads again.
+        match rx.try_recv().unwrap().unwrap() {
+            Message::Text(text) => assert_eq!(text.as_str(), "diff 1"),
+            other => panic!("unexpected frame: {other:?}"),
+        }
+        registry.settle_presence_owed().await;
+        match rx.try_recv().expect("the state it was owed").unwrap() {
+            Message::Text(text) => assert!(text.contains("presence_state"), "{text}"),
+            other => panic!("unexpected frame: {other:?}"),
+        }
+        assert!(registry.presence_owed.lock().await.is_empty());
+
+        // A connection that left the channel, or is gone, is owed nothing.
+        registry.offer_presence_diff("lobby", "diff 3").await;
+        registry.offer_presence_diff("lobby", "diff 4").await;
+        registry.unregister(&id).await;
+        registry.settle_presence_owed().await;
+        assert!(registry.presence_owed.lock().await.is_empty());
     }
 
     #[tokio::test]

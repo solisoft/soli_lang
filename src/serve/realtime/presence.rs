@@ -277,11 +277,13 @@ pub async fn apply(registry: &WebSocketRegistry, node: &str, op: PresenceOp) -> 
 /// for any of them. These run on the two tasks presence lives on (the
 /// consumer of what other nodes say, the heartbeat): a client that kept its
 /// connection open and stopped reading would hold them, and with them every
-/// other channel's presence and this node's own beats.
+/// other channel's presence and this node's own beats. One whose buffer is
+/// full is sent the channel's whole state once it reads again (the
+/// heartbeat task settles what is owed, every second).
 pub async fn send_diffs(registry: &WebSocketRegistry, diffs: Vec<ChannelDiff>) {
     for (channel, diff) in diffs {
         let message = WebSocketRegistry::build_presence_diff(&diff);
-        registry.offer_to_channel(&channel, &message).await;
+        registry.offer_presence_diff(&channel, &message).await;
     }
 }
 
@@ -386,6 +388,9 @@ pub fn start(runtime_handle: &tokio::runtime::Handle) {
         loop {
             tokio::select! {
                 _ = check.tick() => {
+                    crate::serve::websocket::get_ws_registry()
+                        .settle_presence_owed()
+                        .await;
                     let connected = super::CONNECTED.read(|connected| *connected);
                     if connected && !was_connected {
                         publish_op(tenant::current_id(), &PresenceOp::Hello);
