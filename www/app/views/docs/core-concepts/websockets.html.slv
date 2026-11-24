@@ -331,7 +331,7 @@ end</code></pre>
         <p class="text-gray-400 mb-4">Clients receive two presence message shapes:</p>
 
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
-            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">presence_state — sent once when the client joins a tracked room</label>
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">presence_state — sent when the client joins a tracked room, and again after it missed a diff (replace everything you hold)</label>
             <div class="p-4 overflow-x-auto">
 <pre><code class="language-json text-sm">{
   "event": "presence_state",

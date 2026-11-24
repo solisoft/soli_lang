@@ -541,10 +541,31 @@ impl WebSocketRegistry {
             let Some(sender) = sender else {
                 continue;
             };
-            let state = Self::build_presence_state(&self.list_presence(&channel).await);
-            if let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) =
-                sender.try_send(Ok(Message::text(state)))
-            {
+            // No room yet: nothing is built for a connection that would
+            // not take it.
+            if sender.capacity() == 0 {
+                still.push((id, channel));
+                continue;
+            }
+            // Built and queued with presence held still: a diff applied in
+            // between would otherwise reach the client first, and this
+            // older state would then take it away again — for good, nothing
+            // being owed any more. (Both locks: a remote update takes only
+            // the second. `try_send` never waits, so holding them is safe.)
+            let full = {
+                let room_presence = self.room_presence.lock().await;
+                let remote = self.remote_presence.lock().await;
+                let state = Self::build_presence_state(&Self::merged_channel(
+                    &room_presence,
+                    &remote,
+                    &channel,
+                ));
+                matches!(
+                    sender.try_send(Ok(Message::text(state))),
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+                )
+            };
+            if full {
                 still.push((id, channel));
             }
         }

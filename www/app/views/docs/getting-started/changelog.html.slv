@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.40.2.</p>
+        <h3 id="unreleased-realtime" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Real-time</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Presence across servers: in order, and never held by one client.</strong> A node restates its whole presence every ten seconds; a snapshot taken a moment before a user was tracked could reach the other servers after the join and take the user away again until the next beat. Each op now carries its place among those of its node and is applied in order, and a snapshot older than an op already applied is dropped. The diffs that come from other nodes are also no longer sent with a send that waits &mdash; one client holding its connection open without reading held every channel&rsquo;s presence &mdash; and a connection that missed one is sent the channel&rsquo;s whole <code class="text-cyan-400">presence_state</code> once it reads again (<a href="/docs/core-concepts/websockets" class="text-amber-400 hover:underline">WebSockets</a>).</li>
+        </ul>
     </section>
 
     <section id="v2-40-2" class="mb-16 scroll-mt-24">

@@ -145,8 +145,11 @@ end
 appears once. A join fires only when their *first* connection arrives; a leave
 only when their *last* one exits.
 
-Clients receive two message shapes. `presence_state` is the initial sync —
-replace everything you hold:
+Clients receive two message shapes. `presence_state` is the whole list —
+replace everything you hold. It comes when you start tracking, and again
+whenever the server could not hand you a `presence_diff` (your connection was
+behind): a diff is never repeated, so the state is sent anew once you read
+again:
 
 ```json
 {

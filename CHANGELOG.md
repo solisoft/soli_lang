@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+- **realtime: presence from other servers no longer waits for a client
+  that stopped reading — and such a client is caught up.** The diffs that
+  come from other nodes were sent to each socket with a send that waits:
+  one client holding its connection open without reading held the task
+  that applies what other nodes say, and with it every channel's presence.
+  They are offered instead; a connection whose buffer is full misses the
+  diff and is sent the channel's whole `presence_state` once it reads
+  again (a client already replaces its list on that message).
+
 ## [2.40.3] - 2026-11-24
 
 ### Changed
