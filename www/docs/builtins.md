@@ -6740,9 +6740,9 @@ Gets metadata for a blob without fetching the data.
 - `size` (Int) - File size in bytes
 - `created_at` (String) - Creation timestamp
 
-### solidb.blob_response(collection, blob_id, req, headers?)
+### solidb.blob_response(collection, blob_id, req, headers?, options?)
 
-Answers a request with a blob **streamed** from SoliDB, with HTTP `Range`. Return its result from the action. Also callable as `solidb_blob_response(db, collection, blob_id, req, headers)`.
+Answers a request with a blob **streamed** from SoliDB, with HTTP `Range`. Return its result from the action. Also callable as `solidb_blob_response(db, collection, blob_id, req, headers, options)`.
 
 `get_blob` loads the whole payload, as base64, into the worker. That is fine for an avatar. For a podcast episode or a video it costs the file several times over per download, and every seek downloads the file again. `blob_response` does no I/O on the worker. The server fetches `GET /_api/blob/{db}/{collection}/{key}` itself, with the instance's credentials, and relays the body one chunk at a time as the client reads it. Memory stays at one chunk whatever the blob's size, and the worker is free as soon as the action returns.
 
@@ -6751,12 +6751,14 @@ Answers a request with a blob **streamed** from SoliDB, with HTTP `Range`. Retur
 - `ETag` is the blob key: a blob id names one set of bytes for good. A matching `If-None-Match` is answered `304` without a SoliDB round trip. `If-Range` keeps the range only when it carries that ETag.
 - `HEAD` sends the headers alone: the server asks SoliDB for `bytes=0-0` and reports the full size.
 - A missing blob is `404`. SoliDB unreachable, or any other answer from it, is `502`.
+- `{"encrypted": true}` serves a blob stored by an [encrypted attachment](models#encrypted-attachments) as the file it seals. The server reads the blob's header, works out the file's length and which 64 KiB segments a `Range` touches, asks SoliDB for those segments only, and decrypts each one as it arrives. `Content-Length`, `Content-Range`, `416` and `HEAD` refer to the file's own length. A segment that fails authentication ends the response before any of its bytes is sent, and the connection is dropped. A blob that is not encrypted (stored before the option was turned on) is sent as it is. A key the server does not hold is `500`. `SOLI_ENCRYPTION_KEY` must be set.
 
 **Parameters:**
 - `collection` (String) - Collection name
 - `blob_id` (String) - Blob ID
 - `req` (Hash) - The request (`req` in the action); its method and `Range` / `If-Range` / `If-None-Match` headers are read
 - `headers` (Hash, optional) - Response headers to send with the blob
+- `options` (Hash, optional) - `{"encrypted": true}` for an encrypted blob
 
 **Returns:** Hash - The response to return from the action
 

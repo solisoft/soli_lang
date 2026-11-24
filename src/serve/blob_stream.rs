@@ -69,6 +69,16 @@ pub(crate) struct BlobStreamSpec {
     pub(crate) range: Option<String>,
     /// A `HEAD` request: send headers only, never the body.
     pub(crate) head: bool,
+    /// The blob is SBE-sealed (an `encrypted` attachment): open it segment by
+    /// segment on the way out. `None` relays SoliDB's bytes as they are.
+    pub(crate) sealed: Option<Sealed>,
+}
+
+/// How to open a sealed blob: the purpose it was sealed for and the keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Sealed {
+    pub(crate) purpose: Vec<u8>,
+    pub(crate) keys: Vec<crate::interpreter::builtins::blob_crypto::BlobKey>,
 }
 
 crate::request_local! {
@@ -246,6 +256,7 @@ pub(crate) fn blob_response(
     blob_id: &str,
     req: &Value,
     extra: Option<&Value>,
+    sealed: Option<Sealed>,
 ) -> Result<Value, String> {
     let method = hash_str(req, "method").unwrap_or_else(|| "GET".to_string());
     let req_headers = hash_field(req, "headers").unwrap_or(Value::Null);
@@ -306,6 +317,7 @@ pub(crate) fn blob_response(
         auth,
         range,
         head: method.eq_ignore_ascii_case("HEAD"),
+        sealed,
     });
     headers.push((MARKER_HEADER.to_string(), token.to_string()));
     Ok(response_hash(200, headers))
@@ -501,6 +513,18 @@ pub(crate) async fn respond(
 pub(crate) async fn respond_with(
     client: &reqwest::Client,
     headers: Vec<(String, String)>,
+    mut spec: BlobStreamSpec,
+) -> Response<ResponseBody> {
+    match spec.sealed.take() {
+        Some(sealed) => respond_sealed(client, headers, spec, sealed).await,
+        None => respond_plain(client, headers, spec).await,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn respond_plain(
+    client: &reqwest::Client,
+    headers: Vec<(String, String)>,
     spec: BlobStreamSpec,
 ) -> Response<ResponseBody> {
     let probe = spec.head && spec.range.is_none();
@@ -565,6 +589,356 @@ pub(crate) async fn respond_with(
     };
     let body = (mapped.body == MappedBody::Upstream).then_some(upstream);
     build(mapped, body)
+}
+
+// ---------------------------------------------------------------------------
+// Sealed blobs: open segment by segment on the way out
+// ---------------------------------------------------------------------------
+
+/// The plaintext span a normalised Range (see [`single_byte_range`]) asks for
+/// in a file of `len` bytes, or `None` when no byte of it is there (`416`).
+/// A suffix longer than the file is the whole file (RFC 9110 §14.1.3).
+pub(crate) fn resolve_range(range: &str, len: u64) -> Option<(u64, u64)> {
+    let spec = range.strip_prefix("bytes=")?;
+    let (first, last) = spec.split_once('-')?;
+    if len == 0 {
+        return None;
+    }
+    if first.is_empty() {
+        let suffix: u64 = last.parse().ok()?;
+        return (suffix > 0).then(|| (len - suffix.min(len), len - 1));
+    }
+    let start: u64 = first.parse().ok()?;
+    if start >= len {
+        return None;
+    }
+    let end = if last.is_empty() {
+        len - 1
+    } else {
+        last.parse::<u64>().ok()?.min(len - 1)
+    };
+    (start <= end).then_some((start, end))
+}
+
+/// A short error answer for the sealed path.
+#[cfg(not(target_arch = "wasm32"))]
+fn sealed_error(headers: Vec<(String, String)>, status: u16) -> Response<ResponseBody> {
+    let text = match status {
+        404 => "Not found",
+        500 => "Internal Server Error",
+        504 => "Gateway Timeout",
+        _ => "Bad Gateway",
+    };
+    build(
+        Mapped {
+            status,
+            headers: error_headers(headers),
+            body: MappedBody::Text(text),
+        },
+        None,
+    )
+}
+
+/// One GET to SoliDB with an optional Range, under the head timeout. `Err`
+/// is the status to answer with.
+#[cfg(not(target_arch = "wasm32"))]
+async fn fetch(
+    client: &reqwest::Client,
+    spec: &BlobStreamSpec,
+    range: Option<String>,
+) -> Result<reqwest::Response, u16> {
+    let mut request = client.get(&spec.url);
+    if let Some((name, value)) = &spec.auth {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    if let Some(range) = range {
+        request = request.header("Range", range);
+    }
+    match tokio::time::timeout(UPSTREAM_HEAD_TIMEOUT, request.send()).await {
+        Ok(Ok(response)) => Ok(response),
+        Ok(Err(e)) => {
+            eprintln!(
+                "[soli] blob stream: SoliDB request failed: {}",
+                e.without_url()
+            );
+            Err(502)
+        }
+        Err(_) => {
+            eprintln!(
+                "[soli] blob stream: SoliDB sent no response within {}s",
+                UPSTREAM_HEAD_TIMEOUT.as_secs()
+            );
+            Err(504)
+        }
+    }
+}
+
+/// Read up to `want` bytes of a response body (the sealed header), then let
+/// the rest go.
+#[cfg(not(target_arch = "wasm32"))]
+async fn read_prefix(response: reqwest::Response, want: usize) -> Result<Vec<u8>, u16> {
+    let mut chunks = response.bytes_stream();
+    let mut out = Vec::with_capacity(want);
+    while out.len() < want {
+        match tokio::time::timeout(UPSTREAM_IDLE_TIMEOUT, chunks.next()).await {
+            Ok(Some(Ok(bytes))) => {
+                let take = (want - out.len()).min(bytes.len());
+                out.extend_from_slice(&bytes[..take]);
+            }
+            Ok(None) => break,
+            Ok(Some(Err(_))) | Err(_) => return Err(502),
+        }
+    }
+    Ok(out)
+}
+
+/// Relay a sealed (`encrypted`) blob as the file it seals, with `Range`.
+///
+/// A first request reads the blob's header and its sealed length
+/// (`Range: bytes=0-18`). From those the file's length follows, and from the
+/// client's Range the segments that hold it: one more request fetches exactly
+/// those segments, and each is authenticated and decrypted as it completes,
+/// then cut to the requested span. The memory a download costs is about one
+/// segment, whatever the file's size, and a slow client still slows the read
+/// from SoliDB. A segment that does not authenticate ends the body with an
+/// error before any of its bytes are sent: hyper then aborts the connection.
+///
+/// A blob that does not start with an SBE header was stored before the
+/// attachment was `encrypted`, and is relayed as it is.
+#[cfg(not(target_arch = "wasm32"))]
+async fn respond_sealed(
+    client: &reqwest::Client,
+    headers: Vec<(String, String)>,
+    spec: BlobStreamSpec,
+    sealed: Sealed,
+) -> Response<ResponseBody> {
+    use crate::interpreter::builtins::blob_crypto::{is_sealed, Opener, HEADER_LEN};
+
+    let probe = match fetch(client, &spec, Some(format!("bytes=0-{}", HEADER_LEN - 1))).await {
+        Ok(response) => response,
+        Err(status) => return sealed_error(headers, status),
+    };
+    let total = match probe.status().as_u16() {
+        206 => probe
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .and_then(complete_length),
+        200 => probe
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse().ok()),
+        // An empty blob: nothing sealed there.
+        416 => return respond_plain(client, headers, spec).await,
+        404 => return sealed_error(headers, 404),
+        other => {
+            eprintln!("[soli] blob stream: SoliDB answered {other}; replying 502");
+            return sealed_error(headers, 502);
+        }
+    };
+    let Some(total) = total else {
+        eprintln!("[soli] blob stream: SoliDB gave no length for a sealed blob");
+        return sealed_error(headers, 502);
+    };
+    let head = match read_prefix(probe, HEADER_LEN).await {
+        Ok(head) => head,
+        Err(status) => return sealed_error(headers, status),
+    };
+    if !is_sealed(&head) {
+        return respond_plain(client, headers, spec).await;
+    }
+    let opener = match Opener::new(&head, total, &sealed.purpose, &sealed.keys) {
+        Ok(opener) => opener,
+        Err(e) => {
+            eprintln!("[soli] blob stream: {e}");
+            return sealed_error(headers, 500);
+        }
+    };
+
+    let len = opener.plain_len();
+    let mut app = headers;
+    app.retain(|(k, _)| !is_framing_header(k));
+    if !app
+        .iter()
+        .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+    {
+        app.push((
+            "Content-Type".to_string(),
+            "application/octet-stream".to_string(),
+        ));
+    }
+    app.push(("Accept-Ranges".to_string(), "bytes".to_string()));
+
+    let span = match spec.range.as_deref() {
+        None => (len > 0).then(|| (0, len - 1)),
+        Some(range) => match resolve_range(range, len) {
+            Some(span) => Some(span),
+            None => {
+                let mut headers = error_headers(app);
+                headers.push(("Content-Range".to_string(), format!("bytes */{len}")));
+                return build(
+                    Mapped {
+                        status: 416,
+                        headers,
+                        body: MappedBody::Empty,
+                    },
+                    None,
+                );
+            }
+        },
+    };
+    let status = if spec.range.is_some() { 206 } else { 200 };
+    let sent = span.map_or(0, |(a, b)| b - a + 1);
+    app.push(("Content-Length".to_string(), sent.to_string()));
+    if let (206, Some((a, b))) = (status, span) {
+        app.push(("Content-Range".to_string(), format!("bytes {a}-{b}/{len}")));
+    }
+    let empty = |headers| {
+        build(
+            Mapped {
+                status,
+                headers,
+                body: MappedBody::Empty,
+            },
+            None,
+        )
+    };
+    let Some((start, end)) = span.filter(|_| !spec.head) else {
+        return empty(app);
+    };
+
+    let first = start / opener.segment_size();
+    let last = end / opener.segment_size();
+    let (from, to) = opener.sealed_span(first, last);
+    let upstream = match fetch(client, &spec, Some(format!("bytes={from}-{to}"))).await {
+        Ok(response) => response,
+        Err(status) => return sealed_error(app, status),
+    };
+    // A server that ignores the Range sends the whole blob: skip to `from`.
+    let skip = match upstream.status().as_u16() {
+        206 => 0,
+        200 => from,
+        404 => return sealed_error(app, 404),
+        other => {
+            eprintln!("[soli] blob stream: SoliDB answered {other}; replying 502");
+            return sealed_error(app, 502);
+        }
+    };
+    let body = sealed_body(upstream, opener, skip, first, last, start, end);
+    let mut builder = Response::builder()
+        .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))
+        .header("Server", "soliMVC");
+    for (name, value) in &app {
+        builder = add_header_checked(builder, name, value);
+    }
+    builder.body(body).unwrap_or_else(|_| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(full(Bytes::from_static(b"Internal Server Error")))
+            .expect("static 500 response is always valid")
+    })
+}
+
+/// Where a sealed relay is.
+#[cfg(not(target_arch = "wasm32"))]
+struct SealedState<S> {
+    chunks: S,
+    opener: crate::interpreter::builtins::blob_crypto::Opener,
+    /// Sealed bytes of the segment being assembled.
+    pending: Vec<u8>,
+    /// Upstream bytes still to drop before segment `index` starts.
+    skip: u64,
+    index: u64,
+    last: u64,
+    /// The plaintext span to send, inclusive.
+    start: u64,
+    end: u64,
+}
+
+/// SoliDB's sealed bytes, from the start of segment `first`, as the file's
+/// bytes `start..=end`: one frame per segment, each sent only once its tag
+/// has checked out.
+#[cfg(not(target_arch = "wasm32"))]
+fn sealed_body(
+    upstream: reqwest::Response,
+    opener: crate::interpreter::builtins::blob_crypto::Opener,
+    skip: u64,
+    first: u64,
+    last: u64,
+    start: u64,
+    end: u64,
+) -> ResponseBody {
+    let state = SealedState {
+        chunks: upstream.bytes_stream(),
+        pending: Vec::with_capacity(opener.sealed_len(first) as usize),
+        opener,
+        skip,
+        index: first,
+        last,
+        start,
+        end,
+    };
+    let frames = futures_util::stream::unfold(Some(state), |state| async move {
+        let mut state = state?;
+        if state.index > state.last {
+            return None;
+        }
+        let need = state.opener.sealed_len(state.index) as usize;
+        while state.pending.len() < need {
+            match tokio::time::timeout(UPSTREAM_IDLE_TIMEOUT, state.chunks.next()).await {
+                Ok(Some(Ok(mut bytes))) => {
+                    if state.skip > 0 {
+                        let drop = state.skip.min(bytes.len() as u64) as usize;
+                        state.skip -= drop as u64;
+                        bytes = bytes.slice(drop..);
+                    }
+                    state.pending.extend_from_slice(&bytes);
+                }
+                Ok(None) => {
+                    eprintln!("[soli] blob stream: SoliDB ended a sealed blob early");
+                    return Some((Err(std::io::Error::other("sealed blob truncated")), None));
+                }
+                Ok(Some(Err(e))) => {
+                    eprintln!(
+                        "[soli] blob stream: SoliDB body failed: {}",
+                        e.without_url()
+                    );
+                    return Some((Err(std::io::Error::other("upstream body failed")), None));
+                }
+                Err(_) => {
+                    eprintln!(
+                        "[soli] blob stream: SoliDB stalled for {}s; aborting",
+                        UPSTREAM_IDLE_TIMEOUT.as_secs()
+                    );
+                    return Some((
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "upstream body stalled",
+                        )),
+                        None,
+                    ));
+                }
+            }
+        }
+        // What came past this segment belongs to the next one.
+        let rest = state.pending.split_off(need);
+        let plain = match state.opener.open_segment(state.index, &state.pending) {
+            Ok(plain) => plain,
+            Err(e) => {
+                eprintln!("[soli] blob stream: {e}");
+                return Some((Err(std::io::Error::other("sealed segment rejected")), None));
+            }
+        };
+        state.pending = rest;
+        let segment_start = state.index * state.opener.segment_size();
+        let from = state.start.saturating_sub(segment_start) as usize;
+        let to = ((state.end + 1 - segment_start) as usize).min(plain.len());
+        let frame = Bytes::from(plain).slice(from..to);
+        state.index += 1;
+        Some((Ok(hyper::body::Frame::data(frame)), Some(state)))
+    });
+    http_body_util::BodyExt::boxed(http_body_util::StreamBody::new(frames))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -780,6 +1154,7 @@ mod tests {
             "k1",
             &req,
             Some(&extra),
+            None,
         )
         .expect("response hash");
 
@@ -817,10 +1192,10 @@ mod tests {
     #[test]
     fn head_is_flagged_and_a_null_request_reads_as_get() {
         clear_pending();
-        blob_response("u".into(), None, "k", &request("HEAD", &[]), None).unwrap();
+        blob_response("u".into(), None, "k", &request("HEAD", &[]), None, None).unwrap();
         assert!(take_pending().unwrap().head);
 
-        blob_response("u".into(), None, "k", &Value::Null, None).unwrap();
+        blob_response("u".into(), None, "k", &Value::Null, None, None).unwrap();
         let spec = take_pending().unwrap();
         assert!(!spec.head);
         assert_eq!(spec.range, None);
@@ -834,7 +1209,7 @@ mod tests {
             ("Content-Type", s("video/mp4")),
             ("Cache-Control", s("private, max-age=300")),
         ]);
-        let response = blob_response("u".into(), None, "k9", &req, Some(&extra)).unwrap();
+        let response = blob_response("u".into(), None, "k9", &req, Some(&extra), None).unwrap();
         assert!(matches!(
             hash_field(&response, "status"),
             Some(Value::Int(304))
@@ -854,13 +1229,13 @@ mod tests {
             "GET",
             &[("range", "bytes=0-1"), ("if-range", "\"an-older-blob\"")],
         );
-        blob_response("u".into(), None, "k", &req, None).unwrap();
+        blob_response("u".into(), None, "k", &req, None, None).unwrap();
         assert_eq!(take_pending().unwrap().range, None);
     }
 
     #[test]
     fn headers_must_be_a_hash() {
-        let err = blob_response("u".into(), None, "k", &Value::Null, Some(&s("nope")));
+        let err = blob_response("u".into(), None, "k", &Value::Null, Some(&s("nope")), None);
         assert!(err.unwrap_err().contains("headers hash"));
     }
 
@@ -872,6 +1247,7 @@ mod tests {
             auth: None,
             range: None,
             head: false,
+            sealed: None,
         };
         // The action returned some other response: no marker.
         let mut other = vec![("Content-Type".to_string(), "text/html".to_string())];
@@ -1129,6 +1505,7 @@ mod tests {
             auth: Some(("Authorization".into(), "Basic dTpw".into())),
             range: range.map(str::to_string),
             head,
+            sealed: None,
         }
     }
 
@@ -1325,6 +1702,246 @@ mod tests {
         let response = respond_with(&client, app_headers(), spec(down, None, false)).await;
         assert_eq!(response.status(), 502);
         assert_eq!(header(&response, "content-disposition"), None);
+    }
+
+    // -- Sealed (encrypted) blobs -------------------------------------------
+
+    use crate::interpreter::builtins::blob_crypto::{self, BlobKey};
+
+    const SEGMENT: usize = blob_crypto::DEFAULT_SEGMENT as usize;
+
+    fn test_key() -> BlobKey {
+        BlobKey::from_material(b"blob-stream-test-key")
+    }
+
+    fn sealed_spec(url: String, range: Option<&str>, head: bool) -> BlobStreamSpec {
+        let mut spec = spec(url, range, head);
+        spec.sealed = Some(Sealed {
+            purpose: blob_crypto::purpose("media"),
+            keys: vec![test_key()],
+        });
+        spec
+    }
+
+    /// `plain` sealed, served by a stand-in; the relay's URL for it.
+    async fn sealed_stand_in(plain: &[u8]) -> (StandIn, String) {
+        let sealed = blob_crypto::seal_with(
+            plain,
+            &blob_crypto::purpose("media"),
+            &test_key(),
+            blob_crypto::DEFAULT_SEGMENT,
+        )
+        .unwrap();
+        let solidb = stand_in(Arc::new(sealed), None).await;
+        let url = format!("{}/_api/blob/db/media/secret", solidb.base);
+        (solidb, url)
+    }
+
+    #[test]
+    fn a_range_resolves_against_the_file_length() {
+        assert_eq!(resolve_range("bytes=0-9", 100), Some((0, 9)));
+        assert_eq!(resolve_range("bytes=90-200", 100), Some((90, 99)));
+        assert_eq!(resolve_range("bytes=95-", 100), Some((95, 99)));
+        assert_eq!(resolve_range("bytes=-10", 100), Some((90, 99)));
+        // A suffix longer than the file is the whole file, not a 416.
+        assert_eq!(resolve_range("bytes=-500", 100), Some((0, 99)));
+        assert_eq!(resolve_range("bytes=100-", 100), None);
+        assert_eq!(resolve_range("bytes=-0", 100), None);
+        assert_eq!(resolve_range("bytes=0-0", 0), None);
+    }
+
+    #[tokio::test]
+    async fn a_sealed_blob_streams_as_the_file_whole_and_by_range() {
+        let plain = blob(5 * MB + 123);
+        let (solidb, url) = sealed_stand_in(&plain).await;
+        let client = build_client();
+
+        let whole = respond_with(
+            &client,
+            app_headers(),
+            sealed_spec(url.clone(), None, false),
+        )
+        .await;
+        assert_eq!(whole.status(), 200);
+        assert_eq!(
+            header(&whole, "content-length"),
+            Some(plain.len().to_string())
+        );
+        assert_eq!(header(&whole, "accept-ranges").as_deref(), Some("bytes"));
+        assert_eq!(
+            header(&whole, "content-type").as_deref(),
+            Some("audio/mpeg")
+        );
+        let (bytes, frames) = drain(whole).await;
+        assert!(bytes == *plain, "the file, byte for byte");
+        assert!(frames > 1, "one frame per segment, not one buffer");
+
+        // Across segment boundaries, starting and ending inside full
+        // segments (`bytes=-10` below ends in the short last one).
+        let start = 3 * MB + 7;
+        let end = start + MB;
+        let range = format!("bytes={start}-{end}");
+        let part = respond_with(
+            &client,
+            app_headers(),
+            sealed_spec(url.clone(), Some(&range), false),
+        )
+        .await;
+        assert_eq!(part.status(), 206);
+        assert_eq!(
+            header(&part, "content-range"),
+            Some(format!("bytes {start}-{end}/{}", plain.len()))
+        );
+        assert_eq!(
+            header(&part, "content-length"),
+            Some((end - start + 1).to_string())
+        );
+        assert!(drain(part).await.0 == plain[start..=end]);
+
+        // Inside one segment, and the file's last bytes.
+        let inside = format!("bytes={}-{}", SEGMENT + 10, SEGMENT + 20);
+        let small = respond_with(
+            &client,
+            app_headers(),
+            sealed_spec(url.clone(), Some(&inside), false),
+        )
+        .await;
+        assert_eq!(small.status(), 206);
+        assert!(drain(small).await.0 == plain[SEGMENT + 10..=SEGMENT + 20]);
+        let tail = respond_with(
+            &client,
+            app_headers(),
+            sealed_spec(url.clone(), Some("bytes=-10"), false),
+        )
+        .await;
+        assert!(drain(tail).await.0 == plain[plain.len() - 10..]);
+
+        let past = format!("bytes={}-", plain.len());
+        let unsatisfiable = respond_with(
+            &client,
+            app_headers(),
+            sealed_spec(url.clone(), Some(&past), false),
+        )
+        .await;
+        assert_eq!(unsatisfiable.status(), 416);
+        assert_eq!(
+            header(&unsatisfiable, "content-range"),
+            Some(format!("bytes */{}", plain.len()))
+        );
+
+        // The range asked SoliDB for exactly the segments that hold it.
+        let heads = solidb.heads.lock().unwrap().clone();
+        let (first, last) = (start / SEGMENT, end / SEGMENT);
+        let sealed_segment = SEGMENT + 16;
+        let from = blob_crypto::HEADER_LEN + first * sealed_segment;
+        let to = blob_crypto::HEADER_LEN + (last + 1) * sealed_segment - 1;
+        let asked = format!("range: bytes={from}-{to}");
+        assert!(
+            heads
+                .iter()
+                .any(|h| h.to_ascii_lowercase().contains(&asked)),
+            "{asked} in {heads:?}"
+        );
+        assert!(heads[0].to_ascii_lowercase().contains("range: bytes=0-18"));
+    }
+
+    #[tokio::test]
+    async fn head_of_a_sealed_blob_reports_the_file_length() {
+        let plain = blob(MB + 1);
+        let (solidb, url) = sealed_stand_in(&plain).await;
+        let response =
+            respond_with(&build_client(), app_headers(), sealed_spec(url, None, true)).await;
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            header(&response, "content-length"),
+            Some(plain.len().to_string())
+        );
+        assert!(drain(response).await.0.is_empty());
+        // The header was enough: no request for the body.
+        assert_eq!(solidb.heads.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_empty_sealed_file_is_an_empty_body() {
+        let (_solidb, url) = sealed_stand_in(b"").await;
+        let response = respond_with(
+            &build_client(),
+            app_headers(),
+            sealed_spec(url, None, false),
+        )
+        .await;
+        assert_eq!(response.status(), 200);
+        assert_eq!(header(&response, "content-length").as_deref(), Some("0"));
+        assert!(drain(response).await.0.is_empty());
+    }
+
+    /// A segment that does not authenticate ends the body before any of its
+    /// bytes: what came before it went out, nothing of it does.
+    #[tokio::test]
+    async fn a_tampered_segment_ends_the_body_before_its_bytes() {
+        let plain = blob(3 * SEGMENT + 50);
+        let mut sealed = blob_crypto::seal_with(
+            &plain,
+            &blob_crypto::purpose("media"),
+            &test_key(),
+            blob_crypto::DEFAULT_SEGMENT,
+        )
+        .unwrap();
+        let in_third = blob_crypto::HEADER_LEN + 2 * (SEGMENT + 16) + 100;
+        sealed[in_third] ^= 1;
+        let solidb = stand_in(Arc::new(sealed), None).await;
+        let url = format!("{}/_api/blob/db/media/secret", solidb.base);
+
+        let response = respond_with(
+            &build_client(),
+            app_headers(),
+            sealed_spec(url, None, false),
+        )
+        .await;
+        assert_eq!(response.status(), 200);
+        let mut body = response.into_body();
+        let mut got = Vec::new();
+        let mut failed = false;
+        while let Some(frame) = body.frame().await {
+            match frame {
+                Ok(frame) => got.extend_from_slice(&frame.into_data().unwrap()),
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        assert!(failed, "the body ends in an error");
+        assert!(
+            got == plain[..2 * SEGMENT],
+            "the two good segments and nothing more"
+        );
+    }
+
+    #[tokio::test]
+    async fn plaintext_under_an_encrypted_uploader_is_relayed_as_is() {
+        let data = blob(200_000);
+        let solidb = stand_in(data.clone(), None).await;
+        let url = format!("{}/_api/blob/db/media/legacy", solidb.base);
+        let response = respond_with(
+            &build_client(),
+            app_headers(),
+            sealed_spec(url, Some("bytes=10-19"), false),
+        )
+        .await;
+        assert_eq!(response.status(), 206);
+        assert!(drain(response).await.0 == data[10..20]);
+    }
+
+    #[tokio::test]
+    async fn a_sealed_blob_without_its_key_is_a_server_error() {
+        let (_solidb, url) = sealed_stand_in(b"secret").await;
+        let mut spec = sealed_spec(url, None, false);
+        spec.sealed.as_mut().unwrap().keys = vec![BlobKey::from_material(b"another key")];
+        let response = respond_with(&build_client(), app_headers(), spec).await;
+        assert_eq!(response.status(), 500);
+        assert_eq!(header(&response, "content-disposition"), None);
+        assert_eq!(drain(response).await.0, b"Internal Server Error");
     }
 
     /// Against a real SoliDB, when one is configured (`SOLIDB_DRIVER_TEST_HOST`,

@@ -1084,7 +1084,7 @@ end</code></pre>
     <ul class="text-gray-400 mb-6 space-y-1 ml-4 list-disc">
         <li>A file stored before <code>encrypted</code> was turned on is still served as it is.</li>
         <li>An image <code>format</code> / <code>max_width</code> conversion runs before encryption, and URL transforms (<code>photo_url({"w": 200})</code>) after decryption.</li>
-        <li>An encrypted file is decrypted whole, in memory: it is not streamed, and a <code>Range</code> request receives the whole file.</li>
+        <li>On SoliDB an encrypted file is <strong>streamed</strong>, <code>Range</code> included: the server fetches only the 64&nbsp;KiB segments a request touches and decrypts each one as it arrives, so a download costs about one segment of memory, and a segment that fails authentication ends the response before any of its bytes is sent. On disk, S3 and R2 the file is decrypted whole in memory, as those services already load a file whole when they serve it.</li>
         <li><code>direct_upload_start</code> refuses an encrypted attachment: the browser would send the file straight to the bucket, where nothing can encrypt it. Use <a href="#large-uploads" class="text-amber-400 hover:underline">resumable uploads</a> instead; a finished upload is read, encrypted and stored.</li>
         <li>On the edge build, an encrypted R2 file is decrypted by the app rather than served by the Worker straight from the bucket, and URL image transforms are ignored for it: the Worker has no image codecs, and Cloudflare Images cannot read the ciphertext.</li>
     </ul>

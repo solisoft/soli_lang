@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+- **attachments: encrypted files stream, with `Range`.** In 2.41.0 an
+  encrypted SoliDB attachment was opened whole in memory and a `Range` got
+  the whole file. `solidb_blob_response(..., headers, {"encrypted": true})`
+  (used by the blob route for `encrypted` uploaders) now probes the blob's
+  SBE header (`bytes=0-18`) and sealed length, resolves the client's Range
+  against the file's length, fetches only the segments that hold it in one
+  Range request, and decrypts each segment as it completes
+  (`blob_crypto::Opener`). Memory is about one segment per download and
+  back-pressure is kept. `206`/`416`/`HEAD` refer to the file's own length;
+  a segment that fails authentication ends the body with an error before
+  any of its bytes, so the connection is aborted; a blob that is not
+  sealed is relayed as it is; an unknown key is `500`. Disk, S3 and R2
+  still open the file whole (they never streamed).
+
 ## [2.41.0] - 2026-11-24
 
 ### Added

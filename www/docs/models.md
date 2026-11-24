@@ -1843,8 +1843,12 @@ collection, it does not open.
 - A file stored before `encrypted` was turned on is still served as it is.
 - An image `format` / `max_width` conversion runs before encryption, and URL
   transforms (`photo_url({"w": 200})`) after decryption.
-- An encrypted file is decrypted whole, in memory: it is not streamed, and a
-  `Range` request receives the whole file.
+- On SoliDB an encrypted file is **streamed**, `Range` included: the server
+  fetches only the 64 KiB segments a request touches and decrypts each one as
+  it arrives, so a download costs about one segment of memory, and a segment
+  that fails authentication ends the response before any of its bytes is
+  sent. On disk, S3 and R2 the file is decrypted whole in memory, as those
+  services already load a file whole when they serve it.
 - `direct_upload_start` refuses an encrypted attachment: the browser would send
   the file straight to the bucket, where nothing can encrypt it. Use
   [resumable uploads](#large-files-resumable-and-direct-uploads) instead; a finished upload is

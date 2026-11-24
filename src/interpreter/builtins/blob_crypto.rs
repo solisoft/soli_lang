@@ -47,10 +47,17 @@ const MIN_SEGMENT: u32 = 1024;
 const MAX_SEGMENT: u32 = 16 * 1024 * 1024;
 
 /// A blob key and the four bytes that name it in a header.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct BlobKey {
     key: [u8; 32],
     id: [u8; 4],
+}
+
+impl std::fmt::Debug for BlobKey {
+    // The key never reaches a log line; its id is public anyway.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BlobKey({:02x?})", self.id)
+    }
 }
 
 impl BlobKey {
@@ -182,55 +189,132 @@ pub fn open_with(data: &[u8], purpose: &[u8], keys: &[BlobKey]) -> Result<Vec<u8
     if !is_sealed(data) {
         return Err("not an encrypted blob".to_string());
     }
-    let header = &data[..HEADER_LEN];
-    let key_id = &header[4..8];
-    let segment = u32::from_be_bytes([header[8], header[9], header[10], header[11]]);
-    if !(MIN_SEGMENT..=MAX_SEGMENT).contains(&segment) {
-        return Err("encrypted blob has a corrupt header".to_string());
+    let opener = Opener::new(&data[..HEADER_LEN], data.len() as u64, purpose, keys)?;
+    let mut out = Vec::with_capacity(opener.plain_len() as usize);
+    for index in 0..=opener.last_segment() {
+        let (first, last) = opener.sealed_span(index, index);
+        out.extend_from_slice(&opener.open_segment(index, &data[first as usize..=last as usize])?);
     }
-    let prefix = &header[12..19];
-    let key = keys.iter().find(|k| k.id == key_id).ok_or_else(|| {
-        "encrypted blob was sealed with a key that is neither SOLI_ENCRYPTION_KEY \
-         nor one of SOLI_ENCRYPTION_OLD_KEYS"
-            .to_string()
-    })?;
+    Ok(out)
+}
 
-    let aad = segment_aad(header, purpose);
-    let cipher = cipher(key)?;
-    let sealed_segment = segment as usize + TAG_LEN;
-    let mut body = &data[HEADER_LEN..];
-    let mut out = Vec::with_capacity(body.len());
-    let mut index: u32 = 0;
-    loop {
-        // A full-size sealed segment is never the last one; what is left once
-        // they are taken is the last segment, between 0 and segment-1 bytes.
-        let last = body.len() < sealed_segment;
-        if last && body.len() < TAG_LEN {
+/// Opens one sealed blob a segment at a time: what a reader that streams it,
+/// or serves a byte range of it, needs. Built from the header and the sealed
+/// blob's total length, which together fix where every segment lies.
+pub struct Opener {
+    cipher: Aes256Gcm,
+    aad: Vec<u8>,
+    prefix: [u8; 7],
+    /// Plaintext bytes per segment.
+    segment: u64,
+    /// Index of the last segment (there are `last + 1`).
+    last: u64,
+    /// Sealed bytes of the last segment: its plaintext plus the tag.
+    last_sealed: u64,
+}
+
+impl Opener {
+    /// `header` is the blob's first [`HEADER_LEN`] bytes, `total` the sealed
+    /// blob's length.
+    pub fn new(
+        header: &[u8],
+        total: u64,
+        purpose: &[u8],
+        keys: &[BlobKey],
+    ) -> Result<Self, String> {
+        if !is_sealed(header) {
+            return Err("not an encrypted blob".to_string());
+        }
+        let header = &header[..HEADER_LEN];
+        let segment = u32::from_be_bytes([header[8], header[9], header[10], header[11]]);
+        if !(MIN_SEGMENT..=MAX_SEGMENT).contains(&segment) {
+            return Err("encrypted blob has a corrupt header".to_string());
+        }
+        let key_id = &header[4..8];
+        let key = keys.iter().find(|k| k.id == key_id).ok_or_else(|| {
+            "encrypted blob was sealed with a key that is neither SOLI_ENCRYPTION_KEY \
+             nor one of SOLI_ENCRYPTION_OLD_KEYS"
+                .to_string()
+        })?;
+        // Every segment but the last is full; the last holds less than a full
+        // segment's plaintext (none at all when the length divides evenly).
+        let sealed_segment = segment as u64 + TAG_LEN as u64;
+        let body = total
+            .checked_sub(HEADER_LEN as u64)
+            .ok_or_else(|| "encrypted blob is truncated".to_string())?;
+        let last = body / sealed_segment;
+        let last_sealed = body % sealed_segment;
+        if last_sealed < TAG_LEN as u64 {
             return Err("encrypted blob is truncated".to_string());
         }
-        let take = if last { body.len() } else { sealed_segment };
-        let nonce = nonce(prefix, index, last);
+        if last > u32::MAX as u64 {
+            return Err("encrypted blob has too many segments".to_string());
+        }
+        let mut prefix = [0u8; 7];
+        prefix.copy_from_slice(&header[12..19]);
+        Ok(Opener {
+            cipher: cipher(key)?,
+            aad: segment_aad(header, purpose),
+            prefix,
+            segment: segment as u64,
+            last,
+            last_sealed,
+        })
+    }
+
+    /// The length of the file the blob seals.
+    pub fn plain_len(&self) -> u64 {
+        self.last * self.segment + (self.last_sealed - TAG_LEN as u64)
+    }
+
+    /// Plaintext bytes per segment: segment `i` holds bytes from
+    /// `i * segment_size()`.
+    pub fn segment_size(&self) -> u64 {
+        self.segment
+    }
+
+    pub fn last_segment(&self) -> u64 {
+        self.last
+    }
+
+    /// Sealed bytes segment `index` takes.
+    pub fn sealed_len(&self, index: u64) -> u64 {
+        if index == self.last {
+            self.last_sealed
+        } else {
+            self.segment + TAG_LEN as u64
+        }
+    }
+
+    /// The sealed blob's byte offsets (inclusive) holding segments
+    /// `first..=last`.
+    pub fn sealed_span(&self, first: u64, last: u64) -> (u64, u64) {
+        let sealed_segment = self.segment + TAG_LEN as u64;
+        let start = HEADER_LEN as u64 + first * sealed_segment;
+        let end = HEADER_LEN as u64 + last * sealed_segment + self.sealed_len(last) - 1;
+        (start, end)
+    }
+
+    /// Authenticate and decrypt segment `index` (exactly `sealed_len(index)`
+    /// bytes). Nothing is returned for a segment that does not authenticate.
+    pub fn open_segment(&self, index: u64, sealed: &[u8]) -> Result<Vec<u8>, String> {
+        if index > self.last || sealed.len() as u64 != self.sealed_len(index) {
+            return Err("encrypted blob is truncated".to_string());
+        }
+        let nonce = nonce(&self.prefix, index as u32, index == self.last);
         #[allow(deprecated)]
-        let plain = cipher
+        self.cipher
             .decrypt(
                 Nonce::from_slice(&nonce),
                 aes_gcm::aead::Payload {
-                    msg: &body[..take],
-                    aad: &aad,
+                    msg: sealed,
+                    aad: &self.aad,
                 },
             )
             .map_err(|_| {
                 "encrypted blob does not open (wrong key, wrong collection, or corrupt data)"
                     .to_string()
-            })?;
-        out.extend_from_slice(&plain);
-        body = &body[take..];
-        if last {
-            return Ok(out);
-        }
-        index = index
-            .checked_add(1)
-            .ok_or_else(|| "encrypted blob has too many segments".to_string())?;
+            })
     }
 }
 
@@ -340,6 +424,55 @@ mod tests {
         );
         let err = open_with(&sealed, b"p", &[new]).unwrap_err();
         assert!(err.contains("SOLI_ENCRYPTION_OLD_KEYS"), "{err}");
+    }
+
+    #[test]
+    fn the_opener_reads_any_segment_on_its_own() {
+        let k = key("k1");
+        for len in [0usize, 5, 1024, 3000] {
+            let plain = sample(len);
+            let sealed = seal_with(&plain, b"p", &k, SEG).unwrap();
+            let opener = Opener::new(
+                &sealed[..HEADER_LEN],
+                sealed.len() as u64,
+                b"p",
+                std::slice::from_ref(&k),
+            )
+            .unwrap();
+            assert_eq!(opener.plain_len(), len as u64);
+            assert_eq!(opener.last_segment(), (len / SEG as usize) as u64);
+            // Backwards, one segment at a time.
+            for index in (0..=opener.last_segment()).rev() {
+                let (a, b) = opener.sealed_span(index, index);
+                let got = opener
+                    .open_segment(index, &sealed[a as usize..=b as usize])
+                    .unwrap();
+                let from = index as usize * SEG as usize;
+                assert_eq!(got, plain[from..(from + SEG as usize).min(len)]);
+            }
+            let (a, b) = opener.sealed_span(0, opener.last_segment());
+            assert_eq!((a, b), (HEADER_LEN as u64, sealed.len() as u64 - 1));
+        }
+    }
+
+    #[test]
+    fn a_segment_does_not_open_at_another_index() {
+        let k = key("k1");
+        let sealed = seal_with(&sample(3000), b"p", &k, SEG).unwrap();
+        let opener = Opener::new(
+            &sealed[..HEADER_LEN],
+            sealed.len() as u64,
+            b"p",
+            std::slice::from_ref(&k),
+        )
+        .unwrap();
+        let (a, b) = opener.sealed_span(0, 0);
+        assert!(opener
+            .open_segment(1, &sealed[a as usize..=b as usize])
+            .is_err());
+        // A total length that cuts the last segment short is refused up front.
+        let short = HEADER_LEN as u64 + 2 * (SEG as u64 + 16) + 3;
+        assert!(Opener::new(&sealed[..HEADER_LEN], short, b"p", &[k]).is_err());
     }
 
     #[test]

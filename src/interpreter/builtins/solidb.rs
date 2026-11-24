@@ -1630,12 +1630,14 @@ fn register_solidb_class(env: &mut Environment) {
                         })
                     }
                     "blob_response" => {
-                        // (collection, blob_id, req[, headers]) -> a response
-                        // hash whose body the server streams from SoliDB,
-                        // with the client's Range. See `serve::blob_stream`.
-                        if args.len() > 5 {
+                        // (collection, blob_id, req[, headers[, options]]) ->
+                        // a response hash whose body the server streams from
+                        // SoliDB, with the client's Range. `{"encrypted": true}`
+                        // opens an SBE-sealed blob on the way out. See
+                        // `serve::blob_stream`.
+                        if args.len() > 6 {
                             return Err(format!(
-                                "blob_response() expects 3 or 4 arguments (collection, blob_id, req[, headers]), got {}",
+                                "blob_response() expects 3 to 5 arguments (collection, blob_id, req[, headers[, options]]), got {}",
                                 args.len() - 1
                             ));
                         }
@@ -1657,6 +1659,28 @@ fn register_solidb_class(env: &mut Environment) {
                                 ))
                             }
                         };
+                        let encrypted = match args.get(5) {
+                            None | Some(Value::Null) => false,
+                            Some(Value::Hash(options)) => matches!(
+                                options.borrow().get(&HashKey::String("encrypted".into())),
+                                Some(Value::Bool(true))
+                            ),
+                            Some(other) => {
+                                return Err(format!(
+                                    "blob_response() expects an options hash, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let sealed = if encrypted {
+                            use crate::interpreter::builtins::blob_crypto;
+                            Some(crate::serve::blob_stream::Sealed {
+                                purpose: blob_crypto::purpose(&collection),
+                                keys: blob_crypto::keyring()?,
+                            })
+                        } else {
+                            None
+                        };
                         let client =
                             connected_client(&host, &database, &auth_username, &auth_password)?;
                         let (url, auth) = client
@@ -1668,6 +1692,7 @@ fn register_solidb_class(env: &mut Environment) {
                             &blob_id,
                             &args[3],
                             args.get(4),
+                            sealed,
                         )
                     }
                     "delete_blob" => {

@@ -358,15 +358,15 @@ class AttachmentsController < Controller
             # with the client's `Range` forwarded — an audio player seeking in a
             # 150 MB episode gets the bytes it asked for, and no worker holds
             # the file. HEAD gets the headers alone.
-            # An encrypted blob is opened whole, so it is not streamed (and a
-            # `Range` is answered with the whole file).
-            unless config["encrypted"] || (ct.starts_with("image/") && this._has_image_transforms(query))
+            # An encrypted blob streams too: the server opens it segment by
+            # segment, and a `Range` costs the segments it touches.
+            unless ct.starts_with("image/") && this._has_image_transforms(query)
                 return solidb_blob_response(client, config["collection"], blob_id, req, {
                     "Content-Type":           ct,
                     "Content-Disposition":    this._disposition(ct),
                     "X-Content-Type-Options": "nosniff",
                     "Cache-Control":          "private, max-age=300"
-                })
+                }, { "encrypted": config["encrypted"] == true })
             end
             stored = __soli_blob_open(config["collection"], solidb_get_blob(client, config["collection"], blob_id), config["encrypted"] == true)
             return halt(404, "Not found") if stored.nil?
