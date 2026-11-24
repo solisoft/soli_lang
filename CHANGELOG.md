@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.41.1] - 2026-11-24
+
 ### Added
 - **attachments: encrypted files stream, with `Range`.** In 2.41.0 an
   encrypted SoliDB attachment was opened whole in memory and a `Range` got
