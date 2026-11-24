@@ -128,13 +128,71 @@ fn from_wire(snapshot: WireSnapshot) -> PresenceSnapshot {
         .collect()
 }
 
+/// A presence message as it travels: the op, and where it stands among
+/// those of its node.
+///
+/// A node's ops are published in order, but a `sync` is a snapshot: taken a
+/// moment before a join and published a moment after it, it reached the
+/// others last and took the join away again until the next beat (and gave a
+/// user who had just left ten more seconds). The number says which came
+/// first. A `sync` takes its own *before* reading the state, so whatever it
+/// misses carries a higher one; the other ops take theirs once the change
+/// is made. A receiver then drops a `sync` older than an op it has applied.
+/// `0`: a node from before the numbering, taken as it always was.
+#[derive(Serialize, Deserialize)]
+struct Stamped {
+    #[serde(default)]
+    seq: u64,
+    #[serde(flatten)]
+    op: PresenceOp,
+}
+
+static NEXT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_seq() -> u64 {
+    NEXT_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
+
 fn publish_op(id: TenantId, op: &PresenceOp) {
+    publish_stamped(id, next_seq(), op);
+}
+
+fn publish_stamped(id: TenantId, seq: u64, op: &PresenceOp) {
     if super::backend() == super::Backend::Local {
         return;
     }
-    if let Ok(message) = serde_json::to_string(op) {
+    let stamped = Stamped {
+        seq,
+        op: op.clone(),
+    };
+    if let Ok(message) = serde_json::to_string(&stamped) {
         super::publish_for(id, Target::Presence, &message);
     }
+}
+
+/// The highest number among the ops applied from each node, per
+/// application. Node names carry a per-process nonce, so a restarted node is
+/// a new one; the map is emptied when it grows past any real cluster.
+static LAST_OP: crate::serve::tenant::TenantValue<HashMap<String, u64>> =
+    crate::serve::tenant::TenantValue::new(HashMap::new);
+
+/// Whether an op numbered `seq` from `node` is applied, given the highest
+/// op number applied from it so far; records it when it is an op.
+fn admit(last_ops: &mut HashMap<String, u64>, node: &str, seq: u64, is_sync: bool) -> bool {
+    if seq == 0 {
+        return true;
+    }
+    let last = last_ops.get(node).copied().unwrap_or(0);
+    if is_sync {
+        return seq > last;
+    }
+    if seq > last {
+        if last_ops.len() > 4096 {
+            last_ops.clear();
+        }
+        last_ops.insert(node.to_string(), seq);
+    }
+    true
 }
 
 /// Tell the other nodes this process tracked `meta`.
@@ -226,11 +284,14 @@ pub async fn send_diffs(registry: &WebSocketRegistry, diffs: Vec<ChannelDiff>) {
 /// Publish this process's full presence and connection count. Returns
 /// whether there was anything to state.
 async fn publish_sync(registry: &WebSocketRegistry) -> bool {
+    // Numbered before the state is read: see `Stamped`.
+    let seq = next_seq();
     let snapshot = registry.local_presence_snapshot().await;
     let connections = registry.connection_count().await;
     let held = !snapshot.is_empty() || connections > 0;
-    publish_op(
+    publish_stamped(
         tenant::current_id(),
+        seq,
         &PresenceOp::Sync {
             state: to_wire(&snapshot),
             connections,
@@ -248,24 +309,51 @@ async fn holds_anything(registry: &WebSocketRegistry) -> bool {
 /// application that received it. Runs on the server runtime; without one (a
 /// script, `soli worker`) there are no sockets to tell, and nothing to do.
 pub fn receive(node: &str, message: &str) -> bool {
-    let Ok(op) = serde_json::from_str::<PresenceOp>(message) else {
+    let Ok(Stamped { seq, op }) = serde_json::from_str::<Stamped>(message) else {
         return false;
     };
-    let Some(handle) = crate::serve::websocket::try_runtime_handle() else {
+    let Some(queue) = inbound() else {
         return false;
     };
+    queue
+        .send((tenant::current_id(), node.to_string(), seq, op))
+        .is_ok()
+}
+
+type Inbound = (TenantId, String, u64, PresenceOp);
+
+/// The ops received, applied one after the other in the order the bus
+/// delivered them. Each used to get a task of its own, and two from one
+/// node could be applied in either order.
+fn inbound() -> Option<&'static tokio::sync::mpsc::UnboundedSender<Inbound>> {
+    static QUEUE: std::sync::OnceLock<Option<tokio::sync::mpsc::UnboundedSender<Inbound>>> =
+        std::sync::OnceLock::new();
+    QUEUE
+        .get_or_init(|| {
+            let handle = crate::serve::websocket::try_runtime_handle()?;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Inbound>();
+            handle.spawn(async move {
+                while let Some((id, node, seq, op)) = rx.recv().await {
+                    tenant::task_scope(id, take_in(node, seq, op)).await;
+                }
+            });
+            Some(tx)
+        })
+        .as_ref()
+}
+
+/// Apply one received op, under the application that received it.
+async fn take_in(node: String, seq: u64, op: PresenceOp) {
     let registry = crate::serve::websocket::get_ws_registry();
-    let node = node.to_string();
-    let _guard = handle.enter();
-    tenant::spawn(async move {
-        let hello = op == PresenceOp::Hello;
+    let hello = op == PresenceOp::Hello;
+    let is_sync = matches!(op, PresenceOp::Sync { .. });
+    if LAST_OP.write(|last_ops| admit(last_ops, &node, seq, is_sync)) {
         let diffs = apply(&registry, &node, op).await;
         send_diffs(&registry, diffs).await;
-        if hello && holds_anything(&registry).await {
-            publish_sync(&registry).await;
-        }
-    });
-    true
+    }
+    if hello && holds_anything(&registry).await {
+        publish_sync(&registry).await;
+    }
 }
 
 /// The heartbeat beside the bus subscriber: a `hello` each time the
@@ -318,6 +406,47 @@ mod tests {
             online_at: 1,
             extra,
         }
+    }
+
+    #[test]
+    fn a_sync_older_than_an_op_already_applied_is_dropped() {
+        let mut last = HashMap::new();
+        // A join numbered 5, then the snapshot that was taken before it.
+        assert!(admit(&mut last, "b", 5, false));
+        assert!(
+            !admit(&mut last, "b", 3, true),
+            "the stale sync was applied"
+        );
+        // The next beat's snapshot is newer than everything, and is taken.
+        assert!(admit(&mut last, "b", 9, true));
+        // An op that arrives late is still applied (it is idempotent), and
+        // does not move the mark back.
+        assert!(admit(&mut last, "b", 4, false));
+        assert!(!admit(&mut last, "b", 4, true));
+        // Another node has its own numbers.
+        assert!(admit(&mut last, "c", 1, true));
+        // A node from before the numbering: everything, as before.
+        assert!(admit(&mut last, "old", 0, true));
+        assert!(admit(&mut last, "old", 0, false));
+    }
+
+    #[test]
+    fn a_stamped_op_reads_with_or_without_its_number() {
+        let with: Stamped = serde_json::from_str(r#"{"seq":7,"op":"hello"}"#).unwrap();
+        assert_eq!((with.seq, with.op), (7, PresenceOp::Hello));
+        // What a node from before the numbering sends.
+        let without: Stamped = serde_json::from_str(r#"{"op":"hello"}"#).unwrap();
+        assert_eq!((without.seq, without.op), (0, PresenceOp::Hello));
+        // And what such a node reads of ours: the op, the number ignored.
+        let sent = serde_json::to_string(&Stamped {
+            seq: 7,
+            op: PresenceOp::Hello,
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<PresenceOp>(&sent).unwrap(),
+            PresenceOp::Hello
+        );
     }
 
     fn rt() -> tokio::runtime::Runtime {

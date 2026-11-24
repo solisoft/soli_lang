@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+- **realtime: a presence snapshot no longer undoes what came after it.**
+  Across servers on a bus, a node restates its whole presence every ten
+  seconds. Taken a moment before a user was tracked and received a moment
+  after the join, that snapshot took the user away again on the other
+  servers until the next beat — and gave one who had just left ten more
+  seconds. Each op now carries its place among those of its node, the
+  ops received are applied one after the other, and a snapshot older than
+  an op already applied is dropped. A server from before the numbering is
+  read as it always was.
+
 ## [2.40.2] - 2026-11-23
 
 ### Security

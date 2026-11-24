@@ -2557,7 +2557,8 @@ router_websocket(\"/ws/room\", \"room#handle\")
     connected = bus[\"connected\"]
     published = bus[\"published\"]
     received = bus[\"received\"]
-    {\"status\": 200, \"body\": \"#{connected}|#{published}|#{received}\"}
+    dropped = bus[\"dropped\"]
+    {\"status\": 200, \"body\": \"#{connected}|published=#{published}|dropped=#{dropped}|#{received}\"}
   end
 
   # GET /announce
@@ -2722,7 +2723,11 @@ end
         join.contains("presence_diff") && join.contains("alice"),
         "{join}"
     );
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // Presence is eventually consistent: what a node did not hear, it gets
+    // at the other's next beat (10 s). The bound leaves room for a publish
+    // the database was slow to take (its request times out at 10 s), the
+    // beat after it, and that beat's own delivery.
+    let deadline = Instant::now() + Duration::from_secs(45);
     for server in [&server_a, &server_b] {
         loop {
             let who = get(server, "/who");
