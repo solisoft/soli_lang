@@ -896,5 +896,5 @@ position, the log archive and the replay are after 2.13.0 (card #852).
 
 Blobs (`/_api/blob/{db}/{coll}` upload/download, chunked uploads), cluster
 (`/_api/cluster/*`), triggers, Lua scripts and services (`/api/{db}/{service}`,
-off with `--no-lua`, and absent from a binary built without the `lua` Cargo feature — the default after 2.16.0, published binaries included), SQL (`POST /_api/database/{db}/sql`), graph RAG, AI agents, sync, changefeed
+off with `--no-lua`, and absent from a binary built without the `lua` Cargo feature — the default from 3.0, published binaries included), SQL (`POST /_api/database/{db}/sql`), graph RAG, AI agents, sync, changefeed
 websocket (`/_api/ws/changefeed`), `GET /metrics`.
