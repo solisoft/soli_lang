@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.41.0] - 2026-11-24
+
 ### Added
 - **attachments: encryption at rest.** `"encrypted": true` on `uploader` /
   `has_one_attached` / `has_many_attached` seals the file before it reaches
