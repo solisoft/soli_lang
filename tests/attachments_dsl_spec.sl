@@ -107,6 +107,32 @@ describe("disk attachments") do
     end
   end
 
+  describe("streaming") do
+    test("the head reads the metadata alone, nil for an unknown id") do
+      id = store_attachment(DISK_CONFIG, {"filename": "hi.txt", "content_type": "text/plain", "data": HELLO_BASE64})
+      assert_eq(__soli_attachment_head(DISK_CONFIG, id), {"filename": "hi.txt", "content_type": "text/plain", "size": 5})
+      assert_null(__soli_attachment_head(DISK_CONFIG, "never-stored"))
+    end
+
+    test("the blob response describes the download and leaves the body to the server") do
+      id = store_attachment(DISK_CONFIG, {"filename": "hi.txt", "data": HELLO_BASE64})
+      req = {"method": "GET", "headers": {"range": "bytes=0-1"}}
+      response = __soli_attachment_blob_response(DISK_CONFIG, id, req, {"Content-Type": "text/plain"})
+      assert_eq(response["status"], 200)
+      assert_eq(response["body"], "")
+      assert_eq(response["headers"]["Content-Type"], "text/plain")
+      assert_eq(response["headers"]["ETag"], "\"#{id}\"")
+      assert(response["headers"]["x-soli-blob-stream"].present?)
+    end
+
+    test("a matching If-None-Match is a 304 without a download") do
+      id = store_attachment(DISK_CONFIG, {"data": HELLO_BASE64})
+      req = {"method": "GET", "headers": {"if-none-match": "\"#{id}\""}}
+      response = __soli_attachment_blob_response(DISK_CONFIG, id, req, {"Content-Type": "text/plain"})
+      assert_eq(response["status"], 304)
+    end
+  end
+
   describe("encrypted") do
     test("an encrypted store reads back as the file it was given") do
       skip("SOLI_ENCRYPTION_KEY is not set") unless hasenv("SOLI_ENCRYPTION_KEY")

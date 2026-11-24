@@ -2,7 +2,7 @@
 //!
 //! It covers what `S3.*` and the `s3` attachment service use — bucket list /
 //! create / delete, object put (from memory or streamed from a file), get,
-//! head, delete, copy, a paginated `ListObjectsV2`, and a presigned `PUT` —
+//! head, delete, copy, a paginated `ListObjectsV2`, and presigned `PUT` and `GET` —
 //! and nothing else. It replaced rusoto, which is unmaintained and pulled
 //! hyper 0.14 and a few megabytes of generated bindings into the build.
 //!
@@ -305,6 +305,23 @@ impl S3Client {
         expires_in: u64,
         signed_headers: &[(&str, &str)],
     ) -> String {
+        self.presign("PUT", bucket, key, expires_in, signed_headers)
+    }
+
+    /// A presigned `GET` URL valid `expires_in` seconds. Only `host` is
+    /// signed, so whoever uses it may add a `Range`.
+    pub fn presign_get(&self, bucket: &str, key: &str, expires_in: u64) -> String {
+        self.presign("GET", bucket, key, expires_in, &[])
+    }
+
+    fn presign(
+        &self,
+        method: &str,
+        bucket: &str,
+        key: &str,
+        expires_in: u64,
+        signed_headers: &[(&str, &str)],
+    ) -> String {
         let now = chrono::Utc::now();
         let host = self.host();
         let path = object_path(bucket, key);
@@ -318,7 +335,7 @@ impl S3Client {
         let signature = signature(
             &self.config,
             &now,
-            "PUT",
+            method,
             &path,
             &query,
             &headers,

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- **attachments: disk, S3 and R2 downloads stream, with `Range`.** Only
+  SoliDB blobs were streamed; a disk or S3 file was read whole into the
+  worker (plus its base64 copy) and a `Range` got the whole file.
+  `AttachmentsController#show` now parks a stream spec for every service
+  (`__soli_attachment_head` + `__soli_attachment_blob_response`):
+  `serve::blob_stream` gained a `Source` (`Http` for SoliDB and presigned
+  S3/R2 `GET`s, `File` for the disk) behind one `Upstream` shape, so the plain
+  relay and the segment-by-segment sealed relay serve all of them with
+  `206`/`416`/`HEAD`/`304`. `S3Client::presign_get`. Image transforms and
+  the edge's R2 path are unchanged.
+
 ## [2.41.1] - 2026-11-24
 
 ### Added

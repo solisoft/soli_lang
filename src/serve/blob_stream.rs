@@ -29,6 +29,12 @@
 //! Status, `Content-Range`, `Content-Length` and `Accept-Ranges` are taken from
 //! that answer; the representation headers (`Content-Type`,
 //! `Content-Disposition`, `nosniff`, `Cache-Control`) are the application's.
+//!
+//! The same relay serves the other attachment services ([`Source`]): an `s3`
+//! or `r2` blob is read through a presigned `GET` URL, which S3 answers with
+//! the same `206`/`416`/`200`; a `disk` blob is read from its file, which
+//! [`open_file`] answers the same way. `AttachmentsController#show` parks the
+//! spec through `__soli_attachment_blob_response`.
 
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -60,10 +66,8 @@ const UPSTREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) struct BlobStreamSpec {
     /// Matches the [`MARKER_HEADER`] value of the response it belongs to.
     pub(crate) token: u64,
-    /// `{base}/_api/blob/{db}/{collection}/{key}`, every segment encoded.
-    pub(crate) url: String,
-    /// The same credentials every other `Solidb` call sends, as one header.
-    pub(crate) auth: Option<(String, String)>,
+    /// Where the stored bytes are read from.
+    pub(crate) source: Source,
     /// The client's `Range`, normalised, when it is a single byte range whose
     /// `If-Range` (if any) still matches. `None` asks for the whole blob.
     pub(crate) range: Option<String>,
@@ -72,6 +76,21 @@ pub(crate) struct BlobStreamSpec {
     /// The blob is SBE-sealed (an `encrypted` attachment): open it segment by
     /// segment on the way out. `None` relays SoliDB's bytes as they are.
     pub(crate) sealed: Option<Sealed>,
+}
+
+/// Where a blob's stored bytes come from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// An HTTP `GET` that honours one `Range`: SoliDB's blob API
+    /// (`{base}/_api/blob/{db}/{collection}/{key}`, with the credentials every
+    /// other `Solidb` call sends, as one header), or a presigned S3/R2 URL.
+    Http {
+        url: String,
+        auth: Option<(String, String)>,
+    },
+    /// A file on this server's disk (the `disk` attachment service), read
+    /// with the same semantics: `206`/`416` for a Range, `404` when absent.
+    File(std::path::PathBuf),
 }
 
 /// How to open a sealed blob: the purpose it was sealed for and the keys.
@@ -251,8 +270,7 @@ fn response_hash(status: i64, headers: Vec<(String, String)>) -> Value {
 /// application's headers hash. A conditional `GET` whose `If-None-Match`
 /// matches is answered `304` here, without touching SoliDB.
 pub(crate) fn blob_response(
-    url: String,
-    auth: Option<(String, String)>,
+    source: Source,
     blob_id: &str,
     req: &Value,
     extra: Option<&Value>,
@@ -282,7 +300,7 @@ pub(crate) fn blob_response(
         }
         Some(other) => {
             return Err(format!(
-                "solidb_blob_response() expects a headers hash, got {}",
+                "a blob response expects a headers hash, got {}",
                 other.type_name()
             ))
         }
@@ -313,8 +331,7 @@ pub(crate) fn blob_response(
     let token = NEXT_TOKEN.fetch_add(1, Ordering::Relaxed);
     set_pending(BlobStreamSpec {
         token,
-        url,
-        auth,
+        source,
         range,
         head: method.eq_ignore_ascii_case("HEAD"),
         sealed,
@@ -521,6 +538,206 @@ pub(crate) async fn respond_with(
     }
 }
 
+// ---------------------------------------------------------------------------
+// The store: SoliDB, an S3/R2 bucket, or this server's disk
+// ---------------------------------------------------------------------------
+
+/// The stored bytes as they arrive, whatever the source.
+#[cfg(not(target_arch = "wasm32"))]
+type Chunks =
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Bytes, String>> + Send + Sync>>;
+
+/// How much of a file on disk one frame carries.
+#[cfg(not(target_arch = "wasm32"))]
+const FILE_CHUNK: u64 = 64 * 1024;
+
+/// One answer from the store: its status, the headers the relay reads
+/// (lowercase names), and its body.
+#[cfg(not(target_arch = "wasm32"))]
+struct Upstream {
+    status: u16,
+    headers: Vec<(String, String)>,
+    chunks: Chunks,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Upstream {
+    fn header(&self, name: &str) -> Option<String> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
+    }
+
+    fn bodiless(status: u16, headers: Vec<(String, String)>) -> Self {
+        Upstream {
+            status,
+            headers,
+            chunks: Box::pin(futures_util::stream::empty()),
+        }
+    }
+}
+
+/// One read of the stored blob with an optional Range. `Err` is the status
+/// to answer with.
+#[cfg(not(target_arch = "wasm32"))]
+async fn fetch(
+    client: &reqwest::Client,
+    spec: &BlobStreamSpec,
+    range: Option<String>,
+) -> Result<Upstream, u16> {
+    match &spec.source {
+        Source::Http { url, auth } => fetch_http(client, url, auth.as_ref(), range).await,
+        Source::File(path) => open_file(path, range.as_deref()).await,
+    }
+}
+
+/// One GET under the head timeout. A presigned URL carries its signature in
+/// the query string, so errors are logged without the URL.
+#[cfg(not(target_arch = "wasm32"))]
+async fn fetch_http(
+    client: &reqwest::Client,
+    url: &str,
+    auth: Option<&(String, String)>,
+    range: Option<String>,
+) -> Result<Upstream, u16> {
+    let mut request = client.get(url);
+    if let Some((name, value)) = auth {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    if let Some(range) = range {
+        request = request.header("Range", range);
+    }
+    let response = match tokio::time::timeout(UPSTREAM_HEAD_TIMEOUT, request.send()).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(e)) => {
+            eprintln!(
+                "[soli] blob stream: the store request failed: {}",
+                e.without_url()
+            );
+            return Err(502);
+        }
+        Err(_) => {
+            eprintln!(
+                "[soli] blob stream: the store sent no response within {}s",
+                UPSTREAM_HEAD_TIMEOUT.as_secs()
+            );
+            return Err(504);
+        }
+    };
+    let headers = [
+        "content-range",
+        "content-length",
+        "content-type",
+        "accept-ranges",
+    ]
+    .iter()
+    .filter_map(|name| {
+        response
+            .headers()
+            .get(*name)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| (name.to_string(), v.to_string()))
+    })
+    .collect();
+    Ok(Upstream {
+        status: response.status().as_u16(),
+        headers,
+        chunks: Box::pin(
+            response
+                .bytes_stream()
+                .map(|chunk| chunk.map_err(|e| e.without_url().to_string())),
+        ),
+    })
+}
+
+/// A file on disk answered the way SoliDB answers: `206` + `Content-Range`
+/// for a Range, `416` + `bytes */len` when no byte of it is there, `200`
+/// otherwise, `404` when the file is gone. The body is read `FILE_CHUNK`
+/// bytes at a time, each read only when the previous frame was taken.
+#[cfg(not(target_arch = "wasm32"))]
+async fn open_file(path: &std::path::Path, range: Option<&str>) -> Result<Upstream, u16> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Upstream::bodiless(404, Vec::new()))
+        }
+        Err(e) => {
+            eprintln!("[soli] blob stream: cannot open a stored file: {e}");
+            return Err(500);
+        }
+    };
+    let len = match file.metadata().await {
+        Ok(meta) => meta.len(),
+        Err(e) => {
+            eprintln!("[soli] blob stream: cannot stat a stored file: {e}");
+            return Err(500);
+        }
+    };
+    let mut headers = vec![("accept-ranges".to_string(), "bytes".to_string())];
+    let (status, start, count) = match range {
+        None => (200, 0, len),
+        Some(range) => match resolve_range(range, len) {
+            Some((a, b)) => {
+                headers.push(("content-range".to_string(), format!("bytes {a}-{b}/{len}")));
+                (206, a, b - a + 1)
+            }
+            None => {
+                headers.push(("content-range".to_string(), format!("bytes */{len}")));
+                return Ok(Upstream::bodiless(416, headers));
+            }
+        },
+    };
+    headers.push(("content-length".to_string(), count.to_string()));
+    if start > 0 {
+        if let Err(e) = file.seek(std::io::SeekFrom::Start(start)).await {
+            eprintln!("[soli] blob stream: cannot seek in a stored file: {e}");
+            return Err(500);
+        }
+    }
+    let chunks = futures_util::stream::unfold(Some((file, count)), |state| async move {
+        let (mut file, left) = state?;
+        if left == 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; left.min(FILE_CHUNK) as usize];
+        match file.read(&mut buf).await {
+            Ok(0) => Some((Err("the stored file ended early".to_string()), None)),
+            Ok(n) => {
+                buf.truncate(n);
+                Some((Ok(Bytes::from(buf)), Some((file, left - n as u64))))
+            }
+            Err(e) => Some((Err(e.to_string()), None)),
+        }
+    });
+    Ok(Upstream {
+        status,
+        headers,
+        chunks: Box::pin(chunks),
+    })
+}
+
+/// A short error answer.
+#[cfg(not(target_arch = "wasm32"))]
+fn error_response(headers: Vec<(String, String)>, status: u16) -> Response<ResponseBody> {
+    let text = match status {
+        404 => "Not found",
+        500 => "Internal Server Error",
+        504 => "Gateway Timeout",
+        _ => "Bad Gateway",
+    };
+    build(
+        Mapped {
+            status,
+            headers: error_headers(headers),
+            body: MappedBody::Text(text),
+        },
+        None,
+    )
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 async fn respond_plain(
     client: &reqwest::Client,
@@ -528,65 +745,26 @@ async fn respond_plain(
     spec: BlobStreamSpec,
 ) -> Response<ResponseBody> {
     let probe = spec.head && spec.range.is_none();
-    let mut request = client.get(&spec.url);
-    if let Some((name, value)) = &spec.auth {
-        request = request.header(name.as_str(), value.as_str());
-    }
     let range = if probe {
         Some("bytes=0-0".to_string())
     } else {
         spec.range.clone()
     };
-    if let Some(range) = range {
-        request = request.header("Range", range);
-    }
-
-    let upstream = match tokio::time::timeout(UPSTREAM_HEAD_TIMEOUT, request.send()).await {
-        Ok(Ok(response)) => response,
-        Ok(Err(e)) => {
-            eprintln!(
-                "[soli] blob stream: SoliDB request failed: {}",
-                e.without_url()
-            );
-            return build(
-                Mapped {
-                    status: 502,
-                    headers: error_headers(headers),
-                    body: MappedBody::Text("Bad Gateway"),
-                },
-                None,
-            );
-        }
-        Err(_) => {
-            eprintln!(
-                "[soli] blob stream: SoliDB sent no response within {}s",
-                UPSTREAM_HEAD_TIMEOUT.as_secs()
-            );
-            return build(
-                Mapped {
-                    status: 504,
-                    headers: error_headers(headers),
-                    body: MappedBody::Text("Gateway Timeout"),
-                },
-                None,
-            );
-        }
+    let upstream = match fetch(client, &spec, range).await {
+        Ok(upstream) => upstream,
+        Err(status) => return error_response(headers, status),
     };
-
-    let status = upstream.status().as_u16();
+    let status = upstream.status;
     if !matches!(status, 200 | 206 | 404 | 416) {
-        eprintln!("[soli] blob stream: SoliDB answered {status}; replying 502");
+        eprintln!("[soli] blob stream: the store answered {status}; replying 502");
     }
-    let mapped = {
-        let up_headers = upstream.headers();
-        let read = |name: &str| {
-            up_headers
-                .get(name)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string)
-        };
-        map_upstream(headers, status, &read, spec.head, probe)
-    };
+    let mapped = map_upstream(
+        headers,
+        status,
+        &|name| upstream.header(name),
+        spec.head,
+        probe,
+    );
     let body = (mapped.body == MappedBody::Upstream).then_some(upstream);
     build(mapped, body)
 }
@@ -620,64 +798,10 @@ pub(crate) fn resolve_range(range: &str, len: u64) -> Option<(u64, u64)> {
     (start <= end).then_some((start, end))
 }
 
-/// A short error answer for the sealed path.
+/// Read up to `want` bytes of a body (the sealed header), then let the rest go.
 #[cfg(not(target_arch = "wasm32"))]
-fn sealed_error(headers: Vec<(String, String)>, status: u16) -> Response<ResponseBody> {
-    let text = match status {
-        404 => "Not found",
-        500 => "Internal Server Error",
-        504 => "Gateway Timeout",
-        _ => "Bad Gateway",
-    };
-    build(
-        Mapped {
-            status,
-            headers: error_headers(headers),
-            body: MappedBody::Text(text),
-        },
-        None,
-    )
-}
-
-/// One GET to SoliDB with an optional Range, under the head timeout. `Err`
-/// is the status to answer with.
-#[cfg(not(target_arch = "wasm32"))]
-async fn fetch(
-    client: &reqwest::Client,
-    spec: &BlobStreamSpec,
-    range: Option<String>,
-) -> Result<reqwest::Response, u16> {
-    let mut request = client.get(&spec.url);
-    if let Some((name, value)) = &spec.auth {
-        request = request.header(name.as_str(), value.as_str());
-    }
-    if let Some(range) = range {
-        request = request.header("Range", range);
-    }
-    match tokio::time::timeout(UPSTREAM_HEAD_TIMEOUT, request.send()).await {
-        Ok(Ok(response)) => Ok(response),
-        Ok(Err(e)) => {
-            eprintln!(
-                "[soli] blob stream: SoliDB request failed: {}",
-                e.without_url()
-            );
-            Err(502)
-        }
-        Err(_) => {
-            eprintln!(
-                "[soli] blob stream: SoliDB sent no response within {}s",
-                UPSTREAM_HEAD_TIMEOUT.as_secs()
-            );
-            Err(504)
-        }
-    }
-}
-
-/// Read up to `want` bytes of a response body (the sealed header), then let
-/// the rest go.
-#[cfg(not(target_arch = "wasm32"))]
-async fn read_prefix(response: reqwest::Response, want: usize) -> Result<Vec<u8>, u16> {
-    let mut chunks = response.bytes_stream();
+async fn read_prefix(upstream: Upstream, want: usize) -> Result<Vec<u8>, u16> {
+    let mut chunks = upstream.chunks;
     let mut out = Vec::with_capacity(want);
     while out.len() < want {
         match tokio::time::timeout(UPSTREAM_IDLE_TIMEOUT, chunks.next()).await {
@@ -694,13 +818,13 @@ async fn read_prefix(response: reqwest::Response, want: usize) -> Result<Vec<u8>
 
 /// Relay a sealed (`encrypted`) blob as the file it seals, with `Range`.
 ///
-/// A first request reads the blob's header and its sealed length
+/// A first read takes the blob's header and its sealed length
 /// (`Range: bytes=0-18`). From those the file's length follows, and from the
-/// client's Range the segments that hold it: one more request fetches exactly
+/// client's Range the segments that hold it: one more read fetches exactly
 /// those segments, and each is authenticated and decrypted as it completes,
 /// then cut to the requested span. The memory a download costs is about one
 /// segment, whatever the file's size, and a slow client still slows the read
-/// from SoliDB. A segment that does not authenticate ends the body with an
+/// from the store. A segment that does not authenticate ends the body with an
 /// error before any of its bytes are sent: hyper then aborts the connection.
 ///
 /// A blob that does not start with an SBE header was stored before the
@@ -716,34 +840,30 @@ async fn respond_sealed(
 
     let probe = match fetch(client, &spec, Some(format!("bytes=0-{}", HEADER_LEN - 1))).await {
         Ok(response) => response,
-        Err(status) => return sealed_error(headers, status),
+        Err(status) => return error_response(headers, status),
     };
-    let total = match probe.status().as_u16() {
+    let total = match probe.status {
         206 => probe
-            .headers()
-            .get("content-range")
-            .and_then(|v| v.to_str().ok())
-            .and_then(complete_length),
+            .header("content-range")
+            .and_then(|v| complete_length(&v)),
         200 => probe
-            .headers()
-            .get("content-length")
-            .and_then(|v| v.to_str().ok())
+            .header("content-length")
             .and_then(|v| v.trim().parse().ok()),
         // An empty blob: nothing sealed there.
         416 => return respond_plain(client, headers, spec).await,
-        404 => return sealed_error(headers, 404),
+        404 => return error_response(headers, 404),
         other => {
-            eprintln!("[soli] blob stream: SoliDB answered {other}; replying 502");
-            return sealed_error(headers, 502);
+            eprintln!("[soli] blob stream: the store answered {other}; replying 502");
+            return error_response(headers, 502);
         }
     };
     let Some(total) = total else {
-        eprintln!("[soli] blob stream: SoliDB gave no length for a sealed blob");
-        return sealed_error(headers, 502);
+        eprintln!("[soli] blob stream: the store gave no length for a sealed blob");
+        return error_response(headers, 502);
     };
     let head = match read_prefix(probe, HEADER_LEN).await {
         Ok(head) => head,
-        Err(status) => return sealed_error(headers, status),
+        Err(status) => return error_response(headers, status),
     };
     if !is_sealed(&head) {
         return respond_plain(client, headers, spec).await;
@@ -752,7 +872,7 @@ async fn respond_sealed(
         Ok(opener) => opener,
         Err(e) => {
             eprintln!("[soli] blob stream: {e}");
-            return sealed_error(headers, 500);
+            return error_response(headers, 500);
         }
     };
 
@@ -813,16 +933,16 @@ async fn respond_sealed(
     let (from, to) = opener.sealed_span(first, last);
     let upstream = match fetch(client, &spec, Some(format!("bytes={from}-{to}"))).await {
         Ok(response) => response,
-        Err(status) => return sealed_error(app, status),
+        Err(status) => return error_response(app, status),
     };
     // A server that ignores the Range sends the whole blob: skip to `from`.
-    let skip = match upstream.status().as_u16() {
+    let skip = match upstream.status {
         206 => 0,
         200 => from,
-        404 => return sealed_error(app, 404),
+        404 => return error_response(app, 404),
         other => {
-            eprintln!("[soli] blob stream: SoliDB answered {other}; replying 502");
-            return sealed_error(app, 502);
+            eprintln!("[soli] blob stream: the store answered {other}; replying 502");
+            return error_response(app, 502);
         }
     };
     let body = sealed_body(upstream, opener, skip, first, last, start, end);
@@ -842,8 +962,8 @@ async fn respond_sealed(
 
 /// Where a sealed relay is.
 #[cfg(not(target_arch = "wasm32"))]
-struct SealedState<S> {
-    chunks: S,
+struct SealedState {
+    chunks: Chunks,
     opener: crate::interpreter::builtins::blob_crypto::Opener,
     /// Sealed bytes of the segment being assembled.
     pending: Vec<u8>,
@@ -856,12 +976,12 @@ struct SealedState<S> {
     end: u64,
 }
 
-/// SoliDB's sealed bytes, from the start of segment `first`, as the file's
+/// The store's sealed bytes, from the start of segment `first`, as the file's
 /// bytes `start..=end`: one frame per segment, each sent only once its tag
 /// has checked out.
 #[cfg(not(target_arch = "wasm32"))]
 fn sealed_body(
-    upstream: reqwest::Response,
+    upstream: Upstream,
     opener: crate::interpreter::builtins::blob_crypto::Opener,
     skip: u64,
     first: u64,
@@ -870,7 +990,7 @@ fn sealed_body(
     end: u64,
 ) -> ResponseBody {
     let state = SealedState {
-        chunks: upstream.bytes_stream(),
+        chunks: upstream.chunks,
         pending: Vec::with_capacity(opener.sealed_len(first) as usize),
         opener,
         skip,
@@ -896,19 +1016,16 @@ fn sealed_body(
                     state.pending.extend_from_slice(&bytes);
                 }
                 Ok(None) => {
-                    eprintln!("[soli] blob stream: SoliDB ended a sealed blob early");
+                    eprintln!("[soli] blob stream: the store ended a sealed blob early");
                     return Some((Err(std::io::Error::other("sealed blob truncated")), None));
                 }
                 Ok(Some(Err(e))) => {
-                    eprintln!(
-                        "[soli] blob stream: SoliDB body failed: {}",
-                        e.without_url()
-                    );
+                    eprintln!("[soli] blob stream: the store's body failed: {e}");
                     return Some((Err(std::io::Error::other("upstream body failed")), None));
                 }
                 Err(_) => {
                     eprintln!(
-                        "[soli] blob stream: SoliDB stalled for {}s; aborting",
+                        "[soli] blob stream: the store stalled for {}s; aborting",
                         UPSTREAM_IDLE_TIMEOUT.as_secs()
                     );
                     return Some((
@@ -942,7 +1059,7 @@ fn sealed_body(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn build(mapped: Mapped, upstream: Option<reqwest::Response>) -> Response<ResponseBody> {
+fn build(mapped: Mapped, upstream: Option<Upstream>) -> Response<ResponseBody> {
     let mut builder = Response::builder()
         .status(StatusCode::from_u16(mapped.status).unwrap_or(StatusCode::BAD_GATEWAY))
         .header("Server", "soliMVC");
@@ -962,30 +1079,26 @@ fn build(mapped: Mapped, upstream: Option<reqwest::Response>) -> Response<Respon
     })
 }
 
-/// SoliDB's body as a hyper body, pulled one chunk per frame hyper asks for.
+/// The store's body as a hyper body, pulled one chunk per frame hyper asks for.
 ///
-/// `unfold` only polls SoliDB when hyper polls the body, which it does once
+/// `unfold` only polls the store when hyper polls the body, which it does once
 /// the previous frame is written — that is the back-pressure. The idle timer
-/// wraps only the wait on SoliDB. An error ends the body early, and hyper
+/// wraps only the wait on the store. An error ends the body early, and hyper
 /// then aborts the connection rather than pretend a short body was complete.
 #[cfg(not(target_arch = "wasm32"))]
-fn relay_body(upstream: reqwest::Response) -> ResponseBody {
-    let chunks = upstream.bytes_stream();
-    let frames = futures_util::stream::unfold(Some(chunks), |state| async move {
+fn relay_body(upstream: Upstream) -> ResponseBody {
+    let frames = futures_util::stream::unfold(Some(upstream.chunks), |state| async move {
         let mut chunks = state?;
         match tokio::time::timeout(UPSTREAM_IDLE_TIMEOUT, chunks.next()).await {
             Ok(Some(Ok(bytes))) => Some((Ok(hyper::body::Frame::data(bytes)), Some(chunks))),
             Ok(None) => None,
             Ok(Some(Err(e))) => {
-                eprintln!(
-                    "[soli] blob stream: SoliDB body failed: {}",
-                    e.without_url()
-                );
+                eprintln!("[soli] blob stream: the store's body failed: {e}");
                 Some((Err(std::io::Error::other("upstream body failed")), None))
             }
             Err(_) => {
                 eprintln!(
-                    "[soli] blob stream: SoliDB stalled for {}s; aborting",
+                    "[soli] blob stream: the store stalled for {}s; aborting",
                     UPSTREAM_IDLE_TIMEOUT.as_secs()
                 );
                 Some((
@@ -1149,8 +1262,10 @@ mod tests {
             ("Content-Length", s("123")),
         ]);
         let response = blob_response(
-            "http://db/_api/blob/d/c/k1".into(),
-            Some(("Authorization".into(), "Basic eDp5".into())),
+            Source::Http {
+                url: "http://db/_api/blob/d/c/k1".into(),
+                auth: Some(("Authorization".into(), "Basic eDp5".into())),
+            },
             "k1",
             &req,
             Some(&extra),
@@ -1168,12 +1283,14 @@ mod tests {
         assert_eq!(get(&headers, "content-length"), None);
 
         let spec = take_pending().expect("a parked spec");
-        assert_eq!(spec.url, "http://db/_api/blob/d/c/k1");
-        assert_eq!(spec.range.as_deref(), Some("bytes=100-199"));
         assert_eq!(
-            spec.auth,
-            Some(("Authorization".to_string(), "Basic eDp5".to_string()))
+            spec.source,
+            Source::Http {
+                url: "http://db/_api/blob/d/c/k1".to_string(),
+                auth: Some(("Authorization".to_string(), "Basic eDp5".to_string())),
+            }
         );
+        assert_eq!(spec.range.as_deref(), Some("bytes=100-199"));
         assert!(!spec.head);
         assert_eq!(
             get(&headers, MARKER_HEADER),
@@ -1192,10 +1309,17 @@ mod tests {
     #[test]
     fn head_is_flagged_and_a_null_request_reads_as_get() {
         clear_pending();
-        blob_response("u".into(), None, "k", &request("HEAD", &[]), None, None).unwrap();
+        blob_response(
+            Source::File("u".into()),
+            "k",
+            &request("HEAD", &[]),
+            None,
+            None,
+        )
+        .unwrap();
         assert!(take_pending().unwrap().head);
 
-        blob_response("u".into(), None, "k", &Value::Null, None, None).unwrap();
+        blob_response(Source::File("u".into()), "k", &Value::Null, None, None).unwrap();
         let spec = take_pending().unwrap();
         assert!(!spec.head);
         assert_eq!(spec.range, None);
@@ -1209,7 +1333,8 @@ mod tests {
             ("Content-Type", s("video/mp4")),
             ("Cache-Control", s("private, max-age=300")),
         ]);
-        let response = blob_response("u".into(), None, "k9", &req, Some(&extra), None).unwrap();
+        let response =
+            blob_response(Source::File("u".into()), "k9", &req, Some(&extra), None).unwrap();
         assert!(matches!(
             hash_field(&response, "status"),
             Some(Value::Int(304))
@@ -1229,13 +1354,19 @@ mod tests {
             "GET",
             &[("range", "bytes=0-1"), ("if-range", "\"an-older-blob\"")],
         );
-        blob_response("u".into(), None, "k", &req, None, None).unwrap();
+        blob_response(Source::File("u".into()), "k", &req, None, None).unwrap();
         assert_eq!(take_pending().unwrap().range, None);
     }
 
     #[test]
     fn headers_must_be_a_hash() {
-        let err = blob_response("u".into(), None, "k", &Value::Null, Some(&s("nope")), None);
+        let err = blob_response(
+            Source::File("u".into()),
+            "k",
+            &Value::Null,
+            Some(&s("nope")),
+            None,
+        );
         assert!(err.unwrap_err().contains("headers hash"));
     }
 
@@ -1243,8 +1374,7 @@ mod tests {
     fn a_spec_is_used_only_by_the_response_carrying_its_token() {
         let spec = BlobStreamSpec {
             token: 7,
-            url: "u".into(),
-            auth: None,
+            source: Source::File("u".into()),
             range: None,
             head: false,
             sealed: None,
@@ -1501,8 +1631,10 @@ mod tests {
     fn spec(url: String, range: Option<&str>, head: bool) -> BlobStreamSpec {
         BlobStreamSpec {
             token: 1,
-            url,
-            auth: Some(("Authorization".into(), "Basic dTpw".into())),
+            source: Source::Http {
+                url,
+                auth: Some(("Authorization".into(), "Basic dTpw".into())),
+            },
             range: range.map(str::to_string),
             head,
             sealed: None,
@@ -2005,14 +2137,20 @@ mod tests {
         runtime.block_on(async {
             let http = build_client();
             let mut whole_spec = spec(url.clone(), None, false);
-            whole_spec.auth = auth.clone();
+            whole_spec.source = Source::Http {
+                url: url.clone(),
+                auth: auth.clone(),
+            };
             let whole = respond_with(&http, app_headers(), whole_spec).await;
             assert_eq!(whole.status(), 200);
             let (bytes, _) = drain(whole).await;
             assert!(bytes == *data, "whole blob from SoliDB");
 
             let mut part_spec = spec(url.clone(), Some("bytes=1048576-1048675"), false);
-            part_spec.auth = auth.clone();
+            part_spec.source = Source::Http {
+                url: url.clone(),
+                auth: auth.clone(),
+            };
             let part = respond_with(&http, app_headers(), part_spec).await;
             let status = part.status().as_u16();
             let (bytes, _) = drain(part).await;
@@ -2025,5 +2163,172 @@ mod tests {
                 other => panic!("unexpected status {other} for a range"),
             }
         });
+    }
+
+    // -- A disk file -------------------------------------------------------
+
+    fn file_spec(path: &std::path::Path, range: Option<&str>, head: bool) -> BlobStreamSpec {
+        BlobStreamSpec {
+            token: 1,
+            source: Source::File(path.to_path_buf()),
+            range: range.map(str::to_string),
+            head,
+            sealed: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_disk_file_streams_whole_by_range_and_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data");
+        let data = blob(3 * MB + 77);
+        std::fs::write(&path, &*data).unwrap();
+        let client = build_client();
+
+        let whole = respond_with(&client, app_headers(), file_spec(&path, None, false)).await;
+        assert_eq!(whole.status(), 200);
+        assert_eq!(
+            header(&whole, "content-length"),
+            Some(data.len().to_string())
+        );
+        assert_eq!(header(&whole, "accept-ranges").as_deref(), Some("bytes"));
+        assert_eq!(
+            header(&whole, "content-type").as_deref(),
+            Some("audio/mpeg")
+        );
+        let (bytes, frames) = drain(whole).await;
+        assert!(bytes == *data, "the whole file, byte for byte");
+        assert!(frames > 1, "read in chunks, not as one buffer");
+
+        let (start, end) = (MB + 5, 2 * MB + 9);
+        let range = format!("bytes={start}-{end}");
+        let part = respond_with(
+            &client,
+            app_headers(),
+            file_spec(&path, Some(&range), false),
+        )
+        .await;
+        assert_eq!(part.status(), 206);
+        assert_eq!(
+            header(&part, "content-range"),
+            Some(format!("bytes {start}-{end}/{}", data.len()))
+        );
+        assert_eq!(
+            header(&part, "content-length"),
+            Some((end - start + 1).to_string())
+        );
+        assert!(drain(part).await.0 == data[start..=end]);
+
+        let tail = respond_with(
+            &client,
+            app_headers(),
+            file_spec(&path, Some("bytes=-10"), false),
+        )
+        .await;
+        assert_eq!(tail.status(), 206);
+        assert!(drain(tail).await.0 == data[data.len() - 10..]);
+
+        let past = format!("bytes={}-", data.len());
+        let unsatisfiable =
+            respond_with(&client, app_headers(), file_spec(&path, Some(&past), false)).await;
+        assert_eq!(unsatisfiable.status(), 416);
+        assert_eq!(
+            header(&unsatisfiable, "content-range"),
+            Some(format!("bytes */{}", data.len()))
+        );
+
+        let head = respond_with(&client, app_headers(), file_spec(&path, None, true)).await;
+        assert_eq!(head.status(), 200);
+        assert_eq!(
+            header(&head, "content-length"),
+            Some(data.len().to_string())
+        );
+        assert!(drain(head).await.0.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_empty_or_missing_disk_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty");
+        std::fs::write(&empty, b"").unwrap();
+        let client = build_client();
+
+        let response = respond_with(&client, app_headers(), file_spec(&empty, None, false)).await;
+        assert_eq!(response.status(), 200);
+        assert_eq!(header(&response, "content-length").as_deref(), Some("0"));
+        assert!(drain(response).await.0.is_empty());
+        let head = respond_with(&client, app_headers(), file_spec(&empty, None, true)).await;
+        assert_eq!(head.status(), 200);
+        assert_eq!(header(&head, "content-length").as_deref(), Some("0"));
+
+        let gone = dir.path().join("gone");
+        let missing = respond_with(&client, app_headers(), file_spec(&gone, None, false)).await;
+        assert_eq!(missing.status(), 404);
+        let mut sealed = file_spec(&gone, None, false);
+        sealed.sealed = Some(Sealed {
+            purpose: blob_crypto::purpose("media"),
+            keys: vec![test_key()],
+        });
+        assert_eq!(
+            respond_with(&client, app_headers(), sealed).await.status(),
+            404
+        );
+    }
+
+    #[tokio::test]
+    async fn a_sealed_disk_file_streams_as_the_file_by_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data");
+        let plain = blob(4 * SEGMENT + 321);
+        let sealed = blob_crypto::seal_with(
+            &plain,
+            &blob_crypto::purpose("media"),
+            &test_key(),
+            blob_crypto::DEFAULT_SEGMENT,
+        )
+        .unwrap();
+        std::fs::write(&path, &sealed).unwrap();
+        let client = build_client();
+        let with_key = |range: Option<&str>, head: bool| {
+            let mut spec = file_spec(&path, range, head);
+            spec.sealed = Some(Sealed {
+                purpose: blob_crypto::purpose("media"),
+                keys: vec![test_key()],
+            });
+            spec
+        };
+
+        let whole = respond_with(&client, app_headers(), with_key(None, false)).await;
+        assert_eq!(whole.status(), 200);
+        assert_eq!(
+            header(&whole, "content-length"),
+            Some(plain.len().to_string())
+        );
+        assert!(drain(whole).await.0 == *plain);
+
+        let (start, end) = (SEGMENT - 3, 3 * SEGMENT + 10);
+        let range = format!("bytes={start}-{end}");
+        let part = respond_with(&client, app_headers(), with_key(Some(&range), false)).await;
+        assert_eq!(part.status(), 206);
+        assert_eq!(
+            header(&part, "content-range"),
+            Some(format!("bytes {start}-{end}/{}", plain.len()))
+        );
+        assert!(drain(part).await.0 == plain[start..=end]);
+
+        let head = respond_with(&client, app_headers(), with_key(None, true)).await;
+        assert_eq!(
+            header(&head, "content-length"),
+            Some(plain.len().to_string())
+        );
+
+        // A plaintext file under an encrypted uploader predates the option.
+        let legacy = dir.path().join("legacy");
+        std::fs::write(&legacy, b"stored before encryption").unwrap();
+        let mut spec = file_spec(&legacy, Some("bytes=7-12"), false);
+        spec.sealed = with_key(None, false).sealed;
+        let old = respond_with(&client, app_headers(), spec).await;
+        assert_eq!(old.status(), 206);
+        assert_eq!(drain(old).await.0, b"before");
     }
 }

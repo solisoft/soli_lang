@@ -339,6 +339,30 @@ class AttachmentsController < Controller
 
         meta = null
         b64 = null
+        if __soli_bucket_service(service) && !__soli_edge()
+            # A disk file or a bucket object streams too, as a SoliDB blob
+            # does: the server reads it chunk by chunk after the action
+            # returns (a disk file where it lies, an S3/R2 object through a
+            # presigned GET), with the client's `Range`, and opens an
+            # encrypted one segment by segment. Only an image transform,
+            # which needs the decoded pixels, reads the whole file here.
+            head = __soli_attachment_head(config, blob_id)
+            return halt(404, "Not found") if head.nil?
+
+            ct    = head["content_type"] ?? "application/octet-stream"
+            query = this._apply_path_format(query, ct, ctx["ext"])
+            return halt(404, "Not found") if query.nil?
+
+            unless ct.starts_with("image/") && this._has_image_transforms(query)
+                return __soli_attachment_blob_response(config, blob_id, req, {
+                    "Content-Type":           ct,
+                    "Content-Disposition":    this._disposition(ct),
+                    "X-Content-Type-Options": "nosniff",
+                    "Cache-Control":          "private, max-age=300"
+                })
+            end
+        end
+
         if __soli_bucket_service(service)
             stored = read_attachment(config, blob_id)
             return halt(404, "Not found") if stored.nil?

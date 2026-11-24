@@ -1687,8 +1687,7 @@ fn register_solidb_class(env: &mut Environment) {
                             .blob_download_target(&collection, &blob_id)
                             .map_err(|e| format!("blob_response() failed: {}", e))?;
                         crate::serve::blob_stream::blob_response(
-                            url,
-                            auth,
+                            crate::serve::blob_stream::Source::Http { url, auth },
                             &blob_id,
                             &args[3],
                             args.get(4),

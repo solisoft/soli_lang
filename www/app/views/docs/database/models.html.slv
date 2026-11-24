@@ -1010,16 +1010,17 @@ end</code></pre>
     </p>
 
     <p class="text-gray-400 mb-6">
-        <strong class="text-white">Large SoliDB attachments are streamed.</strong> For a SoliDB attachment the blob route
-        does not load the file. The server relays it from SoliDB to the client chunk by chunk, so a 150&nbsp;MB episode
-        costs one chunk of memory per download. The client&rsquo;s <code>Range</code> is forwarded, so an audio player
-        that seeks gets <code>206 Partial Content</code> with only the bytes it asked for, and <code>416</code> past the
-        end. <code>HEAD</code> returns the size without the body. The blob id is the <code>ETag</code>, so a
-        revalidation is a <code>304</code> with no SoliDB round trip. An image with a transform in the query string
-        (<code>?w=</code>, <code>?fmt=</code>&hellip;) is still loaded and transformed. Disk and S3 attachments are sent
-        whole, without <code>Range</code>. On a Cloudflare Worker, an R2 attachment is served by the Worker from
+        <strong class="text-white">Attachments are streamed.</strong> The blob route does not load the file. The
+        server relays it to the client chunk by chunk after the action returns &mdash; from SoliDB, from the disk file
+        where it lies, or from an S3/R2 bucket through a short-lived presigned <code>GET</code> &mdash; so a
+        150&nbsp;MB episode costs one chunk of memory per download. The client&rsquo;s <code>Range</code> is honoured,
+        so an audio player that seeks gets <code>206 Partial Content</code> with only the bytes it asked for, and
+        <code>416</code> past the end. <code>HEAD</code> returns the size without the body. The blob id is the
+        <code>ETag</code>, so a revalidation is a <code>304</code> with no round trip to the store. An image with a
+        transform in the query string (<code>?w=</code>, <code>?fmt=</code>&hellip;) is still loaded and transformed.
+        On a Cloudflare Worker, an R2 attachment is served by the Worker from
         the bucket &mdash; <code>Range</code>, <code>304</code> and image transforms through the Images binding included
-        (see <a href="/docs/development-tools/edge#files" class="text-amber-400 hover:underline">Cloudflare Workers</a>). The route uses
+        (see <a href="/docs/development-tools/edge#files" class="text-amber-400 hover:underline">Cloudflare Workers</a>). For SoliDB the route uses
         <a href="/docs/builtins/upload#solidb-blob-response" class="text-amber-400 hover:underline">solidb.blob_response</a>,
         which your own actions can call too.
     </p>
@@ -1084,7 +1085,7 @@ end</code></pre>
     <ul class="text-gray-400 mb-6 space-y-1 ml-4 list-disc">
         <li>A file stored before <code>encrypted</code> was turned on is still served as it is.</li>
         <li>An image <code>format</code> / <code>max_width</code> conversion runs before encryption, and URL transforms (<code>photo_url({"w": 200})</code>) after decryption.</li>
-        <li>On SoliDB an encrypted file is <strong>streamed</strong>, <code>Range</code> included: the server fetches only the 64&nbsp;KiB segments a request touches and decrypts each one as it arrives, so a download costs about one segment of memory, and a segment that fails authentication ends the response before any of its bytes is sent. On disk, S3 and R2 the file is decrypted whole in memory, as those services already load a file whole when they serve it.</li>
+        <li>An encrypted file is <strong>streamed</strong>, <code>Range</code> included, on SoliDB, disk, S3 and R2 alike: the server reads only the 64&nbsp;KiB segments a request touches and decrypts each one as it arrives, so a download costs about one segment of memory, and a segment that fails authentication ends the response before any of its bytes is sent. <code>read_attachment</code> / <code>read_upload</code> and an image transform still decrypt the whole file, since they need its bytes.</li>
         <li><code>direct_upload_start</code> refuses an encrypted attachment: the browser would send the file straight to the bucket, where nothing can encrypt it. Use <a href="#large-uploads" class="text-amber-400 hover:underline">resumable uploads</a> instead; a finished upload is read, encrypted and stored.</li>
         <li>On the edge build, an encrypted R2 file is decrypted by the app rather than served by the Worker straight from the bucket, and URL image transforms are ignored for it: the Worker has no image codecs, and Cloudflare Images cannot read the ciphertext.</li>
     </ul>

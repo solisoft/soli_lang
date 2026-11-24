@@ -306,6 +306,26 @@ fn read_disk(collection: &str, id: &str) -> Result<(BlobMeta, Vec<u8>), String> 
     Ok((meta, data))
 }
 
+/// A disk blob's metadata alone, or `None` when it is not there.
+fn head_disk(collection: &str, id: &str) -> Result<Option<BlobMeta>, String> {
+    let (data_path, meta_path) = disk_paths(collection, id);
+    let Ok(raw) = fs::read(&meta_path) else {
+        return Ok(None);
+    };
+    if !data_path.is_file() {
+        return Ok(None);
+    }
+    serde_json::from_slice(&raw)
+        .map(Some)
+        .map_err(|e| format!("attachment disk meta: {e}"))
+}
+
+/// How long the presigned `GET` a streamed S3/R2 download opens with stays
+/// valid. The relay uses it at once (twice for an encrypted file); a download
+/// already under way outlives it.
+#[cfg(all(feature = "cloud", not(target_arch = "wasm32")))]
+const STREAM_URL_SECONDS: u64 = 300;
+
 fn delete_disk(collection: &str, id: &str) -> Result<(), String> {
     let (data_path, meta_path) = disk_paths(collection, id);
     let _ = fs::remove_file(data_path);
@@ -850,6 +870,93 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             };
             Ok(head.map(meta_value).unwrap_or(Value::Null))
         })),
+    );
+
+    // __soli_attachment_head(config, id) — {filename, content_type, size} of a
+    // disk, s3 or r2 blob from its metadata alone, or nil when there is none.
+    // `size` is the stored length: the sealed one for an encrypted file.
+    env.define(
+        "__soli_attachment_head".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_attachment_head",
+            Some(2),
+            |args| {
+                let (Some(Value::Hash(config)), Some(Value::String(id))) =
+                    (args.first(), args.get(1))
+                else {
+                    return Err(
+                        "__soli_attachment_head(config, id) expects a config hash and an id".into(),
+                    );
+                };
+                let config = config.borrow();
+                let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
+                let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
+                let head = match service.as_str() {
+                    "disk" => head_disk(&collection, id)?,
+                    #[cfg(target_arch = "wasm32")]
+                    "r2" => r2::head(&collection, id)?,
+                    #[cfg(feature = "cloud")]
+                    "s3" | "r2" => head_s3(&collection, id)?,
+                    #[cfg(not(feature = "cloud"))]
+                    "s3" => return Err(NO_CLOUD.to_string()),
+                    #[cfg(not(any(feature = "cloud", target_arch = "wasm32")))]
+                    "r2" => return Err(NO_CLOUD.to_string()),
+                    _ => None,
+                };
+                Ok(head.map(meta_value).unwrap_or(Value::Null))
+            },
+        )),
+    );
+
+    // __soli_attachment_blob_response(config, id, req, headers) — the response
+    // hash for a disk, s3 or r2 blob that the server streams to the client
+    // after the action returns, with the client's Range, opening an
+    // `encrypted` file segment by segment. See `serve::blob_stream`. A disk
+    // file is read where it lies; a bucket object through a presigned GET.
+    env.define(
+        "__soli_attachment_blob_response".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_attachment_blob_response",
+            Some(4),
+            |args| {
+                let (Some(Value::Hash(config)), Some(Value::String(id))) =
+                    (args.first(), args.get(1))
+                else {
+                    return Err("__soli_attachment_blob_response(config, id, req, headers) expects a config hash and an id".into());
+                };
+                let config = config.borrow().clone();
+                let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
+                let collection =
+                    hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
+                use crate::serve::blob_stream::{blob_response, Sealed, Source};
+                let source = match service.as_str() {
+                    "disk" => Source::File(disk_paths(&collection, id).0),
+                    #[cfg(all(feature = "cloud", not(target_arch = "wasm32")))]
+                    "s3" | "r2" => Source::Http {
+                        url: S3Client::from_env()?.presign_get(
+                            &s3_bucket()?,
+                            &s3_key(&collection, id),
+                            STREAM_URL_SECONDS,
+                        ),
+                        auth: None,
+                    },
+                    other => {
+                        return Err(format!(
+                            "a {other:?} attachment cannot be streamed by this build"
+                        ))
+                    }
+                };
+                let sealed = if wants_encryption(&config) {
+                    Some(Sealed {
+                        purpose: super::blob_crypto::purpose(&collection),
+                        keys: super::blob_crypto::keyring()?,
+                    })
+                } else {
+                    None
+                };
+                blob_response(source, id, args.get(2).unwrap_or(&Value::Null), args.get(3), sealed)
+            },
+        )),
     );
 
     // __soli_r2_object(config, id, image) — the value of the `x-soli-r2-object`

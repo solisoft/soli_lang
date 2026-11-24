@@ -1673,18 +1673,19 @@ image or audio/video, so a stored file cannot be re-typed into a script by the b
 Images other than SVG, and `audio/*` / `video/*`, are `inline`: a podcast or a
 clip plays in the page's `<audio>` / `<video>` and in the browser's own player.
 
-**Large SoliDB attachments are streamed.** For a SoliDB attachment the blob
-route does not load the file. The server relays it from SoliDB to the client
-chunk by chunk, so a 150 MB episode costs one chunk of memory per download.
-The client's `Range` is forwarded, so an audio player that seeks gets
+**Attachments are streamed.** The blob route does not load the file. The
+server relays it to the client chunk by chunk after the action returns — from
+SoliDB, from the disk file where it lies, or from an S3/R2 bucket through a
+short-lived presigned `GET` — so a 150 MB episode costs one chunk of memory per
+download. The client's `Range` is honoured, so an audio player that seeks gets
 `206 Partial Content` with only the bytes it asked for, and `416` past the end.
 `HEAD` returns the size without the body. The blob id is the `ETag`, so a
-revalidation is a `304` with no SoliDB round trip. An image with a transform
-in the query string (`?w=`, `?fmt=`…) is still loaded and transformed. Disk and
-S3 attachments are sent whole, without `Range`. On a Cloudflare Worker, an R2
+revalidation is a `304` with no round trip to the store. An image with a
+transform in the query string (`?w=`, `?fmt=`…) is still loaded and
+transformed. On a Cloudflare Worker, an R2
 attachment is served by the Worker from the bucket — `Range`, `304` and image
 transforms through the Images binding included (see
-[Cloudflare Workers](edge.md#files-uploads-images-and-video)). The route uses
+[Cloudflare Workers](edge.md#files-uploads-images-and-video)). For SoliDB the route uses
 [`solidb.blob_response`](builtins#solidbblob_responsecollection-blob_id-req-headers),
 which your own actions can call too.
 
@@ -1843,12 +1844,12 @@ collection, it does not open.
 - A file stored before `encrypted` was turned on is still served as it is.
 - An image `format` / `max_width` conversion runs before encryption, and URL
   transforms (`photo_url({"w": 200})`) after decryption.
-- On SoliDB an encrypted file is **streamed**, `Range` included: the server
-  fetches only the 64 KiB segments a request touches and decrypts each one as
-  it arrives, so a download costs about one segment of memory, and a segment
-  that fails authentication ends the response before any of its bytes is
-  sent. On disk, S3 and R2 the file is decrypted whole in memory, as those
-  services already load a file whole when they serve it.
+- An encrypted file is **streamed**, `Range` included, on SoliDB, disk, S3
+  and R2 alike: the server reads only the 64 KiB segments a request touches
+  and decrypts each one as it arrives, so a download costs about one segment
+  of memory, and a segment that fails authentication ends the response before
+  any of its bytes is sent. `read_attachment` / `read_upload` and an image
+  transform still decrypt the whole file, since they need its bytes.
 - `direct_upload_start` refuses an encrypted attachment: the browser would send
   the file straight to the bucket, where nothing can encrypt it. Use
   [resumable uploads](#large-files-resumable-and-direct-uploads) instead; a finished upload is
