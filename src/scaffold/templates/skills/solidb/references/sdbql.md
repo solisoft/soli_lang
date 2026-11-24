@@ -21,15 +21,19 @@ Every example here was run against `solidb 2.4.0`; results are shown as the
 - Identifiers in backticks are not supported.
 - Statement must start with `FOR`, `LET`, `RETURN`, `INSERT`, `UPDATE`,
   `REMOVE` (also `UPSERT`, `REPLACE`, `WITH` CTEs, `CREATE`/`REFRESH
-  MATERIALIZED VIEW`). Typos produce
-  `Unexpected token: Identifier("RETRN"). Expected FOR, LET, RETURN, …`.
+  MATERIALIZED VIEW`, and, unreleased after 3.0.0, `EXPLAIN`). Typos produce
+  `Unexpected token: Identifier("RETRN"). Expected FOR, LET, RETURN, …`
+  (after 3.0.0 the list reads `FOR, LET, FILTER, QUALIFY, RETURN, INSERT,
+  UPDATE, or REMOVE`).
 
 ## Clauses
 
 | Clause | Form | Notes |
 |--------|------|-------|
-| `FOR` | `FOR x IN coll` / `IN [array]` / `IN 1..10` / `IN (subquery)` / `IN @arr` | `FOR x IN coll OPTIONS { indexHint: "name" }` accepted |
+| `FOR` | `FOR x IN coll` / `IN [array]` / `IN 1..10` / `IN (subquery)` / `IN @arr` | `FOR x IN coll OPTIONS { indexHint: "name" }` accepted. Unreleased after 3.0.0: `SAMPLE n` or `SAMPLE p PERCENT` on the source, before `OPTIONS` (see below) |
 | `FILTER` | `FILTER expr` | Repeatable (ANDed). Evaluation errors inside drop the row silently; since 2.9.5 an unknown function or a missing bind variable fails the query instead |
+| `QUALIFY` | `QUALIFY expr` | Unreleased after 3.0.0. Once, after the body, before `SORT`. See below |
+| `EXPLAIN` | `EXPLAIN [ANALYZE] <query>` | Unreleased after 3.0.0. One plan row. See below |
 | `LET` | `LET x = expr` | Also after `SORT`/`LIMIT` (then computed only for surviving rows; not visible to earlier clauses) |
 | `SORT` | `SORT e1 [ASC\|DESC], e2 …` | Stable. Any expression |
 | `LIMIT` | `LIMIT n` / `LIMIT offset, n` | Bind vars allowed: `LIMIT @o, @n` |
@@ -145,6 +149,75 @@ FOR o IN orders FILTER o.amount > 5 COLLECT s = UPPER(o.status) WITH COUNT INTO 
 `SOLIDB_SCAN_THREADS` caps the threads (default: the CPUs the process may
 use; `1` turns parallel scans off). SUM/AVG are exact (functions.md).
 
+**`ROLLUP` and `CUBE`** (unreleased, after 3.0.0; observed over HTTP on
+2026-11-24 on a build of the working tree, which no release has yet; that
+tree had open defects, listed under *QUALIFY, SAMPLE, EXPLAIN* below). The
+keyword follows the group variables and precedes `INTO` / `WITH COUNT` /
+`AGGREGATE` / `OPTIONS`; written after `AGGREGATE` it is `Unexpected token:
+Identifier("ROLLUP")`. Both at once, or a second copy: `400` `ROLLUP and CUBE
+each appear once, after the group variables, and not together`. Neither word
+is reserved (`LET rollup = 1 LET cube = 2` works).
+
+```sdbql
+FOR o IN orders
+  COLLECT country = o.country, status = o.status ROLLUP
+  AGGREGATE total = SUM(o.amount)
+  RETURN { country, status, total, gc: GROUPING(country), gs: GROUPING(status) }
+```
+
+Orders `(US, open, 10)`, `(US, paid, 5)`, `(FR, open, 7)` return six rows,
+mask then key (null sorts below every value, so detail `FR` then `US`, then
+the country subtotals, then the grand total):
+
+| country | status | total | GROUPING(country) | GROUPING(status) |
+|---------|--------|-------|-------------------|------------------|
+| FR | open | 7 | 0 | 0 |
+| US | open | 10 | 0 | 0 |
+| US | paid | 5 | 0 | 0 |
+| FR | null | 7 | 0 | 1 |
+| US | null | 15 | 0 | 1 |
+| null | null | 22 | 1 | 1 |
+
+- `ROLLUP` is the `n+1` prefixes. For `(a, b, c)` the masks after the detail
+  (0) are 4 (only `c`), 6 (`b` and `c`), 7 (grand total): bit `i` set means
+  variable `i` was rolled up. `CUBE` is every mask `1 .. 2^n-1`. The cube of
+  the orders above also has `(null, open, 17)` with bits `(1, 0)` and
+  `(null, paid, 5)`.
+- `GROUPING(country)` is the variable's **name**, not `GROUPING(o.country)`
+  (`GROUPING() takes a group variable name, not an expression`). It is not a
+  normal builtin: the argument is not evaluated. Outside a `COLLECT`:
+  `GROUPING() is only valid on the rows of a COLLECT`. An unknown name:
+  `GROUPING(city) is not a group variable of this COLLECT`. Two arguments:
+  `GROUPING() takes one group variable, as in GROUPING(country)`. All four
+  are `500` `Query execution error: …`. On an ordinary `COLLECT` it is 0.
+- `GROUPING` is readable by whatever follows the `COLLECT`: `FILTER`, `LET`,
+  `SORT`, `QUALIFY`, `RETURN`. `FILTER GROUPING(status) == 1` keeps the
+  subtotals and the grand total. Rows come out detail first; for a report
+  with each subtotal under its groups and the grand total last, sort on the
+  bits before the keys:
+  `SORT GROUPING(country), country, GROUPING(status), status` →
+  `FR open`, `FR null`, `US open`, `US paid`, `US null`, `null null`. A plain
+  `SORT country, status` puts the grand total first (null sorts first).
+- A rolled-up key is JSON `null`. `GROUPING` is what separates that from a
+  real null: with a document whose `status` is null, `(US, null, 1)` has bit
+  0 and the subtotal `(US, null, 3)` has bit 1.
+- `WITH COUNT INTO n` is rolled up like an aggregate (`FR 1`, `US 2`,
+  `null 3`).
+- Empty input with group variables: **no rows**, no grand total. No group
+  variables: the one ordinary row (`ROLLUP` adds nothing), including over
+  `[]`. More than 31 group variables: `500` `ROLLUP and CUBE accept at most
+  31 group variables`, even when the input is empty.
+- Super-group aggregates are merged from the detail groups, in the order
+  those groups were created. `COLLECT_LIST` / `PUSH` concatenate (`[10, 5]`
+  for `US`, `[7, 10, 5]` for the total); `UNIQUE` keeps first-seen order and
+  `SORTED_UNIQUE` sorts at the end. `INTO` members of a subtotal are those
+  detail members concatenated, so a grand total holds every input row again
+  — memory multiplies by the levels. Of `1` and `1.0` the earlier row's
+  value is kept, as a key and in `UNIQUE`.
+- From the code, unverified: shards send detail groups (mask 0) only and
+  the extra rows are built after the merge; a grouped `ROLLUP` is not an
+  index count; the ungrouped columnar array-fold steps aside.
+
 A FILTER that no index serves is still a scan of the collection, but since
 the build after 2.13.0 the leading FILTERs that compare fields of the loop
 variable with constants or bind variables (`==` `!=` `<` `<=` `>` `>=` `IN`,
@@ -192,6 +265,160 @@ FOR e IN emp SORT e._key
   RETURN {k: e._key, r: RANK() OVER (ORDER BY e.salary DESC), s: SUM(e.salary) OVER (PARTITION BY e.dept)}
 -- ann r1 s180.0, bob r2, cid r4 s130.0, dee r3
 ```
+
+### QUALIFY, SAMPLE, EXPLAIN (unreleased, after 3.0.0)
+
+Not in 3.0.0 (`Unexpected token: Identifier("ROLLUP")` there). Observed over
+HTTP on 2026-11-24 on a build of the working tree, which no release has yet;
+the tests are `tests/sdbql_explain_qualify_rollup_sample_tests.rs`. That
+tree still had the defects listed at the end of this section: read them
+before relying on any of the four clauses, and observe again on the release.
+The offline parser in `sdbql-core` rejects the new syntax (unverified). None
+of `qualify`, `sample`, `explain`, `rollup`, `cube` is a reserved name
+(`LET qualify = 1 RETURN qualify` works).
+
+**`QUALIFY`** — one predicate after the body, before `SORT`. It may follow a
+`COLLECT` and read its variables (`COLLECT d = e.dept AGGREGATE s =
+SUM(e.salary) QUALIFY s > 200`), and needs no `FOR` (`QUALIFY 1 == 1 RETURN
+1`). Parse errors (`400`): `SORT` before it; a `COLLECT` or a write
+(`INSERT` / `UPDATE` / `REMOVE`) after it (`Unexpected token: Insert. …`);
+a second `QUALIFY` (`A query has one QUALIFY clause`). To gate a write on a
+window use the `LET` form, which is older and still works:
+`LET rn = ROW_NUMBER() OVER (…) FILTER rn == 1 INSERT …`.
+
+```sdbql
+FOR e IN emp
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.dept ORDER BY e.salary DESC) <= 3
+  RETURN e
+-- the three highest salaries per department
+```
+
+Windows in `QUALIFY`, and every window in `RETURN`, are numbered on the rows
+the body produced, before the predicate and before `SORT`. The same `OVER`
+call is computed once, so a number repeated in `RETURN` is the pre-filter
+number: `QUALIFY ROW_NUMBER() OVER (ORDER BY e.salary DESC) > 1 RETURN
+ROW_NUMBER() OVER (ORDER BY e.salary DESC)` returns 2 to 6 on six rows,
+never 1. A window `LET` in the body is computed during the body and
+`QUALIFY` can read it (`LET rn = … QUALIFY rn <= 2`). A *different* window
+call that appears only in a `LET` after `LIMIT` is numbered on the survivors
+of `QUALIFY`, before `LIMIT` cuts: five survivors and `LIMIT 3` gave ranks 5,
+4, 3 (without `QUALIFY` such a `LET` already numbered the rows from before
+`LIMIT`, on 2.15.0 too). A query with no `QUALIFY` still numbers `RETURN`
+windows after `SORT`; that order differs only for a window with no
+`ORDER BY` of its own: `ROW_NUMBER() OVER ()` behind `SORT e.salary` counts
+1 to 6 in sorted order without `QUALIFY`, and in the body's order with it.
+
+An error in the predicate fails the query (`500`) where `FILTER` drops the
+row: `UPPER() == "X"` → `UPPER requires 1 argument(s)`, and
+`DATE_ADD(e.dept, 1, "day") > 1` → `Invalid date string 'eng'`; both give
+`[]` in a `FILTER`. A `QUALIFY` with no window is still applied
+(`QUALIFY e.salary >= 80 SORT e.salary RETURN e.salary` → 80, 90, 100), and
+`RETURN DISTINCT` still removes duplicates at the end. The predicate may
+read fields no other clause names (`QUALIFY e.salary >= 80 RETURN e._key` →
+`e1`, `e2`, `e3`), of a traversal's vertex and edge too.
+
+A window function written directly in a `FILTER` is not an error and not a
+filter: every row is dropped and the result is `[]` (on 2.15.0 too). Write
+it in `QUALIFY`, or in a `LET` read by the `FILTER`.
+
+**`SAMPLE`** — on the `FOR` source, after `SYSTEM_TIME` / `VALID_TIME`
+(unverified), before `OPTIONS` (`OPTIONS {…} SAMPLE 2` is a parse error).
+Before `FILTER`. The whole source is read; later clauses see only the
+sample (`SAMPLE 7 COLLECT WITH COUNT INTO n` → 7). Nested `FOR`: once per
+outer row. Collections, arrays, ranges and subquery sources, and the loop of
+a write (`FOR d IN logs SAMPLE 2 REMOVE d IN logs` → `deleted: 2`).
+
+```sdbql
+FOR d IN events SAMPLE 100 RETURN d         -- ≤100 rows, not scan order
+FOR d IN events SAMPLE 1 PERCENT RETURN d   -- each row p=0.01, scan order kept
+FOR d IN events SAMPLE @n RETURN d          -- also SAMPLE @p PERCENT
+FOR x IN [1, 2, 3, 4, 5] SAMPLE 2 RETURN x
+```
+
+- `SAMPLE n`: at most `n` distinct rows, not in scan order. `n >=` source
+  length returns every row in scan order. `0` returns nothing. `1.0` is 1,
+  and an expression is accepted (`SAMPLE 1 + 1`). `1.5`, a negative or a
+  string: `500` `SAMPLE count must be a non-negative whole number, got 1.5`.
+- `SAMPLE p PERCENT`: each row is kept with probability p/100, scan order
+  preserved (`50 PERCENT` of 20 rows returned 13 of them once). `0 PERCENT`
+  keeps nothing, `100 PERCENT` keeps every row. Outside 0..=100: `500`
+  `SAMPLE percent must be a number from 0 to 100, got 101`.
+- Not seeded. Do not assert which rows a count sample returns, except the
+  keep-all and keep-none cases. `FOR d IN c SAMPLE 2 RETURN d` returns 2,
+  not the raw whole collection. `FILTER` after `SAMPLE 0` is empty.
+- The `SAMPLE()` function (search) is a different call (unverified).
+
+**`EXPLAIN`** — one row, the plan object (`collections`, `filters`,
+`let_bindings`, `sort`, `limit`, `timing`, `documents_scanned`,
+`documents_returned`, `warnings`).
+
+```sdbql
+EXPLAIN FOR u IN users FILTER u.email == @e RETURN u
+-- one object, plan_only: true; every access is estimated and the counts are 0.
+-- Writes nothing, including EXPLAIN INSERT … (cursor inserted: 0).
+-- Pass the bind variables: without @e there is no error, and the plan says
+-- full_scan where it says index_lookup with it.
+EXPLAIN ANALYZE FOR u IN users FILTER u.email == @e RETURN u
+-- the plan with timings, not the rows. inserted/updated/deleted stay 0
+EXPLAIN ANALYZE INSERT { _key: "a" } INTO t
+-- the INSERT runs once. Result is the plan, not the inserted document.
+-- warnings[0]: "ANALYZE ran this writing query. Timings are not measured, …".
+-- warnings[1] is the plan-only line ("nothing was run…"): wrong here, the
+-- write ran. The timing object is present and its numbers are 0.
+-- plan_only is omitted (serialized only when true).
+-- Cursor inserted/updated/deleted are the real counts.
+```
+
+`EXPLAIN (FOR …) UNION (FOR …)` is accepted; the plan lists the first
+branch's collection only. `EXPLAIN WITH x AS (…) FOR …` is accepted. Parse
+errors: `EXPLAIN EXPLAIN …` and `WITH … EXPLAIN FOR …` (`Unexpected token:
+Identifier("EXPLAIN"). …`), `(EXPLAIN …)` as a subquery (`Expected
+RightParen, got Return`). A collection that does not exist is not an error
+in a plan. In a transaction (`…/transaction/{id}/query`) `EXPLAIN ANALYZE`
+of a write answers the staging message with the plan as `result`. The HTTP
+`POST …/explain` endpoint still does not itself apply mutations (given an
+`INSERT` it stores nothing); given an `EXPLAIN …` statement it explains the
+query inside. `warnings` also notes `QUALIFY`, `SAMPLE` and
+`ROLLUP`/`CUBE` when the query has them.
+
+**Open on that tree (2026-11-24).** Each was observed unless it says
+otherwise; delete a line when a later build no longer shows it.
+
+- `SAMPLE n` is not uniform. 400 draws of `SAMPLE 3` from 20 documents only
+  ever returned the first three keys (about 340 times each) and the last
+  three (about 60 each).
+- `QUALIFY` and `SAMPLE` are skipped when the query ends in `SORT` on `_key`
+  or an indexed field with a `LIMIT`: `QUALIFY e.salary <= 60 SORT e._key
+  LIMIT 3` returned the salaries 100, 90, 80, and `SAMPLE 0 SORT e._key
+  LIMIT 10` every row.
+- Both are skipped in a subquery over an array in memory: `LET a =
+  [1,2,3,4,5] RETURN (FOR x IN a SAMPLE 2 RETURN x)` → all five, and
+  `(FOR t IN d.tags QUALIFY t != "x" RETURN t)` keeps `"x"`. The same loop
+  at top level is right.
+- A sampled subquery is run once for all outer rows:
+  `FOR u IN 1..6 RETURN (FOR p IN events SAMPLE 3 RETURN p._key)` → six
+  identical samples.
+- `/cursor` with `X-Transaction-ID` ignores `SAMPLE` on the loop of a write:
+  `FOR d IN logs SAMPLE 2 REMOVE d IN logs` staged 10 of 10 documents
+  (`…/transaction/{id}/query` staged 2).
+- `EXPLAIN` runs DDL: `EXPLAIN CREATE MATERIALIZED VIEW mv AS …` answered
+  `Materialized view 'mv' created`.
+- The query cache does not see a collection only `QUALIFY` reads:
+  `FOR d IN ca QUALIFY d.x IN (FOR y IN cb RETURN y.x) RETURN d` stayed
+  `cached: true` with the old rows after an insert into `cb`.
+- A window call written twice is computed once even without `QUALIFY`:
+  `LET r1 = ROW_NUMBER() OVER (ORDER BY e.salary DESC) FILTER e.dept ==
+  "sales" RETURN {r1, r2: ROW_NUMBER() OVER (ORDER BY e.salary DESC)}` gave
+  `r2` equal to `r1` (5, 6); on 2.15.0 `r2` was 1, 2.
+- The rows of any `COLLECT` carry two hidden keys, which a later
+  `COLLECT … INTO` shows: its members gain `"\u0000grouping"` and
+  `"\u0000group_vars"` (not on 2.15.0).
+- From a code review, not run: `EXPLAIN` sent over the driver can return
+  the query's rows; `CUBE` builds every mask up front (31 variables is
+  8 GiB); on a columnar collection `ROLLUP … SORT agg LIMIT k` totals only
+  the top groups; `SAMPLE` past `SOLIDB_MAX_INTERMEDIATE_ROWS` draws from
+  the first rows only; `EXPLAIN ANALYZE` of a sampled or qualified read
+  describes the query without them.
 
 ### Joins
 

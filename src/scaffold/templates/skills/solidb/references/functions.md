@@ -159,7 +159,21 @@ See indexes-search.md: `DISTANCE(lat1, lon1, lat2, lon2)` (meters),
 ### Window functions
 
 `ROW_NUMBER()`, `RANK()` and aggregates with `OVER (PARTITION BY … ORDER BY …)`
-inside `RETURN` (see sdbql.md). Not callable as plain functions.
+inside `RETURN` or a `LET` (see sdbql.md). Not callable as plain functions.
+Written directly in a `FILTER` they drop every row and raise nothing
+(2.15.0 and after 3.0.0). Unreleased after 3.0.0 they are also numbered
+inside `QUALIFY`, on the pre-filter rows.
+
+### `GROUPING` (unreleased, after 3.0.0; observed 2026-11-24 on a build of the working tree)
+
+Not a normal builtin and not in the probed list below. `GROUPING(var)` is
+special-cased before its argument is evaluated, and only on the rows of a
+`COLLECT`: 1 when `ROLLUP` / `CUBE` rolled that group variable up, 0 when it
+is a real key (and 0 on an ordinary `COLLECT`). The argument is the variable
+name (`GROUPING(country)`, not `GROUPING(o.country)`). It is readable in the
+`FILTER`, `LET`, `SORT`, `QUALIFY` and `RETURN` that follow the `COLLECT`.
+Elsewhere: `500` `GROUPING() is only valid on the rows of a COLLECT`. See
+sdbql.md, COLLECT.
 
 ## Every accepted name (probed on solidb 2.4.0)
 

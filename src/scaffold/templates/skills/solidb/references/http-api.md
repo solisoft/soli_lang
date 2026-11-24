@@ -228,7 +228,17 @@ var, arity), `404 CollectionNotFound`, `409 ConflictError`,
 ### Explain
 
 `POST /_api/database/{db}/explain` with the same body → planner info without
-side effects of interest:
+side effects of interest. Unreleased after 3.0.0 (observed 2026-11-24 on a
+build of the working tree), the same object is also one row of the
+statement `EXPLAIN <query>` sent to `/cursor` (`plan_only: true`, nothing
+written) and of `EXPLAIN ANALYZE <query>` (a read is timed and the rows are
+not returned; a write runs once, the `timing` numbers stay zero, and the
+cursor's `inserted` / `updated` / `deleted` are that run's counts).
+`plan_only` is serialized only when true, so both ANALYZE forms omit it.
+This endpoint still does not itself apply mutations (given an `INSERT` it
+stores nothing), and given an `EXPLAIN …` statement it explains the query
+inside. See `references/sdbql.md`, which also lists what was still wrong on
+that tree (`EXPLAIN` of a `CREATE MATERIALIZED VIEW` created the view).
 
 ```json
 {"collections":[{"name":"people","variable":"p","access_type":"index_lookup",

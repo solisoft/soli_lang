@@ -50,6 +50,15 @@ FOR u IN users                         -- collection, array, range (1..10), or s
 ```
 
 - Keywords are case-insensitive; function names are upper-case by convention.
+- **Unreleased, after 3.0.0** (observed 2026-11-24 on a build of the working
+  tree; no released binary has them, and that tree still had defects listed
+  in `references/sdbql.md`): `EXPLAIN <query>` returns one plan row and does
+  not write; `EXPLAIN ANALYZE` of a write does write, once, and returns the
+  plan without timings. `QUALIFY <window-predicate>` filters after the body
+  and before `SORT` (windows numbered on the full set). `FOR d IN c SAMPLE n`
+  / `SAMPLE p PERCENT` samples the source before `FILTER` and reads all of
+  it. `COLLECT a = …, b = … ROLLUP|CUBE AGGREGATE …` adds subtotals;
+  `GROUPING(a)` is 1 where `a` was rolled up. Full rules: `references/sdbql.md`.
 - Strings take `"…"` or `'…'`. Object keys: bare, quoted (`{"b-c": 1}`), or
   shorthand `{name}`. Computed keys `{[k]: 1}` are **not** supported.
 - `LET` may come after `SORT`/`LIMIT` — then it runs only for surviving rows.
@@ -81,11 +90,22 @@ FOR o IN orders COLLECT s = o.status WITH COUNT INTO n RETURN { s, n }
 FOR o IN orders COLLECT s = o.status INTO g RETURN { s, keys: g[*].o._key }
 FOR o IN orders COLLECT s = o.status INTO keys = o._key RETURN { s, keys }
 FOR o IN orders COLLECT AGGREGATE total = SUM(o.amount) RETURN total  -- no key
+
+-- Unreleased, after 3.0.0. Subtotals; GROUPING is 1 on a rolled-up key.
+FOR o IN orders
+  COLLECT country = o.country, status = o.status ROLLUP
+  AGGREGATE total = SUM(o.amount)
+  RETURN { country, status, total, rolled: GROUPING(status) }
 ```
 
-Window functions work in `RETURN`:
+Window functions work in `RETURN`, in a `LET` and, unreleased after 3.0.0,
+in `QUALIFY` (the predicate runs before `SORT`; numbers are of the
+pre-filter rows):
 `ROW_NUMBER() OVER (PARTITION BY e.dept ORDER BY e.salary DESC)`, `RANK()`,
-`SUM(x) OVER (PARTITION BY …)`.
+`SUM(x) OVER (PARTITION BY …)`. Written directly in a `FILTER` a window is
+not an error: the query returns `[]`. Top 3 per group on a released binary:
+`LET rn = ROW_NUMBER() OVER (PARTITION BY e.dept ORDER BY e.salary DESC)
+FILTER rn <= 3`.
 
 ### Writes
 
@@ -210,7 +230,7 @@ Class → collection: snake_case plural (`BlogPost` → `blog_posts`,
 
 | File | Contents |
 |------|----------|
-| `references/sdbql.md` | Full syntax: clauses, operators, COLLECT, windows, JOIN, graph traversal, CTEs, write options, result shape |
+| `references/sdbql.md` | Full syntax: clauses, operators, COLLECT, ROLLUP/CUBE, QUALIFY, SAMPLE, EXPLAIN, windows, JOIN, graph traversal, CTEs, write options, result shape |
 | `references/functions.md` | Every function name the server accepts (probed), grouped, with verified examples |
 | `references/http-api.md` | Endpoints with exact paths, bodies and responses: auth, users and roles (`solidb user`), who may write `_jobs`, databases, collections, documents, cursor, explain, indexes, column blocks, columnar collections, foreign keys, transactions, API keys |
 | `references/indexes-search.md` | Persistent/hash/unique/fulltext, geo, vector, TTL indexes; FULLTEXT / NEAR / VECTOR_SEARCH; explain |

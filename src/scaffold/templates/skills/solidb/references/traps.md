@@ -211,6 +211,44 @@ involved).
     before it (above 100 rows it is one batch and every row reads the same
     count). Use a transaction for those.
 
+Traps 44 to 47 are of clauses no release has yet. They were observed on
+2026-11-24 on a build of the working tree, which also had the defects listed
+in sdbql.md (*Open on that tree*).
+
+44. **`EXPLAIN ANALYZE` of a write does write** (unreleased, after 3.0.0).
+    `EXPLAIN INSERT …` plans and stores nothing. `EXPLAIN ANALYZE INSERT …`
+    stores the document once and returns the plan, not the inserted row.
+    Timings are zero on purpose: filling them in would write a second time.
+    The cursor's `inserted` / `updated` / `deleted` are the real counts.
+    `warnings` then also carries the plan-only line (`nothing was run…`),
+    which is wrong there. An `EXPLAIN` without its bind variables is not
+    refused and may plan a `full_scan` where the real query uses an index.
+45. **`SAMPLE n` reads the whole source** (unreleased, after 3.0.0). It then
+    keeps at most `n` rows. It does not stop the scan at `n`. `FILTER` after
+    `SAMPLE` sees only the sample, so `SAMPLE 0` makes a later `FILTER`
+    return nothing. Count-sample order is not scan order (percent samples
+    keep it). The draw is not seeded.
+46. **`QUALIFY` numbers windows before `SORT`** (unreleased, after 3.0.0).
+    A query with no `QUALIFY` still numbers `RETURN` windows after `SORT`.
+    With `QUALIFY`, `RETURN` windows keep the pre-filter numbers. A window
+    with its own `ORDER BY` is unaffected; a window with none follows arrival
+    order, which is the body's when `QUALIFY` is present and the sorted
+    order when it is not. `SORT` before `QUALIFY` does not parse, and neither
+    does a `COLLECT` or a write after it. An error in the predicate fails
+    the query, where `FILTER` drops the row.
+47. **`GROUPING()` is only a `COLLECT` row function** (unreleased, after
+    3.0.0). It is not in the builtin list. The argument is the group
+    variable's name. A rolled-up key is JSON `null`; `GROUPING` is 1 there.
+    `INTO` on a `ROLLUP` subtotal concatenates every detail member, so a
+    grand total holds the input again at every level. Subtotals come after
+    all the detail rows, not under their groups: `SORT GROUPING(a), a,
+    GROUPING(b), b` gives the report order.
+48. **A window function written directly in a `FILTER` returns nothing.**
+    `FOR e IN emp FILTER ROW_NUMBER() OVER (PARTITION BY e.dept ORDER BY
+    e.salary DESC) <= 3 RETURN e._key` → `[]`, status 200 (2.15.0 and after
+    3.0.0): the error is one a `FILTER` swallows, so every row is dropped.
+    Put the window in a `LET` and filter on the variable.
+
 ## HTTP / server
 
 20. **Query cache vs paging:** an identical repeated query returns
