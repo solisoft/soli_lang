@@ -4237,7 +4237,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "2.40.4"
+version = "2.41.0"
 dependencies = [
  "aes-gcm",
  "ahash",
