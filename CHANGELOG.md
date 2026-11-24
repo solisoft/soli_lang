@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [2.40.4] - 2026-11-24
+
+### Changed
+- **eui: the score engraver pinned at eui `019fc24`** (was `83348e1`; also
+  `eui-proto` and `eui-client`). What `eui_score_layout` / `eui_score_bands`
+  / `eui_score_midi` / `eui_score_pdf` gain: nineteen signs LilyPond writes
+  after a note and the engraver refused — `\upmordent`, `\downmordent`,
+  `\downprall`, `\prallup`, `\pralldown`, `\haydnturn`, `\slashturn`,
+  `\halfopen`, `\halfopenvertical`, `\thumb`, an organist's `\lheel`
+  `\rheel` `\ltoe` `\rtoe`, and the early-music `\signumcongruentiae`,
+  `\accentus`, `\circulus`, `\ictus`, `\semicirculus` — drawn in
+  Emmentaler's signs and the ornaments played; `\varcoda` with its own
+  sign; `\prallmordent`, `\upprall` and `\lineprall` played too; a coda
+  sign and a section's name at one bar after a second ending drawn as one
+  mark beside the bracket, kept further from the system above; and,
+  between `\\`, a part of spacer rests is a voice of its own, as in
+  LilyPond.
+
 ### Fixed
 - **realtime: presence from other servers no longer waits for a client
   that stopped reading — and such a client is caught up.** The diffs that
