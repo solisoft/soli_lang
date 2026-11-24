@@ -273,11 +273,15 @@ pub async fn apply(registry: &WebSocketRegistry, node: &str, op: PresenceOp) -> 
     }
 }
 
-/// Send each diff to the local sockets of its channel.
+/// Send each diff to the local sockets of its channel — without waiting
+/// for any of them. These run on the two tasks presence lives on (the
+/// consumer of what other nodes say, the heartbeat): a client that kept its
+/// connection open and stopped reading would hold them, and with them every
+/// other channel's presence and this node's own beats.
 pub async fn send_diffs(registry: &WebSocketRegistry, diffs: Vec<ChannelDiff>) {
     for (channel, diff) in diffs {
         let message = WebSocketRegistry::build_presence_diff(&diff);
-        registry.broadcast_to_channel(&channel, &message).await;
+        registry.offer_to_channel(&channel, &message).await;
     }
 }
 
@@ -333,8 +337,17 @@ fn inbound() -> Option<&'static tokio::sync::mpsc::UnboundedSender<Inbound>> {
             let handle = crate::serve::websocket::try_runtime_handle()?;
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Inbound>();
             handle.spawn(async move {
+                use futures_util::FutureExt;
                 while let Some((id, node, seq, op)) = rx.recv().await {
-                    tenant::task_scope(id, take_in(node, seq, op)).await;
+                    // One consumer for the whole process: an op that panics
+                    // must cost that op, not presence until the restart.
+                    let taken = std::panic::AssertUnwindSafe(tenant::task_scope(
+                        id,
+                        take_in(node, seq, op),
+                    ));
+                    if taken.catch_unwind().await.is_err() {
+                        eprintln!("[realtime] a presence op could not be applied (panic)");
+                    }
                 }
             });
             Some(tx)
@@ -350,6 +363,10 @@ async fn take_in(node: String, seq: u64, op: PresenceOp) {
     if LAST_OP.write(|last_ops| admit(last_ops, &node, seq, is_sync)) {
         let diffs = apply(&registry, &node, op).await;
         send_diffs(&registry, diffs).await;
+    } else if let PresenceOp::Sync { connections, .. } = op {
+        // Its presence is older than what was heard since, but the node is
+        // alive and this is its connection count: both are still taken.
+        registry.note_remote_connections(&node, connections).await;
     }
     if hello && holds_anything(&registry).await {
         publish_sync(&registry).await;

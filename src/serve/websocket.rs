@@ -477,6 +477,26 @@ impl WebSocketRegistry {
         }
     }
 
+    /// [`broadcast_to_channel`](Self::broadcast_to_channel), never waiting
+    /// for a connection: one whose buffer is full misses the message. For
+    /// what the server sends of its own accord from a task that must go on
+    /// — presence diffs from other nodes: a client that stopped reading
+    /// would otherwise hold that task, and everything behind it.
+    pub async fn offer_to_channel(&self, channel: &str, message: &str) {
+        let channel_ids = self.get_channel_ids(channel).await;
+        let senders: Vec<_> = {
+            let connections = self.connections.lock().await;
+            channel_ids
+                .iter()
+                .filter_map(|id| connections.get(id).map(|c| c.sender.clone()))
+                .collect()
+        };
+        let msg = Message::text(message);
+        for sender in senders {
+            let _ = sender.try_send(Ok(msg.clone()));
+        }
+    }
+
     /// Close a specific connection.
     pub async fn close(&self, id: &Uuid, reason: &str) {
         let sender = {
@@ -1874,6 +1894,48 @@ mod tests {
             Message::Text(t) => assert!(t.contains("gather-move")),
             other => panic!("unexpected frame: {other:?}"),
         }
+    }
+
+    /// A connection whose client stopped reading has a full buffer. What
+    /// the server offers a channel of its own accord does not wait for it,
+    /// and still reaches the others; a plain broadcast would never return.
+    #[tokio::test]
+    async fn an_offer_to_a_channel_does_not_wait_for_a_full_connection() {
+        let registry = WebSocketRegistry::new();
+        let (tx_stuck, _rx_stuck) = tokio::sync::mpsc::channel(1);
+        let (tx_ok, mut rx_ok) = tokio::sync::mpsc::channel(8);
+        let stuck = WebSocketConnection::new(Arc::new(tx_stuck));
+        let reading = WebSocketConnection::new(Arc::new(tx_ok));
+        let (id_stuck, id_ok) = (stuck.id, reading.id);
+        registry.register(stuck).await;
+        registry.register(reading).await;
+        registry.join_channel(&id_stuck, "lobby").await;
+        registry.join_channel(&id_ok, "lobby").await;
+
+        let offers = async {
+            for n in 0..5 {
+                registry
+                    .offer_to_channel("lobby", &format!("diff {n}"))
+                    .await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), offers)
+            .await
+            .expect("an offer waited for the connection that does not read");
+        let mut got = 0;
+        while rx_ok.try_recv().is_ok() {
+            got += 1;
+        }
+        assert_eq!(got, 5, "the reading connection missed offers");
+
+        // The waiting kind, for contrast: it is held by the same connection.
+        let waits = registry.broadcast_to_channel("lobby", "one more");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), waits)
+                .await
+                .is_err(),
+            "the full connection did not hold a plain broadcast"
+        );
     }
 
     #[tokio::test]
