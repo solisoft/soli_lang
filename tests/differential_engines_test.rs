@@ -1516,6 +1516,61 @@ print(Billing.make.total)
 print(Billing::PayInvoice.call(5).class)"##,
     ),
     (
+        // A class of a module wins over a global of the same name — a
+        // builtin (`Policy`, `Path`) or one of the script — in its siblings'
+        // methods, in a module function, in a block, and in a nested module.
+        "a_module_class_shadows_a_global_of_the_same_name",
+        r##"class Path
+  static def next_identifier(n: Int) -> String
+    "global-#{n}"
+  end
+end
+
+module Referential
+  class Policy
+    static def next_identifier(n: Int) -> String
+      "policy-#{n}"
+    end
+  end
+
+  class Path
+    static def next_identifier(n: Int) -> String
+      "path-#{n}"
+    end
+  end
+
+  class Numbering
+    static def make -> String
+      Policy.next_identifier(1)
+    end
+
+    def in_block
+      [2, 3].map { |n| Path.next_identifier(n) }
+    end
+  end
+
+  module Inner
+    class Reader
+      static def read -> String
+        Policy.next_identifier(4)
+      end
+    end
+  end
+
+  def self.helper -> String
+    Policy.next_identifier(5)
+  end
+end
+
+print(Referential::Numbering.make)
+print(Referential::Numbering.new.in_block)
+print(Referential::Inner::Reader.read)
+print(Referential.helper)
+print(Referential::Policy.next_identifier(6))
+print(Path.next_identifier(7))
+print(Policy)"##,
+    ),
+    (
         // A declared return type accepts a subclass, and a class of the
         // module named by its short name.
         "return_types_accept_subclasses_and_short_names",

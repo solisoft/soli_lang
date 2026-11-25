@@ -352,6 +352,24 @@ impl TypeChecker {
     }
 
     fn check_class_stmt(&mut self, decl: &ClassDecl) -> TypeResult<()> {
+        // The classes nested in this one are read unqualified in its methods
+        // (`Policy` in `module Referential` is `Referential::Policy`), ahead
+        // of a global of the same name: a builtin class added later (2.42's
+        // `Policy`) must not take over a name the module already uses. Their
+        // bodies are not checked here, so they read as `Any`.
+        if decl.nested_classes.is_empty() {
+            return self.check_class_members(decl);
+        }
+        self.env.push_scope();
+        for nested in &decl.nested_classes {
+            self.env.define(nested.name.clone(), Type::Any);
+        }
+        let result = self.check_class_members(decl);
+        self.env.pop_scope();
+        result
+    }
+
+    fn check_class_members(&mut self, decl: &ClassDecl) -> TypeResult<()> {
         self.env.set_current_class(Some(decl.name.clone()));
 
         // Check methods

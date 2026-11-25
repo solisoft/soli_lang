@@ -218,3 +218,31 @@ print(total, size_of(hello), encoded, hello.to_array.length)
         );
     }
 }
+
+/// A class of a module is read unqualified in the module's functions, ahead
+/// of a builtin of the same name: 2.42's `Policy` class made
+/// `Policy.next_identifier(…)` in `module Referential` a "Cannot access
+/// member" error, though `Referential::Policy` defines it.
+#[test]
+fn a_module_class_shadows_a_builtin_of_the_same_name() {
+    let src = r#"
+module Referential
+  class Policy
+    static def next_identifier(n: Int) -> String
+      "policy-#{n}"
+    end
+  end
+
+  def self.helper -> String
+    Policy.next_identifier(5)
+  end
+end
+print(Referential.helper)
+"#;
+    if let Err(errors) = type_check_source(src, None) {
+        panic!(
+            "the module's Policy should win: {:?}",
+            errors.iter().map(|e| e.to_string()).collect::<Vec<_>>()
+        );
+    }
+}

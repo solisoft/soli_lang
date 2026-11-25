@@ -47,22 +47,23 @@ impl Interpreter {
             ExprKind::Null => Ok(Value::Null),
 
             // Variables
-            ExprKind::Variable(name) => match self.evaluate_variable(name, expr) {
-                Ok(val) => self.try_auto_invoke(val, expr.span, AutoInvokeContext::Variable),
-                // A bare method name inside the class reads like `@name`.
-                Err(RuntimeError::UndefinedVariable(..)) if self.implicit_self_method(name) => {
-                    let val = self.implicit_self_member(name, expr.span)?;
-                    self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
+            ExprKind::Variable(name) => {
+                // `Policy` inside `module Referential` is `Referential::Policy`,
+                // ahead of a global of that name — a builtin class added later
+                // (2.42's `Policy`) must not take over a name a module uses.
+                if let Some(class) = self.resolve_in_current_namespace(name) {
+                    return Ok(class);
                 }
-                // `Invoice` inside `module Billing`: `Billing::Invoice`.
-                Err(e @ RuntimeError::UndefinedVariable(..)) => {
-                    match self.resolve_in_current_namespace(name) {
-                        Some(class) => Ok(class),
-                        None => Err(e),
+                match self.evaluate_variable(name, expr) {
+                    Ok(val) => self.try_auto_invoke(val, expr.span, AutoInvokeContext::Variable),
+                    // A bare method name inside the class reads like `@name`.
+                    Err(RuntimeError::UndefinedVariable(..)) if self.implicit_self_method(name) => {
+                        let val = self.implicit_self_member(name, expr.span)?;
+                        self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
                     }
+                    Err(e) => Err(e),
                 }
-                Err(e) => Err(e),
-            },
+            }
 
             // Grouping
             ExprKind::Grouping(inner) => self.evaluate(inner),

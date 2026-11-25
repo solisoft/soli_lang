@@ -384,18 +384,30 @@ impl Vm {
     /// `name` read unqualified in code written in a namespace: the class it
     /// names there (`Invoice` in `Billing::PayInvoice` is `Billing::Invoice`).
     fn namespaced(&self, name: &str) -> Option<Value> {
+        if !name.starts_with(char::is_uppercase) {
+            return None;
+        }
         let namespace = self.frames.last()?.closure.proto.namespace.clone()?;
         crate::interpreter::domain::resolve_in_namespace(&namespace, name, |global| {
             self.globals.get(global).cloned()
         })
     }
 
-    /// A global, or else `name` in the current code's namespace.
+    /// `name` in the current code's namespace, or else the global. The
+    /// namespace wins: `Policy` inside `module Referential` is
+    /// `Referential::Policy`, even once a builtin class of that name exists.
     fn global_or_namespaced(&self, name: &str) -> Option<Value> {
-        self.globals
-            .get(name)
-            .cloned()
-            .or_else(|| self.namespaced(name))
+        self.namespaced(name)
+            .or_else(|| self.globals.get(name).cloned())
+    }
+
+    /// Whether the running code is written in a namespace, where a global
+    /// read must first look there ([`Self::global_or_namespaced`]).
+    #[inline]
+    fn in_namespace(&self) -> bool {
+        self.frames
+            .last()
+            .is_some_and(|frame| frame.closure.proto.namespace.is_some())
     }
 
     /// Materialise a `grouped {}` deferred result read out of an instance
@@ -1932,7 +1944,11 @@ impl Vm {
                         Constant::String(name) => name.as_ref(),
                         _ => break Some(op),
                     };
-                    // A miss is the general arm's to report.
+                    // A miss, or code in a namespace (whose own classes come
+                    // first), is the general arm's.
+                    if self.in_namespace() {
+                        break Some(op);
+                    }
                     let Some(value) = self.globals.get(name).cloned() else {
                         break Some(op);
                     };
@@ -2277,17 +2293,19 @@ impl Vm {
                             Constant::String(s) => s.as_ref(),
                             _ => "",
                         };
-                        self.globals.get(name).cloned()
+                        // `Invoice` in a method of `Billing::PayInvoice` is
+                        // `Billing::Invoice`, ahead of any global `Invoice`.
+                        if frame.closure.proto.namespace.is_some() {
+                            self.global_or_namespaced(name)
+                        } else {
+                            self.globals.get(name).cloned()
+                        }
                     };
                     match val {
                         Some(v) => self.stack.push(v),
                         None => {
                             let name = self.read_string_constant_owned(idx);
-                            // `Invoice` in a method of `Billing::PayInvoice`.
-                            match self.namespaced(&name) {
-                                Some(class) => self.stack.push(class),
-                                None => return Err(self.undefined_global(name)),
-                            }
+                            return Err(self.undefined_global(name));
                         }
                     }
                 }

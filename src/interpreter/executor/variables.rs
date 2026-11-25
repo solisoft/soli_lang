@@ -107,9 +107,15 @@ impl Interpreter {
         }
     }
 
-    /// `name` read unqualified in a class nested in a module: resolved in the
-    /// namespace its environment records (`interpreter::domain`).
+    /// `name` read unqualified in code written in a module: the class nested
+    /// there under that name (`interpreter::domain`), which wins over a
+    /// global of the same name.
     pub(crate) fn resolve_in_current_namespace(&self, name: &str) -> Option<Value> {
+        // Read on every variable access: a lowercase name is never a class,
+        // so it skips the walk to the namespace binding.
+        if !name.starts_with(char::is_uppercase) {
+            return None;
+        }
         let namespace = self.current_namespace()?;
         let env = self.environment.clone();
         crate::interpreter::domain::resolve_in_namespace(&namespace, name, |global| {
