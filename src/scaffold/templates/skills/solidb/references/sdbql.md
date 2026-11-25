@@ -386,8 +386,11 @@ were fixed on 2026-11-25 and checked on a server built from the tree (`SAMPLE
 3` of 20 now draws each key 47 to 72 times in 400 runs). Delete a line when a
 later build no longer shows it.
 
-- From a code review, not run: `EXPLAIN ANALYZE` of a sampled or qualified
-  read describes the query without them.
+- From the code, not run on a server: `EXPLAIN ANALYZE` of a read with
+  `SAMPLE` or `QUALIFY` runs it for real; `documents_returned` and the
+  total time are measured, the accesses are the planner's estimates, and
+  the steps are not timed. `EXPLAIN` anywhere but the start of a statement
+  (a CTE, a set-operation operand, `(EXPLAIN …) UNION …`) is a parse error.
 
 Behaviour of the fixes, observed then:
 - `/cursor` with `X-Transaction-ID` refuses a write that has `SAMPLE` or
