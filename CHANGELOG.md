@@ -8,6 +8,9 @@
 - **`PDF` and `JWT` classes.** `PDF.render`, `PDF.facturx`, `PDF.preview` and the rest of the `pdf_*` surface, and `JWT.sign`, `JWT.verify`, `JWT.decode_unsafe`, are static methods. The free functions (`pdf_render`, `jwt_sign`, …) still run as deprecated aliases and warn once per process. `jwt_decode` stays removed.
 - **`Session`, `Cookie`, `Channel`, `Path`, `Bytes`, `Zip`, `Policy` and `Component`.** `Session.*` (including flash), `Cookie.set` / `Cookie.read` and `Channel.*` are the class form of the free functions, which still run and warn once per process. `Cookie.signed` and `Cookie.encrypted` read with one argument and write with two or three. `Path` is lexical slash paths. `Bytes` is one binary value (base64, UTF-8, `0..255`). `Zip.entries` / `Zip.read` / `Zip.read_text` / `Zip.create` hold a zip in memory (`office` feature); a read inflates at most 32 MiB of one entry unless it passes `{"max_size": n}`. `Policy` is the deny-by-default base, and `soli generate auth` now writes `class ApplicationPolicy < Policy`. `soli generate component --class` emits `class Name < Component`. The `cookies` hash, `csrf_token`, `sse` / `stream` and `Model.broadcast` stay as they are.
 
+### Fixed
+- **`String#length` counts characters.** `.length`, `.len` and `.size` returned the UTF-8 byte count on both engines (`"héllo".length` was 6, `"😀".length` 4) while `len()`, `s[i]`, `substring` and `truncate` counted characters. They now agree with `len()`; `.bytesize` keeps the byte count. `index_of` answered a byte offset too (`"héllo".index_of("l")` was 3) and now returns the character index `s[i]` takes, and `center`, `ljust`, `rjust`, `lpad` and `rpad` measure their width in characters (`"é".ljust(3, "*")` is `"é**"`). Code that compared `.length` with a byte budget should use `.bytesize`.
+
 ## [2.41.2] - 2026-11-25
 
 ### Added

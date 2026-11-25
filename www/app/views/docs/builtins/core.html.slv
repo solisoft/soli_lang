@@ -217,7 +217,7 @@ float(42)     # 42.0</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns the length of a string, array, or hash. Also available as a method: <code>.len</code>, <code>.length</code>, <code>.size</code> are all aliases.</p>
+                    <p class="text-gray-400 mb-3">Returns the length of a string, array, or hash. Also available as a method: <code>.len</code>, <code>.length</code>, <code>.size</code> are all aliases. A string's length is its number of characters, on both engines: <code>"héllo".length</code> is 5 and <code>"😀".length</code> is 1. <code>.bytesize</code> gives the UTF-8 byte count (<code>"é".bytesize</code> is 2).</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">len("hello")      # 5
 len([1, 2, 3])    # 3
 len({"a": 1})     # 1
@@ -495,8 +495,9 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Returns the index of the first occurrence of substring, or -1 if not found.</p>
+                    <p class="text-gray-400 mb-3">Returns the index of the first occurrence of substring, in characters (the index <code>s[i]</code> and <code>substring</code> take), or -1 if not found.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">"hello world".index_of("world")  # 6
+"héllo".index_of("l")            # 2
 "hello".index_of("xyz")          # -1</code></pre>
                 </div>
             </section>

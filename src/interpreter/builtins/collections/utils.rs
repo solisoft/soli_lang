@@ -67,7 +67,9 @@ fn register_string_class(env: &mut Environment) {
                 _ => return Err("String.length() called on non-String".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::String(s)) => Ok(Value::Int(s.len() as i64)),
+                Some(Value::String(s)) => Ok(Value::Int(
+                    crate::interpreter::executor::calls::string_methods::char_len(&s) as i64,
+                )),
                 _ => Err("String missing internal value".to_string()),
             }
         })),
@@ -81,7 +83,9 @@ fn register_string_class(env: &mut Environment) {
                 _ => return Err("String.len() called on non-String".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::String(s)) => Ok(Value::Int(s.len() as i64)),
+                Some(Value::String(s)) => Ok(Value::Int(
+                    crate::interpreter::executor::calls::string_methods::char_len(&s) as i64,
+                )),
                 _ => Err("String missing internal value".to_string()),
             }
         })),
@@ -269,13 +273,9 @@ fn register_string_class(env: &mut Environment) {
                 _ => return Err("String.index_of() requires string argument".to_string()),
             };
             match this.borrow().fields.get("__value").cloned() {
-                Some(Value::String(s)) => {
-                    if let Some(idx) = s.find(&*substr) {
-                        Ok(Value::Int(idx as i64))
-                    } else {
-                        Ok(Value::Int(-1))
-                    }
-                }
+                Some(Value::String(s)) => Ok(Value::Int(
+                    crate::interpreter::executor::calls::string_methods::char_index_of(&s, &substr),
+                )),
                 _ => Err("String missing internal value".to_string()),
             }
         })),

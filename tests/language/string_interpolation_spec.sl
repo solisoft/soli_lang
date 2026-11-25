@@ -124,13 +124,15 @@ describe("Escape sequences") do
   test("\\u00e9 is a four-digit Unicode escape") do
     assert_eq("\u00e9", "é")
     assert_eq("\u00e9".chars.length, 1)
-    assert_eq("\u00e9".length, 2)
+    assert_eq("\u00e9".length, 1)
+    assert_eq("\u00e9".bytesize, 2)
   end
 
   test("\\u{1F600} is a braced Unicode escape beyond the BMP") do
     assert_eq("\u{1F600}", "😀")
     assert_eq("\u{1F600}".chars.length, 1)
-    assert_eq("\u{1F600}".length, 4)
+    assert_eq("\u{1F600}".length, 1)
+    assert_eq("\u{1F600}".bytesize, 4)
   end
 
   test("an escaped backslash before an interpolation keeps both") do

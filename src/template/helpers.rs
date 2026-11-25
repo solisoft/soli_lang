@@ -79,7 +79,9 @@ pub fn call_array_method(
 
 pub fn call_string_method(s: &str, method_name: &str, args: Vec<Value>) -> Result<Value, String> {
     match method_name {
-        "length" | "len" | "size" => Ok(Value::Int(s.len() as i64)),
+        "length" | "len" | "size" => Ok(Value::Int(
+            crate::interpreter::executor::calls::string_methods::char_len(s) as i64,
+        )),
         "empty" | "is_empty" => Ok(Value::Bool(s.is_empty())),
         "reverse" => {
             let mut chars: Vec<char> = s.chars().collect();

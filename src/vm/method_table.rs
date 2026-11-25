@@ -128,14 +128,16 @@ use crate::span::Span;
 #[inline(always)]
 pub fn string_method_zero_arg(s: &SoliStr, mid: MethodId) -> Option<Value> {
     match mid {
-        0 | 1 => Some(Value::Int(s.len() as i64)), // len, length
-        2 => Some(Value::Bool(s.is_empty())),      // empty?
-        3 => Some(Value::Int(s.len() as i64)),     // bytesize
-        4 | 5 => Some(upcase_string(s)),           // upcase, uppercase
-        6 | 7 => Some(downcase_string(s)),         // downcase, lowercase
-        8 => Some(reuse_or_slice(s, s.trim())),    // trim
+        0 | 1 => Some(Value::Int(
+            crate::interpreter::executor::calls::string_methods::char_len(s) as i64,
+        )), // len, length (characters)
+        2 => Some(Value::Bool(s.is_empty())),         // empty?
+        3 => Some(Value::Int(s.len() as i64)),        // bytesize
+        4 | 5 => Some(upcase_string(s)),              // upcase, uppercase
+        6 | 7 => Some(downcase_string(s)),            // downcase, lowercase
+        8 => Some(reuse_or_slice(s, s.trim())),       // trim
         9 => Some(reuse_or_slice(s, s.trim_start())), // lstrip
-        10 => Some(reuse_or_slice(s, s.trim_end())), // rstrip
+        10 => Some(reuse_or_slice(s, s.trim_end())),  // rstrip
         11 => {
             // capitalize
             let mut chars = s.chars();

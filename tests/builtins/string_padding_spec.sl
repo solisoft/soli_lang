@@ -61,9 +61,12 @@ end
 
 describe("padding non-ASCII text") do
   test("counts characters, not bytes") do
-    pending("bug: padding measures bytes: \"é\".ljust(3, \"*\") is \"é*\", \"héllo\".center(9, \"*\") \"*héllo**\"")
     assert_eq("é".ljust(3, "*"), "é**")
     assert_eq("é".rjust(3, "*"), "**é")
     assert_eq("héllo".center(9, "*"), "**héllo**")
+    assert_eq("é".lpad(3, "*"), "**é")
+    assert_eq("é".rpad(3, "*"), "é**")
+    assert_eq("😀".lpad(2), " 😀")
+    assert_eq("héllo".lpad(5), "héllo")
   end
 end

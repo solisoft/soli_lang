@@ -677,7 +677,9 @@ impl Vm {
             }
             Value::String(s) => {
                 if name == "length" {
-                    Ok(Value::Int(s.len() as i64))
+                    Ok(Value::Int(
+                        crate::interpreter::executor::calls::string_methods::char_len(s) as i64,
+                    ))
                 } else if is_string_method_name(name)
                     || has_primitive_user_method(PrimType::String, name)
                 {

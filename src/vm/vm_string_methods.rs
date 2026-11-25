@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
+use crate::interpreter::executor::calls::string_methods::{char_index_of, char_len};
 use crate::interpreter::value::{SoliStr, Value};
 use crate::span::Span;
 
@@ -68,7 +69,7 @@ impl Vm {
             }
             "len" | "length" | "size" => {
                 check_arity(0, args.len(), span)?;
-                Ok(Value::Int(text.len() as i64))
+                Ok(Value::Int(char_len(text) as i64))
             }
             "trim" | "strip" => {
                 check_arity(0, args.len(), span)?;
@@ -281,11 +282,7 @@ impl Vm {
             "index_of" => {
                 check_arity(1, args.len(), span)?;
                 let sub = expect_string(&args[0], "index_of", span)?;
-                if let Some(idx) = s.find(sub) {
-                    Ok(Value::Int(idx as i64))
-                } else {
-                    Ok(Value::Int(-1))
-                }
+                Ok(Value::Int(char_index_of(s, sub)))
             }
             "count" => {
                 check_arity(1, args.len(), span)?;
@@ -523,10 +520,10 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or(' ');
-                if s.len() >= width {
+                if char_len(s) >= width {
                     Ok(identity_string(s))
                 } else {
-                    let total_pad = width - s.len();
+                    let total_pad = width - char_len(s);
                     let left_pad = total_pad / 2;
                     let right_pad = total_pad - left_pad;
                     let mut result = SoliStr::with_capacity(width);
@@ -557,12 +554,12 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or(' ');
-                if s.len() >= width {
+                if char_len(s) >= width {
                     Ok(identity_string(s))
                 } else {
                     let mut result = SoliStr::with_capacity(width);
                     result.push_str(s);
-                    for _ in 0..(width - s.len()) {
+                    for _ in 0..(width - char_len(s)) {
                         result.push(pad_char);
                     }
                     Ok(Value::String(result))
@@ -585,11 +582,11 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or(' ');
-                if s.len() >= width {
+                if char_len(s) >= width {
                     Ok(identity_string(s))
                 } else {
                     let mut result = SoliStr::with_capacity(width);
-                    for _ in 0..(width - s.len()) {
+                    for _ in 0..(width - char_len(s)) {
                         result.push(pad_char);
                     }
                     result.push_str(s);
@@ -621,10 +618,10 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or(' ');
-                if s.len() >= width {
+                if char_len(s) >= width {
                     Ok(identity_string(s))
                 } else {
-                    let padding = width - s.len();
+                    let padding = width - char_len(s);
                     let mut result = SoliStr::with_capacity(width);
                     for _ in 0..padding {
                         result.push(pad_char);
@@ -658,10 +655,10 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or(' ');
-                if s.len() >= width {
+                if char_len(s) >= width {
                     Ok(identity_string(s))
                 } else {
-                    let padding = width - s.len();
+                    let padding = width - char_len(s);
                     let mut result = SoliStr::with_capacity(width);
                     result.push_str(s);
                     for _ in 0..padding {

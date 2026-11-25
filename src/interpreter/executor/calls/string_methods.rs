@@ -310,6 +310,26 @@ pub(crate) fn substring_chars(s: &str, start: i64, end: i64) -> String {
     chars[start..end].iter().collect()
 }
 
+/// A string's length in characters (Unicode scalar values), what
+/// `length`, `len`, `size` and the padding widths count: `"héllo".length` is
+/// 5. `bytesize` keeps the UTF-8 byte count.
+pub(crate) fn char_len(s: &str) -> usize {
+    if s.is_ascii() {
+        s.len()
+    } else {
+        s.chars().count()
+    }
+}
+
+/// Where `sub` first starts in `s`, in characters, or -1: the index
+/// `s[i]` and `substring` take.
+pub(crate) fn char_index_of(s: &str, sub: &str) -> i64 {
+    match s.find(sub) {
+        Some(byte) => char_len(&s[..byte]) as i64,
+        None => -1,
+    }
+}
+
 /// `truncate(length, suffix)` — counted in **characters**, suffix included.
 ///
 /// Returns `None` when the string already fits, so the caller can hand back the
@@ -422,7 +442,7 @@ impl Interpreter {
                 if !arguments.is_empty() {
                     return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
                 }
-                Some(Ok(Value::Int(text.len() as i64)))
+                Some(Ok(Value::Int(char_len(text) as i64)))
             }
             "to_s" | "to_string" | "join" => {
                 if !arguments.is_empty() {
@@ -1099,10 +1119,10 @@ impl Interpreter {
             })
             .unwrap_or(' ');
 
-        if s.len() >= width {
+        if char_len(s) >= width {
             Ok(Value::String(s.to_string().into()))
         } else {
-            let total_pad = width - s.len();
+            let total_pad = width - char_len(s);
             let left_pad = total_pad / 2;
             let right_pad = total_pad - left_pad;
             let result =
@@ -1134,10 +1154,10 @@ impl Interpreter {
             })
             .unwrap_or(' ');
 
-        if s.len() >= width {
+        if char_len(s) >= width {
             Ok(Value::String(s.to_string().into()))
         } else {
-            let result = s.to_string() + &pad_char.to_string().repeat(width - s.len());
+            let result = s.to_string() + &pad_char.to_string().repeat(width - char_len(s));
             Ok(Value::String(result.into()))
         }
     }
@@ -1165,10 +1185,10 @@ impl Interpreter {
             })
             .unwrap_or(' ');
 
-        if s.len() >= width {
+        if char_len(s) >= width {
             Ok(Value::String(s.to_string().into()))
         } else {
-            let result = pad_char.to_string().repeat(width - s.len()) + s;
+            let result = pad_char.to_string().repeat(width - char_len(s)) + s;
             Ok(Value::String(result.into()))
         }
     }
@@ -1445,7 +1465,7 @@ impl Interpreter {
         if !arguments.is_empty() {
             return Err(RuntimeError::wrong_arity(0, arguments.len(), span));
         }
-        Ok(Value::Int(s.len() as i64))
+        Ok(Value::Int(char_len(s) as i64))
     }
 
     fn string_contains(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1499,11 +1519,7 @@ impl Interpreter {
                 ))
             }
         };
-        if let Some(idx) = s.find(&**(substr)) {
-            Ok(Value::Int(idx as i64))
-        } else {
-            Ok(Value::Int(-1))
-        }
+        Ok(Value::Int(char_index_of(s, substr)))
     }
 
     fn string_substring(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1582,10 +1598,10 @@ impl Interpreter {
                 _ => ' ',
             })
             .unwrap_or(' ');
-        if s.len() >= width {
+        if char_len(s) >= width {
             Ok(Value::String(s.to_string().into()))
         } else {
-            let padding = width - s.len();
+            let padding = width - char_len(s);
             Ok(Value::String(
                 (pad_char.to_string().repeat(padding) + s).into(),
             ))
@@ -1614,10 +1630,10 @@ impl Interpreter {
                 _ => ' ',
             })
             .unwrap_or(' ');
-        if s.len() >= width {
+        if char_len(s) >= width {
             Ok(Value::String(s.to_string().into()))
         } else {
-            let padding = width - s.len();
+            let padding = width - char_len(s);
             Ok(Value::String(
                 (s.to_string() + &pad_char.to_string().repeat(padding)).into(),
             ))

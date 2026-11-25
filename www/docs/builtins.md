@@ -222,7 +222,7 @@ float(42)      # 42.0
 
 #### len(value)
 
-Returns the length of a string, array, or hash. Also available as a method: `.len`, `.length`, `.size` are all aliases.
+Returns the length of a string, array, or hash. Also available as a method: `.len`, `.length`, `.size` are all aliases. A string's length is its number of characters, on both engines: `"héllo".length` is 5 and `"😀".length` is 1. `.bytesize` gives the UTF-8 byte count (`"é".bytesize` is 2).
 
 **Parameters:**
 - `value` (String|Array|Hash) - The collection to measure
@@ -533,7 +533,7 @@ Finds the position of a substring.
 - `string` (String) - The string to search in
 - `substring` (String) - The string to find
 
-**Returns:** Int - Index of first occurrence, or -1 if not found
+**Returns:** Int - Index of first occurrence, in characters (the index `s[i]` and `substring` take), or -1 if not found. `"héllo".index_of("l")` is 2.
 
 **Example:**
 ```soli

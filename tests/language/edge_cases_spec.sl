@@ -118,10 +118,8 @@ describe("Edge cases") do
     end
 
     test(".length agrees with len()") do
-      # `"🌍".length` is 4 (bytes) on both engines while `len("🌍")` is 1;
-      # builtins.md documents .len/.length/.size as aliases of len().
-      pending("bug: String#length counts bytes, len() counts characters")
       assert_eq("Hello 世界 🌍".length, 10)
+      assert_eq("🌍".length, len("🌍"))
     end
   end
 

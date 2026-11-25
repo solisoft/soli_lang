@@ -20,10 +20,12 @@ describe("string length") do
   end
 
   test(".length counts characters, like len()") do
-    pending("bug: \"héllo\".length / .len / .size count bytes (6), while len(\"héllo\") counts characters (5)")
     assert_eq("héllo".length, 5)
     assert_eq("héllo".size, 5)
     assert_eq("héllo".len, 5)
+    assert_eq("😀".length, 1)
+    assert_eq("日本語".length, 3)
+    assert_eq("héllo".length, len("héllo"))
   end
 
   test("bytesize counts UTF-8 bytes") do
@@ -242,6 +244,15 @@ describe("searching") do
     assert_eq("hello world".index_of("hello"), 0)
     assert_eq("hello world".index_of("foo"), -1)
     assert_eq("".index_of("a"), -1)
+  end
+
+  test("index_of counts characters, the index s[i] and substring take") do
+    text = "héllo wörld"
+    assert_eq(text.index_of("l"), 2)
+    assert_eq(text.index_of("wörld"), 6)
+    assert_eq(text[text.index_of("w")], "w")
+    assert_eq(text.substring(text.index_of("w"), text.length), "wörld")
+    assert_eq("😀x".index_of("x"), 1)
   end
 
   test("count counts non-overlapping occurrences") do
