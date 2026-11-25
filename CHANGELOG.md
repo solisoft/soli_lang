@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.42.0] - 2026-11-25
+
 ### Added
 - **`PDF` and `JWT` classes.** `PDF.render`, `PDF.facturx`, `PDF.preview` and the rest of the `pdf_*` surface, and `JWT.sign`, `JWT.verify`, `JWT.decode_unsafe`, are static methods. The free functions (`pdf_render`, `jwt_sign`, …) still run as deprecated aliases and warn once per process. `jwt_decode` stays removed.
 - **`Session`, `Cookie`, `Channel`, `Path`, `Bytes`, `Zip`, `Policy` and `Component`.** `Session.*` (including flash), `Cookie.set` / `Cookie.read` and `Channel.*` are the class form of the free functions, which still run and warn once per process. `Cookie.signed` and `Cookie.encrypted` read with one argument and write with two or three. `Path` is lexical slash paths. `Bytes` is one binary value (base64, UTF-8, `0..255`). `Zip.entries` / `Zip.read` / `Zip.read_text` / `Zip.create` hold a zip in memory (`office` feature); a read inflates at most 32 MiB of one entry unless it passes `{"max_size": n}`. `Policy` is the deny-by-default base, and `soli generate auth` now writes `class ApplicationPolicy < Policy`. `soli generate component --class` emits `class Name < Component`. The `cookies` hash, `csrf_token`, `sse` / `stream` and `Model.broadcast` stay as they are.
