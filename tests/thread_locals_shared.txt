@@ -134,6 +134,7 @@ src/template/vm_template.rs COMPILED
 src/vm/vm_view_helpers.rs VIEW_HELPERS
 
 # Registries and interned classes
+src/interpreter/builtins/bytes.rs BYTES_CLASS
 src/interpreter/builtins/controller/registry.rs HOOK_FUNCTIONS
 src/interpreter/builtins/datetime_class.rs DATETIME_INSTANCE_CLASS
 src/interpreter/builtins/datetime_class.rs DATETIME_METHODS
