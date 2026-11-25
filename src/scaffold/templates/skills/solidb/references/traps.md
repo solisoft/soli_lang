@@ -211,11 +211,10 @@ involved).
     before it (above 100 rows it is one batch and every row reads the same
     count). Use a transaction for those.
 
-Traps 44 to 47 are of clauses no release has yet. They were observed on
-2026-11-24 on a build of the working tree, which also had the defects listed
-in sdbql.md (*Open on that tree*).
+Traps 44 to 47 are of clauses added in 3.1.0, observed on 2026-11-24/25 on
+builds of the tree released as 3.1.0.
 
-44. **`EXPLAIN ANALYZE` of a write does write** (unreleased, after 3.0.0).
+44. **`EXPLAIN ANALYZE` of a write does write** (3.1.0).
     `EXPLAIN INSERT …` plans and stores nothing. `EXPLAIN ANALYZE INSERT …`
     stores the document once and returns the plan, not the inserted row.
     Timings are zero on purpose: filling them in would write a second time.
@@ -223,12 +222,12 @@ in sdbql.md (*Open on that tree*).
     `warnings` then also carries the plan-only line (`nothing was run…`),
     which is wrong there. An `EXPLAIN` without its bind variables is not
     refused and may plan a `full_scan` where the real query uses an index.
-45. **`SAMPLE n` reads the whole source** (unreleased, after 3.0.0). It then
+45. **`SAMPLE n` reads the whole source** (3.1.0). It then
     keeps at most `n` rows. It does not stop the scan at `n`. `FILTER` after
     `SAMPLE` sees only the sample, so `SAMPLE 0` makes a later `FILTER`
     return nothing. Count-sample order is not scan order (percent samples
     keep it). The draw is not seeded.
-46. **`QUALIFY` numbers windows before `SORT`** (unreleased, after 3.0.0).
+46. **`QUALIFY` numbers windows before `SORT`** (3.1.0).
     A query with no `QUALIFY` still numbers `RETURN` windows after `SORT`.
     With `QUALIFY`, `RETURN` windows keep the pre-filter numbers. A window
     with its own `ORDER BY` is unaffected; a window with none follows arrival
@@ -236,8 +235,8 @@ in sdbql.md (*Open on that tree*).
     order when it is not. `SORT` before `QUALIFY` does not parse, and neither
     does a `COLLECT` or a write after it. An error in the predicate fails
     the query, where `FILTER` drops the row.
-47. **`GROUPING()` is only a `COLLECT` row function** (unreleased, after
-    3.0.0). It is not in the builtin list. The argument is the group
+47. **`GROUPING()` is only a `COLLECT` row function** (3.1.0).
+    It is not in the builtin list. The argument is the group
     variable's name. A rolled-up key is JSON `null`; `GROUPING` is 1 there.
     `INTO` on a `ROLLUP` subtotal concatenates every detail member, so a
     grand total holds the input again at every level. Subtotals come after

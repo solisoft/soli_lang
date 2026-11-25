@@ -50,9 +50,8 @@ FOR u IN users                         -- collection, array, range (1..10), or s
 ```
 
 - Keywords are case-insensitive; function names are upper-case by convention.
-- **Unreleased, after 3.0.0** (observed 2026-11-24 on a build of the working
-  tree; no released binary has them, and that tree still had defects listed
-  in `references/sdbql.md`): `EXPLAIN <query>` returns one plan row and does
+- **Since 3.1.0** (observed 2026-11-24/25 on builds of the tree
+  released as 3.1.0): `EXPLAIN <query>` returns one plan row and does
   not write; `EXPLAIN ANALYZE` of a write does write, once, and returns the
   plan without timings. `QUALIFY <window-predicate>` filters after the body
   and before `SORT` (windows numbered on the full set). `FOR d IN c SAMPLE n`
@@ -91,14 +90,14 @@ FOR o IN orders COLLECT s = o.status INTO g RETURN { s, keys: g[*].o._key }
 FOR o IN orders COLLECT s = o.status INTO keys = o._key RETURN { s, keys }
 FOR o IN orders COLLECT AGGREGATE total = SUM(o.amount) RETURN total  -- no key
 
--- Unreleased, after 3.0.0. Subtotals; GROUPING is 1 on a rolled-up key.
+-- Since 3.1.0. Subtotals; GROUPING is 1 on a rolled-up key.
 FOR o IN orders
   COLLECT country = o.country, status = o.status ROLLUP
   AGGREGATE total = SUM(o.amount)
   RETURN { country, status, total, rolled: GROUPING(status) }
 ```
 
-Window functions work in `RETURN`, in a `LET` and, unreleased after 3.0.0,
+Window functions work in `RETURN`, in a `LET` and, since 3.1.0,
 in `QUALIFY` (the predicate runs before `SORT`; numbers are of the
 pre-filter rows):
 `ROW_NUMBER() OVER (PARTITION BY e.dept ORDER BY e.salary DESC)`, `RANK()`,

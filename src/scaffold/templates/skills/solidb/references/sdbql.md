@@ -21,19 +21,19 @@ Every example here was run against `solidb 2.4.0`; results are shown as the
 - Identifiers in backticks are not supported.
 - Statement must start with `FOR`, `LET`, `RETURN`, `INSERT`, `UPDATE`,
   `REMOVE` (also `UPSERT`, `REPLACE`, `WITH` CTEs, `CREATE`/`REFRESH
-  MATERIALIZED VIEW`, and, unreleased after 3.0.0, `EXPLAIN`). Typos produce
+  MATERIALIZED VIEW`, and, since 3.1.0, `EXPLAIN`). Typos produce
   `Unexpected token: Identifier("RETRN"). Expected FOR, LET, RETURN, …`
-  (after 3.0.0 the list reads `FOR, LET, FILTER, QUALIFY, RETURN, INSERT,
+  (since 3.1.0 the list reads `FOR, LET, FILTER, QUALIFY, RETURN, INSERT,
   UPDATE, or REMOVE`).
 
 ## Clauses
 
 | Clause | Form | Notes |
 |--------|------|-------|
-| `FOR` | `FOR x IN coll` / `IN [array]` / `IN 1..10` / `IN (subquery)` / `IN @arr` | `FOR x IN coll OPTIONS { indexHint: "name" }` accepted. Unreleased after 3.0.0: `SAMPLE n` or `SAMPLE p PERCENT` on the source, before `OPTIONS` (see below) |
+| `FOR` | `FOR x IN coll` / `IN [array]` / `IN 1..10` / `IN (subquery)` / `IN @arr` | `FOR x IN coll OPTIONS { indexHint: "name" }` accepted. Since 3.1.0: `SAMPLE n` or `SAMPLE p PERCENT` on the source, before `OPTIONS` (see below) |
 | `FILTER` | `FILTER expr` | Repeatable (ANDed). Evaluation errors inside drop the row silently; since 2.9.5 an unknown function or a missing bind variable fails the query instead |
-| `QUALIFY` | `QUALIFY expr` | Unreleased after 3.0.0. Once, after the body, before `SORT`. See below |
-| `EXPLAIN` | `EXPLAIN [ANALYZE] <query>` | Unreleased after 3.0.0. One plan row. See below |
+| `QUALIFY` | `QUALIFY expr` | Since 3.1.0. Once, after the body, before `SORT`. See below |
+| `EXPLAIN` | `EXPLAIN [ANALYZE] <query>` | Since 3.1.0. One plan row. See below |
 | `LET` | `LET x = expr` | Also after `SORT`/`LIMIT` (then computed only for surviving rows; not visible to earlier clauses) |
 | `SORT` | `SORT e1 [ASC\|DESC], e2 …` | Stable. Any expression |
 | `LIMIT` | `LIMIT n` / `LIMIT offset, n` | Bind vars allowed: `LIMIT @o, @n` |
@@ -149,9 +149,8 @@ FOR o IN orders FILTER o.amount > 5 COLLECT s = UPPER(o.status) WITH COUNT INTO 
 `SOLIDB_SCAN_THREADS` caps the threads (default: the CPUs the process may
 use; `1` turns parallel scans off). SUM/AVG are exact (functions.md).
 
-**`ROLLUP` and `CUBE`** (unreleased, after 3.0.0; observed over HTTP on
-2026-11-24 on a build of the working tree, which no release has yet; that
-tree had open defects, listed under *QUALIFY, SAMPLE, EXPLAIN* below). The
+**`ROLLUP` and `CUBE`** (3.1.0; observed over HTTP on
+2026-11-24/25 on builds of the tree released as 3.1.0). The
 keyword follows the group variables and precedes `INTO` / `WITH COUNT` /
 `AGGREGATE` / `OPTIONS`; written after `AGGREGATE` it is `Unexpected token:
 Identifier("ROLLUP")`. Both at once, or a second copy: `400` `ROLLUP and CUBE
@@ -266,13 +265,11 @@ FOR e IN emp SORT e._key
 -- ann r1 s180.0, bob r2, cid r4 s130.0, dee r3
 ```
 
-### QUALIFY, SAMPLE, EXPLAIN (unreleased, after 3.0.0)
+### QUALIFY, SAMPLE, EXPLAIN (3.1.0)
 
 Not in 3.0.0 (`Unexpected token: Identifier("ROLLUP")` there). Observed over
-HTTP on 2026-11-24 on a build of the working tree, which no release has yet;
-the tests are `tests/sdbql_explain_qualify_rollup_sample_tests.rs`. That
-tree still had the defects listed at the end of this section: read them
-before relying on any of the four clauses, and observe again on the release.
+HTTP on 2026-11-24/25 on builds of the tree released as 3.1.0; the tests are
+`tests/sdbql_explain_qualify_rollup_sample_tests.rs`.
 The offline parser in `sdbql-core` rejects the new syntax (unverified). None
 of `qualify`, `sample`, `explain`, `rollup`, `cube` is a reserved name
 (`LET qualify = 1 RETURN qualify` works).
@@ -381,10 +378,9 @@ of a write answers the staging message with the plan as `result`. The HTTP
 query inside. `warnings` also notes `QUALIFY`, `SAMPLE` and
 `ROLLUP`/`CUBE` when the query has them.
 
-**Open on that tree (2026-11-25).** The defects listed here on 2026-11-24
-were fixed on 2026-11-25 and checked on a server built from the tree (`SAMPLE
-3` of 20 now draws each key 47 to 72 times in 400 runs). Delete a line when a
-later build no longer shows it.
+**Fixed before 3.1.0.** Defects seen on 2026-11-24 were fixed on 2026-11-25,
+before the release, and checked on a server built from that tree (`SAMPLE
+3` of 20 draws each key 47 to 72 times in 400 runs).
 
 - From the code, not run on a server: `EXPLAIN ANALYZE` of a read with
   `SAMPLE` or `QUALIFY` runs it for real; `documents_returned` and the

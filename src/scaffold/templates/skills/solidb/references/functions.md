@@ -161,10 +161,10 @@ See indexes-search.md: `DISTANCE(lat1, lon1, lat2, lon2)` (meters),
 `ROW_NUMBER()`, `RANK()` and aggregates with `OVER (PARTITION BY … ORDER BY …)`
 inside `RETURN` or a `LET` (see sdbql.md). Not callable as plain functions.
 Written directly in a `FILTER` they drop every row and raise nothing
-(2.15.0 and after 3.0.0). Unreleased after 3.0.0 they are also numbered
+(2.15.0 and after 3.0.0). Since 3.1.0 they are also numbered
 inside `QUALIFY`, on the pre-filter rows.
 
-### `GROUPING` (unreleased, after 3.0.0; observed 2026-11-24 on a build of the working tree)
+### `GROUPING` (3.1.0; observed 2026-11-24 on a build of the working tree)
 
 Not a normal builtin and not in the probed list below. `GROUPING(var)` is
 special-cased before its argument is evaluated, and only on the rows of a

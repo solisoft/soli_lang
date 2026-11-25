@@ -228,7 +228,7 @@ var, arity), `404 CollectionNotFound`, `409 ConflictError`,
 ### Explain
 
 `POST /_api/database/{db}/explain` with the same body → planner info without
-side effects of interest. Unreleased after 3.0.0 (observed 2026-11-24 on a
+side effects of interest. Since 3.1.0 (observed 2026-11-24 on a
 build of the working tree), the same object is also one row of the
 statement `EXPLAIN <query>` sent to `/cursor` (`plan_only: true`, nothing
 written) and of `EXPLAIN ANALYZE <query>` (a read is timed and the rows are
