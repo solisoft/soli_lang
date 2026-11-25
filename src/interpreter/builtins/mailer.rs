@@ -43,6 +43,8 @@ use mail_builder::mime::MimePart;
 use mail_builder::MessageBuilder;
 
 use crate::interpreter::builtins::mail_outbox;
+
+mod cloudflare;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
@@ -56,6 +58,9 @@ enum DeliveryMethod {
     /// A `POST` to a mail provider's API (`deliver_http`): what works where
     /// SMTP cannot, a Cloudflare Worker first.
     Http,
+    /// Cloudflare Email Sending: the Worker's `send_email` binding on the
+    /// edge, the REST API elsewhere (`mailer/cloudflare.rs`).
+    Cloudflare,
     Test,
     Logger,
 }
@@ -97,6 +102,11 @@ struct MailerConfig {
     /// A class name, not a lambda: the configuration is made once per app and
     /// read by every worker, and a closure cannot leave its interpreter.
     request_hook: Option<String>,
+    /// `cloudflare`: the Worker's `send_email` binding (`EMAIL` by default).
+    binding: String,
+    /// `cloudflare` off the edge: the account the REST API sends from
+    /// (`api_key` is then its API token).
+    account_id: Option<String>,
 }
 
 impl MailerConfig {
@@ -106,6 +116,7 @@ impl MailerConfig {
             Some("test") => DeliveryMethod::Test,
             Some("logger") => DeliveryMethod::Logger,
             Some("http") => DeliveryMethod::Http,
+            Some("cloudflare") => DeliveryMethod::Cloudflare,
             _ => DeliveryMethod::Smtp,
         };
         let tls = match env("SOLI_SMTP_TLS").as_deref() {
@@ -129,6 +140,8 @@ impl MailerConfig {
             api_key: env("SOLI_MAIL_API_KEY"),
             api_key_header: env("SOLI_MAIL_API_KEY_HEADER"),
             request_hook: env("SOLI_MAIL_REQUEST"),
+            binding: env("SOLI_MAIL_BINDING").unwrap_or_else(|| "EMAIL".to_string()),
+            account_id: env("SOLI_MAIL_ACCOUNT_ID"),
         }
     }
 
@@ -770,9 +783,10 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
                 "logger" => DeliveryMethod::Logger,
                 "smtp" => DeliveryMethod::Smtp,
                 "http" => DeliveryMethod::Http,
+                "cloudflare" => DeliveryMethod::Cloudflare,
                 other => {
                     return Err(format!(
-                        "unknown delivery_method: {other} (use smtp, http, test or logger)"
+                        "unknown delivery_method: {other} (use smtp, http, cloudflare, test or logger)"
                     ))
                 }
             };
@@ -813,6 +827,21 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
         if let Some(key) = hash_get(&opts, "api_key").and_then(|v| as_string(&v)) {
             cfg.api_key = Some(key);
         }
+        if let Some(binding) = hash_get(&opts, "binding").and_then(|v| as_string(&v)) {
+            if binding.is_empty()
+                || !binding
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                return Err(format!(
+                    "Mailer.configure: binding must name a Worker binding (\"EMAIL\"), got {binding:?}"
+                ));
+            }
+            cfg.binding = binding;
+        }
+        if let Some(account_id) = hash_get(&opts, "account_id").and_then(|v| as_string(&v)) {
+            cfg.account_id = Some(account_id);
+        }
         if let Some(header) = hash_get(&opts, "api_key_header").and_then(|v| as_string(&v)) {
             ensure_no_crlf("api_key_header", &header)?;
             cfg.api_key_header = Some(header);
@@ -832,6 +861,9 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
         }
         if cleared("request") {
             cfg.request_hook = None;
+        }
+        if cleared("account_id") {
+            cfg.account_id = None;
         }
         if let Some(hook) = hash_get(&opts, "request").and_then(|v| as_string(&v)) {
             if !hook
@@ -901,6 +933,23 @@ fn deliver_mail(args: &[Value]) -> Result<Value, String> {
                 .and_then(|(url, headers, body)| send_http(&url, &headers, body.to_string()));
             finish_delivery(&mail, request)
         }
+        DeliveryMethod::Cloudflare => {
+            let mail = mail.borrow();
+            // As for SMTP: a dev box with no Cloudflare account parks the mail
+            // in the dev inbox. A Worker always has its binding to try.
+            if !cfg!(target_arch = "wasm32")
+                && cfg.account_id.is_none()
+                && crate::interpreter::builtins::template::is_dev_mode()
+            {
+                capture_for_inbox(&mail, mail_outbox::Status::Captured);
+                eprintln!(
+                    "[mailer] no Cloudflare account_id configured; captured in the dev inbox at /__soli/inbox"
+                );
+                return Ok(Value::Bool(true));
+            }
+            let sent = envelope(&cfg, &mail).and_then(|env| cloudflare::deliver(&cfg, &env));
+            finish_delivery(&mail, sent)
+        }
         DeliveryMethod::Smtp => {
             let mail = mail.borrow();
             // No SMTP server on the dev box is the normal case, not a bug: park
@@ -917,8 +966,8 @@ fn deliver_mail(args: &[Value]) -> Result<Value, String> {
             // A Worker has no TCP sockets: say what does work there.
             if cfg!(target_arch = "wasm32") {
                 let e = "SMTP is not available on the edge (Cloudflare Workers) build: a Worker \
-                         cannot connect to a mail server. Use delivery_method \"http\" \
-                         (Mailer → Over HTTP)"
+                         cannot connect to a mail server. Use delivery_method \"cloudflare\" \
+                         (the Worker's send_email binding) or \"http\" (Mailer → Over HTTP)"
                     .to_string();
                 capture_for_inbox(&mail, mail_outbox::Status::Failed(e.clone()));
                 return Err(e);

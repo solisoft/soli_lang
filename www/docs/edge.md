@@ -532,6 +532,20 @@ it, retried like any job — without a `JOBS` binding it sends at once.
 Attachments travel base64 in the request, so keep them well under the
 ~20 MB a request body allows.
 
+**Or Cloudflare's own Email Sending**, with no provider and no key: set
+`SOLI_MAIL_DELIVERY_METHOD = "cloudflare"` under `[vars]` and add the binding
+(`soli edge build` writes it commented out):
+
+```toml
+[[send_email]]
+name = "EMAIL"
+```
+
+The from address must be on a domain onboarded in Email Service. On Workers
+Free, Cloudflare sends only to the account's verified destination addresses
+(fine for a contact form or alerts); Workers Paid sends to anyone. See
+[Cloudflare Email Sending](mailer.md#cloudflare-email-sending).
+
 ## LiveView: sockets in Durable Objects
 
 A [LiveView](liveview.md) runs on the edge unchanged: the same template, the
@@ -623,7 +637,7 @@ end
 | routes, controllers, `before_action`, middleware; [LiveView](#liveview-sockets-in-durable-objects) | other WebSockets; LiveView `tick`, live queries, `live_update` |
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
-| i18n from `config/locales`; background jobs through Cloudflare Queues; `static cron` through Cron Triggers | `Cron.schedule` and the cron table, SMTP (mail goes [over HTTP](#mail-over-http)) |
+| i18n from `config/locales`; background jobs through Cloudflare Queues; `static cron` through Cron Triggers | `Cron.schedule` and the cron table, SMTP (mail goes [over HTTP or through Cloudflare Email Sending](#mail-over-http)) |
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/`; attachments on R2, with `Range` and image transforms | Office, the `Image` class, `System.run` |

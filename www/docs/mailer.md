@@ -250,7 +250,7 @@ Configure delivery once in `config/application.sl`:
 
 ```soli
 Mailer.configure({
-  "delivery_method": "smtp",       # "smtp" | "http" | "test" | "logger"
+  "delivery_method": "smtp",       # "smtp" | "http" | "cloudflare" | "test" | "logger"
   "host": getenv("SMTP_HOST"),
   "port": 587,                     # 465 = implicit TLS, 587 = STARTTLS
   "user": getenv("SMTP_USER"),
@@ -269,6 +269,7 @@ Authentication (`AUTH LOGIN`) is used when `user`/`pass` are set.
 |----------|----------|
 | `smtp`   | Send over SMTP (default). Under `--dev` with no `host`, the mail is captured in the [dev inbox](#the-dev-inbox) instead of failing. |
 | `http`   | POST the mail to a provider's API ([Over HTTP](#over-http)). Under `--dev` with no `url`, captured in the dev inbox. |
+| `cloudflare` | Send through Cloudflare Email Sending: the Worker's `send_email` binding on the edge, the REST API elsewhere ([Cloudflare Email Sending](#cloudflare-email-sending)). Under `--dev` off the edge with no `account_id`, captured in the dev inbox. |
 | `test`   | Capture mail in memory for assertions — never sends. |
 | `logger` | Print a one-line summary instead of sending. |
 
@@ -285,6 +286,8 @@ Authentication (`AUTH LOGIN`) is used when `user`/`pass` are set.
 | `SOLI_MAIL_URL` | `url` (http) |
 | `SOLI_MAIL_API_KEY` / `SOLI_MAIL_API_KEY_HEADER` | `api_key` / `api_key_header` (http) |
 | `SOLI_MAIL_REQUEST` | `request` (http) |
+| `SOLI_MAIL_BINDING` | `binding` (cloudflare, default `EMAIL`) |
+| `SOLI_MAIL_ACCOUNT_ID` | `account_id` (cloudflare, off the edge) |
 
 ### Over HTTP
 
@@ -355,14 +358,73 @@ With a hook, `url` is optional — the class knows its provider's endpoint, and 
 configured `url` is only the base it is handed. `nil` removes any http setting
 (`"request": nil`, `"api_key_header": nil`…).
 
-On Cloudflare Workers, `http` is the only road — a Worker cannot reach an SMTP
-server ([Mail on the edge](edge.md#mail-over-http)).
+A Cloudflare Worker cannot reach an SMTP server: there, use `http` or
+[`cloudflare`](#cloudflare-email-sending) ([Mail on the edge](edge.md#mail-over-http)).
 
 Ready-made classes for Brevo, Resend, Postmark, SendGrid and Mailgun, each
 tested against the shape its API documents, are in
 [Mail over HTTP: one class per provider](blog/mail-over-http-provider-classes.md)
 (and `examples/mail_providers/` in the repository). The URL goes through the same SSRF check as the
 `HTTP` class (`SOLI_HTTP_ALLOW_HOSTS` opens a private host).
+
+### Cloudflare Email Sending
+
+`delivery_method: "cloudflare"` sends through
+[Cloudflare Email Service](https://developers.cloudflare.com/email-service/).
+In a Worker it calls the `send_email` binding, so there is no key to keep:
+
+```toml
+# wrangler.toml
+[vars]
+SOLI_MAIL_DELIVERY_METHOD = "cloudflare"
+
+[[send_email]]
+name = "EMAIL"
+```
+
+```soli
+Mailer.configure({
+  "delivery_method": "cloudflare",
+  "binding": "EMAIL",                    # the default
+  "from": "Acme <noreply@example.com>"   # on a domain onboarded in Email Service
+})
+```
+
+Anywhere else (`soli serve`, a job worker) the same method calls the REST API,
+`POST /accounts/{account_id}/email/sending/send`, with an API token allowed
+*Email Sending: Edit*:
+
+```soli
+Mailer.configure({
+  "delivery_method": "cloudflare",
+  "account_id": getenv("CLOUDFLARE_ACCOUNT_ID"),
+  "api_key": getenv("CLOUDFLARE_EMAIL_TOKEN")
+})
+```
+
+The mail is translated to Cloudflare's shape: `to`, `cc`, `bcc`, `from`,
+`reply_to` (`replyTo` for the binding, which also takes `"Ana <ana@…>"` as
+`{email, name}`), `subject`, `text`, `html`, `headers` and the attachments.
+What Cloudflare would refuse is refused before the call: no recipient, more
+than 50 recipients, no `from`, neither `text` nor `html`, more than 32
+attachments. A refusal raises with Cloudflare's code and what to do about it:
+
+```
+Cloudflare Email Sending refused the mail (E_RECIPIENT_NOT_ALLOWED): … — on the
+Workers Free plan Cloudflare sends only to the account's verified destination
+addresses (Workers Paid sends to anyone) …
+```
+
+What Cloudflare requires:
+
+- **The sending domain** uses Cloudflare DNS and is onboarded in Email Service
+  (dashboard → Email Service → Email Sending), with the DNS records it lists.
+- **On Workers Free**, mail goes only to the account's *verified destination
+  addresses*, free: enough for a contact form or alerts to yourself, not for
+  mail to your users. **Workers Paid** sends to anyone, 3,000 mails a month
+  included.
+- **Headers**: `X-` headers and Cloudflare's allowlist (`List-Unsubscribe`,
+  `In-Reply-To`, `References`…). Others are refused (`E_HEADER_NOT_ALLOWED`).
 
 ## Testing
 

@@ -78,6 +78,13 @@ database_id = "00000000-0000-0000-0000-000000000000"
 # queue = "{worker}-jobs"
 # max_retries = 100
 
+# Mail through Cloudflare Email Sending: set SOLI_MAIL_DELIVERY_METHOD =
+# "cloudflare" under [vars] and keep the binding below. The from address must be
+# on a domain onboarded in Email Service; on Workers Free, Cloudflare sends only
+# to the account's verified destination addresses (Workers Paid: to anyone).
+# [[send_email]]
+# name = "EMAIL"
+
 # Postgres through Hyperdrive instead of D1: set SOLI_DB_ADAPTER = "postgres"
 # above, add compatibility_flags = ["nodejs_compat"] at the top, and
 # [[hyperdrive]]

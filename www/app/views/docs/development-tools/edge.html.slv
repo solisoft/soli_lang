@@ -349,8 +349,18 @@ crons = ["15 3 * * *"]</code></pre>
         <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({"delivery_method": "http", "request": "BrevoMail",
                   "api_key": getenv("BREVO_API_KEY"), "from": "Acme &lt;noreply@example.com&gt;"})</code></pre>
     </div>
-    <p class="text-gray-400 mb-12">
+    <p class="text-gray-400 mb-4">
         Keep the key a secret (<code>npx wrangler secret put BREVO_API_KEY</code>). Your mailers do not change: <code>deliver_now</code> sends from the request, and <code>deliver_later</code> becomes a <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a> message whose job sends it, retried like any job &mdash; without a <code>JOBS</code> binding it sends at once. Attachments travel base64 in the request, so keep them well under the ~20&nbsp;MB a request body allows.
+    </p>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Or Cloudflare&rsquo;s own Email Sending</strong>, with no provider and no key: set <code>SOLI_MAIL_DELIVERY_METHOD = "cloudflare"</code> under <code>[vars]</code> and add the binding (<code>soli edge build</code> writes it commented out):
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">[[send_email]]
+name = "EMAIL"</code></pre>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The from address must be on a domain onboarded in Email Service. On Workers Free, Cloudflare sends only to the account&rsquo;s verified destination addresses (fine for a contact form or alerts); Workers Paid sends to anyone. See <a href="/docs/builtins/mailer#cloudflare" class="text-amber-400 hover:underline">Cloudflare Email Sending</a>.
     </p>
 
     <h2 id="liveview" class="text-3xl font-bold text-white mb-4 scroll-mt-24">LiveView: sockets in Durable Objects</h2>

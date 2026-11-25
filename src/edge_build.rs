@@ -684,6 +684,13 @@ directory = "./public"
 # queue = "my-app-jobs"
 # max_retries = 100
 
+# Mail through Cloudflare Email Sending: set SOLI_MAIL_DELIVERY_METHOD =
+# "cloudflare" under [vars] and keep the binding below. The from address must be
+# on a domain onboarded in Email Service; on Workers Free, Cloudflare sends only
+# to the account's verified destination addresses (Workers Paid: to anyone).
+# [[send_email]]
+# name = "EMAIL"
+
 # Models on PostgreSQL through Hyperdrive
 # (`npx wrangler hyperdrive create my-db --connection-string="postgres://…"`
 # prints the id); set SOLI_DB_ADAPTER = "postgres" under [vars].

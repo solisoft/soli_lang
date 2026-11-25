@@ -193,7 +193,7 @@ UserMailer.welcome(user).deliver_later</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-3">Configure delivery once in <code class="text-cyan-400">config/application.sl</code>:</p>
             <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({
-  "delivery_method": "smtp",       # "smtp" | "http" | "test" | "logger"
+  "delivery_method": "smtp",       # "smtp" | "http" | "cloudflare" | "test" | "logger"
   "host": getenv("SMTP_HOST"),
   "port": 587,                     # 465 = implicit TLS, 587 = STARTTLS
   "user": getenv("SMTP_USER"),
@@ -207,6 +207,7 @@ UserMailer.welcome(user).deliver_later</code></pre>
             <div class="text-sm text-gray-400 space-y-1">
                 <div><code class="text-amber-400">smtp</code> &mdash; send over SMTP (default); under <code class="text-cyan-400">--dev</code> with no <code class="text-cyan-400">host</code>, the mail is captured in the <a href="#inbox" class="text-cyan-400 hover:text-white transition-colors">dev inbox</a> instead of failing</div>
                 <div><code class="text-amber-400">http</code> &mdash; POST the mail to a provider&rsquo;s API (<a href="#http" class="text-cyan-400 hover:text-white transition-colors">Over HTTP</a>); under <code class="text-cyan-400">--dev</code> with no <code class="text-cyan-400">url</code>, captured in the dev inbox</div>
+                <div><code class="text-amber-400">cloudflare</code> &mdash; send through Cloudflare Email Sending: the Worker&rsquo;s <code class="text-cyan-400">send_email</code> binding on the edge, the REST API elsewhere (<a href="#cloudflare" class="text-cyan-400 hover:text-white transition-colors">Cloudflare Email Sending</a>); under <code class="text-cyan-400">--dev</code> off the edge with no <code class="text-cyan-400">account_id</code>, captured in the dev inbox</div>
                 <div><code class="text-amber-400">test</code> &mdash; capture mail in memory for assertions; never sends</div>
                 <div><code class="text-amber-400">logger</code> &mdash; print a one-line summary instead of sending</div>
             </div>
@@ -220,6 +221,7 @@ UserMailer.welcome(user).deliver_later</code></pre>
                 <div><code class="text-cyan-400">SOLI_SMTP_FROM</code> &mdash; default From</div>
                 <div><code class="text-cyan-400">SOLI_SMTP_DOMAIN</code> &mdash; EHLO name / <code>Message-ID</code> host</div>
                 <div><code class="text-cyan-400">SOLI_MAIL_URL</code>, <code class="text-cyan-400">SOLI_MAIL_API_KEY</code>, <code class="text-cyan-400">SOLI_MAIL_API_KEY_HEADER</code>, <code class="text-cyan-400">SOLI_MAIL_REQUEST</code> &mdash; the http method&rsquo;s <code>url</code>, <code>api_key</code>, <code>api_key_header</code>, <code>request</code></div>
+                <div><code class="text-cyan-400">SOLI_MAIL_BINDING</code>, <code class="text-cyan-400">SOLI_MAIL_ACCOUNT_ID</code> &mdash; the cloudflare method&rsquo;s <code>binding</code> (default <code>EMAIL</code>) and <code>account_id</code> (off the edge)</div>
             </div>
         </div>
     </section>
@@ -267,7 +269,38 @@ end
 
 # config/application.sl
 Mailer.configure({"delivery_method": "http", "request": "MailRequest", "url": "https://api.brevo.com"})</code></pre>
-            <p class="text-gray-400 mt-3">The hook is a class name, not a lambda: the configuration is made once and read by every worker, and a closure cannot leave the interpreter it was made in. With a hook, <code class="text-cyan-400">url</code> is optional &mdash; the class knows its provider&rsquo;s endpoint, and a configured <code class="text-cyan-400">url</code> is only the base it is handed. <code class="text-cyan-400">nil</code> removes any http setting (<code class="text-cyan-400">"request": nil</code>, <code class="text-cyan-400">"api_key_header": nil</code>&hellip;). On Cloudflare Workers, <code class="text-cyan-400">http</code> is the only road &mdash; a Worker cannot reach an SMTP server (<a href="/docs/development-tools/edge#mail" class="text-cyan-400 hover:underline">Mail on the edge</a>). Ready-made classes for Brevo, Resend, Postmark, SendGrid and Mailgun are in <a href="/docs/blog/mail-over-http-provider-classes" class="text-cyan-400 hover:underline">Mail over HTTP: one class per provider</a>. The URL goes through the same SSRF check as the <code class="text-cyan-400">HTTP</code> class (<code class="text-cyan-400">SOLI_HTTP_ALLOW_HOSTS</code> opens a private host).</p>
+            <p class="text-gray-400 mt-3">The hook is a class name, not a lambda: the configuration is made once and read by every worker, and a closure cannot leave the interpreter it was made in. With a hook, <code class="text-cyan-400">url</code> is optional &mdash; the class knows its provider&rsquo;s endpoint, and a configured <code class="text-cyan-400">url</code> is only the base it is handed. <code class="text-cyan-400">nil</code> removes any http setting (<code class="text-cyan-400">"request": nil</code>, <code class="text-cyan-400">"api_key_header": nil</code>&hellip;). A Cloudflare Worker cannot reach an SMTP server: there, use <code class="text-cyan-400">http</code> or <a href="#cloudflare" class="text-cyan-400 hover:underline"><code>cloudflare</code></a> (<a href="/docs/development-tools/edge#mail" class="text-cyan-400 hover:underline">Mail on the edge</a>). Ready-made classes for Brevo, Resend, Postmark, SendGrid and Mailgun are in <a href="/docs/blog/mail-over-http-provider-classes" class="text-cyan-400 hover:underline">Mail over HTTP: one class per provider</a>. The URL goes through the same SSRF check as the <code class="text-cyan-400">HTTP</code> class (<code class="text-cyan-400">SOLI_HTTP_ALLOW_HOSTS</code> opens a private host).</p>
+        </div>
+    </section>
+
+    <!-- Cloudflare Email Sending -->
+    <section id="cloudflare" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Cloudflare Email Sending</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">delivery_method: "cloudflare"</code> sends through <a href="https://developers.cloudflare.com/email-service/" class="text-cyan-400 hover:underline">Cloudflare Email Service</a>. In a Worker it calls the <code class="text-cyan-400">send_email</code> binding, so there is no key to keep:</p>
+            <pre data-filename="wrangler.toml"><code class="language-toml text-sm">[vars]
+SOLI_MAIL_DELIVERY_METHOD = "cloudflare"
+
+[[send_email]]
+name = "EMAIL"</code></pre>
+            <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({
+  "delivery_method": "cloudflare",
+  "binding": "EMAIL",                    # the default
+  "from": "Acme &lt;noreply@example.com&gt;"   # on a domain onboarded in Email Service
+})</code></pre>
+            <p class="text-gray-400 mt-4 mb-3">Anywhere else (<code class="text-cyan-400">soli serve</code>, a job worker) the same method calls the REST API, <code>POST /accounts/{account_id}/email/sending/send</code>, with an API token allowed <em>Email Sending: Edit</em>:</p>
+            <pre data-filename="config/application.sl"><code class="language-soli text-sm">Mailer.configure({
+  "delivery_method": "cloudflare",
+  "account_id": getenv("CLOUDFLARE_ACCOUNT_ID"),
+  "api_key": getenv("CLOUDFLARE_EMAIL_TOKEN")
+})</code></pre>
+            <p class="text-gray-400 mt-4 mb-3">The mail is translated to Cloudflare&rsquo;s shape: <code>to</code>, <code>cc</code>, <code>bcc</code>, <code>from</code>, <code>reply_to</code> (<code>replyTo</code> for the binding, which also takes <code>"Ana &lt;ana@…&gt;"</code> as <code>{email, name}</code>), <code>subject</code>, <code>text</code>, <code>html</code>, <code>headers</code> and the attachments. What Cloudflare would refuse is refused before the call: no recipient, more than 50 recipients, no <code>from</code>, neither <code>text</code> nor <code>html</code>, more than 32 attachments. A refusal raises with Cloudflare&rsquo;s code and what to do about it (<code class="text-cyan-400">E_RECIPIENT_NOT_ALLOWED</code> says what the Free plan allows).</p>
+            <h4 class="text-sm font-semibold text-gray-300 mt-5 mb-2">What Cloudflare requires</h4>
+            <ul class="text-sm text-gray-400 space-y-1 list-disc pl-5">
+                <li><strong class="text-white">The sending domain</strong> uses Cloudflare DNS and is onboarded in Email Service (dashboard &rarr; Email Service &rarr; Email Sending), with the DNS records it lists.</li>
+                <li><strong class="text-white">On Workers Free</strong>, mail goes only to the account&rsquo;s <em>verified destination addresses</em>, free: enough for a contact form or alerts to yourself, not for mail to your users. <strong class="text-white">Workers Paid</strong> sends to anyone, 3,000 mails a month included.</li>
+                <li><strong class="text-white">Headers</strong>: <code>X-</code> headers and Cloudflare&rsquo;s allowlist (<code>List-Unsubscribe</code>, <code>In-Reply-To</code>, <code>References</code>&hellip;). Others are refused (<code class="text-cyan-400">E_HEADER_NOT_ALLOWED</code>).</li>
+            </ul>
         </div>
     </section>
 

@@ -302,3 +302,27 @@ export const soli_queue_send = new WebAssembly.Suspending(async (ptr, len) => {
   new Uint8Array(wasm.memory.buffer, out + 4, bytes.length).set(bytes);
   return out;
 });
+
+// One mail through Cloudflare Email Sending (solilang's mailer, delivery
+// method "cloudflare"). Reads `{binding, message}` as JSON at ptr/len, where
+// `message` is what `env[binding].send(...)` takes (to/cc/bcc, from, replyTo,
+// subject, text, html, headers, attachments with base64 `content`), and
+// answers `{ok, message_id}` or `{ok: false, code, error}` — `code` is
+// Cloudflare's (`E_RECIPIENT_NOT_ALLOWED`…), which the Rust side explains.
+export const soli_email = new WebAssembly.Suspending(async (ptr, len) => {
+  let response;
+  try {
+    const request = readRequest(ptr, len);
+    const sender = host.env[request.binding];
+    if (!sender || typeof sender.send !== "function") {
+      throw new Error(
+        `no send_email binding named ${request.binding}: add [[send_email]] name = "${request.binding}" to wrangler.toml`,
+      );
+    }
+    const result = await sender.send(request.message);
+    response = { ok: true, message_id: result?.messageId ?? null };
+  } catch (error) {
+    response = { ok: false, code: String(error?.code ?? ""), error: String(error?.message ?? error) };
+  }
+  return writeResponse(response);
+});
