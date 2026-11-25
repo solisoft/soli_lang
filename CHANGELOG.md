@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Model `min_length` / `max_length` count characters.** `validates("name", {"max_length": 6})` compared the UTF-8 byte count, so `"Hélène"` (6 characters, 8 bytes) was "too long" and an emoji counted 4. They now count characters, as their messages say and as `String#length` does since 2.42.0. `V.string().min_length` / `max_length` already did.
+
 ## [2.42.1] - 2026-11-25
 
 ### Fixed

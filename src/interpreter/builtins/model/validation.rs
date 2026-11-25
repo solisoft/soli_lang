@@ -864,7 +864,7 @@ pub fn run_validations(
         // Min length validation
         if let Some(min_len) = rule.min_length {
             if let Some(Value::String(s)) = &field_value {
-                if s.len() < min_len {
+                if crate::interpreter::executor::calls::string_methods::char_len(s) < min_len {
                     errors.push(ValidationError::new(
                         &rule.field,
                         format!("is too short (minimum is {} characters)", min_len),
@@ -876,7 +876,7 @@ pub fn run_validations(
         // Max length validation
         if let Some(max_len) = rule.max_length {
             if let Some(Value::String(s)) = &field_value {
-                if s.len() > max_len {
+                if crate::interpreter::executor::calls::string_methods::char_len(s) > max_len {
                     errors.push(ValidationError::new(
                         &rule.field,
                         format!("is too long (maximum is {} characters)", max_len),
@@ -1429,6 +1429,34 @@ mod tests {
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].message, "is not included in the list");
         assert_eq!(check(Value::String("bogus".into())).len(), 1);
+    }
+
+    /// `min_length` / `max_length` count characters, as the messages say and
+    /// as `String#length` does: they compared the UTF-8 byte count, so
+    /// `"Hélène"` (6 characters, 8 bytes) failed `max_length: 6`.
+    #[test]
+    fn length_rules_count_characters_not_bytes() {
+        let class = "TestLengthRulesChars__v";
+        let mut options = HashPairs::default();
+        options.insert(HashKey::String("min_length".into()), Value::Int(3));
+        options.insert(HashKey::String("max_length".into()), Value::Int(6));
+        let (rule, _) = parse_validates_options("name", &options).unwrap();
+        register_validation(class, rule);
+
+        let record = |v: &str| {
+            let mut h = HashPairs::default();
+            h.insert(HashKey::String("name".into()), Value::String(v.into()));
+            Value::Hash(Rc::new(RefCell::new(h)))
+        };
+        let check = |v: &str| run_validations(class, None, &record(v), None).unwrap();
+        assert!(check("Hélène").is_empty(), "6 characters, 8 bytes");
+        assert!(check("😀😀😀").is_empty(), "3 characters, 12 bytes");
+        assert_eq!(check("Hélènes").len(), 1, "7 characters is too long");
+        assert_eq!(
+            check("éé").len(),
+            1,
+            "2 characters is too short, though 4 bytes"
+        );
     }
 
     #[test]
