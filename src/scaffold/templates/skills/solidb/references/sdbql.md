@@ -381,44 +381,24 @@ of a write answers the staging message with the plan as `result`. The HTTP
 query inside. `warnings` also notes `QUALIFY`, `SAMPLE` and
 `ROLLUP`/`CUBE` when the query has them.
 
-**Open on that tree (2026-11-24).** Each was observed unless it says
-otherwise; delete a line when a later build no longer shows it.
+**Open on that tree (2026-11-25).** The defects listed here on 2026-11-24
+were fixed on 2026-11-25 and checked on a server built from the tree (`SAMPLE
+3` of 20 now draws each key 47 to 72 times in 400 runs). Delete a line when a
+later build no longer shows it.
 
-- `SAMPLE n` is not uniform. 400 draws of `SAMPLE 3` from 20 documents only
-  ever returned the first three keys (about 340 times each) and the last
-  three (about 60 each).
-- `QUALIFY` and `SAMPLE` are skipped when the query ends in `SORT` on `_key`
-  or an indexed field with a `LIMIT`: `QUALIFY e.salary <= 60 SORT e._key
-  LIMIT 3` returned the salaries 100, 90, 80, and `SAMPLE 0 SORT e._key
-  LIMIT 10` every row.
-- Both are skipped in a subquery over an array in memory: `LET a =
-  [1,2,3,4,5] RETURN (FOR x IN a SAMPLE 2 RETURN x)` → all five, and
-  `(FOR t IN d.tags QUALIFY t != "x" RETURN t)` keeps `"x"`. The same loop
-  at top level is right.
-- A sampled subquery is run once for all outer rows:
-  `FOR u IN 1..6 RETURN (FOR p IN events SAMPLE 3 RETURN p._key)` → six
-  identical samples.
-- `/cursor` with `X-Transaction-ID` ignores `SAMPLE` on the loop of a write:
-  `FOR d IN logs SAMPLE 2 REMOVE d IN logs` staged 10 of 10 documents
-  (`…/transaction/{id}/query` staged 2).
-- `EXPLAIN` runs DDL: `EXPLAIN CREATE MATERIALIZED VIEW mv AS …` answered
-  `Materialized view 'mv' created`.
-- The query cache does not see a collection only `QUALIFY` reads:
-  `FOR d IN ca QUALIFY d.x IN (FOR y IN cb RETURN y.x) RETURN d` stayed
-  `cached: true` with the old rows after an insert into `cb`.
-- A window call written twice is computed once even without `QUALIFY`:
-  `LET r1 = ROW_NUMBER() OVER (ORDER BY e.salary DESC) FILTER e.dept ==
-  "sales" RETURN {r1, r2: ROW_NUMBER() OVER (ORDER BY e.salary DESC)}` gave
-  `r2` equal to `r1` (5, 6); on 2.15.0 `r2` was 1, 2.
-- The rows of any `COLLECT` carry two hidden keys, which a later
-  `COLLECT … INTO` shows: its members gain `"\u0000grouping"` and
-  `"\u0000group_vars"` (not on 2.15.0).
-- From a code review, not run: `EXPLAIN` sent over the driver can return
-  the query's rows; `CUBE` builds every mask up front (31 variables is
-  8 GiB); on a columnar collection `ROLLUP … SORT agg LIMIT k` totals only
-  the top groups; `SAMPLE` past `SOLIDB_MAX_INTERMEDIATE_ROWS` draws from
-  the first rows only; `EXPLAIN ANALYZE` of a sampled or qualified read
-  describes the query without them.
+- From a code review, not run: `EXPLAIN ANALYZE` of a sampled or qualified
+  read describes the query without them.
+
+Behaviour of the fixes, observed then:
+- `/cursor` with `X-Transaction-ID` refuses a write that has `SAMPLE` or
+  `QUALIFY` (400, "send it to …/transaction/{id}/query"); that endpoint
+  staged 2 of 10 for `FOR d IN logs SAMPLE 2 REMOVE d IN logs`.
+- `EXPLAIN CREATE MATERIALIZED VIEW …` is a 400 `ParseError` ("EXPLAIN
+  applies to queries, not to CREATE STREAM or materialized-view
+  statements").
+- A sampled query is never cached (`cached: false` with `cache: true`), and
+  a cached query is invalidated by a write to a collection only its
+  `QUALIFY` reads.
 
 ### Joins
 
