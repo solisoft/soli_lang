@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.42.1] - 2026-11-25
+
 ### Fixed
 - **A module's classes win over a global of the same name.** Inside `module Referential`, a bare `Policy` resolved to the global first and to `Referential::Policy` only when no global had that name. 2.42.0 added a builtin `Policy` class (and `Path`, `Bytes`, `Session`, …), so code that named its own `Policy` in a module started failing with "Cannot access property 'next_identifier' on Policy", in the type checker and on both engines. The module is now looked in first (`interpreter::domain::resolve_in_namespace`, ahead of the environment in the tree-walker and of `globals` in the VM's `GetGlobal` / `SelfOrGlobal`), and the checker scopes a class's nested class names over its methods. A top-level class of the same name no longer wins inside the module either, as in Ruby.
 

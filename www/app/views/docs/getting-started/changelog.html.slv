@@ -20,8 +20,12 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.42.0.</p>
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.42.1.</p>
+    </section>
+
+    <section id="v2-42-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.42.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-25</span></h2>
+        <h3 id="v2-42-1-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A module&rsquo;s classes win over a global of the same name.</strong> v2.42.0 added builtin classes such as <code class="text-cyan-400">Policy</code> and <code class="text-cyan-400">Path</code>, and a bare <code class="text-cyan-400">Policy</code> inside <code class="text-cyan-400">module Referential</code> reached the builtin instead of <code class="text-cyan-400">Referential::Policy</code> (&ldquo;Cannot access property &hellip; on Policy&rdquo;). The module is now looked in first, on both engines and in the type checker, so a top-level class of the same name no longer wins there either (<a href="/docs/language/modules" class="text-amber-400 hover:underline">Modules</a>).</li>
         </ul>
