@@ -26,6 +26,12 @@ class StatsCardComponent < Component
 end
 
 describe("Session") do
+  # A live, empty session whatever ran before this file.
+  before_each() do
+    Session.destroy
+    Session.regenerate
+  end
+
   test("stores a value and a flash under the class") do
     Session.set("framework_class_user", 7)
     assert_eq(Session.get("framework_class_user"), 7)
