@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.41.2] - 2026-11-25
+
 ### Added
 - **attachments: disk, S3 and R2 downloads stream, with `Range`.** Only
   SoliDB blobs were streamed; a disk or S3 file was read whole into the
@@ -13,6 +15,20 @@
   relay and the segment-by-segment sealed relay serve all of them with
   `206`/`416`/`HEAD`/`304`. `S3Client::presign_get`. Image transforms and
   the edge's R2 path are unchanged.
+
+### Changed
+- **eui: the score engraver pinned at eui `1d46731`** (was `019fc24`; also
+  `eui-proto` and `eui-client`). What `eui_score_layout` / `eui_score_bands`
+  / `eui_score_pdf` draw differently: a slur passes over the grace notes it
+  spans (head, stem and flag) and over the number of a tuplet under it on
+  its side, where it was drawn through an acciaccatura and struck a
+  sextuplet's 6 through; an acciaccatura's own slur stops before the stem
+  of its note when that stem comes down; and a tempo mark stays on its
+  line — the line breaks leave it its room, and where none can (a `\break`,
+  a mark wider than its line) it starts farther left and ends where the
+  line ends, where it ran into the margin or off the picture. A score with
+  a long tempo mark may be cut into other lines than before. No source
+  change here (Score #1060).
 
 ## [2.41.1] - 2026-11-24
 
